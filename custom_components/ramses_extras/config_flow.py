@@ -44,10 +44,11 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_features(self, user_input=None):
         """Handle the feature selection step."""
         if user_input is not None:
-            # Set default enabled features
+            # Convert field names back to feature keys and handle defaults
             enabled_features = {}
-            for feature_key, feature_config in AVAILABLE_FEATURES.items():
-                enabled_features[feature_key] = user_input.get(feature_key, feature_config.get("default_enabled", False))
+            for field_name, field_to_feature in self.field_to_feature.items():
+                # Use the submitted value, or default if not provided
+                enabled_features[field_to_feature] = user_input.get(field_name, False)
 
             return self.async_create_entry(
                 title=user_input.get("name", "Ramses Extras"),
@@ -66,20 +67,21 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             features_by_category[category].append((feature_key, feature_config))
 
         # Create schema with features organized by category
-        schema_fields = [vol.Required("name")]
+        schema_dict = {"name": vol.Required("name")}
+
+        # Create a mapping of simple field names to feature keys
+        self.field_to_feature = {}
+
         for category, features in features_by_category.items():
             for feature_key, feature_config in features:
-                default_enabled = feature_config.get("default_enabled", False)
-                description = feature_config.get("description", "")
-                schema_fields.append(
-                    vol.Optional(
-                        feature_key,
-                        default=default_enabled,
-                        description=f"{feature_config['name']}: {description}"
-                    )
-                )
+                # Use the feature name as the field name for better UX
+                field_name = feature_config["name"].lower().replace(" ", "_").replace("-", "_")
+                self.field_to_feature[field_name] = feature_key
 
-        schema = vol.Schema(*schema_fields)
+                # Use a more standard approach for boolean fields
+                schema_dict[field_name] = vol.Coerce(bool)
+
+        schema = vol.Schema(schema_dict)
 
         return self.async_show_form(
             step_id="features",
@@ -93,7 +95,8 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle options flow for existing config entries."""
         return await self.async_step_features()
 
-    async def async_get_options_flow(self, config_entry):
+    @classmethod
+    def async_get_options_flow(cls, config_entry):
         """Return options flow handler for existing config entries."""
         return RamsesExtrasOptionsFlowHandler(config_entry)
 
@@ -112,10 +115,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_features(self, user_input=None):
         """Handle the feature selection step for options."""
         if user_input is not None:
-            # Update the config entry with new feature settings
+            # Convert field names back to feature keys and handle defaults
             enabled_features = {}
-            for feature_key, feature_config in AVAILABLE_FEATURES.items():
-                enabled_features[feature_key] = user_input.get(feature_key, feature_config.get("default_enabled", False))
+            for field_name, field_to_feature in self.field_to_feature.items():
+                # Use the submitted value, or default if not provided
+                enabled_features[field_to_feature] = user_input.get(field_name, False)
 
             # Update the config entry data
             new_data = self.config_entry.data.copy()
@@ -131,22 +135,23 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data={})
 
         # Get current enabled features
-        current_features = self.config_entry.data.get("enabled_features", {})
+#        current_features = self.config_entry.data.get("enabled_features", {})
 
         # Create schema with current settings as defaults
-        schema_fields = []
-        for feature_key, feature_config in AVAILABLE_FEATURES.items():
-            current_enabled = current_features.get(feature_key, feature_config.get("default_enabled", False))
-            description = feature_config.get("description", "")
-            schema_fields.append(
-                vol.Optional(
-                    feature_key,
-                    default=current_enabled,
-                    description=f"{feature_config['name']}: {description}"
-                )
-            )
+        schema_dict = {}
 
-        schema = vol.Schema(*schema_fields)
+        # Create a mapping of simple field names to feature keys
+        self.field_to_feature = {}
+
+        for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            # Use the feature name as the field name for better UX
+            field_name = feature_config["name"].lower().replace(" ", "_").replace("-", "_")
+            self.field_to_feature[field_name] = feature_key
+
+            # Use a more standard approach for boolean fields
+            schema_dict[field_name] = vol.Coerce(bool)
+
+        schema = vol.Schema(schema_dict)
 
         return self.async_show_form(
             step_id="features",
