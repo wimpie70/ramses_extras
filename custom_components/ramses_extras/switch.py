@@ -2,7 +2,7 @@ import logging
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN
+from .const import DOMAIN, ENTITY_TYPE_CONFIGS, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -13,18 +13,62 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         _LOGGER.debug("No fans available for switches")
         return
 
-    switches = [RamsesDehumidifySwitch(hass, fan) for fan in fans]
+    switches = []
+
+    # Get enabled features from config entry
+    enabled_features = config_entry.data.get("enabled_features", {})
+
+    # Create switches based on enabled features and their requirements
+    for fan_id in fans:
+        # Find the device type for this fan_id (in a real implementation, you'd look this up)
+        device_type = "HvacVentilator"
+
+        if device_type in DEVICE_ENTITY_MAPPING:
+            entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+
+            # Check each enabled feature to see if it needs switches
+            for feature_key, is_enabled in enabled_features.items():
+                if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                    continue
+
+                feature_config = AVAILABLE_FEATURES[feature_key]
+
+                # Check if this feature supports this device type
+                if device_type not in feature_config.get("supported_device_types", []):
+                    continue
+
+                # Create required switches for this feature
+                for switch_type in feature_config.get("required_entities", {}).get("switches", []):
+                    if switch_type in entity_mapping.get("switches", []):
+                        if switch_type in ENTITY_TYPE_CONFIGS["switch"]:
+                            config = ENTITY_TYPE_CONFIGS["switch"][switch_type]
+                            switches.append(RamsesDehumidifySwitch(hass, fan_id, switch_type, config))
+
+                # Create optional switches for this feature if they exist in mapping
+                for switch_type in feature_config.get("optional_entities", {}).get("switches", []):
+                    if switch_type in entity_mapping.get("switches", []):
+                        if switch_type in ENTITY_TYPE_CONFIGS["switch"]:
+                            config = ENTITY_TYPE_CONFIGS["switch"][switch_type]
+                            switches.append(RamsesDehumidifySwitch(hass, fan_id, switch_type, config))
+
     async_add_entities(switches, True)
 
 
 class RamsesDehumidifySwitch(SwitchEntity):
     """Switch to toggle dehumidify mode."""
 
-    def __init__(self, hass, fan_id: str):
+    def __init__(self, hass, fan_id: str, switch_type: str, config: dict):
         self.hass = hass
         self._fan_id = fan_id  # Store device ID as string
-        self._attr_name = f"Dehumidify ({fan_id})"
+        self._switch_type = switch_type
+        self._config = config
+
+        # Set attributes from configuration
+        self._attr_name = f"{config['name_template']} ({fan_id})"
         self._attr_unique_id = f"{fan_id}_dehumidify"
+        self._attr_icon = config['icon']
+        self._attr_entity_category = config['entity_category']
+
         self._is_on = False
         self._unsub = None
 

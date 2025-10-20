@@ -3,7 +3,7 @@ import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
-from .const import DOMAIN
+from .const import DOMAIN, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES
 from . import config_flow  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
@@ -115,23 +115,72 @@ async def _discover_ramses_devices(hass: HomeAssistant):
             # Access devices through the broker's client
             gwy = broker.client
 
-            # Check for HVAC Ventilator devices (FAN devices)
+            # Discover devices using flexible handler approach
             for device in gwy.devices:
-                if hasattr(device, "__class__") and "HvacVentilator" in device.__class__.__name__:
-                    device_ids.append(device.id)
-                    _LOGGER.info(f"Found HVAC Ventilator device: {device.id}")
+                device_ids.extend(await _handle_device(device))
 
             if device_ids:
                 _LOGGER.info(f"Successfully discovered {len(device_ids)} devices via broker")
                 return device_ids
 
-            _LOGGER.warning("No HVAC Ventilator devices found in broker")
+            _LOGGER.warning("No supported devices found in broker")
 
     except Exception as e:
         _LOGGER.warning("Error discovering Ramses devices: %s", e)
         # No fallback - if broker access fails, no devices found
 
-    _LOGGER.info(f"Device discovery complete. Found {len(device_ids)} devices")
-    if device_ids:
-        _LOGGER.info(f"Device IDs: {device_ids}")
+async def _handle_device(device) -> list:
+    """Handle a device based on its type using the configured handler."""
+    device_ids = []
+
+    # Check if this device type is supported by checking against available features
+    for feature_key, feature_config in AVAILABLE_FEATURES.items():
+        if device.__class__.__name__ in feature_config.get("supported_device_types", []):
+            handler_name = feature_config.get("handler", "handle_hvac_ventilator")
+            handler = globals().get(handler_name)
+            if handler:
+                result = await handler(device)
+                if result:
+                    device_ids.extend(result)
+                    _LOGGER.info(f"Handled {device.__class__.__name__} device: {device.id}")
+            else:
+                _LOGGER.warning(f"No handler found for {device.__class__.__name__}: {handler_name}")
+            break
+
     return device_ids
+
+
+async def handle_hvac_ventilator(device) -> list:
+    """Handle HVAC Ventilator devices - create entities based on mapping."""
+    device_id = device.id
+
+    # Check what entities this device type should have
+    if device.__class__.__name__ not in DEVICE_ENTITY_MAPPING:
+        _LOGGER.warning(f"No entity mapping found for device type: {device.__class__.__name__}")
+        return []
+
+    entity_mapping = DEVICE_ENTITY_MAPPING[device.__class__.__name__]
+
+    # For now, just return the device ID for each entity type
+    # In a more sophisticated implementation, this could check device capabilities
+    entities_needed = []
+
+    # Add sensors
+    for sensor_type in entity_mapping.get("sensors", []):
+        entities_needed.append(f"sensor_{device_id}_{sensor_type}")
+
+    # Add switches
+    for switch_type in entity_mapping.get("switches", []):
+        entities_needed.append(f"switch_{device_id}_{switch_type}")
+
+    return [device_id] if entities_needed else []
+
+
+# Add more device handlers here as needed
+# async def handle_hvac_controller(device) -> list:
+#     """Handle HVAC Controller devices."""
+#     return [device.id]
+#
+# async def handle_thermostat(device) -> list:
+#     """Handle Thermostat devices."""
+#     return [device.id]

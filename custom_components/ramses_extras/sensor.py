@@ -1,9 +1,8 @@
 import logging
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN, SENSOR_TYPES
+from .const import DOMAIN, ENTITY_TYPE_CONFIGS, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -15,9 +14,42 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         return
 
     sensors = []
-    for fan in fans:
-        sensors.append(RamsesExtraHumiditySensor(hass, fan, "indoor_abs_humid"))
-        sensors.append(RamsesExtraHumiditySensor(hass, fan, "outdoor_abs_humid"))
+
+    # Get enabled features from config entry
+    enabled_features = config_entry.data.get("enabled_features", {})
+
+    # Create sensors based on enabled features and their requirements
+    for fan_id in fans:
+        # Find the device type for this fan_id (in a real implementation, you'd look this up)
+        device_type = "HvacVentilator"
+
+        if device_type in DEVICE_ENTITY_MAPPING:
+            entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+
+            # Check each enabled feature to see if it needs sensors
+            for feature_key, is_enabled in enabled_features.items():
+                if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                    continue
+
+                feature_config = AVAILABLE_FEATURES[feature_key]
+
+                # Check if this feature supports this device type
+                if device_type not in feature_config.get("supported_device_types", []):
+                    continue
+
+                # Create required sensors for this feature
+                for sensor_type in feature_config.get("required_entities", {}).get("sensors", []):
+                    if sensor_type in entity_mapping.get("sensors", []):
+                        if sensor_type in ENTITY_TYPE_CONFIGS["sensor"]:
+                            config = ENTITY_TYPE_CONFIGS["sensor"][sensor_type]
+                            sensors.append(RamsesExtraHumiditySensor(hass, fan_id, sensor_type, config))
+
+                # Create optional sensors for this feature if they exist in mapping
+                for sensor_type in feature_config.get("optional_entities", {}).get("sensors", []):
+                    if sensor_type in entity_mapping.get("sensors", []):
+                        if sensor_type in ENTITY_TYPE_CONFIGS["sensor"]:
+                            config = ENTITY_TYPE_CONFIGS["sensor"][sensor_type]
+                            sensors.append(RamsesExtraHumiditySensor(hass, fan_id, sensor_type, config))
 
     async_add_entities(sensors, True)
 
@@ -25,13 +57,20 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class RamsesExtraHumiditySensor(SensorEntity):
     """Extra sensor for absolute humidity."""
 
-    def __init__(self, hass, fan_id: str, sensor_type: str):
+    def __init__(self, hass, fan_id: str, sensor_type: str, config: dict):
         self.hass = hass
         self._fan_id = fan_id  # Store device ID as string
         self._sensor_type = sensor_type
-        self._attr_name = f"{SENSOR_TYPES[sensor_type]} ({fan_id})"
+        self._config = config
+
+        # Set attributes from configuration
+        self._attr_name = f"{config['name_template']} ({fan_id})"
         self._attr_unique_id = f"{fan_id.replace(':', '_')}_{sensor_type}"  # Format: 32_153289_indoor_abs_humid
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = config['entity_category']
+        self._attr_icon = config['icon']
+        self._attr_native_unit_of_measurement = config['unit']
+        self._attr_device_class = config['device_class']
+
         self._unsub = None
 
 
