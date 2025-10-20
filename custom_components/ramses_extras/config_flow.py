@@ -1,5 +1,6 @@
 import logging
 from homeassistant import config_entries
+from homeassistant.helpers import selector
 import voluptuous as vol
 
 from .const import DOMAIN, AVAILABLE_FEATURES
@@ -44,11 +45,12 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_features(self, user_input=None):
         """Handle the feature selection step."""
         if user_input is not None:
-            # Convert field names back to feature keys and handle defaults
+            # Convert selected features to enabled features dict
             enabled_features = {}
-            for field_name, field_to_feature in self.field_to_feature.items():
-                # Use the submitted value, or default if not provided
-                enabled_features[field_to_feature] = user_input.get(field_name, False)
+            selected_features = user_input.get("features", [])
+            
+            for feature_key in AVAILABLE_FEATURES.keys():
+                enabled_features[feature_key] = feature_key in selected_features
 
             return self.async_create_entry(
                 title=user_input.get("name", "Ramses Extras"),
@@ -58,36 +60,34 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             )
 
-        # Organize features by category for better UX
-        features_by_category = {}
+        # Build options for multi-select
+        feature_options = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
-            category = feature_config.get("category", "other")
-            if category not in features_by_category:
-                features_by_category[category] = []
-            features_by_category[category].append((feature_key, feature_config))
+            feature_name = feature_config.get("name", feature_key)
+            
+            # Create option with name
+            option = {
+                "value": feature_key,
+                "label": feature_name,
+            }
+            feature_options.append(option)
 
-        # Create schema with features organized by category
-        schema_dict = {"name": vol.Required("name")}
-
-        # Create a mapping of simple field names to feature keys
-        self.field_to_feature = {}
-
-        for category, features in features_by_category.items():
-            for feature_key, feature_config in features:
-                # Use the feature name as the field name for better UX
-                field_name = feature_config["name"].lower().replace(" ", "_").replace("-", "_")
-                self.field_to_feature[field_name] = feature_key
-
-                # Use a more standard approach for boolean fields
-                schema_dict[field_name] = vol.Coerce(bool)
-
-        schema = vol.Schema(schema_dict)
+        schema = vol.Schema({
+            "name": vol.Required("name", default="Ramses Extras"),
+            "features": selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=feature_options,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.LIST,
+                ),
+            ),
+        })
 
         return self.async_show_form(
             step_id="features",
             data_schema=schema,
             description_placeholders={
-                "info": "Select which Ramses Extras features you want to enable. Each feature may require specific entities to be created."
+                "info": "Select which Ramses Extras features you want to enable.\n\n📖 For detailed documentation, visit: https://github.com/YOUR_USERNAME/ramses_extras/wiki"
             }
         )
 
@@ -115,11 +115,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_features(self, user_input=None):
         """Handle the feature selection step for options."""
         if user_input is not None:
-            # Convert field names back to feature keys and handle defaults
+            # Convert selected features to enabled features dict
             enabled_features = {}
-            for field_name, field_to_feature in self.field_to_feature.items():
-                # Use the submitted value, or default if not provided
-                enabled_features[field_to_feature] = user_input.get(field_name, False)
+            selected_features = user_input.get("features", [])
+            
+            for feature_key in AVAILABLE_FEATURES.keys():
+                enabled_features[feature_key] = feature_key in selected_features
 
             # Update the config entry data
             new_data = self.config_entry.data.copy()
@@ -134,30 +135,33 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
             return self.async_create_entry(title="", data={})
 
-        # Get current enabled features
-#        current_features = self.config_entry.data.get("enabled_features", {})
-
-        # Create schema with current settings as defaults
-        schema_dict = {}
-
-        # Create a mapping of simple field names to feature keys
-        self.field_to_feature = {}
-
+        # Build options for multi-select
+        feature_options = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
-            # Use the feature name as the field name for better UX
-            field_name = feature_config["name"].lower().replace(" ", "_").replace("-", "_")
-            self.field_to_feature[field_name] = feature_key
+            feature_name = feature_config.get("name", feature_key)
+            
+            # Create option with name
+            option = {
+                "value": feature_key,
+                "label": feature_name,
+            }
+            feature_options.append(option)
 
-            # Use a more standard approach for boolean fields
-            schema_dict[field_name] = vol.Coerce(bool)
-
-        schema = vol.Schema(schema_dict)
+        schema = vol.Schema({
+            "features": selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=feature_options,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.LIST,
+                ),
+            ),
+        })
 
         return self.async_show_form(
             step_id="features",
             data_schema=schema,
             description_placeholders={
-                "info": "Configure which Ramses Extras features are enabled. Changes will reload the integration."
+                "info": "Configure which Ramses Extras features are enabled.\n\n📖 For detailed documentation, visit: https://github.com/YOUR_USERNAME/ramses_extras/wiki"
             }
         )
 
