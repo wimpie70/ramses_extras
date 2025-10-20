@@ -4,19 +4,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
 from .const import DOMAIN
-from . import websocket_api as ws
 from . import config_flow  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
-
-async def async_setup(hass: HomeAssistant, config: dict):
-    """Set up Ramses Extras integration."""
-    _LOGGER.info("Setting up %s", DOMAIN)
-
-    # Register websocket commands
-    ws.register_ws_commands(hass)
-
-    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
@@ -26,6 +16,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     # Setup from UI (config entry)
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {}
+    hass.data[DOMAIN]["entry_id"] = entry.entry_id  # Store entry_id for platform setup
 
     # Initialize the platforms - handle case where ramses_rf might not be ready yet
     await async_setup_platforms(hass)
@@ -42,72 +33,105 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
 
 async def async_setup_platforms(hass: HomeAssistant):
     """Find Ramses FAN devices and register extras."""
-    _LOGGER.info("Looking for Ramses devices using ramses_cc entity discovery...")
+    # Prevent multiple simultaneous setup attempts
+    if hasattr(async_setup_platforms, '_is_running') and async_setup_platforms._is_running:
+        _LOGGER.debug("Setup already in progress, skipping")
+        return
 
-    # Check if ramses_cc is loaded and working
-    ramses_cc_loaded = "ramses_cc" in hass.config.components
-    if ramses_cc_loaded:
-        _LOGGER.info("Ramses CC is loaded, discovering devices from entities...")
+    async_setup_platforms._is_running = True
 
-        # Discover devices by looking for ramses_cc entities
-        device_ids = await _discover_ramses_devices(hass)
+    try:
+        _LOGGER.info("Looking for Ramses devices using ramses_cc entity discovery...")
 
-        if device_ids:
-            _LOGGER.info("Found %d Ramses devices: %s", len(device_ids), device_ids)
+        # Check if ramses_cc is loaded and working
+        ramses_cc_loaded = "ramses_cc" in hass.config.components
+        if ramses_cc_loaded:
+            _LOGGER.info("Ramses CC is loaded, discovering devices from entities...")
 
-            hass.data.setdefault(DOMAIN, {})["fans"] = device_ids
+            # Discover devices by looking for ramses_cc entities
+            device_ids = await _discover_ramses_devices(hass)
 
-            # Load platforms - use the modern approach
-            from homeassistant.helpers import discovery
-            for platform in ("sensor", "switch"):
-                discovery.load_platform(hass, DOMAIN, platform, {}, hass.config)
+            if device_ids:
+                _LOGGER.info("Found %d Ramses devices: %s", len(device_ids), device_ids)
 
-            return
+                hass.data.setdefault(DOMAIN, {})["fans"] = device_ids
+
+                # Load platforms using proper Home Assistant platform loading
+                _LOGGER.info("Loading sensor and switch platforms...")
+
+                # Get the entry for this integration
+                entry = hass.config_entries.async_get_entry(hass.data[DOMAIN]["entry_id"])
+
+                # Load platforms properly
+                await hass.config_entries.async_forward_entry_setups(
+                    entry, ["sensor", "switch"]
+                )
+
+                _LOGGER.info("Platforms loaded successfully")
+                return
+            else:
+                _LOGGER.info("No Ramses devices found in entity registry")
         else:
-            _LOGGER.info("No Ramses devices found in entity registry")
-    else:
-        _LOGGER.info("Ramses CC not loaded yet, will retry in 30 seconds.")
+            _LOGGER.info("Ramses CC not loaded yet, will retry in 60 seconds.")
 
-    # Schedule a retry in 30 seconds
-    async def delayed_retry():
-        await asyncio.sleep(30)
-        await async_setup_platforms(hass)
+        # Schedule a retry in 60 seconds (increased from 30) - only if ramses_cc not loaded
+        if "ramses_cc" not in hass.config.components:
+            async def delayed_retry():
+                async_setup_platforms._is_running = False
+                await async_setup_platforms(hass)
 
-    hass.async_create_task(delayed_retry())
+            hass.async_create_task(asyncio.sleep(60))
+            hass.async_create_task(delayed_retry())
+        else:
+            _LOGGER.info("Ramses CC is loaded but no devices found, not retrying")
+    finally:
+        async_setup_platforms._is_running = False
 
 
 async def _discover_ramses_devices(hass: HomeAssistant):
-    """Discover Ramses devices by looking at ramses_cc entities."""
+    """Discover Ramses devices by hooking into the ramses_cc broker."""
     device_ids = []
 
     try:
-        # Access the entity registry to find ramses_cc entities
-        from homeassistant.helpers import entity_registry, device_registry
+        # Access ramses_cc broker directly
+        ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
+        if ramses_cc_entries:
+            _LOGGER.info("Found ramses_cc integration, accessing broker...")
 
-        ent_reg = entity_registry.async_get(hass)
-        dev_reg = device_registry.async_get(hass)
+            ramses_domain = "ramses_cc"
 
-        # Look for entities created by ramses_cc
-        for entity_id, entity_entry in ent_reg.entities.items():
-            # Check if this entity was created by ramses_cc
-            if (hasattr(entity_entry, 'platform') and
-                entity_entry.platform == 'ramses_cc'):
+            if ramses_domain not in hass.data:
+                _LOGGER.warning("Ramses CC integration not loaded")
+                return []
 
-                # Get the device associated with this entity
-                if entity_entry.device_id:
-                    try:
-                        device = dev_reg.async_get_device(entity_entry.device_id)
+            # Get the first loaded Ramses entry (if multiple, pick one explicitly)
+            ramses_entry_id = next(iter(hass.data[ramses_domain]))
+            broker = hass.data[ramses_domain][ramses_entry_id]
 
-                        if device and hasattr(device, 'identifiers'):
-                            # Check if this device has Ramses identifiers
-                            for identifier in device.identifiers:
-                                if any('ramses' in str(id_part).lower() for id_part in identifier):
-                                    device_ids.append(entity_entry.device_id)
-                                    break
-                    except Exception as e:
-                        _LOGGER.debug("Error getting device %s: %s", entity_entry.device_id, e)
+            if not hasattr(broker, "client"):
+                _LOGGER.warning("Ramses CC broker does not have client attribute")
+                return []
+
+            # Access devices through the broker's client
+            gwy = broker.client
+
+            # Check for HVAC Ventilator devices (FAN devices)
+            for device in gwy.devices:
+                if hasattr(device, "__class__") and "HvacVentilator" in device.__class__.__name__:
+                    device_ids.append(device.id)
+                    _LOGGER.info(f"Found HVAC Ventilator device: {device.id}")
+
+            if device_ids:
+                _LOGGER.info(f"Successfully discovered {len(device_ids)} devices via broker")
+                return device_ids
+
+            _LOGGER.warning("No HVAC Ventilator devices found in broker")
 
     except Exception as e:
         _LOGGER.warning("Error discovering Ramses devices: %s", e)
+        # No fallback - if broker access fails, no devices found
 
+    _LOGGER.info(f"Device discovery complete. Found {len(device_ids)} devices")
+    if device_ids:
+        _LOGGER.info(f"Device IDs: {device_ids}")
     return device_ids
