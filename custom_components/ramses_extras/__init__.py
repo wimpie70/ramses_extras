@@ -62,12 +62,22 @@ async def async_setup_platforms(hass: HomeAssistant):
                 # Get the entry for this integration
                 entry = hass.config_entries.async_get_entry(hass.data[DOMAIN]["entry_id"])
 
-                # Load platforms properly
-                await hass.config_entries.async_forward_entry_setups(
-                    entry, ["sensor", "switch"]
-                )
+                # Load platforms properly - check if already loaded first
+                if not hass.data[DOMAIN].get("platforms_loaded", False):
+                    _LOGGER.info("Loading sensor and switch platforms...")
 
-                _LOGGER.info("Platforms loaded successfully")
+                    # Get the entry for this integration
+                    entry = hass.config_entries.async_get_entry(hass.data[DOMAIN]["entry_id"])
+
+                    # Load platforms properly
+                    await hass.config_entries.async_forward_entry_setups(
+                        entry, ["sensor", "switch"]
+                    )
+
+                    hass.data[DOMAIN]["platforms_loaded"] = True
+                    _LOGGER.info("Platforms loaded successfully")
+                else:
+                    _LOGGER.debug("Platforms already loaded, skipping")
                 return
             else:
                 _LOGGER.info("No Ramses devices found in entity registry")

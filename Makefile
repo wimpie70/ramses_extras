@@ -26,7 +26,11 @@ install:
 		echo "Error: HA config directory $(HA_CONFIG_DIR) not found!"; \
 		exit 1; \
 	fi
-	@cp -r $(SOURCE_DIR)/custom_components $(HA_CONFIG_DIR)/
+	@# Remove existing integration (excluding __pycache__ to avoid permission issues)
+	@find $(HA_CONFIG_DIR)/custom_components/ramses_extras -type f -name "*.py" -delete 2>/dev/null || true
+	@find $(HA_CONFIG_DIR)/custom_components/ramses_extras -type d -empty -delete 2>/dev/null || true
+	@# Copy without __pycache__ directories
+	@rsync -av --exclude='__pycache__' $(SOURCE_DIR)/custom_components $(HA_CONFIG_DIR)/
 	@echo "✅ Integration installed successfully"
 	@echo "💡 Don't forget to restart Home Assistant to load the new integration"
 
