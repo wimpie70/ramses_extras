@@ -30,6 +30,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     hass.data[DOMAIN].pop(entry.entry_id)
     return True
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Handle migration of a config entry."""
+    _LOGGER.debug("Migrating config entry from version %s", entry.version)
+
+    # Example: upgrade from version 1 to 2 if needed
+    if entry.version < 2:
+        new_data = {**entry.data}
+        hass.config_entries.async_update_entry(entry, version=2, data=new_data)
+
+    _LOGGER.debug("Migration to version %s successful", entry.version)
+    return True
 
 async def async_setup_platforms(hass: HomeAssistant):
     """Find Ramses FAN devices and register extras."""

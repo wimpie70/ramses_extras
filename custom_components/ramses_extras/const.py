@@ -4,6 +4,10 @@ DOMAIN = "ramses_extras"
 
 WS_CMD_GET_BOUND_REM = f"{DOMAIN}/get_bound_rem"
 
+# Configuration constants
+CONF_NAME = "name"
+CONF_ENABLED_FEATURES = "enabled_features"
+DESCRIPTION_PLACEHOLDER_INFO = "Ramses Extras provides additional functionality on top of Ramses RF."
 
 SENSOR_TYPES = {
     "indoor_abs_humid": "Indoor Absolute Humidity",

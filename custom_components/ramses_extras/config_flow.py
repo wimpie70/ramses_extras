@@ -4,14 +4,15 @@ from homeassistant.helpers import selector
 import voluptuous as vol
 
 from .const import DOMAIN, AVAILABLE_FEATURES
+from . import const
 
 _LOGGER = logging.getLogger(__name__)
 
 @config_entries.HANDLERS.register(DOMAIN)
 class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Ramses Extras."""
-    VERSION = 0
-    MINOR_VERSION = 1
+    VERSION = 1
+#    MINOR_VERSION = 1
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -25,13 +26,13 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_features()
 
         schema = vol.Schema({
-            vol.Required("name", default="Ramses Extras"): str,
+            vol.Required(const.CONF_NAME, default="Ramses Extras"): str,
         })
         return self.async_show_form(
             step_id="user",
             data_schema=schema,
             description_placeholders={
-                "info": "Ramses Extras provides additional functionality on top of Ramses RF."
+                "info": const.DESCRIPTION_PLACEHOLDER_INFO
             }
         )
 
@@ -41,15 +42,15 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Convert selected features to enabled features dict
             enabled_features = {}
             selected_features = user_input.get("features", [])
-            
+
             for feature_key in AVAILABLE_FEATURES.keys():
                 enabled_features[feature_key] = feature_key in selected_features
 
             return self.async_create_entry(
-                title=user_input.get("name", "Ramses Extras"),
+                title=user_input.get(const.CONF_NAME, "Ramses Extras"),
                 data={
-                    "name": user_input.get("name", "Ramses Extras"),
-                    "enabled_features": enabled_features
+                    const.CONF_NAME: user_input.get(const.CONF_NAME, "Ramses Extras"),
+                    const.CONF_ENABLED_FEATURES: enabled_features
                 }
             )
 
@@ -57,8 +58,8 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         feature_options = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
             feature_name = feature_config.get("name", feature_key)
-            
-            # Create option with name
+
+            # Create option with name and label
             option = {
                 "value": feature_key,
                 "label": feature_name,
@@ -97,6 +98,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         """Initialize options flow."""
         # Don't manually set self.config_entry - use the passed config_entry directly
         self._config_entry = config_entry
+        self._pending_data = None
 
     async def async_step_init(self, user_input=None):
         """Handle options initialization - redirect to features step."""
@@ -105,63 +107,31 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_features(self, user_input=None):
         """Handle the feature selection step for options."""
         if user_input is not None:
-            # Convert selected features to enabled features dict
-            enabled_features = {}
+            # Check if any currently enabled features would be disabled
+            current_features = self._config_entry.data.get("enabled_features", {})
             selected_features = user_input.get("features", [])
 
+            # Convert selected features to enabled features dict
+            enabled_features = {}
             for feature_key in AVAILABLE_FEATURES.keys():
                 enabled_features[feature_key] = feature_key in selected_features
 
-            # Check for deselected features and build warnings
-            current_features = self._config_entry.data.get("enabled_features", {})
-            warnings = []
-
+            # Check for deselected features
+            deselected_features = []
             for feature_key, feature_config in AVAILABLE_FEATURES.items():
                 currently_enabled = current_features.get(feature_key, False)
                 will_be_enabled = enabled_features[feature_key]
 
                 if currently_enabled and not will_be_enabled:
-                    # Feature is being disabled - add warning
-                    feature_name = feature_config.get("name", feature_key)
-                    warning_parts = [f"⚠️ **{feature_name}** will be disabled:"]
+                    deselected_features.append(feature_key)
 
-                    # Add specific warnings based on feature type
-                    required_sensors = feature_config.get("required_entities", {}).get("sensors", [])
-                    required_switches = feature_config.get("required_entities", {}).get("switches", [])
+            if deselected_features:
+                # Store the pending data and go to confirmation step
+                self._pending_data = user_input
+                return await self.async_step_confirm()
 
-                    if required_sensors:
-                        warning_parts.append(f"   • {len(required_sensors)} sensor entities will be removed")
-                    if required_switches:
-                        warning_parts.append(f"   • {len(required_switches)} switch entities will be removed")
-
-                    # Add dashboard card warnings
-                    if "card" in feature_key:
-                        warning_parts.append("   • Dashboard card will be removed")
-
-                    # Add automation warnings
-                    if "automation" in feature_key:
-                        warning_parts.append("   • Related automations will be disabled")
-
-                    warnings.append("\n".join(warning_parts))
-
-            # Update the config entry data
-            new_data = self._config_entry.data.copy()
-            new_data["enabled_features"] = enabled_features
-
-            self.hass.config_entries.async_update_entry(
-                self._config_entry, data=new_data
-            )
-
-            # Reload the integration to apply changes
-            await self.hass.config_entries.async_reload(self._config_entry.entry_id)
-
-            # Show warnings if any features were deselected (for debugging)
-            if warnings:
-                # Log warnings for debugging purposes
-                for warning in warnings:
-                    _LOGGER.info(f"Feature deselection warning: {warning.replace('⚠️ **', '').replace('**', '')}")
-
-            return self.async_create_entry(title="", data={})
+            # No features being deselected, proceed directly
+            return await self._save_config(user_input)
 
         # Get current enabled features for default values
         current_features = self._config_entry.data.get("enabled_features", {})
@@ -214,3 +184,93 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 "info": info_text
             }
         )
+
+    async def async_step_confirm(self, user_input=None):
+        """Handle confirmation step for feature deselection."""
+        if user_input is not None:
+            if user_input.get("confirm", False):
+                # User confirmed, proceed with the changes
+                return await self._save_config(self._pending_data)
+            else:
+                # User cancelled, go back to features step
+                return await self.async_step_features()
+
+        # Build confirmation message with details about what will be removed
+        current_features = self._config_entry.data.get("enabled_features", {})
+        selected_features = self._pending_data.get("features", [])
+
+        # Convert selected features to enabled features dict
+        enabled_features = {}
+        for feature_key in AVAILABLE_FEATURES.keys():
+            enabled_features[feature_key] = feature_key in selected_features
+
+        # Build details about what will be removed
+        removal_details = []
+        for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            currently_enabled = current_features.get(feature_key, False)
+            will_be_enabled = enabled_features[feature_key]
+
+            if currently_enabled and not will_be_enabled:
+                feature_name = feature_config.get("name", feature_key)
+                detail_parts = [f"• {feature_name}"]
+
+                # Add specific warnings based on feature type
+                required_sensors = feature_config.get("required_entities", {}).get("sensors", [])
+                required_switches = feature_config.get("required_entities", {}).get("switches", [])
+
+                if required_sensors:
+                    detail_parts.append(f"  - {len(required_sensors)} sensor entities")
+                if required_switches:
+                    detail_parts.append(f"  - {len(required_switches)} switch entities")
+
+                # Add dashboard card warnings
+                if "card" in feature_key:
+                    detail_parts.append("  - Dashboard card")
+
+                # Add automation warnings
+                if "automation" in feature_key:
+                    detail_parts.append("  - Related automations")
+
+                removal_details.append(" ".join(detail_parts))
+
+        confirmation_text = "The following features will be disabled:\n\n"
+        confirmation_text += "\n".join(removal_details)
+        confirmation_text += "\n\nThis action cannot be undone. Are you sure you want to proceed?"
+
+        schema = vol.Schema({
+            vol.Required("confirm", default=False): bool,
+        })
+
+        _LOGGER.info("Translation domain: %s", self.handler._async_current_domain)
+
+        confirmation_text = 'test confirmation text'
+        _LOGGER.info("Confirmation text: %s", confirmation_text)
+        return self.async_show_form(
+            step_id="confirm",
+            data_schema=schema,
+            description_placeholders={
+                "info": confirmation_text
+            }
+        )
+
+    async def _save_config(self, user_input):
+        """Save the configuration and reload the integration."""
+        # Convert selected features to enabled features dict
+        enabled_features = {}
+        selected_features = user_input.get("features", [])
+
+        for feature_key in AVAILABLE_FEATURES.keys():
+            enabled_features[feature_key] = feature_key in selected_features
+
+        # Update the config entry data
+        new_data = self._config_entry.data.copy()
+        new_data["enabled_features"] = enabled_features
+
+        self.hass.config_entries.async_update_entry(
+            self._config_entry, data=new_data
+        )
+
+        # Reload the integration to apply changes
+        await self.hass.config_entries.async_reload(self._config_entry.entry_id)
+
+        return self.async_create_entry(title="", data={})
