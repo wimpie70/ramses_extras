@@ -1,11 +1,32 @@
 {
   "config": {
     "step": {
+      "user": {
+        "title": "Ramses Extras Setup",
+        "description": "Configure your Ramses Extras integration. This integration provides additional functionality for your Ramses RF system.",
+        "data": {
+          "name": "Integration Name"
+        }
+      },
       "features": {
         "title": "Configure Ramses Extras Features",
-        "description": "Select which Ramses Extras features you want to enable. For detailed documentation, visit: https://github.com/YOUR_USERNAME/ramses_extras/wiki",
+        "description": "{info}",
         "data": {
-          "features": "Enabled Features"
+          "features": "Features to Enable"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Ramses Extras integration is allowed."
+    }
+  },
+  "options": {
+    "step": {
+      "features": {
+        "title": "Ramses Extras Options",
+        "description": "{info}",
+        "data": {
+          "features": "Features to Enable"
         }
       },
       "confirm": {

@@ -10,63 +10,87 @@ CONF_ENABLED_FEATURES = "enabled_features"
 DESCRIPTION_PLACEHOLDER_INFO = "Ramses Extras provides additional functionality on top of Ramses RF."
 
 SENSOR_TYPES = {
+    "test1": "test1 text",
+    "test2": "test2 text",
     "indoor_abs_humid": "Indoor Absolute Humidity",
     "outdoor_abs_humid": "Outdoor Absolute Humidity",
 }
 
+BOOLEAN_TYPES = {
+    "dehumidifying": "Dehumidifying Active",
+}
+
 SWITCH_TYPES = {
-    "dehumidify": "Dehumidify",
+    "dehumidify": "Activate Dehumidify Automation",
 }
 
 # Available features/cards configuration
 # Each feature defines a card/automation with specific requirements
 AVAILABLE_FEATURES = {
-    "humidity_monitoring_card": {
-        "name": "Humidity Monitoring Dashboard Card",
-        "description": "Dashboard card for monitoring humidity levels",
+    "test1": {
+        "name": "test1",
+        "description": "TEST 1",
         "category": "cards",
-        "folder": "dashboard_cards/humidity_monitoring",
-        "default_enabled": True,
+        "folder": "",
+        "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {
-            "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
+            "sensors": ["test1"],
             "switches": [],
         },
         "optional_entities": {
             "sensors": [],
-            "switches": ["dehumidify"],
+            "switches": [],
         },
     },
-    "dehumidifier_control_card": {
-        "name": "Dehumidifier Control Card",
-        "description": "Control card for dehumidification settings",
+    "test2": {
+        "name": "test2",
+        "description": "TEST 2",
         "category": "cards",
-        "folder": "dashboard_cards/dehumidifier_control",
+        "folder": "",
         "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {
-            "sensors": ["indoor_abs_humid"],
-            "switches": ["dehumidify"],
+            "sensors": ["test2"],
+            "switches": ["test2"],
         },
         "optional_entities": {
-            "sensors": ["outdoor_abs_humid"],
+            "sensors": [],
             "switches": [],
         },
     },
-    "humidity_alert_automation": {
-        "name": "Humidity Alert Automation",
-        "description": "Automation that alerts when humidity is too high",
-        "category": "automations",
-        "folder": "automations/humidity_alerts",
+    "hvac_fan_card": {
+        "name": "Orcon Fan Control Card",
+        "description": "Advanced control card for Orcon ventilation systems",
+        "category": "cards",
+        "folder": "custom_cards/hvac_fan_card",
         "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {
-            "sensors": ["indoor_abs_humid"],
-            "switches": [],
+            "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
+            "switches": ["dehumidify"],
+            "booleans": ["dehumidifying"],
         },
         "optional_entities": {
-            "sensors": ["outdoor_abs_humid"],
+            "sensors": [],
+            "switches": [],
+        },
+    },
+    "humidity_automation": {
+        "name": "Humidity Automation",
+        "description": "Automation for improved humidity maintenance",
+        "category": "automations",
+        "folder": "automations/humidity_automation",
+        "default_enabled": False,
+        "supported_device_types": ["HvacVentilator"],
+        "required_entities": {
+            "sensors": ["indoor_abs_humid","outdoor_abs_humid"],
             "switches": ["dehumidify"],
+            "booleans": ["dehumidifying"],
+        },
+        "optional_entities": {
+            "sensors": [],
+            "switches": [],
         },
     },
 }
@@ -81,8 +105,9 @@ FEATURE_CATEGORIES = {
 # Device type to entity type mapping
 DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
-        "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
+        "sensors": ["indoor_abs_humid", "outdoor_abs_humid", "test1", "test2"],
         "switches": ["dehumidify"],
+        "booleans": ["dehumidifying"],
     },
 }
 

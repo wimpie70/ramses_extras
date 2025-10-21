@@ -31,9 +31,6 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=schema,
-            description_placeholders={
-                "info": const.DESCRIPTION_PLACEHOLDER_INFO
-            }
         )
 
     async def async_step_features(self, user_input=None):
@@ -54,35 +51,82 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             )
 
-        # Build options for multi-select
+        # Build options for multi-select (simple labels with descriptions for dropdown)
         feature_options = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
             feature_name = feature_config.get("name", feature_key)
+            description = feature_config.get("description", "")
+            
+            # Create readable label with name and description
+            if description:
+                # Truncate long descriptions for dropdown readability
+                short_desc = description[:60] + "..." if len(description) > 60 else description
+                label = f"{feature_name} - {short_desc}"
+            else:
+                label = feature_name
+                
+            feature_options.append(selector.SelectOptionDict(
+                value=feature_key,
+                label=label
+            ))
 
-            # Create option with name and label
-            option = {
-                "value": feature_key,
-                "label": feature_name,
-            }
-            feature_options.append(option)
+        # Build detailed summary for description area with entity information
+        feature_summaries = []
+        for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            name = feature_config.get("name", feature_key)
+            category = feature_config.get("category", "")
+            description = feature_config.get("description", "")
+            
+            # Build detailed information including entities
+            detail_parts = [f"**{name}** ({category})"]
+            if description:
+                detail_parts.append(description)
+            
+            # Add supported device types right after description
+            supported_devices = feature_config.get("supported_device_types", [])
+            if supported_devices:
+                detail_parts.append(f"Device Types: {', '.join(supported_devices)}")
+            
+            # Add entity requirements (no Required/Optional sections)
+            required_sensors = feature_config.get("required_entities", {}).get("sensors", [])
+            required_switches = feature_config.get("required_entities", {}).get("switches", [])
+            required_booleans = feature_config.get("required_entities", {}).get("booleans", [])
+            optional_sensors = feature_config.get("optional_entities", {}).get("sensors", [])
+            optional_switches = feature_config.get("optional_entities", {}).get("switches", [])
+            
+            if required_sensors or required_switches or required_booleans:
+                if required_sensors:
+                    detail_parts.append(f"• Sensors: {', '.join(required_sensors)}")
+                if required_switches:
+                    detail_parts.append(f"• Switches: {', '.join(required_switches)}")
+                if required_booleans:
+                    detail_parts.append(f"• Booleans: {', '.join(required_booleans)}")
+                    
+            # Add optional entities with parentheses
+            if optional_sensors or optional_switches:
+                if optional_sensors:
+                    detail_parts.append(f"• Optional Sensors: {', '.join(optional_sensors)}")
+                if optional_switches:
+                    detail_parts.append(f"• Optional Switches: {', '.join(optional_switches)}")
+            
+            feature_summaries.append("• " + "\n  ".join(detail_parts))
+
+        features_info = "\n\n".join(feature_summaries)
 
         schema = vol.Schema({
-            "name": vol.Required("name", default="Ramses Extras"),
-            "features": selector.SelectSelector(
+            vol.Optional("name", default="Ramses Extras"): str,
+            vol.Optional("features", default=[]): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=feature_options,
                     multiple=True,
-                    mode=selector.SelectSelectorMode.LIST,
-                ),
+                )
             ),
         })
 
         return self.async_show_form(
             step_id="features",
             data_schema=schema,
-            description_placeholders={
-                "info": "Select which Ramses Extras features you want to enable.\n\n📖 For detailed documentation, visit: https://github.com/YOUR_USERNAME/ramses_extras/wiki"
-            }
+            description_placeholders={"info": features_info}
         )
 
     @classmethod
@@ -151,29 +195,79 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Get current selected features for the selector default
         current_selected = [k for k, v in current_features.items() if v]
 
-        # Build options for multi-select
+        # Build options for multi-select (simple labels with descriptions for dropdown)
         feature_options = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
             feature_name = feature_config.get("name", feature_key)
+            description = feature_config.get("description", "")
+            
+            # Create readable label with name and description
+            if description:
+                # Truncate long descriptions for dropdown readability
+                short_desc = description[:60] + "..." if len(description) > 60 else description
+                label = f"{feature_name} - {short_desc}"
+            else:
+                label = feature_name
+                
+            feature_options.append(selector.SelectOptionDict(
+                value=feature_key,
+                label=label
+            ))
 
-            # Create option with name
-            option = {
-                "value": feature_key,
-                "label": feature_name,
-            }
-            feature_options.append(option)
+        # Build detailed summary for description area with entity information
+        feature_summaries = []
+        for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            name = feature_config.get("name", feature_key)
+            category = feature_config.get("category", "")
+            description = feature_config.get("description", "")
+            
+            # Build detailed information including entities
+            detail_parts = [f"**{name}** ({category})"]
+            if description:
+                detail_parts.append(description)
+            
+            # Add supported device types right after description
+            supported_devices = feature_config.get("supported_device_types", [])
+            if supported_devices:
+                detail_parts.append(f"Device Types: {', '.join(supported_devices)}")
+            
+            # Add entity requirements (no Required/Optional sections)
+            required_sensors = feature_config.get("required_entities", {}).get("sensors", [])
+            required_switches = feature_config.get("required_entities", {}).get("switches", [])
+            required_booleans = feature_config.get("required_entities", {}).get("booleans", [])
+            optional_sensors = feature_config.get("optional_entities", {}).get("sensors", [])
+            optional_switches = feature_config.get("optional_entities", {}).get("switches", [])
+            
+            if required_sensors or required_switches or required_booleans:
+                if required_sensors:
+                    detail_parts.append(f"• Sensors: {', '.join(required_sensors)}")
+                if required_switches:
+                    detail_parts.append(f"• Switches: {', '.join(required_switches)}")
+                if required_booleans:
+                    detail_parts.append(f"• Booleans: {', '.join(required_booleans)}")
+                    
+            # Add optional entities with parentheses
+            if optional_sensors or optional_switches:
+                if optional_sensors:
+                    detail_parts.append(f"• Optional Sensors: {', '.join(optional_sensors)}")
+                if optional_switches:
+                    detail_parts.append(f"• Optional Switches: {', '.join(optional_switches)}")
+            
+            feature_summaries.append("• " + "\n  ".join(detail_parts))
+
+        features_info = "\n\n".join(feature_summaries)
 
         # Build the info text (no warnings on initial display)
         info_text = "Configure which Ramses Extras features are enabled."
         info_text += "\n📖 For detailed documentation, visit: https://github.com/YOUR_USERNAME/ramses_extras/wiki"
+        info_text += f"\n\n**Available Features:**\n{features_info}"
 
         schema = vol.Schema({
             vol.Optional("features", default=current_selected): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=feature_options,
                     multiple=True,
-                    mode=selector.SelectSelectorMode.LIST,
-                ),
+                )
             ),
         })
 
@@ -212,16 +306,16 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
             if currently_enabled and not will_be_enabled:
                 feature_name = feature_config.get("name", feature_key)
-                detail_parts = [f"• {feature_name}"]
+                detail_parts = [f"  • {feature_name}\n"]
 
                 # Add specific warnings based on feature type
                 required_sensors = feature_config.get("required_entities", {}).get("sensors", [])
                 required_switches = feature_config.get("required_entities", {}).get("switches", [])
 
                 if required_sensors:
-                    detail_parts.append(f"  - {len(required_sensors)} sensor entities")
+                    detail_parts.append(f"  - {len(required_sensors)} sensor entities\n")
                 if required_switches:
-                    detail_parts.append(f"  - {len(required_switches)} switch entities")
+                    detail_parts.append(f"  - {len(required_switches)} switch entities\n")
 
                 # Add dashboard card warnings
                 if "card" in feature_key:
@@ -241,9 +335,6 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required("confirm", default=False): bool,
         })
 
-        _LOGGER.info("Translation domain: %s", self.handler._async_current_domain)
-
-        confirmation_text = 'test confirmation text'
         _LOGGER.info("Confirmation text: %s", confirmation_text)
         return self.async_show_form(
             step_id="confirm",
