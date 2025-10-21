@@ -2,6 +2,9 @@ from homeassistant.helpers.entity import EntityCategory
 
 DOMAIN = "ramses_extras"
 
+GITHUB_URL = "https://github.com/wimpie70/ramses_extras"
+GITHUB_WIKI_URL = f"{GITHUB_URL}/wiki"
+
 WS_CMD_GET_BOUND_REM = f"{DOMAIN}/get_bound_rem"
 
 # Configuration constants
