@@ -1,10 +1,16 @@
 
 
+// Debug: Check if this file is being loaded
+console.log('🚀 hvac-fan-card.js is being loaded!');
+
 import { NORMAL_SVG, BYPASS_OPEN_SVG } from './airflow-diagrams.js';
 import { CARD_STYLE } from './card-styles.js';
 import { createCardHeader, createTopSection, createControlsSection, createCardFooter } from './templates/card-templates.js';
 import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
+
+// Debug: Check if imports work
+console.log('✅ ES6 imports loaded successfully');
 
 class HvacFanCard extends HTMLElement {
   // All fan commands in one simple object
@@ -633,11 +639,14 @@ class HvacFanCard extends HTMLElement {
 
 // Register the web component
 if (!customElements.get('hvac-fan-card')) {
+  console.log('Registering hvac-fan-card web component');
   customElements.define('hvac-fan-card', HvacFanCard);
 }
 
 // Register it with HA for automatic discovery
 window.customCards = window.customCards || [];
+console.log('🔍 Current window.customCards before registration:', window.customCards.length);
+
 window.customCards.push({
   type: "hvac-fan-card",
   name: "Hvac Fan Control Card",
@@ -645,3 +654,10 @@ window.customCards.push({
   preview: true, // Shows in card picker
   documentationURL: "https://github.com/wimpie70/ramses_extras"
 });
+
+console.log('✅ hvac-fan-card registered in window.customCards:', {
+  type: "hvac-fan-card",
+  name: "Hvac Fan Control Card",
+  length: window.customCards.length
+});
+console.log('📋 All registered cards:', window.customCards);

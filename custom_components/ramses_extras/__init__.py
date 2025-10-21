@@ -4,6 +4,8 @@ import shutil
 from pathlib import Path
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.components.http import StaticPathConfig
 
 from .const import DOMAIN, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES, INTEGRATION_DIR
 from . import config_flow  # noqa: F401
@@ -14,28 +16,44 @@ _LOGGER = logging.getLogger(__name__)
 _STATIC_PATHS_REGISTERED = False
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Ramses Extras."""
     _LOGGER.debug("Setting up Ramses Extras integration")
 
-    # Register static paths once globally
     global _STATIC_PATHS_REGISTERED
     if not _STATIC_PATHS_REGISTERED:
-        www_path = Path(__file__).parent / "www" / "hvac-fan-card.js"
-        if www_path.exists():
-            from homeassistant.components.http import StaticPathConfig
+        www_path = Path(__file__).parent / "www"
+        js_file = www_path / "hvac-fan-card.js"
+
+        if www_path.exists() and js_file.exists():
             try:
+                # Register the entire www folder as static path under /local/
                 await hass.http.async_register_static_paths([
-                    StaticPathConfig("/ramses_extras/hvac-fan-card.js", str(www_path), True)
+                    StaticPathConfig("/local/ramses_extras", str(www_path), True)
                 ])
                 _STATIC_PATHS_REGISTERED = True
-                _LOGGER.info("Registered static path for hvac-fan-card globally")
+                _LOGGER.info("Registered static path for www folder globally")
+
+                # Programmatically add the card as a Lovelace resource
+                resource_url = "/local/ramses_extras/hvac-fan-card.js"
+                
+                # Add resource to frontend for automatic loading
+                from homeassistant.components import frontend
+                await hass.async_add_executor_job(
+                    frontend.add_extra_js_url,
+                    hass,
+                    resource_url
+                )
+                _LOGGER.info(f"Registered card resource: {resource_url}")
+
             except RuntimeError as e:
                 if "already registered" in str(e):
                     _STATIC_PATHS_REGISTERED = True
-                    _LOGGER.debug("Static path for hvac-fan-card already registered")
+                    _LOGGER.debug("Static path for www already registered")
                 else:
                     _LOGGER.error(f"Failed to register static path: {e}")
+        else:
+            _LOGGER.error(f"Failed to find www folder or hvac-fan-card.js. www_path: {www_path.exists()}, js_file: {js_file.exists()}")
 
     return True
 
@@ -52,45 +70,12 @@ async def _manage_cards(hass: HomeAssistant, enabled_features: dict):
 
             if enabled_features.get(feature_key, False):
                 if card_source_path.exists():
-                    # For automatic registration, we don't need to copy files anymore
-                    # The card is registered as a static resource in async_setup_entry
                     _LOGGER.info(f"Card {feature_key} is automatically registered")
                 else:
                     _LOGGER.warning(f"Cannot register {feature_key}: source file not found at {card_source_path}")
             else:
                 # Remove card from community folder if it exists
                 await _remove_card(hass, card_dest_path)
-
-
-async def _install_card(hass: HomeAssistant, source_path: Path, dest_path: Path):
-    """Install a custom card by copying files."""
-    try:
-        if source_path.exists():
-            # Create destination directory if it doesn't exist
-            dest_path.mkdir(parents=True, exist_ok=True)
-
-            # Copy all files from source to destination using executor
-            await hass.async_add_executor_job(_copy_card_files, source_path, dest_path)
-
-            _LOGGER.info(f"Successfully installed card to {dest_path}")
-        else:
-            _LOGGER.warning(f"Card source path does not exist: {source_path}")
-    except Exception as e:
-        _LOGGER.error(f"Failed to install card: {e}")
-
-
-def _copy_card_files(source_path: Path, dest_path: Path):
-    """Copy card files from source to destination (runs in executor)."""
-    for file_path in source_path.rglob("*"):
-        if file_path.is_file():
-            relative_path = file_path.relative_to(source_path)
-            dest_file_path = dest_path / relative_path
-
-            # Create subdirectories if needed
-            dest_file_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Copy file
-            shutil.copy2(file_path, dest_file_path)
 
 
 async def _remove_card(hass: HomeAssistant, card_path: Path):
@@ -112,35 +97,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     # Setup from UI (config entry)
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {}
-    hass.data[DOMAIN]["entry_id"] = entry.entry_id  # Store entry_id for platform setup
-
-    # Add to Lovelace resources for automatic discovery using proper API
-    try:
-        from homeassistant.components.lovelace import async_add_resource
-        await async_add_resource(hass, "/ramses_extras/hvac-fan-card.js", "module")
-        _LOGGER.info("Registered hvac-fan-card as Lovelace resource")
-    except ImportError:
-        # Fallback for older HA versions - use deprecated direct access
-        try:
-            hass.data.setdefault("lovelace", {})
-            if isinstance(hass.data["lovelace"], dict):
-                hass.data["lovelace"]["resources"] = hass.data["lovelace"].get("resources", [])
-
-                resource = {
-                    "url": "/ramses_extras/hvac-fan-card.js",
-                    "type": "module",
-                }
-
-                if resource not in hass.data["lovelace"]["resources"]:
-                    hass.data["lovelace"]["resources"].append(resource)
-                    _LOGGER.info("Registered hvac-fan-card as Lovelace resource (fallback method)")
-        except Exception as e:
-            _LOGGER.warning(f"Could not register Lovelace resource (fallback): {e}. Card may not appear in dashboard editor")
+    hass.data[DOMAIN]["entry_id"] = entry.entry_id
 
     # Install/remove cards based on enabled features
     await _manage_cards(hass, entry.data.get("enabled_features", {}))
 
-    # Initialize the platforms - handle case where ramses_rf might not be ready yet
+    # Initialize the platforms
     await async_setup_platforms(hass)
 
     return True
@@ -149,21 +111,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload Ramses Extras entry."""
     _LOGGER.debug("Unloading Ramses Extras entry")
-    hass.data[DOMAIN].pop(entry.entry_id)
-    return True
+
+    # Unload platforms
+    unload_ok = await hass.config_entries.async_unload_platforms(
+        entry, ["sensor", "switch", "binary_sensor"]
+    )
+
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+
+    return unload_ok
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Handle migration of a config entry."""
     _LOGGER.debug("Migrating config entry from version %s", entry.version)
 
-    # Example: upgrade from version 1 to 2 if needed
     if entry.version < 2:
         new_data = {**entry.data}
         hass.config_entries.async_update_entry(entry, version=2, data=new_data)
 
     _LOGGER.debug("Migration to version %s successful", entry.version)
     return True
+
 
 async def async_setup_platforms(hass: HomeAssistant):
     """Find Ramses FAN devices and register extras."""
@@ -210,13 +180,13 @@ async def async_setup_platforms(hass: HomeAssistant):
         else:
             _LOGGER.info("Ramses CC not loaded yet, will retry in 60 seconds.")
 
-        # Schedule a retry in 60 seconds (increased from 30) - only if ramses_cc not loaded
+        # Schedule a retry in 60 seconds - only if ramses_cc not loaded
         if "ramses_cc" not in hass.config.components:
             async def delayed_retry():
                 async_setup_platforms._is_running = False
                 await async_setup_platforms(hass)
 
-            hass.async_create_task(asyncio.sleep(60))
+            await asyncio.sleep(60)
             hass.async_create_task(delayed_retry())
         else:
             _LOGGER.info("Ramses CC is loaded but no devices found, not retrying")
@@ -240,7 +210,7 @@ async def _discover_ramses_devices(hass: HomeAssistant):
                 _LOGGER.warning("Ramses CC integration not loaded")
                 return []
 
-            # Get the first loaded Ramses entry (if multiple, pick one explicitly)
+            # Get the first loaded Ramses entry
             ramses_entry_id = next(iter(hass.data[ramses_domain]))
             broker = hass.data[ramses_domain][ramses_entry_id]
 
@@ -263,13 +233,15 @@ async def _discover_ramses_devices(hass: HomeAssistant):
 
     except Exception as e:
         _LOGGER.warning("Error discovering Ramses devices: %s", e)
-        # No fallback - if broker access fails, no devices found
+
+    return device_ids
+
 
 async def _handle_device(device) -> list:
     """Handle a device based on its type using the configured handler."""
     device_ids = []
 
-    # Check if this device type is supported by checking against available features
+    # Check if this device type is supported
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if device.__class__.__name__ in feature_config.get("supported_device_types", []):
             handler_name = feature_config.get("handler", "handle_hvac_ventilator")
@@ -305,8 +277,7 @@ async def handle_hvac_ventilator(device) -> list:
     )
 
     return [device_id] if has_entities else []
-
-
+    
 # Add more device handlers here as needed
 # async def handle_hvac_controller(device) -> list:
 #     """Handle HVAC Controller devices."""
