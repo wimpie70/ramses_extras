@@ -23,19 +23,20 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     global _STATIC_PATHS_REGISTERED
     if not _STATIC_PATHS_REGISTERED:
         www_path = Path(__file__).parent / "www"
-        js_file = www_path / "hvac-fan-card.js"
+        card_path = www_path / "hvac_fan_card"
+        js_file = card_path / "hvac-fan-card.js"
 
         if www_path.exists() and js_file.exists():
             try:
-                # Register the entire www folder as static path under /local/
+                # Register the card folder as static path under /local/
                 await hass.http.async_register_static_paths([
-                    StaticPathConfig("/local/ramses_extras", str(www_path), True)
+                    StaticPathConfig("/local/ramses_extras/hvac_fan_card", str(card_path), True)
                 ])
                 _STATIC_PATHS_REGISTERED = True
-                _LOGGER.info("Registered static path for www folder globally")
+                _LOGGER.info("Registered static path for hvac_fan_card folder globally")
 
                 # Programmatically add the card as a Lovelace resource
-                resource_url = "/local/ramses_extras/hvac-fan-card.js"
+                resource_url = "/local/ramses_extras/hvac_fan_card/hvac-fan-card.js"
                 
                 # Add resource to frontend for automatic loading
                 from homeassistant.components import frontend
