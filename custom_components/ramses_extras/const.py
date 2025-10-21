@@ -1,4 +1,8 @@
 from homeassistant.helpers.entity import EntityCategory
+from pathlib import Path
+
+# Get the integration directory
+INTEGRATION_DIR = Path(__file__).parent
 
 DOMAIN = "ramses_extras"
 
@@ -63,10 +67,10 @@ AVAILABLE_FEATURES = {
         },
     },
     "hvac_fan_card": {
-        "name": "Orcon Fan Control Card",
-        "description": "Advanced control card for Orcon ventilation systems",
+        "name": "Hvac Fan Control Card",
+        "description": "Advanced control card for Orcon or other ventilation systems",
         "category": "cards",
-        "folder": "custom_cards/hvac_fan_card",
+        "folder": "www/hvac-fan-card.js",
         "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {
@@ -144,8 +148,19 @@ SWITCH_CONFIGS = {
     },
 }
 
+BOOLEAN_CONFIGS = {
+    "dehumidifying": {
+        "name_template": "Dehumidifying Active",
+        "icon": "mdi:air-humidifier",
+        "entity_category": EntityCategory.DIAGNOSTIC,
+        "device_class": "running",
+        "supported_device_types": ["HvacVentilator"],
+    },
+}
+
 # Entity type to config mapping
 ENTITY_TYPE_CONFIGS = {
     "sensor": ENTITY_CONFIGS,
     "switch": SWITCH_CONFIGS,
+    "binary_sensor": BOOLEAN_CONFIGS,
 }

@@ -1,12 +1,79 @@
 import logging
+import shutil
+from pathlib import Path
 from homeassistant import config_entries
 from homeassistant.helpers import selector
 import voluptuous as vol
 
-from .const import DOMAIN, AVAILABLE_FEATURES, GITHUB_WIKI_URL
+from .const import DOMAIN, AVAILABLE_FEATURES, GITHUB_WIKI_URL, INTEGRATION_DIR
 from . import const
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def _manage_cards_config_flow(hass, enabled_features):
+    """Install or remove custom cards based on enabled features (for config flow)."""
+    www_community_path = Path(hass.config.path("www", "community"))
+
+    # Handle all card features dynamically
+    for feature_key, feature_config in AVAILABLE_FEATURES.items():
+        if feature_config.get("category") == "cards":
+            card_source_path = INTEGRATION_DIR / feature_config.get("folder", "")
+            card_dest_path = www_community_path / feature_key
+
+            if enabled_features.get(feature_key, False):
+                if card_source_path.exists():
+                    # For automatic registration, we don't need to copy files anymore
+                    # The card is registered as a static resource in async_setup_entry
+                    _LOGGER.info(f"Card {feature_key} is automatically registered")
+                else:
+                    _LOGGER.warning(f"Cannot register {feature_key}: source file not found at {card_source_path}")
+            else:
+                # Remove card from community folder if it exists
+                await _remove_card_config_flow(hass, card_dest_path)
+
+
+async def _install_card_config_flow(hass, source_path, dest_path):
+    """Install a custom card by copying files (for config flow)."""
+    try:
+        if source_path.exists():
+            # Create destination directory if it doesn't exist
+            dest_path.mkdir(parents=True, exist_ok=True)
+
+            # Copy all files from source to destination using executor
+            await hass.async_add_executor_job(_copy_card_files_config_flow, source_path, dest_path)
+
+            _LOGGER.info(f"Successfully installed card to {dest_path}")
+        else:
+            _LOGGER.warning(f"Card source path does not exist: {source_path}")
+    except Exception as e:
+        _LOGGER.error(f"Failed to install card: {e}")
+
+
+def _copy_card_files_config_flow(source_path, dest_path):
+    """Copy card files from source to destination (runs in executor)."""
+    for file_path in source_path.rglob("*"):
+        if file_path.is_file():
+            relative_path = file_path.relative_to(source_path)
+            dest_file_path = dest_path / relative_path
+
+            # Create subdirectories if needed
+            dest_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Copy file
+            shutil.copy2(file_path, dest_file_path)
+
+
+async def _remove_card_config_flow(hass, card_path):
+    """Remove a custom card (for config flow)."""
+    try:
+        if card_path.exists():
+            await hass.async_add_executor_job(shutil.rmtree, card_path)
+            _LOGGER.info(f"Successfully removed card from {card_path}")
+        else:
+            _LOGGER.debug(f"Card path does not exist, nothing to remove: {card_path}")
+    except Exception as e:
+        _LOGGER.error(f"Failed to remove card: {e}")
 
 
 @config_entries.HANDLERS.register(DOMAIN)
@@ -241,6 +308,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self.hass.config_entries.async_update_entry(
             self._config_entry, data=new_data
         )
+
+        # Install/remove cards based on new feature settings
+        await _manage_cards_config_flow(self.hass, enabled_features)
 
         # Reload the integration to apply changes
         await self.hass.config_entries.async_reload(self._config_entry.entry_id)

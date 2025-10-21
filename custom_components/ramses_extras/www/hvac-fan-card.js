@@ -136,20 +136,20 @@ class HvacFanCard extends HTMLElement {
 
   static get properties() {
     return {
-      _config: {},
+      config: {},
       _hass: {},
     };
   }
 
   set hass(hass) {
     this._hass = hass;
-    if (this._config && this.shouldUpdate()) {
+    if (this.config && this.shouldUpdate()) {
       this.render();
     }
   }
 
   shouldUpdate() {
-    if (!this._hass || !this._config) return false;
+    if (!this._hass || !this.config) return false;
 
     // Check if any of our entities have changed
     const entities = this.getEntities();
@@ -164,10 +164,10 @@ class HvacFanCard extends HTMLElement {
 
   // Debug function to validate entity existence
   validateEntities() {
-    if (!this._hass || !this._config) return;
+    if (!this._hass || !this.config) return;
 
 //    console.log('=== Entity Validation Debug ===');
-//    console.log(`Fan entity: ${this._config.fan_entity}`);
+//    console.log(`Fan entity: ${this.config.fan_entity}`);
 
     const entities = this.getEntities();
     const missing = [];
@@ -192,23 +192,23 @@ class HvacFanCard extends HTMLElement {
   }
 
   getEntities() {
-    if (!this._config) return [];
+    if (!this.config) return [];
     
     return [
-      this._config.indoor_temp_entity,
-      this._config.outdoor_temp_entity,
-      this._config.indoor_humidity_entity,
-      this._config.outdoor_humidity_entity,
-      this._config.supply_temp_entity,
-      this._config.exhaust_temp_entity,
-      this._config.fan_speed_entity,
-      this._config.fan_mode_entity,
-      this._config.co2_entity,
-      this._config.flow_entity,
-      this._config.bypass_entity,
-      this._config.dehum_mode_entity,
-      this._config.dehum_active_entity,
-      this._config.comfort_temp_entity,
+      this.config.indoor_temp_entity,
+      this.config.outdoor_temp_entity,
+      this.config.indoor_humidity_entity,
+      this.config.outdoor_humidity_entity,
+      this.config.supply_temp_entity,
+      this.config.exhaust_temp_entity,
+      this.config.fan_speed_entity,
+      this.config.fan_mode_entity,
+      this.config.co2_entity,
+      this.config.flow_entity,
+      this.config.bypass_entity,
+      this.config.dehum_mode_entity,
+      this.config.dehum_active_entity,
+      this.config.comfort_temp_entity,
     ].filter(Boolean); // Remove any undefined/null values
   }
 
@@ -266,7 +266,7 @@ class HvacFanCard extends HTMLElement {
   }
   
   async sendFanCommand(commandKey) {
-    if (!this._hass || !this._config?.device_id) {
+    if (!this._hass || !this.config?.device_id) {
       console.error('Missing Home Assistant instance or device_id');
       return false;
     }
@@ -279,7 +279,7 @@ class HvacFanCard extends HTMLElement {
 
     try {
       // Use the configured device ID
-      const deviceId = this._config.device_id;
+      const deviceId = this.config.device_id;
 
       console.log(`Using configured device ID for commands: ${deviceId}`);
 
@@ -335,7 +335,7 @@ class HvacFanCard extends HTMLElement {
     let deviceId = config.device_id;
     deviceId = deviceId.replace(/_/g, ':');
 
-    this._config = {
+    this.config = {
       device_id: deviceId,
       // Generate all related entity IDs based on the device_id (use underscores like actual entities)
       indoor_temp_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
@@ -358,8 +358,8 @@ class HvacFanCard extends HTMLElement {
   }
 
   render() {
-    if (!this._hass || !this._config) {
-      console.error('❌ Missing hass or config:', { hass: !!this._hass, config: !!this._config });
+    if (!this._hass || !this.config) {
+      console.error('❌ Missing hass or config:', { hass: !!this._hass, config: !!this.config });
       return;
     }
 
@@ -368,7 +368,7 @@ class HvacFanCard extends HTMLElement {
     // Debug: Validate entities are available
     this.validateEntities();
 
-    const config = this._config;
+    const config = this.config;
     const hass = this._hass;
 
     const indoorTemp = hass.states[config.indoor_temp_entity]?.state || '?';
@@ -635,3 +635,13 @@ class HvacFanCard extends HTMLElement {
 if (!customElements.get('hvac-fan-card')) {
   customElements.define('hvac-fan-card', HvacFanCard);
 }
+
+// Register it with HA for automatic discovery
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "hvac-fan-card",
+  name: "Hvac Fan Control Card",
+  description: "Advanced control card for Orcon or other ventilation systems",
+  preview: true, // Shows in card picker
+  documentationURL: "https://github.com/wimpie70/ramses_extras"
+});

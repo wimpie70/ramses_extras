@@ -65,7 +65,7 @@ class RamsesExtraHumiditySensor(SensorEntity):
 
         # Set attributes from configuration
         self._attr_name = f"{config['name_template']} ({fan_id})"
-        self._attr_unique_id = f"{fan_id.replace(':', '_')}_{sensor_type}"  # Format: 32_153289_indoor_abs_humid
+        self._attr_unique_id = f"{fan_id}_{sensor_type}"  # Format: 32:153289_indoor_abs_humid
         self._attr_entity_category = config['entity_category']
         self._attr_icon = config['icon']
         self._attr_native_unit_of_measurement = config['unit']
