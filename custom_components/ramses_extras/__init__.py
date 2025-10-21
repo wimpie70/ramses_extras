@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.components.http import StaticPathConfig
 
-from .const import DOMAIN, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES, INTEGRATION_DIR
+from .const import DOMAIN, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES, INTEGRATION_DIR, CARD_FOLDER
 from . import config_flow  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,39 +22,56 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     global _STATIC_PATHS_REGISTERED
     if not _STATIC_PATHS_REGISTERED:
-        www_path = Path(__file__).parent / "www"
-        card_path = www_path / "hvac_fan_card"
-        js_file = card_path / "hvac-fan-card.js"
-
-        if www_path.exists() and js_file.exists():
+        card_features = []
+        
+        # Find all card features and their paths
+        for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            if feature_config.get("category") == "cards":
+                location = feature_config.get("location", "")
+                if location:
+                    card_features.append((feature_key, location))
+        
+        if card_features:
             try:
-                # Register the card folder as static path under /local/
-                await hass.http.async_register_static_paths([
-                    StaticPathConfig("/local/ramses_extras/hvac_fan_card", str(card_path), True)
-                ])
-                _STATIC_PATHS_REGISTERED = True
-                _LOGGER.info("Registered static path for hvac_fan_card folder globally")
-
-                # Programmatically add the card as a Lovelace resource
-                resource_url = "/local/ramses_extras/hvac_fan_card/hvac-fan-card.js"
+                # Register all card folders as static paths
+                static_configs = []
+                resource_urls = []
                 
-                # Add resource to frontend for automatic loading
-                from homeassistant.components import frontend
-                await hass.async_add_executor_job(
-                    frontend.add_extra_js_url,
-                    hass,
-                    resource_url
-                )
-                _LOGGER.info(f"Registered card resource: {resource_url}")
-
+                for feature_key, location in card_features:
+                    card_path = INTEGRATION_DIR / CARD_FOLDER / location
+                    if card_path.exists():
+                        # Use feature_key as the URL path for better organization
+                        static_configs.append(
+                            StaticPathConfig(f"/local/ramses_extras/{feature_key}", str(card_path.parent), True)
+                        )
+                        resource_urls.append(f"/local/ramses_extras/{feature_key}/{card_path.name}")
+                
+                if static_configs:
+                    await hass.http.async_register_static_paths(static_configs)
+                    _STATIC_PATHS_REGISTERED = True
+                    _LOGGER.info(f"Registered static paths for {len(card_features)} card features globally")
+                
+                # Register all card resources with frontend
+                for resource_url in resource_urls:
+                    try:
+                        from homeassistant.components import frontend
+                        await hass.async_add_executor_job(
+                            frontend.add_extra_js_url,
+                            hass,
+                            resource_url
+                        )
+                        _LOGGER.info(f"Registered card resource: {resource_url}")
+                    except Exception as e:
+                        _LOGGER.warning(f"Could not register resource {resource_url}: {e}")
+                
             except RuntimeError as e:
                 if "already registered" in str(e):
                     _STATIC_PATHS_REGISTERED = True
-                    _LOGGER.debug("Static path for www already registered")
+                    _LOGGER.debug("Static paths for cards already registered")
                 else:
-                    _LOGGER.error(f"Failed to register static path: {e}")
+                    _LOGGER.error(f"Failed to register static paths: {e}")
         else:
-            _LOGGER.error(f"Failed to find www folder or hvac-fan-card.js. www_path: {www_path.exists()}, js_file: {js_file.exists()}")
+            _LOGGER.warning("No card features found in AVAILABLE_FEATURES")
 
     return True
 
@@ -66,7 +83,7 @@ async def _manage_cards(hass: HomeAssistant, enabled_features: dict):
     # Handle all card features dynamically
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if feature_config.get("category") == "cards":
-            card_source_path = INTEGRATION_DIR / feature_config.get("folder", "")
+            card_source_path = INTEGRATION_DIR / feature_config.get("location", "")
             card_dest_path = www_community_path / feature_key
 
             if enabled_features.get(feature_key, False):

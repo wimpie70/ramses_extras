@@ -15,6 +15,7 @@ WS_CMD_GET_BOUND_REM = f"{DOMAIN}/get_bound_rem"
 CONF_NAME = "name"
 CONF_ENABLED_FEATURES = "enabled_features"
 DESCRIPTION_PLACEHOLDER_INFO = "Ramses Extras provides additional functionality on top of Ramses RF."
+CARD_FOLDER = "www"
 
 SENSOR_TYPES = {
     "test1": "test1 text",
@@ -70,7 +71,7 @@ AVAILABLE_FEATURES = {
         "name": "Hvac Fan Control Card",
         "description": "Advanced control card for Orcon or other ventilation systems",
         "category": "cards",
-        "folder": "www/hvac-fan-card.js",
+        "location": "hvac_fan_card/hvac-fan-card.js",
         "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {
@@ -87,7 +88,7 @@ AVAILABLE_FEATURES = {
         "name": "Humidity Automation",
         "description": "Automation for improved humidity maintenance",
         "category": "automations",
-        "folder": "automations/humidity_automation",
+        "location": "automations/humidity_automation",
         "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {

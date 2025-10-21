@@ -18,7 +18,7 @@ async def _manage_cards_config_flow(hass, enabled_features):
     # Handle all card features dynamically
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if feature_config.get("category") == "cards":
-            card_source_path = INTEGRATION_DIR / feature_config.get("folder", "")
+            card_source_path = INTEGRATION_DIR / feature_config.get("location", "")
             card_dest_path = www_community_path / feature_key
 
             if enabled_features.get(feature_key, False):
