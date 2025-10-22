@@ -49,7 +49,7 @@ jobs:
         pre-commit run -a
 
     - name: Comment PR with test results
-      uses: actions/github-script@v6
+      uses: actions/github-script@v8
       with:
         script: |
           const { exec } = require('child_process');
