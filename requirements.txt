@@ -13,4 +13,4 @@ typing-extensions>=4.15.0
 
 # Additional testing tools
 pytest-cov==5.0.0
-pytest-mock==3.14.0
+pytest-mock==3.15.1
