@@ -113,7 +113,7 @@ lint: env
 
 type-check: env
 	@echo "Running type checking..."
-	@bash -c "source ~/venvs/extras/bin/activate && mypy ."
+	@bash -c "source ~/venvs/extras/bin/activate && mypy custom_components/ tests/"
 
 type-check-clean: env
 	@echo "Running type checking (without package conflicts)..."
@@ -130,7 +130,7 @@ fix-imports: env
 qa: env
 	@echo "Running full QA suite..."
 	@bash -c "source ~/venvs/extras/bin/activate && \
-		mypy . && \
+		mypy custom_components/ tests/ && \
 		ruff check . && \
 		ruff format --check . && \
 		pytest tests/"
