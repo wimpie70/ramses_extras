@@ -1,7 +1,7 @@
 {
   "domain": "ramses_extras",
   "name": "Ramses Extras",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "config_flow": true,
   "documentation": "https://github.com/wimpie70/ramses_extras",
   "dependencies": ["ramses_cc", "frontend"],
