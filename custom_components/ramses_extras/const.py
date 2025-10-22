@@ -1,3 +1,5 @@
+# Part of the Ramses Extra integration
+
 from pathlib import Path
 
 from homeassistant.helpers.entity import EntityCategory
