@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -128,7 +128,7 @@ class RamsesExtraHumiditySensor(SensorEntity):
         self._attr_native_unit_of_measurement = config['unit']
         self._attr_device_class = config['device_class']
 
-        self._unsub = None
+        self._unsub: Optional[Callable[[], None]] = None
 
 
     async def async_added_to_hass(self) -> None:
@@ -139,9 +139,9 @@ class RamsesExtraHumiditySensor(SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Unsubscribe when removed."""
-        if self._unsub:
+        if self._unsub is not None:
             self._unsub()
-            self._unsub = None  # type: ignore[unreachable]
+            self._unsub = None
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle device update from Ramses RF."""

@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -127,7 +127,7 @@ class RamsesDehumidifySwitch(SwitchEntity):
         self._attr_entity_category = config['entity_category']
 
         self._is_on = False
-        self._unsub = None
+        self._unsub: Optional[Callable[[], None]] = None
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
@@ -137,9 +137,9 @@ class RamsesDehumidifySwitch(SwitchEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Unsubscribe when removed."""
-        if self._unsub:
+        if self._unsub is not None:
             self._unsub()
-            self._unsub = None  # type: ignore[unreachable]
+            self._unsub = None
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""

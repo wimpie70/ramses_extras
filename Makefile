@@ -101,21 +101,21 @@ env:
 # Development environment with testing
 env-test: env
 	@echo "Running tests in development environment..."
-	@source ~/venvs/extras/bin/activate && pytest tests/
+	@bash -c "source ~/venvs/extras/bin/activate && pytest tests/"
 	@echo "✅ Tests completed"
 
 # Development tools
 lint: env
 	@echo "Running code quality checks..."
-	@source ~/venvs/extras/bin/activate && \
+	@bash -c "source ~/venvs/extras/bin/activate && \
 		mypy . && \
 		black --check . && \
 		isort --check-only . && \
-		flake8 .
+		flake8 ."
 
 type-check: env
 	@echo "Running type checking..."
-	@source ~/venvs/extras/bin/activate && mypy .
+	@bash -c "source ~/venvs/extras/bin/activate && mypy ."
 
 type-check-clean: env
 	@echo "Running type checking (without package conflicts)..."
@@ -123,17 +123,17 @@ type-check-clean: env
 
 format: env
 	@echo "Formatting code..."
-	@source ~/venvs/extras/bin/activate && black . && isort .
+	@bash -c "source ~/venvs/extras/bin/activate && black . && isort ."
 
 fix-imports: env
 	@echo "Fixing import sorting..."
-	@source ~/venvs/extras/bin/activate && isort .
+	@bash -c "source ~/venvs/extras/bin/activate && isort ."
 
 qa: env
 	@echo "Running full QA suite..."
-	@source ~/venvs/extras/bin/activate && \
+	@bash -c "source ~/venvs/extras/bin/activate && \
 		mypy . && \
 		black --check . && \
 		isort --check-only . && \
 		flake8 . && \
-		pytest tests/
+		pytest tests/"
