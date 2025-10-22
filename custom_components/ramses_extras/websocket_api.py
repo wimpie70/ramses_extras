@@ -1,6 +1,6 @@
 import logging
 import voluptuous as vol
-from typing import TYPE_CHECKING, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
@@ -12,13 +12,13 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-@websocket_api.websocket_command(
+@websocket_api.websocket_command(  # type: ignore[misc]
     {
         vol.Required("type"): WS_CMD_GET_BOUND_REM,
         vol.Required("device_id"): str,
     }
 )
-@websocket_api.async_response
+@websocket_api.async_response  # type: ignore[misc]
 async def ws_get_bound_rem(hass: HomeAssistant, connection: "WebSocket", msg: Dict[str, Any]) -> None:
     """Return bound REM info for a Ramses device."""
     device_id = msg["device_id"]

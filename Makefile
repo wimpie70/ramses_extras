@@ -91,10 +91,10 @@ env:
 		python3.13 -m venv ~/venvs/extras; \
 	fi
 	@echo "Activating virtual environment and installing dependencies..."
-	@source ~/venvs/extras/bin/activate && \
+	@bash -c "source ~/venvs/extras/bin/activate && \
 		pip install --upgrade pip && \
 		pip install -r requirements.txt && \
-		pip install -e .
+		pip install -e ."
 	@echo "✅ Development environment setup complete!"
 	@echo "🔧 To use: source ~/venvs/extras/bin/activate"
 

@@ -3,6 +3,7 @@
 
 import sys
 import os
+from typing import Set
 
 # Add the custom_components directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'custom_components'))
@@ -13,7 +14,8 @@ from ramses_extras.helpers.platform import (
     find_orphaned_entities
 )
 
-def test_fan_id_conversion():
+
+def test_fan_id_conversion() -> None:
     """Test fan ID format conversion."""
     print("Testing fan ID conversion...")
 
@@ -24,7 +26,8 @@ def test_fan_id_conversion():
     assert converted == "32_153289", f"Expected '32_153289', got '{converted}'"
     print(f"✅ Fan ID conversion: {original} → {converted}")
 
-def test_required_entities_calculation():
+
+def test_required_entities_calculation() -> None:
     """Test required entities calculation."""
     print("\nTesting required entities calculation...")
 
@@ -50,7 +53,8 @@ def test_required_entities_calculation():
     assert len(required_sensors) > 0, "Should have required sensor entities"
     print("✅ Required entities calculation working")
 
-def test_entity_matching():
+
+def test_entity_matching() -> None:
     """Test entity matching logic."""
     print("\nTesting entity matching logic...")
 
@@ -61,15 +65,19 @@ def test_entity_matching():
         'switch.dehumidify_32_153289': None
     }
 
-    # Mock HASS object
+    # Mock HASS object with proper entity registry structure
+    class MockEntityRegistry:
+        def __init__(self, entities_dict):
+            self.entities = entities_dict
+
     class MockHass:
         def __init__(self):
-            self.data = {'entity_registry': mock_registry}
+            self.data = {'entity_registry': MockEntityRegistry(mock_registry)}
 
     # Test finding orphaned entities when no features are enabled
     hass = MockHass()
     fans_list = ['32:153289']
-    required_entities_set = set()  # No entities required
+    required_entities_set: Set[str] = set()  # No entities required
     all_possible_types_list = ['indoor_abs_humid', 'outdoor_abs_humid']
 
     # Test the find_orphaned_entities function

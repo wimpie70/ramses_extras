@@ -1,10 +1,11 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, TYPE_CHECKING
+from typing import Dict, TYPE_CHECKING, Optional, List
 
 from homeassistant import config_entries
 from homeassistant.helpers import selector
+from homeassistant.config_entries import ConfigEntry
 import voluptuous as vol
 
 from .const import DOMAIN, AVAILABLE_FEATURES, GITHUB_WIKI_URL, INTEGRATION_DIR, CARD_FOLDER
@@ -24,7 +25,7 @@ async def _manage_cards_config_flow(hass: "HomeAssistant", enabled_features: Dic
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if feature_config.get("category") == "cards":
             # Use the same path resolution as the rest of the code
-            card_source_path = INTEGRATION_DIR / CARD_FOLDER / feature_config.get("location", "")
+            card_source_path = INTEGRATION_DIR / CARD_FOLDER / str(feature_config.get("location", ""))
             card_dest_path = www_community_path / feature_key
 
             if enabled_features.get(feature_key, False):
@@ -83,9 +84,9 @@ async def _remove_card_config_flow(hass: "HomeAssistant", card_path: Path) -> No
 
 
 @config_entries.HANDLERS.register(DOMAIN)
-class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class RamsesExtrasConfigFlow(config_entries.ConfigFlow):
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(self, user_input: Optional[Dict[str, List[str]]] = None) -> config_entries.FlowResult:
         """Handle the initial step."""
         # Check if we already have an entry for this domain
         existing_entries = self.hass.config_entries.async_entries(DOMAIN)
@@ -107,7 +108,7 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     @classmethod
-    def async_get_options_flow(cls, config_entry):
+    def async_get_options_flow(cls, config_entry: ConfigEntry) -> "RamsesExtrasOptionsFlowHandler":
         """Return options flow handler for existing config entries."""
         return RamsesExtrasOptionsFlowHandler(config_entry)
 
@@ -115,23 +116,23 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for Ramses Extras."""
 
-    def __init__(self, config_entry):
+    def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
-        self._pending_data = None
-        self._cards_deselected = []
-        self._automations_deselected = []
-        self._other_deselected = []
-        self._cards_selected = []
-        self._automations_selected = []
-        self._other_selected = []
-        self._newly_enabled_features = []
+        self._pending_data: Optional[Dict[str, List[str]]] = None
+        self._cards_deselected: List[str] = []
+        self._automations_deselected: List[str] = []
+        self._other_deselected: List[str] = []
+        self._cards_selected: List[str] = []
+        self._automations_selected: List[str] = []
+        self._other_selected: List[str] = []
+        self._newly_enabled_features: List[str] = []
 
-    async def async_step_init(self, user_input=None):
+    async def async_step_init(self, user_input: Optional[Dict[str, List[str]]] = None) -> config_entries.FlowResult:
         """Handle options initialization - redirect to features step."""
         return await self.async_step_features()
 
-    async def async_step_features(self, user_input=None):
+    async def async_step_features(self, user_input: Optional[Dict[str, List[str]]] = None) -> config_entries.FlowResult:
         """Handle the feature selection step for options."""
         if user_input is not None:
             # Check if any currently enabled features would be disabled
@@ -154,14 +155,14 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
             if deselected_features:
                 # Check what types of features are being deselected
-                cards_deselected = [f for f in deselected_features if AVAILABLE_FEATURES[f].get("category") == "cards"]
-                automations_deselected = [f for f in deselected_features if AVAILABLE_FEATURES[f].get("category") == "automations"]
-                other_deselected = [f for f in deselected_features if AVAILABLE_FEATURES[f].get("category") not in ["cards", "automations"]]
+                cards_deselected = [f for f in deselected_features if str(AVAILABLE_FEATURES[f].get("category")) == "cards"]
+                automations_deselected = [f for f in deselected_features if str(AVAILABLE_FEATURES[f].get("category")) == "automations"]
+                other_deselected = [f for f in deselected_features if str(AVAILABLE_FEATURES[f].get("category")) not in ["cards", "automations"]]
 
                 # Check what types of features are being selected
-                cards_selected = [f for f in user_input.get("features", []) if AVAILABLE_FEATURES[f].get("category") == "cards"]
-                automations_selected = [f for f in user_input.get("features", []) if AVAILABLE_FEATURES[f].get("category") == "automations"]
-                other_selected = [f for f in user_input.get("features", []) if AVAILABLE_FEATURES[f].get("category") not in ["cards", "automations"]]
+                cards_selected = [f for f in user_input.get("features", []) if str(AVAILABLE_FEATURES[f].get("category")) == "cards"]
+                automations_selected = [f for f in user_input.get("features", []) if str(AVAILABLE_FEATURES[f].get("category")) == "automations"]
+                other_selected = [f for f in user_input.get("features", []) if str(AVAILABLE_FEATURES[f].get("category")) not in ["cards", "automations"]]
 
                 # Show confirmation if any features are being deselected
                 self._pending_data = user_input
@@ -208,8 +209,8 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Build options for multi-select
         feature_options = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
-            feature_name = feature_config.get("name", feature_key)
-            description = feature_config.get("description", "")
+            feature_name = str(feature_config.get("name", feature_key))
+            description = str(feature_config.get("description", ""))
             if description:
                 short_desc = description[:60] + "..." if len(description) > 60 else description
                 label = f"{feature_name} - {short_desc}"
@@ -224,9 +225,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Build detailed summary for description area
         feature_summaries = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
-            name = feature_config.get("name", feature_key)
-            category = feature_config.get("category", "")
-            description = feature_config.get("description", "")
+            name = str(feature_config.get("name", feature_key))
+            category = str(feature_config.get("category", ""))
+            description = str(feature_config.get("description", ""))
 
             detail_parts = [f"**{name}** ({category})"]
             if description:
@@ -234,21 +235,22 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
             # Add supported device types
             supported_devices = feature_config.get("supported_device_types", [])
-            if supported_devices:
-                detail_parts.append(f"Device Types: {', '.join(supported_devices)}")
+            if isinstance(supported_devices, list) and supported_devices:
+                detail_parts.append(f"Device Types: {', '.join(str(d) for d in supported_devices)}")
 
             # Add entity requirements
-            required_sensors = feature_config.get("required_entities", {}).get("sensors", [])
-            required_switches = feature_config.get("required_entities", {}).get("switches", [])
-            required_booleans = feature_config.get("required_entities", {}).get("booleans", [])
+            required_entities = feature_config.get("required_entities", {})
+            if isinstance(required_entities, dict):
+                required_sensors = required_entities.get("sensors", [])
+                required_switches = required_entities.get("switches", [])
+                required_booleans = required_entities.get("booleans", [])
 
-            if required_sensors or required_switches or required_booleans:
-                if required_sensors:
-                    detail_parts.append(f"• Sensors: {', '.join(required_sensors)}")
-                if required_switches:
-                    detail_parts.append(f"• Switches: {', '.join(required_switches)}")
-                if required_booleans:
-                    detail_parts.append(f"• Booleans: {', '.join(required_booleans)}")
+                if isinstance(required_sensors, list) and required_sensors:
+                    detail_parts.append(f"• Sensors: {', '.join(str(s) for s in required_sensors)}")
+                if isinstance(required_switches, list) and required_switches:
+                    detail_parts.append(f"• Switches: {', '.join(str(s) for s in required_switches)}")
+                if isinstance(required_booleans, list) and required_booleans:
+                    detail_parts.append(f"• Booleans: {', '.join(str(b) for b in required_booleans)}")
 
             feature_summaries.append("• " + "\n  ".join(detail_parts))
 
@@ -276,17 +278,17 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-    async def async_step_confirm(self, user_input=None):
+    async def async_step_confirm(self, user_input: Optional[Dict[str, bool]] = None) -> config_entries.FlowResult:
         """Handle confirmation step for feature deselection."""
         if user_input is not None:
             if user_input.get("confirm", False):
-                return await self._save_config(self._pending_data)
+                return await self._save_config(self._pending_data if self._pending_data else {})
             else:
                 return await self.async_step_features()
 
         # Build confirmation message
-        current_features = self._config_entry.data.get("enabled_features", {})
-        selected_features = self._pending_data.get("features", [])
+        current_features: Dict[str, bool] = self._config_entry.data.get("enabled_features", {})
+        selected_features: List[str] = self._pending_data.get("features", []) if self._pending_data else []
 
         enabled_features = {}
         for feature_key in AVAILABLE_FEATURES.keys():
@@ -299,16 +301,18 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             will_be_enabled = enabled_features[feature_key]
 
             if currently_enabled and not will_be_enabled:
-                feature_name = feature_config.get("name", feature_key)
+                feature_name = str(feature_config.get("name", feature_key))
                 detail_parts = [f"  • {feature_name}\n"]
 
-                required_sensors = feature_config.get("required_entities", {}).get("sensors", [])
-                required_switches = feature_config.get("required_entities", {}).get("switches", [])
+                required_entities = feature_config.get("required_entities", {})
+                if isinstance(required_entities, dict):
+                    required_sensors = required_entities.get("sensors", [])
+                    required_switches = required_entities.get("switches", [])
 
-                if required_sensors:
-                    detail_parts.append(f"  - {len(required_sensors)} sensor entities\n")
-                if required_switches:
-                    detail_parts.append(f"  - {len(required_switches)} switch entities\n")
+                    if isinstance(required_sensors, list) and required_sensors:
+                        detail_parts.append(f"  - {len(required_sensors)} sensor entities\n")
+                    if isinstance(required_switches, list) and required_switches:
+                        detail_parts.append(f"  - {len(required_switches)} switch entities\n")
 
                 if "card" in feature_key:
                     detail_parts.append("  - Dashboard card")
@@ -321,33 +325,33 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         warnings = []
 
         if self._cards_deselected:
-            card_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_deselected]
+            card_names = [str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._cards_deselected]
             warnings.append(f"⚠️ **Cards being disabled:** {', '.join(card_names)}")
             warnings.append("🔄 **Required:** Clear browser cache after restart")
 
         if self._automations_deselected:
-            automation_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._automations_deselected]
+            automation_names = [str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._automations_deselected]
             warnings.append(f"⚠️ **Automations being disabled:** {', '.join(automation_names)}")
 
         if self._other_deselected:
-            other_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._other_deselected]
+            other_names = [str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._other_deselected]
             warnings.append(f"⚠️ **Features being disabled:** {', '.join(other_names)}")
 
         if self._cards_selected:
-            card_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_selected]
+            card_names = [str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._cards_selected]
             warnings.append(f"✅ **Cards being enabled:** {', '.join(card_names)}")
             warnings.append("🔄 **Required:** Clear browser cache after restart")
 
         if self._automations_selected:
-            automation_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._automations_selected]
+            automation_names = [str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._automations_selected]
             warnings.append(f"✅ **Automations being enabled:** {', '.join(automation_names)}")
 
         if self._other_selected:
-            other_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._other_selected]
+            other_names = [str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._other_selected]
             warnings.append(f"✅ **Features being enabled:** {', '.join(other_names)}")
 
         if self._newly_enabled_features:
-            feature_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._newly_enabled_features]
+            feature_names = [str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._newly_enabled_features]
             warnings.append(f"✅ **New features being enabled:** {', '.join(feature_names)}")
 
         # Build confirmation text
@@ -356,11 +360,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Features being disabled
         disabled_parts = []
         if self._cards_deselected:
-            disabled_parts.append(f"**Cards:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._cards_deselected])}")
+            disabled_parts.append(f"**Cards:** {', '.join([str(AVAILABLE_FEATURES[f].get('name', f)) for f in self._cards_deselected])}")
         if self._automations_deselected:
-            disabled_parts.append(f"**Automations:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._automations_deselected])}")
+            disabled_parts.append(f"**Automations:** {', '.join([str(AVAILABLE_FEATURES[f].get('name', f)) for f in self._automations_deselected])}")
         if self._other_deselected:
-            disabled_parts.append(f"**Features:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._other_deselected])}")
+            disabled_parts.append(f"**Features:** {', '.join([str(AVAILABLE_FEATURES[f].get('name', f)) for f in self._other_deselected])}")
 
         if disabled_parts:
             confirmation_parts.append(f"**Features being disabled:**\n• {chr(10).join(['  • ' + part for part in disabled_parts])}")
@@ -368,13 +372,13 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Features being enabled
         enabled_parts = []
         if self._cards_selected:
-            enabled_parts.append(f"**Cards:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._cards_selected])}")
+            enabled_parts.append(f"**Cards:** {', '.join([str(AVAILABLE_FEATURES[f].get('name', f)) for f in self._cards_selected])}")
         if self._automations_selected:
-            enabled_parts.append(f"**Automations:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._automations_selected])}")
+            enabled_parts.append(f"**Automations:** {', '.join([str(AVAILABLE_FEATURES[f].get('name', f)) for f in self._automations_selected])}")
         if self._other_selected:
-            enabled_parts.append(f"**Features:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._other_selected])}")
+            enabled_parts.append(f"**Features:** {', '.join([str(AVAILABLE_FEATURES[f].get('name', f)) for f in self._other_selected])}")
         if self._newly_enabled_features:
-            enabled_parts.append(f"**New:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._newly_enabled_features])}")
+            enabled_parts.append(f"**New:** {', '.join([str(AVAILABLE_FEATURES[f].get('name', f)) for f in self._newly_enabled_features])}")
 
         if enabled_parts:
             confirmation_parts.append(f"**Features being enabled:**\n• {chr(10).join(['  • ' + part for part in enabled_parts])}")
@@ -408,7 +412,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-    async def _save_config(self, user_input):
+    async def _save_config(self, user_input: Dict[str, List[str]]) -> config_entries.FlowResult:
         """Save the configuration and reload the integration."""
         enabled_features = {}
         selected_features = user_input.get("features", [])

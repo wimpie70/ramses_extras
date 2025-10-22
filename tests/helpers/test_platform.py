@@ -1,6 +1,7 @@
 """Tests for helpers/platform.py functions."""
 
 import pytest
+from typing import Set
 from unittest.mock import Mock
 
 # Import the helpers - this will work when running in HA environment
@@ -19,17 +20,17 @@ except ImportError:
 class TestFanIdConversion:
     """Test fan ID format conversion."""
 
-    def test_convert_colon_to_underscore(self):
+    def test_convert_colon_to_underscore(self) -> None:
         """Test converting colon format to underscore format."""
         assert convert_fan_id_format("32:153289") == "32_153289"
         assert convert_fan_id_format("01:123456") == "01_123456"
         assert convert_fan_id_format("99:000001") == "99_000001"
 
-    def test_already_underscore_format(self):
+    def test_already_underscore_format(self) -> None:
         """Test handling already underscore format."""
         assert convert_fan_id_format("32_153289") == "32_153289"
 
-    def test_empty_string(self):
+    def test_empty_string(self) -> None:
         """Test handling empty string."""
         assert convert_fan_id_format("") == ""
 
@@ -37,7 +38,7 @@ class TestFanIdConversion:
 class TestRequiredEntitiesCalculation:
     """Test required entities calculation."""
 
-    def test_no_features_enabled(self):
+    def test_no_features_enabled(self) -> None:
         """Test with no features enabled."""
         enabled_features = {
             'hvac_fan_card': False,
@@ -48,7 +49,7 @@ class TestRequiredEntitiesCalculation:
         result = calculate_required_entities("sensor", enabled_features, fans)
         assert result == set()
 
-    def test_with_features_enabled(self, mock_available_features, mock_device_mapping):
+    def test_with_features_enabled(self, mock_available_features: dict, mock_device_mapping: dict) -> None:
         """Test with features enabled."""
         enabled_features = {
             'hvac_fan_card': True,
@@ -69,7 +70,7 @@ class TestRequiredEntitiesCalculation:
 class TestEntityRegistry:
     """Test entity registry functions."""
 
-    def test_get_entity_registry_available(self):
+    def test_get_entity_registry_available(self) -> None:
         """Test getting entity registry when available."""
         mock_hass = Mock()
         mock_hass.data = {"entity_registry": Mock()}
@@ -77,7 +78,7 @@ class TestEntityRegistry:
         result = get_entity_registry(mock_hass)
         assert result is not None
 
-    def test_get_entity_registry_unavailable(self, caplog):
+    def test_get_entity_registry_unavailable(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test getting entity registry when not available."""
         mock_hass = Mock()
         mock_hass.data = {}
@@ -90,7 +91,7 @@ class TestEntityRegistry:
 class TestOrphanedEntities:
     """Test finding orphaned entities."""
 
-    def test_find_orphaned_entities_no_registry(self):
+    def test_find_orphaned_entities_no_registry(self) -> None:
         """Test finding orphaned entities when no registry."""
         mock_hass = Mock()
         mock_hass.data = {}
@@ -98,7 +99,7 @@ class TestOrphanedEntities:
         result = find_orphaned_entities("sensor", mock_hass, [], set(), [])
         assert result == []
 
-    def test_find_orphaned_entities_with_matches(self):
+    def test_find_orphaned_entities_with_matches(self) -> None:
         """Test finding orphaned entities with matches."""
         # Mock entity registry with actual entity IDs
         mock_entity_registry = Mock()
@@ -112,7 +113,7 @@ class TestOrphanedEntities:
         mock_hass.data = {"entity_registry": mock_entity_registry}
 
         fans = ['32:153289']
-        required_entities = set()  # No entities required
+        required_entities: Set[str] = set()  # No entities required
         all_possible_types = ['indoor_abs_humid', 'outdoor_abs_humid']
 
         result = find_orphaned_entities("sensor", mock_hass, fans, required_entities, all_possible_types)
@@ -123,8 +124,8 @@ class TestOrphanedEntities:
 
 
 # Fixtures for testing
-@pytest.fixture
-def mock_available_features():
+@pytest.fixture  # type: ignore[misc]
+def mock_available_features() -> dict:
     """Mock AVAILABLE_FEATURES constant."""
     return {
         'hvac_fan_card': {
@@ -135,8 +136,8 @@ def mock_available_features():
     }
 
 
-@pytest.fixture
-def mock_device_mapping():
+@pytest.fixture  # type: ignore[misc]
+def mock_device_mapping() -> dict:
     """Mock DEVICE_ENTITY_MAPPING constant."""
     return {
         'HvacVentilator': {

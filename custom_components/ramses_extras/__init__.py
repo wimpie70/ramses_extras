@@ -2,12 +2,17 @@ import asyncio
 import logging
 import shutil
 from pathlib import Path
+from typing import Any, TYPE_CHECKING, List, Dict
+
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.components.http import StaticPathConfig
 
 from .const import DOMAIN, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES, INTEGRATION_DIR, CARD_FOLDER
+
+if TYPE_CHECKING:
+    pass
 
 # Register platforms
 PLATFORMS = ["sensor", "switch", "binary_sensor"]
@@ -31,7 +36,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         # Find all card features and check if their files exist
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
             if feature_config.get("category") == "cards":
-                location = feature_config.get("location", "")
+                location = str(feature_config.get("location", ""))
                 if location:
                     card_path = INTEGRATION_DIR / CARD_FOLDER / location
                     if card_path.exists():
@@ -64,7 +69,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     return True
 
-async def _register_enabled_card_resources(hass: HomeAssistant, enabled_features: dict):
+async def _register_enabled_card_resources(hass: HomeAssistant, enabled_features: Dict[str, bool]) -> None:
     """Register frontend resources for enabled card features only."""
     _LOGGER.debug("Registering enabled card resources")
 
@@ -74,7 +79,7 @@ async def _register_enabled_card_resources(hass: HomeAssistant, enabled_features
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if feature_config.get("category") == "cards":
             if enabled_features.get(feature_key, False):
-                location = feature_config.get("location", "")
+                location = str(feature_config.get("location", ""))
                 if location:
                     card_path = INTEGRATION_DIR / CARD_FOLDER / location
                     if card_path.exists():
@@ -110,7 +115,7 @@ async def _register_enabled_card_resources(hass: HomeAssistant, enabled_features
         _LOGGER.info("No cards are currently enabled in config flow")
 
 
-async def _manage_cards(hass: HomeAssistant, enabled_features: dict):
+async def _manage_cards(hass: HomeAssistant, enabled_features: Dict[str, bool]) -> None:
     """Install or remove custom cards based on enabled features."""
     www_community_path = Path(hass.config.path("www", "community"))
 
@@ -118,7 +123,7 @@ async def _manage_cards(hass: HomeAssistant, enabled_features: dict):
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if feature_config.get("category") == "cards":
             # Use the same path resolution as the rest of the code
-            card_source_path = INTEGRATION_DIR / CARD_FOLDER / feature_config.get("location", "")
+            card_source_path = INTEGRATION_DIR / CARD_FOLDER / str(feature_config.get("location", ""))
             card_dest_path = www_community_path / feature_key
 
             if enabled_features.get(feature_key, False):
@@ -131,7 +136,7 @@ async def _manage_cards(hass: HomeAssistant, enabled_features: dict):
                 await _remove_card(hass, card_dest_path)
 
 
-async def _remove_card(hass: HomeAssistant, card_path: Path):
+async def _remove_card(hass: HomeAssistant, card_path: Path) -> None:
     """Remove a custom card."""
     try:
         if card_path.exists():
@@ -179,7 +184,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
-    return unload_ok
+    return bool(unload_ok)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -194,14 +199,14 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_setup_platforms(hass: HomeAssistant):
+async def async_setup_platforms(hass: HomeAssistant) -> None:
     """Find Ramses FAN devices and register extras."""
     # Prevent multiple simultaneous setup attempts
-    if hasattr(async_setup_platforms, '_is_running') and async_setup_platforms._is_running:
+    if hasattr(async_setup_platforms, '_is_running') and getattr(async_setup_platforms, '_is_running', False):
         _LOGGER.debug("Setup already in progress, skipping")
         return
 
-    async_setup_platforms._is_running = True
+    setattr(async_setup_platforms, '_is_running', True)
 
     try:
         _LOGGER.info("Looking for Ramses devices using ramses_cc entity discovery...")
@@ -225,8 +230,8 @@ async def async_setup_platforms(hass: HomeAssistant):
 
         # Schedule a retry in 60 seconds - only if ramses_cc not loaded
         if "ramses_cc" not in hass.config.components:
-            async def delayed_retry():
-                async_setup_platforms._is_running = False
+            async def delayed_retry() -> None:
+                setattr(async_setup_platforms, '_is_running', False)
                 await async_setup_platforms(hass)
 
             await asyncio.sleep(60)
@@ -234,10 +239,10 @@ async def async_setup_platforms(hass: HomeAssistant):
         else:
             _LOGGER.info("Ramses CC is loaded but no devices found, not retrying")
     finally:
-        async_setup_platforms._is_running = False
+        setattr(async_setup_platforms, '_is_running', False)
 
 
-async def _discover_ramses_devices(hass: HomeAssistant):
+async def _discover_ramses_devices(hass: HomeAssistant) -> List[str]:
     """Discover Ramses devices by hooking into the ramses_cc broker."""
     device_ids = []
 
@@ -280,14 +285,15 @@ async def _discover_ramses_devices(hass: HomeAssistant):
     return device_ids
 
 
-async def _handle_device(device) -> list:
+async def _handle_device(device: Any) -> List[str]:
     """Handle a device based on its type using the configured handler."""
     device_ids = []
 
     # Check if this device type is supported
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
-        if device.__class__.__name__ in feature_config.get("supported_device_types", []):
-            handler_name = feature_config.get("handler", "handle_hvac_ventilator")
+        supported_types = feature_config.get("supported_device_types", [])
+        if isinstance(supported_types, list) and device.__class__.__name__ in supported_types:
+            handler_name = str(feature_config.get("handler", "handle_hvac_ventilator"))
             handler = globals().get(handler_name)
             if handler:
                 result = await handler(device)
@@ -301,7 +307,7 @@ async def _handle_device(device) -> list:
     return device_ids
 
 
-async def handle_hvac_ventilator(device) -> list:
+async def handle_hvac_ventilator(device: Any) -> List[str]:
     """Handle HVAC Ventilator devices - create entities based on mapping."""
     device_id = device.id
 
@@ -322,10 +328,10 @@ async def handle_hvac_ventilator(device) -> list:
     return [device_id] if has_entities else []
     
 # Add more device handlers here as needed
-# async def handle_hvac_controller(device) -> list:
+# async def handle_hvac_controller(device: Any) -> List[str]:
 #     """Handle HVAC Controller devices."""
 #     return [device.id]
 #
-# async def handle_thermostat(device) -> list:
+# async def handle_thermostat(device: Any) -> List[str]:
 #     """Handle Thermostat devices."""
 #     return [device.id]

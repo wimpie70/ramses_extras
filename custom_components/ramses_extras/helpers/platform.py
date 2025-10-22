@@ -29,7 +29,7 @@ def get_enabled_features(hass: "HomeAssistant", config_entry: ConfigEntry) -> Di
         Dictionary of enabled features
     """
     # Get enabled features from config entry
-    enabled_features = config_entry.data.get("enabled_features", {})
+    enabled_features: Dict[str, bool] = config_entry.data.get("enabled_features", {})
 
     # Fallback: try to get from hass.data if config_entry doesn't have it
     if not enabled_features and DOMAIN in hass.data:
@@ -75,7 +75,7 @@ def calculate_required_entities(
     Returns:
         Set of required entity IDs
     """
-    required_entities = set()
+    required_entities: Set[str] = set()
 
     if device_type not in DEVICE_ENTITY_MAPPING:
         return required_entities
@@ -90,20 +90,28 @@ def calculate_required_entities(
 
             feature_config = AVAILABLE_FEATURES[feature_key]
 
-            if device_type not in feature_config.get("supported_device_types", []):
+            # Check if this device type is supported
+            supported_types = feature_config.get("supported_device_types", [])
+            if not isinstance(supported_types, list) or device_type not in supported_types:
                 continue
 
             # Add required entities for this platform
-            entity_types = feature_config.get("required_entities", {}).get(platform_key, [])
-            for entity_type in entity_types:
-                if entity_type in entity_mapping.get(platform_key, []):
-                    required_entities.add(f"{platform}.{fan_id}_{entity_type}")
+            required_entities_dict = feature_config.get("required_entities", {})
+            if isinstance(required_entities_dict, dict):
+                entity_types = required_entities_dict.get(platform_key, [])
+                if isinstance(entity_types, list):
+                    for entity_type in entity_types:
+                        if isinstance(entity_type, str) and entity_type in entity_mapping.get(platform_key, []):
+                            required_entities.add(f"{platform}.{fan_id}_{entity_type}")
 
             # Add optional entities for this platform
-            entity_types = feature_config.get("optional_entities", {}).get(platform_key, [])
-            for entity_type in entity_types:
-                if entity_type in entity_mapping.get(platform_key, []):
-                    required_entities.add(f"{platform}.{fan_id}_{entity_type}")
+            optional_entities_dict = feature_config.get("optional_entities", {})
+            if isinstance(optional_entities_dict, dict):
+                entity_types = optional_entities_dict.get(platform_key, [])
+                if isinstance(entity_types, list):
+                    for entity_type in entity_types:
+                        if isinstance(entity_type, str) and entity_type in entity_mapping.get(platform_key, []):
+                            required_entities.add(f"{platform}.{fan_id}_{entity_type}")
 
     return required_entities
 
@@ -143,7 +151,7 @@ def find_orphaned_entities(
     if not entity_registry:
         return []
 
-    orphaned_entities = []
+    orphaned_entities: List[str] = []
 
     for entity_id, entity_entry in entity_registry.entities.items():
         if not entity_id.startswith(f"{platform}."):
@@ -204,7 +212,7 @@ async def remove_orphaned_entities(
         _LOGGER.warning(f"No config entry available for {platform} cleanup")
         return 0
 
-    current_required_entities = calculate_required_entities(platform, get_enabled_features(hass, config_entry), fans)
+    current_required_entities = calculate_required_entities(platform, get_enabled_features(hass, config_entry), fans, "HvacVentilator")
     _LOGGER.info(f"Required {platform} entities: {current_required_entities}")
 
     entity_registry = get_entity_registry(hass)
