@@ -1,7 +1,7 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -24,7 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def _manage_cards_config_flow(
-    hass: "HomeAssistant", enabled_features: Dict[str, bool]
+    hass: "HomeAssistant", enabled_features: dict[str, bool]
 ) -> None:
     """Install or remove custom cards based on enabled features (for config flow)."""
     www_community_path = Path(hass.config.path("www", "community"))
@@ -101,9 +101,8 @@ async def _remove_card_config_flow(hass: "HomeAssistant", card_path: Path) -> No
 
 @config_entries.HANDLERS.register(DOMAIN)
 class RamsesExtrasConfigFlow(config_entries.ConfigFlow):
-
     async def async_step_user(
-        self, user_input: Optional[Dict[str, List[str]]] = None
+        self, user_input: dict[str, list[str]] | None = None
     ) -> config_entries.FlowResult:
         """Handle the initial step."""
         # Check if we already have an entry for this domain
@@ -139,23 +138,23 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
-        self._pending_data: Optional[Dict[str, List[str]]] = None
-        self._cards_deselected: List[str] = []
-        self._automations_deselected: List[str] = []
-        self._other_deselected: List[str] = []
-        self._cards_selected: List[str] = []
-        self._automations_selected: List[str] = []
-        self._other_selected: List[str] = []
-        self._newly_enabled_features: List[str] = []
+        self._pending_data: dict[str, list[str]] | None = None
+        self._cards_deselected: list[str] = []
+        self._automations_deselected: list[str] = []
+        self._other_deselected: list[str] = []
+        self._cards_selected: list[str] = []
+        self._automations_selected: list[str] = []
+        self._other_selected: list[str] = []
+        self._newly_enabled_features: list[str] = []
 
     async def async_step_init(
-        self, user_input: Optional[Dict[str, List[str]]] = None
+        self, user_input: dict[str, list[str]] | None = None
     ) -> config_entries.FlowResult:
         """Handle options initialization - redirect to features step."""
         return await self.async_step_features()
 
     async def async_step_features(
-        self, user_input: Optional[Dict[str, List[str]]] = None
+        self, user_input: dict[str, list[str]] | None = None
     ) -> config_entries.FlowResult:
         """Handle the feature selection step for options."""
         if user_input is not None:
@@ -344,7 +343,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_confirm(
-        self, user_input: Optional[Dict[str, bool]] = None
+        self, user_input: dict[str, bool] | None = None
     ) -> config_entries.FlowResult:
         """Handle confirmation step for feature deselection."""
         if user_input is not None:
@@ -352,14 +351,13 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 return await self._save_config(
                     self._pending_data if self._pending_data else {}
                 )
-            else:
-                return await self.async_step_features()
+            return await self.async_step_features()
 
         # Build confirmation message
-        current_features: Dict[str, bool] = self._config_entry.data.get(
+        current_features: dict[str, bool] = self._config_entry.data.get(
             "enabled_features", {}
         )
-        selected_features: List[str] = (
+        selected_features: list[str] = (
             self._pending_data.get("features", []) if self._pending_data else []
         )
 
@@ -551,7 +549,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def _save_config(
-        self, user_input: Dict[str, List[str]]
+        self, user_input: dict[str, list[str]]
     ) -> config_entries.FlowResult:
         """Save the configuration and reload the integration."""
         enabled_features = {}

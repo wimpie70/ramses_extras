@@ -84,7 +84,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def _register_enabled_card_resources(
-    hass: HomeAssistant, enabled_features: Dict[str, bool]
+    hass: HomeAssistant, enabled_features: dict[str, bool]
 ) -> None:
     """Register frontend resources for enabled card features only."""
     _LOGGER.debug("Registering enabled card resources")
@@ -136,7 +136,7 @@ async def _register_enabled_card_resources(
         _LOGGER.info("No cards are currently enabled in config flow")
 
 
-async def _manage_cards(hass: HomeAssistant, enabled_features: Dict[str, bool]) -> None:
+async def _manage_cards(hass: HomeAssistant, enabled_features: dict[str, bool]) -> None:
     """Install or remove custom cards based on enabled features."""
     www_community_path = Path(hass.config.path("www", "community"))
 
@@ -224,16 +224,20 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+# Global flag to prevent multiple simultaneous setup attempts
+_setup_in_progress = False
+
+
 async def async_setup_platforms(hass: HomeAssistant) -> None:
     """Find Ramses FAN devices and register extras."""
+    global _setup_in_progress
+
     # Prevent multiple simultaneous setup attempts
-    if hasattr(async_setup_platforms, "_is_running") and getattr(
-        async_setup_platforms, "_is_running", False
-    ):
+    if _setup_in_progress:
         _LOGGER.debug("Setup already in progress, skipping")
         return
 
-    setattr(async_setup_platforms, "_is_running", True)
+    _setup_in_progress = True
 
     try:
         _LOGGER.info("Looking for Ramses devices using ramses_cc entity discovery...")
@@ -250,8 +254,7 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
                 _LOGGER.info("Found %d Ramses devices: %s", len(device_ids), device_ids)
                 hass.data.setdefault(DOMAIN, {})["fans"] = device_ids
                 return
-            else:
-                _LOGGER.info("No Ramses devices found in entity registry")
+            _LOGGER.info("No Ramses devices found in entity registry")
         else:
             _LOGGER.info("Ramses CC not loaded yet, will retry in 60 seconds.")
 
@@ -259,7 +262,8 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
         if "ramses_cc" not in hass.config.components:
 
             async def delayed_retry() -> None:
-                setattr(async_setup_platforms, "_is_running", False)
+                global _setup_in_progress
+                _setup_in_progress = False
                 await async_setup_platforms(hass)
 
             await asyncio.sleep(60)
@@ -267,10 +271,10 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
         else:
             _LOGGER.info("Ramses CC is loaded but no devices found, not retrying")
     finally:
-        setattr(async_setup_platforms, "_is_running", False)
+        _setup_in_progress = False
 
 
-async def _discover_ramses_devices(hass: HomeAssistant) -> List[str]:
+async def _discover_ramses_devices(hass: HomeAssistant) -> list[str]:
     """Discover Ramses devices by hooking into the ramses_cc broker."""
     device_ids = []
 
@@ -315,7 +319,7 @@ async def _discover_ramses_devices(hass: HomeAssistant) -> List[str]:
     return device_ids
 
 
-async def _handle_device(device: Any) -> List[str]:
+async def _handle_device(device: Any) -> list[str]:
     """Handle a device based on its type using the configured handler."""
     device_ids = []
 
@@ -344,7 +348,7 @@ async def _handle_device(device: Any) -> List[str]:
     return device_ids
 
 
-async def handle_hvac_ventilator(device: Any) -> List[str]:
+async def handle_hvac_ventilator(device: Any) -> list[str]:
     """Handle HVAC Ventilator devices - create entities based on mapping."""
     device_id = device.id
 

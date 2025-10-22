@@ -1,0 +1,78 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.13
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Check PR requirements
+      run: |
+        # Check if PR has description
+        if [ -z "${{ github.event.pull_request.body }}" ]; then
+          echo "❌ PR description is required"
+          exit 1
+        fi
+
+        # Check if PR title follows conventional commits
+        if ! [[ "${{ github.event.pull_request.title }}" =~ ^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?!:.* ]]; then
+          echo "⚠️  Consider using conventional commit format: type(scope)!: description"
+          echo "   Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+        fi
+
+        echo "✅ PR validation passed"
+
+    - name: Run tests
+      run: |
+        pytest tests/ -v --tb=short
+
+    - name: Check code quality
+      run: |
+        pre-commit run -a
+
+    - name: Comment PR with test results
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const { exec } = require('child_process');
+          const { promisify } = require('util');
+          const execAsync = promisify(exec);
+
+          try {
+            const { stdout, stderr } = await execAsync('pytest tests/ --tb=short -q');
+            const comment = '## 🧪 Test Results\n\n✅ All tests passed!\n\n<details>\n<summary>Test Summary</summary>\n\n```\n' + stdout + stderr + '\n```\n\n</details>\n\nThis PR is ready for review! 🚀';
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          } catch (error) {
+            const comment = '## ❌ Test Results\n\n❌ Some tests failed:\n\n<details>\n<summary>Test Details</summary>\n\n```\n' + error.stdout + error.stderr + '\n```\n\n</details>\n\nPlease fix the failing tests before merging. 🔧';
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          }

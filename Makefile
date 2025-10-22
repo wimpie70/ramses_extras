@@ -109,9 +109,7 @@ lint: env
 	@echo "Running code quality checks..."
 	@bash -c "source ~/venvs/extras/bin/activate && \
 		mypy . && \
-		black --check . && \
-		isort --check-only . && \
-		flake8 ."
+		ruff check ."
 
 type-check: env
 	@echo "Running type checking..."
@@ -123,17 +121,16 @@ type-check-clean: env
 
 format: env
 	@echo "Formatting code..."
-	@bash -c "source ~/venvs/extras/bin/activate && black . && isort ."
+	@bash -c "source ~/venvs/extras/bin/activate && ruff format . && ruff check . --fix"
 
 fix-imports: env
-	@echo "Fixing import sorting..."
-	@bash -c "source ~/venvs/extras/bin/activate && isort ."
+	@echo "Fixing imports and formatting..."
+	@bash -c "source ~/venvs/extras/bin/activate && ruff check . --fix && ruff format ."
 
 qa: env
 	@echo "Running full QA suite..."
 	@bash -c "source ~/venvs/extras/bin/activate && \
 		mypy . && \
-		black --check . && \
-		isort --check-only . && \
-		flake8 . && \
+		ruff check . && \
+		ruff format --check . && \
 		pytest tests/"

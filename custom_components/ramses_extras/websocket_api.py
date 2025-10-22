@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -21,7 +21,7 @@ _LOGGER = logging.getLogger(__name__)
 )
 @websocket_api.async_response  # type: ignore[misc]
 async def ws_get_bound_rem(
-    hass: HomeAssistant, connection: "WebSocket", msg: Dict[str, Any]
+    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
     """Return bound REM info for a Ramses device."""
     device_id = msg["device_id"]
@@ -34,7 +34,7 @@ async def ws_get_bound_rem(
         return
 
     result = None
-    for entry_id, data in ramses_data.items():
+    for _entry_id, data in ramses_data.items():
         broker = data.get("broker")
         if not broker:
             continue

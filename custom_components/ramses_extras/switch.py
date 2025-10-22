@@ -1,5 +1,6 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -26,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: "HomeAssistant",
-    config_entry: Optional[ConfigEntry],
+    config_entry: ConfigEntry | None,
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the switch platform."""
@@ -74,7 +75,6 @@ async def async_setup_entry(
                         isinstance(supported_types, list)
                         and device_type in supported_types
                     ):
-
                         # Check if this switch is required or optional for this feature
                         required_entities = feature_config.get("required_entities", {})
                         optional_entities = feature_config.get("optional_entities", {})
@@ -112,7 +112,7 @@ async def async_setup_entry(
         try:
             # Get all possible switch types for this device
             all_possible_switches = []
-            for fan_id in fans:
+            for _fan_id in fans:
                 device_type = "HvacVentilator"
                 if device_type in DEVICE_ENTITY_MAPPING:
                     entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -143,7 +143,7 @@ class RamsesDehumidifySwitch(SwitchEntity):
         hass: "HomeAssistant",
         fan_id: str,
         switch_type: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
     ):
         self.hass = hass
         self._fan_id = fan_id  # Store device ID as string
@@ -157,7 +157,7 @@ class RamsesDehumidifySwitch(SwitchEntity):
         self._attr_entity_category = config["entity_category"]
 
         self._is_on = False
-        self._unsub: Optional[Callable[[], None]] = None
+        self._unsub: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
@@ -195,5 +195,5 @@ class RamsesDehumidifySwitch(SwitchEntity):
         self.async_write_ha_state()
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         return {"dehumidifying": self.is_on}

@@ -1,6 +1,5 @@
 """Tests for helpers/platform.py functions."""
 
-from typing import Set
 from unittest.mock import Mock
 
 import pytest
@@ -119,7 +118,7 @@ class TestOrphanedEntities:
         mock_hass.data = {"entity_registry": mock_entity_registry}
 
         fans = ["32:153289"]
-        required_entities: Set[str] = set()  # No entities required
+        required_entities: set[str] = set()  # No entities required
         all_possible_types = ["indoor_abs_humid", "outdoor_abs_humid"]
 
         result = find_orphaned_entities(

@@ -3,7 +3,6 @@
 
 import os
 import sys
-from typing import Dict, Set
 
 # Add the custom_components directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components"))
@@ -64,7 +63,7 @@ def test_entity_matching() -> None:
 
     # Mock HASS object with proper entity registry structure
     class MockEntityRegistry:
-        def __init__(self, entities_dict: Dict[str, None]) -> None:
+        def __init__(self, entities_dict: dict[str, None]) -> None:
             self.entities = entities_dict
 
     class MockHass:
@@ -74,7 +73,7 @@ def test_entity_matching() -> None:
     # Test finding orphaned entities when no features are enabled
     hass = MockHass()
     fans_list = ["32:153289"]
-    required_entities_set: Set[str] = set()  # No entities required
+    required_entities_set: set[str] = set()  # No entities required
     all_possible_types_list = ["indoor_abs_humid", "outdoor_abs_humid"]
 
     # Test the find_orphaned_entities function

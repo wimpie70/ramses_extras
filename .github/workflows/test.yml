@@ -1,0 +1,64 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.12, 3.13]
+
+    services:
+      homeassistant:
+        image: homeassistant/home-assistant:2025.10.1
+        ports:
+          - 8123:8123
+        options: --name homeassistant-test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-python${{ matrix.python-version }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-python${{ matrix.python-version }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+
+    - name: Wait for Home Assistant
+      run: |
+        timeout 60 bash -c 'until curl -f http://localhost:8123/api/; do sleep 2; done'
+
+    - name: Run unit tests
+      run: |
+        pytest tests/ -v --tb=short --cov=custom_components/ramses_extras --cov-report=xml
+
+    - name: Run integration tests
+      run: |
+        pytest tests/ -m integration -v --tb=short
+      continue-on-error: true  # Integration tests might need HA setup
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false

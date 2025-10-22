@@ -1,5 +1,6 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -21,7 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: "HomeAssistant",
-    config_entry: Optional[ConfigEntry],
+    config_entry: ConfigEntry | None,
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the binary sensor platform."""
@@ -70,7 +71,6 @@ async def async_setup_entry(
                         isinstance(supported_types, list)
                         and device_type in supported_types
                     ):
-
                         # Check if this binary sensor is required for this feature
                         required_entities = feature_config.get("required_entities", {})
 
@@ -101,7 +101,7 @@ async def async_setup_entry(
         try:
             # Get all possible binary sensor types for this device
             all_possible_booleans = []
-            for fan_id in fans:
+            for _fan_id in fans:
                 device_type = "HvacVentilator"
                 if device_type in DEVICE_ENTITY_MAPPING:
                     entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -132,7 +132,7 @@ class RamsesBinarySensor(BinarySensorEntity):
         hass: "HomeAssistant",
         fan_id: str,
         boolean_type: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
     ):
         self.hass = hass
         self._fan_id = fan_id  # Store device ID as string
@@ -146,7 +146,7 @@ class RamsesBinarySensor(BinarySensorEntity):
         self._attr_entity_category = config["entity_category"]
 
         self._is_on = False
-        self._unsub: Optional[Callable[[], None]] = None
+        self._unsub: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
@@ -172,5 +172,5 @@ class RamsesBinarySensor(BinarySensorEntity):
         return self._is_on
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         return {"device_id": self._fan_id, "boolean_type": self._boolean_type}

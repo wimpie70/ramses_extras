@@ -1,0 +1,22 @@
+# This file defines the code owners for this repository
+# When a pull request is opened, these users will be automatically requested for review
+
+* @willem
+
+# Core integration files
+/custom_components/ramses_extras/ @willem
+
+# Configuration and setup
+/setup.py @willem
+/pyproject.toml @willem
+/requirements.txt @willem
+
+# CI/CD and workflows
+/.github/ @willem
+
+# Documentation
+/README.md @willem
+/docs/ @willem
+
+# Tests
+/tests/ @willem

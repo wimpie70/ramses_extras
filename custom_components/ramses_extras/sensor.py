@@ -1,5 +1,6 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -26,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: "HomeAssistant",
-    config_entry: Optional[ConfigEntry],
+    config_entry: ConfigEntry | None,
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the sensor platform."""
@@ -74,7 +75,6 @@ async def async_setup_entry(
                         isinstance(supported_types, list)
                         and device_type in supported_types
                     ):
-
                         # Check if this sensor is required or optional for this feature
                         required_entities = feature_config.get("required_entities", {})
                         optional_entities = feature_config.get("optional_entities", {})
@@ -112,7 +112,7 @@ async def async_setup_entry(
         try:
             # Get all possible sensor types for this device
             all_possible_sensors = []
-            for fan_id in fans:
+            for _fan_id in fans:
                 device_type = "HvacVentilator"
                 if device_type in DEVICE_ENTITY_MAPPING:
                     entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -143,7 +143,7 @@ class RamsesExtraHumiditySensor(SensorEntity):
         hass: "HomeAssistant",
         fan_id: str,
         sensor_type: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
     ):
         self.hass = hass
         self._fan_id = fan_id  # Store device ID as string
@@ -160,7 +160,7 @@ class RamsesExtraHumiditySensor(SensorEntity):
         self._attr_native_unit_of_measurement = config["unit"]
         self._attr_device_class = config["device_class"]
 
-        self._unsub: Optional[Callable[[], None]] = None
+        self._unsub: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
@@ -180,7 +180,7 @@ class RamsesExtraHumiditySensor(SensorEntity):
         self.async_write_ha_state()
 
     @property
-    def native_value(self) -> Optional[float]:
+    def native_value(self) -> float | None:
         """Return calculated absolute humidity."""
         try:
             temp, rh = self._get_temp_and_humidity()
@@ -189,20 +189,19 @@ class RamsesExtraHumiditySensor(SensorEntity):
             _LOGGER.debug("Error reading humidity for %s: %s", self._attr_name, e)
             return None
 
-    def _get_temp_and_humidity(self) -> Tuple[float, float]:
+    def _get_temp_and_humidity(self) -> tuple[float, float]:
         """Get temperature and humidity data from ramses_cc entities."""
         # For now, return placeholder values - in a real implementation,
         # you would query the actual ramses_cc entities for this data
         if self._sensor_type == "indoor_abs_humid":
             # Placeholder: would get from climate entity or sensor entity
             return 20.0, 50.0  # temp, rh
-        else:
-            # Placeholder: would get from outdoor sensor
-            return 15.0, 60.0  # temp, rh
+        # Placeholder: would get from outdoor sensor
+        return 15.0, 60.0  # temp, rh
 
     def _calculate_abs_humidity(
-        self, temp: Optional[float], rh: Optional[float]
-    ) -> Optional[float]:
+        self, temp: float | None, rh: float | None
+    ) -> float | None:
         """Calculate absolute humidity using proper formula."""
         if temp is None or rh is None:
             return None

@@ -5,7 +5,7 @@ This module contains reusable helper functions used across all platform modules
 """
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import entity_registry as er
@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 
 def get_enabled_features(
     hass: "HomeAssistant", config_entry: ConfigEntry
-) -> Dict[str, bool]:
+) -> dict[str, bool]:
     """Get enabled features from config entry with fallback logic.
 
     Args:
@@ -31,7 +31,7 @@ def get_enabled_features(
         Dictionary of enabled features
     """
     # Get enabled features from config entry
-    enabled_features: Dict[str, bool] = config_entry.data.get("enabled_features", {})
+    enabled_features: dict[str, bool] = config_entry.data.get("enabled_features", {})
 
     # Fallback: try to get from hass.data if config_entry doesn't have it
     if not enabled_features and DOMAIN in hass.data:
@@ -44,7 +44,7 @@ def get_enabled_features(
     return enabled_features
 
 
-def get_entity_registry(hass: "HomeAssistant") -> Optional[er.EntityRegistry]:
+def get_entity_registry(hass: "HomeAssistant") -> er.EntityRegistry | None:
     """Get entity registry with error handling.
 
     Args:
@@ -62,10 +62,10 @@ def get_entity_registry(hass: "HomeAssistant") -> Optional[er.EntityRegistry]:
 
 def calculate_required_entities(
     platform: str,
-    enabled_features: Dict[str, bool],
-    fans: List[str],
+    enabled_features: dict[str, bool],
+    fans: list[str],
     device_type: str = "HvacVentilator",
-) -> Set[str]:
+) -> set[str]:
     """Calculate which entities are required by the enabled features.
 
     Args:
@@ -77,7 +77,7 @@ def calculate_required_entities(
     Returns:
         Set of required entity IDs
     """
-    required_entities: Set[str] = set()
+    required_entities: set[str] = set()
 
     if device_type not in DEVICE_ENTITY_MAPPING:
         return required_entities
@@ -140,10 +140,10 @@ def convert_fan_id_format(fan_id: str) -> str:
 def find_orphaned_entities(
     platform: str,
     hass: "HomeAssistant",
-    fans: List[str],
-    required_entities: Set[str],
-    all_possible_types: List[str],
-) -> List[str]:
+    fans: list[str],
+    required_entities: set[str],
+    all_possible_types: list[str],
+) -> list[str]:
     """Find entities that should be removed (orphaned).
 
     Args:
@@ -160,9 +160,9 @@ def find_orphaned_entities(
     if not entity_registry:
         return []
 
-    orphaned_entities: List[str] = []
+    orphaned_entities: list[str] = []
 
-    for entity_id, entity_entry in entity_registry.entities.items():
+    for entity_id, _entity_entry in entity_registry.entities.items():
         if not entity_id.startswith(f"{platform}."):
             continue
 
@@ -194,9 +194,9 @@ def find_orphaned_entities(
 async def remove_orphaned_entities(
     platform: str,
     hass: "HomeAssistant",
-    fans: List[str],
-    required_entities: Set[str],
-    all_possible_types: List[str],
+    fans: list[str],
+    required_entities: set[str],
+    all_possible_types: list[str],
 ) -> int:
     """Remove orphaned entities from the registry.
 
