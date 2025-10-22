@@ -14,7 +14,7 @@ setup(
         "custom_components.ramses_extras.helpers": "custom_components/ramses_extras/helpers",
     },
     install_requires=[
-        "homeassistant==2025.10.3",
+        "homeassistant==2025.10.1",
     ],
     extras_require={
         "dev": [
