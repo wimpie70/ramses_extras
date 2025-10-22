@@ -167,25 +167,32 @@ def find_orphaned_entities(
             continue
 
         # Extract device_id from entity_id
-        # Format: {platform}.{name}_{fan_id} where fan_id is 32_153289
+        # Format: {platform}.{entity_type}_{device_id} where device_id is 32_153289
         parts = entity_id.split(".")
         if len(parts) >= 2:
-            entity_name_and_fan = parts[1]  # name_fan_id
+            entity_name_and_fan = parts[1]  # entity_type_device_id
 
             # Check if this entity belongs to one of our devices
             for fan_id in fans:
+                # Convert fan_id from colon format (32:153289)
+                # to underscore format (32_153289)
                 fan_id_underscore = convert_fan_id_format(fan_id)
-                if fan_id_underscore in entity_name_and_fan:
+
+                # Check if the entity belongs to this device (device_id at the end)
+                if entity_name_and_fan.endswith(f"_{fan_id_underscore}"):
                     # This entity belongs to our device, check if it's still needed
-                    for entity_type in all_possible_types:
-                        # Check if this entity_type is still required
-                        expected_entity_id = f"{platform}.{fan_id}_{entity_type}"
-                        if expected_entity_id not in required_entities:
-                            orphaned_entities.append(entity_id)
-                            _LOGGER.info(
-                                f"Will remove orphaned {platform}: {entity_id}"
-                            )
-                            break
+                    entity_type = entity_name_and_fan[
+                        : -len(f"_{fan_id_underscore}") - 1
+                    ]  # Remove "_32_153289"
+
+                    # Check if this entity_type is still required
+                    expected_entity_id = f"{platform}.{entity_type}_{fan_id_underscore}"
+                    if expected_entity_id not in required_entities:
+                        orphaned_entities.append(entity_id)
+                        _LOGGER.info(
+                            f"Will remove orphaned {platform}: {entity_id} "
+                            f"(type: {entity_type})"
+                        )
                     break
 
     return orphaned_entities

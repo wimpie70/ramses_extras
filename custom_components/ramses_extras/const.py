@@ -75,6 +75,7 @@ AVAILABLE_FEATURES = {
         "description": "Advanced control card for Orcon or other ventilation systems",
         "category": "cards",
         "location": "hvac_fan_card/hvac-fan-card.js",
+        "editor": "hvac_fan_card/hvac-fan-card-editor.js",
         "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {

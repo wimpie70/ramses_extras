@@ -96,6 +96,8 @@ async def _register_enabled_card_resources(
         if feature_config.get("category") == "cards":
             if enabled_features.get(feature_key, False):
                 location = str(feature_config.get("location", ""))
+                editor = feature_config.get("editor")
+
                 if location:
                     card_path = INTEGRATION_DIR / CARD_FOLDER / location
                     if card_path.exists():
@@ -107,9 +109,28 @@ async def _register_enabled_card_resources(
                         _LOGGER.warning(
                             f"Card file not found for {feature_key}: {card_path}"
                         )
+
+                # Register editor if available
+                if editor and isinstance(editor, str):
+                    editor_path = INTEGRATION_DIR / Path(CARD_FOLDER) / editor
+                    if editor_path.exists():
+                        editor_resource_url = (
+                            f"/local/ramses_extras/{feature_key}/{editor_path.name}"
+                        )
+                        enabled_cards.append(
+                            (f"{feature_key}_editor", editor_resource_url)
+                        )
+                        _LOGGER.info(
+                            f"Registering editor for {feature_key}: "
+                            f"{editor_resource_url}"
+                        )
+                    else:
+                        _LOGGER.warning(
+                            f"Editor file not found for {feature_key}: {editor_path}"
+                        )
                 else:
                     _LOGGER.warning(
-                        f"No location specified for enabled card {feature_key}"
+                        f"No editor specified for enabled card {feature_key}"
                     )
             else:
                 disabled_cards.append(feature_key)
@@ -131,9 +152,11 @@ async def _register_enabled_card_resources(
         _LOGGER.info(f"Cards disabled (not loaded): {disabled_cards}")
 
     if enabled_cards:
-        _LOGGER.info(f"Loaded {len(enabled_cards)} cards based on config selection")
+        _LOGGER.info(
+            f"Loaded {len(enabled_cards)} card resources based on config selection"
+        )
     else:
-        _LOGGER.info("No cards are currently enabled in config flow")
+        _LOGGER.info("No card resources are currently enabled in config flow")
 
 
 async def _manage_cards(hass: HomeAssistant, enabled_features: dict[str, bool]) -> None:
