@@ -6,7 +6,7 @@
 [![Integration](https://github.com/willem/ramses_extras/actions/workflows/integration.yml/badge.svg)](https://github.com/willem/ramses_extras/actions/workflows/integration.yml)
 [![codecov](https://codecov.io/gh/willem/ramses_extras/branch/main/graph/badge.svg)](https://codecov.io/gh/willem/ramses_extras)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
-[![Home Assistant 2025.10.1](https://img.shields.io/badge/home%20assistant-2025.10.1-green.svg)](https://home-assistant.io)
+[![Home Assistant 2025.10.3](https://img.shields.io/badge/home%20assistant-2025.10.3-green.svg)](https://home-assistant.io)
 
 Extra features and enhancements for the Ramses CC Home Assistant integration.
 
