@@ -18,6 +18,7 @@ async def _manage_cards_config_flow(hass, enabled_features):
     # Handle all card features dynamically
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if feature_config.get("category") == "cards":
+            # Use the same path resolution as the rest of the code
             card_source_path = INTEGRATION_DIR / feature_config.get("location", "")
             card_dest_path = www_community_path / feature_key
 
@@ -113,6 +114,8 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         """Initialize options flow."""
         self._config_entry = config_entry
         self._pending_data = None
+        self._cards_deselected = []
+        self._cards_selected = []
 
     async def async_step_init(self, user_input=None):
         """Handle options initialization - redirect to features step."""
@@ -140,11 +143,37 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     deselected_features.append(feature_key)
 
             if deselected_features:
+                # Check if any card features are being deselected
+                cards_deselected = [f for f in deselected_features if AVAILABLE_FEATURES[f].get("category") == "cards"]
+                cards_selected = [f for f in user_input.get("features", []) if AVAILABLE_FEATURES[f].get("category") == "cards"]
+
                 # Store the pending data and go to confirmation step
                 self._pending_data = user_input
+                self._cards_deselected = cards_deselected
+                self._cards_selected = cards_selected
                 return await self.async_step_confirm()
 
             # No features being deselected, proceed directly
+            # But check if any cards are being newly enabled
+            cards_newly_enabled = []
+            for feature_key in user_input.get("features", []):
+                if feature_key not in [k for k, v in current_features.items() if v]:
+                    if AVAILABLE_FEATURES[feature_key].get("category") == "cards":
+                        cards_newly_enabled.append(feature_key)
+
+            if cards_newly_enabled:
+                # Show confirmation for new card enabling
+                card_names = [AVAILABLE_FEATURES[f].get("name", f) for f in cards_newly_enabled]
+                confirmation_text = "**Cards being enabled:** " + ", ".join(card_names)
+                confirmation_text += "\n\n**Important:** After saving changes, you must:"
+                confirmation_text += "\n1. **Restart Home Assistant** (Settings → System → Restart)"
+                confirmation_text += "\n2. **Clear browser cache** (Ctrl+Shift+R or clear site data)"
+                confirmation_text += "\n3. **Refresh dashboards** to see the new cards"
+
+                self._pending_data = user_input
+                self._cards_selected = cards_newly_enabled
+                return await self.async_step_confirm()
+
             return await self._save_config(user_input)
 
         # Get current enabled features for default values
@@ -277,8 +306,39 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
                 removal_details.append(" ".join(detail_parts))
 
-        confirmation_text = "The following features will be disabled:\n\n"
-        confirmation_text += "\n".join(removal_details)
+        # Add card-specific warnings
+        card_warnings = []
+        if self._cards_deselected:
+            card_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_deselected]
+            card_warnings.append(f"⚠️ **Cards being disabled:** {', '.join(card_names)}")
+            card_warnings.append("🔄 **Required:** Clear browser cache after restart")
+
+        if self._cards_selected:
+            card_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_selected]
+            card_warnings.append(f"✅ **Cards being enabled:** {', '.join(card_names)}")
+            card_warnings.append("🔄 **Required:** Clear browser cache after restart")
+
+        # Build confirmation text based on what cards are changing
+        confirmation_text = ""
+        if self._cards_deselected and self._cards_selected:
+            confirmation_text = "**Cards being disabled:** " + ", ".join([AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_deselected])
+            confirmation_text += "\n\n**Cards being enabled:** " + ", ".join([AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_selected])
+        elif self._cards_deselected:
+            confirmation_text = "**Cards being disabled:** " + ", ".join([AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_deselected])
+        elif self._cards_selected:
+            confirmation_text = "**Cards being enabled:** " + ", ".join([AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_selected])
+        else:
+            confirmation_text = "No card changes detected."
+
+        # Add instructions
+        confirmation_text += "\n\n**Important:** After saving changes, you must:"
+        confirmation_text += "\n1. **Restart Home Assistant** (Settings → System → Restart)"
+        confirmation_text += "\n2. **Clear browser cache** (Ctrl+Shift+R or clear site data)"
+        confirmation_text += "\n3. **Refresh dashboards** to see card changes"
+
+        if self._cards_deselected or self._cards_selected:
+            confirmation_text += "\n\n" + "🔄 **Required:** Clear browser cache after restart"
+
         confirmation_text += "\n\nThis action cannot be undone. Are you sure you want to proceed?"
 
         schema = vol.Schema({

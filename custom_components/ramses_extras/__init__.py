@@ -22,48 +22,35 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     global _STATIC_PATHS_REGISTERED
     if not _STATIC_PATHS_REGISTERED:
+        # Only register static paths for card files that exist
+        # Frontend resources will be registered dynamically in async_setup_entry based on selection
         card_features = []
-        
-        # Find all card features and their paths
+
+        # Find all card features and check if their files exist
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
             if feature_config.get("category") == "cards":
                 location = feature_config.get("location", "")
                 if location:
-                    card_features.append((feature_key, location))
-        
-        if card_features:
-            try:
-                # Register all card folders as static paths
-                static_configs = []
-                resource_urls = []
-                
-                for feature_key, location in card_features:
                     card_path = INTEGRATION_DIR / CARD_FOLDER / location
                     if card_path.exists():
-                        # Use feature_key as the URL path for better organization
-                        static_configs.append(
-                            StaticPathConfig(f"/local/ramses_extras/{feature_key}", str(card_path.parent), True)
-                        )
-                        resource_urls.append(f"/local/ramses_extras/{feature_key}/{card_path.name}")
-                
+                        card_features.append((feature_key, location))
+
+        if card_features:
+            try:
+                # Register all card folders as static paths (for file access)
+                static_configs = []
+
+                for feature_key, location in card_features:
+                    card_path = INTEGRATION_DIR / CARD_FOLDER / location
+                    static_configs.append(
+                        StaticPathConfig(f"/local/ramses_extras/{feature_key}", str(card_path.parent), True)
+                    )
+
                 if static_configs:
                     await hass.http.async_register_static_paths(static_configs)
                     _STATIC_PATHS_REGISTERED = True
-                    _LOGGER.info(f"Registered static paths for {len(card_features)} card features globally")
-                
-                # Register all card resources with frontend
-                for resource_url in resource_urls:
-                    try:
-                        from homeassistant.components import frontend
-                        await hass.async_add_executor_job(
-                            frontend.add_extra_js_url,
-                            hass,
-                            resource_url
-                        )
-                        _LOGGER.info(f"Registered card resource: {resource_url}")
-                    except Exception as e:
-                        _LOGGER.warning(f"Could not register resource {resource_url}: {e}")
-                
+                    _LOGGER.info(f"Registered static paths for {len(card_features)} card features")
+
             except RuntimeError as e:
                 if "already registered" in str(e):
                     _STATIC_PATHS_REGISTERED = True
@@ -75,6 +62,51 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     return True
 
+async def _register_enabled_card_resources(hass: HomeAssistant, enabled_features: dict):
+    """Register frontend resources for enabled card features only."""
+    _LOGGER.debug("Registering enabled card resources")
+
+    enabled_cards = []
+    disabled_cards = []
+
+    for feature_key, feature_config in AVAILABLE_FEATURES.items():
+        if feature_config.get("category") == "cards":
+            if enabled_features.get(feature_key, False):
+                location = feature_config.get("location", "")
+                if location:
+                    card_path = INTEGRATION_DIR / CARD_FOLDER / location
+                    if card_path.exists():
+                        resource_url = f"/local/ramses_extras/{feature_key}/{card_path.name}"
+                        enabled_cards.append((feature_key, resource_url))
+                    else:
+                        _LOGGER.warning(f"Card file not found for enabled card {feature_key}: {card_path}")
+                else:
+                    _LOGGER.warning(f"No location specified for enabled card {feature_key}")
+            else:
+                disabled_cards.append(feature_key)
+
+    # Register enabled cards
+    for feature_key, resource_url in enabled_cards:
+        try:
+            from homeassistant.components import frontend
+            await hass.async_add_executor_job(
+                frontend.add_extra_js_url,
+                hass,
+                resource_url
+            )
+            _LOGGER.info(f"Registered enabled card resource: {resource_url}")
+        except Exception as e:
+            _LOGGER.warning(f"Could not register resource {resource_url}: {e}")
+
+    # Log disabled cards for clarity
+    if disabled_cards:
+        _LOGGER.info(f"Cards disabled (not loaded): {disabled_cards}")
+
+    if enabled_cards:
+        _LOGGER.info(f"Dynamically loaded {len(enabled_cards)} enabled cards based on config selection")
+    else:
+        _LOGGER.info("No cards are currently enabled in config flow")
+
 
 async def _manage_cards(hass: HomeAssistant, enabled_features: dict):
     """Install or remove custom cards based on enabled features."""
@@ -83,7 +115,8 @@ async def _manage_cards(hass: HomeAssistant, enabled_features: dict):
     # Handle all card features dynamically
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if feature_config.get("category") == "cards":
-            card_source_path = INTEGRATION_DIR / feature_config.get("location", "")
+            # Use the same path resolution as the rest of the code
+            card_source_path = INTEGRATION_DIR / CARD_FOLDER / feature_config.get("location", "")
             card_dest_path = www_community_path / feature_key
 
             if enabled_features.get(feature_key, False):
@@ -116,6 +149,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {}
     hass.data[DOMAIN]["entry_id"] = entry.entry_id
+
+    # Register enabled card resources dynamically
+    await _register_enabled_card_resources(hass, entry.data.get("enabled_features", {}))
 
     # Install/remove cards based on enabled features
     await _manage_cards(hass, entry.data.get("enabled_features", {}))
