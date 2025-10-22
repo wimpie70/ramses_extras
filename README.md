@@ -10,12 +10,10 @@
 
 Extra features and enhancements for the Ramses CC Home Assistant integration.
 
-## Features
+## Features (WIP)
 
-- 🌡️ **Humidity Sensors**: Indoor and outdoor absolute humidity calculations
-- 🔄 **Dehumidify Controls**: Smart dehumidification management
-- 📊 **Enhanced Monitoring**: Additional sensor data and controls
-- 🔧 **Easy Configuration**: User-friendly setup through Home Assistant UI
+- hvac_fan_card
+- currently testing...
 
 ## Installation
 
@@ -44,7 +42,7 @@ After installation, configure the integration through the Home Assistant UI:
 ## Requirements
 
 - Home Assistant 2025.10.1 or later
-- Ramses CC integration installed and configured
+- Ramses RF integration installed and configured: https://github.com/ramses-rf/ramses_cc
 - Python 3.13
 
 ## Development
@@ -53,10 +51,9 @@ For development setup and contribution guidelines, see [README_DEV.md](README_DE
 
 ### Code Quality
 
-This project uses **Ruff** for fast Python linting and formatting (replacing Black and Flake8), consistent with the Ramses CC project:
+This project uses **Ruff** for fast Python linting and formatting, consistent with the Ramses CC project:
 
 - **Ruff**: Linting and formatting (replaces Black + Flake8)
-- **isort**: Import sorting
 - **MyPy**: Static type checking
 - **Pre-commit**: Automated quality checks
 
