@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Simple test script for helpers/platform.py functions."""
 
-import sys
 import os
-from typing import Set, Dict
+import sys
+from typing import Dict, Set
 
 # Add the custom_components directory to the Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'custom_components'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components"))
 
-from ramses_extras.helpers.platform import (
-    convert_fan_id_format,
+# Import after path is set up (flake8 E402 suppressed by necessity)
+from ramses_extras.helpers.platform import (  # noqa: E402
     calculate_required_entities,
-    find_orphaned_entities
+    convert_fan_id_format,
+    find_orphaned_entities,
 )
 
 
@@ -33,21 +34,17 @@ def test_required_entities_calculation() -> None:
 
     # Mock enabled features
     enabled_features = {
-        'test1': False,
-        'test2': False,
-        'hvac_fan_card': True,  # This should create entities
-        'humidity_automation': False
+        "test1": False,
+        "test2": False,
+        "hvac_fan_card": True,  # This should create entities
+        "humidity_automation": False,
     }
 
     # Mock fans
-    fans = ['32:153289']
+    fans = ["32:153289"]
 
     # Test sensor calculation
-    required_sensors = calculate_required_entities(
-        "sensor",
-        enabled_features,
-        fans
-    )
+    required_sensors = calculate_required_entities("sensor", enabled_features, fans)
 
     print(f"Required sensor entities: {required_sensors}")
     assert len(required_sensors) > 0, "Should have required sensor entities"
@@ -60,9 +57,9 @@ def test_entity_matching() -> None:
 
     # Mock entity registry with actual format
     mock_registry = {
-        'sensor.indoor_absolute_humidity_32_153289': None,
-        'sensor.outdoor_absolute_humidity_32_153289': None,
-        'switch.dehumidify_32_153289': None
+        "sensor.indoor_absolute_humidity_32_153289": None,
+        "sensor.outdoor_absolute_humidity_32_153289": None,
+        "switch.dehumidify_32_153289": None,
     }
 
     # Mock HASS object with proper entity registry structure
@@ -72,25 +69,22 @@ def test_entity_matching() -> None:
 
     class MockHass:
         def __init__(self) -> None:
-            self.data = {'entity_registry': MockEntityRegistry(mock_registry)}
+            self.data = {"entity_registry": MockEntityRegistry(mock_registry)}
 
     # Test finding orphaned entities when no features are enabled
     hass = MockHass()
-    fans_list = ['32:153289']
+    fans_list = ["32:153289"]
     required_entities_set: Set[str] = set()  # No entities required
-    all_possible_types_list = ['indoor_abs_humid', 'outdoor_abs_humid']
+    all_possible_types_list = ["indoor_abs_humid", "outdoor_abs_humid"]
 
     # Test the find_orphaned_entities function
     orphaned = find_orphaned_entities(
-        "sensor",
-        hass,
-        fans_list,
-        required_entities_set,
-        all_possible_types_list
+        "sensor", hass, fans_list, required_entities_set, all_possible_types_list
     )
 
     print(f"Found {len(orphaned)} orphaned entities: {orphaned}")
     print("✅ Entity matching logic working")
+
 
 if __name__ == "__main__":
     print("🧪 Testing helpers/platform.py functions...\n")

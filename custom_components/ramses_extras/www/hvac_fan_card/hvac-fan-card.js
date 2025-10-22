@@ -199,7 +199,7 @@ class HvacFanCard extends HTMLElement {
 
   getEntities() {
     if (!this.config) return [];
-    
+
     return [
       this.config.indoor_temp_entity,
       this.config.outdoor_temp_entity,
@@ -218,13 +218,13 @@ class HvacFanCard extends HTMLElement {
     ].filter(Boolean); // Remove any undefined/null values
   }
 
-    
+
   // Method to get bound REM device via WebSocket
   async getBoundRem(deviceId) {
     if (!this._hass) {
       throw new Error('Home Assistant instance not available');
     }
-      
+
     let sensor_id = 'climate.' + deviceId.replace(/:/g, '_');
     try {
       console.log('bound_rem: ', this._hass.states[sensor_id].attributes.bound_rem);
@@ -249,7 +249,7 @@ class HvacFanCard extends HTMLElement {
     //   throw error;
     // }
   }
-  
+
   // Method to send packet via ramses_cc service
   async sendPacket(deviceId, fromId, verb, code, payload) {
     if (!this._hass) {
@@ -270,7 +270,7 @@ class HvacFanCard extends HTMLElement {
       throw error;
     }
   }
-  
+
   async sendFanCommand(commandKey) {
     if (!this._hass || !this.config?.device_id) {
       console.error('Missing Home Assistant instance or device_id');
@@ -572,7 +572,7 @@ class HvacFanCard extends HTMLElement {
       console.error('Card instance not found for refresh');
     }
   }
-  
+
   // Add event listeners after the component is connected to the DOM
   connectedCallback() {
     console.log('=== hvacFanCard connectedCallback Debug ===');

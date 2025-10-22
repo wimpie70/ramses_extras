@@ -7,11 +7,12 @@ setup(
     version="0.3.0",
     packages=[
         "custom_components.ramses_extras",
-        "custom_components.ramses_extras.helpers"
+        "custom_components.ramses_extras.helpers",
     ],
     package_dir={
         "custom_components.ramses_extras": "custom_components/ramses_extras",
-        "custom_components.ramses_extras.helpers": "custom_components/ramses_extras/helpers"
+        "custom_components.ramses_extras.helpers":
+            "custom_components/ramses_extras/helpers",
     },
     install_requires=[
         "homeassistant==2025.10.1",

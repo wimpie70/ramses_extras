@@ -5,12 +5,12 @@ This module contains reusable helper functions used across all platform modules
 """
 
 import logging
-from typing import Dict, List, Set, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
-from homeassistant.helpers import entity_registry as er
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers import entity_registry as er
 
-from ..const import DOMAIN, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES
+from ..const import AVAILABLE_FEATURES, DEVICE_ENTITY_MAPPING, DOMAIN
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -18,7 +18,9 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-def get_enabled_features(hass: "HomeAssistant", config_entry: ConfigEntry) -> Dict[str, bool]:
+def get_enabled_features(
+    hass: "HomeAssistant", config_entry: ConfigEntry
+) -> Dict[str, bool]:
     """Get enabled features from config entry with fallback logic.
 
     Args:
@@ -62,7 +64,7 @@ def calculate_required_entities(
     platform: str,
     enabled_features: Dict[str, bool],
     fans: List[str],
-    device_type: str = "HvacVentilator"
+    device_type: str = "HvacVentilator",
 ) -> Set[str]:
     """Calculate which entities are required by the enabled features.
 
@@ -92,7 +94,10 @@ def calculate_required_entities(
 
             # Check if this device type is supported
             supported_types = feature_config.get("supported_device_types", [])
-            if not isinstance(supported_types, list) or device_type not in supported_types:
+            if (
+                not isinstance(supported_types, list)
+                or device_type not in supported_types
+            ):
                 continue
 
             # Add required entities for this platform
@@ -101,7 +106,9 @@ def calculate_required_entities(
                 entity_types = required_entities_dict.get(platform_key, [])
                 if isinstance(entity_types, list):
                     for entity_type in entity_types:
-                        if isinstance(entity_type, str) and entity_type in entity_mapping.get(platform_key, []):
+                        if isinstance(
+                            entity_type, str
+                        ) and entity_type in entity_mapping.get(platform_key, []):
                             required_entities.add(f"{platform}.{fan_id}_{entity_type}")
 
             # Add optional entities for this platform
@@ -110,7 +117,9 @@ def calculate_required_entities(
                 entity_types = optional_entities_dict.get(platform_key, [])
                 if isinstance(entity_types, list):
                     for entity_type in entity_types:
-                        if isinstance(entity_type, str) and entity_type in entity_mapping.get(platform_key, []):
+                        if isinstance(
+                            entity_type, str
+                        ) and entity_type in entity_mapping.get(platform_key, []):
                             required_entities.add(f"{platform}.{fan_id}_{entity_type}")
 
     return required_entities
@@ -125,7 +134,7 @@ def convert_fan_id_format(fan_id: str) -> str:
     Returns:
         Fan ID in format 32_153289
     """
-    return fan_id.replace(':', '_')
+    return fan_id.replace(":", "_")
 
 
 def find_orphaned_entities(
@@ -133,7 +142,7 @@ def find_orphaned_entities(
     hass: "HomeAssistant",
     fans: List[str],
     required_entities: Set[str],
-    all_possible_types: List[str]
+    all_possible_types: List[str],
 ) -> List[str]:
     """Find entities that should be removed (orphaned).
 
@@ -159,7 +168,7 @@ def find_orphaned_entities(
 
         # Extract device_id from entity_id
         # Format: {platform}.{name}_{fan_id} where fan_id is 32_153289
-        parts = entity_id.split('.')
+        parts = entity_id.split(".")
         if len(parts) >= 2:
             entity_name_and_fan = parts[1]  # name_fan_id
 
@@ -173,7 +182,9 @@ def find_orphaned_entities(
                         expected_entity_id = f"{platform}.{fan_id}_{entity_type}"
                         if expected_entity_id not in required_entities:
                             orphaned_entities.append(entity_id)
-                            _LOGGER.info(f"Will remove orphaned {platform}: {entity_id} (type: {entity_type})")
+                            _LOGGER.info(
+                                f"Will remove orphaned {platform}: {entity_id}"
+                            )
                             break
                     break
 
@@ -185,7 +196,7 @@ async def remove_orphaned_entities(
     hass: "HomeAssistant",
     fans: List[str],
     required_entities: Set[str],
-    all_possible_types: List[str]
+    all_possible_types: List[str],
 ) -> int:
     """Remove orphaned entities from the registry.
 
@@ -212,7 +223,9 @@ async def remove_orphaned_entities(
         _LOGGER.warning(f"No config entry available for {platform} cleanup")
         return 0
 
-    current_required_entities = calculate_required_entities(platform, get_enabled_features(hass, config_entry), fans, "HvacVentilator")
+    current_required_entities = calculate_required_entities(
+        platform, get_enabled_features(hass, config_entry), fans, "HvacVentilator"
+    )
     _LOGGER.info(f"Required {platform} entities: {current_required_entities}")
 
     entity_registry = get_entity_registry(hass)
@@ -223,11 +236,17 @@ async def remove_orphaned_entities(
     _LOGGER.info(f"Found {len(entity_registry.entities)} entities in registry")
 
     # Debug: Log all entities for this platform
-    platform_entities = [eid for eid in entity_registry.entities.keys() if eid.startswith(f"{platform}.")]
+    platform_entities = [
+        eid for eid in entity_registry.entities.keys() if eid.startswith(f"{platform}.")
+    ]
     _LOGGER.info(f"All {platform} entities in registry: {platform_entities}")
 
-    orphaned_entities = find_orphaned_entities(platform, hass, fans, current_required_entities, all_possible_types)
-    _LOGGER.info(f"Found {len(orphaned_entities)} orphaned {platform} entities to remove")
+    orphaned_entities = find_orphaned_entities(
+        platform, hass, fans, current_required_entities, all_possible_types
+    )
+    _LOGGER.info(
+        f"Found {len(orphaned_entities)} orphaned {platform} entities to remove"
+    )
 
     removed_count = 0
     for entity_id in orphaned_entities:

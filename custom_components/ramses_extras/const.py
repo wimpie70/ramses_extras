@@ -1,5 +1,6 @@
-from homeassistant.helpers.entity import EntityCategory
 from pathlib import Path
+
+from homeassistant.helpers.entity import EntityCategory
 
 # Get the integration directory
 INTEGRATION_DIR = Path(__file__).parent
@@ -14,7 +15,9 @@ WS_CMD_GET_BOUND_REM = f"{DOMAIN}/get_bound_rem"
 # Configuration constants
 CONF_NAME = "name"
 CONF_ENABLED_FEATURES = "enabled_features"
-DESCRIPTION_PLACEHOLDER_INFO = "Ramses Extras provides additional functionality on top of Ramses RF."
+DESCRIPTION_PLACEHOLDER_INFO = (
+    "Ramses Extras provides additional functionality on top of Ramses RF."
+)
 CARD_FOLDER = "www"
 
 SENSOR_TYPES = {
@@ -92,7 +95,7 @@ AVAILABLE_FEATURES = {
         "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {
-            "sensors": ["indoor_abs_humid","outdoor_abs_humid"],
+            "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
             "switches": ["dehumidify"],
             "booleans": ["dehumidifying"],
         },

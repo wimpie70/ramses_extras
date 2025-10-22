@@ -2,13 +2,18 @@ import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN, ENTITY_TYPE_CONFIGS, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES
+from .const import (
+    AVAILABLE_FEATURES,
+    DEVICE_ENTITY_MAPPING,
+    DOMAIN,
+    ENTITY_TYPE_CONFIGS,
+)
 from .helpers.platform import (
-    get_enabled_features,
     calculate_required_entities,
+    get_enabled_features,
     remove_orphaned_entities,
 )
 
@@ -19,16 +24,19 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[ConfigEntry], async_add_entities: "AddEntitiesCallback") -> None:
+async def async_setup_entry(
+    hass: "HomeAssistant",
+    config_entry: Optional[ConfigEntry],
+    async_add_entities: "AddEntitiesCallback",
+) -> None:
     """Set up the sensor platform."""
-    _LOGGER.info(f"Setting up sensor platform for {len(hass.data.get(DOMAIN, {}).get('fans', []))} fans")
+    fans = hass.data.get(DOMAIN, {}).get("fans", [])
+    _LOGGER.info(f"Setting up sensor platform for {len(fans)} fans")
 
-    # Check if config entry is available (it might not be during initial load)
     if not config_entry:
         _LOGGER.warning("Config entry not available, skipping sensor setup")
         return
 
-    fans = hass.data.get(DOMAIN, {}).get("fans", [])
     if not fans:
         _LOGGER.debug("No fans available for sensors")
         return
@@ -62,7 +70,10 @@ async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[Config
 
                     feature_config = AVAILABLE_FEATURES[feature_key]
                     supported_types = feature_config.get("supported_device_types", [])
-                    if isinstance(supported_types, list) and device_type in supported_types:
+                    if (
+                        isinstance(supported_types, list)
+                        and device_type in supported_types
+                    ):
 
                         # Check if this sensor is required or optional for this feature
                         required_entities = feature_config.get("required_entities", {})
@@ -78,15 +89,22 @@ async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[Config
                         else:
                             optional_sensors = []
 
-                        if (isinstance(required_sensors, list) and sensor_type in required_sensors) or \
-                           (isinstance(optional_sensors, list) and sensor_type in optional_sensors):
+                        if (
+                            isinstance(required_sensors, list)
+                            and sensor_type in required_sensors
+                        ) or (
+                            isinstance(optional_sensors, list)
+                            and sensor_type in optional_sensors
+                        ):
                             is_needed = True
                             break
 
                 if is_needed:
                     # Entity is needed - create it
                     config = ENTITY_TYPE_CONFIGS["sensor"][sensor_type]
-                    sensors.append(RamsesExtraHumiditySensor(hass, fan_id, sensor_type, config))
+                    sensors.append(
+                        RamsesExtraHumiditySensor(hass, fan_id, sensor_type, config)
+                    )
                     _LOGGER.debug(f"Creating sensor: sensor.{fan_id}_{sensor_type}")
 
     # Remove orphaned entities (defer to after entity creation)
@@ -101,7 +119,13 @@ async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[Config
                     all_possible_sensors = entity_mapping.get("sensors", [])
                     break
 
-            await remove_orphaned_entities("sensor", hass, fans, calculate_required_entities("sensor", enabled_features, fans), all_possible_sensors)
+            await remove_orphaned_entities(
+                "sensor",
+                hass,
+                fans,
+                calculate_required_entities("sensor", enabled_features, fans),
+                all_possible_sensors,
+            )
         except Exception as e:
             _LOGGER.warning(f"Error during sensor entity cleanup: {e}")
 
@@ -114,7 +138,13 @@ async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[Config
 class RamsesExtraHumiditySensor(SensorEntity):
     """Extra sensor for absolute humidity."""
 
-    def __init__(self, hass: "HomeAssistant", fan_id: str, sensor_type: str, config: Dict[str, Any]):
+    def __init__(
+        self,
+        hass: "HomeAssistant",
+        fan_id: str,
+        sensor_type: str,
+        config: Dict[str, Any],
+    ):
         self.hass = hass
         self._fan_id = fan_id  # Store device ID as string
         self._sensor_type = sensor_type
@@ -122,14 +152,15 @@ class RamsesExtraHumiditySensor(SensorEntity):
 
         # Set attributes from configuration
         self._attr_name = f"{config['name_template']} ({fan_id})"
-        self._attr_unique_id = f"{fan_id}_{sensor_type}"  # Format: 32:153289_indoor_abs_humid
-        self._attr_entity_category = config['entity_category']
-        self._attr_icon = config['icon']
-        self._attr_native_unit_of_measurement = config['unit']
-        self._attr_device_class = config['device_class']
+        self._attr_unique_id = (
+            f"{fan_id}_{sensor_type}"  # Format: 32:153289_indoor_abs_humid
+        )
+        self._attr_entity_category = config["entity_category"]
+        self._attr_icon = config["icon"]
+        self._attr_native_unit_of_measurement = config["unit"]
+        self._attr_device_class = config["device_class"]
 
         self._unsub: Optional[Callable[[], None]] = None
-
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
@@ -169,11 +200,14 @@ class RamsesExtraHumiditySensor(SensorEntity):
             # Placeholder: would get from outdoor sensor
             return 15.0, 60.0  # temp, rh
 
-    def _calculate_abs_humidity(self, temp: Optional[float], rh: Optional[float]) -> Optional[float]:
+    def _calculate_abs_humidity(
+        self, temp: Optional[float], rh: Optional[float]
+    ) -> Optional[float]:
         """Calculate absolute humidity using proper formula."""
         if temp is None or rh is None:
             return None
-        # Absolute humidity formula: AH = (RH/100) * 6.112 * exp((17.62*T)/(243.12+T)) / (273.15+T) * 2.167
+        # Absolute humidity formula: AH = (RH/100) * 6.112 * exp((17.62*T)/(243.12+T))
+        # / (273.15+T) * 2.167
         # Where T is temperature in Celsius, RH is relative humidity in %
         saturation_pressure = 6.112 * (2.71828 ** ((17.62 * temp) / (243.12 + temp)))
         actual_pressure = (rh / 100.0) * saturation_pressure

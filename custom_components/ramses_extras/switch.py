@@ -2,13 +2,18 @@ import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN, ENTITY_TYPE_CONFIGS, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES
+from .const import (
+    AVAILABLE_FEATURES,
+    DEVICE_ENTITY_MAPPING,
+    DOMAIN,
+    ENTITY_TYPE_CONFIGS,
+)
 from .helpers.platform import (
-    get_enabled_features,
     calculate_required_entities,
+    get_enabled_features,
     remove_orphaned_entities,
 )
 
@@ -19,16 +24,19 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[ConfigEntry], async_add_entities: "AddEntitiesCallback") -> None:
+async def async_setup_entry(
+    hass: "HomeAssistant",
+    config_entry: Optional[ConfigEntry],
+    async_add_entities: "AddEntitiesCallback",
+) -> None:
     """Set up the switch platform."""
-    _LOGGER.info(f"Setting up switch platform for {len(hass.data.get(DOMAIN, {}).get('fans', []))} fans")
+    fans = hass.data.get(DOMAIN, {}).get("fans", [])
+    _LOGGER.info(f"Setting up switch platform for {len(fans)} fans")
 
-    # Check if config entry is available (it might not be during initial load)
     if not config_entry:
         _LOGGER.warning("Config entry not available, skipping switch setup")
         return
 
-    fans = hass.data.get(DOMAIN, {}).get("fans", [])
     if not fans:
         _LOGGER.debug("No fans available for switches")
         return
@@ -62,7 +70,10 @@ async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[Config
 
                     feature_config = AVAILABLE_FEATURES[feature_key]
                     supported_types = feature_config.get("supported_device_types", [])
-                    if isinstance(supported_types, list) and device_type in supported_types:
+                    if (
+                        isinstance(supported_types, list)
+                        and device_type in supported_types
+                    ):
 
                         # Check if this switch is required or optional for this feature
                         required_entities = feature_config.get("required_entities", {})
@@ -78,15 +89,22 @@ async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[Config
                         else:
                             optional_switches = []
 
-                        if (isinstance(required_switches, list) and switch_type in required_switches) or \
-                           (isinstance(optional_switches, list) and switch_type in optional_switches):
+                        if (
+                            isinstance(required_switches, list)
+                            and switch_type in required_switches
+                        ) or (
+                            isinstance(optional_switches, list)
+                            and switch_type in optional_switches
+                        ):
                             is_needed = True
                             break
 
                 if is_needed:
                     # Entity is needed - create it
                     config = ENTITY_TYPE_CONFIGS["switch"][switch_type]
-                    switches.append(RamsesDehumidifySwitch(hass, fan_id, switch_type, config))
+                    switches.append(
+                        RamsesDehumidifySwitch(hass, fan_id, switch_type, config)
+                    )
                     _LOGGER.debug(f"Creating switch: switch.{fan_id}_{switch_type}")
 
     # Remove orphaned entities (defer to after entity creation)
@@ -101,7 +119,13 @@ async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[Config
                     all_possible_switches = entity_mapping.get("switches", [])
                     break
 
-            await remove_orphaned_entities("switch", hass, fans, calculate_required_entities("switch", enabled_features, fans), all_possible_switches)
+            await remove_orphaned_entities(
+                "switch",
+                hass,
+                fans,
+                calculate_required_entities("switch", enabled_features, fans),
+                all_possible_switches,
+            )
         except Exception as e:
             _LOGGER.warning(f"Error during switch entity cleanup: {e}")
 
@@ -114,7 +138,13 @@ async def async_setup_entry(hass: "HomeAssistant", config_entry: Optional[Config
 class RamsesDehumidifySwitch(SwitchEntity):
     """Switch to toggle dehumidify mode."""
 
-    def __init__(self, hass: "HomeAssistant", fan_id: str, switch_type: str, config: Dict[str, Any]):
+    def __init__(
+        self,
+        hass: "HomeAssistant",
+        fan_id: str,
+        switch_type: str,
+        config: Dict[str, Any],
+    ):
         self.hass = hass
         self._fan_id = fan_id  # Store device ID as string
         self._switch_type = switch_type
@@ -123,8 +153,8 @@ class RamsesDehumidifySwitch(SwitchEntity):
         # Set attributes from configuration
         self._attr_name = f"{config['name_template']} ({fan_id})"
         self._attr_unique_id = f"{fan_id}_dehumidify"
-        self._attr_icon = config['icon']
-        self._attr_entity_category = config['entity_category']
+        self._attr_icon = config["icon"]
+        self._attr_entity_category = config["entity_category"]
 
         self._is_on = False
         self._unsub: Optional[Callable[[], None]] = None
