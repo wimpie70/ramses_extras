@@ -1,0 +1,233 @@
+"""Helper functions for Ramses Extras platforms.
+
+This module contains reusable helper functions used across all platform modules
+(sensor, switch, binary_sensor) to avoid code duplication and improve maintainability.
+"""
+
+import logging
+from typing import Dict, List, Set, Optional, TYPE_CHECKING
+
+from homeassistant.helpers import entity_registry as er
+from homeassistant.config_entries import ConfigEntry
+
+from ..const import DOMAIN, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def get_enabled_features(hass: "HomeAssistant", config_entry: ConfigEntry) -> Dict[str, bool]:
+    """Get enabled features from config entry with fallback logic.
+
+    Args:
+        hass: Home Assistant instance
+        config_entry: Config entry object
+
+    Returns:
+        Dictionary of enabled features
+    """
+    # Get enabled features from config entry
+    enabled_features = config_entry.data.get("enabled_features", {})
+
+    # Fallback: try to get from hass.data if config_entry doesn't have it
+    if not enabled_features and DOMAIN in hass.data:
+        entry_id = hass.data[DOMAIN].get("entry_id")
+        if entry_id:
+            entry = hass.config_entries.async_get_entry(entry_id)
+            if entry:
+                enabled_features = entry.data.get("enabled_features", {})
+
+    return enabled_features
+
+
+def get_entity_registry(hass: "HomeAssistant") -> Optional[er.EntityRegistry]:
+    """Get entity registry with error handling.
+
+    Args:
+        hass: Home Assistant instance
+
+    Returns:
+        Entity registry or None if not available
+    """
+    if "entity_registry" not in hass.data:
+        _LOGGER.warning("Entity registry not available")
+        return None
+
+    return hass.data["entity_registry"]
+
+
+def calculate_required_entities(
+    platform: str,
+    enabled_features: Dict[str, bool],
+    fans: List[str],
+    device_type: str = "HvacVentilator"
+) -> Set[str]:
+    """Calculate which entities are required by the enabled features.
+
+    Args:
+        platform: Platform type ('sensor', 'switch', 'binary_sensor')
+        enabled_features: Dictionary of enabled features
+        fans: List of fan device IDs
+        device_type: Device type to check
+
+    Returns:
+        Set of required entity IDs
+    """
+    required_entities = set()
+
+    if device_type not in DEVICE_ENTITY_MAPPING:
+        return required_entities
+
+    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+    platform_key = f"{platform}s"  # Convert 'sensor' -> 'sensors', etc.
+
+    for fan_id in fans:
+        for feature_key, is_enabled in enabled_features.items():
+            if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                continue
+
+            feature_config = AVAILABLE_FEATURES[feature_key]
+
+            if device_type not in feature_config.get("supported_device_types", []):
+                continue
+
+            # Add required entities for this platform
+            entity_types = feature_config.get("required_entities", {}).get(platform_key, [])
+            for entity_type in entity_types:
+                if entity_type in entity_mapping.get(platform_key, []):
+                    required_entities.add(f"{platform}.{fan_id}_{entity_type}")
+
+            # Add optional entities for this platform
+            entity_types = feature_config.get("optional_entities", {}).get(platform_key, [])
+            for entity_type in entity_types:
+                if entity_type in entity_mapping.get(platform_key, []):
+                    required_entities.add(f"{platform}.{fan_id}_{entity_type}")
+
+    return required_entities
+
+
+def convert_fan_id_format(fan_id: str) -> str:
+    """Convert fan ID from colon format to underscore format.
+
+    Args:
+        fan_id: Fan ID in format 32:153289
+
+    Returns:
+        Fan ID in format 32_153289
+    """
+    return fan_id.replace(':', '_')
+
+
+def find_orphaned_entities(
+    platform: str,
+    hass: "HomeAssistant",
+    fans: List[str],
+    required_entities: Set[str],
+    all_possible_types: List[str]
+) -> List[str]:
+    """Find entities that should be removed (orphaned).
+
+    Args:
+        platform: Platform type ('sensor', 'switch', 'binary_sensor')
+        hass: Home Assistant instance
+        fans: List of fan device IDs
+        required_entities: Set of currently required entity IDs
+        all_possible_types: List of all possible entity types for this platform
+
+    Returns:
+        List of orphaned entity IDs to remove
+    """
+    entity_registry = get_entity_registry(hass)
+    if not entity_registry:
+        return []
+
+    orphaned_entities = []
+
+    for entity_id, entity_entry in entity_registry.entities.items():
+        if not entity_id.startswith(f"{platform}."):
+            continue
+
+        # Extract device_id from entity_id
+        # Format: {platform}.{name}_{fan_id} where fan_id is 32_153289
+        parts = entity_id.split('.')
+        if len(parts) >= 2:
+            entity_name_and_fan = parts[1]  # name_fan_id
+
+            # Check if this entity belongs to one of our devices
+            for fan_id in fans:
+                fan_id_underscore = convert_fan_id_format(fan_id)
+                if fan_id_underscore in entity_name_and_fan:
+                    # This entity belongs to our device, check if it's still needed
+                    for entity_type in all_possible_types:
+                        # Check if this entity_type is still required
+                        expected_entity_id = f"{platform}.{fan_id}_{entity_type}"
+                        if expected_entity_id not in required_entities:
+                            orphaned_entities.append(entity_id)
+                            _LOGGER.info(f"Will remove orphaned {platform}: {entity_id} (type: {entity_type})")
+                            break
+                    break
+
+    return orphaned_entities
+
+
+async def remove_orphaned_entities(
+    platform: str,
+    hass: "HomeAssistant",
+    fans: List[str],
+    required_entities: Set[str],
+    all_possible_types: List[str]
+) -> int:
+    """Remove orphaned entities from the registry.
+
+    Args:
+        platform: Platform type ('sensor', 'switch', 'binary_sensor')
+        hass: Home Assistant instance
+        fans: List of fan device IDs
+        required_entities: Set of currently required entity IDs
+        all_possible_types: List of all possible entity types for this platform
+
+    Returns:
+        Number of entities removed
+    """
+    _LOGGER.info(f"Starting {platform} cleanup for fans: {fans}")
+    _LOGGER.info(f"Entity registry available: {get_entity_registry(hass) is not None}")
+
+    # Get the current config entry properly
+    config_entry = None
+    if DOMAIN in hass.data and "entry_id" in hass.data[DOMAIN]:
+        entry_id = hass.data[DOMAIN]["entry_id"]
+        config_entry = hass.config_entries.async_get_entry(entry_id)
+
+    if config_entry is None:
+        _LOGGER.warning(f"No config entry available for {platform} cleanup")
+        return 0
+
+    current_required_entities = calculate_required_entities(platform, get_enabled_features(hass, config_entry), fans)
+    _LOGGER.info(f"Required {platform} entities: {current_required_entities}")
+
+    entity_registry = get_entity_registry(hass)
+    if not entity_registry:
+        _LOGGER.warning(f"Entity registry not available for {platform} cleanup")
+        return 0
+
+    _LOGGER.info(f"Found {len(entity_registry.entities)} entities in registry")
+
+    # Debug: Log all entities for this platform
+    platform_entities = [eid for eid in entity_registry.entities.keys() if eid.startswith(f"{platform}.")]
+    _LOGGER.info(f"All {platform} entities in registry: {platform_entities}")
+
+    orphaned_entities = find_orphaned_entities(platform, hass, fans, current_required_entities, all_possible_types)
+    _LOGGER.info(f"Found {len(orphaned_entities)} orphaned {platform} entities to remove")
+
+    removed_count = 0
+    for entity_id in orphaned_entities:
+        try:
+            entity_registry.async_remove(entity_id)
+            _LOGGER.info(f"Removed orphaned {platform} entity: {entity_id}")
+            removed_count += 1
+        except Exception as e:
+            _LOGGER.warning(f"Failed to remove {platform} entity {entity_id}: {e}")
+
+    return removed_count

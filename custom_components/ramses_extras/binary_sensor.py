@@ -1,13 +1,20 @@
 import logging
+from typing import TYPE_CHECKING, Any, Dict
+
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.config_entries import ConfigEntry
 
 from .const import DOMAIN, BOOLEAN_CONFIGS, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+async def async_setup_entry(hass: "HomeAssistant", config_entry: ConfigEntry, async_add_entities: "AddEntitiesCallback") -> None:
     """Set up the binary sensor platform."""
     _LOGGER.info(f"Setting up binary_sensor platform for {len(hass.data.get(DOMAIN, {}).get('fans', []))} fans")
 
@@ -177,7 +184,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class RamsesBinarySensor(BinarySensorEntity):
     """Binary sensor for Ramses device states."""
 
-    def __init__(self, hass, fan_id: str, boolean_type: str, config: dict):
+    def __init__(self, hass: "HomeAssistant", fan_id: str, boolean_type: str, config: Dict[str, Any]):
         self.hass = hass
         self._fan_id = fan_id  # Store device ID as string
         self._boolean_type = boolean_type

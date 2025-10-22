@@ -1,6 +1,8 @@
 import logging
 import shutil
 from pathlib import Path
+from typing import Dict, TYPE_CHECKING
+
 from homeassistant import config_entries
 from homeassistant.helpers import selector
 import voluptuous as vol
@@ -8,10 +10,13 @@ import voluptuous as vol
 from .const import DOMAIN, AVAILABLE_FEATURES, GITHUB_WIKI_URL, INTEGRATION_DIR, CARD_FOLDER
 from . import const
 
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
 _LOGGER = logging.getLogger(__name__)
 
 
-async def _manage_cards_config_flow(hass, enabled_features):
+async def _manage_cards_config_flow(hass: "HomeAssistant", enabled_features: Dict[str, bool]) -> None:
     """Install or remove custom cards based on enabled features (for config flow)."""
     www_community_path = Path(hass.config.path("www", "community"))
 
@@ -34,7 +39,7 @@ async def _manage_cards_config_flow(hass, enabled_features):
                 await _remove_card_config_flow(hass, card_dest_path)
 
 
-async def _install_card_config_flow(hass, source_path, dest_path):
+async def _install_card_config_flow(hass: "HomeAssistant", source_path: Path, dest_path: Path) -> None:
     """Install a custom card by copying files (for config flow)."""
     try:
         if source_path.exists():
@@ -51,7 +56,7 @@ async def _install_card_config_flow(hass, source_path, dest_path):
         _LOGGER.error(f"Failed to install card: {e}")
 
 
-def _copy_card_files_config_flow(source_path, dest_path):
+def _copy_card_files_config_flow(source_path: Path, dest_path: Path) -> None:
     """Copy card files from source to destination (runs in executor)."""
     for file_path in source_path.rglob("*"):
         if file_path.is_file():
@@ -65,7 +70,7 @@ def _copy_card_files_config_flow(source_path, dest_path):
             shutil.copy2(file_path, dest_file_path)
 
 
-async def _remove_card_config_flow(hass, card_path):
+async def _remove_card_config_flow(hass: "HomeAssistant", card_path: Path) -> None:
     """Remove a custom card (for config flow)."""
     try:
         if card_path.exists():

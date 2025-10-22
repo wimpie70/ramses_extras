@@ -1,45 +1,26 @@
 import logging
+from typing import Dict, List, Set, TYPE_CHECKING, Any
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import DOMAIN, ENTITY_TYPE_CONFIGS, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES
+from .helpers.platform import (
+    get_enabled_features,
+    get_entity_registry,
+    calculate_required_entities,
+    find_orphaned_entities,
+    remove_orphaned_entities,
+)
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def _get_required_entities_for_features(enabled_features, fans):
-    """Calculate which entities are required by the enabled features."""
-    required_entities = set()
-
-    for fan_id in fans:
-        device_type = "HvacVentilator"  # In real implementation, look this up
-
-        if device_type in DEVICE_ENTITY_MAPPING:
-            entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-
-            for feature_key, is_enabled in enabled_features.items():
-                if not is_enabled or feature_key not in AVAILABLE_FEATURES:
-                    continue
-
-                feature_config = AVAILABLE_FEATURES[feature_key]
-
-                if device_type not in feature_config.get("supported_device_types", []):
-                    continue
-
-                # Add required sensor entities
-                for sensor_type in feature_config.get("required_entities", {}).get("sensors", []):
-                    if sensor_type in entity_mapping.get("sensors", []):
-                        required_entities.add(f"sensor.{fan_id}_{sensor_type}")
-
-                # Add optional sensor entities
-                for sensor_type in feature_config.get("optional_entities", {}).get("sensors", []):
-                    if sensor_type in entity_mapping.get("sensors", []):
-                        required_entities.add(f"sensor.{fan_id}_{sensor_type}")
-
-    return required_entities
-
-
-async def async_setup_entry(hass, config_entry, async_add_entities):
+async def async_setup_entry(hass: "HomeAssistant", config_entry, async_add_entities: "AddEntitiesCallback") -> None:
     """Set up the sensor platform."""
     _LOGGER.info(f"Setting up sensor platform for {len(hass.data.get(DOMAIN, {}).get('fans', []))} fans")
 
@@ -190,7 +171,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class RamsesExtraHumiditySensor(SensorEntity):
     """Extra sensor for absolute humidity."""
 
-    def __init__(self, hass, fan_id: str, sensor_type: str, config: dict):
+    def __init__(self, hass: "HomeAssistant", fan_id: str, sensor_type: str, config: Dict[str, Any]):
         self.hass = hass
         self._fan_id = fan_id  # Store device ID as string
         self._sensor_type = sensor_type

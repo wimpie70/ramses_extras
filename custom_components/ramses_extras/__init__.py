@@ -143,7 +143,7 @@ async def _remove_card(hass: HomeAssistant, card_path: Path):
         _LOGGER.error(f"Failed to remove card: {e}")
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up entry for Ramses Extras."""
     _LOGGER.debug("Setting up entry for Ramses Extras")
 
@@ -167,7 +167,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload Ramses Extras entry."""
     _LOGGER.debug("Unloading Ramses Extras entry")
 

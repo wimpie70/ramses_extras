@@ -1,0 +1,18 @@
+# Core dependencies
+homeassistant==2025.10.1
+
+# Development dependencies
+pytest==8.3.3
+pytest-asyncio==0.24.0
+mypy==1.11.2
+black==24.8.0
+isort==5.13.2
+flake8==7.1.1
+pre-commit==3.8.0
+
+# Type hints and development tools (compatible with HA 2025.10.1)
+typing-extensions>=4.15.0
+
+# Additional testing tools
+pytest-cov==5.0.0
+pytest-mock==3.14.0
