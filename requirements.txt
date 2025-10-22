@@ -12,5 +12,5 @@ pre-commit==3.8.0
 typing-extensions>=4.15.0
 
 # Additional testing tools
-pytest-cov==5.0.0
+pytest-cov==7.0.0
 pytest-mock==3.14.0
