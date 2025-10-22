@@ -4,7 +4,7 @@ homeassistant==2025.10.1
 # Development dependencies
 pytest==8.3.3
 pytest-asyncio==0.24.0
-mypy==1.11.2
+mypy==1.18.2
 ruff==0.6.9
 pre-commit==3.8.0
 
