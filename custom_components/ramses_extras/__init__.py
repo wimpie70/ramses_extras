@@ -8,7 +8,9 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.components.http import StaticPathConfig
 
 from .const import DOMAIN, DEVICE_ENTITY_MAPPING, AVAILABLE_FEATURES, INTEGRATION_DIR, CARD_FOLDER
-from . import config_flow  # noqa: F401
+
+# Register platforms
+PLATFORMS = ["sensor", "switch", "binary_sensor"]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -156,8 +158,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     # Install/remove cards based on enabled features
     await _manage_cards(hass, entry.data.get("enabled_features", {}))
 
-    # Initialize the platforms
+    # Discover devices first
     await async_setup_platforms(hass)
+
+    # Load platforms for this config entry
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
@@ -211,23 +216,7 @@ async def async_setup_platforms(hass: HomeAssistant):
 
             if device_ids:
                 _LOGGER.info("Found %d Ramses devices: %s", len(device_ids), device_ids)
-
                 hass.data.setdefault(DOMAIN, {})["fans"] = device_ids
-
-                if not hass.data[DOMAIN].get("platforms_loaded"):
-                    # Load platforms using proper Home Assistant platform loading
-                    _LOGGER.info("Loading sensor and switch platforms...")
-
-                    # Get the entry for this integration
-                    entry = hass.config_entries.async_get_entry(hass.data[DOMAIN]["entry_id"])
-
-                    # Load platforms properly
-                    await hass.config_entries.async_forward_entry_setups(
-                        entry, ["sensor", "switch", "binary_sensor"]
-                    )
-
-                    hass.data[DOMAIN]["platforms_loaded"] = True
-                    _LOGGER.info("Platforms loaded successfully")
                 return
             else:
                 _LOGGER.info("No Ramses devices found in entity registry")

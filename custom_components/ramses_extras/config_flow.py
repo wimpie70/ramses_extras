@@ -5,7 +5,7 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 import voluptuous as vol
 
-from .const import DOMAIN, AVAILABLE_FEATURES, GITHUB_WIKI_URL, INTEGRATION_DIR
+from .const import DOMAIN, AVAILABLE_FEATURES, GITHUB_WIKI_URL, INTEGRATION_DIR, CARD_FOLDER
 from . import const
 
 _LOGGER = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ async def _manage_cards_config_flow(hass, enabled_features):
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if feature_config.get("category") == "cards":
             # Use the same path resolution as the rest of the code
-            card_source_path = INTEGRATION_DIR / feature_config.get("location", "")
+            card_source_path = INTEGRATION_DIR / CARD_FOLDER / feature_config.get("location", "")
             card_dest_path = www_community_path / feature_key
 
             if enabled_features.get(feature_key, False):
