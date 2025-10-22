@@ -125,49 +125,61 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities():
         try:
+            _LOGGER.info(f"Starting sensor cleanup for fans: {fans}")
+            _LOGGER.info(f"Entity registry available: {'entity_registry' in hass.data}")
+
+            # Calculate which entities are currently required (inside cleanup function)
+            current_required_entities = await _get_required_entities_for_features(enabled_features, fans)
+            _LOGGER.info(f"Required entities: {current_required_entities}")
+
             if "entity_registry" in hass.data:
                 entity_registry = hass.data["entity_registry"]
-                # Calculate which entities are currently required
-                required_entities = await _get_required_entities_for_features(enabled_features, fans)
+                _LOGGER.info(f"Found {len(entity_registry.entities)} entities in registry")
+
+                # Debug: Log all sensor entities for our devices
+                sensor_entities = [eid for eid in entity_registry.entities.keys() if eid.startswith("sensor.")]
+                _LOGGER.info(f"All sensor entities in registry: {sensor_entities}")
 
                 # Find entities that should be removed (orphaned)
                 entities_to_remove = []
-                domain_prefix = f"{DOMAIN}."
 
                 for entity_id, entity_entry in entity_registry.entities.items():
-                    if not entity_id.startswith(domain_prefix):
+                    if not entity_id.startswith("sensor."):
                         continue
 
-                    # Extract device_id and entity type from entity_id
-                    # Format: ramses_extras.32_153289_indoor_temp
+                    # Extract device_id from entity_id
+                    # Format: sensor.{name}_{fan_id} where fan_id is 32_153289
                     parts = entity_id.split('.')
-                    if len(parts) >= 3:
-                        device_entity_part = parts[1]  # 32_153289_indoor_temp
+                    if len(parts) >= 2:
+                        entity_name_and_fan = parts[1]  # name_fan_id
 
-                        # Convert device_id format: 32_153289 -> 32:153289
-                        device_id_underscore = device_entity_part.split('_')[0]  # 32_153289
-                        device_id_colon = device_id_underscore.replace('_', ':')  # 32:153289
+                        # Check if this entity belongs to one of our devices
+                        for fan_id in fans:
+                            # Convert fan_id to underscore format: 32:153289 -> 32_153289
+                            fan_id_underscore = fan_id.replace(':', '_')
+                            if fan_id_underscore in entity_name_and_fan:
+                                # This entity belongs to our device, check if it's still needed
+                                for sensor_type in all_possible_sensors:
+                                    # Check if this sensor_type is still required
+                                    if f"sensor.{fan_id}_{sensor_type}" not in current_required_entities:
+                                        entities_to_remove.append(entity_id)
+                                        _LOGGER.info(f"Will remove orphaned sensor: {entity_id} (type: {sensor_type})")
+                                        break
+                                break
 
-                        # Check if this entity is still needed
-                        if device_id_colon in fans:
-                            entity_type = '_'.join(device_entity_part.split('_')[1:])  # indoor_temp
-
-                            # Build expected entity ID
-                            expected_entity_id = f"sensor.{device_id_underscore}_{entity_type}"
-
-                            if expected_entity_id not in required_entities:
-                                entities_to_remove.append(entity_id)
-                                _LOGGER.info(f"Will remove orphaned entity: {entity_id}")
+                _LOGGER.info(f"Found {len(entities_to_remove)} orphaned sensor entities to remove")
 
                 # Remove orphaned entities
                 for entity_id in entities_to_remove:
                     try:
                         entity_registry.async_remove(entity_id)
-                        _LOGGER.info(f"Removed orphaned entity: {entity_id}")
+                        _LOGGER.info(f"Removed orphaned sensor entity: {entity_id}")
                     except Exception as e:
-                        _LOGGER.warning(f"Failed to remove entity {entity_id}: {e}")
+                        _LOGGER.warning(f"Failed to remove sensor entity {entity_id}: {e}")
+            else:
+                _LOGGER.warning("Entity registry not available for sensor cleanup")
         except Exception as e:
-            _LOGGER.warning(f"Error during entity cleanup: {e}")
+            _LOGGER.warning(f"Error during sensor entity cleanup: {e}")
 
     # Schedule cleanup after entity creation
     hass.async_create_task(cleanup_orphaned_entities())

@@ -22,6 +22,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     switches = []
     entities_to_remove = set()
+    required_entities = []  # Track which entities are actually needed
+    all_possible_switches = []  # Track all possible switch types
 
     # Get enabled features from config entry
     enabled_features = config_entry.data.get("enabled_features", {})
@@ -52,10 +54,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
 
             # Get all possible switch types for this device
-            all_possible_switches = entity_mapping.get("switches", [])
+            current_switches = entity_mapping.get("switches", [])
+            all_possible_switches.extend(current_switches)
 
             # Check each possible switch type
-            for switch_type in all_possible_switches:
+            for switch_type in current_switches:
                 if switch_type not in ENTITY_TYPE_CONFIGS["switch"]:
                     continue
 
@@ -73,6 +76,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     if (switch_type in feature_config.get("required_entities", {}).get("switches", []) or
                         switch_type in feature_config.get("optional_entities", {}).get("switches", [])):
                         is_needed = True
+                        required_entities.append(f"switch.{fan_id}_{switch_type}")
                         break
 
                 # Build entity ID for this switch (format: switch.{unique_id})
@@ -89,13 +93,84 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                         entities_to_remove.add(entity_id)
                         _LOGGER.debug(f"Will remove unneeded switch: {entity_id}")
 
-    # Remove orphaned entities
-    for entity_id in entities_to_remove:
+    # Remove orphaned entities (defer to after entity creation)
+    async def cleanup_orphaned_entities():
         try:
-            entity_registry.async_remove(entity_id)
-            _LOGGER.info(f"Removed orphaned switch entity: {entity_id}")
+            _LOGGER.info(f"Starting switch cleanup for fans: {fans}")
+            _LOGGER.info(f"Entity registry available: {'entity_registry' in hass.data}")
+
+            # Calculate which entities are currently required (inside cleanup function)
+            current_required_entities = []
+            device_type = "HvacVentilator"  # Define device type for cleanup
+            for fan_id in fans:
+                for feature_key, is_enabled in enabled_features.items():
+                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                        continue
+
+                    feature_config = AVAILABLE_FEATURES[feature_key]
+                    if device_type not in feature_config.get("supported_device_types", []):
+                        continue
+
+                    # Check if this switch is required or optional for this feature
+                    for switch_type in all_possible_switches:
+                        if (switch_type in feature_config.get("required_entities", {}).get("switches", []) or
+                            switch_type in feature_config.get("optional_entities", {}).get("switches", [])):
+                            current_required_entities.append(f"switch.{fan_id}_{switch_type}")
+                            break
+
+            _LOGGER.info(f"Required switch entities: {current_required_entities}")
+
+            if "entity_registry" in hass.data:
+                entity_registry = hass.data["entity_registry"]
+                _LOGGER.info(f"Found {len(entity_registry.entities)} entities in registry")
+
+                # Debug: Log all switch entities for our devices
+                switch_entities = [eid for eid in entity_registry.entities.keys() if eid.startswith("switch.")]
+                _LOGGER.info(f"All switch entities in registry: {switch_entities}")
+
+                # Find entities that should be removed (orphaned)
+                entities_to_remove = []
+
+                for entity_id, entity_entry in entity_registry.entities.items():
+                    if not entity_id.startswith("switch."):
+                        continue
+
+                    # Extract device_id from entity_id
+                    # Format: switch.{name}_{fan_id} where fan_id is 32_153289
+                    parts = entity_id.split('.')
+                    if len(parts) >= 2:
+                        entity_name_and_fan = parts[1]  # name_fan_id
+
+                        # Check if this entity belongs to one of our devices
+                        for fan_id in fans:
+                            # Convert fan_id to underscore format: 32:153289 -> 32_153289
+                            fan_id_underscore = fan_id.replace(':', '_')
+                            if fan_id_underscore in entity_name_and_fan:
+                                # This entity belongs to our device, check if it's still needed
+                                for switch_type in all_possible_switches:
+                                    # Check if this switch_type is still required
+                                    if f"switch.{fan_id}_{switch_type}" not in current_required_entities:
+                                        entities_to_remove.append(entity_id)
+                                        _LOGGER.info(f"Will remove orphaned switch: {entity_id} (type: {switch_type})")
+                                        break
+                                break
+
+                _LOGGER.info(f"Found {len(entities_to_remove)} orphaned switch entities to remove")
+
+                # Remove orphaned entities
+                for entity_id in entities_to_remove:
+                    try:
+                        entity_registry.async_remove(entity_id)
+                        _LOGGER.info(f"Removed orphaned switch entity: {entity_id}")
+                    except Exception as e:
+                        _LOGGER.warning(f"Failed to remove switch entity {entity_id}: {e}")
+            else:
+                _LOGGER.warning("Entity registry not available for switch cleanup")
         except Exception as e:
-            _LOGGER.warning(f"Failed to remove switch entity {entity_id}: {e}")
+            _LOGGER.warning(f"Error during switch entity cleanup: {e}")
+
+    # Schedule cleanup after entity creation
+    hass.async_create_task(cleanup_orphaned_entities())
 
     async_add_entities(switches, True)
 

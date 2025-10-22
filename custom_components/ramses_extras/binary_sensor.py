@@ -23,6 +23,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     binary_sensors = []
     entities_to_remove = set()
+    required_entities = []  # Track which entities are actually needed
+    all_possible_booleans = []  # Track all possible boolean types
 
     # Get enabled features from config entry
     enabled_features = config_entry.data.get("enabled_features", {})
@@ -53,10 +55,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
 
             # Get all possible binary sensor types for this device
-            all_possible_booleans = entity_mapping.get("booleans", [])
+            current_booleans = entity_mapping.get("booleans", [])
+            all_possible_booleans.extend(current_booleans)
 
             # Check each possible binary sensor type
-            for boolean_type in all_possible_booleans:
+            for boolean_type in current_booleans:
                 if boolean_type not in BOOLEAN_CONFIGS:
                     continue
 
@@ -73,6 +76,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     # Check if this binary sensor is required for this feature
                     if boolean_type in feature_config.get("required_entities", {}).get("booleans", []):
                         is_needed = True
+                        required_entities.append(f"binary_sensor.{fan_id}_{boolean_type}")
                         break
 
                 # Build entity ID for this binary sensor (format: binary_sensor.{unique_id})
@@ -89,13 +93,83 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                         entities_to_remove.add(entity_id)
                         _LOGGER.debug(f"Will remove unneeded binary sensor: {entity_id}")
 
-    # Remove orphaned entities
-    for entity_id in entities_to_remove:
+    # Remove orphaned entities (defer to after entity creation)
+    async def cleanup_orphaned_entities():
         try:
-            entity_registry.async_remove(entity_id)
-            _LOGGER.info(f"Removed orphaned binary sensor entity: {entity_id}")
+            _LOGGER.info(f"Starting binary_sensor cleanup for fans: {fans}")
+            _LOGGER.info(f"Entity registry available: {'entity_registry' in hass.data}")
+
+            # Calculate which entities are currently required (inside cleanup function)
+            current_required_entities = []
+            device_type = "HvacVentilator"  # Define device type for cleanup
+            for fan_id in fans:
+                for feature_key, is_enabled in enabled_features.items():
+                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                        continue
+
+                    feature_config = AVAILABLE_FEATURES[feature_key]
+                    if device_type not in feature_config.get("supported_device_types", []):
+                        continue
+
+                    # Check if this binary sensor is required for this feature
+                    for boolean_type in all_possible_booleans:
+                        if boolean_type in feature_config.get("required_entities", {}).get("booleans", []):
+                            current_required_entities.append(f"binary_sensor.{fan_id}_{boolean_type}")
+                            break
+
+            _LOGGER.info(f"Required binary_sensor entities: {current_required_entities}")
+
+            if "entity_registry" in hass.data:
+                entity_registry = hass.data["entity_registry"]
+                _LOGGER.info(f"Found {len(entity_registry.entities)} entities in registry")
+
+                # Debug: Log all binary_sensor entities for our devices
+                binary_sensor_entities = [eid for eid in entity_registry.entities.keys() if eid.startswith("binary_sensor.")]
+                _LOGGER.info(f"All binary_sensor entities in registry: {binary_sensor_entities}")
+
+                # Find entities that should be removed (orphaned)
+                entities_to_remove = []
+
+                for entity_id, entity_entry in entity_registry.entities.items():
+                    if not entity_id.startswith("binary_sensor."):
+                        continue
+
+                    # Extract device_id from entity_id
+                    # Format: binary_sensor.{name}_{fan_id} where fan_id is 32_153289
+                    parts = entity_id.split('.')
+                    if len(parts) >= 2:
+                        entity_name_and_fan = parts[1]  # name_fan_id
+
+                        # Check if this entity belongs to one of our devices
+                        for fan_id in fans:
+                            # Convert fan_id to underscore format: 32:153289 -> 32_153289
+                            fan_id_underscore = fan_id.replace(':', '_')
+                            if fan_id_underscore in entity_name_and_fan:
+                                # This entity belongs to our device, check if it's still needed
+                                for boolean_type in all_possible_booleans:
+                                    # Check if this boolean_type is still required
+                                    if f"binary_sensor.{fan_id}_{boolean_type}" not in current_required_entities:
+                                        entities_to_remove.append(entity_id)
+                                        _LOGGER.info(f"Will remove orphaned binary_sensor: {entity_id} (type: {boolean_type})")
+                                        break
+                                break
+
+                _LOGGER.info(f"Found {len(entities_to_remove)} orphaned binary_sensor entities to remove")
+
+                # Remove orphaned entities
+                for entity_id in entities_to_remove:
+                    try:
+                        entity_registry.async_remove(entity_id)
+                        _LOGGER.info(f"Removed orphaned binary_sensor entity: {entity_id}")
+                    except Exception as e:
+                        _LOGGER.warning(f"Failed to remove binary_sensor entity {entity_id}: {e}")
+            else:
+                _LOGGER.warning("Entity registry not available for binary_sensor cleanup")
         except Exception as e:
-            _LOGGER.warning(f"Failed to remove binary sensor entity {entity_id}: {e}")
+            _LOGGER.warning(f"Error during binary_sensor entity cleanup: {e}")
+
+    # Schedule cleanup after entity creation
+    hass.async_create_task(cleanup_orphaned_entities())
 
     async_add_entities(binary_sensors, True)
 

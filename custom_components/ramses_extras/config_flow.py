@@ -115,7 +115,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self._config_entry = config_entry
         self._pending_data = None
         self._cards_deselected = []
+        self._automations_deselected = []
+        self._other_deselected = []
         self._cards_selected = []
+        self._automations_selected = []
+        self._other_selected = []
+        self._newly_enabled_features = []
 
     async def async_step_init(self, user_input=None):
         """Handle options initialization - redirect to features step."""
@@ -143,35 +148,36 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     deselected_features.append(feature_key)
 
             if deselected_features:
-                # Check if any card features are being deselected
+                # Check what types of features are being deselected
                 cards_deselected = [f for f in deselected_features if AVAILABLE_FEATURES[f].get("category") == "cards"]
-                cards_selected = [f for f in user_input.get("features", []) if AVAILABLE_FEATURES[f].get("category") == "cards"]
+                automations_deselected = [f for f in deselected_features if AVAILABLE_FEATURES[f].get("category") == "automations"]
+                other_deselected = [f for f in deselected_features if AVAILABLE_FEATURES[f].get("category") not in ["cards", "automations"]]
 
-                # Store the pending data and go to confirmation step
+                # Check what types of features are being selected
+                cards_selected = [f for f in user_input.get("features", []) if AVAILABLE_FEATURES[f].get("category") == "cards"]
+                automations_selected = [f for f in user_input.get("features", []) if AVAILABLE_FEATURES[f].get("category") == "automations"]
+                other_selected = [f for f in user_input.get("features", []) if AVAILABLE_FEATURES[f].get("category") not in ["cards", "automations"]]
+
+                # Show confirmation if any features are being deselected
                 self._pending_data = user_input
                 self._cards_deselected = cards_deselected
+                self._automations_deselected = automations_deselected
+                self._other_deselected = other_deselected
                 self._cards_selected = cards_selected
+                self._automations_selected = automations_selected
+                self._other_selected = other_selected
                 return await self.async_step_confirm()
 
-            # No features being deselected, proceed directly
-            # But check if any cards are being newly enabled
-            cards_newly_enabled = []
+            # No features being deselected, check if any features are being newly enabled
+            newly_enabled_features = []
             for feature_key in user_input.get("features", []):
                 if feature_key not in [k for k, v in current_features.items() if v]:
-                    if AVAILABLE_FEATURES[feature_key].get("category") == "cards":
-                        cards_newly_enabled.append(feature_key)
+                    newly_enabled_features.append(feature_key)
 
-            if cards_newly_enabled:
-                # Show confirmation for new card enabling
-                card_names = [AVAILABLE_FEATURES[f].get("name", f) for f in cards_newly_enabled]
-                confirmation_text = "**Cards being enabled:** " + ", ".join(card_names)
-                confirmation_text += "\n\n**Important:** After saving changes, you must:"
-                confirmation_text += "\n1. **Restart Home Assistant** (Settings → System → Restart)"
-                confirmation_text += "\n2. **Clear browser cache** (Ctrl+Shift+R or clear site data)"
-                confirmation_text += "\n3. **Refresh dashboards** to see the new cards"
-
+            if newly_enabled_features:
+                # Show confirmation for new feature enabling
                 self._pending_data = user_input
-                self._cards_selected = cards_newly_enabled
+                self._newly_enabled_features = newly_enabled_features
                 return await self.async_step_confirm()
 
             return await self._save_config(user_input)
@@ -306,38 +312,82 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
                 removal_details.append(" ".join(detail_parts))
 
-        # Add card-specific warnings
-        card_warnings = []
+        # Add warnings for different feature types
+        warnings = []
+
         if self._cards_deselected:
             card_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_deselected]
-            card_warnings.append(f"⚠️ **Cards being disabled:** {', '.join(card_names)}")
-            card_warnings.append("🔄 **Required:** Clear browser cache after restart")
+            warnings.append(f"⚠️ **Cards being disabled:** {', '.join(card_names)}")
+            warnings.append("🔄 **Required:** Clear browser cache after restart")
+
+        if self._automations_deselected:
+            automation_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._automations_deselected]
+            warnings.append(f"⚠️ **Automations being disabled:** {', '.join(automation_names)}")
+
+        if self._other_deselected:
+            other_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._other_deselected]
+            warnings.append(f"⚠️ **Features being disabled:** {', '.join(other_names)}")
 
         if self._cards_selected:
             card_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_selected]
-            card_warnings.append(f"✅ **Cards being enabled:** {', '.join(card_names)}")
-            card_warnings.append("🔄 **Required:** Clear browser cache after restart")
+            warnings.append(f"✅ **Cards being enabled:** {', '.join(card_names)}")
+            warnings.append("🔄 **Required:** Clear browser cache after restart")
 
-        # Build confirmation text based on what cards are changing
-        confirmation_text = ""
-        if self._cards_deselected and self._cards_selected:
-            confirmation_text = "**Cards being disabled:** " + ", ".join([AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_deselected])
-            confirmation_text += "\n\n**Cards being enabled:** " + ", ".join([AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_selected])
-        elif self._cards_deselected:
-            confirmation_text = "**Cards being disabled:** " + ", ".join([AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_deselected])
-        elif self._cards_selected:
-            confirmation_text = "**Cards being enabled:** " + ", ".join([AVAILABLE_FEATURES[f].get("name", f) for f in self._cards_selected])
-        else:
-            confirmation_text = "No card changes detected."
+        if self._automations_selected:
+            automation_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._automations_selected]
+            warnings.append(f"✅ **Automations being enabled:** {', '.join(automation_names)}")
+
+        if self._other_selected:
+            other_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._other_selected]
+            warnings.append(f"✅ **Features being enabled:** {', '.join(other_names)}")
+
+        if self._newly_enabled_features:
+            feature_names = [AVAILABLE_FEATURES[f].get("name", f) for f in self._newly_enabled_features]
+            warnings.append(f"✅ **New features being enabled:** {', '.join(feature_names)}")
+
+        # Build confirmation text
+        confirmation_parts = []
+
+        # Features being disabled
+        disabled_parts = []
+        if self._cards_deselected:
+            disabled_parts.append(f"**Cards:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._cards_deselected])}")
+        if self._automations_deselected:
+            disabled_parts.append(f"**Automations:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._automations_deselected])}")
+        if self._other_deselected:
+            disabled_parts.append(f"**Features:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._other_deselected])}")
+
+        if disabled_parts:
+            confirmation_parts.append(f"**Features being disabled:**\n• {chr(10).join(['  • ' + part for part in disabled_parts])}")
+
+        # Features being enabled
+        enabled_parts = []
+        if self._cards_selected:
+            enabled_parts.append(f"**Cards:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._cards_selected])}")
+        if self._automations_selected:
+            enabled_parts.append(f"**Automations:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._automations_selected])}")
+        if self._other_selected:
+            enabled_parts.append(f"**Features:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._other_selected])}")
+        if self._newly_enabled_features:
+            enabled_parts.append(f"**New:** {', '.join([AVAILABLE_FEATURES[f].get('name', f) for f in self._newly_enabled_features])}")
+
+        if enabled_parts:
+            confirmation_parts.append(f"**Features being enabled:**\n• {chr(10).join(['  • ' + part for part in enabled_parts])}")
+
+        if not confirmation_parts:
+            confirmation_parts.append("No feature changes detected.")
+
+        confirmation_text = "\n\n".join(confirmation_parts)
 
         # Add instructions
-        confirmation_text += "\n\n**Important:** After saving changes, you must:"
-        confirmation_text += "\n1. **Restart Home Assistant** (Settings → System → Restart)"
-        confirmation_text += "\n2. **Clear browser cache** (Ctrl+Shift+R or clear site data)"
-        confirmation_text += "\n3. **Refresh dashboards** to see card changes"
-
         if self._cards_deselected or self._cards_selected:
-            confirmation_text += "\n\n" + "🔄 **Required:** Clear browser cache after restart"
+            confirmation_text += "\n\n**Important:** After saving changes, you must:"
+            confirmation_text += "\n1. **Restart Home Assistant** (Settings → System → Restart)"
+            confirmation_text += "\n2. **Clear browser cache** (Ctrl+Shift+R or clear site data)"
+            confirmation_text += "\n3. **Refresh dashboards** to see card changes"
+
+        if warnings:
+            confirmation_text += "\n\n" + "\n".join(warnings)
 
         confirmation_text += "\n\nThis action cannot be undone. Are you sure you want to proceed?"
 
