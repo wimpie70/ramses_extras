@@ -157,50 +157,8 @@ class HvacFanCard extends HTMLElement {
   shouldUpdate() {
     if (!this._hass || !this.config) return false;
 
-    // Check if any of our entities have changed
-    const entities = this.getEntities();
-    return entities.some(entity => {
-      const oldState = this._prevStates ? this._prevStates[entity] : null;
-      const newState = this._hass.states[entity];
-      this._prevStates = this._prevStates || {};
-      this._prevStates[entity] = newState;
-      return oldState !== newState;
-    });
-  }
-
-  // Debug function to validate entity existence
-  validateEntities() {
-    if (!this._hass || !this.config) return;
-
-//    console.log('=== Entity Validation Debug ===');
-//    console.log(`Fan entity: ${this.config.fan_entity}`);
-
-    const entities = this.getEntities();
-    const missing = [];
-    const found = [];
-
-    entities.forEach(entity => {
-      if (this._hass.states[entity]) {
-        found.push(`${entity}: ${this._hass.states[entity].state}`);
-      } else {
-        missing.push(entity);
-      }
-    });
-
-//    console.log('Found entities:', found);
-    if (missing.length > 0) {
-      console.warn('Missing entities:', missing);
-    } else {
-      console.log('✅ All expected entities are available');
-    }
-
-    return { found, missing };
-  }
-
-  getEntities() {
-    if (!this.config) return [];
-
-    return [
+    // Check if any of our monitored entities have changed
+    const entities = [
       // ramses_extras provided sensors
       this.config.indoor_abs_humid_entity,
       this.config.outdoor_abs_humid_entity,
@@ -219,9 +177,16 @@ class HvacFanCard extends HTMLElement {
       this.config.dehum_mode_entity,
       this.config.dehum_active_entity,
       this.config.comfort_temp_entity,
-    ].filter(Boolean); // Remove any undefined/null values
-  }
+    ].filter(Boolean);
 
+    return entities.some(entity => {
+      const oldState = this._prevStates ? this._prevStates[entity] : null;
+      const newState = this._hass.states[entity];
+      this._prevStates = this._prevStates || {};
+      this._prevStates[entity] = newState;
+      return oldState !== newState;
+    });
+  }
 
   // Method to get bound REM device via WebSocket
   async getBoundRem(deviceId) {
@@ -345,7 +310,8 @@ class HvacFanCard extends HTMLElement {
     let deviceId = config.device_id;
     deviceId = deviceId.replace(/_/g, ':');
 
-    this.config = {
+    // Store the processed config for internal use
+    this._config = {
       device_id: deviceId,
       // Auto-generate absolute humidity sensor entities (created by integration)
       indoor_abs_humid_entity: 'sensor.indoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
@@ -368,11 +334,24 @@ class HvacFanCard extends HTMLElement {
       comfort_temp_entity: config.comfort_temp_entity || 'number.' + deviceId.replace(/:/g, '_') + '_param_75',
       ...config
     };
+
+    // Set the config property for Home Assistant's card framework
+    // This ensures this.config is available and matches this._config
+    this.config = this._config;
   }
 
   render() {
+    console.log('🎯 RENDER CALLED - checking config and hass...');
+    console.log('🎯 this._config:', this._config);
+    console.log('🎯 this._hass:', this._hass);
+    console.log('🎯 this.config:', this.config);
+
     if (!this._hass || !this.config) {
-      console.error('❌ Missing hass or config:', { hass: !!this._hass, config: !!this.config });
+      console.error('❌ Missing hass or config:', {
+        hass: !!this._hass,
+        _config: !!this._config,
+        config: !!this.config
+      });
       return;
     }
 
@@ -381,7 +360,7 @@ class HvacFanCard extends HTMLElement {
     // Debug: Validate entities are available
     this.validateEntities();
 
-    const config = this.config;
+    const config = this.config;  // Use config consistently
     const hass = this._hass;
 
     // Check dehumidify entity availability
@@ -493,16 +472,25 @@ class HvacFanCard extends HTMLElement {
 
   // Validate all required entities are available
   validateEntities() {
-    if (!this._config || !this._hass) {
-      console.warn('⚠️ Cannot validate entities: missing config or hass');
-      return;
-    }
+    console.log('🎯 VALIDATE ENTITIES CALLED!');
+    console.log('🎯 this._config exists:', !!this._config);
+    console.log('🎯 this._hass exists:', !!this._hass);
+    console.log('🎯 this.config exists:', !!this.config);
 
-    const config = this._config;
+    // Note: config and hass are already validated in render() before this is called
+    const config = this.config;
     const hass = this._hass;
 
-    console.log('🔍 Validating entity availability...');
-
+    console.log('🔍 DEBUG - Config object:', {
+      hasConfig: !!config,
+      configKeys: config ? Object.keys(config) : 'NO CONFIG',
+      indoor_temp_entity: config?.indoor_temp_entity,
+      outdoor_temp_entity: config?.outdoor_temp_entity,
+      dehum_mode_entity: config?.dehum_mode_entity,
+      dehum_active_entity: config?.dehum_active_entity,
+      device_id: config?.device_id,
+      fullConfig: config
+    });
     // Check core entities
     const coreEntities = {
       'Indoor Temperature': config.indoor_temp_entity,
@@ -593,11 +581,8 @@ class HvacFanCard extends HTMLElement {
 
   // Check if dehumidify entities are available
   checkDehumidifyEntities() {
-    if (!this._config || !this._hass) {
-      return false;
-    }
-
-    const config = this._config;
+    // Note: config and hass are already validated in render() before this is called
+    const config = this.config;
     const hass = this._hass;
 
     // Check if both dehumidify entities exist
@@ -633,7 +618,7 @@ class HvacFanCard extends HTMLElement {
 
   // Force refresh of all monitored entities
   async forceRefresh() {
-    if (!this._hass || !this._config) {
+    if (!this._hass || !this.config) {
       console.error('Cannot refresh: Missing Home Assistant or config');
       return false;
     }
