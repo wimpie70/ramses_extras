@@ -4,9 +4,11 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List
 
+import voluptuous as vol
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -24,6 +26,15 @@ if TYPE_CHECKING:
 PLATFORMS = ["sensor", "switch", "binary_sensor"]
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# Schema for domain configuration (deprecated since we use config entries)
+SCH_DOMAIN_CONFIG = vol.Schema({}, extra=vol.ALLOW_EXTRA)
+
+CONFIG_SCHEMA = vol.All(
+    cv.deprecated(DOMAIN, raise_if_present=False),
+    vol.Schema({DOMAIN: SCH_DOMAIN_CONFIG}, extra=vol.ALLOW_EXTRA),
+)
 
 # Global flag to track if static paths have been registered
 _STATIC_PATHS_REGISTERED = False
