@@ -13,13 +13,13 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-@websocket_api.websocket_command(  # type: ignore[misc]
+@websocket_api.websocket_command(
     {
         vol.Required("type"): WS_CMD_GET_BOUND_REM,
         vol.Required("device_id"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[misc]
+@websocket_api.async_response
 async def ws_get_bound_rem(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
