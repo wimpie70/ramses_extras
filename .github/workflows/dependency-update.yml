@@ -2,7 +2,7 @@ name: Dependency Update
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ master, develop ]
     paths:
       - 'requirements.txt'
       - 'pyproject.toml'
