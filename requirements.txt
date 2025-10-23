@@ -1,17 +1,15 @@
-# Core dependencies
-homeassistant==2025.10.1
-regex>=2024.11.7,!=2024.11.6
+# Development dependencies only (following ramses_cc pattern)
+# Core integration dependencies are in manifest.json
+# Home Assistant version is managed separately to avoid dependency conflicts
 
-# Development dependencies
+# Development tools
 pytest==8.3.3
 pytest-asyncio==0.24.0
+pytest-cov==5.0.0
+pytest-mock==3.14.0
 mypy==1.11.2
 ruff==0.6.9
 pre-commit==3.8.0
 
-# Type hints and development tools (compatible with HA 2025.10.1)
+# Type hints and development tools
 typing-extensions>=4.15.0
-
-# Additional testing tools
-pytest-cov==5.0.0
-pytest-mock==3.14.0
