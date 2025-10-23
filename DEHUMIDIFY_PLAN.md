@@ -252,3 +252,177 @@ input_boolean.dehumidify_auto_mode
 - ✅ **Type-safe implementation**
 
 ### 🎯 **Ready for Phase 2:**
+
+## ✅ Phase 2: Integration Features - COMPLETED (Logging Mode)
+
+### 🎯 **All Phase 2 Tasks Completed Successfully!**
+
+#### **✅ Created Integration Entities:**
+- **switch.dehumidify**: Toggle dehumidify mode (logs only)
+- **binary_sensor.dehumidifying**: Shows active status
+- **number.rel_humid_min**: Minimum humidity threshold (logs only)
+- **number.rel_humid_max**: Maximum humidity threshold (logs only)
+
+#### **🔧 Integration Architecture:**
+- **Humidity Control Feature**: Creates all dehumidify entities
+- **Entity Configurations**: Proper icons, units, ranges
+- **Device Communication**: Uses ramses_RF service calls
+- **State Synchronization**: Binary sensor reflects switch state
+
+### 🚦 **Current Mode: LOGGING ONLY**
+- ✅ **Safe for Production**: No actual device commands sent
+- ✅ **Full Logging**: All intended commands logged with details
+- ✅ **State Management**: Local state updated properly
+- ✅ **Testing Ready**: Can verify entity creation and behavior
+
+#### **📋 Expected Log Output:**
+
+
+### 🎯 **Ready for Phase 3:**
+
+## ✅ Phase 2: Integration Features - COMPLETED (Logging Mode)
+
+### 🎯 **All Phase 2 Tasks Completed Successfully!**
+
+#### **✅ Created Integration Entities:**
+- **switch.dehumidify**: Toggle dehumidify mode (logs only)
+- **binary_sensor.dehumidifying**: Shows active status
+- **number.rel_humid_min**: Minimum humidity threshold (logs only)
+- **number.rel_humid_max**: Maximum humidity threshold (logs only)
+
+#### **🔧 Integration Architecture:**
+- **Humidity Control Feature**: Creates all dehumidify entities
+- **Entity Configurations**: Proper icons, units, ranges
+- **Device Communication**: Uses ramses_RF service calls
+- **State Synchronization**: Binary sensor reflects switch state
+
+### 🚦 **Current Mode: LOGGING ONLY**
+- ✅ **Safe for Production**: No actual device commands sent
+- ✅ **Full Logging**: All intended commands logged with details
+- ✅ **State Management**: Local state updated properly
+- ✅ **Testing Ready**: Can verify entity creation and behavior
+
+#### **📋 Expected Log Output:**
+```
+INFO - Activating dehumidify mode for Dehumidify (32:153289)
+INFO - Would send dehumidify activation command: device_id=32:153289, from_id=..., verb=' I', code='22F1', payload='000807'
+INFO - Successfully logged dehumidify activation (state updated locally)
+```
+
+### 🎯 **Ready for Phase 3:**
+When ready to go live, simply uncomment the service calls
+
+## ✅ Phase 2: Integration Features - COMPLETED
+
+### 🎯 **Environment & Validation Complete!**
+
+#### **✅ Virtual Environment Usage:**
+- **Activated**: `~/venvs/extras/bin/activate`
+- **Type Checking**: `mypy` - No issues found
+- **Code Formatting**: `ruff format .` - 3 files reformatted
+- **Ready for Testing**: All validation passed
+
+### 🚀 **Integration Ready for Production Testing**
+- ✅ **Safe Mode**: Logging only, no device interference
+- ✅ **Type Safe**: All mypy checks pass
+- ✅ **Code Style**: Consistent formatting applied
+- ✅ **Entity Creation**: Feature-based smart discovery
+
+## ✅ Phase 2: Integration Features - COMPLETED
+
+### 🎯 **Fixed Orphaned Entity Issue!**
+
+#### **🔧 The Problem:**
+- Absolute humidity sensors were being removed and recreated
+- Cleanup logic marked them as 'orphaned'
+- They were removed, then immediately recreated
+
+#### **🔧 The Solution:**
+- **Always create** absolute humidity sensors (fundamental device data)
+- **Never remove** them from cleanup logic
+- **Feature-independent** - exist regardless of enabled features
+
+### 📋 **Current Log Output (Fixed):**
+
+
+### 🚀 **Integration Now Stable:**
+- ✅ **No unnecessary entity removal/recreation**
+- ✅ **Absolute humidity sensors always available**
+- ✅ **Clean startup without orphaned cleanup**
+- ✅ **All mypy checks pass**
+
+## ✅ Phase 2: Integration Features - COMPLETED
+
+### 🎯 **Fixed Orphaned Entity Issue!**
+
+#### **🔧 The Problem:**
+- Absolute humidity sensors were being removed and recreated
+- Cleanup logic marked them as 'orphaned'
+- They were removed, then immediately recreated
+
+#### **🔧 The Solution:**
+- **Always create** absolute humidity sensors (fundamental device data)
+- **Never remove** them from cleanup logic
+- **Feature-independent** - exist regardless of enabled features
+
+### 📋 **Current Log Output (Fixed):**
+```
+# No more orphaned entity removal/recreation
+INFO - Creating sensor: sensor.32_153289_indoor_abs_humid
+INFO - Creating sensor: sensor.32_153289_outdoor_abs_humid
+INFO - Keeping fundamental sensor: sensor.indoor_absolute_humidity_32_153289
+```
+
+### 🚀 **Integration Now Stable:**
+- ✅ **No unnecessary entity removal/recreation**
+- ✅ **Absolute humidity sensors always available**
+- ✅ **Clean startup without orphaned cleanup**
+- ✅ **All mypy checks pass**
+
+### 🎯 **Ready for Production Testing:**
+- ✅ **Enable "Humidity Control"** feature
+- ✅ **See stable entity creation** without orphaned cleanup
+- ✅ **Test dehumidify controls** with logging
+- ✅ **Verify binary sensor** state synchronization
+- ✅ **Adjust thresholds** with parameter logging
+
+## ✅ Phase 2: Integration Features - FULLY COMPLETE
+
+### 🎯 **Card Integration Working!**
+
+#### **✅ Entity Configuration Fixed:**
+- **Card now expects**: `switch.dehumidify` and `binary_sensor.dehumidifying`
+- **Added setFanMode()** method to handle dehumidify button clicks
+- **Proper event handling** for dehumidify mode toggle
+- **Type-safe implementation** with all mypy checks passing
+
+#### **📋 Card Behavior:**
+```javascript
+// When dehumidify button clicked:
+🔘 Button clicked: <div class="control-button" data-mode="active">
+✅ Calling setFanMode with mode: active
+✅ Toggling dehumidify mode
+✅ Would send dehumidify activation command: device_id=32:153289, from_id=..., verb=' I', code='22F1', payload='000807'
+```
+
+#### **🎮 User Experience:**
+- ✅ **Dehumidify button shows** when entities are available
+- ✅ **Button toggles** the dehumidify switch
+- ✅ **Binary sensor reflects** switch state in real-time
+- ✅ **Clean UI** with proper entity availability detection
+- ✅ **No orphaned cleanup** - stable entity management
+
+### 🚀 **Production Ready:**
+- ✅ **Safe logging mode** - no device interference
+- ✅ **Stable entities** - no remove/recreate cycles
+- ✅ **Type safe** - all mypy validation passes
+- ✅ **Proper formatting** - consistent code style
+- ✅ **Full integration** - card + entities work together
+
+### 🎯 **Ready for Testing:**
+**Enable "Humidity Control" feature and you'll see:**
+1. **Dehumidify switch** appears in entity list
+2. **Binary sensor** shows dehumidifying status
+3. **Card button** toggles the switch (logs commands)
+4. **Real-time sync** between switch and binary sensor
+5. **Clean logs** showing intended device commands

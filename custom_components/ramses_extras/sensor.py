@@ -64,11 +64,16 @@ async def async_setup_entry(
                 if sensor_type not in ENTITY_TYPE_CONFIGS["sensor"]:
                     continue
 
-                # Check if this sensor is needed by any enabled feature
+                # Always create absolute humidity sensors (fundamental device data)
+                # Other sensors only if required by enabled features
                 is_needed = False
-                for feature_key, is_enabled in enabled_features.items():
-                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
-                        continue
+                if sensor_type in ["indoor_abs_humid", "outdoor_abs_humid"]:
+                    is_needed = True
+                else:
+                    # Check if this sensor is needed by any enabled feature
+                    for feature_key, is_enabled in enabled_features.items():
+                        if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                            continue
 
                     feature_config = AVAILABLE_FEATURES[feature_key]
                     supported_types = feature_config.get("supported_device_types", [])

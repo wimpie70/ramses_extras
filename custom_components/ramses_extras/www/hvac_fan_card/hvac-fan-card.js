@@ -258,6 +258,18 @@ class HvacFanCard extends HTMLElement {
 
       console.log(`Using configured device ID for commands: ${deviceId}`);
 
+      // Find the actual dehumidify switch entity
+      const switchEntity = 'switch.dehumidify_' + deviceId.replace(/:/g, '_');
+
+      if (commandKey === 'active') {
+        // Toggle dehumidify mode by calling the switch service
+        console.log(`Toggling dehumidify switch: ${switchEntity}`);
+        await this._hass.callService('switch', 'turn_on', {
+          entity_id: switchEntity
+        });
+        return true;
+      }
+
       // Get the bound REM device first
       let remId;
       try {
@@ -329,8 +341,8 @@ class HvacFanCard extends HTMLElement {
       flow_entity: config.flow_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
       bypass_entity: config.bypass_entity || 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
       // Use configured entities if provided, otherwise auto-generate
-      dehum_mode_entity: config.dehum_mode_entity || 'input_boolean.' + deviceId.replace(/:/g, '_') + '_dehumidifier_mode',
-      dehum_active_entity: config.dehum_active_entity || 'input_boolean.' + deviceId.replace(/:/g, '_') + '_dehumidifier_active',
+      dehum_mode_entity: config.dehum_mode_entity || 'switch.dehumidify_' + deviceId.replace(/:/g, '_'),
+      dehum_active_entity: config.dehum_active_entity || 'binary_sensor.dehumidifying_active_' + deviceId.replace(/:/g, '_'),
       comfort_temp_entity: config.comfort_temp_entity || 'number.' + deviceId.replace(/:/g, '_') + '_param_75',
       ...config
     };
@@ -585,7 +597,7 @@ class HvacFanCard extends HTMLElement {
     const config = this.config;
     const hass = this._hass;
 
-    // Check if both dehumidify entities exist
+    // Check if both dehumidify entities exist with correct format
     const dehumModeExists = !!hass.states[config.dehum_mode_entity];
     const dehumActiveExists = !!hass.states[config.dehum_active_entity];
 
@@ -616,6 +628,31 @@ class HvacFanCard extends HTMLElement {
     await this.sendFanCommand(minutes);
   }
 
+  // Handle fan mode changes
+  async setFanMode(mode) {
+    console.log('Setting fan mode to:', mode);
+
+    if (mode === 'active') {
+      // Find the actual dehumidify switch entity
+      const deviceId = this.config.device_id;
+      const switchEntity = 'switch.dehumidify_' + deviceId.replace(/:/g, '_');
+
+      if (this._hass.states[switchEntity]) {
+        // Toggle dehumidify mode by calling the switch service
+        console.log(`Toggling dehumidify switch: ${switchEntity}`);
+        await this._hass.callService('switch', 'toggle', {
+          entity_id: switchEntity
+        });
+      } else {
+        console.error(`Dehumidify switch not found: ${switchEntity}`);
+      }
+    } else {
+      // Handle other fan modes (if any)
+      console.log('Other fan mode:', mode);
+      await this.sendFanCommand(mode);
+    }
+  }
+
   // Force refresh of all monitored entities
   async forceRefresh() {
     if (!this._hass || !this.config) {
@@ -639,8 +676,6 @@ class HvacFanCard extends HTMLElement {
       return false;
     }
   }
-
-  // UI Update Functions (available globally for onclick handlers)
   updateTimerUI(minutes) {
     console.log('Updating timer UI to:', minutes, 'minutes');
     const timerElement = this.shadowRoot?.querySelector('#timer');
