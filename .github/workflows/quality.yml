@@ -3,8 +3,18 @@ name: Quality
 on:
   push:
     branches: [ main, develop ]
+    paths: [
+      ".github/workflows/quality.yml", ".pre-commit-config.yaml",
+      "custom_components/**.py", "tests/**",
+    ]
   pull_request:
     branches: [ main, develop ]
+    paths: [
+      ".github/workflows/quality.yml", ".pre-commit-config.yaml",
+      "custom_components/**.py", "tests/**",
+    ]
+  schedule:
+    - cron: "0 6 * * 1"  # Weekly on Monday at 6 AM UTC
   workflow_dispatch:
 
 jobs:
