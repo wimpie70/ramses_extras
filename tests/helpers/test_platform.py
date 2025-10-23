@@ -1,20 +1,27 @@
 """Tests for helpers/platform.py functions."""
 
+import sys
 from unittest.mock import Mock
 
 import pytest
 
-# Import the helpers - this will work when running in HA environment
+# Add the custom_components to the path for testing
+sys.path.insert(0, "custom_components")
+
+# Import the helpers - this will work when running in development
 try:
-    from custom_components.ramses_extras.helpers.platform import (
+    from ramses_extras.helpers.platform import (
         calculate_required_entities,
         convert_fan_id_format,
         find_orphaned_entities,
         get_entity_registry,
     )
 except ImportError:
-    # For standalone testing without HA
-    pytest.skip("Home Assistant not available for testing", allow_module_level=True)
+    # For standalone testing without proper installation
+    pytest.skip(
+        "Integration not properly installed for testing",
+        allow_module_level=True,
+    )
 
 
 class TestFanIdConversion:
@@ -60,7 +67,7 @@ class TestRequiredEntitiesCalculation:
         fans = ["32:153289"]
 
         # Mock the required constants
-        import custom_components.ramses_extras.const as const_module
+        import ramses_extras.const as const_module
 
         const_module.AVAILABLE_FEATURES = mock_available_features
         const_module.DEVICE_ENTITY_MAPPING = mock_device_mapping
