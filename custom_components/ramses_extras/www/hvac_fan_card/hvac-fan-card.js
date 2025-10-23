@@ -201,6 +201,10 @@ class HvacFanCard extends HTMLElement {
     if (!this.config) return [];
 
     return [
+      // ramses_extras provided sensors
+      this.config.indoor_abs_humid_entity,
+      this.config.outdoor_abs_humid_entity,
+      // ramses_cc provided sensors
       this.config.indoor_temp_entity,
       this.config.outdoor_temp_entity,
       this.config.indoor_humidity_entity,
@@ -343,18 +347,21 @@ class HvacFanCard extends HTMLElement {
 
     this.config = {
       device_id: deviceId,
-      // Generate all related entity IDs based on the device_id (use underscores like actual entities)
-      indoor_temp_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
-      outdoor_temp_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_temp',
-      indoor_humidity_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_humidity',
-      outdoor_humidity_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
-      supply_temp_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
-      exhaust_temp_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
-      fan_speed_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_info',
-      fan_mode_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
-      co2_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_co2_level',
-      flow_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
-      bypass_entity: 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
+      // Auto-generate absolute humidity sensor entities (created by integration)
+      indoor_abs_humid_entity: 'sensor.indoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
+      outdoor_abs_humid_entity: 'sensor.outdoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
+      // Fallback to calculated humidity if absolute humidity sensors don't exist
+      indoor_temp_entity: config.indoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
+      outdoor_temp_entity: config.outdoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_temp',
+      indoor_humidity_entity: config.indoor_humidity_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_humidity',
+      outdoor_humidity_entity: config.outdoor_humidity_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
+      supply_temp_entity: config.supply_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
+      exhaust_temp_entity: config.exhaust_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
+      fan_speed_entity: config.fan_speed_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_info',
+      fan_mode_entity: config.fan_mode_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
+      co2_entity: config.co2_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_co2_level',
+      flow_entity: config.flow_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
+      bypass_entity: config.bypass_entity || 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
       // Use configured entities if provided, otherwise auto-generate
       dehum_mode_entity: config.dehum_mode_entity || 'input_boolean.' + deviceId.replace(/:/g, '_') + '_dehumidifier_mode',
       dehum_active_entity: config.dehum_active_entity || 'input_boolean.' + deviceId.replace(/:/g, '_') + '_dehumidifier_active',
@@ -381,6 +388,11 @@ class HvacFanCard extends HTMLElement {
     const outdoorTemp = hass.states[config.outdoor_temp_entity]?.state || '?';
     const indoorHumidity = hass.states[config.indoor_humidity_entity]?.state || '?';
     const outdoorHumidity = hass.states[config.outdoor_humidity_entity]?.state || '?';
+
+    // Use ramses_extras absolute humidity sensors
+    const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state || '?';
+    const outdoorAbsHumidity = hass.states[config.outdoor_abs_humid_entity]?.state || '?';
+
     const supplyTemp = hass.states[config.supply_temp_entity]?.state || '?';
     const exhaustTemp = hass.states[config.exhaust_temp_entity]?.state || '?';
     const fanSpeed = hass.states[config.fan_speed_entity]?.state || 'speed ?';
@@ -399,9 +411,10 @@ class HvacFanCard extends HTMLElement {
     const isBypassOpen = hass.states[config.bypass_entity]?.state === 'on';
     const selectedSvg = isBypassOpen ? BYPASS_OPEN_SVG : NORMAL_SVG;
 
-    // Create template data object (includes absolute humidity calculation)
+    // Create template data object with integration-provided absolute humidity
     const rawData = {
       indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
+      indoorAbsHumidity, outdoorAbsHumidity,  // From integration sensors
       supplyTemp, exhaustTemp, fanSpeed, fanMode, co2Level, flowRate,
       dehumMode, dehumActive, comfortTemp,
       timerMinutes: 0, // This would come from timer state
@@ -411,6 +424,13 @@ class HvacFanCard extends HTMLElement {
     console.log('🔍 DEBUG - Raw temperature values:', {
       supplyTemp, exhaustTemp, outdoorTemp,
       indoorTemp, outdoorTemp
+    });
+
+    console.log('🔍 DEBUG - Humidity values:', {
+      indoorHumidity, outdoorHumidity,
+      indoorAbsHumidity, outdoorAbsHumidity,
+      indoorAbsFromIntegration: !!hass.states[config.indoor_abs_humid_entity]?.state,
+      outdoorAbsFromIntegration: !!hass.states[config.outdoor_abs_humid_entity]?.state
     });
 
     const templateData = createTemplateData(rawData);

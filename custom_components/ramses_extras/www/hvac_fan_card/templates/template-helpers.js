@@ -4,28 +4,6 @@
  */
 
 /**
- * Calculate absolute humidity from temperature and relative humidity
- * @param {string|number} temp - Temperature in Celsius
- * @param {string|number} humidity - Relative humidity percentage
- * @returns {string} Absolute humidity in g/m³ or '?' if invalid
- */
-export function calculateAbsoluteHumidity(temp, humidity) {
-  if (temp === '?' || humidity === '?') return '?';
-  const tempC = parseFloat(temp);
-  const relHum = parseFloat(humidity);
-  if (isNaN(tempC) || isNaN(relHum)) return '?';
-
-  // Saturation vapor pressure (hPa)
-  const es = 6.112 * Math.exp((17.67 * tempC) / (tempC + 243.5));
-  // Actual vapor pressure (hPa)
-  const e = (relHum / 100) * es;
-  // Absolute humidity (g/m³) - divide by 10 to match expected scale
-  const ah = (2.1674 * e) / (273.15 + tempC) * 100;
-
-  return ah.toFixed(1);
-}
-
-/**
  * Calculate heat recovery efficiency based on temperature differences
  * @param {string|number} supplyTemp - Supply air temperature
  * @param {string|number} exhaustTemp - Exhaust air temperature
@@ -86,6 +64,7 @@ function calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
 export function createTemplateData(rawData) {
   const {
     indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
+    indoorAbsHumidity, outdoorAbsHumidity,  // Integration-provided values (preferred)
     supplyTemp, exhaustTemp, fanSpeed, fanMode, co2Level, flowRate,
     dehumMode, dehumActive, comfortTemp, timerMinutes = 0, efficiency = 75
   } = rawData;
@@ -102,6 +81,12 @@ export function createTemplateData(rawData) {
     calculationTriggered: efficiency === 75
   });
 
+  // Use integration-provided absolute humidity directly (no calculation fallback)
+  console.log('🔍 DEBUG - Using integration absolute humidity:', {
+    indoorAbsHumidity,
+    outdoorAbsHumidity
+  });
+
   return {
     // Temperature and humidity values
     indoorTemp: indoorTemp || '?',
@@ -111,9 +96,9 @@ export function createTemplateData(rawData) {
     supplyTemp: supplyTemp || '?',
     exhaustTemp: exhaustTemp || '?',
 
-    // Calculated absolute humidity values
-    indoorAbsHumidity: calculateAbsoluteHumidity(indoorTemp, indoorHumidity),
-    outdoorAbsHumidity: calculateAbsoluteHumidity(outdoorTemp, outdoorHumidity),
+    // Absolute humidity from integration (no calculation)
+    indoorAbsHumidity: indoorAbsHumidity,
+    outdoorAbsHumidity: outdoorAbsHumidity,
 
     // Fan and air quality data
     fanSpeed: fanSpeed || 'speed ?',
