@@ -190,8 +190,12 @@ class RamsesExtraHumiditySensor(SensorEntity):
             _LOGGER.debug("Error reading humidity for %s: %s", self._attr_name, e)
             return None
 
-    def _get_temp_and_humidity(self) -> tuple[float, float]:
-        """Get temperature and humidity data from ramses_cc entities."""
+    def _get_temp_and_humidity(self) -> tuple[float | None, float | None]:
+        """Get temperature and humidity data from ramses_cc entities.
+
+        Returns:
+            tuple: (temperature, humidity) or (None, None) if sensors are missing/failed
+        """
         # Map sensor types to the corresponding temp/humidity entity patterns
         entity_patterns = {
             "indoor_abs_humid": ("indoor_temp", "indoor_humidity"),
@@ -199,10 +203,10 @@ class RamsesExtraHumiditySensor(SensorEntity):
         }
 
         if self._sensor_type not in entity_patterns:
-            _LOGGER.warning(
+            _LOGGER.error(
                 "Unknown sensor type for humidity calculation: %s", self._sensor_type
             )
-            return 20.0, 50.0  # Default fallback
+            return None, None  # Return None to indicate failure
 
         temp_type, humidity_type = entity_patterns[self._sensor_type]
 
@@ -215,21 +219,38 @@ class RamsesExtraHumiditySensor(SensorEntity):
             # Get temperature from ramses_cc sensor
             temp_state = self.hass.states.get(temp_entity)
             if temp_state is None:
-                _LOGGER.debug("Temperature entity not found: %s", temp_entity)
-                return 20.0, 50.0  # Default fallback
+                _LOGGER.debug(
+                    "Required temperature sensor not found: %s for %s",
+                    temp_entity,
+                    self.name,
+                )
+                return None, None
 
             temp = float(temp_state.state)
 
             # Get humidity from ramses_cc sensor
             humidity_state = self.hass.states.get(humidity_entity)
             if humidity_state is None:
-                _LOGGER.debug("Humidity entity not found: %s", humidity_entity)
-                return temp, 50.0  # Use temp but default humidity
+                _LOGGER.debug(
+                    "Required humidity sensor not found: %s for %s",
+                    humidity_entity,
+                    self.name,
+                )
+                return None, None
 
             humidity = float(humidity_state.state)
 
+            # Validate humidity range
+            if not (0 <= humidity <= 100):
+                _LOGGER.error(
+                    "Invalid humidity value %.1f%% for %s (must be 0-100%%)",
+                    humidity,
+                    self.name,
+                )
+                return None, None
+
             _LOGGER.debug(
-                "Got temp/humidity for %s: temp=%s, humidity=%s from %s/%s",
+                "Got temp/humidity for %s: temp=%.1f°C, humidity=%.1f%% from %s/%s",
                 self.name,
                 temp,
                 humidity,
@@ -240,8 +261,14 @@ class RamsesExtraHumiditySensor(SensorEntity):
             return temp, humidity
 
         except (ValueError, AttributeError) as e:
-            _LOGGER.debug("Error parsing temp/humidity for %s: %s", self.name, e)
-            return 20.0, 50.0  # Default fallback
+            _LOGGER.debug(
+                "Error parsing temp/humidity for %s: %s (temp: %s, humidity: %s)",
+                self.name,
+                e,
+                temp_entity,
+                humidity_entity,
+            )
+            return None, None
 
     def _calculate_abs_humidity(
         self, temp: float | None, rh: float | None

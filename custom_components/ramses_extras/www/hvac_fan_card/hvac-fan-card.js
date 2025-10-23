@@ -430,7 +430,9 @@ class HvacFanCard extends HTMLElement {
       indoorHumidity, outdoorHumidity,
       indoorAbsHumidity, outdoorAbsHumidity,
       indoorAbsFromIntegration: !!hass.states[config.indoor_abs_humid_entity]?.state,
-      outdoorAbsFromIntegration: !!hass.states[config.outdoor_abs_humid_entity]?.state
+      outdoorAbsFromIntegration: !!hass.states[config.outdoor_abs_humid_entity]?.state,
+      indoorAbsEntity: config.indoor_abs_humid_entity,
+      outdoorAbsEntity: config.outdoor_abs_humid_entity
     });
 
     const templateData = createTemplateData(rawData);
