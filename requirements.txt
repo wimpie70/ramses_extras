@@ -1,5 +1,6 @@
 # Core dependencies
-homeassistant==2025.10.3
+homeassistant==2025.10.1
+regex>=2025.2.10
 
 # Development dependencies
 pytest==8.3.3

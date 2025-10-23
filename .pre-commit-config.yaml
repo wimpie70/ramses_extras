@@ -14,13 +14,45 @@ repos:
       - id: mypy
         exclude: ^(setup\.py|tests/)
 
-  # Pre-commit built-ins
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+  # Spell checking
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
     hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-yaml
-      - id: check-added-large-files
-      - id: check-merge-conflict
+      - id: codespell
+        args:
+          - --ignore-words-list=hass
+          - --skip="./.*,*.csv,*.json,*.ambr"
+          - --quiet-level=2
+        exclude_types: [csv, json, html]
+        exclude: ^(tests/.+/fixtures|tests/.+/snapshots)/
+
+  # Additional validation hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-executables-have-shebangs
       - id: check-toml
+      - id: check-yaml
+      - id: debug-statements
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+
+  # Python-specific checks
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: python-check-blanket-noqa
+      - id: python-check-blanket-type-ignore
+      - id: python-no-eval
+      - id: python-no-log-warn
+
+  # Custom validation hooks
+  - repo: local
+    hooks:
+      - id: debugs
+        name: check for DEBUG flags
+        entry: '_DBG_.*=.*True'
+        language: pygrep
+        args: [-i]
+        exclude: (.pre-commit-config.yaml|^tests/.*\.py$)
