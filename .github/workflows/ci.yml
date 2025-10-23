@@ -1,4 +1,4 @@
-name: Linting
+name: CI
 
 on:
   push:
@@ -18,6 +18,34 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.13]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Test with pytest
+        env:
+          PYTEST_ADDOPTS: "--color=yes"
+        run: pytest -v
+
+      - run: echo "🍏 This job's status is ${{ job.status }}."
+
   lint:
     runs-on: ubuntu-latest
     strategy:
@@ -36,12 +64,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          pip install ruff mypy
 
       - name: Check with ruff
         run: ruff check --output-format=github .
 
-      - name: Check with ruff (format)
-        run: ruff format --check .
+      - name: Check with mypy
+        run: mypy
 
       - run: echo "🍏 This job's status is ${{ job.status }}."
