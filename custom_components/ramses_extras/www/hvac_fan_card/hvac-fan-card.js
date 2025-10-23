@@ -10,7 +10,7 @@ import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
 
 // Debug: Check if imports work
-console.log('✅ ES6 imports loaded successfully');
+console.log('✅ ES6 imports loaded suRFessfully');
 
 class HvacFanCard extends HTMLElement {
   // All fan commands in one simple object
@@ -201,6 +201,10 @@ class HvacFanCard extends HTMLElement {
     if (!this.config) return [];
 
     return [
+      // ramses_extras provided sensors
+      this.config.indoor_abs_humid_entity,
+      this.config.outdoor_abs_humid_entity,
+      // ramses_cc provided sensors
       this.config.indoor_temp_entity,
       this.config.outdoor_temp_entity,
       this.config.indoor_humidity_entity,
@@ -239,7 +243,7 @@ class HvacFanCard extends HTMLElement {
 
     // try {
     //   const result = await this._hass.connection.sendMessagePromise({
-    //     type: 'ramses_cc/get_bound_rem',
+    //     type: 'ramses_RF/get_bound_rem',
     //     device_id: deviceId
     //   });
 
@@ -250,21 +254,21 @@ class HvacFanCard extends HTMLElement {
     // }
   }
 
-  // Method to send packet via ramses_cc service
+  // Method to send packet via ramses_RF service
   async sendPacket(deviceId, fromId, verb, code, payload) {
     if (!this._hass) {
       throw new Error('Home Assistant instance not available');
     }
 
     try {
-      await this._hass.callService('ramses_cc', 'send_packet', {
+      await this._hass.callService('ramses_RF', 'send_packet', {
         device_id: deviceId,
         from_id: fromId,
         verb: verb,
         code: code,
         payload: payload
       });
-      console.log(`Successfully sent packet: ${verb} ${code} ${payload}`);
+      console.log(`SuRFessfully sent packet: ${verb} ${code} ${payload}`);
     } catch (error) {
       console.error('Error sending packet:', error);
       throw error;
@@ -307,7 +311,7 @@ class HvacFanCard extends HTMLElement {
       // Send the packet
       await this.sendPacket(deviceId, remId, command.verb, command.code, command.payload);
 
-      console.log(`Successfully set fan mode to ${commandKey}`);
+      console.log(`SuRFessfully set fan mode to ${commandKey}`);
       // Update UI
       const fanModeElement = this.shadowRoot?.querySelector('#fanMode');
       if (fanModeElement) {
@@ -343,18 +347,21 @@ class HvacFanCard extends HTMLElement {
 
     this.config = {
       device_id: deviceId,
-      // Generate all related entity IDs based on the device_id (use underscores like actual entities)
-      indoor_temp_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
-      outdoor_temp_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_temp',
-      indoor_humidity_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_humidity',
-      outdoor_humidity_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
-      supply_temp_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
-      exhaust_temp_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
-      fan_speed_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_info',
-      fan_mode_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
-      co2_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_co2_level',
-      flow_entity: 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
-      bypass_entity: 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
+      // Auto-generate absolute humidity sensor entities (created by integration)
+      indoor_abs_humid_entity: 'sensor.indoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
+      outdoor_abs_humid_entity: 'sensor.outdoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
+      // Fallback to calculated humidity if absolute humidity sensors don't exist
+      indoor_temp_entity: config.indoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
+      outdoor_temp_entity: config.outdoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_temp',
+      indoor_humidity_entity: config.indoor_humidity_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_humidity',
+      outdoor_humidity_entity: config.outdoor_humidity_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
+      supply_temp_entity: config.supply_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
+      exhaust_temp_entity: config.exhaust_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
+      fan_speed_entity: config.fan_speed_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_info',
+      fan_mode_entity: config.fan_mode_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
+      co2_entity: config.co2_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_co2_level',
+      flow_entity: config.flow_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
+      bypass_entity: config.bypass_entity || 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
       // Use configured entities if provided, otherwise auto-generate
       dehum_mode_entity: config.dehum_mode_entity || 'input_boolean.' + deviceId.replace(/:/g, '_') + '_dehumidifier_mode',
       dehum_active_entity: config.dehum_active_entity || 'input_boolean.' + deviceId.replace(/:/g, '_') + '_dehumidifier_active',
@@ -381,6 +388,11 @@ class HvacFanCard extends HTMLElement {
     const outdoorTemp = hass.states[config.outdoor_temp_entity]?.state || '?';
     const indoorHumidity = hass.states[config.indoor_humidity_entity]?.state || '?';
     const outdoorHumidity = hass.states[config.outdoor_humidity_entity]?.state || '?';
+
+    // Use ramses_extras absolute humidity sensors
+    const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state || '?';
+    const outdoorAbsHumidity = hass.states[config.outdoor_abs_humid_entity]?.state || '?';
+
     const supplyTemp = hass.states[config.supply_temp_entity]?.state || '?';
     const exhaustTemp = hass.states[config.exhaust_temp_entity]?.state || '?';
     const fanSpeed = hass.states[config.fan_speed_entity]?.state || 'speed ?';
@@ -399,9 +411,10 @@ class HvacFanCard extends HTMLElement {
     const isBypassOpen = hass.states[config.bypass_entity]?.state === 'on';
     const selectedSvg = isBypassOpen ? BYPASS_OPEN_SVG : NORMAL_SVG;
 
-    // Create template data object (includes absolute humidity calculation)
+    // Create template data object with integration-provided absolute humidity
     const rawData = {
       indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
+      indoorAbsHumidity, outdoorAbsHumidity,  // From integration sensors
       supplyTemp, exhaustTemp, fanSpeed, fanMode, co2Level, flowRate,
       dehumMode, dehumActive, comfortTemp,
       timerMinutes: 0, // This would come from timer state
@@ -411,6 +424,15 @@ class HvacFanCard extends HTMLElement {
     console.log('🔍 DEBUG - Raw temperature values:', {
       supplyTemp, exhaustTemp, outdoorTemp,
       indoorTemp, outdoorTemp
+    });
+
+    console.log('🔍 DEBUG - Humidity values:', {
+      indoorHumidity, outdoorHumidity,
+      indoorAbsHumidity, outdoorAbsHumidity,
+      indoorAbsFromIntegration: !!hass.states[config.indoor_abs_humid_entity]?.state,
+      outdoorAbsFromIntegration: !!hass.states[config.outdoor_abs_humid_entity]?.state,
+      indoorAbsEntity: config.indoor_abs_humid_entity,
+      outdoorAbsEntity: config.outdoor_abs_humid_entity
     });
 
     const templateData = createTemplateData(rawData);
@@ -431,15 +453,15 @@ class HvacFanCard extends HTMLElement {
 
     this.innerHTML = cardHtml;
 
-    console.log('✅ Card HTML generated successfully');
+    console.log('✅ Card HTML generated suRFessfully');
   }
 
   // Configuration schema for visual editor
   static getConfigElement() {
     try {
       // Ensure the editor is available before creating it
-      if (typeof hvacFanCardEditor === 'undefined') {
-        console.error('hvacFanCardEditor is not defined');
+      if (typeof window.HvacFanCardEditor === 'undefined') {
+        console.error('HvacFanCardEditor is not defined on window');
         return null;
       }
       return document.createElement("hvac-fan-card-editor");
@@ -545,10 +567,10 @@ class HvacFanCard extends HTMLElement {
 
     // Get the card instance from the global reference
     if (window.hvacFanCardInstance) {
-      window.hvacFanCardInstance.forceRefresh().then(success => {
-        if (success) {
+      window.hvacFanCardInstance.forceRefresh().then(suRFess => {
+        if (suRFess) {
           console.log('✅ Manual refresh completed');
-          // Show a brief success indicator (optional)
+          // Show a brief suRFess indicator (optional)
           const refreshBtn = this.shadowRoot?.querySelector('.refresh-button');
           if (refreshBtn) {
             refreshBtn.style.background = 'rgba(76, 175, 80, 0.3)';

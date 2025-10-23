@@ -12,6 +12,7 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
+from .helpers.entities import calculate_absolute_humidity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -189,15 +190,85 @@ class RamsesExtraHumiditySensor(SensorEntity):
             _LOGGER.debug("Error reading humidity for %s: %s", self._attr_name, e)
             return None
 
-    def _get_temp_and_humidity(self) -> tuple[float, float]:
-        """Get temperature and humidity data from ramses_cc entities."""
-        # For now, return placeholder values - in a real implementation,
-        # you would query the actual ramses_cc entities for this data
-        if self._sensor_type == "indoor_abs_humid":
-            # Placeholder: would get from climate entity or sensor entity
-            return 20.0, 50.0  # temp, rh
-        # Placeholder: would get from outdoor sensor
-        return 15.0, 60.0  # temp, rh
+    def _get_temp_and_humidity(self) -> tuple[float | None, float | None]:
+        """Get temperature and humidity data from ramses_cc entities.
+
+        Returns:
+            tuple: (temperature, humidity) or (None, None) if sensors are missing/failed
+        """
+        # Map sensor types to the corresponding temp/humidity entity patterns
+        entity_patterns = {
+            "indoor_abs_humid": ("indoor_temp", "indoor_humidity"),
+            "outdoor_abs_humid": ("outdoor_temp", "outdoor_humidity"),
+        }
+
+        if self._sensor_type not in entity_patterns:
+            _LOGGER.error(
+                "Unknown sensor type for humidity calculation: %s", self._sensor_type
+            )
+            return None, None  # Return None to indicate failure
+
+        temp_type, humidity_type = entity_patterns[self._sensor_type]
+
+        # Construct entity IDs based on the fan_id
+        # ramses_cc creates entities like: sensor.32_153289_indoor_temp
+        temp_entity = f"sensor.{self._fan_id.replace(':', '_')}_{temp_type}"
+        humidity_entity = f"sensor.{self._fan_id.replace(':', '_')}_{humidity_type}"
+
+        try:
+            # Get temperature from ramses_cc sensor
+            temp_state = self.hass.states.get(temp_entity)
+            if temp_state is None:
+                _LOGGER.debug(
+                    "Required temperature sensor not found: %s for %s",
+                    temp_entity,
+                    self.name,
+                )
+                return None, None
+
+            temp = float(temp_state.state)
+
+            # Get humidity from ramses_cc sensor
+            humidity_state = self.hass.states.get(humidity_entity)
+            if humidity_state is None:
+                _LOGGER.debug(
+                    "Required humidity sensor not found: %s for %s",
+                    humidity_entity,
+                    self.name,
+                )
+                return None, None
+
+            humidity = float(humidity_state.state)
+
+            # Validate humidity range
+            if not (0 <= humidity <= 100):
+                _LOGGER.error(
+                    "Invalid humidity value %.1f%% for %s (must be 0-100%%)",
+                    humidity,
+                    self.name,
+                )
+                return None, None
+
+            _LOGGER.debug(
+                "Got temp/humidity for %s: temp=%.1f°C, humidity=%.1f%% from %s/%s",
+                self.name,
+                temp,
+                humidity,
+                temp_entity,
+                humidity_entity,
+            )
+
+            return temp, humidity
+
+        except (ValueError, AttributeError) as e:
+            _LOGGER.debug(
+                "Error parsing temp/humidity for %s: %s (temp: %s, humidity: %s)",
+                self.name,
+                e,
+                temp_entity,
+                humidity_entity,
+            )
+            return None, None
 
     def _calculate_abs_humidity(
         self, temp: float | None, rh: float | None
@@ -205,13 +276,9 @@ class RamsesExtraHumiditySensor(SensorEntity):
         """Calculate absolute humidity using proper formula."""
         if temp is None or rh is None:
             return None
-        # Absolute humidity formula: AH = (RH/100) * 6.112 * exp((17.62*T)/(243.12+T))
-        # / (273.15+T) * 2.167
-        # Where T is temperature in Celsius, RH is relative humidity in %
-        saturation_pressure = 6.112 * (2.71828 ** ((17.62 * temp) / (243.12 + temp)))
-        actual_pressure = (rh / 100.0) * saturation_pressure
-        abs_humidity = actual_pressure * 2.167 / (273.15 + temp)
-        return float(round(abs_humidity, 2))
+
+        # Use the calculation function from our helpers
+        return calculate_absolute_humidity(temp, rh)
 
     @property
     def native_unit_of_measurement(self) -> str:

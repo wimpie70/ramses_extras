@@ -1,5 +1,5 @@
-// orcon-fan-card-editor.js
-class OrconFanCardEditor extends HTMLElement {
+// hvac-fan-card-editor.js
+class HvacFanCardEditor extends HTMLElement {
   constructor() {
     super();
     this._config = {};
@@ -9,17 +9,17 @@ class OrconFanCardEditor extends HTMLElement {
 
   connectedCallback() {
     this._initialized = true;
-    console.log('OrconFanCardEditor connected');
+    console.log('HvacFanCardEditor connected');
   }
 
   setConfig(config) {
-    console.log('OrconFanCardEditor setConfig called with:', config);
-    this._config = config || {};
+    console.log('HvacFanCardEditor setConfig called with:', config);
+    this._config = config ? JSON.parse(JSON.stringify(config)) : {};
     this._updateContent();
   }
 
   set hass(hass) {
-    console.log('OrconFanCardEditor hass set');
+    console.log('HvacFanCardEditor hass set');
     this._hass = hass;
     if (this._config && this._initialized) {
       this._updateContent();
@@ -27,7 +27,7 @@ class OrconFanCardEditor extends HTMLElement {
   }
 
   _updateContent() {
-    console.log('=== OrconFanCardEditor _updateContent Debug ===');
+    console.log('=== HvacFanCardEditor _updateContent Debug ===');
     console.log('HASS available:', !!this._hass);
     console.log('Config available:', !!this._config);
 
@@ -39,9 +39,9 @@ class OrconFanCardEditor extends HTMLElement {
 
     console.log('✅ Both hass and config available, proceeding with render');
 
-    // Get available Ramses CC devices
+    // Get available Ramses RF FAN devices only
     const ramsesDevices = this._getRamsesDevices();
-    console.log('Found Ramses devices:', ramsesDevices);
+    console.log('Found Ramses RF FAN devices:', ramsesDevices);
 
     // Debug entity detection (only for entities we need)
     const inputBooleanEntities = Object.keys(this._hass.states).filter(entity =>
@@ -55,13 +55,13 @@ class OrconFanCardEditor extends HTMLElement {
     this.innerHTML = `
       <div class="card-config">
         <div class="form-group">
-          <label for="device_id">Device ID *</label>
+          <label for="device_id">FAN Device ID *</label>
           <select id="device_id" class="config-input" required>
-            <option value="">Select a Ramses CC device...</option>
-            ${ramsesDevices.map(device => `<option value="${device.id}" ${this._config.device_id === device.id ? 'selected' : ''}>${device.id} (${device.name || 'Unknown'})</option>`).join('')}
-            ${ramsesDevices.length === 0 ? '<option disabled>No Ramses CC devices found</option>' : ''}
+            <option value="">Select a Ramses RF FAN...</option>
+            ${ramsesDevices.map(device => `<option value="${device.id}" ${this._config.device_id === device.id ? 'selected' : ''}>${device.id} (${device.name})</option>`).join('')}
+            ${ramsesDevices.length === 0 ? '<option disabled>No Ramses RF FAN devices found</option>' : ''}
           </select>
-          <small class="form-help">Select the Ramses CC device ID that corresponds to your fan</small>
+          <small class="form-help">Select the Ramses RF FAN device ID</small>
         </div>
 
         <div class="form-group">
@@ -130,7 +130,7 @@ class OrconFanCardEditor extends HTMLElement {
       </style>
     `;
 
-    console.log('✅ Card editor HTML generated successfully');
+    console.log('✅ Card editor HTML generated suRFessfully');
     console.log('📏 Editor dimensions:', this.offsetWidth, 'x', this.offsetHeight);
 
     // Add event listeners after content is set
@@ -163,53 +163,67 @@ class OrconFanCardEditor extends HTMLElement {
   }
 
   _getRamsesDevices() {
-    console.log('=== _getRamsesDevices Debug ===');
-    console.log('HASS available in _getRamsesDevices:', !!this._hass);
+    console.log('=== Finding Ramses RF FAN devices ===');
 
     if (!this._hass) {
-      console.log('No HASS available, returning empty array');
+      console.log('❌ No Home Assistant data available');
       return [];
     }
 
-    // Get all Ramses CC entities and extract device IDs
-    const ramsesEntities = Object.keys(this._hass.states).filter(entity =>
-      entity.startsWith('sensor.') && entity.includes('_fan')
-    );
-    console.log('Found Ramses entities:', ramsesEntities);
+    const fanDevices = [];
 
-    const deviceIds = new Set();
+    // Check device registry for FAN devices
+    if (this._hass.devices) {
+      Object.values(this._hass.devices).forEach(device => {
+        // Look for devices with fan in name or model
+        if (device.name?.toLowerCase().includes('fan') ||
+            device.model?.toLowerCase().includes('fan') ||
+            device.name?.toLowerCase().includes('ventilation')) {
 
-    ramsesEntities.forEach(entity => {
-      const entityBase = entity.replace('sensor.', '');
-      let deviceId = '';
+          // Verify device has fan-related entities
+          const allEntities = Object.keys(this._hass.states);
+          const fanEntities = allEntities.filter(entityId => {
+            const entityName = entityId.toLowerCase();
+            const deviceNameLower = (device.name || '').toLowerCase();
+            const deviceModelLower = (device.model || '').toLowerCase();
 
-      if (entityBase.includes('_fan_info')) {
-        deviceId = entityBase.replace('_fan_info', '');
-      } else if (entityBase.includes('_fan_')) {
-        deviceId = entityBase.split('_fan_')[0];
-      } else if (entityBase.includes('_')) {
-        const parts = entityBase.split('_');
-        if (parts.length === 2 && parts.every(part => /^\d+$/.test(part))) {
-          deviceId = entityBase;
-        } else {
-          deviceId = parts.slice(0, -1).join('_');
+            return entityName.includes('fan') ||
+                   entityName.includes('ventilator') ||
+                   entityName.includes(deviceModelLower.replace(/[^a-z0-9]/g, '')) ||
+                   entityName.includes(deviceNameLower.replace(/[^a-z0-9]/g, ''));
+          });
+
+          const hasFanCapabilities = fanEntities.some(entity =>
+            entity.includes('_fan_info') ||
+            entity.includes('_fan_mode') ||
+            entity.includes('_fan_speed') ||
+            (entity.includes('_fan_') && entity.includes('_temp'))
+          );
+
+          if (hasFanCapabilities) {
+            // Extract clean device ID from device name
+            let deviceId = device.id;
+            if (device.name && device.name.includes(':')) {
+              const nameParts = device.name.split(' ');
+              const idMatch = nameParts.find(part => part.includes(':'));
+              if (idMatch) {
+                deviceId = idMatch;
+              }
+            }
+
+            fanDevices.push({
+              id: deviceId,
+              name: `FAN: ${deviceId}`
+            });
+
+            console.log('✅ Found FAN device:', device.name, '→', deviceId);
+          }
         }
-      } else {
-        deviceId = entityBase;
-      }
+      });
+    }
 
-      if (deviceId) {
-        deviceIds.add(deviceId);
-      }
-    });
-
-    const devices = Array.from(deviceIds).map(id => ({
-      id: id.replace(/_/g, ':'), // Normalize to colon format
-      name: `Device ${id.replace(/_/g, ':')}`
-    }));
-
-    console.log('Extracted devices:', devices);
-    return devices;
+    console.log('🎯 Found', fanDevices.length, 'FAN devices');
+    return fanDevices;
   }
 
   _dispatchConfigChange() {
@@ -221,7 +235,7 @@ class OrconFanCardEditor extends HTMLElement {
 }
 
 // Register the editor
-customElements.define('orcon-fan-card-editor', OrconFanCardEditor);
+customElements.define('hvac-fan-card-editor', HvacFanCardEditor);
 
 // Make editor globally available for Home Assistant
-window.OrconFanCardEditor = OrconFanCardEditor;
+window.HvacFanCardEditor = HvacFanCardEditor;
