@@ -1,7 +1,7 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more information
 # Updated to trigger workflow testing
-
+#
 
 from pathlib import Path
 
@@ -174,3 +174,4 @@ ENTITY_TYPE_CONFIGS = {
     "switch": SWITCH_CONFIGS,
     "binary_sensor": BOOLEAN_CONFIGS,
 }
+# Test PR trigger
