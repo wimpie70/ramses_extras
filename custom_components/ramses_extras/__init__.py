@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     pass
 
 # Register platforms
-PLATFORMS = ["sensor", "switch", "binary_sensor"]
+PLATFORMS = ["sensor", "switch", "binary_sensor", "number"]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -237,7 +237,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(
-        entry, ["sensor", "switch", "binary_sensor"]
+        entry, ["sensor", "switch", "binary_sensor", "number"]
     )
 
     if unload_ok:
@@ -399,7 +399,8 @@ async def handle_hvac_ventilator(device: Any) -> list[str]:
     has_entities = (
         entity_mapping.get("sensors")
         or entity_mapping.get("switches")
-        or entity_mapping.get("booleans")
+        or entity_mapping.get("binary_sensors")
+        or entity_mapping.get("numbers")
     )
 
     return [device_id] if has_entities else []

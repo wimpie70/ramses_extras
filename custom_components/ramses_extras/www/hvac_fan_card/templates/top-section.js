@@ -7,11 +7,20 @@ export function createTopSection(data) {
   const {
     outdoorTemp, outdoorHumidity, outdoorAbsHumidity,
     indoorTemp, indoorHumidity, indoorAbsHumidity, comfortTemp, dehumMode, dehumActive,
+    dehumEntitiesAvailable,
     supplyTemp, exhaustTemp,
     fanSpeed, fanMode,
     co2Level, flowRate, efficiency,
     timerMinutes, bypassState, airflowSvg
   } = data;
+
+  // Helper function to format humidity values
+  const formatHumidity = (value, unit) => {
+    if (value === 'unavailable' || value === '?' || value === null || value === undefined) {
+      return '<span style="color: #999; font-style: italic;">unavailable</span>';
+    }
+    return `${value}${unit}`;
+  };
 
   return `
     <div class="ventilation-card">
@@ -38,7 +47,7 @@ export function createTopSection(data) {
             <span>💧</span>
           </div>
           <div class="humidity-abs">
-            <span id="outdoorAbsHumidity">${outdoorAbsHumidity} g/m³</span>
+            <span id="outdoorAbsHumidity">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
             <span>💨</span>
           </div>
         </div>
@@ -54,9 +63,10 @@ export function createTopSection(data) {
             <span>💧</span>
           </div>
           <div class="humidity-abs">
-            <span id="indoorAbsHumidity">${indoorAbsHumidity} g/m³</span>
+            <span id="indoorAbsHumidity">${formatHumidity(indoorAbsHumidity, ' g/m³')}</span>
             <span>💨</span>
           </div>
+          ${dehumEntitiesAvailable ? `
           <div class="comfort-temp">
             <span id="comfortTemp">${comfortTemp} °C</span>
             <span>🌡️</span>
@@ -70,6 +80,7 @@ export function createTopSection(data) {
             <span id="dehumActive">${dehumActive}</span>
             <span>💨</span>
           </div>
+          ` : ''}
         </div>
 
         <div class="corner-value bottom-right">

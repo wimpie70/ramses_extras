@@ -85,11 +85,28 @@ AVAILABLE_FEATURES = {
         "required_entities": {
             "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
             "switches": ["dehumidify"],
-            "booleans": ["dehumidifying"],
+            "binary_sensors": ["dehumidifying"],
         },
         "optional_entities": {
             "sensors": [],
             "switches": [],
+        },
+    },
+    "humidity_control": {
+        "name": "Humidity Control",
+        "description": "Creates dehumidify control entities and automation",
+        "category": "automations",
+        "default_enabled": False,
+        "supported_device_types": ["HvacVentilator"],
+        "required_entities": {
+            "sensors": [],
+            "switches": [],
+            "numbers": ["rel_humid_min", "rel_humid_max"],
+        },
+        "optional_entities": {
+            "sensors": [],
+            "switches": ["dehumidify"],
+            "binary_sensors": ["dehumidifying"],
         },
     },
     "humidity_automation": {
@@ -102,7 +119,7 @@ AVAILABLE_FEATURES = {
         "required_entities": {
             "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
             "switches": ["dehumidify"],
-            "booleans": ["dehumidifying"],
+            "binary_sensors": ["dehumidifying"],
         },
         "optional_entities": {
             "sensors": [],
@@ -110,8 +127,6 @@ AVAILABLE_FEATURES = {
         },
     },
 }
-
-# Categories for organizing features
 FEATURE_CATEGORIES = {
     "cards": "Dashboard Cards",
     "automations": "Automations",
@@ -123,7 +138,8 @@ DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
         "sensors": ["indoor_abs_humid", "outdoor_abs_humid", "test1", "test2"],
         "switches": ["dehumidify"],
-        "booleans": ["dehumidifying"],
+        "binary_sensors": ["dehumidifying"],
+        "numbers": ["rel_humid_min", "rel_humid_max"],
     },
 }
 
@@ -167,10 +183,37 @@ BOOLEAN_CONFIGS = {
     },
 }
 
+# Number configurations for threshold values
+NUMBER_CONFIGS = {
+    "rel_humid_min": {
+        "name_template": "Relative Humidity Minimum",
+        "entity_category": EntityCategory.CONFIG,
+        "unit": "%",
+        "icon": "mdi:water-minus",
+        "device_class": None,
+        "min_value": 30,
+        "max_value": 80,
+        "step": 1,
+        "supported_device_types": ["HvacVentilator"],
+    },
+    "rel_humid_max": {
+        "name_template": "Relative Humidity Maximum",
+        "entity_category": EntityCategory.CONFIG,
+        "unit": "%",
+        "icon": "mdi:water-plus",
+        "device_class": None,
+        "min_value": 50,
+        "max_value": 90,
+        "step": 1,
+        "supported_device_types": ["HvacVentilator"],
+    },
+}
+
 # Entity type to config mapping
 ENTITY_TYPE_CONFIGS = {
     "sensor": ENTITY_CONFIGS,
     "switch": SWITCH_CONFIGS,
     "binary_sensor": BOOLEAN_CONFIGS,
+    "number": NUMBER_CONFIGS,
 }
 # Test PR trigger

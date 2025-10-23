@@ -66,7 +66,7 @@ export function createTemplateData(rawData) {
     indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
     indoorAbsHumidity, outdoorAbsHumidity,  // Integration-provided values (preferred)
     supplyTemp, exhaustTemp, fanSpeed, fanMode, co2Level, flowRate,
-    dehumMode, dehumActive, comfortTemp, timerMinutes = 0, efficiency = 75
+    dehumMode, dehumActive, dehumEntitiesAvailable, comfortTemp, timerMinutes = 0, efficiency = 75
   } = rawData;
 
   // Calculate efficiency from temperature data if not provided
@@ -110,6 +110,7 @@ export function createTemplateData(rawData) {
     // Dehumidifier and comfort settings
     dehumMode: dehumMode || 'off',
     dehumActive: dehumActive || 'off',
+    dehumEntitiesAvailable: dehumEntitiesAvailable || false,
     comfortTemp: comfortTemp || '?',
 
     // Timer and bypass state

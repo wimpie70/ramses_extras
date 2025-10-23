@@ -3,7 +3,7 @@
  * Contains the 4 rows of control buttons (fan modes, speeds, timer, bypass)
  */
 
-export function createControlsSection() {
+export function createControlsSection(dehumEntitiesAvailable = false) {
   return `
     <!-- Control Buttons - 4 rows -->
     <div class="controls-container">
@@ -17,10 +17,17 @@ export function createControlsSection() {
           <div class="control-icon">🌀</div>
           <div class="control-label">Auto</div>
         </div>
+        ${dehumEntitiesAvailable ? `
         <div class="control-button" data-mode="active">
           <div class="control-icon">⚡</div>
           <div class="control-label">Dehumidify</div>
         </div>
+        ` : `
+        <div class="control-button disabled" title="Humidity control not available">
+          <div class="control-icon">⚡</div>
+          <div class="control-label" style="color: #999; font-style: italic;">Dehumidify</div>
+        </div>
+        `}
       </div>
 
       <!-- Row 2: Fan Speeds -->

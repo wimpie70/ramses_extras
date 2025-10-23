@@ -157,50 +157,8 @@ class HvacFanCard extends HTMLElement {
   shouldUpdate() {
     if (!this._hass || !this.config) return false;
 
-    // Check if any of our entities have changed
-    const entities = this.getEntities();
-    return entities.some(entity => {
-      const oldState = this._prevStates ? this._prevStates[entity] : null;
-      const newState = this._hass.states[entity];
-      this._prevStates = this._prevStates || {};
-      this._prevStates[entity] = newState;
-      return oldState !== newState;
-    });
-  }
-
-  // Debug function to validate entity existence
-  validateEntities() {
-    if (!this._hass || !this.config) return;
-
-//    console.log('=== Entity Validation Debug ===');
-//    console.log(`Fan entity: ${this.config.fan_entity}`);
-
-    const entities = this.getEntities();
-    const missing = [];
-    const found = [];
-
-    entities.forEach(entity => {
-      if (this._hass.states[entity]) {
-        found.push(`${entity}: ${this._hass.states[entity].state}`);
-      } else {
-        missing.push(entity);
-      }
-    });
-
-//    console.log('Found entities:', found);
-    if (missing.length > 0) {
-      console.warn('Missing entities:', missing);
-    } else {
-      console.log('✅ All expected entities are available');
-    }
-
-    return { found, missing };
-  }
-
-  getEntities() {
-    if (!this.config) return [];
-
-    return [
+    // Check if any of our monitored entities have changed
+    const entities = [
       // ramses_extras provided sensors
       this.config.indoor_abs_humid_entity,
       this.config.outdoor_abs_humid_entity,
@@ -219,9 +177,16 @@ class HvacFanCard extends HTMLElement {
       this.config.dehum_mode_entity,
       this.config.dehum_active_entity,
       this.config.comfort_temp_entity,
-    ].filter(Boolean); // Remove any undefined/null values
-  }
+    ].filter(Boolean);
 
+    return entities.some(entity => {
+      const oldState = this._prevStates ? this._prevStates[entity] : null;
+      const newState = this._hass.states[entity];
+      this._prevStates = this._prevStates || {};
+      this._prevStates[entity] = newState;
+      return oldState !== newState;
+    });
+  }
 
   // Method to get bound REM device via WebSocket
   async getBoundRem(deviceId) {
@@ -293,6 +258,18 @@ class HvacFanCard extends HTMLElement {
 
       console.log(`Using configured device ID for commands: ${deviceId}`);
 
+      // Find the actual dehumidify switch entity
+      const switchEntity = 'switch.dehumidify_' + deviceId.replace(/:/g, '_');
+
+      if (commandKey === 'active') {
+        // Toggle dehumidify mode by calling the switch service
+        console.log(`Toggling dehumidify switch: ${switchEntity}`);
+        await this._hass.callService('switch', 'turn_on', {
+          entity_id: switchEntity
+        });
+        return true;
+      }
+
       // Get the bound REM device first
       let remId;
       try {
@@ -345,7 +322,8 @@ class HvacFanCard extends HTMLElement {
     let deviceId = config.device_id;
     deviceId = deviceId.replace(/_/g, ':');
 
-    this.config = {
+    // Store the processed config for internal use
+    this._config = {
       device_id: deviceId,
       // Auto-generate absolute humidity sensor entities (created by integration)
       indoor_abs_humid_entity: 'sensor.indoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
@@ -363,16 +341,29 @@ class HvacFanCard extends HTMLElement {
       flow_entity: config.flow_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
       bypass_entity: config.bypass_entity || 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
       // Use configured entities if provided, otherwise auto-generate
-      dehum_mode_entity: config.dehum_mode_entity || 'input_boolean.' + deviceId.replace(/:/g, '_') + '_dehumidifier_mode',
-      dehum_active_entity: config.dehum_active_entity || 'input_boolean.' + deviceId.replace(/:/g, '_') + '_dehumidifier_active',
+      dehum_mode_entity: config.dehum_mode_entity || 'switch.dehumidify_' + deviceId.replace(/:/g, '_'),
+      dehum_active_entity: config.dehum_active_entity || 'binary_sensor.dehumidifying_active_' + deviceId.replace(/:/g, '_'),
       comfort_temp_entity: config.comfort_temp_entity || 'number.' + deviceId.replace(/:/g, '_') + '_param_75',
       ...config
     };
+
+    // Set the config property for Home Assistant's card framework
+    // This ensures this.config is available and matches this._config
+    this.config = this._config;
   }
 
   render() {
+    console.log('🎯 RENDER CALLED - checking config and hass...');
+    console.log('🎯 this._config:', this._config);
+    console.log('🎯 this._hass:', this._hass);
+    console.log('🎯 this.config:', this.config);
+
     if (!this._hass || !this.config) {
-      console.error('❌ Missing hass or config:', { hass: !!this._hass, config: !!this.config });
+      console.error('❌ Missing hass or config:', {
+        hass: !!this._hass,
+        _config: !!this._config,
+        config: !!this.config
+      });
       return;
     }
 
@@ -381,8 +372,11 @@ class HvacFanCard extends HTMLElement {
     // Debug: Validate entities are available
     this.validateEntities();
 
-    const config = this.config;
+    const config = this.config;  // Use config consistently
     const hass = this._hass;
+
+    // Check dehumidify entity availability
+    const dehumEntitiesAvailable = this.checkDehumidifyEntities();
 
     const indoorTemp = hass.states[config.indoor_temp_entity]?.state || '?';
     const outdoorTemp = hass.states[config.outdoor_temp_entity]?.state || '?';
@@ -400,9 +394,9 @@ class HvacFanCard extends HTMLElement {
     const co2Level = hass.states[config.co2_entity]?.state || '?';
     const flowRate = hass.states[config.flow_entity]?.state || '?';
 
-    // Dehumidifier entities (will be available when created)
-    const dehumMode = hass.states[config.dehum_mode_entity]?.state || 'off';
-    const dehumActive = hass.states[config.dehum_active_entity]?.state || 'off';
+    // Dehumidifier entities (only if available)
+    const dehumMode = dehumEntitiesAvailable ? (hass.states[config.dehum_mode_entity]?.state || 'off') : null;
+    const dehumActive = dehumEntitiesAvailable ? (hass.states[config.dehum_active_entity]?.state || 'off') : null;
 
     // Comfort temperature entity (will be available when created)
     const comfortTemp = hass.states[config.comfort_temp_entity]?.state || '?';
@@ -417,6 +411,7 @@ class HvacFanCard extends HTMLElement {
       indoorAbsHumidity, outdoorAbsHumidity,  // From integration sensors
       supplyTemp, exhaustTemp, fanSpeed, fanMode, co2Level, flowRate,
       dehumMode, dehumActive, comfortTemp,
+      dehumEntitiesAvailable,  // Add availability flag
       timerMinutes: 0, // This would come from timer state
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
@@ -435,6 +430,17 @@ class HvacFanCard extends HTMLElement {
       outdoorAbsEntity: config.outdoor_abs_humid_entity
     });
 
+    // Enhanced dehumidify debugging
+    console.log('🔍 DEBUG - Dehumidify entities:', {
+      dehumModeEntity: config.dehum_mode_entity,
+      dehumActiveEntity: config.dehum_active_entity,
+      dehumEntitiesAvailable,
+      dehumMode: dehumMode,
+      dehumActive: dehumActive,
+      dehumModeState: dehumEntitiesAvailable ? hass.states[config.dehum_mode_entity]?.state : 'N/A',
+      dehumActiveState: dehumEntitiesAvailable ? hass.states[config.dehum_active_entity]?.state : 'N/A'
+    });
+
     const templateData = createTemplateData(rawData);
     // Add airflow SVG to template data
     templateData.airflowSvg = selectedSvg;
@@ -447,7 +453,7 @@ class HvacFanCard extends HTMLElement {
     const cardHtml = [
       createCardHeader(CARD_STYLE),
       createTopSection(templateData),
-      createControlsSection(),
+      createControlsSection(dehumEntitiesAvailable),  // Pass availability flag
       createCardFooter()
     ].join('');
 
@@ -476,11 +482,136 @@ class HvacFanCard extends HTMLElement {
     return 3;
   }
 
-  // Handle fan mode changes (legacy function, now uses sendFanCommand)
-  async setFanMode(mode) {
-    console.log('Setting fan mode to:', mode);
-    // Use the new sendFanCommand function
-    await this.sendFanCommand(mode);
+  // Validate all required entities are available
+  validateEntities() {
+    console.log('🎯 VALIDATE ENTITIES CALLED!');
+    console.log('🎯 this._config exists:', !!this._config);
+    console.log('🎯 this._hass exists:', !!this._hass);
+    console.log('🎯 this.config exists:', !!this.config);
+
+    // Note: config and hass are already validated in render() before this is called
+    const config = this.config;
+    const hass = this._hass;
+
+    console.log('🔍 DEBUG - Config object:', {
+      hasConfig: !!config,
+      configKeys: config ? Object.keys(config) : 'NO CONFIG',
+      indoor_temp_entity: config?.indoor_temp_entity,
+      outdoor_temp_entity: config?.outdoor_temp_entity,
+      dehum_mode_entity: config?.dehum_mode_entity,
+      dehum_active_entity: config?.dehum_active_entity,
+      device_id: config?.device_id,
+      fullConfig: config
+    });
+    // Check core entities
+    const coreEntities = {
+      'Indoor Temperature': config.indoor_temp_entity,
+      'Outdoor Temperature': config.outdoor_temp_entity,
+      'Indoor Humidity': config.indoor_humidity_entity,
+      'Outdoor Humidity': config.outdoor_humidity_entity,
+      'Supply Temperature': config.supply_temp_entity,
+      'Exhaust Temperature': config.exhaust_temp_entity,
+      'Fan Speed': config.fan_speed_entity,
+      'Fan Mode': config.fan_mode_entity,
+      'Bypass': config.bypass_entity,
+    };
+
+    const missingCoreEntities = [];
+    const availableCoreEntities = [];
+
+    Object.entries(coreEntities).forEach(([name, entityId]) => {
+      const exists = !!hass.states[entityId];
+      if (exists) {
+        availableCoreEntities.push(name);
+      } else {
+        missingCoreEntities.push(name);
+      }
+    });
+
+    if (availableCoreEntities.length > 0) {
+      console.log('✅ Available entities:', availableCoreEntities.join(', '));
+    }
+
+    if (missingCoreEntities.length > 0) {
+      console.warn('⚠️ Missing entities:', missingCoreEntities.join(', '));
+    }
+
+    // Check dehumidify entities specifically
+    const dehumEntities = {
+      'Dehumidify Mode': config.dehum_mode_entity,
+      'Dehumidify Active': config.dehum_active_entity,
+    };
+
+    const missingDehumEntities = [];
+    const availableDehumEntities = [];
+
+    Object.entries(dehumEntities).forEach(([name, entityId]) => {
+      const exists = !!hass.states[entityId];
+      if (exists) {
+        availableDehumEntities.push(name);
+      } else {
+        missingDehumEntities.push(name);
+      }
+    });
+
+    if (availableDehumEntities.length > 0) {
+      console.log('💧 Dehumidify entities available:', availableDehumEntities.join(', '));
+    }
+
+    if (missingDehumEntities.length > 0) {
+      console.log('💧 Dehumidify entities missing:', missingDehumEntities.join(', '));
+    }
+
+    // Check absolute humidity entities
+    const absHumidEntities = {
+      'Indoor Absolute Humidity': config.indoor_abs_humid_entity,
+      'Outdoor Absolute Humidity': config.outdoor_abs_humid_entity,
+    };
+
+    const missingAbsEntities = [];
+    const availableAbsEntities = [];
+
+    Object.entries(absHumidEntities).forEach(([name, entityId]) => {
+      const exists = !!hass.states[entityId];
+      if (exists) {
+        availableAbsEntities.push(name);
+      } else {
+        missingAbsEntities.push(name);
+      }
+    });
+
+    if (availableAbsEntities.length > 0) {
+      console.log('🌫️ Absolute humidity entities available:', availableAbsEntities.join(', '));
+    }
+
+    if (missingAbsEntities.length > 0) {
+      console.log('🌫️ Absolute humidity entities missing:', missingAbsEntities.join(', '));
+    }
+
+    console.log('🔍 Entity validation complete');
+  }
+
+  // Check if dehumidify entities are available
+  checkDehumidifyEntities() {
+    // Note: config and hass are already validated in render() before this is called
+    const config = this.config;
+    const hass = this._hass;
+
+    // Check if both dehumidify entities exist with correct format
+    const dehumModeExists = !!hass.states[config.dehum_mode_entity];
+    const dehumActiveExists = !!hass.states[config.dehum_active_entity];
+
+    const entitiesAvailable = dehumModeExists && dehumActiveExists;
+
+    console.log('💧 Dehumidify entity check:', {
+      dehumModeEntity: config.dehum_mode_entity,
+      dehumActiveEntity: config.dehum_active_entity,
+      dehumModeExists,
+      dehumActiveExists,
+      entitiesAvailable
+    });
+
+    return entitiesAvailable;
   }
 
   // Handle bypass button clicks
@@ -497,9 +628,34 @@ class HvacFanCard extends HTMLElement {
     await this.sendFanCommand(minutes);
   }
 
+  // Handle fan mode changes
+  async setFanMode(mode) {
+    console.log('Setting fan mode to:', mode);
+
+    if (mode === 'active') {
+      // Find the actual dehumidify switch entity
+      const deviceId = this.config.device_id;
+      const switchEntity = 'switch.dehumidify_' + deviceId.replace(/:/g, '_');
+
+      if (this._hass.states[switchEntity]) {
+        // Toggle dehumidify mode by calling the switch service
+        console.log(`Toggling dehumidify switch: ${switchEntity}`);
+        await this._hass.callService('switch', 'toggle', {
+          entity_id: switchEntity
+        });
+      } else {
+        console.error(`Dehumidify switch not found: ${switchEntity}`);
+      }
+    } else {
+      // Handle other fan modes (if any)
+      console.log('Other fan mode:', mode);
+      await this.sendFanCommand(mode);
+    }
+  }
+
   // Force refresh of all monitored entities
   async forceRefresh() {
-    if (!this._hass || !this._config) {
+    if (!this._hass || !this.config) {
       console.error('Cannot refresh: Missing Home Assistant or config');
       return false;
     }
@@ -520,8 +676,6 @@ class HvacFanCard extends HTMLElement {
       return false;
     }
   }
-
-  // UI Update Functions (available globally for onclick handlers)
   updateTimerUI(minutes) {
     console.log('Updating timer UI to:', minutes, 'minutes');
     const timerElement = this.shadowRoot?.querySelector('#timer');
