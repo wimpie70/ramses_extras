@@ -1,5 +1,6 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more information
+# Updated to trigger workflow testing
 
 
 from pathlib import Path
