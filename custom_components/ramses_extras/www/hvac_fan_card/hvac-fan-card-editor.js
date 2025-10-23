@@ -1,5 +1,5 @@
-// orcon-fan-card-editor.js
-class OrconFanCardEditor extends HTMLElement {
+// hvac-fan-card-editor.js
+class HvacFanCardEditor extends HTMLElement {
   constructor() {
     super();
     this._config = {};
@@ -9,17 +9,17 @@ class OrconFanCardEditor extends HTMLElement {
 
   connectedCallback() {
     this._initialized = true;
-    console.log('OrconFanCardEditor connected');
+    console.log('HvacFanCardEditor connected');
   }
 
   setConfig(config) {
-    console.log('OrconFanCardEditor setConfig called with:', config);
-    this._config = config || {};
+    console.log('HvacFanCardEditor setConfig called with:', config);
+    this._config = config ? JSON.parse(JSON.stringify(config)) : {};
     this._updateContent();
   }
 
   set hass(hass) {
-    console.log('OrconFanCardEditor hass set');
+    console.log('HvacFanCardEditor hass set');
     this._hass = hass;
     if (this._config && this._initialized) {
       this._updateContent();
@@ -27,7 +27,7 @@ class OrconFanCardEditor extends HTMLElement {
   }
 
   _updateContent() {
-    console.log('=== OrconFanCardEditor _updateContent Debug ===');
+    console.log('=== HvacFanCardEditor _updateContent Debug ===');
     console.log('HASS available:', !!this._hass);
     console.log('Config available:', !!this._config);
 
@@ -39,9 +39,9 @@ class OrconFanCardEditor extends HTMLElement {
 
     console.log('✅ Both hass and config available, proceeding with render');
 
-    // Get available Ramses CC devices
+    // Get available Ramses RF HvacVentilator devices only
     const ramsesDevices = this._getRamsesDevices();
-    console.log('Found Ramses devices:', ramsesDevices);
+    console.log('Found Ramses HvacVentilator devices:', ramsesDevices);
 
     // Debug entity detection (only for entities we need)
     const inputBooleanEntities = Object.keys(this._hass.states).filter(entity =>
@@ -55,13 +55,13 @@ class OrconFanCardEditor extends HTMLElement {
     this.innerHTML = `
       <div class="card-config">
         <div class="form-group">
-          <label for="device_id">Device ID *</label>
+          <label for="device_id">HvacVentilator Device ID *</label>
           <select id="device_id" class="config-input" required>
-            <option value="">Select a Ramses CC device...</option>
+            <option value="">Select a Ramses RF HvacVentilator...</option>
             ${ramsesDevices.map(device => `<option value="${device.id}" ${this._config.device_id === device.id ? 'selected' : ''}>${device.id} (${device.name || 'Unknown'})</option>`).join('')}
-            ${ramsesDevices.length === 0 ? '<option disabled>No Ramses CC devices found</option>' : ''}
+            ${ramsesDevices.length === 0 ? '<option disabled>No Ramses RF HvacVentilator devices found</option>' : ''}
           </select>
-          <small class="form-help">Select the Ramses CC device ID that corresponds to your fan</small>
+          <small class="form-help">Select the Ramses RF HvacVentilator device ID that corresponds to your fan</small>
         </div>
 
         <div class="form-group">
@@ -130,7 +130,7 @@ class OrconFanCardEditor extends HTMLElement {
       </style>
     `;
 
-    console.log('✅ Card editor HTML generated successfully');
+    console.log('✅ Card editor HTML generated suRFessfully');
     console.log('📏 Editor dimensions:', this.offsetWidth, 'x', this.offsetHeight);
 
     // Add event listeners after content is set
@@ -163,7 +163,7 @@ class OrconFanCardEditor extends HTMLElement {
   }
 
   _getRamsesDevices() {
-    console.log('=== _getRamsesDevices Debug ===');
+    console.log('=== _getRamsesHvacVentilatorDevices Debug ===');
     console.log('HASS available in _getRamsesDevices:', !!this._hass);
 
     if (!this._hass) {
@@ -171,11 +171,11 @@ class OrconFanCardEditor extends HTMLElement {
       return [];
     }
 
-    // Get all Ramses CC entities and extract device IDs
+    // Get all Ramses RF HvacVentilator entities and extract device IDs
     const ramsesEntities = Object.keys(this._hass.states).filter(entity =>
       entity.startsWith('sensor.') && entity.includes('_fan')
     );
-    console.log('Found Ramses entities:', ramsesEntities);
+    console.log('Found Ramses HvacVentilator entities:', ramsesEntities);
 
     const deviceIds = new Set();
 
@@ -205,10 +205,10 @@ class OrconFanCardEditor extends HTMLElement {
 
     const devices = Array.from(deviceIds).map(id => ({
       id: id.replace(/_/g, ':'), // Normalize to colon format
-      name: `Device ${id.replace(/_/g, ':')}`
+      name: `HvacVentilator ${id.replace(/_/g, ':')}`
     }));
 
-    console.log('Extracted devices:', devices);
+    console.log('Extracted HvacVentilator devices:', devices);
     return devices;
   }
 
@@ -221,7 +221,7 @@ class OrconFanCardEditor extends HTMLElement {
 }
 
 // Register the editor
-customElements.define('orcon-fan-card-editor', OrconFanCardEditor);
+customElements.define('hvac-fan-card-editor', HvacFanCardEditor);
 
 // Make editor globally available for Home Assistant
-window.OrconFanCardEditor = OrconFanCardEditor;
+window.HvacFanCardEditor = HvacFanCardEditor;

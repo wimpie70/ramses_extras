@@ -10,7 +10,7 @@ import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
 
 // Debug: Check if imports work
-console.log('✅ ES6 imports loaded successfully');
+console.log('✅ ES6 imports loaded suRFessfully');
 
 class HvacFanCard extends HTMLElement {
   // All fan commands in one simple object
@@ -239,7 +239,7 @@ class HvacFanCard extends HTMLElement {
 
     // try {
     //   const result = await this._hass.connection.sendMessagePromise({
-    //     type: 'ramses_cc/get_bound_rem',
+    //     type: 'ramses_RF/get_bound_rem',
     //     device_id: deviceId
     //   });
 
@@ -250,21 +250,21 @@ class HvacFanCard extends HTMLElement {
     // }
   }
 
-  // Method to send packet via ramses_cc service
+  // Method to send packet via ramses_RF service
   async sendPacket(deviceId, fromId, verb, code, payload) {
     if (!this._hass) {
       throw new Error('Home Assistant instance not available');
     }
 
     try {
-      await this._hass.callService('ramses_cc', 'send_packet', {
+      await this._hass.callService('ramses_RF', 'send_packet', {
         device_id: deviceId,
         from_id: fromId,
         verb: verb,
         code: code,
         payload: payload
       });
-      console.log(`Successfully sent packet: ${verb} ${code} ${payload}`);
+      console.log(`SuRFessfully sent packet: ${verb} ${code} ${payload}`);
     } catch (error) {
       console.error('Error sending packet:', error);
       throw error;
@@ -307,7 +307,7 @@ class HvacFanCard extends HTMLElement {
       // Send the packet
       await this.sendPacket(deviceId, remId, command.verb, command.code, command.payload);
 
-      console.log(`Successfully set fan mode to ${commandKey}`);
+      console.log(`SuRFessfully set fan mode to ${commandKey}`);
       // Update UI
       const fanModeElement = this.shadowRoot?.querySelector('#fanMode');
       if (fanModeElement) {
@@ -431,15 +431,15 @@ class HvacFanCard extends HTMLElement {
 
     this.innerHTML = cardHtml;
 
-    console.log('✅ Card HTML generated successfully');
+    console.log('✅ Card HTML generated suRFessfully');
   }
 
   // Configuration schema for visual editor
   static getConfigElement() {
     try {
       // Ensure the editor is available before creating it
-      if (typeof hvacFanCardEditor === 'undefined') {
-        console.error('hvacFanCardEditor is not defined');
+      if (typeof window.HvacFanCardEditor === 'undefined') {
+        console.error('HvacFanCardEditor is not defined on window');
         return null;
       }
       return document.createElement("hvac-fan-card-editor");
@@ -545,10 +545,10 @@ class HvacFanCard extends HTMLElement {
 
     // Get the card instance from the global reference
     if (window.hvacFanCardInstance) {
-      window.hvacFanCardInstance.forceRefresh().then(success => {
-        if (success) {
+      window.hvacFanCardInstance.forceRefresh().then(suRFess => {
+        if (suRFess) {
           console.log('✅ Manual refresh completed');
-          // Show a brief success indicator (optional)
+          // Show a brief suRFess indicator (optional)
           const refreshBtn = this.shadowRoot?.querySelector('.refresh-button');
           if (refreshBtn) {
             refreshBtn.style.background = 'rgba(76, 175, 80, 0.3)';
