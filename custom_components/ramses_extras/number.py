@@ -191,8 +191,7 @@ class RamsesNumberEntity(NumberEntity):
         if self._number_type in ["rel_humid_min", "rel_humid_max"]:
             device_id = self._fan_id.replace("_", ":")
             _LOGGER.info(
-                "Would send 2411 parameter update: "
-                "device_id=%s, param=%s, value=%.1f",
+                "Would send 2411 parameter update: device_id=%s, param=%s, value=%.1f",
                 device_id,
                 self._number_type,
                 value,
