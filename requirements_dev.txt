@@ -1,4 +1,4 @@
-# Requirements to dev the source code
+# Requirements to dev the source code (matching ramses_cc)
 # - last checked/updated: 2025-10-05 (c.f. HA 2025.10.0)
 #
 
@@ -9,7 +9,8 @@
   pyserial-asyncio-fast >= 0.14                  # as per: manifest.json latest: 0.16
   ramses_rf             == 0.51.9                # as per: manifest.json latest:
 
-
+# Note: hassfest validation is done via GitHub Actions (home-assistant/actions/hassfest@master)
+# For local validation, use HACS or Home Assistant development tools
 
 # libraries required for development (lint/type/test)...
 # - pip list | grep -E 'pre-commit|ruff|mypy|types-|voluptuous'
