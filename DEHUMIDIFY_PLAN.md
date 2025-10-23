@@ -180,3 +180,49 @@ input_boolean.dehumidify_auto_mode
 - [ ] Update render() to check entity availability
 - [ ] Implement conditional visibility for dehumidify controls
 - [ ] Add proper fallbacks when entities missing
+
+## ✅ Phase 1: Card Improvements - COMPLETED
+
+### 🎯 **Implemented Features:**
+
+#### **1. Entity Availability Checks** ✅
+- Added `checkDehumidifyEntities()` function
+- Validates both switch and binary_sensor entities exist
+- Returns boolean availability flag
+
+#### **2. Comprehensive Entity Validation** ✅
+- Added `validateEntities()` function
+- Checks all core entities (temp, humidity, fan, bypass)
+- Checks dehumidify entities separately
+- Checks absolute humidity entities
+- Provides detailed debug logging
+
+#### **3. Conditional Control Display** ✅
+- Updated top-section template with conditional rendering
+- Dehumidify status indicators hidden when entities missing
+- Comfort temperature hidden when entities missing
+
+#### **4. Smart Button Management** ✅
+- Updated controls-section template with availability parameter
+- Shows functional button when entities available
+- Shows disabled button (gray, italic) when entities missing
+- Added tooltip explaining unavailable state
+
+#### **5. Enhanced Debugging** ✅
+- Added entity availability logging in render()
+- Enhanced debug output with entity states
+- Clear distinction between available/missing entities
+
+### 📊 **Current Card Behavior:**
+
+| State | Switch Button | Status Indicators | Debug Info |
+|-------|---------------|------------------|------------|
+| **Entities Available** | ✅ Functional | ✅ Visible | 🟢 All entities found |
+| **Entities Missing** | ❌ Disabled (gray) | ❌ Hidden | 🟡 Missing entities logged |
+
+### 🚀 **Benefits Achieved:**
+- ✅ No more confusing missing controls
+- ✅ Clear visual feedback for unavailable features
+- ✅ Comprehensive debugging information
+- ✅ Proper separation of concerns
+- ✅ Clean user experience

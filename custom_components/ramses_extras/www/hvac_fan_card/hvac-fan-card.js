@@ -384,6 +384,9 @@ class HvacFanCard extends HTMLElement {
     const config = this.config;
     const hass = this._hass;
 
+    // Check dehumidify entity availability
+    const dehumEntitiesAvailable = this.checkDehumidifyEntities();
+
     const indoorTemp = hass.states[config.indoor_temp_entity]?.state || '?';
     const outdoorTemp = hass.states[config.outdoor_temp_entity]?.state || '?';
     const indoorHumidity = hass.states[config.indoor_humidity_entity]?.state || '?';
@@ -400,9 +403,9 @@ class HvacFanCard extends HTMLElement {
     const co2Level = hass.states[config.co2_entity]?.state || '?';
     const flowRate = hass.states[config.flow_entity]?.state || '?';
 
-    // Dehumidifier entities (will be available when created)
-    const dehumMode = hass.states[config.dehum_mode_entity]?.state || 'off';
-    const dehumActive = hass.states[config.dehum_active_entity]?.state || 'off';
+    // Dehumidifier entities (only if available)
+    const dehumMode = dehumEntitiesAvailable ? (hass.states[config.dehum_mode_entity]?.state || 'off') : null;
+    const dehumActive = dehumEntitiesAvailable ? (hass.states[config.dehum_active_entity]?.state || 'off') : null;
 
     // Comfort temperature entity (will be available when created)
     const comfortTemp = hass.states[config.comfort_temp_entity]?.state || '?';
@@ -417,6 +420,7 @@ class HvacFanCard extends HTMLElement {
       indoorAbsHumidity, outdoorAbsHumidity,  // From integration sensors
       supplyTemp, exhaustTemp, fanSpeed, fanMode, co2Level, flowRate,
       dehumMode, dehumActive, comfortTemp,
+      dehumEntitiesAvailable,  // Add availability flag
       timerMinutes: 0, // This would come from timer state
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
@@ -435,6 +439,17 @@ class HvacFanCard extends HTMLElement {
       outdoorAbsEntity: config.outdoor_abs_humid_entity
     });
 
+    // Enhanced dehumidify debugging
+    console.log('🔍 DEBUG - Dehumidify entities:', {
+      dehumModeEntity: config.dehum_mode_entity,
+      dehumActiveEntity: config.dehum_active_entity,
+      dehumEntitiesAvailable,
+      dehumMode: dehumMode,
+      dehumActive: dehumActive,
+      dehumModeState: dehumEntitiesAvailable ? hass.states[config.dehum_mode_entity]?.state : 'N/A',
+      dehumActiveState: dehumEntitiesAvailable ? hass.states[config.dehum_active_entity]?.state : 'N/A'
+    });
+
     const templateData = createTemplateData(rawData);
     // Add airflow SVG to template data
     templateData.airflowSvg = selectedSvg;
@@ -447,7 +462,7 @@ class HvacFanCard extends HTMLElement {
     const cardHtml = [
       createCardHeader(CARD_STYLE),
       createTopSection(templateData),
-      createControlsSection(),
+      createControlsSection(dehumEntitiesAvailable),  // Pass availability flag
       createCardFooter()
     ].join('');
 
@@ -476,11 +491,130 @@ class HvacFanCard extends HTMLElement {
     return 3;
   }
 
-  // Handle fan mode changes (legacy function, now uses sendFanCommand)
-  async setFanMode(mode) {
-    console.log('Setting fan mode to:', mode);
-    // Use the new sendFanCommand function
-    await this.sendFanCommand(mode);
+  // Validate all required entities are available
+  validateEntities() {
+    if (!this._config || !this._hass) {
+      console.warn('⚠️ Cannot validate entities: missing config or hass');
+      return;
+    }
+
+    const config = this._config;
+    const hass = this._hass;
+
+    console.log('🔍 Validating entity availability...');
+
+    // Check core entities
+    const coreEntities = {
+      'Indoor Temperature': config.indoor_temp_entity,
+      'Outdoor Temperature': config.outdoor_temp_entity,
+      'Indoor Humidity': config.indoor_humidity_entity,
+      'Outdoor Humidity': config.outdoor_humidity_entity,
+      'Supply Temperature': config.supply_temp_entity,
+      'Exhaust Temperature': config.exhaust_temp_entity,
+      'Fan Speed': config.fan_speed_entity,
+      'Fan Mode': config.fan_mode_entity,
+      'Bypass': config.bypass_entity,
+    };
+
+    const missingCoreEntities = [];
+    const availableCoreEntities = [];
+
+    Object.entries(coreEntities).forEach(([name, entityId]) => {
+      const exists = !!hass.states[entityId];
+      if (exists) {
+        availableCoreEntities.push(name);
+      } else {
+        missingCoreEntities.push(name);
+      }
+    });
+
+    if (availableCoreEntities.length > 0) {
+      console.log('✅ Available entities:', availableCoreEntities.join(', '));
+    }
+
+    if (missingCoreEntities.length > 0) {
+      console.warn('⚠️ Missing entities:', missingCoreEntities.join(', '));
+    }
+
+    // Check dehumidify entities specifically
+    const dehumEntities = {
+      'Dehumidify Mode': config.dehum_mode_entity,
+      'Dehumidify Active': config.dehum_active_entity,
+    };
+
+    const missingDehumEntities = [];
+    const availableDehumEntities = [];
+
+    Object.entries(dehumEntities).forEach(([name, entityId]) => {
+      const exists = !!hass.states[entityId];
+      if (exists) {
+        availableDehumEntities.push(name);
+      } else {
+        missingDehumEntities.push(name);
+      }
+    });
+
+    if (availableDehumEntities.length > 0) {
+      console.log('💧 Dehumidify entities available:', availableDehumEntities.join(', '));
+    }
+
+    if (missingDehumEntities.length > 0) {
+      console.log('💧 Dehumidify entities missing:', missingDehumEntities.join(', '));
+    }
+
+    // Check absolute humidity entities
+    const absHumidEntities = {
+      'Indoor Absolute Humidity': config.indoor_abs_humid_entity,
+      'Outdoor Absolute Humidity': config.outdoor_abs_humid_entity,
+    };
+
+    const missingAbsEntities = [];
+    const availableAbsEntities = [];
+
+    Object.entries(absHumidEntities).forEach(([name, entityId]) => {
+      const exists = !!hass.states[entityId];
+      if (exists) {
+        availableAbsEntities.push(name);
+      } else {
+        missingAbsEntities.push(name);
+      }
+    });
+
+    if (availableAbsEntities.length > 0) {
+      console.log('🌫️ Absolute humidity entities available:', availableAbsEntities.join(', '));
+    }
+
+    if (missingAbsEntities.length > 0) {
+      console.log('🌫️ Absolute humidity entities missing:', missingAbsEntities.join(', '));
+    }
+
+    console.log('🔍 Entity validation complete');
+  }
+
+  // Check if dehumidify entities are available
+  checkDehumidifyEntities() {
+    if (!this._config || !this._hass) {
+      return false;
+    }
+
+    const config = this._config;
+    const hass = this._hass;
+
+    // Check if both dehumidify entities exist
+    const dehumModeExists = !!hass.states[config.dehum_mode_entity];
+    const dehumActiveExists = !!hass.states[config.dehum_active_entity];
+
+    const entitiesAvailable = dehumModeExists && dehumActiveExists;
+
+    console.log('💧 Dehumidify entity check:', {
+      dehumModeEntity: config.dehum_mode_entity,
+      dehumActiveEntity: config.dehum_active_entity,
+      dehumModeExists,
+      dehumActiveExists,
+      entitiesAvailable
+    });
+
+    return entitiesAvailable;
   }
 
   // Handle bypass button clicks

@@ -110,6 +110,7 @@ export function createTemplateData(rawData) {
     // Dehumidifier and comfort settings
     dehumMode: dehumMode || 'off',
     dehumActive: dehumActive || 'off',
+    dehumEntitiesAvailable: dehumEntitiesAvailable || false,
     comfortTemp: comfortTemp || '?',
 
     // Timer and bypass state
