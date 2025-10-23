@@ -7,7 +7,7 @@ on:
     paths: [
         ".github/workflows/check-test.yml", "requirements_dev.txt",
         "custom_components/**.py",
-        "tests/**",
+        "tests/**", "pyproject.toml",
     ]
 
   pull_request:
@@ -15,7 +15,7 @@ on:
     paths: [
         ".github/workflows/check-test.yml", "requirements_dev.txt",
         "custom_components/**.py",
-        "tests/**",
+        "tests/**", "pyproject.toml",
     ]
 
   schedule:
