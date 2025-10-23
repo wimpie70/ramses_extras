@@ -2,13 +2,13 @@ name: Typing
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ master, develop ]
     paths: [
       ".github/workflows/check-type.yml", ".pre-commit-config.yaml",
       "custom_components/**.py", "tests/**.py",
     ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ master, develop ]
     paths: [
       ".github/workflows/check-type.yml", ".pre-commit-config.yaml",
       "custom_components/**.py", "tests/**.py",
