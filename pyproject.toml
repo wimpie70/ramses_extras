@@ -82,18 +82,4 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "--verbose",
-    "--tb=short",
-    "--asyncio-mode=auto",
-]
-markers = [
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-]
+  asyncio_mode = "auto"
