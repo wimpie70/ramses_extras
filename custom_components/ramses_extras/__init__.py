@@ -215,6 +215,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {}
     hass.data[DOMAIN]["entry_id"] = entry.entry_id
+    hass.data[DOMAIN]["enabled_features"] = entry.data.get("enabled_features", {})
 
     # Register enabled card resources dynamically
     await _register_enabled_card_resources(hass, entry.data.get("enabled_features", {}))
@@ -287,6 +288,15 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
             if device_ids:
                 _LOGGER.info("Found %d Ramses devices: %s", len(device_ids), device_ids)
                 hass.data.setdefault(DOMAIN, {})["fans"] = device_ids
+
+                # Create automation if humidity control is enabled and we have devices
+                enabled_features = hass.data.get(DOMAIN, {}).get("enabled_features", {})
+                if enabled_features.get("humidity_control", False):
+                    _LOGGER.info(
+                        "Creating humidity automation for discovered devices..."
+                    )
+                    await _create_humidity_automation(hass, device_ids)
+
                 return
             _LOGGER.info("No Ramses devices found in entity registry")
         else:
@@ -382,6 +392,175 @@ async def _handle_device(device: Any) -> list[str]:
     return device_ids
 
 
+async def _create_humidity_automation(
+    hass: HomeAssistant, device_ids: list[str]
+) -> None:
+    """Create humidity control automation for discovered devices."""
+    if not device_ids:
+        _LOGGER.debug("No devices found for automation creation")
+        return
+
+    # Get automation template location from feature config
+    humidity_control_config = AVAILABLE_FEATURES.get("humidity_control", {})
+    template_location = humidity_control_config.get(
+        "location", "automations/humidity_control_template.yaml"
+    )
+    if not isinstance(template_location, str):
+        template_location = str(template_location)
+    template_path = INTEGRATION_DIR / Path(template_location)
+
+    if not template_path.exists():
+        _LOGGER.error(f"Automation template not found: {template_path}")
+        return
+
+    try:
+        # Read the template asynchronously
+        def read_template() -> str:
+            with open(template_path, encoding="utf-8") as f:
+                return f.read()
+
+        template_content = await hass.async_add_executor_job(read_template)
+
+        # Create automation for each device
+        automations = []
+
+        for device_id in device_ids:
+            device_id_underscore = device_id.replace(":", "_")
+
+            # Replace template variables in the automation BEFORE parsing YAML
+            device_automation_yaml = template_content.replace(
+                "{{ device_id }}", device_id
+            ).replace("{{ device_id_underscore }}", device_id_underscore)
+
+            # Do multiple replacement passes to handle nested template expressions
+            max_iterations = 5
+            for _ in range(max_iterations):
+                old_yaml = device_automation_yaml
+                device_automation_yaml = device_automation_yaml.replace(
+                    "{{ device_id }}", device_id
+                )
+                device_automation_yaml = device_automation_yaml.replace(
+                    "{{ device_id_underscore }}", device_id_underscore
+                )
+                if old_yaml == device_automation_yaml:
+                    break  # No more changes, we're done
+
+            # Parse the YAML to get the automation object
+            import yaml  # type: ignore[import-untyped]
+
+            device_automation = yaml.safe_load(device_automation_yaml)
+            if device_automation and "automation" in device_automation:
+                automations.extend(device_automation["automation"])
+
+        # Write automation directly to main automations.yaml
+        main_automation_path = Path(hass.config.path("automations.yaml"))
+
+        def write_automations_to_main_file() -> None:
+            if main_automation_path.exists():
+                with open(main_automation_path, encoding="utf-8") as f:
+                    content = yaml.safe_load(f)
+
+                if content is None:
+                    content = {"automation": []}
+
+                # Add our automations to existing ones
+                if "automation" not in content:
+                    content["automation"] = []
+
+                # Check if our automations already exist (avoid duplicates)
+                existing_automations = content["automation"]
+                new_automations = []
+
+                for device_id in device_ids:
+                    device_id_underscore = device_id.replace(":", "_")
+
+                    # Replace template variables
+                    device_automation_yaml = template_content.replace(
+                        "{{ device_id }}", device_id
+                    ).replace("{{ device_id_underscore }}", device_id_underscore)
+
+                    device_automation = yaml.safe_load(device_automation_yaml)
+                    if device_automation and "automation" in device_automation:
+                        new_automations.extend(device_automation["automation"])
+
+                # Add new automations only if they don't already exist
+                for new_auto in new_automations:
+                    automation_id = new_auto.get("id", "")
+                    exists = any(
+                        auto.get("id") == automation_id for auto in existing_automations
+                    )
+                    if not exists:
+                        existing_automations.append(new_auto)
+
+                # Update content
+                content["automation"] = existing_automations
+
+                with open(main_automation_path, "w", encoding="utf-8") as f:
+                    yaml.dump(content, f, default_flow_style=False, sort_keys=False)
+            else:
+                # Create new automations.yaml with our automations
+                content = {"automation": automations}
+                with open(main_automation_path, "w", encoding="utf-8") as f:
+                    yaml.dump(content, f, default_flow_style=False, sort_keys=False)
+
+        await hass.async_add_executor_job(write_automations_to_main_file)
+
+        _LOGGER.info(
+            "Created humidity control automation for "
+            + f"{len(device_ids)} devices in automations.yaml"
+        )
+
+    except Exception as e:
+        _LOGGER.error(f"Failed to create humidity automation: {e}")
+
+    return
+
+
+# Handle device types
+
+
+async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
+    """Remove humidity control automations when feature is disabled."""
+    automation_path = Path(hass.config.path("automations.yaml"))
+
+    if not automation_path.exists():
+        return
+
+    try:
+        import yaml
+
+        with open(automation_path, encoding="utf-8") as f:
+            content = yaml.safe_load(f)
+
+        if not content or "automation" not in content:
+            return
+
+        # Remove Ramses humidity control automations
+        filtered_automations = []
+        for auto in content["automation"]:
+            alias = auto.get("alias", "")
+            is_ramses_humidity_auto = alias.startswith(
+                (
+                    "Dehumidifier Control -",
+                    "Dehumidifier Manual Override -",
+                    "Dehumidifier Default Thresholds -",
+                )
+            )
+
+            if not is_ramses_humidity_auto:
+                filtered_automations.append(auto)
+
+        # Update file if any automations were removed
+        if len(filtered_automations) != len(content["automation"]):
+            content["automation"] = filtered_automations
+            with open(automation_path, "w", encoding="utf-8") as f:
+                yaml.dump(content, f, default_flow_style=False, sort_keys=False)
+            _LOGGER.info("Removed humidity control automations from automations.yaml")
+
+    except Exception as e:
+        _LOGGER.error(f"Failed to cleanup humidity automations: {e}")
+
+
 async def handle_hvac_ventilator(device: Any) -> list[str]:
     """Handle HVAC Ventilator devices - create entities based on mapping."""
     device_id = device.id
@@ -403,7 +582,16 @@ async def handle_hvac_ventilator(device: Any) -> list[str]:
         or entity_mapping.get("numbers")
     )
 
-    return [device_id] if has_entities else []
+    if has_entities:
+        _LOGGER.info(
+            f"Device {device_id} ({device.__class__.__name__}) will create entities"
+        )
+        return [device_id]
+
+    _LOGGER.debug(
+        f"Device {device_id} ({device.__class__.__name__}) has no entities defined"
+    )
+    return []
 
 
 # Add more device handlers here as needed
