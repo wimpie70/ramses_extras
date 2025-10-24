@@ -38,6 +38,9 @@ _setup_in_progress = False
 # Global flag to track if static paths have been registered
 _STATIC_PATHS_REGISTERED = False
 
+# Integration only uses config entries, no YAML configuration needed
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Ramses Extras."""
