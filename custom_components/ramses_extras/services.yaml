@@ -1,0 +1,44 @@
+set_fan_speed_mode:
+  name: Set Fan Speed Mode
+  description: Set the fan speed mode for a Ramses device (requires ramses_cc integration).
+  target:
+    entity: {}
+  fields:
+    device_id:
+      name: Device ID
+      description: The Ramses device ID (e.g., "32:153289").
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    mode:
+      name: Mode
+      description: The fan speed mode to set.
+      required: true
+      example: "auto"
+      selector:
+        select:
+          options:
+            - "low"
+            - "medium"
+            - "high"
+            - "auto"
+            - "away"
+            - "boost"
+    duration:
+      name: Duration
+      description: How long to maintain this mode in minutes (optional, max 1440 minutes/24 hours).
+      required: false
+      example: 60
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: minutes
+    reason:
+      name: Reason
+      description: Reason for the manual override (optional, for logging purposes).
+      required: false
+      example: "High humidity detected"
+      selector:
+        text:
