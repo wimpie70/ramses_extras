@@ -15,9 +15,14 @@ from .const import (
     AVAILABLE_FEATURES,
     CARD_FOLDER,
     DEVICE_ENTITY_MAPPING,
+    DEVICE_SERVICE_MAPPING,
     DOMAIN,
     INTEGRATION_DIR,
 )
+from .managers import FeatureManager
+from .managers.automation_manager import AutomationManager
+from .managers.card_manager import CardManager
+from .managers.entity_manager import EntityManager
 
 if TYPE_CHECKING:
     pass
@@ -27,14 +32,8 @@ PLATFORMS = ["sensor", "switch", "binary_sensor", "number"]
 
 _LOGGER = logging.getLogger(__name__)
 
-
-# Schema for domain configuration (deprecated since we use config entries)
-SCH_DOMAIN_CONFIG = vol.Schema({}, extra=vol.ALLOW_EXTRA)
-
-CONFIG_SCHEMA = vol.All(
-    cv.deprecated(DOMAIN, raise_if_present=False),
-    vol.Schema({DOMAIN: SCH_DOMAIN_CONFIG}, extra=vol.ALLOW_EXTRA),
-)
+# Global flag to prevent multiple simultaneous setup attempts
+_setup_in_progress = False
 
 # Global flag to track if static paths have been registered
 _STATIC_PATHS_REGISTERED = False
@@ -170,41 +169,39 @@ async def _register_enabled_card_resources(
         _LOGGER.info("No card resources are currently enabled in config flow")
 
 
-async def _manage_cards(hass: HomeAssistant, enabled_features: dict[str, bool]) -> None:
-    """Install or remove custom cards based on enabled features."""
-    www_community_path = Path(hass.config.path("www", "community"))
+async def _register_services(
+    hass: HomeAssistant, feature_manager: FeatureManager
+) -> None:
+    """Register services based on enabled features and discovered devices."""
+    from .helpers.device import (
+        find_ramses_device,
+        get_all_device_ids,
+        get_device_type,
+        validate_device_for_service,
+    )
+    from .services import fan_services
 
-    # Handle all card features dynamically
-    for feature_key, feature_config in AVAILABLE_FEATURES.items():
-        if feature_config.get("category") == "cards":
-            # Use the same path resolution as the rest of the code
-            card_source_path = (
-                INTEGRATION_DIR / CARD_FOLDER / str(feature_config.get("location", ""))
-            )
-            card_dest_path = www_community_path / feature_key
+    # Get discovered devices
+    device_ids = get_all_device_ids(hass)
 
-            if enabled_features.get(feature_key, False):
-                if card_source_path.exists():
-                    _LOGGER.info(f"Card {feature_key} is automatically registered")
-                else:
-                    _LOGGER.warning(
-                        f"Cannot register {feature_key}: {card_source_path} not found"
-                    )
-            else:
-                # Remove card from community folder if it exists
-                await _remove_card(hass, card_dest_path)
+    if device_ids:
+        # Register services for discovered device types
+        for device_id in device_ids:
+            device = find_ramses_device(hass, device_id)
+            if device:
+                device_type = get_device_type(device)
+                if device_type in DEVICE_SERVICE_MAPPING:
+                    services_for_device = DEVICE_SERVICE_MAPPING[device_type]
+                    for service_name in services_for_device:
+                        if service_name == "set_fan_speed_mode":
+                            fan_services.register_fan_services(hass)
+                            _LOGGER.info(
+                                f"Registered fan services for device {device_id} "
+                                f"({device_type})"
+                            )
+                            return  # Only need to register once
 
-
-async def _remove_card(hass: HomeAssistant, card_path: Path) -> None:
-    """Remove a custom card."""
-    try:
-        if card_path.exists():
-            await hass.async_add_executor_job(shutil.rmtree, card_path)
-            _LOGGER.info(f"Successfully removed card from {card_path}")
-        else:
-            _LOGGER.debug(f"Card path does not exist, nothing to remove: {card_path}")
-    except Exception as e:
-        _LOGGER.error(f"Failed to remove card: {e}")
+    _LOGGER.debug("No services registered - no supported devices found")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -220,10 +217,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register enabled card resources dynamically
     await _register_enabled_card_resources(hass, entry.data.get("enabled_features", {}))
 
-    # Install/remove cards based on enabled features
-    await _manage_cards(hass, entry.data.get("enabled_features", {}))
-
-    # Discover devices first
+    # Discover devices and set up platforms
     await async_setup_platforms(hass)
 
     # Load platforms for this config entry
@@ -236,12 +230,44 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload Ramses Extras entry."""
     _LOGGER.debug("Unloading Ramses Extras entry")
 
+    # Clean up humidity automations when feature is disabled
+    enabled_features = entry.data.get("enabled_features", {})
+    if enabled_features.get("humidity_control", False):
+        await _cleanup_humidity_automations(hass)
+
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(
         entry, ["sensor", "switch", "binary_sensor", "number"]
     )
 
     if unload_ok:
+        # Remove services
+        from .helpers.device import (
+            find_ramses_device,
+            get_all_device_ids,
+            get_device_type,
+        )
+
+        device_ids = get_all_device_ids(hass)
+        if device_ids:
+            for device_id in device_ids:
+                device = find_ramses_device(hass, device_id)
+                if device:
+                    device_type = get_device_type(device)
+                    if device_type in DEVICE_SERVICE_MAPPING:
+                        services_for_device = DEVICE_SERVICE_MAPPING[device_type]
+                        for service_name in services_for_device:
+                            if service_name == "set_fan_speed_mode":
+                                # Unregister the service
+                                hass.services.async_remove(DOMAIN, service_name)
+                                _LOGGER.info(
+                                    "Unregistered %s service for device %s (%s)",
+                                    service_name,
+                                    device_id,
+                                    device_type,
+                                )
+                                break
+
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return bool(unload_ok)
@@ -259,12 +285,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-# Global flag to prevent multiple simultaneous setup attempts
-_setup_in_progress = False
-
-
 async def async_setup_platforms(hass: HomeAssistant) -> None:
-    """Find Ramses FAN devices and register extras."""
+    """Find Ramses FAN devices and register extras using managers."""
     global _setup_in_progress
 
     # Prevent multiple simultaneous setup attempts
@@ -289,13 +311,35 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
                 _LOGGER.info("Found %d Ramses devices: %s", len(device_ids), device_ids)
                 hass.data.setdefault(DOMAIN, {})["fans"] = device_ids
 
-                # Create automation if humidity control is enabled and we have devices
-                enabled_features = hass.data.get(DOMAIN, {}).get("enabled_features", {})
-                if enabled_features.get("humidity_control", False):
-                    _LOGGER.info(
-                        "Creating humidity automation for discovered devices..."
-                    )
-                    await _create_humidity_automation(hass, device_ids)
+                # Initialize managers
+                feature_manager = FeatureManager(hass)
+                card_manager = CardManager(hass)
+                entity_manager = EntityManager(hass)
+                automation_manager = AutomationManager(hass)
+
+                # Load current feature state
+                config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+                if config_entry:
+                    feature_manager.load_enabled_features(config_entry)
+
+                # Get enabled features by category
+                enabled_cards = feature_manager.get_enabled_cards()
+                # enabled_automations = feature_manager.get_enabled_automations()  # noqa: E501  # TODO: implement
+
+                # Install enabled cards
+                await card_manager.install_cards(enabled_cards)
+
+                # Set up entities and automations
+                await _setup_entities_and_automations(
+                    hass,
+                    device_ids,
+                    feature_manager,
+                    entity_manager,
+                    automation_manager,
+                )
+
+                # Register services for discovered devices
+                await _register_services(hass, feature_manager)
 
                 return
             _LOGGER.info("No Ramses devices found in entity registry")
@@ -316,6 +360,42 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
             _LOGGER.info("Ramses CC is loaded but no devices found, not retrying")
     finally:
         _setup_in_progress = False
+
+
+async def _setup_entities_and_automations(
+    hass: HomeAssistant,
+    device_ids: list[str],
+    feature_manager: FeatureManager,
+    entity_manager: EntityManager,
+    automation_manager: AutomationManager,
+) -> None:
+    """Set up entities and automations using managers."""
+    try:
+        # Get enabled features
+        enabled_features = {}
+        for feature_key in AVAILABLE_FEATURES.keys():
+            enabled_features[feature_key] = feature_manager.is_feature_enabled(
+                feature_key
+            )
+
+        _LOGGER.info(f"Setting up components for enabled features: {enabled_features}")
+
+        # Set up automations for enabled automation features
+        enabled_automations = feature_manager.get_enabled_automations()
+        if enabled_automations:
+            await automation_manager.create_device_automations(
+                device_ids, enabled_automations
+            )
+
+        # Set up platforms (entities will be created by platform setup)
+        await hass.config_entries.async_forward_entry_setups(
+            hass.data[DOMAIN]["config_entry"], PLATFORMS
+        )
+
+        _LOGGER.info("Entity and automation setup completed via managers")
+
+    except Exception as e:
+        _LOGGER.error(f"Failed to setup entities and automations: {e}")
 
 
 async def _discover_ramses_devices(hass: HomeAssistant) -> list[str]:
@@ -392,147 +472,6 @@ async def _handle_device(device: Any) -> list[str]:
     return device_ids
 
 
-async def _create_humidity_automation(
-    hass: HomeAssistant, device_ids: list[str]
-) -> None:
-    """Create humidity control automation for discovered devices."""
-    if not device_ids:
-        _LOGGER.debug("No devices found for automation creation")
-        return
-
-    # Get automation template location from feature config
-    humidity_control_config = AVAILABLE_FEATURES.get("humidity_control", {})
-    template_location = humidity_control_config.get(
-        "location", "automations/humidity_control_template.yaml"
-    )
-    if not isinstance(template_location, str):
-        template_location = str(template_location)
-    template_path = INTEGRATION_DIR / Path(template_location)
-
-    if not template_path.exists():
-        _LOGGER.error(f"Automation template not found: {template_path}")
-        return
-
-    try:
-        # Read the template asynchronously
-        def read_template() -> str:
-            with open(template_path, encoding="utf-8") as f:
-                return f.read()
-
-        template_content = await hass.async_add_executor_job(read_template)
-
-        # Create automation for each device
-        automations = []
-
-        for device_id in device_ids:
-            device_id_underscore = device_id.replace(":", "_")
-
-            # Replace template variables in the automation BEFORE parsing YAML
-            device_automation_yaml = template_content.replace(
-                "{{ device_id }}", device_id
-            ).replace("{{ device_id_underscore }}", device_id_underscore)
-
-            # Do multiple replacement passes to handle nested template expressions
-            max_iterations = 5
-            for _ in range(max_iterations):
-                old_yaml = device_automation_yaml
-                device_automation_yaml = device_automation_yaml.replace(
-                    "{{ device_id }}", device_id
-                )
-                device_automation_yaml = device_automation_yaml.replace(
-                    "{{ device_id_underscore }}", device_id_underscore
-                )
-                if old_yaml == device_automation_yaml:
-                    break  # No more changes, we're done
-
-            # Parse the YAML to get the automation object
-            import yaml  # type: ignore[import-untyped]
-
-            device_automation = yaml.safe_load(device_automation_yaml)
-            if device_automation and "automation" in device_automation:
-                automations.extend(device_automation["automation"])
-
-        # Write automation directly to main automations.yaml
-        main_automation_path = Path(hass.config.path("automations.yaml"))
-
-        def write_automations_to_main_file() -> None:
-            if main_automation_path.exists():
-                with open(main_automation_path, encoding="utf-8") as f:
-                    content = yaml.safe_load(f)
-
-                if content is None:
-                    content = []
-
-                # Handle both formats: with or without automation wrapper
-                if isinstance(content, list):
-                    # Direct automation list format (like user's working automations)
-                    existing_automations = content
-                elif isinstance(content, dict) and "automation" in content:
-                    # Wrapped format with automation key
-                    existing_automations = content["automation"]
-                else:
-                    existing_automations = []
-
-                # Check if our automations already exist (avoid duplicates)
-                new_automations = []
-
-                for device_id in device_ids:
-                    device_id_underscore = device_id.replace(":", "_")
-
-                    # Replace template variables
-                    device_automation_yaml = template_content.replace(
-                        "{{ device_id }}", device_id
-                    ).replace("{{ device_id_underscore }}", device_id_underscore)
-
-                    device_automation = yaml.safe_load(device_automation_yaml)
-                    if device_automation and isinstance(device_automation, list):
-                        new_automations.extend(device_automation)
-
-                # Add new automations only if they don't already exist
-                for new_auto in new_automations:
-                    automation_id = new_auto.get("id", "")
-                    exists = any(
-                        auto.get("id") == automation_id for auto in existing_automations
-                    )
-                    if not exists:
-                        existing_automations.append(new_auto)
-
-                # Write back in the same format as the existing file
-                if isinstance(content, list):
-                    # Direct format - write list directly
-                    with open(main_automation_path, "w", encoding="utf-8") as f:
-                        yaml.dump(
-                            existing_automations,
-                            f,
-                            default_flow_style=False,
-                            sort_keys=False,
-                        )
-                else:
-                    # Wrapped format - write with automation key
-                    content["automation"] = existing_automations
-                    with open(main_automation_path, "w", encoding="utf-8") as f:
-                        yaml.dump(content, f, default_flow_style=False, sort_keys=False)
-            else:
-                # Create new automations.yaml with direct format
-                with open(main_automation_path, "w", encoding="utf-8") as f:
-                    yaml.dump(automations, f, default_flow_style=False, sort_keys=False)
-
-        await hass.async_add_executor_job(write_automations_to_main_file)
-
-        _LOGGER.info(
-            "Created humidity control automation for "
-            + f"{len(device_ids)} devices in automations.yaml"
-        )
-
-    except Exception as e:
-        _LOGGER.error(f"Failed to create humidity automation: {e}")
-
-    return
-
-
-# Handle device types
-
-
 async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
     """Remove humidity control automations when feature is disabled."""
     automation_path = Path(hass.config.path("automations.yaml"))
@@ -543,10 +482,15 @@ async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
     try:
         import yaml
 
-        with open(automation_path, encoding="utf-8") as f:
-            content = yaml.safe_load(f)
+        # Read file content asynchronously
+        def read_automations_file() -> str:
+            with open(automation_path, encoding="utf-8") as f:
+                return f.read()
 
-        if not content or "automation" not in content:
+        content_str = await hass.async_add_executor_job(read_automations_file)
+        content = yaml.safe_load(content_str)
+
+        if not content:
             return
 
         # Handle both formats: with or without automation wrapper
@@ -559,7 +503,7 @@ async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
         else:
             return
 
-        # Remove Ramses humidity control automations
+        # Remove Ramses humidity control automations by ID
         filtered_automations = []
         for auto in automations_to_filter:
             automation_id = auto.get("id", "")
@@ -572,20 +516,24 @@ async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
 
         # Update file if any automations were removed
         if len(filtered_automations) != len(automations_to_filter):
-            if isinstance(content, list):
-                # Direct format - write list directly
-                with open(automation_path, "w", encoding="utf-8") as f:
-                    yaml.dump(
-                        filtered_automations,
-                        f,
-                        default_flow_style=False,
-                        sort_keys=False,
-                    )
-            else:
-                # Wrapped format - write with automation key
-                content["automation"] = filtered_automations
-                with open(automation_path, "w", encoding="utf-8") as f:
-                    yaml.dump(content, f, default_flow_style=False, sort_keys=False)
+
+            def write_automations_file() -> None:
+                if isinstance(content, list):
+                    # Direct format - write list directly
+                    with open(automation_path, "w", encoding="utf-8") as f:
+                        yaml.dump(
+                            filtered_automations,
+                            f,
+                            default_flow_style=False,
+                            sort_keys=False,
+                        )
+                else:
+                    # Wrapped format - write with automation key
+                    content["automation"] = filtered_automations
+                    with open(automation_path, "w", encoding="utf-8") as f:
+                        yaml.dump(content, f, default_flow_style=False, sort_keys=False)
+
+            await hass.async_add_executor_job(write_automations_file)
             _LOGGER.info("Removed humidity control automations from automations.yaml")
 
     except Exception as e:

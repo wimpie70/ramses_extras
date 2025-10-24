@@ -558,6 +558,45 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         for feature_key in AVAILABLE_FEATURES.keys():
             enabled_features[feature_key] = feature_key in selected_features
 
+        # Check what features were disabled and clean them up
+        current_features = self._config_entry.data.get("enabled_features", {})
+        disabled_automations = []
+
+        _LOGGER.info(f"Config flow - Current features: {current_features}")
+        _LOGGER.info(f"Config flow - New features: {enabled_features}")
+
+        for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            currently_enabled = current_features.get(feature_key, False)
+            will_be_enabled = enabled_features[feature_key]
+
+            _LOGGER.info(
+                f"Config flow - Feature {feature_key}: currently {currently_enabled}, "
+                f"will be {will_be_enabled}, category {feature_config.get('category')}"
+            )
+
+            # If automation feature was disabled, clean it up
+            if (
+                currently_enabled
+                and not will_be_enabled
+                and feature_config.get("category") == "automations"
+            ):
+                disabled_automations.append(feature_key)
+                _LOGGER.info(
+                    f"Config flow - Detected disabled automation feature: {feature_key}"
+                )
+
+        _LOGGER.info(f"Config flow - Features to cleanup: {disabled_automations}")
+
+        # Clean up disabled automation features before updating config
+        if disabled_automations:
+            try:
+                _LOGGER.info(
+                    f"Cleaning up disabled automation features: {disabled_automations}"
+                )
+                await self._cleanup_disabled_automations(disabled_automations)
+            except Exception as e:
+                _LOGGER.warning(f"Cleanup failed, continuing with config update: {e}")
+
         # Update the config entry data
         new_data = self._config_entry.data.copy()
         new_data["enabled_features"] = enabled_features
@@ -568,6 +607,134 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         await _manage_cards_config_flow(self.hass, enabled_features)
 
         # Reload the integration to apply changes
-        await self.hass.config_entries.async_reload(self._config_entry.entry_id)
+        try:
+            await self.hass.config_entries.async_reload(self._config_entry.entry_id)
+        except Exception as e:
+            _LOGGER.warning(f"Integration reload failed, but config updated: {e}")
 
         return self.async_create_entry(title="", data={})
+
+    async def _cleanup_disabled_automations(self, disabled_features: list[str]) -> None:
+        """Clean up automations for disabled features."""
+        try:
+            from pathlib import Path
+
+            import yaml
+
+            automation_path = Path(self.hass.config.path("automations.yaml"))
+
+            _LOGGER.info(
+                f"Cleanup - Starting cleanup for features: {disabled_features}"
+            )
+            _LOGGER.info(f"Cleanup - Automation path: {automation_path}")
+
+            if not automation_path.exists():
+                _LOGGER.info("Cleanup - Automation file does not exist")
+                return
+
+            # Read file content asynchronously
+            def read_automations_file() -> str:
+                with open(automation_path, encoding="utf-8") as f:
+                    return f.read()
+
+            content_str = await self.hass.async_add_executor_job(read_automations_file)
+            content = yaml.safe_load(content_str)
+
+            _LOGGER.info(f"Cleanup - File content type: {type(content)}")
+            _LOGGER.info(
+                "Cleanup - File content keys: %s",
+                content.keys() if isinstance(content, dict) else "N/A (list format)",
+            )
+
+            if not content:
+                _LOGGER.info("Cleanup - No automation content found")
+                return
+
+            # Handle both formats: with or without automation wrapper
+            if isinstance(content, list):
+                automations_to_filter = content
+                _LOGGER.info(
+                    f"Cleanup - Found {len(automations_to_filter)} automations "
+                    f"in list format"
+                )
+            elif isinstance(content, dict) and "automation" in content:
+                automations_to_filter = content["automation"]
+                _LOGGER.info(
+                    f"Cleanup - Found {len(automations_to_filter)} automations "
+                    f"in dict format"
+                )
+            else:
+                _LOGGER.info("Cleanup - No valid automation format found")
+                return
+
+            # Log automation IDs before filtering
+            automation_ids = [auto.get("id", "") for auto in automations_to_filter]
+            _LOGGER.info(f"Cleanup - Automation IDs found: {automation_ids}")
+
+            # Remove automations for disabled features
+            filtered_automations = []
+            removed_count = 0
+
+            for auto in automations_to_filter:
+                automation_id = auto.get("id", "")
+                should_remove = False
+
+                # Check if this automation belongs to any disabled feature
+                for feature_key in disabled_features:
+                    # Map feature keys to automation patterns
+                    feature_patterns = {
+                        "humidity_control": ["dehumidifier"],
+                    }
+
+                    patterns = feature_patterns.get(feature_key, [feature_key])
+                    for pattern in patterns:
+                        if pattern in automation_id:
+                            should_remove = True
+                            _LOGGER.info(
+                                "Cleanup - Will remove automation %s (matches pattern '%s' for feature '%s')",  # noqa: E501
+                                automation_id,
+                                pattern,
+                                feature_key,
+                            )
+                            break
+
+                    if should_remove:
+                        break
+
+                if not should_remove:
+                    filtered_automations.append(auto)
+
+            # Update file if any automations were removed
+            if len(filtered_automations) != len(automations_to_filter):
+                removed_count = len(automations_to_filter) - len(filtered_automations)
+
+                def write_automations_file() -> None:
+                    if isinstance(content, list):
+                        with open(automation_path, "w", encoding="utf-8") as f:
+                            yaml.dump(
+                                filtered_automations,
+                                f,
+                                default_flow_style=False,
+                                sort_keys=False,
+                            )
+                    else:
+                        content["automation"] = filtered_automations
+                        with open(automation_path, "w", encoding="utf-8") as f:
+                            yaml.dump(
+                                content, f, default_flow_style=False, sort_keys=False
+                            )
+
+                await self.hass.async_add_executor_job(write_automations_file)
+
+                _LOGGER.info(
+                    f"Cleanup - Successfully removed {removed_count} automations "
+                    f"for disabled features: {disabled_features}"
+                )
+            else:
+                _LOGGER.info(
+                    "Cleanup - No automations removed for features: "
+                    f"{disabled_features}"
+                )
+
+        except Exception as e:
+            _LOGGER.error(f"Cleanup - Failed to cleanup disabled automations: {e}")

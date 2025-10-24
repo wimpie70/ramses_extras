@@ -178,6 +178,7 @@ NUMBER_CONFIGS = {
         "min_value": 30,
         "max_value": 80,
         "step": 1,
+        "default_value": 40,
         "supported_device_types": ["HvacVentilator"],
     },
     "rel_humid_max": {
@@ -189,6 +190,7 @@ NUMBER_CONFIGS = {
         "min_value": 50,
         "max_value": 90,
         "step": 1,
+        "default_value": 60,
         "supported_device_types": ["HvacVentilator"],
     },
 }
@@ -200,4 +202,37 @@ ENTITY_TYPE_CONFIGS = {
     "binary_sensor": BOOLEAN_CONFIGS,
     "number": NUMBER_CONFIGS,
 }
+
+# Device type to service mapping
+# Defines which services are available for each device type
+DEVICE_SERVICE_MAPPING = {
+    "HvacVentilator": [
+        "set_fan_speed_mode",
+    ],
+    # Future device types can be added here
+    # "CO2Remote": [
+    #     "set_co2_mode",
+    #     "calibrate_sensor",
+    # ],
+}
+
+# Service configuration schemas
+SERVICE_SCHEMAS = {
+    "set_fan_speed_mode": {
+        "device_id": {"required": True, "type": "string"},
+        "mode": {
+            "required": True,
+            "type": "string",
+            "valid_values": ["low", "medium", "high", "auto", "away", "boost"],
+        },
+        "duration": {
+            "required": False,
+            "type": "integer",
+            "min": 1,
+            "max": 1440,
+        },  # minutes
+        "reason": {"required": False, "type": "string"},
+    },
+}
+
 # Test PR trigger

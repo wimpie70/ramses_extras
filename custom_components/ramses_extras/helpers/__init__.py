@@ -1,8 +1,17 @@
 """Helper functions package for Ramses Extras."""
 
-from .entities import calculate_absolute_humidity, calculate_heat_recovery_efficiency
+from .device import (
+    find_ramses_device,
+    get_all_device_ids,
+    get_device_type,
+    get_ramses_broker,
+    validate_device_for_service,
+)
 
 __all__ = [
-    "calculate_absolute_humidity",
-    "calculate_heat_recovery_efficiency",
+    "find_ramses_device",
+    "get_ramses_broker",
+    "get_device_type",
+    "validate_device_for_service",
+    "get_all_device_ids",
 ]
