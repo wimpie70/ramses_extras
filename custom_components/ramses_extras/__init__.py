@@ -215,6 +215,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {}
     hass.data[DOMAIN]["entry_id"] = entry.entry_id
+    hass.data[DOMAIN]["config_entry"] = entry  # Store for async_setup_platforms access
     hass.data[DOMAIN]["enabled_features"] = entry.data.get("enabled_features", {})
 
     # Register enabled card resources dynamically
@@ -339,6 +340,7 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
                     feature_manager,
                     entity_manager,
                     automation_manager,
+                    config_entry,
                 )
 
                 # Register services for discovered devices
@@ -371,6 +373,7 @@ async def _setup_entities_and_automations(
     feature_manager: FeatureManager,
     entity_manager: EntityManager,
     automation_manager: AutomationManager,
+    config_entry: ConfigEntry | None = None,
 ) -> None:
     """Set up entities and automations using managers."""
     try:
@@ -390,10 +393,7 @@ async def _setup_entities_and_automations(
                 device_ids, enabled_automations
             )
 
-        # Set up platforms (entities will be created by platform setup)
-        await hass.config_entries.async_forward_entry_setups(
-            hass.data[DOMAIN]["config_entry"], PLATFORMS
-        )
+        # Note: Platforms are already set up in async_setup_entry, no need to duplicate
 
         _LOGGER.info("Entity and automation setup completed via managers")
 
