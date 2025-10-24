@@ -43,13 +43,6 @@ class HvacFanCardEditor extends HTMLElement {
     const ramsesDevices = this._getRamsesDevices();
     console.log('Found Ramses RF FAN devices:', ramsesDevices);
 
-    // Debug entity detection (only for entities we need)
-    const inputBooleanEntities = Object.keys(this._hass.states).filter(entity =>
-      entity.startsWith('input_boolean.')
-    );
-    console.log('Found input_boolean entities:', inputBooleanEntities);
-
-    console.log('🔧 Generating card editor HTML...');
     console.log('🔧 Generating card editor HTML...');
 
     this.innerHTML = `
@@ -62,34 +55,6 @@ class HvacFanCardEditor extends HTMLElement {
             ${ramsesDevices.length === 0 ? '<option disabled>No Ramses RF FAN devices found</option>' : ''}
           </select>
           <small class="form-help">Select the Ramses RF FAN device ID</small>
-        </div>
-
-        <div class="form-group">
-          <label for="dehum_mode_entity">Dehumidifier Mode Entity</label>
-          <select id="dehum_mode_entity" class="config-input">
-            <option value="">Auto-detect (recommended)</option>
-            ${Object.keys(this._hass ? this._hass.states : {})
-              .filter(entity => entity.startsWith('input_boolean.'))
-              .sort()
-              .map(entity => `<option value="${entity}" ${this._config.dehum_mode_entity === entity ? 'selected' : ''}>${entity}</option>`)
-              .join('')}
-            ${!this._hass || Object.keys(this._hass.states).filter(entity => entity.startsWith('input_boolean.')).length === 0 ? '<option disabled>No input_boolean entities found - create them first</option>' : ''}
-          </select>
-          <small class="form-help">Input boolean entity for dehumidifier mode control</small>
-        </div>
-
-        <div class="form-group">
-          <label for="dehum_active_entity">Dehumidifier Active Entity</label>
-          <select id="dehum_active_entity" class="config-input">
-            <option value="">Auto-detect (recommended)</option>
-            ${Object.keys(this._hass ? this._hass.states : {})
-              .filter(entity => entity.startsWith('input_boolean.'))
-              .sort()
-              .map(entity => `<option value="${entity}" ${this._config.dehum_active_entity === entity ? 'selected' : ''}>${entity}</option>`)
-              .join('')}
-            ${!this._hass || Object.keys(this._hass.states).filter(entity => entity.startsWith('input_boolean.')).length === 0 ? '<option disabled>No input_boolean entities found - create them first</option>' : ''}
-          </select>
-          <small class="form-help">Input boolean entity for dehumidifier active status</small>
         </div>
       </div>
 
@@ -136,26 +101,10 @@ class HvacFanCardEditor extends HTMLElement {
     // Add event listeners after content is set
     setTimeout(() => {
       const deviceIdSelect = this.querySelector('#device_id');
-      const dehumModeSelect = this.querySelector('#dehum_mode_entity');
-      const dehumActiveSelect = this.querySelector('#dehum_active_entity');
 
       if (deviceIdSelect) {
         deviceIdSelect.addEventListener('change', (e) => {
           this._config.device_id = e.target.value;
-          this._dispatchConfigChange();
-        });
-      }
-
-      if (dehumModeSelect) {
-        dehumModeSelect.addEventListener('change', (e) => {
-          this._config.dehum_mode_entity = e.target.value;
-          this._dispatchConfigChange();
-        });
-      }
-
-      if (dehumActiveSelect) {
-        dehumActiveSelect.addEventListener('change', (e) => {
-          this._config.dehum_active_entity = e.target.value;
           this._dispatchConfigChange();
         });
       }
