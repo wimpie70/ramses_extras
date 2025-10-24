@@ -22,12 +22,7 @@ export function createControlsSection(dehumEntitiesAvailable = false) {
           <div class="control-icon">⚡</div>
           <div class="control-label">Dehumidify</div>
         </div>
-        ` : `
-        <div class="control-button disabled" title="Humidity control not available">
-          <div class="control-icon">⚡</div>
-          <div class="control-label" style="color: #999; font-style: italic;">Dehumidify</div>
-        </div>
-        `}
+        ` : ''}
       </div>
 
       <!-- Row 2: Fan Speeds -->

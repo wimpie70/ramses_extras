@@ -84,8 +84,8 @@ AVAILABLE_FEATURES = {
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {
             "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
-            "switches": ["dehumidify"],
-            "binary_sensors": ["dehumidifying"],
+            "switches": [],
+            "binary_sensors": [],
         },
         "optional_entities": {
             "sensors": [],
@@ -99,26 +99,9 @@ AVAILABLE_FEATURES = {
         "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {
-            "sensors": [],
-            "switches": [],
-            "numbers": ["rel_humid_min", "rel_humid_max"],
-        },
-        "optional_entities": {
-            "sensors": [],
-            "switches": ["dehumidify"],
-            "binary_sensors": ["dehumidifying"],
-        },
-    },
-    "humidity_automation": {
-        "name": "Humidity Automation",
-        "description": "Automation for improved humidity maintenance",
-        "category": "automations",
-        "location": "automations/humidity_automation",
-        "default_enabled": False,
-        "supported_device_types": ["HvacVentilator"],
-        "required_entities": {
             "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
             "switches": ["dehumidify"],
+            "numbers": ["rel_humid_min", "rel_humid_max"],
             "binary_sensors": ["dehumidifying"],
         },
         "optional_entities": {

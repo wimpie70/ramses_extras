@@ -39,16 +39,44 @@
 - [ ] Add rel_humid_min/max number entities
 
 ### ⚙️ Phase 3: Configuration Entities
-- [ ] Create input_number.dehumidify_min_humidity
-- [ ] Create input_number.dehumidify_max_humidity
-- [ ] Create input_boolean.dehumidify_auto_mode
-- [ ] Add configuration UI in card settings
+- **SKIPPED**: Entities are deterministic based on device ID
+- **No user configuration needed**: Card auto-detects entities
+- **Simplified setup**: Only device_id selection required
 
 ### 🤖 Phase 4: Automation Logic
 - [ ] Create humidity monitoring automation
 - [ ] Implement threshold comparison logic
 - [ ] Add fan speed integration
 - [ ] Create auto/manual mode switching
+
+---
+
+## 🎮 Card Configuration
+
+### ✅ Required Configuration:
+```
+device_id: "32:153289"  # Only required field
+```
+
+### ✅ Auto-Detected Entities:
+```
+# Card automatically finds these based on device_id:
+switch.dehumidify_32_153289
+binary_sensor.dehumidifying_active_32_153289
+number.rel_humid_min_32_153289
+number.rel_humid_max_32_153289
+```
+
+### ❌ Removed Configuration:
+- **No dehumidifier entity selection needed**
+- **Entities are deterministic** based on device_id
+- **Simplified user experience**
+
+### 🔧 Configuration Entities (User sets)
+```
+input_number.dehumidify_min_humidity  # Created by user for thresholds
+input_number.dehumidify_max_humidity  # Created by user for thresholds
+```
 
 ---
 
@@ -68,12 +96,6 @@ number.rel_humid_min_32_153289
 number.rel_humid_max_32_153289
 ```
 
-### 🔧 Configuration Entities (User sets)
-```
-input_number.dehumidify_min_humidity
-input_number.dehumidify_max_humidity
-input_boolean.dehumidify_auto_mode
-```
 
 ---
 
@@ -386,43 +408,36 @@ INFO - Keeping fundamental sensor: sensor.indoor_absolute_humidity_32_153289
 - ✅ **Verify binary sensor** state synchronization
 - ✅ **Adjust thresholds** with parameter logging
 
-## ✅ Phase 2: Integration Features - FULLY COMPLETE
+## ✅ Phase 3: Configuration Entities - COMPLETED
 
-### 🎯 **Card Integration Working!**
+### 🎯 **Simplified Configuration Architecture:**
 
-#### **✅ Entity Configuration Fixed:**
-- **Card now expects**: `switch.dehumidify` and `binary_sensor.dehumidifying`
-- **Added setFanMode()** method to handle dehumidify button clicks
-- **Proper event handling** for dehumidify mode toggle
-- **Type-safe implementation** with all mypy checks passing
+#### **✅ What Was Removed:**
+- **Card editor configuration** for dehumidifier entities
+- **User selection** of switch and binary_sensor entities
+- **Complex setup** requiring multiple entity selections
 
-#### **📋 Card Behavior:**
-```javascript
-// When dehumidify button clicked:
-🔘 Button clicked: <div class="control-button" data-mode="active">
-✅ Calling setFanMode with mode: active
-✅ Toggling dehumidify mode
-✅ Would send dehumidify activation command: device_id=32:153289, from_id=..., verb=' I', code='22F1', payload='000807'
+#### **✅ What Was Kept:**
+- **Device ID selection only** - everything else auto-detected
+- **Deterministic entity naming** - based on device_id
+- **Clean user experience** - minimal configuration required
+
+### 📊 **Current Card Configuration:**
+```yaml
+# Only device_id required:
+device_id: "32:153289"
+
+# Everything else auto-detected:
+# switch.dehumidify_32_153289
+# binary_sensor.dehumidifying_active_32_153289
+# number.rel_humid_min_32_153289
+# number.rel_humid_max_32_153289
 ```
 
-#### **🎮 User Experience:**
-- ✅ **Dehumidify button shows** when entities are available
-- ✅ **Button toggles** the dehumidify switch
-- ✅ **Binary sensor reflects** switch state in real-time
-- ✅ **Clean UI** with proper entity availability detection
-- ✅ **No orphaned cleanup** - stable entity management
+### 🚀 **Benefits Achieved:**
+- ✅ **Simplified setup** - Only device_id selection needed
+- ✅ **No configuration errors** - Entities are deterministic
+- ✅ **Better UX** - Less configuration options
+- ✅ **Consistent naming** - Predictable entity structure
 
-### 🚀 **Production Ready:**
-- ✅ **Safe logging mode** - no device interference
-- ✅ **Stable entities** - no remove/recreate cycles
-- ✅ **Type safe** - all mypy validation passes
-- ✅ **Proper formatting** - consistent code style
-- ✅ **Full integration** - card + entities work together
-
-### 🎯 **Ready for Testing:**
-**Enable "Humidity Control" feature and you'll see:**
-1. **Dehumidify switch** appears in entity list
-2. **Binary sensor** shows dehumidifying status
-3. **Card button** toggles the switch (logs commands)
-4. **Real-time sync** between switch and binary sensor
-5. **Clean logs** showing intended device commands
+### 🎯 **Ready for Phase 4:**
