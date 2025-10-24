@@ -153,7 +153,8 @@ class RamsesNumberEntity(NumberEntity):
         self._attr_native_max_value = config.get("max_value", 100)
         self._attr_native_step = config.get("step", 1)
 
-        self._value = self._attr_native_min_value
+        # Use default value if specified, otherwise use min_value
+        self._value = config.get("default_value", self._attr_native_min_value)
         self._unsub: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:

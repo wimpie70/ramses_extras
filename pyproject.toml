@@ -14,6 +14,7 @@ mypy = "^1.11.0"
 ruff = "^0.6.0"
 pre-commit = "^3.8.0"
 typing-extensions = "^4.15.0"
+types-PyYAML = "^6.0.12"
 
 [build-system]
 requires = ["setuptools", "wheel"]
@@ -65,7 +66,7 @@ build-backend = "setuptools.build_meta"
 
 
 [[tool.mypy.overrides]]
-  module = ["homeassistant.*", "ramses_rf.*"]
+  module = ["homeassistant.*", "ramses_rf.*", "yaml"]
 
   ignore_missing_imports = true
 

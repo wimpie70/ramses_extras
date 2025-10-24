@@ -20,8 +20,6 @@
       below: "number.{{ device_id_underscore }}_rel_humid_min"
       for:
         minutes: 2
-    - platform: state
-      entity_id: "switch.dehumidify_{{ device_id_underscore }}"
   conditions:
     - condition: template
       value_template: "{{ is_state('switch.dehumidify_{{ device_id_underscore }}', 'unavailable') == false }}"
@@ -30,48 +28,43 @@
         - condition: template
           value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float > states('number.{{ device_id_underscore }}_rel_humid_max') | float }}"
       then:
-        - service: switch.turn_on
-          entity_id: "switch.dehumidify_{{ device_id_underscore }}"
-        - service: ramses_cc.set_fan_mode
+        - service: ramses_extras.set_fan_speed_mode
           data:
             device_id: "{{ device_id }}"
             mode: "high"
+            reason: "Humidity control - high humidity detected"
         - service: logbook.log
           data:
             name: "Dehumidifier"
             message: "Activated - Humidity {{ states('sensor.{{ device_id_underscore }}_indoor_humidity') }}% > threshold {{ states('number.{{ device_id_underscore }}_rel_humid_max') }}%"
-            entity_id: "switch.dehumidify_{{ device_id_underscore }}"
+            entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
       else:
-        - service: switch.turn_off
-          entity_id: "switch.dehumidify_{{ device_id_underscore }}"
-        - service: ramses_cc.set_fan_mode
+        - service: ramses_extras.set_fan_speed_mode
           data:
             device_id: "{{ device_id }}"
             mode: "auto"
+            reason: "Humidity control - humidity returned to normal"
         - service: logbook.log
           data:
             name: "Dehumidifier"
-            message: "Deactivated - Humidity {{ states('sensor.{{ device_id_underscore }}_indoor_humidity') }}% < threshold {{ states('number.{{ device_id_underscore }}_rel_humid_min') }}%"
-            entity_id: "switch.dehumidify_{{ device_id_underscore }}"
+            message: "Deactivated - Humidity {{ states('sensor.{{ device_id_underscore }}_indoor_humidity') }}% in normal range"
+            entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
 
 - id: "ramses_extras_dehumidifier_override_{{ device_id }}"
   alias: "Dehumidifier Manual Override - {{ device_id }}"
-  description: "Detects when user manually overrides automatic dehumidifier control"
+  description: "Logs when humidity is high but automation is not controlling fan"
   triggers:
-    - platform: state
-      entity_id: "switch.dehumidify_{{ device_id_underscore }}"
-      from: "on"
-      to: "off"
+    - platform: template
+      value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float > states('number.{{ device_id_underscore }}_rel_humid_max') | float }}"
   conditions:
-    - condition: numeric_state
-      entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
-      above: "number.{{ device_id_underscore }}_rel_humid_max"
+    - condition: template
+      value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') != 'unavailable' }}"
   actions:
     - service: logbook.log
       data:
-        name: "Dehumidifier Override"
-        message: "Manual override detected - Dehumidifier turned off despite high humidity ({{ states('sensor.{{ device_id_underscore }}_indoor_humidity') }}%)"
-        entity_id: "switch.dehumidify_{{ device_id_underscore }}"
+        name: "Humidity Monitor"
+        message: "High humidity detected ({{ states('sensor.{{ device_id_underscore }}_indoor_humidity') }}%) - Manual intervention may be needed"
+        entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
 
 - id: "ramses_extras_dehumidifier_thresholds_{{ device_id }}"
   alias: "Dehumidifier Default Thresholds - {{ device_id }}"
@@ -91,10 +84,15 @@
     - service: number.set_value
       entity_id: "number.{{ device_id_underscore }}_rel_humid_max"
       data:
-        value: 75
+        value: 60
     - service: number.set_value
       entity_id: "number.{{ device_id_underscore }}_rel_humid_min"
       data:
-        value: 50
+        value: 40
+    - service: logbook.log
+      data:
+        name: "Dehumidifier"
+        message: "Set default thresholds - High: 60%, Low: 40%"
+        entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
 
 # === END RAMSES EXTRAS AUTOMATIONS ===
