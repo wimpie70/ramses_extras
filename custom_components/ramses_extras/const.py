@@ -96,6 +96,7 @@ AVAILABLE_FEATURES = {
         "name": "Humidity Control",
         "description": "Creates dehumidify control entities and automation",
         "category": "automations",
+        "location": "automations/humidity_control_template.yaml",
         "default_enabled": False,
         "supported_device_types": ["HvacVentilator"],
         "required_entities": {
