@@ -461,14 +461,19 @@ async def _create_humidity_automation(
                     content = yaml.safe_load(f)
 
                 if content is None:
-                    content = {"automation": []}
+                    content = []
 
-                # Add our automations to existing ones
-                if "automation" not in content:
-                    content["automation"] = []
+                # Handle both formats: with or without automation wrapper
+                if isinstance(content, list):
+                    # Direct automation list format (like user's working automations)
+                    existing_automations = content
+                elif isinstance(content, dict) and "automation" in content:
+                    # Wrapped format with automation key
+                    existing_automations = content["automation"]
+                else:
+                    existing_automations = []
 
                 # Check if our automations already exist (avoid duplicates)
-                existing_automations = content["automation"]
                 new_automations = []
 
                 for device_id in device_ids:
@@ -480,8 +485,8 @@ async def _create_humidity_automation(
                     ).replace("{{ device_id_underscore }}", device_id_underscore)
 
                     device_automation = yaml.safe_load(device_automation_yaml)
-                    if device_automation and "automation" in device_automation:
-                        new_automations.extend(device_automation["automation"])
+                    if device_automation and isinstance(device_automation, list):
+                        new_automations.extend(device_automation)
 
                 # Add new automations only if they don't already exist
                 for new_auto in new_automations:
@@ -492,16 +497,25 @@ async def _create_humidity_automation(
                     if not exists:
                         existing_automations.append(new_auto)
 
-                # Update content
-                content["automation"] = existing_automations
-
-                with open(main_automation_path, "w", encoding="utf-8") as f:
-                    yaml.dump(content, f, default_flow_style=False, sort_keys=False)
+                # Write back in the same format as the existing file
+                if isinstance(content, list):
+                    # Direct format - write list directly
+                    with open(main_automation_path, "w", encoding="utf-8") as f:
+                        yaml.dump(
+                            existing_automations,
+                            f,
+                            default_flow_style=False,
+                            sort_keys=False,
+                        )
+                else:
+                    # Wrapped format - write with automation key
+                    content["automation"] = existing_automations
+                    with open(main_automation_path, "w", encoding="utf-8") as f:
+                        yaml.dump(content, f, default_flow_style=False, sort_keys=False)
             else:
-                # Create new automations.yaml with our automations
-                content = {"automation": automations}
+                # Create new automations.yaml with direct format
                 with open(main_automation_path, "w", encoding="utf-8") as f:
-                    yaml.dump(content, f, default_flow_style=False, sort_keys=False)
+                    yaml.dump(automations, f, default_flow_style=False, sort_keys=False)
 
         await hass.async_add_executor_job(write_automations_to_main_file)
 
@@ -535,26 +549,43 @@ async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
         if not content or "automation" not in content:
             return
 
+        # Handle both formats: with or without automation wrapper
+        if isinstance(content, list):
+            # Direct automation list format (like user's working automations)
+            automations_to_filter = content
+        elif isinstance(content, dict) and "automation" in content:
+            # Wrapped format with automation key
+            automations_to_filter = content["automation"]
+        else:
+            return
+
         # Remove Ramses humidity control automations
         filtered_automations = []
-        for auto in content["automation"]:
-            alias = auto.get("alias", "")
-            is_ramses_humidity_auto = alias.startswith(
-                (
-                    "Dehumidifier Control -",
-                    "Dehumidifier Manual Override -",
-                    "Dehumidifier Default Thresholds -",
-                )
+        for auto in automations_to_filter:
+            automation_id = auto.get("id", "")
+            is_ramses_humidity_auto = automation_id.startswith(
+                "ramses_extras_dehumidifier_"
             )
 
             if not is_ramses_humidity_auto:
                 filtered_automations.append(auto)
 
         # Update file if any automations were removed
-        if len(filtered_automations) != len(content["automation"]):
-            content["automation"] = filtered_automations
-            with open(automation_path, "w", encoding="utf-8") as f:
-                yaml.dump(content, f, default_flow_style=False, sort_keys=False)
+        if len(filtered_automations) != len(automations_to_filter):
+            if isinstance(content, list):
+                # Direct format - write list directly
+                with open(automation_path, "w", encoding="utf-8") as f:
+                    yaml.dump(
+                        filtered_automations,
+                        f,
+                        default_flow_style=False,
+                        sort_keys=False,
+                    )
+            else:
+                # Wrapped format - write with automation key
+                content["automation"] = filtered_automations
+                with open(automation_path, "w", encoding="utf-8") as f:
+                    yaml.dump(content, f, default_flow_style=False, sort_keys=False)
             _LOGGER.info("Removed humidity control automations from automations.yaml")
 
     except Exception as e:
