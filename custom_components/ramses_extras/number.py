@@ -12,6 +12,7 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
+from .helpers.device import find_ramses_device, get_device_type
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -50,7 +51,13 @@ async def async_setup_entry(
 
     # Create numbers based on enabled features and their requirements
     for fan_id in fans:
-        device_type = "HvacVentilator"
+        device = find_ramses_device(hass, fan_id)
+        if not device:
+            _LOGGER.warning(f"Device {fan_id} not found, skipping number creation")
+            continue
+
+        device_type = get_device_type(device)
+        _LOGGER.debug(f"Creating numbers for device {fan_id} of type {device_type}")
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -101,21 +108,22 @@ async def async_setup_entry(
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
         try:
-            # Get all possible number types for this device
-            all_possible_numbers = []
-            for _fan_id in fans:
-                device_type = "HvacVentilator"
-                if device_type in DEVICE_ENTITY_MAPPING:
-                    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                    all_possible_numbers = entity_mapping.get("numbers", [])
-                    break
+            # Get all possible number types for all devices
+            all_possible_numbers = set()
+            for fan_id in fans:
+                device = find_ramses_device(hass, fan_id)
+                if device:
+                    device_type = get_device_type(device)
+                    if device_type in DEVICE_ENTITY_MAPPING:
+                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                        all_possible_numbers.update(entity_mapping.get("numbers", []))
 
             await remove_orphaned_entities(
                 "number",
                 hass,
                 fans,
                 calculate_required_entities("number", enabled_features, fans),
-                all_possible_numbers,
+                list(all_possible_numbers),
             )
         except Exception as e:
             _LOGGER.warning(f"Error during number entity cleanup: {e}")
@@ -181,22 +189,12 @@ class RamsesNumberEntity(NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the number value."""
-        _LOGGER.info(
-            "Setting %s to %.1f for %s (LOGGING ONLY - not sent to device)",
+        _LOGGER.debug(
+            "Updated %s to %.1f for %s (configuration value)",
             self._number_type,
             value,
             self.name,
         )
-
-        # For threshold values, log what command would be sent
-        if self._number_type in ["rel_humid_min", "rel_humid_max"]:
-            device_id = self._fan_id.replace("_", ":")
-            _LOGGER.info(
-                "Would send 2411 parameter update: device_id=%s, param=%s, value=%.1f",
-                device_id,
-                self._number_type,
-                value,
-            )
 
         self._value = value
         self.async_write_ha_state()

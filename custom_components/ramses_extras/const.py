@@ -34,7 +34,9 @@ AVAILABLE_FEATURES = {
         "location": "hvac_fan_card/hvac-fan-card.js",
         "editor": "hvac_fan_card/hvac-fan-card-editor.js",
         "default_enabled": False,
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
         "required_entities": {
             "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
             "switches": [],
@@ -51,7 +53,9 @@ AVAILABLE_FEATURES = {
         "category": "automations",
         "location": "automations/humidity_control_template.yaml",
         "default_enabled": False,
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
         "required_entities": {
             "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
             "switches": ["dehumidify"],
@@ -66,6 +70,8 @@ AVAILABLE_FEATURES = {
 }
 
 # Device type to entity type mapping
+# Maps each device type to the entities it can provide
+# Add new device types here as they are supported
 DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
         "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
@@ -73,6 +79,11 @@ DEVICE_ENTITY_MAPPING = {
         "binary_sensors": ["dehumidifying"],
         "numbers": ["rel_humid_min", "rel_humid_max"],
     },
+    # Future device types can be added here:
+    # "CO2Remote": {
+    #     "sensors": ["co2_level"],
+    #     "numbers": ["co2_threshold"],
+    # },
 }
 
 # Entity configurations for different sensor types
@@ -83,7 +94,9 @@ ENTITY_CONFIGS = {
         "unit": "g/m³",
         "icon": "mdi:water-percent",
         "device_class": None,
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
     },
     "outdoor_abs_humid": {
         "name_template": "Outdoor Absolute Humidity",
@@ -91,7 +104,9 @@ ENTITY_CONFIGS = {
         "unit": "g/m³",
         "icon": "mdi:weather-partly-cloudy",
         "device_class": None,
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
     },
 }
 
@@ -101,7 +116,9 @@ SWITCH_CONFIGS = {
         "name_template": "Dehumidify",
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.CONFIG,
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
     },
 }
 
@@ -111,7 +128,9 @@ BOOLEAN_CONFIGS = {
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.DIAGNOSTIC,
         "device_class": "running",
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
     },
 }
 
@@ -127,7 +146,9 @@ NUMBER_CONFIGS = {
         "max_value": 80,
         "step": 1,
         "default_value": 40,
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
     },
     "rel_humid_max": {
         "name_template": "Relative Humidity Maximum",
@@ -139,7 +160,9 @@ NUMBER_CONFIGS = {
         "max_value": 90,
         "step": 1,
         "default_value": 60,
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
     },
 }
 

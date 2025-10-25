@@ -12,6 +12,7 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
+from .helpers.device import find_ramses_device, get_device_type
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -50,7 +51,13 @@ async def async_setup_entry(
 
     # Create switches based on enabled features and their requirements
     for fan_id in fans:
-        device_type = "HvacVentilator"
+        device = find_ramses_device(hass, fan_id)
+        if not device:
+            _LOGGER.warning(f"Device {fan_id} not found, skipping switch creation")
+            continue
+
+        device_type = get_device_type(device)
+        _LOGGER.debug(f"Creating switches for device {fan_id} of type {device_type}")
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -110,21 +117,22 @@ async def async_setup_entry(
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
         try:
-            # Get all possible switch types for this device
-            all_possible_switches = []
-            for _fan_id in fans:
-                device_type = "HvacVentilator"
-                if device_type in DEVICE_ENTITY_MAPPING:
-                    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                    all_possible_switches = entity_mapping.get("switches", [])
-                    break
+            # Get all possible switch types for all devices
+            all_possible_switches = set()
+            for fan_id in fans:
+                device = find_ramses_device(hass, fan_id)
+                if device:
+                    device_type = get_device_type(device)
+                    if device_type in DEVICE_ENTITY_MAPPING:
+                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                        all_possible_switches.update(entity_mapping.get("switches", []))
 
             await remove_orphaned_entities(
                 "switch",
                 hass,
                 fans,
                 calculate_required_entities("switch", enabled_features, fans),
-                all_possible_switches,
+                list(all_possible_switches),
             )
         except Exception as e:
             _LOGGER.warning(f"Error during switch entity cleanup: {e}")

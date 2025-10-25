@@ -7,7 +7,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.event import async_track_state_change
 
-from .const import AVAILABLE_FEATURES, BOOLEAN_CONFIGS, DEVICE_ENTITY_MAPPING, DOMAIN
+from .const import (
+    AVAILABLE_FEATURES,
+    DEVICE_ENTITY_MAPPING,
+    DOMAIN,
+    ENTITY_TYPE_CONFIGS,
+)
+from .helpers.device import find_ramses_device, get_device_type
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -47,7 +53,17 @@ async def async_setup_entry(
 
     # Create binary sensors based on enabled features and their requirements
     for fan_id in fans:
-        device_type = "HvacVentilator"
+        device = find_ramses_device(hass, fan_id)
+        if not device:
+            _LOGGER.warning(
+                f"Device {fan_id} not found, skipping binary sensor creation"
+            )
+            continue
+
+        device_type = get_device_type(device)
+        _LOGGER.debug(
+            f"Creating binary sensors for device {fan_id} of type {device_type}"
+        )
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -57,7 +73,7 @@ async def async_setup_entry(
 
             # Check each possible binary sensor type
             for boolean_type in all_possible_booleans:
-                if boolean_type not in BOOLEAN_CONFIGS:
+                if boolean_type not in ENTITY_TYPE_CONFIGS["binary_sensor"]:
                     continue
 
                 # Check if this binary sensor is needed by any enabled feature
@@ -91,7 +107,7 @@ async def async_setup_entry(
 
                 if is_needed:
                     # Entity is needed - create it
-                    config = BOOLEAN_CONFIGS[boolean_type]
+                    config = ENTITY_TYPE_CONFIGS["binary_sensor"][boolean_type]
                     binary_sensors.append(
                         RamsesBinarySensor(hass, fan_id, boolean_type, config)
                     )
@@ -102,21 +118,24 @@ async def async_setup_entry(
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
         try:
-            # Get all possible binary sensor types for this device
-            all_possible_booleans = []
-            for _fan_id in fans:
-                device_type = "HvacVentilator"
-                if device_type in DEVICE_ENTITY_MAPPING:
-                    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                    all_possible_booleans = entity_mapping.get("booleans", [])
-                    break
+            # Get all possible binary sensor types for all devices
+            all_possible_booleans = set()
+            for fan_id in fans:
+                device = find_ramses_device(hass, fan_id)
+                if device:
+                    device_type = get_device_type(device)
+                    if device_type in DEVICE_ENTITY_MAPPING:
+                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                        all_possible_booleans.update(
+                            entity_mapping.get("binary_sensors", [])
+                        )
 
             await remove_orphaned_entities(
                 "binary_sensor",
                 hass,
                 fans,
                 calculate_required_entities("binary_sensor", enabled_features, fans),
-                all_possible_booleans,
+                list(all_possible_booleans),
             )
         except Exception as e:
             _LOGGER.warning(f"Error during binary_sensor entity cleanup: {e}")
@@ -144,7 +163,7 @@ class RamsesBinarySensor(BinarySensorEntity):
 
         # Set attributes from configuration
         self._attr_name = f"{config['name_template']} ({fan_id})"
-        self._attr_unique_id = f"dehumidifying_active_{fan_id.replace(':', '_')}"
+        self._attr_unique_id = f"{fan_id.replace(':', '_')}_{boolean_type}"
         self._attr_icon = config["icon"]
         self._attr_entity_category = config["entity_category"]
         self._attr_device_class = config.get("device_class")

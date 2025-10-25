@@ -12,6 +12,7 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
+from .helpers.device import find_ramses_device, get_device_type
 from .helpers.entities import calculate_absolute_humidity
 from .helpers.platform import (
     calculate_required_entities,
@@ -51,7 +52,13 @@ async def async_setup_entry(
 
     # Create sensors based on enabled features and their requirements
     for fan_id in fans:
-        device_type = "HvacVentilator"
+        device = find_ramses_device(hass, fan_id)
+        if not device:
+            _LOGGER.warning(f"Device {fan_id} not found, skipping sensor creation")
+            continue
+
+        device_type = get_device_type(device)
+        _LOGGER.debug(f"Creating sensors for device {fan_id} of type {device_type}")
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -116,21 +123,22 @@ async def async_setup_entry(
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
         try:
-            # Get all possible sensor types for this device
-            all_possible_sensors = []
-            for _fan_id in fans:
-                device_type = "HvacVentilator"
-                if device_type in DEVICE_ENTITY_MAPPING:
-                    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                    all_possible_sensors = entity_mapping.get("sensors", [])
-                    break
+            # Get all possible sensor types for all devices
+            all_possible_sensors = set()
+            for fan_id in fans:
+                device = find_ramses_device(hass, fan_id)
+                if device:
+                    device_type = get_device_type(device)
+                    if device_type in DEVICE_ENTITY_MAPPING:
+                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                        all_possible_sensors.update(entity_mapping.get("sensors", []))
 
             await remove_orphaned_entities(
                 "sensor",
                 hass,
                 fans,
                 calculate_required_entities("sensor", enabled_features, fans),
-                all_possible_sensors,
+                list(all_possible_sensors),
             )
         except Exception as e:
             _LOGGER.warning(f"Error during sensor entity cleanup: {e}")
