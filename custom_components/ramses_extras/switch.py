@@ -131,7 +131,7 @@ async def async_setup_entry(
                 "switch",
                 hass,
                 devices,
-                calculate_required_entities("switch", enabled_features, devices),
+                calculate_required_entities("switch", enabled_features, devices, hass),
                 list(all_possible_switches),
             )
         except Exception as e:

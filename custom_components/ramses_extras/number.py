@@ -122,7 +122,7 @@ async def async_setup_entry(
                 "number",
                 hass,
                 devices,
-                calculate_required_entities("number", enabled_features, devices),
+                calculate_required_entities("number", enabled_features, devices, hass),
                 list(all_possible_numbers),
             )
         except Exception as e:

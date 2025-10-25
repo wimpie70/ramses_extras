@@ -137,7 +137,7 @@ async def async_setup_entry(
                 "sensor",
                 hass,
                 devices,
-                calculate_required_entities("sensor", enabled_features, devices),
+                calculate_required_entities("sensor", enabled_features, devices, hass),
                 list(all_possible_sensors),
             )
         except Exception as e:

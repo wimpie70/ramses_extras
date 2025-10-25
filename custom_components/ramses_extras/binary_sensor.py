@@ -111,9 +111,7 @@ async def async_setup_entry(
                     binary_sensors.append(
                         RamsesBinarySensor(hass, device_id, boolean_type, config)
                     )
-                    _LOGGER.debug(
-                        f"Creating binary sensor: {device_id}_{boolean_type}"
-                    )
+                    _LOGGER.debug(f"Creating binary sensor: {device_id}_{boolean_type}")
 
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
@@ -134,7 +132,9 @@ async def async_setup_entry(
                 "binary_sensor",
                 hass,
                 devices,
-                calculate_required_entities("binary_sensor", enabled_features, devices),
+                calculate_required_entities(
+                    "binary_sensor", enabled_features, devices, hass
+                ),
                 list(all_possible_booleans),
             )
         except Exception as e:
