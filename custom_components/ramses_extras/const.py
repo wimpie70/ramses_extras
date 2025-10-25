@@ -182,5 +182,3 @@ SERVICE_SCHEMAS = {
         "reason": {"required": False, "type": "string"},
     },
 }
-
-# Test PR trigger
