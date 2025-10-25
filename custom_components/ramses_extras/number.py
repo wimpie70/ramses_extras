@@ -12,6 +12,7 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
+from .helpers.device import find_ramses_device, get_device_type
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -31,15 +32,15 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the number platform."""
-    fans = hass.data.get(DOMAIN, {}).get("fans", [])
-    _LOGGER.info(f"Setting up number platform for {len(fans)} fans")
+    devices = hass.data.get(DOMAIN, {}).get("devices", [])
+    _LOGGER.info(f"Setting up number platform for {len(devices)} devices")
 
     if not config_entry:
         _LOGGER.warning("Config entry not available, skipping number setup")
         return
 
-    if not fans:
-        _LOGGER.debug("No fans available for numbers")
+    if not devices:
+        _LOGGER.debug("No devices available for numbers")
         return
 
     numbers = []
@@ -49,8 +50,14 @@ async def async_setup_entry(
     _LOGGER.info(f"Enabled features: {enabled_features}")
 
     # Create numbers based on enabled features and their requirements
-    for fan_id in fans:
-        device_type = "HvacVentilator"
+    for device_id in devices:
+        device = find_ramses_device(hass, device_id)
+        if not device:
+            _LOGGER.warning(f"Device {device_id} not found, skipping number creation")
+            continue
+
+        device_type = get_device_type(device)
+        _LOGGER.debug(f"Creating numbers for device {device_id} of type {device_type}")
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -94,28 +101,29 @@ async def async_setup_entry(
                     # Entity is needed - create it
                     config = ENTITY_TYPE_CONFIGS["number"][number_type]
                     numbers.append(
-                        RamsesNumberEntity(hass, fan_id, number_type, config)
+                        RamsesNumberEntity(hass, device_id, number_type, config)
                     )
-                    _LOGGER.debug(f"Creating number: number.{fan_id}_{number_type}")
+                    _LOGGER.debug(f"Creating number: number.{device_id}_{number_type}")
 
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
         try:
-            # Get all possible number types for this device
-            all_possible_numbers = []
-            for _fan_id in fans:
-                device_type = "HvacVentilator"
-                if device_type in DEVICE_ENTITY_MAPPING:
-                    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                    all_possible_numbers = entity_mapping.get("numbers", [])
-                    break
+            # Get all possible number types for all devices
+            all_possible_numbers = set()
+            for device_id in devices:
+                device = find_ramses_device(hass, device_id)
+                if device:
+                    device_type = get_device_type(device)
+                    if device_type in DEVICE_ENTITY_MAPPING:
+                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                        all_possible_numbers.update(entity_mapping.get("numbers", []))
 
             await remove_orphaned_entities(
                 "number",
                 hass,
-                fans,
-                calculate_required_entities("number", enabled_features, fans),
-                all_possible_numbers,
+                devices,
+                calculate_required_entities("number", enabled_features, devices, hass),
+                list(all_possible_numbers),
             )
         except Exception as e:
             _LOGGER.warning(f"Error during number entity cleanup: {e}")
@@ -132,19 +140,19 @@ class RamsesNumberEntity(NumberEntity):
     def __init__(
         self,
         hass: "HomeAssistant",
-        fan_id: str,
+        device_id: str,
         number_type: str,
         config: dict[str, Any],
     ):
         self.hass = hass
-        self._fan_id = fan_id  # Store device ID as string
+        self._device_id = device_id  # Store device ID as string
         self._number_type = number_type
         self._config = config
 
         # Set attributes from configuration
-        self._attr_name = f"{config['name_template']} ({fan_id})"
+        self._attr_name = f"{config['name_template']} ({device_id})"
         # Use format that matches card expectations: number.32_153289_rel_humid_min
-        self._attr_unique_id = f"{fan_id.replace(':', '_')}_{number_type}"
+        self._attr_unique_id = f"{device_id.replace(':', '_')}_{number_type}"
         self._attr_icon = config["icon"]
         self._attr_entity_category = config["entity_category"]
         self._attr_native_unit_of_measurement = config.get("unit")
@@ -159,7 +167,7 @@ class RamsesNumberEntity(NumberEntity):
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
-        signal = f"ramses_rf_device_update_{self._fan_id}"
+        signal = f"ramses_rf_device_update_{self._device_id}"
         self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
         _LOGGER.debug("Subscribed to %s for number %s", signal, self.name)
 
@@ -181,22 +189,12 @@ class RamsesNumberEntity(NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the number value."""
-        _LOGGER.info(
-            "Setting %s to %.1f for %s (LOGGING ONLY - not sent to device)",
+        _LOGGER.debug(
+            "Updated %s to %.1f for %s (configuration value)",
             self._number_type,
             value,
             self.name,
         )
-
-        # For threshold values, log what command would be sent
-        if self._number_type in ["rel_humid_min", "rel_humid_max"]:
-            device_id = self._fan_id.replace("_", ":")
-            _LOGGER.info(
-                "Would send 2411 parameter update: device_id=%s, param=%s, value=%.1f",
-                device_id,
-                self._number_type,
-                value,
-            )
 
         self._value = value
         self.async_write_ha_state()
