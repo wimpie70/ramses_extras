@@ -354,7 +354,7 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
 
             if device_ids:
                 _LOGGER.info("Found %d Ramses devices: %s", len(device_ids), device_ids)
-                hass.data.setdefault(DOMAIN, {})["fans"] = device_ids
+                hass.data.setdefault(DOMAIN, {})["devices"] = device_ids
 
                 # Initialize managers
                 feature_manager = FeatureManager(hass)
