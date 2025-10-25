@@ -72,24 +72,9 @@ class CardManager:
         except Exception as e:
             _LOGGER.error(f"Failed to remove card: {e}")
 
-    async def update_card_resources(self, enabled_cards: list[str]) -> None:
-        """Update card resources for enabled cards."""
-        _LOGGER.info(f"Updating card resources for: {enabled_cards}")
+    async def cleanup_disabled_cards(self, disabled_cards: list[str]) -> None:
+        """Clean up cards for disabled features."""
+        _LOGGER.info(f"Cleaning up disabled cards: {disabled_cards}")
 
-        for feature_key in enabled_cards:
-            feature_config = AVAILABLE_FEATURES.get(feature_key)
-            if not feature_config or feature_config.get("category") != "cards":
-                continue
-
-            location = str(feature_config.get("location", ""))
-            if location:
-                card_path = INTEGRATION_DIR / CARD_FOLDER / location
-                if card_path.exists():
-                    resource_url = (
-                        f"/local/ramses_extras/{feature_key}/{card_path.name}"
-                    )
-                    _LOGGER.info(f"Card resource available: {resource_url}")
-                else:
-                    _LOGGER.warning(
-                        f"Card file not found for {feature_key}: {card_path}"
-                    )
+        if disabled_cards:
+            await self.remove_cards(disabled_cards)

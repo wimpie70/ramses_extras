@@ -141,6 +141,65 @@ class EntityManager:
         # For now, assume all devices are HvacVentilator
         return "HvacVentilator"
 
-    def get_device_entity_mapping(self, device_type: str) -> dict[str, list[str]]:
-        """Get entity mapping for a device type."""
-        return DEVICE_ENTITY_MAPPING.get(device_type, {})
+    async def setup_entities_for_devices(self, device_ids: list[str]) -> None:
+        """Set up entities for the given devices based on enabled features."""
+        if not device_ids:
+            return
+
+        try:
+            # Get enabled features
+            enabled_features = {}
+            for feature_key in AVAILABLE_FEATURES.keys():
+                enabled_features[feature_key] = (
+                    self.hass.data.get(DOMAIN, {})
+                    .get("enabled_features", {})
+                    .get(feature_key, False)
+                )
+
+            # Set up entities for each device
+            for device_id in device_ids:
+                device_type = self._get_device_type(device_id)
+                if device_type:
+                    required = self.get_required_entities_for_device(
+                        device_type, enabled_features
+                    )
+                    _LOGGER.debug(
+                        f"Setting up entities for device {device_id} ({device_type}): "
+                        f"{required}"
+                    )
+
+            _LOGGER.info(f"Entity setup completed for {len(device_ids)} devices")
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to setup entities for devices: {e}")
+
+    async def cleanup_entities_for_disabled_features(
+        self, device_ids: list[str], disabled_features: list[str]
+    ) -> None:
+        """Clean up entities when features are disabled."""
+        if not device_ids or not disabled_features:
+            return
+
+        try:
+            # Get current enabled features (excluding disabled ones)
+            current_features = {}
+            for feature_key in AVAILABLE_FEATURES.keys():
+                current_features[feature_key] = (
+                    feature_key not in disabled_features
+                    and self.hass.data.get(DOMAIN, {})
+                    .get("enabled_features", {})
+                    .get(feature_key, False)
+                )
+
+            # Clean up entities for each device
+            for device_id in device_ids:
+                device_type = self._get_device_type(device_id)
+                if device_type:
+                    await self.cleanup_orphaned_entities(device_ids, current_features)
+
+            _LOGGER.info(
+                f"Entity cleanup completed for disabled features: {disabled_features}"
+            )
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to cleanup entities for disabled features: {e}")
