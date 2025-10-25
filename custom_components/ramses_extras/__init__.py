@@ -1,10 +1,8 @@
 import asyncio
 import logging
-import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List
 
-import voluptuous as vol
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -245,6 +243,49 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     if unload_ok:
+        # Get managers for cleanup
+        from .helpers.device import get_all_device_ids
+
+        device_ids = get_all_device_ids(hass)
+        if device_ids:
+            # Initialize managers for cleanup
+            feature_manager = FeatureManager(hass)
+            card_manager = CardManager(hass)
+            entity_manager = EntityManager(hass)
+            automation_manager = AutomationManager(hass)
+
+            # Load current feature state
+            config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+            if config_entry:
+                feature_manager.load_enabled_features(config_entry)
+
+            # Get disabled features (all features are being disabled on unload)
+            disabled_features = []
+            disabled_cards = []
+            disabled_automations = []
+
+            for feature_key, feature_config in AVAILABLE_FEATURES.items():
+                if feature_config.get("category") == "cards":
+                    disabled_cards.append(feature_key)
+                elif feature_config.get("category") == "automations":
+                    disabled_automations.append(feature_key)
+                else:
+                    disabled_features.append(feature_key)
+
+            # Clean up disabled components
+            if disabled_cards:
+                await card_manager.cleanup_disabled_cards(disabled_cards)
+
+            if disabled_automations:
+                await automation_manager.remove_device_automations(
+                    device_ids, disabled_automations
+                )
+
+            if disabled_features:
+                await entity_manager.cleanup_entities_for_disabled_features(
+                    device_ids, disabled_features
+                )
+
         # Remove services
         from .helpers.device import (
             find_ramses_device,
@@ -392,6 +433,9 @@ async def _setup_entities_and_automations(
             await automation_manager.create_device_automations(
                 device_ids, enabled_automations
             )
+
+        # Set up entities using entity manager
+        await entity_manager.setup_entities_for_devices(device_ids)
 
         # Note: Platforms are already set up in async_setup_entry, no need to duplicate
 

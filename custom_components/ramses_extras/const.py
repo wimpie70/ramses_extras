@@ -24,56 +24,9 @@ DESCRIPTION_PLACEHOLDER_INFO = (
 )
 CARD_FOLDER = "www"
 
-SENSOR_TYPES = {
-    "test1": "test1 text",
-    "test2": "test2 text",
-    "indoor_abs_humid": "Indoor Absolute Humidity",
-    "outdoor_abs_humid": "Outdoor Absolute Humidity",
-}
-
-BOOLEAN_TYPES = {
-    "dehumidifying": "Dehumidifying Active",
-}
-
-SWITCH_TYPES = {
-    "dehumidify": "Activate Dehumidify Automation",
-}
-
-# Available features/cards configuration
+# Device type to entity type mapping
 # Each feature defines a card/automation with specific requirements
 AVAILABLE_FEATURES = {
-    "test1": {
-        "name": "test1",
-        "description": "TEST 1",
-        "category": "cards",
-        "folder": "",
-        "default_enabled": False,
-        "supported_device_types": ["HvacVentilator"],
-        "required_entities": {
-            "sensors": ["test1"],
-            "switches": [],
-        },
-        "optional_entities": {
-            "sensors": [],
-            "switches": [],
-        },
-    },
-    "test2": {
-        "name": "test2",
-        "description": "TEST 2",
-        "category": "cards",
-        "folder": "",
-        "default_enabled": False,
-        "supported_device_types": ["HvacVentilator"],
-        "required_entities": {
-            "sensors": ["test2"],
-            "switches": ["test2"],
-        },
-        "optional_entities": {
-            "sensors": [],
-            "switches": [],
-        },
-    },
     "hvac_fan_card": {
         "name": "Hvac Fan Control Card",
         "description": "Advanced control card for Orcon or other ventilation systems",
@@ -111,16 +64,11 @@ AVAILABLE_FEATURES = {
         },
     },
 }
-FEATURE_CATEGORIES = {
-    "cards": "Dashboard Cards",
-    "automations": "Automations",
-    "scripts": "Scripts",
-}
 
 # Device type to entity type mapping
 DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
-        "sensors": ["indoor_abs_humid", "outdoor_abs_humid", "test1", "test2"],
+        "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
         "switches": ["dehumidify"],
         "binary_sensors": ["dehumidifying"],
         "numbers": ["rel_humid_min", "rel_humid_max"],
