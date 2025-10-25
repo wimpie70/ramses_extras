@@ -115,7 +115,9 @@ def calculate_required_entities(
                         if isinstance(
                             entity_type, str
                         ) and entity_type in entity_mapping.get(platform_key, []):
-                            required_entities.add(f"{platform}.{device_id}_{entity_type}")
+                            required_entities.add(
+                                f"{platform}.{device_id}_{entity_type}"
+                            )
 
             # Add optional entities for this platform
             optional_entities_dict = feature_config.get("optional_entities", {})
@@ -126,7 +128,9 @@ def calculate_required_entities(
                         if isinstance(
                             entity_type, str
                         ) and entity_type in entity_mapping.get(platform_key, []):
-                            required_entities.add(f"{platform}.{device_id}_{entity_type}")
+                            required_entities.add(
+                                f"{platform}.{device_id}_{entity_type}"
+                            )
 
     return required_entities
 
