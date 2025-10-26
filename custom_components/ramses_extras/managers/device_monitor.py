@@ -70,27 +70,19 @@ class DeviceMonitor:
             )
 
     def _setup_device_registry_listener(self) -> None:
-        """Set up listener for device registry changes (manual device removal)."""
-        from homeassistant.helpers import device_registry as dr
+        """Set up listener for device registry changes via event bus."""
+        # Listen for device registry events on the event bus
+        self.hass.bus.async_listen(
+            "device_registry_updated", self._handle_device_registry_event
+        )
+        _LOGGER.debug("Listening to device registry events")
 
-        device_reg = dr.async_get(self.hass)
-
-        # Listen for device registry updates
-        device_reg.async_listen_updates(self._handle_device_registry_update)
-        _LOGGER.debug("Listening to device registry changes")
-
-    def _handle_device_registry_update(self, event: Any) -> None:
-        """Handle device registry updates (removals)."""
+    def _handle_device_registry_event(self, event: Any) -> None:
+        """Handle device registry events (removals)."""
         try:
             # Check if this is a removal event
-            if event.action == "remove":
-                device_id = None
-
-                # Find our device identifier in the device entry
-                for identifier in event.identifiers:
-                    if identifier[0] == DOMAIN:
-                        device_id = identifier[1]
-                        break
+            if event.data.get("action") == "remove":
+                device_id = event.data.get("device_id")
 
                 if device_id and device_id in self._known_devices:
                     _LOGGER.info(f"Device manually removed from HA: {device_id}")
@@ -102,7 +94,7 @@ class DeviceMonitor:
                     )
 
         except Exception as e:
-            _LOGGER.debug(f"Error handling device registry update: {e}")
+            _LOGGER.debug(f"Error handling device registry event: {e}")
 
     async def _handle_ramses_cc_device_event(self, devices: list[Any]) -> None:
         """Handle new devices discovered by ramses_cc."""
