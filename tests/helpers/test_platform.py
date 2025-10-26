@@ -12,7 +12,7 @@ sys.path.insert(0, "custom_components")
 try:
     from ramses_extras.helpers.platform import (
         calculate_required_entities,
-        convert_fan_id_format,
+        convert_device_id_format,
         find_orphaned_entities,
         get_entity_registry,
     )
@@ -29,17 +29,17 @@ class TestFanIdConversion:
 
     def test_convert_colon_to_underscore(self) -> None:
         """Test converting colon format to underscore format."""
-        assert convert_fan_id_format("32:153289") == "32_153289"
-        assert convert_fan_id_format("01:123456") == "01_123456"
-        assert convert_fan_id_format("99:000001") == "99_000001"
+        assert convert_device_id_format("32:153289") == "32_153289"
+        assert convert_device_id_format("01:123456") == "01_123456"
+        assert convert_device_id_format("99:000001") == "99_000001"
 
     def test_already_underscore_format(self) -> None:
         """Test handling already underscore format."""
-        assert convert_fan_id_format("32_153289") == "32_153289"
+        assert convert_device_id_format("32_153289") == "32_153289"
 
     def test_empty_string(self) -> None:
         """Test handling empty string."""
-        assert convert_fan_id_format("") == ""
+        assert convert_device_id_format("") == ""
 
 
 class TestRequiredEntitiesCalculation:
@@ -53,7 +53,7 @@ class TestRequiredEntitiesCalculation:
         }
         fans = ["32:153289"]
 
-        result = calculate_required_entities("sensor", enabled_features, fans)
+        result = calculate_required_entities("sensor", enabled_features, fans, None)
         assert result == set()
 
     def test_with_features_enabled(
@@ -72,7 +72,7 @@ class TestRequiredEntitiesCalculation:
         const_module.AVAILABLE_FEATURES = mock_available_features
         const_module.DEVICE_ENTITY_MAPPING = mock_device_mapping
 
-        result = calculate_required_entities("sensor", enabled_features, fans)
+        result = calculate_required_entities("sensor", enabled_features, fans, None)
         assert len(result) > 0
         assert any("32:153289" in entity for entity in result)
 
