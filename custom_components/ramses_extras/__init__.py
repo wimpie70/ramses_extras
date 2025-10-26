@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import Any
 
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
@@ -23,9 +23,6 @@ from .managers.card_manager import CardManager
 from .managers.device_monitor import DeviceMonitor
 from .managers.entity_manager import EntityManager
 from .managers.platform_reloader import PlatformReloader
-
-if TYPE_CHECKING:
-    pass
 
 # Register platforms
 PLATFORMS = ["sensor", "switch", "binary_sensor", "number"]

@@ -1,7 +1,7 @@
 """Simple device monitor that only listens to ramses_cc for new devices."""
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import (
@@ -10,9 +10,6 @@ from homeassistant.helpers.dispatcher import (
 )
 
 from ..const import DOMAIN
-
-if TYPE_CHECKING:
-    pass
 
 _LOGGER = logging.getLogger(__name__)
 
