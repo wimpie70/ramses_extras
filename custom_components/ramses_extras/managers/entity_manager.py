@@ -137,9 +137,12 @@ class EntityManager:
 
     def _get_device_type(self, device_id: str) -> str:
         """Get device type for a device ID."""
-        # This would need to be implemented based on how devices are discovered
-        # For now, assume all devices are HvacVentilator
-        return "HvacVentilator"
+        from ..helpers.device import find_ramses_device, get_device_type
+
+        device = find_ramses_device(self.hass, device_id)
+        if device:
+            return get_device_type(device)
+        return "Unknown"
 
     async def setup_entities_for_devices(self, device_ids: list[str]) -> None:
         """Set up entities for the given devices based on enabled features."""

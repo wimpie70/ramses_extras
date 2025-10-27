@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import Any
 
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
@@ -20,10 +20,9 @@ from .const import (
 from .managers import FeatureManager
 from .managers.automation_manager import AutomationManager
 from .managers.card_manager import CardManager
+from .managers.device_monitor import DeviceMonitor
 from .managers.entity_manager import EntityManager
-
-if TYPE_CHECKING:
-    pass
+from .managers.platform_reloader import PlatformReloader
 
 # Register platforms
 PLATFORMS = ["sensor", "switch", "binary_sensor", "number"]
@@ -254,6 +253,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entity_manager = EntityManager(hass)
             automation_manager = AutomationManager(hass)
 
+            # Stop device monitoring
+            managers = hass.data.get(DOMAIN, {}).get("managers", {})
+            device_monitor = managers.get("device_monitor")
+            if device_monitor:
+                await device_monitor.stop_monitoring()
+                _LOGGER.info("Stopped device monitor")
+
             # Load current feature state
             config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
             if config_entry:
@@ -354,13 +360,31 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
 
             if device_ids:
                 _LOGGER.info("Found %d Ramses devices: %s", len(device_ids), device_ids)
-                hass.data.setdefault(DOMAIN, {})["fans"] = device_ids
+                hass.data.setdefault(DOMAIN, {})["devices"] = device_ids
 
                 # Initialize managers
                 feature_manager = FeatureManager(hass)
                 card_manager = CardManager(hass)
                 entity_manager = EntityManager(hass)
                 automation_manager = AutomationManager(hass)
+
+                # Initialize dynamic device management
+                device_monitor = DeviceMonitor(hass)
+                config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+                platform_reloader = PlatformReloader(hass, config_entry)
+
+                # Store managers in hass.data for access by platforms
+                hass.data.setdefault(DOMAIN, {})["managers"] = {
+                    "device_monitor": device_monitor,
+                    "platform_reloader": platform_reloader,
+                    "feature_manager": feature_manager,
+                    "entity_manager": entity_manager,
+                    "automation_manager": automation_manager,
+                    "card_manager": card_manager,
+                }
+
+                # Start device monitoring
+                await device_monitor.start_monitoring()
 
                 # Load current feature state
                 config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
@@ -384,7 +408,6 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
                     config_entry,
                 )
 
-                # Register services for discovered devices
                 await _register_services(hass, feature_manager)
 
                 return

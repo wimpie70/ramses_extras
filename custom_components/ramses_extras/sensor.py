@@ -12,6 +12,7 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
+from .helpers.device import find_ramses_device, get_device_type
 from .helpers.entities import calculate_absolute_humidity
 from .helpers.platform import (
     calculate_required_entities,
@@ -32,15 +33,15 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the sensor platform."""
-    fans = hass.data.get(DOMAIN, {}).get("fans", [])
-    _LOGGER.info(f"Setting up sensor platform for {len(fans)} fans")
+    devices = hass.data.get(DOMAIN, {}).get("devices", [])
+    _LOGGER.info(f"Setting up sensor platform for {len(devices)} devices")
 
     if not config_entry:
         _LOGGER.warning("Config entry not available, skipping sensor setup")
         return
 
-    if not fans:
-        _LOGGER.debug("No fans available for sensors")
+    if not devices:
+        _LOGGER.debug("No devices available for sensors")
         return
 
     sensors = []
@@ -50,8 +51,14 @@ async def async_setup_entry(
     _LOGGER.info(f"Enabled features: {enabled_features}")
 
     # Create sensors based on enabled features and their requirements
-    for fan_id in fans:
-        device_type = "HvacVentilator"
+    for device_id in devices:
+        device = find_ramses_device(hass, device_id)
+        if not device:
+            _LOGGER.warning(f"Device {device_id} not found, skipping sensor creation")
+            continue
+
+        device_type = get_device_type(device)
+        _LOGGER.debug(f"Creating sensors for device {device_id} of type {device_type}")
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -109,28 +116,29 @@ async def async_setup_entry(
                     # Entity is needed - create it
                     config = ENTITY_TYPE_CONFIGS["sensor"][sensor_type]
                     sensors.append(
-                        RamsesExtraHumiditySensor(hass, fan_id, sensor_type, config)
+                        RamsesExtraHumiditySensor(hass, device_id, sensor_type, config)
                     )
-                    _LOGGER.debug(f"Creating sensor: sensor.{fan_id}_{sensor_type}")
+                    _LOGGER.debug(f"Creating sensor: sensor.{device_id}_{sensor_type}")
 
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
         try:
-            # Get all possible sensor types for this device
-            all_possible_sensors = []
-            for _fan_id in fans:
-                device_type = "HvacVentilator"
-                if device_type in DEVICE_ENTITY_MAPPING:
-                    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                    all_possible_sensors = entity_mapping.get("sensors", [])
-                    break
+            # Get all possible sensor types for all devices
+            all_possible_sensors = set()
+            for device_id in devices:
+                device = find_ramses_device(hass, device_id)
+                if device:
+                    device_type = get_device_type(device)
+                    if device_type in DEVICE_ENTITY_MAPPING:
+                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                        all_possible_sensors.update(entity_mapping.get("sensors", []))
 
             await remove_orphaned_entities(
                 "sensor",
                 hass,
-                fans,
-                calculate_required_entities("sensor", enabled_features, fans),
-                all_possible_sensors,
+                devices,
+                calculate_required_entities("sensor", enabled_features, devices, hass),
+                list(all_possible_sensors),
             )
         except Exception as e:
             _LOGGER.warning(f"Error during sensor entity cleanup: {e}")
@@ -147,19 +155,19 @@ class RamsesExtraHumiditySensor(SensorEntity):
     def __init__(
         self,
         hass: "HomeAssistant",
-        fan_id: str,
+        device_id: str,
         sensor_type: str,
         config: dict[str, Any],
     ):
         self.hass = hass
-        self._fan_id = fan_id  # Store device ID as string
+        self._device_id = device_id  # Store device ID as string
         self._sensor_type = sensor_type
         self._config = config
 
         # Set attributes from configuration
-        self._attr_name = f"{config['name_template']} ({fan_id})"
+        self._attr_name = f"{config['name_template']} ({device_id})"
         self._attr_unique_id = (
-            f"{fan_id}_{sensor_type}"  # Format: 32:153289_indoor_abs_humid
+            f"{device_id}_{sensor_type}"  # Format: 32:153289_indoor_abs_humid
         )
         self._attr_entity_category = config["entity_category"]
         self._attr_icon = config["icon"]
@@ -170,7 +178,7 @@ class RamsesExtraHumiditySensor(SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
-        signal = f"ramses_rf_device_update_{self._fan_id}"
+        signal = f"ramses_rf_device_update_{self._device_id}"
         self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
         _LOGGER.debug("Subscribed to %s updates for %s", signal, self.name)
 
@@ -215,10 +223,10 @@ class RamsesExtraHumiditySensor(SensorEntity):
 
         temp_type, humidity_type = entity_patterns[self._sensor_type]
 
-        # Construct entity IDs based on the fan_id
+        # Construct entity IDs based on the device_id
         # ramses_cc creates entities like: sensor.32_153289_indoor_temp
-        temp_entity = f"sensor.{self._fan_id.replace(':', '_')}_{temp_type}"
-        humidity_entity = f"sensor.{self._fan_id.replace(':', '_')}_{humidity_type}"
+        temp_entity = f"sensor.{self._device_id.replace(':', '_')}_{temp_type}"
+        humidity_entity = f"sensor.{self._device_id.replace(':', '_')}_{humidity_type}"
 
         try:
             # Get temperature from ramses_cc sensor

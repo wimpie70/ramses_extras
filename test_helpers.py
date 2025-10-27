@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components"))
 # Import after path is set up (flake8 E402 suppressed by necessity)
 from ramses_extras.helpers.platform import (  # noqa: E402
     calculate_required_entities,
-    convert_fan_id_format,
+    convert_device_id_format,
     find_orphaned_entities,
 )
 
@@ -21,7 +21,7 @@ def test_fan_id_conversion() -> None:
 
     # Test conversion
     original = "32:153289"
-    converted = convert_fan_id_format(original)
+    converted = convert_device_id_format(original)
 
     assert converted == "32_153289", f"Expected '32_153289', got '{converted}'"
     print(f"✅ Fan ID conversion: {original} → {converted}")
@@ -43,7 +43,9 @@ def test_required_entities_calculation() -> None:
     fans = ["32:153289"]
 
     # Test sensor calculation
-    required_sensors = calculate_required_entities("sensor", enabled_features, fans)
+    required_sensors = calculate_required_entities(
+        "sensor", enabled_features, fans, None
+    )
 
     print(f"Required sensor entities: {required_sensors}")
     assert len(required_sensors) > 0, "Should have required sensor entities"

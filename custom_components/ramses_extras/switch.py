@@ -12,6 +12,7 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
+from .helpers.device import find_ramses_device, get_device_type
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -31,15 +32,15 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the switch platform."""
-    fans = hass.data.get(DOMAIN, {}).get("fans", [])
-    _LOGGER.info(f"Setting up switch platform for {len(fans)} fans")
+    devices = hass.data.get(DOMAIN, {}).get("devices", [])
+    _LOGGER.info(f"Setting up switch platform for {len(devices)} devices")
 
     if not config_entry:
         _LOGGER.warning("Config entry not available, skipping switch setup")
         return
 
-    if not fans:
-        _LOGGER.debug("No fans available for switches")
+    if not devices:
+        _LOGGER.debug("No devices available for switches")
         return
 
     switches = []
@@ -49,8 +50,14 @@ async def async_setup_entry(
     _LOGGER.info(f"Enabled features: {enabled_features}")
 
     # Create switches based on enabled features and their requirements
-    for fan_id in fans:
-        device_type = "HvacVentilator"
+    for device_id in devices:
+        device = find_ramses_device(hass, device_id)
+        if not device:
+            _LOGGER.warning(f"Device {device_id} not found, skipping switch creation")
+            continue
+
+        device_type = get_device_type(device)
+        _LOGGER.debug(f"Creating switches for device {device_id} of type {device_type}")
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -103,28 +110,29 @@ async def async_setup_entry(
                     # Entity is needed - create it
                     config = ENTITY_TYPE_CONFIGS["switch"][switch_type]
                     switches.append(
-                        RamsesDehumidifySwitch(hass, fan_id, switch_type, config)
+                        RamsesDehumidifySwitch(hass, device_id, switch_type, config)
                     )
-                    _LOGGER.debug(f"Creating switch: switch.{fan_id}_{switch_type}")
+                    _LOGGER.debug(f"Creating switch: switch.{device_id}_{switch_type}")
 
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
         try:
-            # Get all possible switch types for this device
-            all_possible_switches = []
-            for _fan_id in fans:
-                device_type = "HvacVentilator"
-                if device_type in DEVICE_ENTITY_MAPPING:
-                    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                    all_possible_switches = entity_mapping.get("switches", [])
-                    break
+            # Get all possible switch types for all devices
+            all_possible_switches = set()
+            for device_id in devices:
+                device = find_ramses_device(hass, device_id)
+                if device:
+                    device_type = get_device_type(device)
+                    if device_type in DEVICE_ENTITY_MAPPING:
+                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                        all_possible_switches.update(entity_mapping.get("switches", []))
 
             await remove_orphaned_entities(
                 "switch",
                 hass,
-                fans,
-                calculate_required_entities("switch", enabled_features, fans),
-                all_possible_switches,
+                devices,
+                calculate_required_entities("switch", enabled_features, devices, hass),
+                list(all_possible_switches),
             )
         except Exception as e:
             _LOGGER.warning(f"Error during switch entity cleanup: {e}")
@@ -141,19 +149,19 @@ class RamsesDehumidifySwitch(SwitchEntity):
     def __init__(
         self,
         hass: "HomeAssistant",
-        fan_id: str,
+        device_id: str,
         switch_type: str,
         config: dict[str, Any],
     ):
         self.hass = hass
-        self._fan_id = fan_id  # Store device ID as string
+        self._device_id = device_id  # Store device ID as string
         self._switch_type = switch_type
         self._config = config
 
         # Set attributes from configuration
-        self._attr_name = f"{config['name_template']} ({fan_id})"
+        self._attr_name = f"{config['name_template']} ({device_id})"
         # Use format that matches existing entities: switch.dehumidify_32_153289
-        self._attr_unique_id = f"dehumidify_{fan_id.replace(':', '_')}"
+        self._attr_unique_id = f"dehumidify_{device_id.replace(':', '_')}"
         self._attr_icon = config["icon"]
         self._attr_entity_category = config["entity_category"]
 
@@ -162,7 +170,7 @@ class RamsesDehumidifySwitch(SwitchEntity):
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
-        signal = f"ramses_rf_device_update_{self._fan_id}"
+        signal = f"ramses_rf_device_update_{self._device_id}"
         self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
         _LOGGER.debug("Subscribed to %s for switch %s", signal, self.name)
 
@@ -189,12 +197,12 @@ class RamsesDehumidifySwitch(SwitchEntity):
 
         try:
             # Log what we would do instead of actually sending commands
-            device_id = self._fan_id.replace("_", ":")
+            device_id = self._device_id.replace("_", ":")
 
             # Get the bound REM device first (similar to card logic)
             try:
                 # Try to get bound REM from climate entity attributes
-                climate_entity = f"climate.{self._fan_id}_climate"
+                climate_entity = f"climate.{self._device_id}_climate"
                 climate_state = self.hass.states.get(climate_entity)
 
                 if climate_state and climate_state.attributes.get("bound_rem"):
@@ -237,11 +245,11 @@ class RamsesDehumidifySwitch(SwitchEntity):
 
         try:
             # Log what we would do instead of actually sending commands
-            device_id = self._fan_id.replace("_", ":")
+            device_id = self._device_id.replace("_", ":")
 
             try:
                 # Get the bound REM device first (similar to card logic)
-                climate_entity = f"climate.{self._fan_id}_climate"
+                climate_entity = f"climate.{self._device_id}_climate"
                 climate_state = self.hass.states.get(climate_entity)
 
                 if climate_state and climate_state.attributes.get("bound_rem"):

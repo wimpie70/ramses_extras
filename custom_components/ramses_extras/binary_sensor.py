@@ -7,7 +7,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.event import async_track_state_change
 
-from .const import AVAILABLE_FEATURES, BOOLEAN_CONFIGS, DEVICE_ENTITY_MAPPING, DOMAIN
+from .const import (
+    AVAILABLE_FEATURES,
+    DEVICE_ENTITY_MAPPING,
+    DOMAIN,
+    ENTITY_TYPE_CONFIGS,
+)
+from .helpers.device import find_ramses_device, get_device_type
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -27,16 +33,16 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the binary sensor platform."""
-    fans = hass.data.get(DOMAIN, {}).get("fans", [])
-    _LOGGER.info(f"Setting up binary_sensor platform for {len(fans)} fans")
+    devices = hass.data.get(DOMAIN, {}).get("devices", [])
+    _LOGGER.info(f"Setting up binary_sensor platform for {len(devices)} devices")
 
     # Check if config entry is available (it might not be during initial load)
     if not config_entry:
         _LOGGER.warning("Config entry not available, skipping binary_sensor setup")
         return
 
-    if not fans:
-        _LOGGER.debug("No fans available for binary sensors")
+    if not devices:
+        _LOGGER.debug("No devices available for binary sensors")
         return
 
     binary_sensors = []
@@ -46,8 +52,18 @@ async def async_setup_entry(
     _LOGGER.info(f"Enabled features: {enabled_features}")
 
     # Create binary sensors based on enabled features and their requirements
-    for fan_id in fans:
-        device_type = "HvacVentilator"
+    for device_id in devices:
+        device = find_ramses_device(hass, device_id)
+        if not device:
+            _LOGGER.warning(
+                f"Device {device_id} not found, skipping binary sensor creation"
+            )
+            continue
+
+        device_type = get_device_type(device)
+        _LOGGER.debug(
+            f"Creating binary sensors for device {device_id} of type {device_type}"
+        )
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -57,7 +73,7 @@ async def async_setup_entry(
 
             # Check each possible binary sensor type
             for boolean_type in all_possible_booleans:
-                if boolean_type not in BOOLEAN_CONFIGS:
+                if boolean_type not in ENTITY_TYPE_CONFIGS["binary_sensor"]:
                     continue
 
                 # Check if this binary sensor is needed by any enabled feature
@@ -91,32 +107,35 @@ async def async_setup_entry(
 
                 if is_needed:
                     # Entity is needed - create it
-                    config = BOOLEAN_CONFIGS[boolean_type]
+                    config = ENTITY_TYPE_CONFIGS["binary_sensor"][boolean_type]
                     binary_sensors.append(
-                        RamsesBinarySensor(hass, fan_id, boolean_type, config)
+                        RamsesBinarySensor(hass, device_id, boolean_type, config)
                     )
-                    _LOGGER.debug(
-                        f"Creating binary sensor: binary_sensor.{fan_id}_{boolean_type}"
-                    )
+                    _LOGGER.debug(f"Creating binary sensor: {device_id}_{boolean_type}")
 
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
         try:
-            # Get all possible binary sensor types for this device
-            all_possible_booleans = []
-            for _fan_id in fans:
-                device_type = "HvacVentilator"
-                if device_type in DEVICE_ENTITY_MAPPING:
-                    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                    all_possible_booleans = entity_mapping.get("booleans", [])
-                    break
+            # Get all possible binary sensor types for all devices
+            all_possible_booleans = set()
+            for device_id in devices:
+                device = find_ramses_device(hass, device_id)
+                if device:
+                    device_type = get_device_type(device)
+                    if device_type in DEVICE_ENTITY_MAPPING:
+                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                        all_possible_booleans.update(
+                            entity_mapping.get("binary_sensors", [])
+                        )
 
             await remove_orphaned_entities(
                 "binary_sensor",
                 hass,
-                fans,
-                calculate_required_entities("binary_sensor", enabled_features, fans),
-                all_possible_booleans,
+                devices,
+                calculate_required_entities(
+                    "binary_sensor", enabled_features, devices, hass
+                ),
+                list(all_possible_booleans),
             )
         except Exception as e:
             _LOGGER.warning(f"Error during binary_sensor entity cleanup: {e}")
@@ -133,18 +152,18 @@ class RamsesBinarySensor(BinarySensorEntity):
     def __init__(
         self,
         hass: "HomeAssistant",
-        fan_id: str,
+        device_id: str,
         boolean_type: str,
         config: dict[str, Any],
     ):
         self.hass = hass
-        self._fan_id = fan_id  # Store device ID as string
+        self._device_id = device_id  # Store device ID as string
         self._boolean_type = boolean_type
         self._config = config
 
         # Set attributes from configuration
-        self._attr_name = f"{config['name_template']} ({fan_id})"
-        self._attr_unique_id = f"dehumidifying_active_{fan_id.replace(':', '_')}"
+        self._attr_name = f"{config['name_template']} ({device_id})"
+        self._attr_unique_id = f"{device_id.replace(':', '_')}_{boolean_type}"
         self._attr_icon = config["icon"]
         self._attr_entity_category = config["entity_category"]
         self._attr_device_class = config.get("device_class")
@@ -154,7 +173,7 @@ class RamsesBinarySensor(BinarySensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
-        signal = f"ramses_rf_device_update_{self._fan_id}"
+        signal = f"ramses_rf_device_update_{self._device_id}"
         self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
         _LOGGER.debug("Subscribed to %s for binary sensor %s", signal, self.name)
 
@@ -176,4 +195,4 @@ class RamsesBinarySensor(BinarySensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"device_id": self._fan_id, "boolean_type": self._boolean_type}
+        return {"device_id": self._device_id, "boolean_type": self._boolean_type}

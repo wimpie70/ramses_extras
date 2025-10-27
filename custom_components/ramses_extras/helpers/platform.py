@@ -5,12 +5,13 @@ This module contains reusable helper functions used across all platform modules
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import entity_registry as er
 
 from ..const import AVAILABLE_FEATURES, DEVICE_ENTITY_MAPPING, DOMAIN
+from .device import find_ramses_device, get_device_type
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -63,29 +64,44 @@ def get_entity_registry(hass: "HomeAssistant") -> er.EntityRegistry | None:
 def calculate_required_entities(
     platform: str,
     enabled_features: dict[str, bool],
-    fans: list[str],
-    device_type: str = "HvacVentilator",
+    devices: list[str],
+    hass: Optional["HomeAssistant"] = None,
 ) -> set[str]:
     """Calculate which entities are required by the enabled features.
 
     Args:
         platform: Platform type ('sensor', 'switch', 'binary_sensor')
         enabled_features: Dictionary of enabled features
-        fans: List of fan device IDs
-        device_type: Device type to check
+        devices: List of device IDs
+        hass: Home Assistant instance (optional, for device lookup)
 
     Returns:
         Set of required entity IDs
     """
     required_entities: set[str] = set()
 
-    if device_type not in DEVICE_ENTITY_MAPPING:
-        return required_entities
+    for device_id in devices:
+        # Try to find the actual device if hass is available
+        device = None
+        device_type = "Unknown"
 
-    entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-    platform_key = f"{platform}s"  # Convert 'sensor' -> 'sensors', etc.
+        if hass:
+            device = find_ramses_device(hass, device_id)
+            if device:
+                device_type = get_device_type(device)
+            else:
+                continue  # Skip if device not found and hass is available
+        else:
+            # For testing or when hass is not available, assume HvacVentilator
+            # This allows tests to work without actual device lookup
+            device_type = "HvacVentilator"
 
-    for fan_id in fans:
+        if device_type not in DEVICE_ENTITY_MAPPING:
+            continue
+
+        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+        platform_key = f"{platform}s"  # Convert 'sensor' -> 'sensors', etc.
+
         for feature_key, is_enabled in enabled_features.items():
             if not is_enabled or feature_key not in AVAILABLE_FEATURES:
                 continue
@@ -109,7 +125,9 @@ def calculate_required_entities(
                         if isinstance(
                             entity_type, str
                         ) and entity_type in entity_mapping.get(platform_key, []):
-                            required_entities.add(f"{platform}.{fan_id}_{entity_type}")
+                            required_entities.add(
+                                f"{platform}.{device_id}_{entity_type}"
+                            )
 
             # Add optional entities for this platform
             optional_entities_dict = feature_config.get("optional_entities", {})
@@ -120,27 +138,29 @@ def calculate_required_entities(
                         if isinstance(
                             entity_type, str
                         ) and entity_type in entity_mapping.get(platform_key, []):
-                            required_entities.add(f"{platform}.{fan_id}_{entity_type}")
+                            required_entities.add(
+                                f"{platform}.{device_id}_{entity_type}"
+                            )
 
     return required_entities
 
 
-def convert_fan_id_format(fan_id: str) -> str:
-    """Convert fan ID from colon format to underscore format.
+def convert_device_id_format(device_id: str) -> str:
+    """Convert device ID from colon format to underscore format.
 
     Args:
-        fan_id: Fan ID in format 32:153289
+        device_id: Device ID in format 32:153289
 
     Returns:
-        Fan ID in format 32_153289
+        Device ID in format 32_153289
     """
-    return fan_id.replace(":", "_")
+    return device_id.replace(":", "_")
 
 
 def find_orphaned_entities(
     platform: str,
     hass: "HomeAssistant",
-    fans: list[str],
+    devices: list[str],
     required_entities: set[str],
     all_possible_types: list[str],
 ) -> list[str]:
@@ -149,7 +169,7 @@ def find_orphaned_entities(
     Args:
         platform: Platform type ('sensor', 'switch', 'binary_sensor')
         hass: Home Assistant instance
-        fans: List of fan device IDs
+        devices: List of device IDs
         required_entities: Set of currently required entity IDs
         all_possible_types: List of all possible entity types for this platform
 
@@ -170,24 +190,24 @@ def find_orphaned_entities(
         # Format: {platform}.{entity_type}_{device_id} where device_id is 32_153289
         parts = entity_id.split(".")
         if len(parts) >= 2:
-            entity_name_and_fan = parts[1]  # entity_type_device_id
+            entity_name_and_device = parts[1]  # entity_type_device_id
 
             # Check if this entity belongs to one of our devices
-            for fan_id in fans:
-                # Convert fan_id from colon format (32:153289)
+            for device_id in devices:
+                # Convert device_id from colon format (32:153289)
                 # to underscore format (32_153289)
-                fan_id_underscore = convert_fan_id_format(fan_id)
+                device_id_underscore = convert_device_id_format(device_id)
 
                 # Check if the entity belongs to this device (device_id at the end)
-                if entity_name_and_fan.endswith(f"_{fan_id_underscore}"):
+                if entity_name_and_device.endswith(f"_{device_id_underscore}"):
                     # This entity belongs to our device, check if it's still needed
-                    entity_type = entity_name_and_fan[
-                        : -len(f"_{fan_id_underscore}") - 1
+                    entity_type = entity_name_and_device[
+                        : -len(f"_{device_id_underscore}") - 1
                     ]  # Remove "_32_153289"
 
                     # Check if this entity_type is still required
                     expected_entity_id = (
-                        f"{platform}.{entity_type}_" + f"{fan_id_underscore}"
+                        f"{platform}.{entity_type}_" + f"{device_id_underscore}"
                     )
                     if expected_entity_id not in required_entities:
                         # Never remove absolute humidity sensors -
@@ -217,7 +237,7 @@ def find_orphaned_entities(
 async def remove_orphaned_entities(
     platform: str,
     hass: "HomeAssistant",
-    fans: list[str],
+    devices: list[str],
     required_entities: set[str],
     all_possible_types: list[str],
 ) -> int:
@@ -226,14 +246,14 @@ async def remove_orphaned_entities(
     Args:
         platform: Platform type ('sensor', 'switch', 'binary_sensor')
         hass: Home Assistant instance
-        fans: List of fan device IDs
+        devices: List of device IDs
         required_entities: Set of currently required entity IDs
         all_possible_types: List of all possible entity types for this platform
 
     Returns:
         Number of entities removed
     """
-    _LOGGER.info(f"Starting {platform} cleanup for fans: {fans}")
+    _LOGGER.info(f"Starting {platform} cleanup for devices: {devices}")
     _LOGGER.info(f"Entity registry available: {get_entity_registry(hass) is not None}")
 
     # Get the current config entry properly
@@ -247,7 +267,7 @@ async def remove_orphaned_entities(
         return 0
 
     current_required_entities = calculate_required_entities(
-        platform, get_enabled_features(hass, config_entry), fans, "HvacVentilator"
+        platform, get_enabled_features(hass, config_entry), devices, hass
     )
     _LOGGER.info(f"Required {platform} entities: {current_required_entities}")
 
@@ -265,7 +285,7 @@ async def remove_orphaned_entities(
     _LOGGER.info(f"All {platform} entities in registry: {platform_entities}")
 
     orphaned_entities = find_orphaned_entities(
-        platform, hass, fans, current_required_entities, all_possible_types
+        platform, hass, devices, current_required_entities, all_possible_types
     )
     _LOGGER.info(
         f"Found {len(orphaned_entities)} orphaned {platform} entities to remove"
