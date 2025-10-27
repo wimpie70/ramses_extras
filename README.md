@@ -41,8 +41,9 @@ After installation, configure the integration through the Home Assistant UI:
 
 ## Requirements
 
-- Home Assistant 2025.10.1 or later
-- Ramses RF integration installed and configured: https://github.com/ramses-rf/ramses_cc
+- Home Assistant 2025.10.3 or later
+- Ramses CC integration v0.52.1 (pre-release) or later: https://github.com/zxdavb/ramses_cc
+- Ramses RF library v0.52.2 or later: https://github.com/ramses-rf/ramses_rf
 - Python 3.13
 
 ## Development

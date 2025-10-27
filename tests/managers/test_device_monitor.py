@@ -60,8 +60,11 @@ class TestDeviceMonitor:
 
     async def test_start_monitoring_with_ramses_cc(self, mock_hass: Mock) -> None:
         """Test starting monitoring when ramses_cc is available."""
-        # Mock the device list in hass.data (populated by device discovery)
-        mock_hass.data = {DOMAIN: {"devices": ["32:153289", "01:123456"]}}
+        # Mock ramses_cc availability in hass.data
+        mock_hass.data = {
+            "ramses_cc": {"entry_123": Mock()},
+            DOMAIN: {"devices": ["32:153289", "01:123456"]},
+        }
 
         with patch.object(mock_hass.bus, "async_listen"):
             with patch(

@@ -86,9 +86,10 @@ ramses_extras/
 
 The virtual environment is located at `~/venvs/extras/` and includes:
 - Python 3.13
-- Home Assistant 2025.10.1 (matches your Docker setup)
-- Type hints and development tools (compatible with HA 2025.10.1)
-- typing-extensions>=4.15.0
+- Home Assistant 2025.10.3 (matches your Docker setup)
+- Ramses RF library v0.52.2
+- Ramses CC integration v0.52.1 (pre-release)
+- Type hints and development tools (compatible with HA 2025.10.3)
 
 ## Running Tests
 
