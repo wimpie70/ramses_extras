@@ -33,15 +33,34 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the sensor platform."""
+    _LOGGER.info("[SENSOR_SETUP] Starting sensor platform setup")
+
+    # Log the current state of hass.data
+    if DOMAIN in hass.data:
+        _LOGGER.debug(
+            f"[SENSOR_SETUP] DOMAIN data keys: {list(hass.data[DOMAIN].keys())}"
+        )
+    else:
+        _LOGGER.warning("[SENSOR_SETUP] DOMAIN not found in hass.data")
+
     devices = hass.data.get(DOMAIN, {}).get("devices", [])
-    _LOGGER.info(f"Setting up sensor platform for {len(devices)} devices")
+    _LOGGER.info(f"[SENSOR_SETUP] Found {len(devices)} devices in config: {devices}")
+
+    # Log ramses_cc data structure if available
+    if "ramses_cc" in hass.data:
+        _LOGGER.debug(
+            f"[SENSOR_SETUP] ramses_cc data structure: "
+            f"{list(hass.data['ramses_cc'].keys())}"
+        )
 
     if not config_entry:
-        _LOGGER.warning("Config entry not available, skipping sensor setup")
+        _LOGGER.warning(
+            "[SENSOR_SETUP] Config entry not available, skipping sensor setup"
+        )
         return
 
     if not devices:
-        _LOGGER.debug("No devices available for sensors")
+        _LOGGER.warning("[SENSOR_SETUP] No devices available for sensors")
         return
 
     sensors = []
@@ -51,14 +70,28 @@ async def async_setup_entry(
     _LOGGER.info(f"Enabled features: {enabled_features}")
 
     # Create sensors based on enabled features and their requirements
+    _LOGGER.info(f"[SENSOR_SETUP] Starting sensor creation for {len(devices)} devices")
+
     for device_id in devices:
+        _LOGGER.info(f"[SENSOR_SETUP] Looking up device {device_id}")
         device = find_ramses_device(hass, device_id)
         if not device:
-            _LOGGER.warning(f"Device {device_id} not found, skipping sensor creation")
+            _LOGGER.warning(
+                f"[SENSOR_SETUP] Device {device_id} not found, skipping sensor creation"
+            )
             continue
 
         device_type = get_device_type(device)
-        _LOGGER.debug(f"Creating sensors for device {device_id} of type {device_type}")
+        _LOGGER.info(
+            f"[SENSOR_SETUP] Creating sensors for device "
+            f"{device_id} of type {device_type}"
+        )
+
+        # Log device attributes for debugging
+        _LOGGER.debug(
+            f"[SENSOR_SETUP] Device {device_id} attributes: "
+            f"{[attr for attr in dir(device) if not attr.startswith('_')]}"
+        )
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]

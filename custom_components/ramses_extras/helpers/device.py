@@ -21,29 +21,103 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     Returns:
         The Ramses device object or None if not found
     """
+    _LOGGER.debug("Looking up device %s", device_id)
+
+    if "ramses_cc" in hass.data:
+        _LOGGER.debug("ramses_cc keys: %s", list(hass.data["ramses_cc"].keys()))
+
     broker = get_ramses_broker(hass)
     if not broker:
-        _LOGGER.debug(f"No Ramses broker available for device {device_id}")
+        _LOGGER.warning("No Ramses broker available for device %s", device_id)
         return None
 
-    devices = getattr(broker, "devices", {})
+    _LOGGER.debug("Found broker: %s", broker.__class__.__name__)
 
-    # Handle devices as a list of objects (like gwy.devices)
-    if isinstance(devices, list):
-        for device in devices:
-            if hasattr(device, "id") and device.id == device_id:
-                _LOGGER.debug(f"Found device {device_id} ({device.__class__.__name__})")
-                return device
-        _LOGGER.debug(f"Device {device_id} not found in Ramses broker device list")
+    # Try different ways to access devices from the broker
+    devices = None
+    source = ""
+
+    if hasattr(broker, "_devices"):
+        devices = broker._devices
+        source = "_devices"
+    elif hasattr(broker, "devices"):
+        devices = broker.devices
+        source = "devices"
+    elif hasattr(broker, "client") and hasattr(broker.client, "devices"):
+        devices = broker.client.devices
+        source = "client.devices"
+    elif hasattr(broker, "get_devices"):
+        devices = broker.get_devices()
+        source = "get_devices()"
+
+    if devices is not None:
+        _LOGGER.debug(
+            "Found %d devices via %s",
+            len(devices) if hasattr(devices, "__len__") else "?",
+            source,
+        )
+
+    if devices is None:
+        _LOGGER.warning("No devices found in broker")
         return None
 
-    # Handle devices as a dictionary (original implementation)
-    device = devices.get(device_id)
-    if device:
-        _LOGGER.debug(f"Found device {device_id} ({device.__class__.__name__})")
-        return device
+    _LOGGER.debug("Devices container type: %s", type(devices).__name__)
 
-    _LOGGER.debug(f"Device {device_id} not found in Ramses broker")
+    # Handle devices as a list of objects
+    if isinstance(devices, list | set):
+        devices_list = list(devices)
+        _LOGGER.debug("Checking %d devices", len(devices_list))
+
+        for device in devices_list:
+            try:
+                # Try different ways to get the device ID
+                device_id_attr = None
+                if hasattr(device, "id"):
+                    device_id_attr = device.id
+                elif hasattr(device, "device_id"):
+                    device_id_attr = device.device_id
+                elif hasattr(device, "device"):
+                    device_id_attr = getattr(device, "device", None)
+
+                if device_id_attr is not None and str(device_id_attr) == str(device_id):
+                    _LOGGER.info(
+                        "Found device %s (%s)", device_id, device.__class__.__name__
+                    )
+                    return device
+
+            except Exception as ex:
+                _LOGGER.debug("Error checking device: %s", str(ex), exc_info=True)
+
+        _LOGGER.warning("Device %s not found in device list", device_id)
+        return None
+
+    # Handle devices as a dictionary
+    if isinstance(devices, dict):
+        _LOGGER.debug("Checking %d devices in dict", len(devices))
+
+        # Try direct lookup first
+        device = devices.get(device_id)
+        if device:
+            _LOGGER.info(
+                "Found device %s in dict (%s)", device_id, device.__class__.__name__
+            )
+            return device
+
+        # Try case-insensitive lookup
+        device_id_lower = str(device_id).lower()
+        for dev_id, dev in devices.items():
+            if str(dev_id).lower() == device_id_lower:
+                _LOGGER.info("Found device %s (as %s) in dict", device_id, dev_id)
+                return dev
+
+    _LOGGER.warning("Device %s not found in broker", device_id)
+    if _LOGGER.isEnabledFor(logging.DEBUG):
+        _LOGGER.debug(
+            "Available devices: %s",
+            [getattr(d, "id", str(d)) for d in devices]
+            if hasattr(devices, "__iter__")
+            else "N/A",
+        )
     return None
 
 
@@ -56,33 +130,72 @@ def get_ramses_broker(hass: HomeAssistant) -> Any | None:
     Returns:
         The Ramses broker object or None if not available
     """
-    ramses_data = hass.data.get("ramses_cc")
-    if not ramses_data:
-        _LOGGER.debug("Ramses CC integration not loaded")
+    _LOGGER.debug("Starting broker lookup")
+
+    if not hasattr(hass, "data") or not isinstance(hass.data, dict):
+        _LOGGER.error("Invalid hass.data structure")
         return None
 
-    # Handle the case where ramses_data contains broker objects directly
-    # (this happens when there's a single entry)
-    if hasattr(ramses_data, "client") and hasattr(ramses_data, "devices"):
-        _LOGGER.debug("Found Ramses broker directly in data")
+    ramses_data = hass.data.get("ramses_cc")
+
+    if not ramses_data:
+        _LOGGER.warning("Ramses CC integration not loaded in hass.data")
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("Available top-level keys: %s", list(hass.data.keys()))
+        return None
+
+    # Check if ramses_data is the broker itself
+    if ramses_data.__class__.__name__ == "RamsesBroker":
+        _LOGGER.debug("Found RamsesBroker instance directly")
         return ramses_data
 
-    # Get the first available broker (handle multiple entries)
-    # If ramses_data is a dict, iterate through entries
+    # Handle the case where ramses_data is a dictionary of entries
     if isinstance(ramses_data, dict):
+        _LOGGER.debug("Checking ramses_data dict with %d entries", len(ramses_data))
+
         for entry_id, data in ramses_data.items():
-            # If data is a broker object (has client attribute), use it directly
-            if hasattr(data, "client") and hasattr(data, "devices"):
-                _LOGGER.debug(f"Found Ramses broker for entry {entry_id}")
+            _LOGGER.debug(
+                "Checking entry %s (type: %s)", entry_id, data.__class__.__name__
+            )
+
+            # If data is a RamsesBroker instance
+            if data.__class__.__name__ == "RamsesBroker":
+                _LOGGER.debug("Found RamsesBroker in entry %s", entry_id)
                 return data
-            # Otherwise, try to get broker from nested dict structure
+
+            # If data is a dictionary, look for a broker inside it
             if isinstance(data, dict):
-                broker = data.get("broker")
-                if broker:
-                    _LOGGER.debug(f"Found Ramses broker for entry {entry_id}")
+                # Check for direct broker reference
+                if (
+                    broker := data.get("broker")
+                ) and broker.__class__.__name__ == "RamsesBroker":
+                    _LOGGER.debug("Found RamsesBroker in entry %s dict", entry_id)
                     return broker
 
-    _LOGGER.debug("No Ramses broker found in any entry")
+                # Check all values in the nested dict
+                for key, value in data.items():
+                    if (
+                        hasattr(value, "__class__")
+                        and value.__class__.__name__ == "RamsesBroker"
+                    ):
+                        _LOGGER.debug(
+                            "Found RamsesBroker in entry %s at key %s", entry_id, key
+                        )
+                        return value
+
+                    # Also check for devices attribute which
+                    #  indicates it might be a broker
+                    if hasattr(value, "devices"):
+                        _LOGGER.debug(
+                            "Found object with 'devices' in entry %s at %s",
+                            entry_id,
+                            key,
+                        )
+                        return value
+
+    _LOGGER.warning("No Ramses broker found in ramses_data")
+    if _LOGGER.isEnabledFor(logging.DEBUG):
+        _LOGGER.debug("ramses_data content type: %s", type(ramses_data).__name__)
     return None
 
 
@@ -143,30 +256,35 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
     """Get all Ramses device IDs.
 
     Args:
-        hass: Home Assistant instance
+        hass: HomeAssistant instance
 
     Returns:
         List of all device IDs found in Ramses CC
     """
+    _LOGGER.debug("Starting device ID discovery")
+
     broker = get_ramses_broker(hass)
     if not broker:
-        _LOGGER.debug("No Ramses broker available, returning empty device list")
+        _LOGGER.warning("No Ramses broker available to get device IDs")
         return []
 
+    _LOGGER.debug("Found broker, getting devices")
     devices = getattr(broker, "devices", {})
 
-    # Handle devices as a list of objects (like gwy.devices)
-    if isinstance(devices, list):
-        device_ids = []
-        for device in devices:
-            if hasattr(device, "id"):
-                device_ids.append(device.id)
-        _LOGGER.debug(f"Found {len(device_ids)} Ramses devices: {device_ids}")
-        return device_ids
+    device_ids = []
 
-    # Handle devices as a dictionary (original implementation)
-    device_ids = list(devices.keys())
-    _LOGGER.debug(f"Found {len(device_ids)} Ramses devices: {device_ids}")
+    if isinstance(devices, list):
+        _LOGGER.debug("Processing %d devices from list", len(devices))
+        device_ids = [str(d.id) for d in devices if hasattr(d, "id")]
+    elif isinstance(devices, dict):
+        _LOGGER.debug("Processing %d devices from dict", len(devices))
+        device_ids = [str(k) for k in devices.keys()]
+    else:
+        _LOGGER.warning("Unexpected devices type: %s", type(devices).__name__)
+
+    _LOGGER.info("Found %d Ramses devices", len(device_ids))
+    if _LOGGER.isEnabledFor(logging.DEBUG):
+        _LOGGER.debug("Device IDs: %s", device_ids)
     return device_ids
 
 
