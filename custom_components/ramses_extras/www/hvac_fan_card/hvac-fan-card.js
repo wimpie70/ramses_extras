@@ -653,29 +653,6 @@ class HvacFanCard extends HTMLElement {
     }
   }
 
-  // Force refresh of all monitored entities
-  async forceRefresh() {
-    if (!this._hass || !this.config) {
-      console.error('Cannot refresh: Missing Home Assistant or config');
-      return false;
-    }
-
-    try {
-      console.log('🔄 Sending 31DA request to refresh device data...');
-
-      // Send 31DA request to refresh device data
-      await this.sendFanCommand('request31DA');
-
-      // Update the renderer with current data
-      this.render();
-
-      console.log('✅ 31DA request sent and entities updated');
-      return true;
-    } catch (error) {
-      console.error('Error sending 31DA request:', error);
-      return false;
-    }
-  }
   updateTimerUI(minutes) {
     console.log('Updating timer UI to:', minutes, 'minutes');
     const timerElement = this.shadowRoot?.querySelector('#timer');
@@ -713,39 +690,6 @@ class HvacFanCard extends HTMLElement {
           btn.classList.remove('active');
         }
       });
-    }
-  }
-
-  triggerRefresh() {
-    console.log('🔄 Manual refresh requested by user (js)');
-
-    // Get the card instance from the global reference
-    if (window.hvacFanCardInstance) {
-      window.hvacFanCardInstance.forceRefresh().then(suRFess => {
-        if (suRFess) {
-          console.log('✅ Manual refresh completed');
-          // Show a brief suRFess indicator (optional)
-          const refreshBtn = this.shadowRoot?.querySelector('.refresh-button');
-          if (refreshBtn) {
-            refreshBtn.style.background = 'rgba(76, 175, 80, 0.3)';
-            setTimeout(() => {
-              refreshBtn.style.background = 'rgba(255, 255, 255, 0.2)';
-            }, 500);
-          }
-        } else {
-          console.error('❌ Manual refresh failed');
-          // Show error indicator (optional)
-          const refreshBtn = this.shadowRoot?.querySelector('.refresh-button');
-          if (refreshBtn) {
-            refreshBtn.style.background = 'rgba(244, 67, 54, 0.3)';
-            setTimeout(() => {
-              refreshBtn.style.background = 'rgba(255, 255, 255, 0.2)';
-            }, 1000);
-          }
-        }
-      });
-    } else {
-      console.error('Card instance not found for refresh');
     }
   }
 
@@ -804,9 +748,7 @@ class HvacFanCard extends HTMLElement {
     // Make functions globally available for onclick handlers
     window.updateTimerUI = this.updateTimerUI;
     window.updateBypassUI = this.updateBypassUI;
-    window.triggerRefresh = this.triggerRefresh.bind(this);
     window.setBypassMode = (mode) => this.sendBypassCommand(mode);
-    window.forceRefresh = this.forceRefresh.bind(this);
   }
 }
 

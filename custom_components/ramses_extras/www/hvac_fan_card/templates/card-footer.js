@@ -53,39 +53,6 @@ export function createCardFooter() {
           });
         }
 
-        function triggerRefresh() {
-          console.log('🔄 Manual refresh requested by user (html)');
-
-          // Get the card instance from the global reference
-          if (window.orconFanCardInstance) {
-            window.orconFanCardInstance.forceRefresh().then(success => {
-              if (success) {
-                console.log('✅ Manual refresh completed');
-                // Show a brief success indicator (optional)
-                const refreshBtn = document.querySelector('.refresh-button');
-                if (refreshBtn) {
-                  refreshBtn.style.background = 'rgba(76, 175, 80, 0.3)';
-                  setTimeout(() => {
-                    refreshBtn.style.background = 'rgba(255, 255, 255, 0.2)';
-                  }, 500);
-                }
-              } else {
-                console.error('❌ Manual refresh failed');
-                // Show error indicator (optional)
-                const refreshBtn = document.querySelector('.refresh-button');
-                if (refreshBtn) {
-                  refreshBtn.style.background = 'rgba(244, 67, 54, 0.3)';
-                  setTimeout(() => {
-                    refreshBtn.style.background = 'rgba(255, 255, 255, 0.2)';
-                  }, 1000);
-                }
-              }
-            });
-          } else {
-            console.error('Card instance not found for refresh');
-          }
-        }
-
         // Handle bypass button clicks with UI update and command sending
         async function setBypassMode(mode) {
           console.log('Setting bypass to:', mode);
@@ -102,37 +69,6 @@ export function createCardFooter() {
             console.error('Error setting bypass mode to ' + mode + ':', error);
             // Optionally show user feedback
             console.warn('Bypass command may have failed - check Home Assistant logs');
-          }
-        }
-
-        // Handle refresh button clicks
-        async function forceRefresh() {
-          console.log('🔄 Manual refresh requested by user');
-          if (window.orconFanCardInstance) {
-            const success = await window.orconFanCardInstance.forceRefresh();
-            if (success) {
-              console.log('✅ Manual refresh completed');
-              // Show a brief success indicator (optional)
-              const refreshBtn = document.querySelector('.refresh-button');
-              if (refreshBtn) {
-                refreshBtn.style.background = 'rgba(76, 175, 80, 0.3)';
-                setTimeout(() => {
-                  refreshBtn.style.background = 'rgba(255, 255, 255, 0.2)';
-                }, 500);
-              }
-            } else {
-              console.error('❌ Manual refresh failed');
-              // Show error indicator (optional)
-              const refreshBtn = document.querySelector('.refresh-button');
-              if (refreshBtn) {
-                refreshBtn.style.background = 'rgba(244, 67, 54, 0.3)';
-                setTimeout(() => {
-                  refreshBtn.style.background = 'rgba(255, 255, 255, 0.2)';
-                }, 1000);
-              }
-            }
-          } else {
-            console.error('Card instance not found for refresh');
           }
         }
       </script>
