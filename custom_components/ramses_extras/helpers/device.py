@@ -27,11 +27,22 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
         return None
 
     devices = getattr(broker, "devices", {})
-    device = devices.get(device_id)
 
+    # Handle devices as a list of objects (like gwy.devices)
+    if isinstance(devices, list):
+        for device in devices:
+            if hasattr(device, "id") and device.id == device_id:
+                _LOGGER.debug(f"Found device {device_id} ({device.__class__.__name__})")
+                return device
+        _LOGGER.debug(f"Device {device_id} not found in Ramses broker device list")
+        return None
+
+    # Handle devices as a dictionary (original implementation)
+    device = devices.get(device_id)
     if device:
         _LOGGER.debug(f"Found device {device_id} ({device.__class__.__name__})")
         return device
+
     _LOGGER.debug(f"Device {device_id} not found in Ramses broker")
     return None
 
@@ -143,8 +154,18 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
         return []
 
     devices = getattr(broker, "devices", {})
-    device_ids = list(devices.keys())
 
+    # Handle devices as a list of objects (like gwy.devices)
+    if isinstance(devices, list):
+        device_ids = []
+        for device in devices:
+            if hasattr(device, "id"):
+                device_ids.append(device.id)
+        _LOGGER.debug(f"Found {len(device_ids)} Ramses devices: {device_ids}")
+        return device_ids
+
+    # Handle devices as a dictionary (original implementation)
+    device_ids = list(devices.keys())
     _LOGGER.debug(f"Found {len(device_ids)} Ramses devices: {device_ids}")
     return device_ids
 

@@ -46,11 +46,15 @@ class PlatformReloader:
             current_devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
             updated_devices = list(set(current_devices + device_ids))
 
-            self.hass.data[DOMAIN]["devices"] = updated_devices
-            _LOGGER.info(f"Updated device list: {updated_devices}")
+            # Only reload if there are actual changes
+            if updated_devices != current_devices:
+                self.hass.data[DOMAIN]["devices"] = updated_devices
+                _LOGGER.info(f"Updated device list: {updated_devices}")
 
-            # Reload platforms to include new devices
-            await self._reload_platforms()
+                # Reload platforms to include new devices
+                await self._reload_platforms()
+            else:
+                _LOGGER.debug("No new devices to add, skipping platform reload")
 
         except Exception as e:
             _LOGGER.error(f"Error handling new devices: {e}")
@@ -64,14 +68,18 @@ class PlatformReloader:
             current_devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
             updated_devices = [d for d in current_devices if d not in device_ids]
 
-            self.hass.data[DOMAIN]["devices"] = updated_devices
-            _LOGGER.info(f"Updated device list: {updated_devices}")
+            # Only reload if there are actual changes
+            if updated_devices != current_devices:
+                self.hass.data[DOMAIN]["devices"] = updated_devices
+                _LOGGER.info(f"Updated device list: {updated_devices}")
 
-            # Clean up entities for removed devices
-            await self._cleanup_removed_devices(device_ids)
+                # Clean up entities for removed devices
+                await self._cleanup_removed_devices(device_ids)
 
-            # Reload platforms to reflect changes
-            await self._reload_platforms()
+                # Reload platforms to reflect changes
+                await self._reload_platforms()
+            else:
+                _LOGGER.debug("No devices to remove, skipping platform reload")
 
         except Exception as e:
             _LOGGER.error(f"Error handling removed devices: {e}")
