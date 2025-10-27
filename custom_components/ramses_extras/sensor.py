@@ -66,51 +66,40 @@ async def async_setup_entry(
                 if sensor_type not in ENTITY_TYPE_CONFIGS["sensor"]:
                     continue
 
-                # Always create absolute humidity sensors (fundamental device data)
-                # Other sensors only if required by enabled features
+                # Check if this sensor is needed by any enabled feature
                 is_needed = False
-                if sensor_type in ["indoor_abs_humid", "outdoor_abs_humid"]:
-                    is_needed = True
-                else:
-                    # Check if this sensor is needed by any enabled feature
-                    for feature_key, is_enabled in enabled_features.items():
-                        if not is_enabled or feature_key not in AVAILABLE_FEATURES:
-                            continue
+                for feature_key, is_enabled in enabled_features.items():
+                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                        continue
 
-                        feature_config = AVAILABLE_FEATURES[feature_key]
-                        supported_types = feature_config.get(
-                            "supported_device_types", []
-                        )
+                    feature_config = AVAILABLE_FEATURES[feature_key]
+                    supported_types = feature_config.get("supported_device_types", [])
+                    if (
+                        isinstance(supported_types, list)
+                        and device_type in supported_types
+                    ):
+                        required_entities = feature_config.get("required_entities", {})
+                        optional_entities = feature_config.get("optional_entities", {})
+
+                        if isinstance(required_entities, dict):
+                            required_sensors = required_entities.get("sensors", [])
+                        else:
+                            required_sensors = []
+
+                        if isinstance(optional_entities, dict):
+                            optional_sensors = optional_entities.get("sensors", [])
+                        else:
+                            optional_sensors = []
+
                         if (
-                            isinstance(supported_types, list)
-                            and device_type in supported_types
+                            isinstance(required_sensors, list)
+                            and sensor_type in required_sensors
+                        ) or (
+                            isinstance(optional_sensors, list)
+                            and sensor_type in optional_sensors
                         ):
-                            required_entities = feature_config.get(
-                                "required_entities", {}
-                            )
-                            optional_entities = feature_config.get(
-                                "optional_entities", {}
-                            )
-
-                            if isinstance(required_entities, dict):
-                                required_sensors = required_entities.get("sensors", [])
-                            else:
-                                required_sensors = []
-
-                            if isinstance(optional_entities, dict):
-                                optional_sensors = optional_entities.get("sensors", [])
-                            else:
-                                optional_sensors = []
-
-                            if (
-                                isinstance(required_sensors, list)
-                                and sensor_type in required_sensors
-                            ) or (
-                                isinstance(optional_sensors, list)
-                                and sensor_type in optional_sensors
-                            ):
-                                is_needed = True
-                                break
+                            is_needed = True
+                            break
 
                 if is_needed:
                     config = ENTITY_TYPE_CONFIGS["sensor"][sensor_type]
