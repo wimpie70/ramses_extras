@@ -141,6 +141,31 @@ export const CARD_STYLE = `
   height: 100px;
   top: 50%;
   left: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-icon {
+  font-size: 24px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  transition: all 0.3s ease;
+  opacity: 0.7;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-icon:hover {
+  background: rgba(255, 255, 255, 0.2);
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 
@@ -264,5 +289,199 @@ export const CARD_STYLE = `
   color: #ffffff;
   font-size: 13px;
   text-align: center;
+}
+
+/* Parameter Edit Mode Styles */
+.parameter-edit-section {
+  background: linear-gradient(135deg, #e8f4fd 0%, #d1ecf1 100%);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+}
+
+.param-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #b8daff;
+}
+
+.nav-left, .nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-icon, .back-icon {
+  font-size: 20px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.settings-icon:hover, .back-icon:hover {
+  background: rgba(255, 255, 255, 0.4);
+  transform: scale(1.1);
+}
+
+.device-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e3a8a;
+}
+
+.param-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.param-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.param-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.param-list::-webkit-scrollbar-thumb {
+  background: rgba(30, 58, 138, 0.3);
+  border-radius: 3px;
+}
+
+.param-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  border: 1px solid #b8daff;
+  transition: all 0.3s ease;
+}
+
+.param-item:hover {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.param-item.loading {
+  border-color: #ffc107;
+  background: #fff3cd;
+}
+
+.param-item.success {
+  border-color: #28a745;
+  background: #d4edda;
+}
+
+.param-item.error {
+  border-color: #dc3545;
+  background: #f8d7da;
+}
+
+.param-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.param-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  line-height: 1.3;
+}
+
+.param-unit {
+  font-size: 12px;
+  color: #666;
+  font-weight: 400;
+}
+
+.param-input-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.param-input {
+  width: 80px;
+  padding: 8px 12px;
+  border: 2px solid #b8daff;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: center;
+  background: white;
+  transition: all 0.3s ease;
+}
+
+.param-input:focus {
+  outline: none;
+  border-color: #4a90e2;
+  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+}
+
+.param-input:disabled {
+  background: #f8f9fa;
+  color: #6c757d;
+  cursor: not-allowed;
+}
+
+.param-status {
+  font-size: 16px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.param-status.loading::after {
+  content: "⏳";
+  animation: spin 1s linear infinite;
+}
+
+.param-status.success::after {
+  content: "✅";
+  color: #28a745;
+}
+
+.param-status.error::after {
+  content: "❌";
+  color: #dc3545;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .param-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .param-input-container {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .param-input {
+    flex: 1;
+  }
 }
 `;

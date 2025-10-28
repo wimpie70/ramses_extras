@@ -99,7 +99,9 @@ export function createTopSection(data) {
         </div>
 
         <div class="side-value mid-left">
-          <!-- Refresh button removed -->
+          <button class="settings-icon" title="Edit device parameters">
+            ⚙️
+          </button>
         </div>
 
         <!-- SVG Flow Direction Arrows -->

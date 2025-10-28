@@ -5,5 +5,6 @@
 
 export { createCardHeader } from './card-header.js';
 export { createTopSection } from './top-section.js';
+export { createParameterEditSection } from './parameter-edit.js';
 export { createControlsSection } from './controls-section.js';
 export { createCardFooter } from './card-footer.js';

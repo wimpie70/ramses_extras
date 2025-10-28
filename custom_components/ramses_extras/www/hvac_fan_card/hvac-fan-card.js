@@ -5,7 +5,7 @@ console.log('🚀 hvac-fan-card.js is being loaded!');
 
 import { NORMAL_SVG, BYPASS_OPEN_SVG } from './airflow-diagrams.js';
 import { CARD_STYLE } from './card-styles.js';
-import { createCardHeader, createTopSection, createControlsSection, createCardFooter } from './templates/card-templates.js';
+import { createCardHeader, createTopSection, createParameterEditSection, createControlsSection, createCardFooter } from './templates/card-templates.js';
 import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
 
@@ -13,6 +13,14 @@ import './hvac-fan-card-editor.js';
 console.log('✅ ES6 imports loaded suRFessfully');
 
 class HvacFanCard extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this.parameterEditMode = false;
+    this.parameterSchema = null;
+    this.availableParams = {};
+  }
+
   // All fan commands in one simple object
   static get FAN_COMMANDS() {
     return {
@@ -146,6 +154,7 @@ class HvacFanCard extends HTMLElement {
       _hass: {},
     };
   }
+
 
   set hass(hass) {
     this._hass = hass;
@@ -357,6 +366,7 @@ class HvacFanCard extends HTMLElement {
     console.log('🎯 this._config:', this._config);
     console.log('🎯 this._hass:', this._hass);
     console.log('🎯 this.config:', this.config);
+    console.log('🎯 parameterEditMode:', this.parameterEditMode);
 
     if (!this._hass || !this.config) {
       console.error('❌ Missing hass or config:', {
@@ -369,6 +379,53 @@ class HvacFanCard extends HTMLElement {
 
     console.log('✅ Hass and config available, proceeding with render');
 
+    // Check if we're in parameter edit mode
+    if (this.parameterEditMode) {
+      this.renderParameterEditMode();
+      return;
+    }
+
+    // Normal card rendering
+    this.renderNormalMode();
+  }
+
+  async renderParameterEditMode() {
+    console.log('🔧 Rendering parameter edit mode');
+
+    // Ensure we have the parameter schema
+    if (!this.parameterSchema) {
+      console.log('📡 Fetching parameter schema in render...');
+      this.parameterSchema = await this.fetchParameterSchema();
+      console.log('✅ Schema fetched:', Object.keys(this.parameterSchema));
+    }
+
+    // Get available parameters based on entity existence
+    this.availableParams = this.getAvailableParameters();
+    console.log('📋 Available parameters:', Object.keys(this.availableParams));
+
+    const templateData = {
+      device_id: this.config.device_id,
+      availableParams: this.availableParams,
+      hass: this._hass
+    };
+
+    console.log('🔧 Generating parameter edit HTML...');
+
+    // Generate HTML for parameter edit mode
+    const cardHtml = [
+      createCardHeader(CARD_STYLE),
+      createParameterEditSection(templateData),
+      createCardFooter()
+    ].join('');
+
+    this.shadowRoot.innerHTML = cardHtml;
+    console.log('✅ Parameter edit HTML generated successfully');
+
+    // Attach event listeners for parameter edit mode
+    this.attachParameterEditListeners();
+  }
+
+  renderNormalMode() {
     // Debug: Validate entities are available
     this.validateEntities();
 
@@ -457,9 +514,12 @@ class HvacFanCard extends HTMLElement {
       createCardFooter()
     ].join('');
 
-    this.innerHTML = cardHtml;
+    this.shadowRoot.innerHTML = cardHtml;
 
     console.log('✅ Card HTML generated suRFessfully');
+
+    // Attach event listeners for normal mode
+    this.attachNormalModeListeners();
   }
 
   // Configuration schema for visual editor
@@ -653,6 +713,195 @@ class HvacFanCard extends HTMLElement {
     }
   }
 
+  // Toggle between normal and parameter edit modes
+  async toggleParameterMode() {
+    console.log('🎛️ Toggling parameter edit mode, current:', this.parameterEditMode);
+    this.parameterEditMode = !this.parameterEditMode;
+
+    if (this.parameterEditMode) {
+      console.log('🔧 Entering parameter edit mode - fetching schema...');
+      // Entering parameter edit mode - fetch schema if needed
+      if (!this.parameterSchema) {
+        console.log('📡 Fetching parameter schema...');
+        this.parameterSchema = await this.fetchParameterSchema();
+        console.log('✅ Parameter schema received:', Object.keys(this.parameterSchema));
+      }
+    } else {
+      console.log('🏠 Returning to normal mode');
+    }
+
+    this.render();
+  }
+
+  // Fetch parameter schema from WebSocket
+  async fetchParameterSchema() {
+    try {
+      console.log('Fetching 2411 parameter schema via WebSocket...');
+      const result = await this._hass.callWS({
+        type: "ramses_extras/get_2411_schema"
+      });
+      console.log('Parameter schema received:', Object.keys(result));
+      return result;
+    } catch (error) {
+      console.error('Failed to fetch parameter schema:', error);
+      return {};
+    }
+  }
+
+  // Get available parameters based on entity existence
+  getAvailableParameters() {
+    if (!this.parameterSchema) {
+      console.log('⚠️ No parameter schema available');
+      return {};
+    }
+
+    const available = {};
+    Object.keys(this.parameterSchema).forEach(paramKey => {
+      // ramses_cc uses "param_" prefix: number.32_153289_param_75
+      const entityId = `number.${this.config.device_id.replace(/:/g, '_')}_param_${paramKey}`;
+      const entity = this._hass.states[entityId];
+
+      console.log(`🔍 Checking parameter ${paramKey}: entity=${entityId}, exists=${!!entity}, state=${entity?.state}`);
+
+      if (entity && entity.state !== 'unavailable' && entity.state !== 'unknown') {
+        available[paramKey] = {
+          ...this.parameterSchema[paramKey],
+          current_value: entity.state
+        };
+        console.log(`✅ Parameter ${paramKey} available with value ${entity.state}`);
+      } else {
+        console.log(`❌ Parameter ${paramKey} not available (entity missing or invalid state)`);
+      }
+    });
+
+    console.log('📋 Final available parameters:', Object.keys(available));
+    return available;
+  }
+
+  // Update a parameter value
+  async updateParameter(paramKey, newValue) {
+    console.log(`🔄 Updating parameter ${paramKey} to ${newValue}`);
+
+    const paramItem = this.shadowRoot?.querySelector(`[data-param="${paramKey}"]`);
+    if (paramItem) {
+      paramItem.classList.add('loading');
+      paramItem.classList.remove('success', 'error');
+    }
+
+    try {
+      console.log(`📡 Sending parameter command for ${paramKey}...`);
+      await this.sendParameterCommand(paramKey, parseFloat(newValue));
+      console.log(`⏳ Waiting for parameter update confirmation...`);
+      // Wait for entity update or timeout
+      await this.waitForParameterUpdate(paramKey, newValue);
+      console.log(`✅ Parameter ${paramKey} updated successfully`);
+    } catch (error) {
+      console.error(`❌ Failed to update parameter ${paramKey}:`, error);
+      if (paramItem) {
+        paramItem.classList.remove('loading');
+        paramItem.classList.add('error');
+      }
+    }
+  }
+
+  // Send parameter command via 2411
+  async sendParameterCommand(paramKey, value) {
+    console.log(`🔧 Encoding parameter ${paramKey} with value ${value}...`);
+    // Encode the parameter value for 2411 command
+    const payload = this.encode2411Parameter(paramKey, value);
+    console.log(`📦 Encoded payload: ${payload}`);
+
+    // Get bound REM device
+    let remId = null;
+    try {
+      console.log(`🔗 Getting bound REM for device ${this.config.device_id}...`);
+      const boundRem = await this.getBoundRem(this.config.device_id);
+      remId = boundRem || this.config.device_id;
+      console.log(`✅ Using REM ID: ${remId}`);
+    } catch (error) {
+      console.warn(`⚠️ Failed to get bound REM, using device ID: ${error}`);
+      remId = this.config.device_id;
+    }
+
+    console.log(`📡 Sending 2411 command: device=${this.config.device_id}, rem=${remId}, payload=${payload}`);
+    // Send the command
+    await this.sendPacket(this.config.device_id, remId, 'W', '2411', payload);
+    console.log(`✅ Command sent successfully`);
+  }
+
+  // Wait for parameter entity to update
+  async waitForParameterUpdate(paramKey, expectedValue) {
+    const entityId = `number.${this.config.device_id.replace(/:/g, '_')}_param_${paramKey}`;
+    const paramItem = this.shadowRoot?.querySelector(`[data-param="${paramKey}"]`);
+
+    console.log(`⏳ Waiting for entity ${entityId} to update to ${expectedValue}`);
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        console.log(`⏰ Timeout waiting for parameter update on ${entityId}`);
+        if (paramItem) {
+          paramItem.classList.remove('loading');
+          paramItem.classList.add('error');
+        }
+        reject(new Error('Timeout waiting for parameter update'));
+      }, 10000); // 10 second timeout
+
+      const checkUpdate = () => {
+        const entity = this._hass.states[entityId];
+        const currentState = entity?.state;
+
+        console.log(`🔍 Checking ${entityId}: current=${currentState}, expected=${expectedValue}`);
+
+        if (entity && currentState == expectedValue) {
+          console.log(`✅ Parameter update confirmed for ${entityId}`);
+          clearTimeout(timeout);
+          if (paramItem) {
+            paramItem.classList.remove('loading');
+            paramItem.classList.add('success');
+            setTimeout(() => paramItem.classList.remove('success'), 2000);
+          }
+          resolve();
+        } else {
+          // Check again in 500ms
+          setTimeout(checkUpdate, 500);
+        }
+      };
+
+      checkUpdate();
+    });
+  }
+
+  // Encode parameter value for 2411 payload
+  encode2411Parameter(paramKey, value) {
+    // This is a simplified encoding - in reality 2411 has complex payload structure
+    // For now, we'll use a basic approach
+    const paramInfo = this.parameterSchema?.[paramKey];
+    if (!paramInfo) return '00';
+
+    // Convert value based on data type
+    let encodedValue;
+    switch (paramInfo.data_type) {
+      case '92': // Temperature (like comfort temp)
+        encodedValue = Math.round(value * (1 / paramInfo.precision));
+        break;
+      case '10': // Days (like filter time)
+        encodedValue = Math.round(value / paramInfo.precision);
+        break;
+      case '01': // Percentage (like sensor sensitivity)
+        encodedValue = Math.round(value / paramInfo.precision);
+        break;
+      case '00': // Integer (like bypass mode)
+        encodedValue = Math.round(value);
+        break;
+      default:
+        encodedValue = Math.round(value);
+    }
+
+    // Convert to hex and pad
+    const hexValue = encodedValue.toString(16).toUpperCase().padStart(4, '0');
+    return `00${paramKey}${hexValue}`;
+  }
+
   updateTimerUI(minutes) {
     console.log('Updating timer UI to:', minutes, 'minutes');
     const timerElement = this.shadowRoot?.querySelector('#timer');
@@ -704,51 +953,93 @@ class HvacFanCard extends HTMLElement {
 
     // No need to call super.connectedCallback() as HTMLElement doesn't have it
 
-    // Set up a single click handler for the entire card
-    this.addEventListener('click', (event) => {
-      const button = event.target.closest('.control-button');
-      if (!button) return;
+    console.log('✅ Event listeners will be attached during render');
+  }
 
-      event.preventDefault();
-      event.stopPropagation();
+  // Attach event listeners for normal mode
+  attachNormalModeListeners() {
+    console.log('🔧 Attaching normal mode event listeners');
 
-      console.log('🔘 Button clicked:', button);
-      console.log('Button dataset:', button.dataset);
-      console.log('Button onclick:', button.getAttribute('onclick'));
+    // Settings icon in top section
+    const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');
+    if (settingsIcon) {
+      settingsIcon.addEventListener('click', (e) => {
+        console.log('⚙️ Settings icon clicked');
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleParameterMode();
+      });
+      console.log('✅ Settings icon listener attached');
+    } else {
+      console.log('⚠️ Settings icon not found in DOM');
+    }
 
-      // Handle different button types
-      if (button.hasAttribute('onclick')) {
-        // For buttons with inline onclick handlers
-        const onclick = button.getAttribute('onclick');
-        if (onclick) {
-          console.log('Executing onclick handler:', onclick);
-          // Create a function in the global scope to execute the onclick
-          const fn = new Function('event', `
-            try {
-              ${onclick}
-            } catch(e) {
-              console.error('Error in button handler:', e);
-            }`);
-          fn.call(button, event);
-        }
-      } else if (button.dataset.mode) {
-        console.log('Calling setFanMode with mode:', button.dataset.mode);
-        this.setFanMode(button.dataset.mode);
-      } else if (button.dataset.timer) {
-        console.log('Calling setTimer with minutes:', button.dataset.timer);
-        this.setTimer(button.dataset.timer);
-      }
-    });
+    // Control buttons
+    const controlButtons = this.shadowRoot?.querySelectorAll('.control-button');
+    if (controlButtons) {
+      controlButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+          console.log('🔘 Control button clicked:', button);
+          e.preventDefault();
+          e.stopPropagation();
 
-    console.log('✅ Event listeners attached');
+          const onclick = button.getAttribute('onclick');
+          if (onclick) {
+            console.log('Executing onclick handler:', onclick);
+            const fn = new Function('event', `try { ${onclick} } catch(e) { console.error('Error in button handler:', e); }`);
+            fn.call(button, e);
+          } else if (button.dataset.mode) {
+            console.log('Calling setFanMode with mode:', button.dataset.mode);
+            this.setFanMode(button.dataset.mode);
+          } else if (button.dataset.timer) {
+            console.log('Calling setTimer with minutes:', button.dataset.timer);
+            this.setTimer(button.dataset.timer);
+          }
+        });
+      });
+      console.log(`✅ ${controlButtons.length} control button listeners attached`);
+    }
+  }
 
-    // Store the card instance globally
-    window.hvacFanCardInstance = this;
+  // Attach event listeners for parameter edit mode
+  attachParameterEditListeners() {
+    console.log('🔧 Attaching parameter edit mode event listeners');
 
-    // Make functions globally available for onclick handlers
-    window.updateTimerUI = this.updateTimerUI;
-    window.updateBypassUI = this.updateBypassUI;
-    window.setBypassMode = (mode) => this.sendBypassCommand(mode);
+    // Back/settings icons in parameter edit mode
+    const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');
+    const backIcon = this.shadowRoot?.querySelector('.back-icon');
+
+    if (settingsIcon) {
+      settingsIcon.addEventListener('click', (e) => {
+        console.log('🔙 Back icon clicked');
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleParameterMode();
+      });
+    }
+
+    if (backIcon) {
+      backIcon.addEventListener('click', (e) => {
+        console.log('🔙 Back icon clicked');
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleParameterMode();
+      });
+    }
+
+    // Parameter input fields
+    const paramInputs = this.shadowRoot?.querySelectorAll('.param-input');
+    if (paramInputs) {
+      paramInputs.forEach(input => {
+        input.addEventListener('change', (e) => {
+          const paramKey = input.getAttribute('data-param');
+          const newValue = e.target.value;
+          console.log(`📝 Parameter ${paramKey} changed to ${newValue}`);
+          this.updateParameter(paramKey, newValue);
+        });
+      });
+      console.log(`✅ ${paramInputs.length} parameter input listeners attached`);
+    }
   }
 }
 
@@ -760,6 +1051,21 @@ if (!customElements.get('hvac-fan-card')) {
   console.log('Registering hvac-fan-card web component');
   customElements.define('hvac-fan-card', HvacFanCard);
 }
+
+// Make functions globally available for onclick handlers
+window.toggleParameterMode = function() {
+  const card = document.querySelector('hvac-fan-card');
+  if (card) {
+    card.toggleParameterMode();
+  }
+};
+
+window.updateParameter = function(paramKey, newValue) {
+  const card = document.querySelector('hvac-fan-card');
+  if (card) {
+    card.updateParameter(paramKey, newValue);
+  }
+};
 
 // Register it with HA for automatic discovery
 window.customCards = window.customCards || [];

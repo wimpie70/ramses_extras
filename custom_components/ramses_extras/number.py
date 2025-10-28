@@ -185,7 +185,7 @@ class RamsesNumberEntity(NumberEntity):
     @property
     def native_value(self) -> float:
         """Return the current value."""
-        return self._value
+        return float(self._value)
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the number value."""

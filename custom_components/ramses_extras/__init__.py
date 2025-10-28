@@ -215,6 +215,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["config_entry"] = entry  # Store for async_setup_platforms access
     hass.data[DOMAIN]["enabled_features"] = entry.data.get("enabled_features", {})
 
+    # Register WebSocket commands
+    from .websocket_api import register_ws_commands
+
+    register_ws_commands(hass)
+    _LOGGER.info("Registered WebSocket commands for Ramses Extras")
+
     # Register enabled card resources dynamically
     await _register_enabled_card_resources(hass, entry.data.get("enabled_features", {}))
 

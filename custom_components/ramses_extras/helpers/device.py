@@ -161,7 +161,9 @@ def get_device_type(device: Any) -> str:
         return "None"
 
     try:
-        return device.__class__.__name__
+        device_type = device.__class__.__name__
+        _LOGGER.debug(f"Device type for {device}: {device_type}")
+        return str(device_type)
     except Exception as e:
         _LOGGER.warning(f"Failed to get device type: {e}")
         return "Unknown"
