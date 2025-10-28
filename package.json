@@ -30,7 +30,7 @@
     "collectCoverageFrom": [
       "custom_components/**/*.js",
       "!custom_components/**/test-*.js",
-      "!custom_components/**/*.test.js"
+      "!custom_components/**/*..test.js"
     ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/$1"
@@ -38,6 +38,5 @@
     "transformIgnorePatterns": [
       "node_modules/(?!jsdom)/"
     ]
-  },
-  "type": "module"
+  }
 }

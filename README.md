@@ -6,7 +6,7 @@
 [![Integration](https://github.com/willem/ramses_extras/actions/workflows/integration.yml/badge.svg)](https://github.com/willem/ramses_extras/actions/workflows/integration.yml)
 [![codecov](https://codecov.io/gh/willem/ramses_extras/branch/main/graph/badge.svg)](https://codecov.io/gh/willem/ramses_extras)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
-[![Home Assistant 2025.10.3](https://img.shields.io/badge/home%20assistant-2025.10.3-green.svg)](https://home-assistant.io)
+[![Home Assistant 2025.10.4](https://img.shields.io/badge/home%20assistant-2025.10.4-green.svg)](https://home-assistant.io)
 
 Extra features and enhancements for the Ramses CC Home Assistant integration.
 
@@ -41,7 +41,7 @@ After installation, configure the integration through the Home Assistant UI:
 
 ## Requirements
 
-- Home Assistant 2025.10.3 or later
+- Home Assistant 2025.10.4 or later
 - Ramses CC integration v0.52.1 (pre-release) or later: https://github.com/zxdavb/ramses_cc
 - Ramses RF library v0.52.2 or later: https://github.com/ramses-rf/ramses_rf
 - Python 3.13
