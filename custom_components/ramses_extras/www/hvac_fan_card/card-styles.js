@@ -186,7 +186,7 @@ export const CARD_STYLE = `
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #ff9800;
+  color: #1e3a8a;
 }
 
 .icon-circle {

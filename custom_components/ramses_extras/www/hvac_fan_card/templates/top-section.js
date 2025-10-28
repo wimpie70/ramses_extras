@@ -66,11 +66,12 @@ export function createTopSection(data) {
             <span id="indoorAbsHumidity">${formatHumidity(indoorAbsHumidity, ' g/m³')}</span>
             <span>💨</span>
           </div>
-          ${dehumEntitiesAvailable ? `
+          <!-- Comfort temperature - always show -->
           <div class="comfort-temp">
             <span id="comfortTemp">${comfortTemp} °C</span>
             <span>🌡️</span>
           </div>
+          ${dehumEntitiesAvailable ? `
           <!-- Dehumidifier Mode - Auto Moisture Sensing -->
           <div class="dehum-mode">
             <span id="dehumMode">${dehumMode}</span>
@@ -123,7 +124,7 @@ export function createTopSection(data) {
             <span id="efficiency">${efficiency}%</span>
           </div>
           <div>
-            <span id="co2Level">${co2Level}%</span>
+            <span id="co2Level">${co2Level} ppm</span>
           </div>
           <div>
             <span id="flowRate">${flowRate} L/s</span>
