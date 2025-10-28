@@ -24,6 +24,7 @@ help:
 	@echo "  env          - Set up Python virtual environment with dependencies"
 	@echo "  env-test     - Set up environment and run tests"
 	@echo "  env-full     - Set up environment and run full QA suite (mypy, black, isort, flake8, pytest)"
+	@echo "  source       - Activate the virtual environment"
 	@echo "  lint         - Run all code quality checks (mypy, black, isort, flake8)"
 	@echo "  type-check   - Run mypy type checking only"
 	@echo "  type-check-clean - Run mypy without package conflicts (uninstall/reinstall)"
@@ -97,6 +98,9 @@ env:
 		pip install -e ."
 	@echo "✅ Development environment setup complete!"
 	@echo "🔧 To use: source ~/venvs/extras/bin/activate"
+
+source:
+	@bash -c "source ~/venvs/extras/bin/activate"
 
 # Development environment with testing
 env-test: env

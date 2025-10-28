@@ -17,6 +17,16 @@ setup(
         "homeassistant==2025.10.3",
     ],
     extras_require={
+        "test": [
+            "pytest>=7.0.0",
+            "pytest-cov>=3.0.0",
+            "pytest-asyncio>=0.20.0",
+            "pytest-mock>=3.10.0",
+            "mypy>=0.910",
+            "types-requests",
+            "pre-commit",
+            "ruff",
+        ],
         "dev": [
             "pytest>=8.0.0",
             "pytest-asyncio>=0.24.0",

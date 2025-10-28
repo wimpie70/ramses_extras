@@ -49,6 +49,18 @@ Thumbs.db
 *.log
 logs/
 
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.pnp/
+.pnp.js
+
+# Build output
+dist/
+*.min.js
+
 # Temporary files
 *.tmp
 *.temp
