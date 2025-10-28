@@ -50,7 +50,7 @@ function createParameterItem(paramKey, paramInfo, deviceId, hass) {
                step="${paramInfo.precision}"
                value="${currentValue}"
                data-entity="${entityId}">
-        <button class="param-update-btn" onclick="updateParameter('${paramKey}', this.previousElementSibling.value)">Update</button>
+        <button class="param-update-btn" data-param="${paramKey}" onclick="updateParameter('${paramKey}', this.previousElementSibling.value)">Update</button>
         <span class="param-status"></span>
       </div>
     </div>

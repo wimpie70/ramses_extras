@@ -235,7 +235,7 @@ class HvacFanCard extends HTMLElement {
     }
 
     try {
-      await this._hass.callService('ramses_RF', 'send_packet', {
+      await this._hass.callService('ramses_cc', 'send_packet', {
         device_id: deviceId,
         from_id: fromId,
         verb: verb,
@@ -829,12 +829,21 @@ class HvacFanCard extends HTMLElement {
     }
 
     try {
-      console.log(`📡 Sending parameter command for ${paramKey}...`);
-      await this.sendParameterCommand(paramKey, parseFloat(newValue));
-      console.log(`⏳ Waiting for parameter update confirmation...`);
-      // Wait for entity update or timeout
-      await this.waitForParameterUpdate(paramKey, newValue);
-      console.log(`✅ Parameter ${paramKey} updated successfully`);
+      console.log(`📡 Calling ramses_cc.set_fan_param service for ${paramKey}...`);
+      // Extract the parameter ID from the entity name (e.g., "param_31" -> "31")
+      const paramId = paramKey.startsWith('param_') ? paramKey.replace('param_', '') : paramKey;
+      await this._hass.callService('ramses_cc', 'set_fan_param', {
+        device_id: this.config.device_id,
+        param_id: paramId,
+        value: newValue.toString()
+      });
+      console.log(`✅ Parameter ${paramKey} update sent successfully (fire and forget)`);
+      // Don't wait for confirmation - service handles it asynchronously
+      if (paramItem) {
+        paramItem.classList.remove('loading');
+        paramItem.classList.add('success');
+        setTimeout(() => paramItem.classList.remove('success'), 2000);
+      }
     } catch (error) {
       console.error(`❌ Failed to update parameter ${paramKey}:`, error);
       if (paramItem) {
@@ -844,29 +853,9 @@ class HvacFanCard extends HTMLElement {
     }
   }
 
-  // Send parameter command via 2411
+  // Legacy method - no longer used, replaced by service call
   async sendParameterCommand(paramKey, value) {
-    console.log(`🔧 Encoding parameter ${paramKey} with value ${value}...`);
-    // Encode the parameter value for 2411 command
-    const payload = this.encode2411Parameter(paramKey, value);
-    console.log(`📦 Encoded payload: ${payload}`);
-
-    // Get bound REM device
-    let remId = null;
-    try {
-      console.log(`🔗 Getting bound REM for device ${this.config.device_id}...`);
-      const boundRem = await this.getBoundRem(this.config.device_id);
-      remId = boundRem || this.config.device_id;
-      console.log(`✅ Using REM ID: ${remId}`);
-    } catch (error) {
-      console.warn(`⚠️ Failed to get bound REM, using device ID: ${error}`);
-      remId = this.config.device_id;
-    }
-
-    console.log(`📡 Sending 2411 command: device=${this.config.device_id}, rem=${remId}, payload=${payload}`);
-    // Send the command
-    await this.sendPacket(this.config.device_id, remId, 'W', '2411', payload);
-    console.log(`✅ Command sent successfully`);
+    throw new Error('Legacy sendParameterCommand should not be called - use service instead');
   }
 
   // Wait for parameter entity to update
@@ -911,35 +900,9 @@ class HvacFanCard extends HTMLElement {
     });
   }
 
-  // Encode parameter value for 2411 payload
+  // Legacy method - no longer used, replaced by service call
   encode2411Parameter(paramKey, value) {
-    // This is a simplified encoding - in reality 2411 has complex payload structure
-    // For now, we'll use a basic approach
-    const paramInfo = this.parameterSchema?.[paramKey];
-    if (!paramInfo) return '00';
-
-    // Convert value based on data type
-    let encodedValue;
-    switch (paramInfo.data_type) {
-      case '92': // Temperature (like comfort temp)
-        encodedValue = Math.round(value * (1 / paramInfo.precision));
-        break;
-      case '10': // Days (like filter time)
-        encodedValue = Math.round(value / paramInfo.precision);
-        break;
-      case '01': // Percentage (like sensor sensitivity)
-        encodedValue = Math.round(value / paramInfo.precision);
-        break;
-      case '00': // Integer (like bypass mode)
-        encodedValue = Math.round(value);
-        break;
-      default:
-        encodedValue = Math.round(value);
-    }
-
-    // Convert to hex and pad
-    const hexValue = encodedValue.toString(16).toUpperCase().padStart(4, '0');
-    return `00${paramKey}${hexValue}`;
+    throw new Error('Legacy encode2411Parameter should not be called - use service instead');
   }
 
   updateTimerUI(minutes) {
@@ -1072,11 +1035,15 @@ class HvacFanCard extends HTMLElement {
     if (paramButtons) {
       paramButtons.forEach(button => {
         button.addEventListener('click', (e) => {
-          const paramKey = button.getAttribute('data-param') || button.parentElement.getAttribute('data-param');
+          const paramKey = button.getAttribute('data-param');
           const input = button.previousElementSibling;
-          const newValue = input.value;
+          const newValue = input?.value;
           console.log(`📝 Parameter ${paramKey} update button clicked with value ${newValue}`);
-          this.updateParameter(paramKey, newValue);
+          if (paramKey && newValue !== undefined) {
+            this.updateParameter(paramKey, newValue);
+          } else {
+            console.error('❌ Missing paramKey or newValue:', { paramKey, newValue });
+          }
         });
       });
       console.log(`✅ ${paramButtons.length} parameter update button listeners attached`);
