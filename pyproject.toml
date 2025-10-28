@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "ramses_extras"
-version = "0.3.0"
+version = "0.4.0"
 description = "Extra features for Ramses CC integration"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Willem (wimpie70)"]
 
 [tool.poetry.dependencies]
 python = "^3.13"
