@@ -33,6 +33,12 @@ help:
 	@echo "  qa           - Run full QA suite (same as env-full)"
 	@echo "  dev-install  - Install dependencies and integration"
 	@echo "  full-setup   - Full setup with HA restart"
+	@echo ""
+	@echo "Testing targets:"
+	@echo "  local-ci     - Run full local CI pipeline (Python + JS tests)"
+	@echo "  test-python  - Run Python tests only"
+	@echo "  test-frontend- Run JavaScript tests only"
+	@echo "  test-all     - Run all tests (Python + JavaScript)"
 
 install:
 	@echo "Installing ramses_extras integration to $(HA_CONFIG_DIR)..."
@@ -112,8 +118,24 @@ env-test: env
 lint: env
 	@echo "Running code quality checks..."
 	@bash -c "source ~/venvs/extras/bin/activate && \
-		mypy . && \
-		ruff check ."
+		mypy custom_components/ tests/ && \
+		ruff check . && \
+		ruff format --check ."
+
+local-ci: env
+	@echo "Running local CI pipeline..."
+	@./scripts/local-ci.sh
+
+test-frontend: env
+	@echo "Running frontend tests..."
+	@bash -c "source ~/venvs/extras/bin/activate && npm test"
+
+test-python: env
+	@echo "Running Python tests..."
+	@bash -c "source ~/venvs/extras/bin/activate && pytest tests/ -v"
+
+test-all: test-python test-frontend
+	@echo "Running all tests..."
 
 type-check: env
 	@echo "Running type checking..."

@@ -3,6 +3,14 @@
  * Tests the complete card rendering and interaction flow
  */
 
+// Mock console methods to avoid noise in tests
+global.console = {
+  log: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+};
+
 // Mock DOM environment
 const { JSDOM } = require('jsdom');
 
