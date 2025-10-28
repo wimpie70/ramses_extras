@@ -14,6 +14,51 @@ repos:
       - id: mypy
         exclude: ^(setup\.py|tests/)
 
+  # JavaScript/TypeScript linting
+  - repo: local
+    hooks:
+      - id: eslint
+        name: ESLint
+        entry: bash -c 'source ~/venvs/extras/bin/activate && ./node_modules/.bin/eslint --ext .js,.jsx,.ts,.tsx --fix --quiet --color'
+        language: system
+        types: [file]
+        files: \.(js|jsx|ts|tsx)$
+        exclude: >-
+          (?x)^(
+            node_modules/|
+            \.venv/|
+            venv/|
+            tests/|
+            \..*\.(js|ts)$
+          )
+        verbose: true
+        require_serial: true
+
+      - id: prettier
+        name: Prettier
+        entry: bash -c 'source ~/venvs/extras/bin/activate && ./node_modules/.bin/prettier --write --ignore-unknown'
+        language: system
+        types: [file]
+        files: \.(js|jsx|ts|tsx|json|md|css|scss|html|yaml|yml|graphql|mdx)$
+        exclude: >-
+          (?x)^(
+            node_modules/|
+            \.venv/|
+            venv/|
+            tests/|
+            \..*\.(js|ts|json|yaml|yml)$
+          )
+        verbose: true
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
   # Spell checking
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
@@ -46,8 +91,6 @@ repos:
       - id: python-check-blanket-type-ignore
       - id: python-no-eval
       - id: python-no-log-warn
-
-  # Custom validation hooks
   - repo: local
     hooks:
       - id: debugs
