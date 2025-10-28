@@ -68,11 +68,17 @@ async def ws_get_2411_schema(
 ) -> None:
     """Return 2411 parameter schema with descriptions, min/max, units."""
     try:
-        # Import the schema directly from ramses_tx
-        from ramses_tx.ramses import _2411_PARAMS_SCHEMA
+        # Try different import paths for the schema
+        try:
+            from ramses_rf.src.ramses_tx.ramses import _2411_PARAMS_SCHEMA
+        except ImportError:
+            try:
+                from ramses_rf.ramses_tx.ramses import _2411_PARAMS_SCHEMA
+            except ImportError:
+                from ramses_tx.ramses import _2411_PARAMS_SCHEMA
 
         connection.send_result(msg["id"], _2411_PARAMS_SCHEMA)
-        _LOGGER.info("Successfully retrieved 2411 parameter schema")
+        _LOGGER.info("Successfully retrieved 2411 parameter schema from ramses_rf")
     except ImportError as e:
         _LOGGER.error("Failed to import 2411 parameter schema: %s", e)
         # Return a basic fallback schema for testing
@@ -81,8 +87,8 @@ async def ws_get_2411_schema(
                 "name": "Comfort Temperature",
                 "description": "Target comfort temperature",
                 "data_type": "92",
-                "precision": 0.1,
-                "min_value": 15.0,
+                "precision": 0.01,
+                "min_value": 0.0,
                 "max_value": 30.0,
                 "unit": "°C",
                 "default_value": 21.0,

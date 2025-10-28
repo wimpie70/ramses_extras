@@ -423,6 +423,16 @@ class HvacFanCard extends HTMLElement {
 
     // Attach event listeners for parameter edit mode
     this.attachParameterEditListeners();
+
+    // Re-attach event listeners after DOM update
+    this.shadowRoot.addEventListener('change', (e) => {
+      if (e.target.classList.contains('param-input')) {
+        const paramKey = e.target.getAttribute('data-param');
+        const newValue = e.target.value;
+        console.log(`📝 Parameter ${paramKey} changed to ${newValue}`);
+        this.updateParameter(paramKey, newValue);
+      }
+    });
   }
 
   renderNormalMode() {
@@ -750,27 +760,34 @@ class HvacFanCard extends HTMLElement {
 
   // Get available parameters based on entity existence
   getAvailableParameters() {
-    if (!this.parameterSchema) {
-      console.log('⚠️ No parameter schema available');
-      return {};
-    }
+    console.log('🔍 Getting available parameters for device:', this.config.device_id);
 
+    // Check all possible number entities for this device
     const available = {};
-    Object.keys(this.parameterSchema).forEach(paramKey => {
-      // ramses_cc uses "param_" prefix: number.32_153289_param_75
-      const entityId = `number.${this.config.device_id.replace(/:/g, '_')}_param_${paramKey}`;
-      const entity = this._hass.states[entityId];
 
-      console.log(`🔍 Checking parameter ${paramKey}: entity=${entityId}, exists=${!!entity}, state=${entity?.state}`);
+    // Get all states and filter for this device's number entities
+    const devicePrefix = `number.${this.config.device_id.replace(/:/g, '_')}_`;
 
-      if (entity && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-        available[paramKey] = {
-          ...this.parameterSchema[paramKey],
-          current_value: entity.state
+    Object.keys(this._hass.states).forEach(entityId => {
+      if (entityId.startsWith(devicePrefix) && entityId.startsWith('number.')) {
+        const entity = this._hass.states[entityId];
+        const entityName = entityId.replace(devicePrefix, '');
+
+        console.log(`🔍 Found entity: ${entityId}, state: ${entity?.state}`);
+
+        // Create parameter info based on entity attributes
+        available[entityName] = {
+          description: entity.attributes?.friendly_name || entityName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          unit: entity.attributes?.unit_of_measurement || '',
+          min_value: entity.attributes?.min || 0,
+          max_value: entity.attributes?.max || 100,
+          default_value: entity.attributes?.min || 0,
+          current_value: entity.state,
+          data_type: '01', // Generic number
+          precision: entity.attributes?.step || 1
         };
-        console.log(`✅ Parameter ${paramKey} available with value ${entity.state}`);
-      } else {
-        console.log(`❌ Parameter ${paramKey} not available (entity missing or invalid state)`);
+
+        console.log(`✅ Added parameter ${entityName} with value ${entity.state}`);
       }
     });
 

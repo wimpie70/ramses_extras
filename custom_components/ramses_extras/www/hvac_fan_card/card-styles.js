@@ -427,6 +427,8 @@ export const CARD_STYLE = `
   text-align: center;
   background: white;
   transition: all 0.3s ease;
+  color: #333;
+  font-weight: 500;
 }
 
 .param-input:focus {
