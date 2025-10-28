@@ -425,14 +425,7 @@ class HvacFanCard extends HTMLElement {
     this.attachParameterEditListeners();
 
     // Re-attach event listeners after DOM update
-    this.shadowRoot.addEventListener('change', (e) => {
-      if (e.target.classList.contains('param-input')) {
-        const paramKey = e.target.getAttribute('data-param');
-        const newValue = e.target.value;
-        console.log(`📝 Parameter ${paramKey} changed to ${newValue}`);
-        this.updateParameter(paramKey, newValue);
-      }
-    });
+    // Note: onchange removed from input, now using update button
   }
 
   renderNormalMode() {
@@ -779,10 +772,14 @@ class HvacFanCard extends HTMLElement {
         let description = entity.attributes?.friendly_name || entityName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
         if (entityName.startsWith('param_')) {
-          const paramKey = entityName.replace('param_', '');
+          const paramKey = entityName.replace('param_', '').toUpperCase();
           if (this.parameterSchema && this.parameterSchema[paramKey]) {
             description = this.parameterSchema[paramKey].description || this.parameterSchema[paramKey].name;
             console.log(`📋 Using schema description for ${paramKey}: ${description}`);
+          } else {
+            // Fallback: try to create a readable description from the parameter key
+            description = paramKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            console.log(`📋 No schema found for ${paramKey}, using fallback: ${description}`);
           }
         }
 
@@ -1070,18 +1067,19 @@ class HvacFanCard extends HTMLElement {
       });
     }
 
-    // Parameter input fields
-    const paramInputs = this.shadowRoot?.querySelectorAll('.param-input');
-    if (paramInputs) {
-      paramInputs.forEach(input => {
-        input.addEventListener('change', (e) => {
-          const paramKey = input.getAttribute('data-param');
-          const newValue = e.target.value;
-          console.log(`📝 Parameter ${paramKey} changed to ${newValue}`);
+    // Parameter update buttons
+    const paramButtons = this.shadowRoot?.querySelectorAll('.param-update-btn');
+    if (paramButtons) {
+      paramButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+          const paramKey = button.getAttribute('data-param') || button.parentElement.getAttribute('data-param');
+          const input = button.previousElementSibling;
+          const newValue = input.value;
+          console.log(`📝 Parameter ${paramKey} update button clicked with value ${newValue}`);
           this.updateParameter(paramKey, newValue);
         });
       });
-      console.log(`✅ ${paramInputs.length} parameter input listeners attached`);
+      console.log(`✅ ${paramButtons.length} parameter update button listeners attached`);
     }
   }
 }

@@ -77,8 +77,24 @@ async def ws_get_2411_schema(
             except ImportError:
                 from ramses_tx.ramses import _2411_PARAMS_SCHEMA
 
-        connection.send_result(msg["id"], _2411_PARAMS_SCHEMA)
-        _LOGGER.info("Successfully retrieved 2411 parameter schema from ramses_rf")
+        # Transform the schema to use keys expected by the frontend
+        transformed_schema = {}
+        for param_key, param_data in _2411_PARAMS_SCHEMA.items():
+            transformed_schema[param_key] = {
+                "name": param_data.get("name", param_key),
+                "description": param_data.get("description", param_key),
+                "data_type": param_data.get("data_type", "00"),
+                "precision": param_data.get("precision", 1),
+                "min_value": param_data.get("min_value", 0),
+                "max_value": param_data.get("max_value", 100),
+                "unit": param_data.get("data_unit", param_data.get("unit", "")),
+                "default_value": param_data.get(
+                    "default_value", param_data.get("min_value", 0)
+                ),
+            }
+
+        connection.send_result(msg["id"], transformed_schema)
+        _LOGGER.info("Successfully retrieved  2411 parameter schema from ramses_rf")
     except ImportError as e:
         _LOGGER.error("Failed to import 2411 parameter schema: %s", e)
         # Return a basic fallback schema for testing

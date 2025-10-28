@@ -431,6 +431,27 @@ export const CARD_STYLE = `
   font-weight: 500;
 }
 
+.param-update-btn {
+  padding: 8px 16px;
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.param-update-btn:hover {
+  background: #357abd;
+  transform: translateY(-1px);
+}
+
+.param-update-btn:active {
+  transform: translateY(0);
+}
+
 .param-input:focus {
   outline: none;
   border-color: #4a90e2;
