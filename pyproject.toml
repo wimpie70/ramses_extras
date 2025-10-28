@@ -6,15 +6,22 @@ authors = ["Your Name <your.email@example.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.13"
+homeassistant = "2025.10.4"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-pytest-asyncio = "^0.24.0"
-mypy = "^1.11.0"
-ruff = "^0.6.0"
-pre-commit = "^3.8.0"
-typing-extensions = "^4.15.0"
-types-PyYAML = "^6.0.12"
+ pytest = "^8.0.0"
+ pytest-asyncio = "^0.24.0"
+ mypy = "^1.11.0"
+ ruff = "^0.6.0"
+ pre-commit = "^3.8.0"
+ typing-extensions = "^4.15.0"
+ types-PyYAML = "^6.0.12"
+
+[tool.poetry.group.test]
+optional = true
+
+[tool.poetry.group.test.dependencies]
+ pytest-homeassistant-custom-component = "0.13.289"
 
 [build-system]
 requires = ["setuptools", "wheel"]
