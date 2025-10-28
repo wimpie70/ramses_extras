@@ -27,6 +27,26 @@ CARD_FOLDER = "www"
 # Device type to entity type mapping
 # Each feature defines a card/automation with specific requirements
 AVAILABLE_FEATURES = {
+    "humidity_sensors": {
+        "name": "Absolute Humidity Sensors",
+        "description": (
+            "Calculates Abs humidity from relative indoor&outdoor sensor entities."
+        ),
+        "category": "sensors",
+        "default_enabled": True,
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
+        "required_entities": {
+            "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
+            "switches": [],
+            "binary_sensors": [],
+        },
+        "optional_entities": {
+            "sensors": [],
+            "switches": [],
+        },
+    },
     "hvac_fan_card": {
         "name": "Hvac Fan Control Card",
         "description": "Advanced control card for Orcon or other ventilation systems",

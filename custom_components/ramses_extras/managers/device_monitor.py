@@ -24,7 +24,7 @@ class DeviceMonitor:
         self._ramses_cc_available = False
 
     async def start_monitoring(self) -> None:
-        """Start monitoring by listening to ramses_cc events."""
+        """Start monitoring by getting initial device list from hass.data."""
         _LOGGER.info("Starting simple device monitor")
 
         # Check if ramses_cc is available
@@ -35,22 +35,18 @@ class DeviceMonitor:
 
         self._ramses_cc_available = True
 
-        # Get initial device list from ramses_cc broker
-        current_devices = await self._get_current_devices()
-        self._known_devices = set(current_devices)
-        _LOGGER.info(f"Initial device list from ramses_cc: {current_devices}")
+        # Get device list from hass.data (populated by device discovery)
+        devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
+        self._known_devices = set(devices)
+        _LOGGER.info(f"Initial device list from hass.data: {devices}")
 
-        # Listen to ramses_cc's existing device discovery signals
+        # Set up listeners for ongoing monitoring
         self._setup_ramses_cc_listeners()
-
-        # Listen to device registry changes for manual device removal
         self._setup_device_registry_listener()
 
-        # Send initial device discovery signal
-        if current_devices:
-            async_dispatcher_send(
-                self.hass, f"{DOMAIN}_devices_discovered", current_devices
-            )
+        # Send initial device discovery signal if we have devices
+        if devices:
+            async_dispatcher_send(self.hass, f"{DOMAIN}_devices_discovered", devices)
 
     def _setup_ramses_cc_listeners(self) -> None:
         """Set up listeners for ramses_cc device events."""
@@ -140,34 +136,6 @@ class DeviceMonitor:
         except Exception as e:
             _LOGGER.debug(f"Error checking device support for {device_id}: {e}")
             return False
-
-    async def _get_current_devices(self) -> list[str]:
-        """Get current list of supported devices from ramses_cc."""
-        try:
-            ramses_domain = "ramses_cc"
-            if not self._ramses_cc_available or ramses_domain not in self.hass.data:
-                return []
-
-            # Get broker from ramses_cc
-            ramses_entry_id = next(iter(self.hass.data[ramses_domain]))
-            broker = self.hass.data[ramses_domain][ramses_entry_id]
-
-            if not hasattr(broker, "client"):
-                return []
-
-            gwy = broker.client
-            supported_devices = []
-
-            # Check each device in the broker
-            for device in gwy.devices:
-                if await self._is_supported_device(device.id):
-                    supported_devices.append(device.id)
-
-            return supported_devices
-
-        except Exception as e:
-            _LOGGER.error(f"Error getting current devices: {e}")
-            return []
 
     async def stop_monitoring(self) -> None:
         """Stop monitoring (no cleanup needed for event listeners)."""

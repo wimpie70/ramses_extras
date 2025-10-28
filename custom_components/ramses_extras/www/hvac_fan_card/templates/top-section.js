@@ -98,12 +98,7 @@ export function createTopSection(data) {
         </div>
 
         <div class="side-value mid-left">
-          <!-- Refresh Button -->
-          <button class="refresh-button" onclick="triggerRefresh()" title="Refresh all values">
-            <svg width="40" height="40" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M36.75 21C36.75 29.69848 29.69848 36.75 21 36.75C16.966145 36.75 13.2864725 35.23345 10.5 32.739525L5.25 28M5.25 21C5.25 12.30152 12.30152 5.25 21 5.25C25.033925 5.25 28.713475 6.76648 31.5 9.26044L36.75 14M5.25 36.75V28M5.25 28H14M36.75 5.25V14M36.75 14H28" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
+          <!-- Refresh button removed -->
         </div>
 
         <!-- SVG Flow Direction Arrows -->

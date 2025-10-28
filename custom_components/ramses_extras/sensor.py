@@ -33,15 +33,15 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the sensor platform."""
-    devices = hass.data.get(DOMAIN, {}).get("devices", [])
-    _LOGGER.info(f"Setting up sensor platform for {len(devices)} devices")
+    _LOGGER.info("Starting sensor platform setup")
 
     if not config_entry:
         _LOGGER.warning("Config entry not available, skipping sensor setup")
         return
 
+    devices = hass.data.get(DOMAIN, {}).get("devices", [])
     if not devices:
-        _LOGGER.debug("No devices available for sensors")
+        _LOGGER.warning("No devices available for sensors")
         return
 
     sensors = []
@@ -50,7 +50,6 @@ async def async_setup_entry(
     enabled_features = get_enabled_features(hass, config_entry)
     _LOGGER.info(f"Enabled features: {enabled_features}")
 
-    # Create sensors based on enabled features and their requirements
     for device_id in devices:
         device = find_ramses_device(hass, device_id)
         if not device:
@@ -58,29 +57,20 @@ async def async_setup_entry(
             continue
 
         device_type = get_device_type(device)
-        _LOGGER.debug(f"Creating sensors for device {device_id} of type {device_type}")
 
         if device_type in DEVICE_ENTITY_MAPPING:
             entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-
-            # Get all possible sensor types for this device
             all_possible_sensors = entity_mapping.get("sensors", [])
 
-            # Check each possible sensor type
             for sensor_type in all_possible_sensors:
                 if sensor_type not in ENTITY_TYPE_CONFIGS["sensor"]:
                     continue
 
-                # Always create absolute humidity sensors (fundamental device data)
-                # Other sensors only if required by enabled features
+                # Check if this sensor is needed by any enabled feature
                 is_needed = False
-                if sensor_type in ["indoor_abs_humid", "outdoor_abs_humid"]:
-                    is_needed = True
-                else:
-                    # Check if this sensor is needed by any enabled feature
-                    for feature_key, is_enabled in enabled_features.items():
-                        if not is_enabled or feature_key not in AVAILABLE_FEATURES:
-                            continue
+                for feature_key, is_enabled in enabled_features.items():
+                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                        continue
 
                     feature_config = AVAILABLE_FEATURES[feature_key]
                     supported_types = feature_config.get("supported_device_types", [])
@@ -88,7 +78,6 @@ async def async_setup_entry(
                         isinstance(supported_types, list)
                         and device_type in supported_types
                     ):
-                        # Check if this sensor is required or optional for this feature
                         required_entities = feature_config.get("required_entities", {})
                         optional_entities = feature_config.get("optional_entities", {})
 
@@ -113,39 +102,27 @@ async def async_setup_entry(
                             break
 
                 if is_needed:
-                    # Entity is needed - create it
                     config = ENTITY_TYPE_CONFIGS["sensor"][sensor_type]
                     sensors.append(
                         RamsesExtraHumiditySensor(hass, device_id, sensor_type, config)
                     )
-                    _LOGGER.debug(f"Creating sensor: sensor.{device_id}_{sensor_type}")
 
-    # Remove orphaned entities (defer to after entity creation)
+    # Remove orphaned entities
     async def cleanup_orphaned_entities() -> None:
         try:
-            # Get all possible sensor types for all devices
-            all_possible_sensors = set()
-            for device_id in devices:
-                device = find_ramses_device(hass, device_id)
-                if device:
-                    device_type = get_device_type(device)
-                    if device_type in DEVICE_ENTITY_MAPPING:
-                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                        all_possible_sensors.update(entity_mapping.get("sensors", []))
-
             await remove_orphaned_entities(
                 "sensor",
                 hass,
                 devices,
                 calculate_required_entities("sensor", enabled_features, devices, hass),
-                list(all_possible_sensors),
+                list(all_possible_sensors)
+                if "all_possible_sensors" in locals()
+                else [],
             )
         except Exception as e:
             _LOGGER.warning(f"Error during sensor entity cleanup: {e}")
 
-    # Schedule cleanup after entity creation
     hass.async_create_task(cleanup_orphaned_entities())
-
     async_add_entities(sensors, True)
 
 
@@ -180,7 +157,6 @@ class RamsesExtraHumiditySensor(SensorEntity):
         """Subscribe to Ramses RF device updates."""
         signal = f"ramses_rf_device_update_{self._device_id}"
         self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
-        _LOGGER.debug("Subscribed to %s updates for %s", signal, self.name)
 
     async def async_will_remove_from_hass(self) -> None:
         """Unsubscribe when removed."""
@@ -190,7 +166,6 @@ class RamsesExtraHumiditySensor(SensorEntity):
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle device update from Ramses RF."""
-        _LOGGER.debug("Device update for %s received", self.name)
         self.async_write_ha_state()
 
     @property
@@ -219,12 +194,11 @@ class RamsesExtraHumiditySensor(SensorEntity):
             _LOGGER.error(
                 "Unknown sensor type for humidity calculation: %s", self._sensor_type
             )
-            return None, None  # Return None to indicate failure
+            return None, None
 
         temp_type, humidity_type = entity_patterns[self._sensor_type]
 
         # Construct entity IDs based on the device_id
-        # ramses_cc creates entities like: sensor.32_153289_indoor_temp
         temp_entity = f"sensor.{self._device_id.replace(':', '_')}_{temp_type}"
         humidity_entity = f"sensor.{self._device_id.replace(':', '_')}_{humidity_type}"
 
@@ -232,11 +206,6 @@ class RamsesExtraHumiditySensor(SensorEntity):
             # Get temperature from ramses_cc sensor
             temp_state = self.hass.states.get(temp_entity)
             if temp_state is None:
-                _LOGGER.debug(
-                    "Required temperature sensor not found: %s for %s",
-                    temp_entity,
-                    self.name,
-                )
                 return None, None
 
             temp = float(temp_state.state)
@@ -244,11 +213,6 @@ class RamsesExtraHumiditySensor(SensorEntity):
             # Get humidity from ramses_cc sensor
             humidity_state = self.hass.states.get(humidity_entity)
             if humidity_state is None:
-                _LOGGER.debug(
-                    "Required humidity sensor not found: %s for %s",
-                    humidity_entity,
-                    self.name,
-                )
                 return None, None
 
             humidity = float(humidity_state.state)
@@ -262,24 +226,13 @@ class RamsesExtraHumiditySensor(SensorEntity):
                 )
                 return None, None
 
-            _LOGGER.debug(
-                "Got temp/humidity for %s: temp=%.1f°C, humidity=%.1f%% from %s/%s",
-                self.name,
-                temp,
-                humidity,
-                temp_entity,
-                humidity_entity,
-            )
-
             return temp, humidity
 
         except (ValueError, AttributeError) as e:
             _LOGGER.debug(
-                "Error parsing temp/humidity for %s: %s (temp: %s, humidity: %s)",
+                "Error parsing temp/humidity for %s: %s",
                 self.name,
                 e,
-                temp_entity,
-                humidity_entity,
             )
             return None, None
 

@@ -143,30 +143,6 @@ export const CARD_STYLE = `
   left: 20px;
 }
 
-.refresh-button {
-  background: #2a2a2a;
-  border: 1px solid #555;
-  border-radius: 8px;
-  padding: 12px;
-  width: 60px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #ffffff;
-  transition: all 0.2s ease;
-}
-
-.refresh-button:hover {
-  background: #3a3a3a;
-  transform: scale(1.05);
-}
-
-.refresh-button:active {
-  transform: scale(0.95);
-}
-
 
 .temp-value {
   font-size: 20px;

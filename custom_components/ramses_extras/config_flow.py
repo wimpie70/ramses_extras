@@ -8,13 +8,20 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import selector
 
-from . import const
 from .const import (
     AVAILABLE_FEATURES,
     CARD_FOLDER,
+    CONF_ENABLED_FEATURES,
+    CONF_NAME,
+    DEVICE_ENTITY_MAPPING,
     DOMAIN,
     GITHUB_WIKI_URL,
     INTEGRATION_DIR,
+)
+from .helpers.platform import (
+    calculate_required_entities,
+    get_enabled_features,
+    remove_orphaned_entities,
 )
 
 if TYPE_CHECKING:
@@ -119,8 +126,8 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow):
         return self.async_create_entry(
             title="Ramses Extras",
             data={
-                const.CONF_NAME: "Ramses Extras",
-                const.CONF_ENABLED_FEATURES: enabled_features,
+                CONF_NAME: "Ramses Extras",
+                CONF_ENABLED_FEATURES: enabled_features,
             },
         )
 
@@ -141,9 +148,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self._pending_data: dict[str, list[str]] | None = None
         self._cards_deselected: list[str] = []
         self._automations_deselected: list[str] = []
+        self._sensors_deselected: list[str] = []
         self._other_deselected: list[str] = []
         self._cards_selected: list[str] = []
         self._automations_selected: list[str] = []
+        self._sensors_selected: list[str] = []
         self._other_selected: list[str] = []
         self._newly_enabled_features: list[str] = []
 
@@ -183,6 +192,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     for f in deselected_features
                     if str(AVAILABLE_FEATURES[f].get("category")) == "cards"
                 ]
+                sensors_deselected = [
+                    f
+                    for f in deselected_features
+                    if str(AVAILABLE_FEATURES[f].get("category")) == "sensors"
+                ]
                 automations_deselected = [
                     f
                     for f in deselected_features
@@ -192,7 +206,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     f
                     for f in deselected_features
                     if str(AVAILABLE_FEATURES[f].get("category"))
-                    not in ["cards", "automations"]
+                    not in ["cards", "automations", "sensors"]
                 ]
 
                 # Check what types of features are being selected
@@ -206,20 +220,27 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     for f in user_input.get("features", [])
                     if str(AVAILABLE_FEATURES[f].get("category")) == "automations"
                 ]
+                sensors_selected = [
+                    f
+                    for f in user_input.get("features", [])
+                    if str(AVAILABLE_FEATURES[f].get("category")) == "sensors"
+                ]
                 other_selected = [
                     f
                     for f in user_input.get("features", [])
                     if str(AVAILABLE_FEATURES[f].get("category"))
-                    not in ["cards", "automations"]
+                    not in ["cards", "automations", "sensors"]
                 ]
 
                 # Show confirmation if any features are being deselected
                 self._pending_data = user_input
                 self._cards_deselected = cards_deselected
+                self._sensors_deselected = sensors_deselected
                 self._automations_deselected = automations_deselected
                 self._other_deselected = other_deselected
                 self._cards_selected = cards_selected
                 self._automations_selected = automations_selected
+                self._sensors_selected = sensors_selected
                 self._other_selected = other_selected
                 return await self.async_step_confirm()
 
@@ -471,6 +492,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 for f in self._automations_deselected
             ]
             disabled_parts.append(f"**Automations:** {', '.join(automation_names)}")
+        if self._sensors_deselected:
+            sensor_names = [
+                str(AVAILABLE_FEATURES[f].get("name", f))
+                for f in self._sensors_deselected
+            ]
+            disabled_parts.append(f"**Sensors:** {', '.join(sensor_names)}")
         if self._other_deselected:
             other_names = [
                 str(AVAILABLE_FEATURES[f].get("name", f))
@@ -497,6 +524,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 for f in self._automations_selected
             ]
             enabled_parts.append(f"**Automations:** {', '.join(automation_names)}")
+        if self._sensors_selected:
+            sensor_names = [
+                str(AVAILABLE_FEATURES[f].get("name", f))
+                for f in self._sensors_selected
+            ]
+            enabled_parts.append(f"**Sensors:** {', '.join(sensor_names)}")
         if self._other_selected:
             other_names = [
                 str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._other_selected
@@ -561,6 +594,8 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Check what features were disabled and clean them up
         current_features = self._config_entry.data.get("enabled_features", {})
         disabled_automations = []
+        disabled_cards = []
+        disabled_sensors = []
 
         _LOGGER.info(f"Config flow - Current features: {current_features}")
         _LOGGER.info(f"Config flow - New features: {enabled_features}")
@@ -585,15 +620,44 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     f"Config flow - Detected disabled automation feature: {feature_key}"
                 )
 
-        _LOGGER.info(f"Config flow - Features to cleanup: {disabled_automations}")
+            # If card feature was disabled, clean it up
+            if (
+                currently_enabled
+                and not will_be_enabled
+                and feature_config.get("category") == "cards"
+            ):
+                disabled_cards.append(feature_key)
+                _LOGGER.info(
+                    f"Config flow - Detected disabled card feature: {feature_key}"
+                )
 
-        # Clean up disabled automation features before updating config
-        if disabled_automations:
+            # If sensor feature was disabled, clean it up
+            if (
+                currently_enabled
+                and not will_be_enabled
+                and feature_config.get("category") == "sensors"
+            ):
+                disabled_sensors.append(feature_key)
+                _LOGGER.info(
+                    f"Config flow - Detected disabled sensor feature: {feature_key}"
+                )
+
+        _LOGGER.info(
+            f"Config flow - Features to cleanup: automations={disabled_automations}, "
+            f"cards={disabled_cards}, sensors={disabled_sensors}"
+        )
+
+        # Clean up disabled features before updating config
+        if disabled_automations or disabled_cards or disabled_sensors:
             try:
                 _LOGGER.info(
-                    f"Cleaning up disabled automation features: {disabled_automations}"
+                    f"Cleaning up disabled features: "
+                    f"automations={disabled_automations}, "
+                    f"cards={disabled_cards}, sensors={disabled_sensors}"
                 )
-                await self._cleanup_disabled_automations(disabled_automations)
+                await self._cleanup_disabled_features(
+                    disabled_automations, disabled_cards, disabled_sensors
+                )
             except Exception as e:
                 _LOGGER.warning(f"Cleanup failed, continuing with config update: {e}")
 
@@ -614,7 +678,87 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_create_entry(title="", data={})
 
-    async def _cleanup_disabled_automations(self, disabled_features: list[str]) -> None:
+    async def _cleanup_disabled_features(
+        self,
+        disabled_automations: list[str],
+        disabled_cards: list[str],
+        disabled_sensors: list[str],
+    ) -> None:
+        """Clean up entities and resources for disabled features."""
+        try:
+            # Clean up automation features
+            if disabled_automations:
+                await self._cleanup_disabled_automations(disabled_automations)
+
+            # Clean up card features (file removal)
+            if disabled_cards:
+                await self._cleanup_disabled_cards(disabled_cards)
+
+            # Clean up sensor features (entity cleanup)
+            if disabled_sensors:
+                await self._cleanup_disabled_sensors(disabled_sensors)
+
+        except Exception as e:
+            _LOGGER.error(f"Cleanup - Failed to cleanup disabled features: {e}")
+
+    async def _cleanup_disabled_cards(self, disabled_cards: list[str]) -> None:
+        """Clean up files for disabled card features."""
+        try:
+            www_community_path = Path(self.hass.config.path("www", "community"))
+
+            for feature_key in disabled_cards:
+                if feature_key in AVAILABLE_FEATURES:
+                    feature_config = AVAILABLE_FEATURES[feature_key]
+                    card_location = feature_config.get("location", "")
+                    if card_location:
+                        card_dest_path = www_community_path / feature_key
+                        await _remove_card_config_flow(self.hass, card_dest_path)
+                        _LOGGER.info(f"Cleanup - Removed card files for {feature_key}")
+
+        except Exception as e:
+            _LOGGER.error(f"Cleanup - Failed to cleanup disabled cards: {e}")
+
+    async def _cleanup_disabled_sensors(self, disabled_sensors: list[str]) -> None:
+        """Clean up entities for disabled sensor features."""
+        try:
+            # Get current devices and enabled features
+            devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
+            config_entry = None
+            if DOMAIN in self.hass.data and "entry_id" in self.hass.data[DOMAIN]:
+                entry_id = self.hass.data[DOMAIN]["entry_id"]
+                config_entry = self.hass.config_entries.async_get_entry(entry_id)
+
+            if config_entry and devices:
+                # Calculate which sensor entities are still required
+                current_required_entities = calculate_required_entities(
+                    "sensor",
+                    get_enabled_features(self.hass, config_entry),
+                    devices,
+                    self.hass,
+                )
+
+                # Remove orphaned sensor entities
+                removed_count = await remove_orphaned_entities(
+                    "sensor",
+                    self.hass,
+                    devices,
+                    current_required_entities,
+                    list(
+                        DEVICE_ENTITY_MAPPING.get("HvacVentilator", {}).get(
+                            "sensors", []
+                        )
+                    ),
+                )
+                _LOGGER.info(
+                    f"Cleanup - Removed {removed_count} orphaned sensor entities"
+                )
+
+        except Exception as e:
+            _LOGGER.error(f"Cleanup - Failed to cleanup disabled sensors: {e}")
+
+    async def _cleanup_disabled_automations(
+        self, disabled_automations: list[str]
+    ) -> None:
         """Clean up automations for disabled features."""
         try:
             from pathlib import Path
@@ -624,7 +768,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             automation_path = Path(self.hass.config.path("automations.yaml"))
 
             _LOGGER.info(
-                f"Cleanup - Starting cleanup for features: {disabled_features}"
+                f"Cleanup - Starting cleanup for features: {disabled_automations}"
             )
             _LOGGER.info(f"Cleanup - Automation path: {automation_path}")
 
@@ -680,7 +824,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 should_remove = False
 
                 # Check if this automation belongs to any disabled feature
-                for feature_key in disabled_features:
+                for feature_key in disabled_automations:
                     # Map feature keys to automation patterns
                     feature_patterns = {
                         "humidity_control": ["dehumidifier"],
@@ -691,10 +835,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                         if pattern in automation_id:
                             should_remove = True
                             _LOGGER.info(
-                                "Cleanup - Will remove automation %s (matches pattern '%s' for feature '%s')",  # noqa: E501
-                                automation_id,
-                                pattern,
-                                feature_key,
+                                f"Cleanup - Will remove automation {automation_id} "
+                                f"(matches pattern '{pattern}' "
+                                f"for feature '{feature_key}')"
                             )
                             break
 
@@ -728,12 +871,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
                 _LOGGER.info(
                     f"Cleanup - Successfully removed {removed_count} automations "
-                    f"for disabled features: {disabled_features}"
+                    f"for disabled features: {disabled_automations}"
                 )
             else:
                 _LOGGER.info(
                     "Cleanup - No automations removed for features: "
-                    f"{disabled_features}"
+                    f"{disabled_automations}"
                 )
 
         except Exception as e:

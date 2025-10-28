@@ -210,18 +210,6 @@ def find_orphaned_entities(
                         f"{platform}.{entity_type}_" + f"{device_id_underscore}"
                     )
                     if expected_entity_id not in required_entities:
-                        # Never remove absolute humidity sensors -
-                        # they are fundamental device data
-                        if platform == "sensor" and entity_type in [
-                            "indoor_abs_humid",
-                            "outdoor_abs_humid",
-                        ]:
-                            _LOGGER.debug(
-                                "Keeping fundamental sensor: %s (always needed)",
-                                entity_id,
-                            )
-                            continue
-
                         orphaned_entities.append(entity_id)
                         _LOGGER.info(
                             "Will remove orphaned %s: %s (type: %s)",
