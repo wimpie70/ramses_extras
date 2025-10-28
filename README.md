@@ -52,10 +52,31 @@ For development setup and contribution guidelines, see [README_DEV.md](README_DE
 
 ### Code Quality
 
-This project uses **Ruff** for fast Python linting and formatting, consistent with the Ramses CC project:
+This project uses comprehensive testing and quality tools:
 
+#### Python Testing
 - **Ruff**: Linting and formatting (replaces Black + Flake8)
 - **MyPy**: Static type checking
+- **Pytest**: Unit and integration testing
 - **Pre-commit**: Automated quality checks
 
-All tools are configured to work together and follow Python best practices.
+#### Frontend Testing
+- **ESLint**: JavaScript code quality and style
+- **Stylelint**: CSS validation and best practices
+- **Jest**: JavaScript unit and integration testing
+- **JSDOM**: DOM simulation for testing
+
+All tools are configured to work together and follow best practices. See [tests/frontend/README.md](tests/frontend/README.md) for frontend testing details.
+
+## Running Tests
+
+```bash
+# Python tests
+pytest tests/
+
+# Frontend tests
+npm test
+
+# All quality checks
+pre-commit run --all-files
+```
