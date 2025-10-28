@@ -775,9 +775,20 @@ class HvacFanCard extends HTMLElement {
 
         console.log(`🔍 Found entity: ${entityId}, state: ${entity?.state}`);
 
-        // Create parameter info based on entity attributes
-        available[entityName] = {
-          description: entity.attributes?.friendly_name || entityName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        // Try to get description from 2411 schema if it's a param_ entity
+        let description = entity.attributes?.friendly_name || entityName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+        if (entityName.startsWith('param_')) {
+          const paramKey = entityName.replace('param_', '');
+          if (this.parameterSchema && this.parameterSchema[paramKey]) {
+            description = this.parameterSchema[paramKey].description || this.parameterSchema[paramKey].name;
+            console.log(`📋 Using schema description for ${paramKey}: ${description}`);
+          }
+        }
+
+        // Create parameter info based on entity attributes or schema
+        const paramInfo = {
+          description: description,
           unit: entity.attributes?.unit_of_measurement || '',
           min_value: entity.attributes?.min || 0,
           max_value: entity.attributes?.max || 100,
@@ -787,7 +798,22 @@ class HvacFanCard extends HTMLElement {
           precision: entity.attributes?.step || 1
         };
 
-        console.log(`✅ Added parameter ${entityName} with value ${entity.state}`);
+        // Override with schema data if available
+        if (entityName.startsWith('param_')) {
+          const paramKey = entityName.replace('param_', '');
+          if (this.parameterSchema && this.parameterSchema[paramKey]) {
+            const schemaInfo = this.parameterSchema[paramKey];
+            paramInfo.unit = schemaInfo.unit || schemaInfo.data_unit || paramInfo.unit;
+            paramInfo.min_value = schemaInfo.min_value || paramInfo.min_value;
+            paramInfo.max_value = schemaInfo.max_value || paramInfo.max_value;
+            paramInfo.default_value = schemaInfo.default_value || paramInfo.default_value;
+            paramInfo.precision = schemaInfo.precision || paramInfo.precision;
+            paramInfo.data_type = schemaInfo.data_type || paramInfo.data_type;
+          }
+        }
+
+        available[entityName] = paramInfo;
+        console.log(`✅ Added parameter ${entityName} with description "${description}" and value ${entity.state}`);
       }
     });
 
