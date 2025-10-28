@@ -2,6 +2,11 @@
  * Jest setup file for frontend tests
  */
 
+// Mock TextEncoder/TextDecoder for jsdom
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+
 // Mock Home Assistant WebSocket connection
 global.WebSocket = class MockWebSocket {
   constructor() {
