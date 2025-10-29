@@ -1,4 +1,11 @@
 {
+  "common": {
+    "card_translations": {
+      "parameter_edit": {
+        "settings_for_device": "Instellingen voor Apparaat:"
+      }
+    }
+  },
   "config": {
     "step": {
       "features": {
@@ -15,11 +22,6 @@
           "confirm": "I understand and want to proceed"
         }
       }
-    }
-  },
-  "card": {
-    "parameter_edit": {
-      "settings_for_device": "Instellingen voor Apparaat:"
     }
   }
 }
