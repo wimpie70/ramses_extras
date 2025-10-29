@@ -202,7 +202,7 @@ export const BYPASS_OPEN_SVG = `
     <defs>
       <linearGradient id="blueToRed" x1="212" y1="212" x2="588" y2="588" gradientUnits="userSpaceOnUse">
         <stop offset="0%" stop-color="blue"/>
-        <stop offset="100%" stop-color="red"/>
+        <stop offset="100%" stop-color="darkblue"/>
       </linearGradient>
 
       <linearGradient id="redToBlue" x1="212" y1="212" x2="588" y2="588" gradientUnits="userSpaceOnUse">
@@ -216,13 +216,18 @@ export const BYPASS_OPEN_SVG = `
       </linearGradient>
 
       <marker markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" viewBox="0 0 5 5" orient="auto" id="marker1">
-        <polygon points="0,5 1.6667,2.5 0,0 5,2.5" fill="red"></polygon>
+        <polygon points="0,5 1.6667,2.5 0,0 5,2.5" fill="darkblue"></polygon>
       </marker>
 
       <marker markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" viewBox="0 0 5 5" orient="auto" id="marker2">
         <polygon points="0,5 1.6667,2.5 0,0 5,2.5" fill="blue"></polygon>
       </marker>
     </defs>
+
+    <g stroke-width="29" stroke="url(#blueToRed)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Horizontal arrow from right to left (exhaust air out) -->
+      <path d="M680 140 L120 480" marker-end="url(#marker2)"></path>
+    </g>
 
     <!-- Outer hexagon sides (scaled 1.35× around center 400,340) -->
     <g stroke="grey" stroke-width="1" fill="url(#silverToGray)">
@@ -260,9 +265,7 @@ export const BYPASS_OPEN_SVG = `
     <!-- Horizontal arrows for bypass open (fresh air bypasses heat exchanger) -->
     <g stroke-width="29" stroke="url(#blueToRed)" fill="none" stroke-linecap="round" stroke-linejoin="round">
       <!-- Horizontal arrow from left to right (fresh air in) -->
-      <path d="M180 340 L620 340" marker-end="url(#marker1)"></path>
-      <!-- Horizontal arrow from right to left (exhaust air out) -->
-      <path d="M620 340 L180 340" marker-end="url(#marker2)"></path>
+      <path d="M120 140 L680 480" marker-end="url(#marker1)"></path>
     </g>
 
     <!-- Outer hexagon outline -->
