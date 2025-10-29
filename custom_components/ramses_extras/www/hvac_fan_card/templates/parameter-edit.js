@@ -44,7 +44,12 @@ function createParameterItem(paramKey, paramInfo, deviceId, hass) {
   const displayMin = paramInfo.min_value;
   const displayMax = paramInfo.max_value;
   const displayStep = paramInfo.precision;
-  const displayValue = currentValue;
+  let displayValue = currentValue;
+
+  // Round the display value if precision is a whole number (integer parameters)
+  if (Number.isInteger(paramInfo.precision)) {
+    displayValue = Math.round(parseFloat(displayValue));
+  }
 
   return `
     <div class="param-item" data-param="${paramKey}">
