@@ -11,7 +11,7 @@ export function createTopSection(data) {
     supplyTemp, exhaustTemp,
     fanSpeed, fanMode,
     co2Level, flowRate, efficiency,
-    timerMinutes, bypassState, airflowSvg
+    timerMinutes, airflowSvg
   } = data;
 
   // Helper function to format humidity values

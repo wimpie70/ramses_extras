@@ -3,6 +3,7 @@
  * Utility functions for data transformation and calculations
  */
 
+
 /**
  * Calculate heat recovery efficiency based on temperature differences
  * @param {string|number} supplyTemp - Supply air temperature

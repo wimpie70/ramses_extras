@@ -1,4 +1,10 @@
 // hvac-fan-card-editor.js
+
+/* global customElements */
+/* global setTimeout */
+/* global CustomEvent */
+/* global HTMLElement */
+
 class HvacFanCardEditor extends HTMLElement {
   constructor() {
     super();
@@ -81,7 +87,7 @@ class HvacFanCardEditor extends HTMLElement {
           padding: 8px 12px;
           border: 1px solid var(--divider-color);
           border-radius: 4px;
-          // background: #f0f0f0 !important;
+          background: var(--input-background-color, #fff);
           color: var(--primary-text-color);
           font-size: 14px;
         }

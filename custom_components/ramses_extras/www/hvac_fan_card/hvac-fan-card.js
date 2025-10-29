@@ -1,3 +1,6 @@
+/* global customElements */
+/* global HTMLElement */
+/* global setTimeout */
 
 
 // Debug: Check if this file is being loaded
@@ -203,16 +206,17 @@ class HvacFanCard extends HTMLElement {
       throw new Error('Home Assistant instance not available');
     }
 
-    let sensor_id = 'climate.' + deviceId.replace(/:/g, '_');
+    const sensor_id = 'climate.' + deviceId.replace(/:/g, '_');
     try {
       console.log('bound_rem: ', this._hass.states[sensor_id].attributes.bound_rem);
-      let bound_rem = this._hass.states[sensor_id].attributes.bound_rem;
+      const bound_rem = this._hass.states[sensor_id].attributes.bound_rem;
       if (bound_rem) {
         return bound_rem;
       }
     } catch (error) {
       console.error('Error getting bound REM device:', error);
-      throw error;
+      // Don't throw error, just return null to use device_id as from_id
+      return null;
     }
 
     // try {
@@ -255,7 +259,7 @@ class HvacFanCard extends HTMLElement {
       return false;
     }
 
-    const command = hvacFanCard.FAN_COMMANDS[commandKey];
+    const command = HvacFanCard.FAN_COMMANDS[commandKey];
     if (!command) {
       console.error(`No command defined for: ${commandKey}`);
       return false;
@@ -290,7 +294,7 @@ class HvacFanCard extends HTMLElement {
           remId = deviceId;
         }
       } catch (error) {
-//        console.warn(`WebSocket error getting bound REM: ${error.message}. Falling back to device_id.`);
+        console.warn(`WebSocket error getting bound REM: ${error.message}. Falling back to device_id.`);
         remId = null;
       }
 
@@ -478,7 +482,7 @@ class HvacFanCard extends HTMLElement {
 
     console.log('🔍 DEBUG - Raw temperature values:', {
       supplyTemp, exhaustTemp, outdoorTemp,
-      indoorTemp, outdoorTemp
+      indoorTemp
     });
 
     console.log('🔍 DEBUG - Humidity values:', {
@@ -851,58 +855,6 @@ class HvacFanCard extends HTMLElement {
         paramItem.classList.add('error');
       }
     }
-  }
-
-  // Legacy method - no longer used, replaced by service call
-  async sendParameterCommand(paramKey, value) {
-    throw new Error('Legacy sendParameterCommand should not be called - use service instead');
-  }
-
-  // Wait for parameter entity to update
-  async waitForParameterUpdate(paramKey, expectedValue) {
-    const entityId = `number.${this.config.device_id.replace(/:/g, '_')}_param_${paramKey}`;
-    const paramItem = this.shadowRoot?.querySelector(`[data-param="${paramKey}"]`);
-
-    console.log(`⏳ Waiting for entity ${entityId} to update to ${expectedValue}`);
-
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        console.log(`⏰ Timeout waiting for parameter update on ${entityId}`);
-        if (paramItem) {
-          paramItem.classList.remove('loading');
-          paramItem.classList.add('error');
-        }
-        reject(new Error('Timeout waiting for parameter update'));
-      }, 10000); // 10 second timeout
-
-      const checkUpdate = () => {
-        const entity = this._hass.states[entityId];
-        const currentState = entity?.state;
-
-        console.log(`🔍 Checking ${entityId}: current=${currentState}, expected=${expectedValue}`);
-
-        if (entity && currentState == expectedValue) {
-          console.log(`✅ Parameter update confirmed for ${entityId}`);
-          clearTimeout(timeout);
-          if (paramItem) {
-            paramItem.classList.remove('loading');
-            paramItem.classList.add('success');
-            setTimeout(() => paramItem.classList.remove('success'), 2000);
-          }
-          resolve();
-        } else {
-          // Check again in 500ms
-          setTimeout(checkUpdate, 500);
-        }
-      };
-
-      checkUpdate();
-    });
-  }
-
-  // Legacy method - no longer used, replaced by service call
-  encode2411Parameter(paramKey, value) {
-    throw new Error('Legacy encode2411Parameter should not be called - use service instead');
   }
 
   updateTimerUI(minutes) {
