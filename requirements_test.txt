@@ -15,4 +15,6 @@
 # used for testing (incl. HA, pytest*, syrupy, voluptuous, etc.)
 # - pytest
 
+  pytest >= 8.0.0
+  pytest-asyncio >= 0.24.0
   pytest_homeassistant_custom_component >= 0.13.286

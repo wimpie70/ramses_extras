@@ -25,4 +25,5 @@
 # used for development (typing)
     mypy >= 1.15.0                               # latest: 1.18.2
     types-PyYAML >= 6.0.12                       # latest: 6.0.12 (for yaml type stubs)
+    types-requests >= 2.31.0                     # latest: 2.32.0 (for requests type stubs)
     voluptuous >= 0.15.2                         # latest: 0.15.2 =HA
