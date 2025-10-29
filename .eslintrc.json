@@ -10,7 +10,8 @@
     "setTimeout": "readonly",
     "clearTimeout": "readonly",
     "CustomEvent": "readonly",
-    "customElements": "readonly"
+    "customElements": "readonly",
+    "navigator": "readonly"
   },
   "extends": ["eslint:recommended"],
   "parserOptions": {

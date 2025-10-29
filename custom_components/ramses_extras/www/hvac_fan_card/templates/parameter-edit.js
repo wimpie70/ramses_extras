@@ -8,8 +8,20 @@ export function createParameterEditSection(params) {
   const availableParams = params.availableParams || {};
   const hass = params.hass; // Pass hass instance
 
-  // Get localized text for "Settings for Device:"
-  const settingsText = hass.localize('component.ramses_extras.exceptions.card_translations.parameter_edit.settings_for_device') || 'Settings for Device:';
+  // Frontend card localization system
+  // Get language from Home Assistant configuration, fallback to English
+  const userLanguage = (hass?.language || 'en').toLowerCase();
+
+  // Simple language detection for card text
+  let settingsText = 'Settings for Device:';
+
+  if (userLanguage.startsWith('nl')) {
+    settingsText = 'Instellingen voor Apparaat:';
+  } else if (userLanguage.startsWith('de')) {
+    settingsText = 'Einstellungen für Gerät:';
+  } else if (userLanguage.startsWith('fr')) {
+    settingsText = 'Paramètres de l\'appareil:';
+  }
 
   return `
     <div class="parameter-edit-section">

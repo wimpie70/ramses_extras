@@ -37,12 +37,5 @@
         }
       }
     }
-  },
-  "exceptions": {
-    "card_translations": {
-      "parameter_edit": {
-        "settings_for_device": "Settings for Device:"
-      }
-    }
   }
 }
