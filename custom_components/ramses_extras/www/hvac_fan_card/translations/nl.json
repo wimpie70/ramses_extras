@@ -1,0 +1,72 @@
+{
+  "card": {
+    "title": "HVAC Ventilatie Regeling",
+    "settings": "Instellingen",
+    "back": "Terug",
+    "edit_parameters": "Parameters Bewerken"
+  },
+  "status": {
+    "away": "Weg",
+    "low": "Laag",
+    "medium": "Medium",
+    "high": "Hoog",
+    "active": "Actief",
+    "auto2": "Auto",
+    "boost": "Boost",
+    "disable": "Uitgeschakeld"
+  },
+  "controls": {
+    "fan_modes": "Ventilatie Modi",
+    "timer": "Timer",
+    "timer_minutes": "{minutes} min",
+    "timer_15": "15m",
+    "timer_30": "30m",
+    "timer_60": "60m",
+    "bypass": "Bypass",
+    "bypass_auto": "Bypass Auto",
+    "bypass_open": "Bypass Open",
+    "bypass_close": "Bypass Dicht",
+    "filter_reset": "Filter Reset",
+    "dehumidify": "Ontvochtigen"
+  },
+  "parameters": {
+    "title": "Ventilatie Parameters",
+    "supply_temp": "Toevoer Temperatuur",
+    "exhaust_temp": "Afvoer Temperatuur",
+    "indoor_temp": "Binnen Temperatuur",
+    "outdoor_temp": "Buiten Temperatuur",
+    "indoor_humidity": "Binnen Luchtvochtigheid",
+    "outdoor_humidity": "Buiten Luchtvochtigheid",
+    "fan_speed": "Ventilatie Snelheid",
+    "fan_mode": "Ventilatie Modus",
+    "co2_level": "CO₂ Niveau",
+    "supply_flow": "Toevoer Luchtstroom",
+    "comfort_temp": "Comfort Temperatuur",
+    "update": "Bijwerken",
+    "updating": "Bijwerken...",
+    "success": "Bijgewerkt!",
+    "error": "Fout"
+  },
+  "sensors": {
+    "efficiency": "Efficiëntie",
+    "absolute_humidity": "Absolute Luchtvochtigheid",
+    "temperature": "Temperatuur",
+    "humidity": "Luchtvochtigheid",
+    "speed": "Snelheid",
+    "mode": "Modus",
+    "level": "Niveau",
+    "flow": "Stroom",
+    "unknown": "Onbekend"
+  },
+  "units": {
+    "celsius": "°C",
+    "fahrenheit": "°F",
+    "percentage": "%",
+    "ppm": "ppm",
+    "m3h": "m³/h"
+  },
+  "time": {
+    "minutes": "min",
+    "hours": "u"
+  }
+}

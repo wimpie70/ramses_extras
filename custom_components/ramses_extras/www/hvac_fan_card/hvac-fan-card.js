@@ -2,6 +2,10 @@
 /* global HTMLElement */
 /* global setTimeout */
 
+/**
+ * Localization support
+ */
+import { getTranslator } from '../helpers/card-translations.js';
 
 // Debug: Check if this file is being loaded
 console.log('🚀 hvac-fan-card.js is being loaded!');

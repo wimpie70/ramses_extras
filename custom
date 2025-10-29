@@ -1,0 +1,72 @@
+{
+  "card": {
+    "title": "HVAC Fan Control",
+    "settings": "Settings",
+    "back": "Back",
+    "edit_parameters": "Edit Parameters"
+  },
+  "status": {
+    "away": "Away",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "active": "Active",
+    "auto2": "Auto",
+    "boost": "Boost",
+    "disable": "Disabled"
+  },
+  "controls": {
+    "fan_modes": "Fan Modes",
+    "timer": "Timer",
+    "timer_minutes": "{minutes} min",
+    "timer_15": "15m",
+    "timer_30": "30m",
+    "timer_60": "60m",
+    "bypass": "Bypass",
+    "bypass_auto": "Bypass Auto",
+    "bypass_open": "Bypass Open",
+    "bypass_close": "Bypass Close",
+    "filter_reset": "Filter Reset",
+    "dehumidify": "Dehumidify"
+  },
+  "parameters": {
+    "title": "Fan Parameters",
+    "supply_temp": "Supply Temperature",
+    "exhaust_temp": "Exhaust Temperature",
+    "indoor_temp": "Indoor Temperature",
+    "outdoor_temp": "Outdoor Temperature",
+    "indoor_humidity": "Indoor Humidity",
+    "outdoor_humidity": "Outdoor Humidity",
+    "fan_speed": "Fan Speed",
+    "fan_mode": "Fan Mode",
+    "co2_level": "CO₂ Level",
+    "supply_flow": "Supply Flow",
+    "comfort_temp": "Comfort Temperature",
+    "update": "Update",
+    "updating": "Updating...",
+    "success": "Updated!",
+    "error": "Error"
+  },
+  "sensors": {
+    "efficiency": "Efficiency",
+    "absolute_humidity": "Absolute Humidity",
+    "temperature": "Temperature",
+    "humidity": "Humidity",
+    "speed": "Speed",
+    "mode": "Mode",
+    "level": "Level",
+    "flow": "Flow",
+    "unknown": "Unknown"
+  },
+  "units": {
+    "celsius": "°C",
+    "fahrenheit": "°F",
+    "percentage": "%",
+    "ppm": "ppm",
+    "m3h": "m³/h"
+  },
+  "time": {
+    "minutes": "min",
+    "hours": "h"
+  }
+}
