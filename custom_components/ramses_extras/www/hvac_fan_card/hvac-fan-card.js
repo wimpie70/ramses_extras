@@ -418,11 +418,19 @@ class HvacFanCard extends HTMLElement {
       // Send the packet
       await this.sendPacket(deviceId, remId, command.verb, command.code, command.payload);
 
-      console.log(`SuRFessfully set fan mode to ${commandKey}`);
-      // Update UI
-      const fanModeElement = this.shadowRoot?.querySelector('#fanMode');
-      if (fanModeElement) {
-        fanModeElement.textContent = commandKey;
+      console.log(`SuRFessfully sent ${commandKey} command`);
+
+      // Update UI based on command type
+      if (commandKey.startsWith('bypass_')) {
+        const mode = commandKey.replace('bypass_', '');
+        this.updateBypassUI(mode);
+        this.render(); // Force re-render to update SVG
+      } else {
+        // Update fan mode display
+        const fanModeElement = this.shadowRoot?.querySelector('#fanMode');
+        if (fanModeElement) {
+          fanModeElement.textContent = commandKey;
+        }
       }
 
       return true;
@@ -811,15 +819,39 @@ class HvacFanCard extends HTMLElement {
   // Handle bypass button clicks
   async sendBypassCommand(mode) {
     console.log('Setting bypass to:', mode);
-    // Use the new sendFanCommand function
-    await this.sendFanCommand('bypass_' + mode);
+
+    try {
+      // Send the actual bypass command via FAN_COMMANDS
+      const commandKey = 'bypass_' + mode;
+      await this.sendFanCommand(commandKey);
+
+      // Update UI immediately to reflect the change
+      this.updateBypassUI(mode);
+
+      console.log(`✅ Bypass mode set to ${mode} successfully`);
+      console.log('📋 Note: SVG will update automatically when entity state changes');
+    } catch (error) {
+      console.error(`❌ Failed to set bypass mode to ${mode}:`, error);
+    }
   }
 
   // Handle timer button clicks
   async setTimer(minutes) {
     console.log('Setting timer for:', minutes, 'minutes');
-    // Use the new sendFanCommand function
-    await this.sendFanCommand(minutes);
+
+    try {
+      // Send the actual timer command via FAN_COMMANDS
+      // Convert minutes to command key (e.g., '15' -> 'high_15')
+      const commandKey = `high_${minutes}`;
+      await this.sendFanCommand(commandKey);
+
+      // Update UI immediately to reflect the change
+      this.updateTimerUI(minutes);
+
+      console.log(`✅ Timer set to ${minutes} minutes successfully`);
+    } catch (error) {
+      console.error(`❌ Failed to set timer to ${minutes} minutes:`, error);
+    }
   }
 
   // Handle fan mode changes

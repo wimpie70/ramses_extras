@@ -164,6 +164,70 @@ The system detects languages in this order:
 - **Efficient**: Small translation files load quickly
 - **Async**: Non-blocking translation initialization
 
+## FAN Commands Integration (HVAC Fan Card Example)
+
+The HVAC Fan Card demonstrates integration with real HVAC commands using the `FAN_COMMANDS` object:
+
+```javascript
+static get FAN_COMMANDS() {
+  return {
+    'bypass_open': {
+      code: '22F7',
+      verb: ' W',
+      payload: '00C8EF'  // Bypass open command
+    },
+    'bypass_close': {
+      code: '22F7',
+      verb: ' W',
+      payload: '0000EF'  // Bypass close command
+    },
+    'bypass_auto': {
+      code: '22F7',
+      verb: ' W',
+      payload: '00FFEF'  // Bypass auto command
+    },
+    'high_15': {
+      code: '22F3',
+      verb: ' I',
+      payload: '00120F03040404'  // 15 minutes timer
+    },
+    'high_30': {
+      code: '22F3',
+      verb: ' I',
+      payload: '00121E03040404'  // 30 minutes timer
+    },
+    'high_60': {
+      code: '22F3',
+      verb: ' I',
+      payload: '00123C03040404'  // 60 minutes timer
+    }
+  };
+}
+```
+
+**Command Sending**:
+- Bypass commands update UI immediately and SVG when entity state changes
+- Timer commands convert minutes to command keys (e.g., '15' → 'high_15')
+- All commands use the card's `sendFanCommand()` method which handles WebSocket communication
+- UI feedback provided via `updateBypassUI()` and `updateTimerUI()` methods
+
+**Global Function Bindings**:
+```javascript
+window.setBypassMode = function(mode) {
+  const card = document.querySelector('hvac-fan-card');
+  if (card) {
+    card.sendBypassCommand(mode);
+  }
+};
+
+window.setTimer = function(minutes) {
+  const card = document.querySelector('hvac-fan-card');
+  if (card) {
+    card.setTimer(minutes);
+  }
+};
+```
+
 ## Examples in This Project
 
 - **HVAC Fan Card**: Complete implementation with English and Dutch support
