@@ -92,6 +92,27 @@ else
     exit 1
 fi
 
-print_status "All checks passed! 🎉"
+echo "📝 Running Home Assistant validation..."
+
+# Note: Local CI doesn't include hassfest validation
+# GitHub Actions workflow (hassfest.yml) runs this validation
+print_warning "Local CI validation is limited"
+echo "📋 Local CI covers:"
+echo "  • Python linting and type checking"
+echo "  • Python unit tests"
+echo "  • JavaScript linting and tests"
 echo ""
-echo "Local CI completed successfully. Your code is ready for commit/PR."
+echo "📋 GitHub Actions also validates:"
+echo "  • Home Assistant integration standards (hassfest)"
+echo "  • Translation validation (including our fix)"
+echo "  • Manifest and config flow validation"
+echo ""
+echo "💡 To run hassfest locally:"
+echo "   PYTHONPATH=\"/home/willem/dev/ha\" python3 -m homeassistant.script.hassfest --custom-integrations custom_components"
+echo "   # Or use GitHub Actions for complete validation"
+
+print_status "All local checks passed! 🎉"
+echo ""
+echo "Local CI completed successfully."
+echo "For complete Home Assistant validation, rely on GitHub Actions."
+echo "Your code is ready for commit/PR."
