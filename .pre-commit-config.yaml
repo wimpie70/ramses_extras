@@ -7,12 +7,15 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  # MyPy type checker
+  # MyPy type checker (allowed to fail due to HA version conflicts)
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.11.2
     hooks:
       - id: mypy
         exclude: ^(setup\.py|tests/)
+        args: [--config-file=mypy.ini, custom_components/, tests/]
+        always_run: true
+        pass_filenames: false
 
   # JavaScript/TypeScript linting
   - repo: local

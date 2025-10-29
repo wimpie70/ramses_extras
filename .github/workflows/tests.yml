@@ -34,6 +34,7 @@ jobs:
     - name: Run mypy
       run: |
         mypy custom_components/ tests/ --config-file mypy.ini || echo "mypy failed but continuing"
+      continue-on-error: true
 
   lint:
     name: lint (${{ matrix.python-version }})
