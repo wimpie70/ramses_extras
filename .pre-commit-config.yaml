@@ -16,6 +16,8 @@ repos:
         args: [--config-file=mypy.ini, custom_components/, tests/]
         always_run: true
         pass_filenames: false
+        env:
+          MYPYPATH: custom_components
 
   # JavaScript/TypeScript linting
   - repo: local
