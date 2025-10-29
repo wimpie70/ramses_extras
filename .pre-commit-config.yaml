@@ -16,16 +16,14 @@ repos:
         args: [--config-file=mypy.ini, custom_components/, tests/]
         always_run: true
         pass_filenames: false
-        env:
-          MYPYPATH: custom_components
 
   # JavaScript/TypeScript linting
   - repo: local
     hooks:
       - id: eslint
         name: ESLint
-        entry: npx eslint --ext .js,.jsx,.ts,.tsx --fix --quiet --color
-        language: node
+        entry: npm run lint
+        language: system
         types: [file]
         files: \.(js|jsx|ts|tsx)$
         exclude: >-
@@ -41,8 +39,8 @@ repos:
 
       - id: prettier
         name: Prettier
-        entry: npx prettier --write --ignore-unknown
-        language: node
+        entry: npm run format
+        language: system
         types: [file]
         files: \.(js|jsx|ts|tsx|json|md|css|scss|html|yaml|yml|graphql|mdx)$
         exclude: >-
