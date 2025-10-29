@@ -16,5 +16,10 @@
         }
       }
     }
+  },
+  "card": {
+    "parameter_edit": {
+      "settings_for_device": "Instellingen voor Apparaat:"
+    }
   }
 }

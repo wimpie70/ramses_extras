@@ -396,6 +396,10 @@ class HvacFanCard extends HTMLElement {
   async renderParameterEditMode() {
     console.log('🔧 Rendering parameter edit mode');
 
+    // Save scroll position before re-rendering
+    const scrollContainer = this.shadowRoot?.querySelector('.param-list');
+    const scrollTop = scrollContainer?.scrollTop || 0;
+
     // Ensure we have the parameter schema
     if (!this.parameterSchema) {
       console.log('📡 Fetching parameter schema in render...');
@@ -424,6 +428,12 @@ class HvacFanCard extends HTMLElement {
 
     this.shadowRoot.innerHTML = cardHtml;
     console.log('✅ Parameter edit HTML generated successfully');
+
+    // Restore scroll position after DOM update
+    const newScrollContainer = this.shadowRoot?.querySelector('.param-list');
+    if (newScrollContainer) {
+      newScrollContainer.scrollTop = scrollTop;
+    }
 
     // Attach event listeners for parameter edit mode
     this.attachParameterEditListeners();

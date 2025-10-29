@@ -8,13 +8,16 @@ export function createParameterEditSection(params) {
   const availableParams = params.availableParams || {};
   const hass = params.hass; // Pass hass instance
 
+  // Get localized text for "Settings for Device:"
+  const settingsText = hass.localize('component.ramses_extras.card.parameter_edit.settings_for_device') || 'Settings for Device:';
+
   return `
     <div class="parameter-edit-section">
       <!-- Navigation Header -->
       <div class="param-nav">
         <div class="nav-left">
           <span class="settings-icon" onclick="toggleParameterMode()">⚙️</span>
-          <span class="device-title">Device: ${deviceId.replace(/_/g, ':')}</span>
+          <span class="device-title">${settingsText} ${deviceId.replace(/_/g, ':')}</span>
         </div>
         <div class="nav-right">
           <span class="back-icon" onclick="toggleParameterMode()">↩️</span>
@@ -22,7 +25,7 @@ export function createParameterEditSection(params) {
       </div>
 
       <!-- Parameter List -->
-      <div class="param-list">
+      <div class="param-list" style="max-height: 400px; overflow-y: auto;">
         ${Object.entries(availableParams).map(([key, param]) =>
           createParameterItem(key, param, deviceId, hass)
         ).join('')}
