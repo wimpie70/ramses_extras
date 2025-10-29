@@ -70,16 +70,19 @@ python -m jest --config jest.config.js
 The tests cover:
 
 ### JavaScript Unit Tests
+
 - **Template Helpers**: `calculateEfficiency`, `createTemplateData` functions
 - **Card Logic**: Entity validation, state management, event handling
 - **Error Handling**: Missing entities, invalid configurations
 
 ### Integration Tests
+
 - **DOM Rendering**: Complete card HTML generation
 - **Event Handling**: Button clicks, state updates
 - **Entity State Changes**: Real-time updates from Home Assistant
 
 ### CSS Tests
+
 - **Style Validation**: CSS syntax, selectors, properties
 - **Responsive Design**: Media queries, layout rules
 - **Best Practices**: Color usage, spacing, naming conventions
@@ -113,6 +116,7 @@ Frontend tests run automatically on:
 - **Manual dispatch** via GitHub UI
 
 The workflow includes:
+
 - Multi-browser testing (Node.js 18, 20)
 - Coverage reporting to Codecov
 - Linting and style checking
@@ -126,7 +130,9 @@ The workflow includes:
 describe('ComponentName', () => {
   test('should handle specific case', () => {
     // Arrange
-    const mockData = { /* test data */ };
+    const mockData = {
+      /* test data */
+    };
 
     // Act
     const result = functionUnderTest(mockData);
@@ -140,6 +146,7 @@ describe('ComponentName', () => {
 ### Mock Setup
 
 The test environment includes mocks for:
+
 - **Home Assistant API**: `hass` object with states and services
 - **DOM Elements**: Shadow DOM, event handling
 - **Browser APIs**: ResizeObserver, IntersectionObserver

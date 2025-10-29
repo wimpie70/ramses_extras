@@ -1,25 +1,17 @@
 name: Linting
 
-
 on:
   push:
-    branches: [ "master", "develop" ]
-    paths: [
-        ".github/workflows/check-lint.yml",
-        "custom_components/**.py",
-        "tests/**", "pyproject.toml",
-    ]
+    branches: ['master', 'develop']
+    paths:
+      ['.github/workflows/check-lint.yml', 'custom_components/**.py', 'tests/**', 'pyproject.toml']
 
   pull_request:
-    branches: [ "master", "develop" ]
-    paths: [
-        ".github/workflows/check-lint.yml",
-        "custom_components/**.py",
-        "tests/**", "pyproject.toml",
-    ]
+    branches: ['master', 'develop']
+    paths:
+      ['.github/workflows/check-lint.yml', 'custom_components/**.py', 'tests/**', 'pyproject.toml']
 
   workflow_dispatch:
-
 
 jobs:
   lint:
@@ -28,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13"]
+        python-version: ['3.13']
 
     steps:
       - uses: actions/checkout@v5

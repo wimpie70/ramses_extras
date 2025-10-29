@@ -1,25 +1,27 @@
 name: Typing
 
-
 on:
   push:
-    branches: [ "master", "develop" ]
-    paths: [
-        ".github/workflows/check-type.yml",
-        "custom_components/**.py",
-        "tests/**.py", "pyproject.toml",
-    ]
+    branches: ['master', 'develop']
+    paths:
+      [
+        '.github/workflows/check-type.yml',
+        'custom_components/**.py',
+        'tests/**.py',
+        'pyproject.toml',
+      ]
 
   pull_request:
-    branches: [ "master", "develop" ]
-    paths: [
-        ".github/workflows/check-type.yml",
-        "custom_components/**.py",
-        "tests/**.py", "pyproject.toml",
-    ]
+    branches: ['master', 'develop']
+    paths:
+      [
+        '.github/workflows/check-type.yml',
+        'custom_components/**.py',
+        'tests/**.py',
+        'pyproject.toml',
+      ]
 
   workflow_dispatch:
-
 
 jobs:
   type:
@@ -28,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13"]
+        python-version: ['3.13']
 
     steps:
       - uses: actions/checkout@v5

@@ -28,19 +28,19 @@ const mockHass = {
     'switch.dehumidify_32_153289': { state: 'off' },
     'climate.32_153289_climate': {
       state: 'auto',
-      attributes: { bound_rem: '18:123456' }
-    }
+      attributes: { bound_rem: '18:123456' },
+    },
   },
   callService: jest.fn(),
   connection: {
-    sendMessagePromise: jest.fn()
-  }
+    sendMessagePromise: jest.fn(),
+  },
 };
 
 // Mock DOM elements
 const mockShadowRoot = {
   querySelector: jest.fn(),
-  querySelectorAll: jest.fn()
+  querySelectorAll: jest.fn(),
 };
 
 describe('HvacFanCard', () => {
@@ -68,65 +68,65 @@ describe('HvacFanCard', () => {
         bypass_entity: 'binary_sensor.bypass_position_32_153289',
         dehum_mode_entity: 'switch.dehumidify_32_153289',
         dehum_active_entity: 'binary_sensor.dehumidifying_active_32_153289',
-        comfort_temp_entity: 'number.32_153289_param_75'
+        comfort_temp_entity: 'number.32_153289_param_75',
       },
-      shadowRoot: mockShadowRoot
+      shadowRoot: mockShadowRoot,
     };
   });
 
   describe('FAN_COMMANDS', () => {
     // Mock FAN_COMMANDS for testing since we can't import the actual class
     const FAN_COMMANDS = {
-      'low': {
+      low: {
         code: '22F1',
         verb: ' I',
-        payload: '000107'
+        payload: '000107',
       },
-      'medium': {
+      medium: {
         code: '22F1',
         verb: ' I',
-        payload: '000207'
+        payload: '000207',
       },
-      'high': {
+      high: {
         code: '22F1',
         verb: ' I',
-        payload: '000307'
+        payload: '000307',
       },
-      'auto2': {
+      auto2: {
         code: '22F1',
         verb: ' I',
-        payload: '000507'
+        payload: '000507',
       },
-      'boost': {
+      boost: {
         code: '22F1',
         verb: ' I',
-        payload: '000607'
+        payload: '000607',
       },
-      'away': {
+      away: {
         code: '22F1',
         verb: ' I',
-        payload: '000007'
+        payload: '000007',
       },
-      'active': {
+      active: {
         code: '22F1',
         verb: ' I',
-        payload: '000807'
+        payload: '000807',
       },
-      'bypass_close': {
+      bypass_close: {
         code: '22F7',
         verb: ' W',
-        payload: '0000EF'
+        payload: '0000EF',
       },
-      'bypass_open': {
+      bypass_open: {
         code: '22F7',
         verb: ' W',
-        payload: '00C8EF'
+        payload: '00C8EF',
       },
-      'bypass_auto': {
+      bypass_auto: {
         code: '22F7',
         verb: ' W',
-        payload: '00FFEF'
-      }
+        payload: '00FFEF',
+      },
     };
 
     test('should have all required fan commands', () => {
@@ -157,7 +157,7 @@ describe('HvacFanCard', () => {
     test('should process device_id correctly', () => {
       const config = {
         device_id: '32_153289',
-        indoor_temp_entity: 'sensor.indoor_temp_32_153289'
+        indoor_temp_entity: 'sensor.indoor_temp_32_153289',
       };
 
       // Simulate setConfig processing
@@ -196,10 +196,10 @@ describe('HvacFanCard', () => {
       const entities = [
         'sensor.indoor_temp_32_153289',
         'sensor.fan_speed_32_153289',
-        'binary_sensor.bypass_position_32_153289'
+        'binary_sensor.bypass_position_32_153289',
       ];
 
-      const hasChanges = entities.some(entity => {
+      const hasChanges = entities.some((entity) => {
         // Simulate state change detection logic
         return true; // Simplified for test
       });
@@ -217,7 +217,7 @@ describe('HvacFanCard', () => {
       const entities = {
         'Indoor Temperature': 'sensor.indoor_temp_32_153289',
         'Outdoor Temperature': 'sensor.outdoor_temp_32_153289',
-        'Missing Entity': 'sensor.missing_entity_32_153289'
+        'Missing Entity': 'sensor.missing_entity_32_153289',
       };
 
       Object.entries(entities).forEach(([name, entityId]) => {
@@ -237,7 +237,7 @@ describe('HvacFanCard', () => {
     test('should identify humidity entities separately', () => {
       const absHumidEntities = {
         'Indoor Absolute Humidity': 'sensor.indoor_absolute_humidity_32_153289',
-        'Outdoor Absolute Humidity': 'sensor.outdoor_absolute_humidity_32_153289'
+        'Outdoor Absolute Humidity': 'sensor.outdoor_absolute_humidity_32_153289',
       };
 
       const missingAbsEntities = [];
@@ -262,8 +262,9 @@ describe('HvacFanCard', () => {
       mockHass.states['switch.dehumidify_32_153289'] = { state: 'off' };
       mockHass.states['binary_sensor.dehumidifying_active_32_153289'] = { state: 'off' };
 
-      const entitiesAvailable = !!mockHass.states['switch.dehumidify_32_153289'] &&
-                              !!mockHass.states['binary_sensor.dehumidifying_active_32_153289'];
+      const entitiesAvailable =
+        !!mockHass.states['switch.dehumidify_32_153289'] &&
+        !!mockHass.states['binary_sensor.dehumidifying_active_32_153289'];
 
       expect(entitiesAvailable).toBe(true);
     });
@@ -272,8 +273,9 @@ describe('HvacFanCard', () => {
       delete mockHass.states['switch.dehumidify_32_153289'];
       delete mockHass.states['binary_sensor.dehumidifying_active_32_153289'];
 
-      const entitiesAvailable = !!mockHass.states['switch.dehumidify_32_153289'] &&
-                              !!mockHass.states['binary_sensor.dehumidifying_active_32_153289'];
+      const entitiesAvailable =
+        !!mockHass.states['switch.dehumidify_32_153289'] &&
+        !!mockHass.states['binary_sensor.dehumidifying_active_32_153289'];
 
       expect(entitiesAvailable).toBe(false);
     });
@@ -299,7 +301,7 @@ describe('HvacFanCard', () => {
   describe('Event Handling', () => {
     test('should handle bypass button clicks', () => {
       const mockButton = {
-        dataset: { mode: 'close' }
+        dataset: { mode: 'close' },
       };
 
       // Test that the correct mode is extracted
@@ -308,7 +310,7 @@ describe('HvacFanCard', () => {
 
     test('should handle timer button clicks', () => {
       const mockButton = {
-        dataset: { timer: '30' }
+        dataset: { timer: '30' },
       };
 
       // Test that the correct timer value is extracted

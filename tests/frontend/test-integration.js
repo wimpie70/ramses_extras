@@ -25,7 +25,7 @@ describe('HvacFanCard Integration', () => {
     dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', {
       url: 'http://localhost:8123',
       pretendToBeVisual: true,
-      resources: 'usable'
+      resources: 'usable',
     });
 
     window = dom.window;
@@ -34,7 +34,7 @@ describe('HvacFanCard Integration', () => {
     // Mock Home Assistant
     window.customElements = {
       get: jest.fn(),
-      define: jest.fn()
+      define: jest.fn(),
     };
 
     window.customCards = [];
@@ -44,7 +44,7 @@ describe('HvacFanCard Integration', () => {
       log: jest.fn(),
       warn: jest.fn(),
       error: jest.fn(),
-      debug: jest.fn()
+      debug: jest.fn(),
     };
 
     // Reset card instance
@@ -65,8 +65,8 @@ describe('HvacFanCard Integration', () => {
           'sensor.exhaust_temp_32_153289': { state: '18' },
           'sensor.fan_speed_32_153289': { state: 'medium' },
           'sensor.fan_mode_32_153289': { state: 'auto' },
-          'binary_sensor.bypass_position_32_153289': { state: 'off' }
-        }
+          'binary_sensor.bypass_position_32_153289': { state: 'off' },
+        },
       };
 
       const config = {
@@ -81,7 +81,7 @@ describe('HvacFanCard Integration', () => {
         exhaust_temp_entity: 'sensor.exhaust_temp_32_153289',
         fan_speed_entity: 'sensor.fan_speed_32_153289',
         fan_mode_entity: 'sensor.fan_mode_32_153289',
-        bypass_entity: 'binary_sensor.bypass_position_32_153289'
+        bypass_entity: 'binary_sensor.bypass_position_32_153289',
       };
 
       // Test that all required sections are present in HTML structure
@@ -92,7 +92,7 @@ describe('HvacFanCard Integration', () => {
         '.corner-value',
         '.airflow-diagram',
         '.centre-container',
-        '.controls-container'
+        '.controls-container',
       ];
 
       // This would test the actual HTML generation
@@ -105,14 +105,14 @@ describe('HvacFanCard Integration', () => {
         states: {
           'sensor.indoor_temp_32_153289': { state: '22' },
           // Missing outdoor temp, humidity, etc.
-        }
+        },
       };
 
       const config = {
         device_id: '32:153289',
         indoor_temp_entity: 'sensor.indoor_temp_32_153289',
         outdoor_temp_entity: 'sensor.missing_outdoor_temp',
-        indoor_humidity_entity: 'sensor.missing_humidity'
+        indoor_humidity_entity: 'sensor.missing_humidity',
       };
 
       // Test that missing entities don't break rendering
@@ -131,12 +131,12 @@ describe('HvacFanCard Integration', () => {
             dataset: { mode: 'low' },
             classList: {
               add: jest.fn(),
-              remove: jest.fn()
-            }
-          })
+              remove: jest.fn(),
+            },
+          }),
         },
         preventDefault: jest.fn(),
-        stopPropagation: jest.fn()
+        stopPropagation: jest.fn(),
       };
 
       // Test that event handling works
@@ -148,10 +148,10 @@ describe('HvacFanCard Integration', () => {
       const buttonTypes = [
         { dataset: { mode: 'low' }, expectedType: 'mode' },
         { dataset: { timer: '30' }, expectedType: 'timer' },
-        { dataset: {}, expectedType: 'unknown' }
+        { dataset: {}, expectedType: 'unknown' },
       ];
 
-      buttonTypes.forEach(button => {
+      buttonTypes.forEach((button) => {
         if (button.dataset.mode) {
           expect(button.expectedType).toBe('mode');
         } else if (button.dataset.timer) {
@@ -166,11 +166,11 @@ describe('HvacFanCard Integration', () => {
       const entities = [
         'sensor.indoor_temp_32_153289',
         'sensor.fan_speed_32_153289',
-        'binary_sensor.bypass_position_32_153289'
+        'binary_sensor.bypass_position_32_153289',
       ];
 
       // Test that state changes trigger updates
-      const hasValidEntities = entities.some(entity => {
+      const hasValidEntities = entities.some((entity) => {
         // Simulate state validation
         return entity.includes('sensor') || entity.includes('binary_sensor');
       });
@@ -182,10 +182,10 @@ describe('HvacFanCard Integration', () => {
       const stateTransitions = [
         { from: 'off', to: 'on' },
         { from: 'auto', to: 'manual' },
-        { from: '22', to: '23' }
+        { from: '22', to: '23' },
       ];
 
-      stateTransitions.forEach(transition => {
+      stateTransitions.forEach((transition) => {
         expect(transition.from).not.toBe(transition.to);
       });
     });
@@ -193,13 +193,9 @@ describe('HvacFanCard Integration', () => {
 
   describe('Error Handling', () => {
     test('should handle missing configuration gracefully', () => {
-      const invalidConfigs = [
-        { device_id: null },
-        { device_id: '' },
-        {}
-      ];
+      const invalidConfigs = [{ device_id: null }, { device_id: '' }, {}];
 
-      invalidConfigs.forEach(config => {
+      invalidConfigs.forEach((config) => {
         // Should not crash with invalid config
         expect(config).toBeDefined();
       });

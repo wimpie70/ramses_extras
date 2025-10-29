@@ -5,6 +5,7 @@ This directory contains the development environment for the Ramses Extras Home A
 ## Setup
 
 1. **Create and activate virtual environment:**
+
    ```bash
    cd ~/venvs
    python3.13 -m venv extras
@@ -12,6 +13,7 @@ This directory contains the development environment for the Ramses Extras Home A
    ```
 
 2. **Install dependencies:**
+
    ```bash
    cd /home/willem/dev/ramses_extras
    ./activate_dev.sh
@@ -27,6 +29,7 @@ This directory contains the development environment for the Ramses Extras Home A
 ## Development Tools
 
 ### Testing
+
 ```bash
 pytest                    # Run all tests
 pytest tests/helpers/    # Run helper tests only
@@ -35,6 +38,7 @@ pytest --cov             # Coverage report
 ```
 
 ### Code Quality
+
 ```bash
 mypy .                   # Type checking
 ruff check .             # Linting (replaces flake8)
@@ -43,7 +47,9 @@ pre-commit run --all     # Run all pre-commit hooks
 ```
 
 ### Pre-commit Hooks
+
 Install pre-commit hooks to automatically run code quality checks:
+
 ```bash
 pre-commit install
 ```
@@ -85,6 +91,7 @@ ramses_extras/
 ## Virtual Environment
 
 The virtual environment is located at `~/venvs/extras/` and includes:
+
 - Python 3.13
 - Home Assistant 2025.10.4 (matches your Docker setup)
 - Ramses RF library v0.52.2
@@ -94,6 +101,7 @@ The virtual environment is located at `~/venvs/extras/` and includes:
 ## Running Tests
 
 Tests are organized by component:
+
 - `tests/helpers/` - Tests for helper functions
 - `tests/platforms/` - Tests for platform modules (future)
 
@@ -102,6 +110,7 @@ Tests are organized by component:
 The project includes a comprehensive Makefile for easy development workflow:
 
 ### **🚀 Quick Setup:**
+
 ```bash
 make env          # Set up virtual environment with all dependencies
 make env-test     # Set up environment and run tests
@@ -109,6 +118,7 @@ make env-full     # Set up environment and run full QA suite
 ```
 
 ### **📦 Integration Management:**
+
 ```bash
 make install      # Install integration to HA config
 make clean        # Remove integration from HA config
@@ -117,6 +127,7 @@ make status       # Check HA container status
 ```
 
 ### **🧪 Development Workflow:**
+
 ```bash
 make help         # Show all available targets
 make dev-install  # Install dependencies and integration
@@ -124,6 +135,7 @@ make full-setup   # Complete setup with HA restart
 ```
 
 ### **🔍 Testing & Quality:**
+
 ```bash
 make check-ha     # Verify HA is running and accessible
 make env-test     # Run tests in development environment
@@ -139,6 +151,7 @@ make qa           # Run full QA suite
 **Note:** Mypy is configured like ramses_cc to only check source files (`custom_components` and `tests`), avoiding conflicts with the installed package.
 
 The project uses multiple tools for code quality:
+
 - **Ruff**: Linting and code formatting (replaces Black + Flake8 + isort)
 - **MyPy**: Static type checking
 - **Pre-commit**: Automated quality checks
@@ -150,6 +163,7 @@ The project uses multiple tools for code quality:
 This project uses GitHub Actions for automated testing and quality checks:
 
 #### **🚀 Workflows:**
+
 - **`ci.yml`**: Main CI pipeline (tests, coverage, ruff, mypy)
 - **`test.yml`**: Multi-Python version testing with Home Assistant integration
 - **`quality.yml`**: Code quality checks (pre-commit, ruff, mypy)
@@ -158,7 +172,9 @@ This project uses GitHub Actions for automated testing and quality checks:
 - **`pr-validation.yml`**: Pull request validation and automated testing
 
 #### **📋 Branch Protection Rules**
+
 To maintain code quality, the following rules are enforced:
+
 - ✅ **Pull requests required** for merging to main/develop branches
 - ✅ **Status checks must pass** before merging
 - ✅ **Code review required** from maintainers
@@ -178,6 +194,7 @@ To maintain code quality, the following rules are enforced:
 6. **Request review** from maintainers
 
 #### **Pull Request Requirements:**
+
 - 📝 **Descriptive title** using conventional commits format
 - 📖 **Detailed description** of changes and rationale
 - ✅ **Tests included** for new functionality
@@ -185,6 +202,7 @@ To maintain code quality, the following rules are enforced:
 - ✅ **CI/CD passes** all quality checks
 
 #### **Conventional Commit Format:**
+
 ```
 type(scope)!: description
 
@@ -199,6 +217,7 @@ Examples:
 ### Automated Testing
 
 #### **🧪 Test Coverage:**
+
 - **Unit tests** for all helper functions and components
 - **Integration tests** with Home Assistant container
 - **Type checking** with mypy (strict mode)
@@ -206,6 +225,7 @@ Examples:
 - **Linting** with flake8
 
 #### **🔒 Security:**
+
 - **Dependabot** automatically updates dependencies
 - **Dependency review** scans for vulnerabilities
 - **Safety checks** in CI pipeline
@@ -213,6 +233,7 @@ Examples:
 ### Quality Gates
 
 All pull requests must pass these quality gates:
+
 1. ✅ **Unit tests** (pytest)
 2. ✅ **Type checking** (mypy)
 3. ✅ **Code formatting** (ruff format)

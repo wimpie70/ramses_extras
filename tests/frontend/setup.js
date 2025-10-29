@@ -75,7 +75,7 @@ global.HTMLElement = class MockHTMLElement {
     this.shadowRoot = {
       innerHTML: '',
       querySelector: () => null,
-      querySelectorAll: () => []
+      querySelectorAll: () => [],
     };
     return this.shadowRoot;
   }

@@ -17,7 +17,7 @@ global.console = {
 // TODO: Set up proper ES module support or convert to CommonJS
 
 // Mock the functions for testing
-global.calculateEfficiency = function(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
+global.calculateEfficiency = function (supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
   if (supplyTemp === '?' || exhaustTemp === '?' || outdoorTemp === '?' || indoorTemp === '?') {
     return 75;
   }
@@ -34,24 +34,42 @@ global.calculateEfficiency = function(supplyTemp, exhaustTemp, outdoorTemp, indo
   if (indoor <= supply) {
     const tempDiff = exhaust - outdoor;
     if (Math.abs(tempDiff) < 0.1) return 75;
-    return Math.max(0, Math.min(100, Math.round(((supply - outdoor) / (exhaust - outdoor) * 100) * 10) / 10));
+    return Math.max(
+      0,
+      Math.min(100, Math.round(((supply - outdoor) / (exhaust - outdoor)) * 100 * 10) / 10)
+    );
   }
 
-  const efficiency = (supply - outdoor) / (indoor - outdoor) * 100;
+  const efficiency = ((supply - outdoor) / (indoor - outdoor)) * 100;
   return Math.max(0, Math.min(100, Math.round(efficiency * 10) / 10));
 };
 
-global.createTemplateData = function(rawData) {
+global.createTemplateData = function (rawData) {
   const {
-    indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
-    indoorAbsHumidity, outdoorAbsHumidity,
-    supplyTemp, exhaustTemp, fanSpeed, fanMode, co2Level, flowRate,
-    dehumMode, dehumActive, dehumEntitiesAvailable, comfortTemp, timerMinutes = 0, efficiency = 75
+    indoorTemp,
+    outdoorTemp,
+    indoorHumidity,
+    outdoorHumidity,
+    indoorAbsHumidity,
+    outdoorAbsHumidity,
+    supplyTemp,
+    exhaustTemp,
+    fanSpeed,
+    fanMode,
+    co2Level,
+    flowRate,
+    dehumMode,
+    dehumActive,
+    dehumEntitiesAvailable,
+    comfortTemp,
+    timerMinutes = 0,
+    efficiency = 75,
   } = rawData;
 
-  const calculatedEfficiency = efficiency !== 75
-    ? efficiency
-    : global.calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp);
+  const calculatedEfficiency =
+    efficiency !== 75
+      ? efficiency
+      : global.calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp);
 
   return {
     indoorTemp: indoorTemp || '?',
@@ -72,7 +90,7 @@ global.createTemplateData = function(rawData) {
     dehumEntitiesAvailable: dehumEntitiesAvailable || false,
     comfortTemp: comfortTemp || '?',
     timerMinutes: timerMinutes,
-    bypassState: 'auto'
+    bypassState: 'auto',
   };
 };
 
@@ -130,7 +148,7 @@ describe('createTemplateData', () => {
     dehumEntitiesAvailable: false,
     comfortTemp: '21',
     timerMinutes: 0,
-    efficiency: 75
+    efficiency: 75,
   };
 
   test('should create template data with all required fields', () => {
@@ -165,7 +183,7 @@ describe('createTemplateData', () => {
       indoorTemp: null,
       outdoorTemp: undefined,
       fanSpeed: '',
-      fanMode: null
+      fanMode: null,
     };
 
     const result = createTemplateData(incompleteData);
@@ -183,7 +201,7 @@ describe('createTemplateData', () => {
       supplyTemp: '20',
       exhaustTemp: '18',
       outdoorTemp: '10',
-      indoorTemp: '25'
+      indoorTemp: '25',
     };
 
     const result = createTemplateData(dataWithoutEfficiency);
@@ -196,7 +214,7 @@ describe('createTemplateData', () => {
     const customEfficiency = 85;
     const result = createTemplateData({
       ...mockRawData,
-      efficiency: customEfficiency
+      efficiency: customEfficiency,
     });
 
     expect(result.efficiency).toBe(customEfficiency);
@@ -207,7 +225,7 @@ describe('createTemplateData', () => {
       ...mockRawData,
       dehumMode: 'on',
       dehumActive: 'on',
-      dehumEntitiesAvailable: true
+      dehumEntitiesAvailable: true,
     };
 
     const result = createTemplateData(dataWithDehum);

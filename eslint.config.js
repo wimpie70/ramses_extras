@@ -15,7 +15,6 @@ export default [
       '.venv/**',
       '**/*.py',
       '**/__pycache__/**',
-      'custom_components/**',
     ],
   },
 

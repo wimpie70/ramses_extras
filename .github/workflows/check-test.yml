@@ -1,28 +1,32 @@
 name: Testing
 
-
 on:
   push:
-    branches: [ "master", "develop" ]
-    paths: [
-        ".github/workflows/check-test.yml", "requirements_dev.txt",
-        "custom_components/**.py",
-        "tests/**", "pyproject.toml",
-    ]
+    branches: ['master', 'develop']
+    paths:
+      [
+        '.github/workflows/check-test.yml',
+        'requirements_dev.txt',
+        'custom_components/**.py',
+        'tests/**',
+        'pyproject.toml',
+      ]
 
   pull_request:
-    branches: [ "master", "develop" ]
-    paths: [
-        ".github/workflows/check-test.yml", "requirements_dev.txt",
-        "custom_components/**.py",
-        "tests/**", "pyproject.toml",
-    ]
+    branches: ['master', 'develop']
+    paths:
+      [
+        '.github/workflows/check-test.yml',
+        'requirements_dev.txt',
+        'custom_components/**.py',
+        'tests/**',
+        'pyproject.toml',
+      ]
 
   schedule:
-    - cron: "0 18 * * 5"
+    - cron: '0 18 * * 5'
 
   workflow_dispatch:
-
 
 jobs:
   test:
@@ -31,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13"]
+        python-version: ['3.13']
 
     steps:
       - uses: actions/checkout@v5
@@ -48,7 +52,7 @@ jobs:
 
       - name: Test with pytest
         env:
-          PYTEST_ADDOPTS: "--color=yes"
+          PYTEST_ADDOPTS: '--color=yes'
         run: pytest -v
 
       - run: echo "🍏 This job's status is ${{ job.status }}."

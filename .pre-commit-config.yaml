@@ -36,6 +36,7 @@ repos:
           )
         verbose: true
         require_serial: true
+        pass_filenames: false
 
       - id: prettier
         name: Prettier

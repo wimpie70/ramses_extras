@@ -55,12 +55,14 @@ For development setup and contribution guidelines, see [README_DEV.md](README_DE
 This project uses comprehensive testing and quality tools:
 
 #### Python Testing
+
 - **Ruff**: Linting and formatting (replaces Black + Flake8)
 - **MyPy**: Static type checking
 - **Pytest**: Unit and integration testing
 - **Pre-commit**: Automated quality checks
 
 #### Frontend Testing
+
 - **ESLint**: JavaScript code quality and style
 - **Stylelint**: CSS validation and best practices
 - **Jest**: JavaScript unit and integration testing
