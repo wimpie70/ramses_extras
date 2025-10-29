@@ -80,14 +80,30 @@ async def ws_get_2411_schema(
         # Transform the schema to use keys expected by the frontend
         transformed_schema = {}
         for param_key, param_data in _2411_PARAMS_SCHEMA.items():
+            # Apply ramses_cc scaling logic for percentage parameters
+            min_value = param_data.get("min_value", 0)
+            max_value = param_data.get("max_value", 100)
+            precision = param_data.get("precision", 1)
+            unit = param_data.get("data_unit", param_data.get("unit", ""))
+
+            # For percentage parameters (except sensor sensitivity), scale to 0-100%
+            if unit == "%" and param_key != "52":
+                min_value = min_value * 100
+                max_value = max_value * 100
+                precision = precision * 100
+
+            # Special handling for comfort temperature - force 0.1°C precision
+            if param_key == "75":
+                precision = 0.1
+
             transformed_schema[param_key] = {
                 "name": param_data.get("name", param_key),
                 "description": param_data.get("description", param_key),
                 "data_type": param_data.get("data_type", "00"),
-                "precision": param_data.get("precision", 1),
-                "min_value": param_data.get("min_value", 0),
-                "max_value": param_data.get("max_value", 100),
-                "unit": param_data.get("data_unit", param_data.get("unit", "")),
+                "precision": precision,
+                "min_value": min_value,
+                "max_value": max_value,
+                "unit": unit,
                 "default_value": param_data.get(
                     "default_value", param_data.get("min_value", 0)
                 ),

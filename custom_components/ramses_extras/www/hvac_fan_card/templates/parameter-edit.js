@@ -39,6 +39,13 @@ function createParameterItem(paramKey, paramInfo, deviceId, hass) {
   const currentValue = hass.states[entityId]?.state || paramInfo.current_value || paramInfo.default_value || paramInfo.min_value || 0;
   console.log(`🔧 Creating parameter item for ${paramKey}: entity=${entityId}, currentValue=${currentValue}, paramInfo=`, paramInfo);
 
+  // The schema already comes pre-scaled from the backend, so we just use the values directly
+  // No additional scaling needed in the frontend
+  const displayMin = paramInfo.min_value;
+  const displayMax = paramInfo.max_value;
+  const displayStep = paramInfo.precision;
+  const displayValue = currentValue;
+
   return `
     <div class="param-item" data-param="${paramKey}">
       <div class="param-info">
@@ -47,12 +54,12 @@ function createParameterItem(paramKey, paramInfo, deviceId, hass) {
       </div>
       <div class="param-input-container">
         <input type="number"
-               class="param-input"
-               min="${paramInfo.min_value}"
-               max="${paramInfo.max_value}"
-               step="${paramInfo.precision}"
-               value="${currentValue}"
-               data-entity="${entityId}">
+                class="param-input"
+                min="${displayMin}"
+                max="${displayMax}"
+                step="${displayStep}"
+                value="${displayValue}"
+                data-entity="${entityId}">
         <button class="param-update-btn" data-param="${paramKey}" onclick="updateParameter('${paramKey}', this.previousElementSibling.value)">Update</button>
         <span class="param-status"></span>
       </div>
