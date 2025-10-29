@@ -1,11 +1,90 @@
 /* global customElements */
 /* global HTMLElement */
 /* global setTimeout */
+/* global fetch */
+/* global navigator */
 
 /**
- * Localization support
+ * Simple Localization Support
+ * Embedded translation system to avoid module import issues
  */
-import { getTranslator } from '../helpers/card-translations.js';
+
+// Simple translation system embedded directly in the card
+class SimpleCardTranslator {
+  constructor(cardName) {
+    this.cardName = cardName;
+    this.translations = {};
+    this.currentLanguage = 'en';
+    this.initialized = false;
+  }
+
+  async init(cardPath) {
+    try {
+      this.currentLanguage = this.detectLanguage();
+      await this.loadTranslations(cardPath);
+      this.initialized = true;
+      console.log(`🌍 ${this.cardName} translations loaded (${this.currentLanguage})`);
+    } catch (error) {
+      console.warn(`⚠️ Failed to load translations for ${this.cardName}:`, error);
+      this.initialized = true; // Continue without translations
+    }
+  }
+
+  detectLanguage() {
+    if (window.hass && window.hass.language) {
+      return window.hass.language.split('-')[0];
+    }
+    if (navigator.language) {
+      return navigator.language.split('-')[0];
+    }
+    return 'en';
+  }
+
+  async loadTranslations(cardPath) {
+    const translationPath = `${cardPath}/translations/${this.currentLanguage}.json`;
+    try {
+      const response = await fetch(translationPath);
+      if (response.ok) {
+        this.translations = await response.json();
+      } else {
+        // Try English fallback
+        const fallbackPath = `${cardPath}/translations/en.json`;
+        const fallbackResponse = await fetch(fallbackPath);
+        if (fallbackResponse.ok) {
+          this.translations = await fallbackResponse.json();
+        }
+      }
+    } catch (error) {
+      console.warn(`⚠️ Could not load translations:`, error);
+    }
+  }
+
+  t(key, params = {}) {
+    if (!this.initialized) return key;
+
+    const keys = key.split('.');
+    let value = this.translations;
+
+    for (const k of keys) {
+      if (value && typeof value === 'object' && k in value) {
+        value = value[k];
+      } else {
+        return key; // Return key if translation not found
+      }
+    }
+
+    if (typeof value !== 'string') return key;
+
+    // Simple string interpolation
+    return value.replace(/\{(\w+)\}/g, (match, paramKey) => {
+      return params[paramKey] !== undefined ? params[paramKey] : match;
+    });
+  }
+
+  getCurrentLanguage() {
+    return this.currentLanguage;
+  }
+}
 
 // Debug: Check if this file is being loaded
 console.log('🚀 hvac-fan-card.js is being loaded!');
@@ -26,6 +105,40 @@ class HvacFanCard extends HTMLElement {
     this.parameterEditMode = false;
     this.parameterSchema = null;
     this.availableParams = {};
+    this.translator = null;
+
+    // Initialize translations
+    this.initTranslations();
+  }
+
+  // Initialize translations for this card
+  async initTranslations() {
+    this.translator = new SimpleCardTranslator('hvac-fan-card');
+    await this.translator.init('./www/hvac_fan_card');
+  }
+
+  // Helper method to get translated strings
+  t(key, params = {}) {
+    if (!this.translator) {
+      return key; // Fallback if translator not ready
+    }
+    return this.translator.t(key, params);
+  }
+
+  // Helper method to check if translation exists
+  hasTranslation(key) {
+    if (!this.translator) {
+      return false;
+    }
+    return this.translator.has(key);
+  }
+
+  // Get current language
+  getCurrentLanguage() {
+    if (!this.translator) {
+      return 'en';
+    }
+    return this.translator.getCurrentLanguage();
   }
 
   // All fan commands in one simple object
@@ -1041,6 +1154,27 @@ window.updateParameter = function(paramKey, newValue) {
   }
 };
 
+window.setBypassMode = function(mode) {
+  const card = document.querySelector('hvac-fan-card');
+  if (card) {
+    card.sendBypassCommand(mode);
+  }
+};
+
+window.setTimer = function(minutes) {
+  const card = document.querySelector('hvac-fan-card');
+  if (card) {
+    card.setTimer(minutes);
+  }
+};
+
+window.setFanMode = function(mode) {
+  const card = document.querySelector('hvac-fan-card');
+  if (card) {
+    card.setFanMode(mode);
+  }
+};
+
 // Register it with HA for automatic discovery
 window.customCards = window.customCards || [];
 console.log('🔍 Current window.customCards before registration:', window.customCards.length);
@@ -1048,7 +1182,7 @@ console.log('🔍 Current window.customCards before registration:', window.custo
 window.customCards.push({
   type: "hvac-fan-card",
   name: "Hvac Fan Control Card",
-  description: "Advanced control card for Orcon or other ventilation systems",
+  description: "Advanced control card for Orcon or other ventilation systems with multi-language support",
   preview: true, // Shows in card picker
   documentationURL: "https://github.com/wimpie70/ramses_extras"
 });
