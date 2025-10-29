@@ -22,8 +22,8 @@ repos:
     hooks:
       - id: eslint
         name: ESLint
-        entry: bash -c 'source ~/venvs/extras/bin/activate && ./node_modules/.bin/eslint --ext .js,.jsx,.ts,.tsx --fix --quiet --color'
-        language: system
+        entry: npx eslint --ext .js,.jsx,.ts,.tsx --fix --quiet --color
+        language: node
         types: [file]
         files: \.(js|jsx|ts|tsx)$
         exclude: >-
@@ -39,8 +39,8 @@ repos:
 
       - id: prettier
         name: Prettier
-        entry: bash -c 'source ~/venvs/extras/bin/activate && ./node_modules/.bin/prettier --write --ignore-unknown'
-        language: system
+        entry: npx prettier --write --ignore-unknown
+        language: node
         types: [file]
         files: \.(js|jsx|ts|tsx|json|md|css|scss|html|yaml|yml|graphql|mdx)$
         exclude: >-
