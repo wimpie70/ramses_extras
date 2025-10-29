@@ -1,11 +1,4 @@
 {
-  "common": {
-    "card_translations": {
-      "parameter_edit": {
-        "settings_for_device": "Settings for Device:"
-      }
-    }
-  },
   "config": {
     "step": {
       "user": {
@@ -42,6 +35,13 @@
         "data": {
           "confirm": "I understand and want to proceed"
         }
+      }
+    }
+  },
+  "exceptions": {
+    "card_translations": {
+      "parameter_edit": {
+        "settings_for_device": "Settings for Device:"
       }
     }
   }

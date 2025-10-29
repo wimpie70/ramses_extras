@@ -9,7 +9,7 @@ export function createParameterEditSection(params) {
   const hass = params.hass; // Pass hass instance
 
   // Get localized text for "Settings for Device:"
-  const settingsText = hass.localize('component.ramses_extras.common.card_translations.parameter_edit.settings_for_device') || 'Settings for Device:';
+  const settingsText = hass.localize('component.ramses_extras.exceptions.card_translations.parameter_edit.settings_for_device') || 'Settings for Device:';
 
   return `
     <div class="parameter-edit-section">
