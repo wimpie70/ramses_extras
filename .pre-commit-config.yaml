@@ -16,7 +16,7 @@ repos:
         args: [--config-file=mypy.ini, custom_components/, tests/]
         always_run: true
         pass_filenames: false
-        additional_dependencies: [types-all]
+        additional_dependencies: [types-requests, types-PyYAML]
 
   # JavaScript/TypeScript linting
   - repo: local
