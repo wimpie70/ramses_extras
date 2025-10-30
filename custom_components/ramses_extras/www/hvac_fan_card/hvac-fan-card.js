@@ -22,6 +22,9 @@ import { FAN_COMMANDS } from '/local/ramses_extras/helpers/card-commands.js';
 import { sendPacket, getBoundRemDevice, callService, entityExists, getEntityState, callWebSocket, setFanParameter } from '/local/ramses_extras/helpers/card-services.js';
 import { validateCoreEntities, validateDehumidifyEntities, logValidationResults, getEntityValidationReport } from '/local/ramses_extras/helpers/card-validation.js';
 
+// Make FAN_COMMANDS globally available
+window.FAN_COMMANDS = FAN_COMMANDS;
+
 // Debug: Check if imports work
 console.log('✅ ES6 imports loaded suRFessfully');
 
@@ -72,36 +75,6 @@ class HvacFanCard extends HTMLElement {
   static get FAN_COMMANDS() {
     return FAN_COMMANDS;
   }
-
-      // // 2411 commands (sorted by payload)
-      // 'req_2411_supply_away': {
-      //   code: '2411',
-      //   payload: '00003D'  // Request supply away
-      // },
-      // 'req_2411_exhaust_away': {
-      //   code: '2411',
-      //   payload: '00003E'  // Request exhaust away
-      // },
-      // 'req_2411_filtertime': {
-      //   code: '2411',
-      //   payload: '000031'  // Request filter time
-      // },
-      // 'req_2411_moist_pos': {
-      //   code: '2411',
-      //   payload: '00004E'  // Request moisture position
-      // },
-      // 'req_2411_moist_sens': {
-      //   code: '2411',
-      //   payload: '000052'  // Request moisture sensitivity
-      // },
-      // 'req_2411_moist_overrun': {
-      //   code: '2411',
-      //   payload: '000058'  // Request moisture overrun
-      // },
-      // 'req_2411_comfort': {
-      //   code: '2411',
-      //   payload: '000075'  // Request comfort
-      // },
 
 
   static get properties() {
@@ -162,7 +135,8 @@ class HvacFanCard extends HTMLElement {
     return await sendPacket(this._hass, deviceId, fromId, verb, code, payload);
   }
 
-  async sendFanCommand(commandKey) {
+  async send_command(commandKey) {
+    console.log(`send_command ${commandKey}`)
     if (!this._hass || !this.config?.device_id) {
       console.error('Missing Home Assistant instance or device_id');
       return false;
@@ -444,7 +418,7 @@ class HvacFanCard extends HTMLElement {
     const cardHtml = [
       createCardHeader(CARD_STYLE),
       createTopSection(templateData),
-      createControlsSection(dehumEntitiesAvailable),  // Pass availability flag
+      createControlsSection(dehumEntitiesAvailable, config),  // Pass availability flag and config
       createCardFooter()
     ].join('');
 
@@ -514,68 +488,6 @@ class HvacFanCard extends HTMLElement {
     return dehumValidation.available;
   }
 
-  // Handle bypass button clicks
-  async sendBypassCommand(mode) {
-    console.log('Setting bypass to:', mode);
-
-    try {
-      // Send the actual bypass command via FAN_COMMANDS
-      const commandKey = 'bypass_' + mode;
-      await this.sendFanCommand(commandKey);
-
-      // Update UI immediately to reflect the change
-      this.updateBypassUI(mode);
-
-      console.log(`✅ Bypass mode set to ${mode} successfully`);
-      console.log('📋 Note: SVG will update automatically when entity state changes');
-    } catch (error) {
-      console.error(`❌ Failed to set bypass mode to ${mode}:`, error);
-    }
-  }
-
-  // Handle timer button clicks
-  async setTimer(minutes) {
-    console.log('Setting timer for:', minutes, 'minutes');
-
-    try {
-      // Send the actual timer command via FAN_COMMANDS
-      // Convert minutes to command key (e.g., '15' -> 'high_15')
-      const commandKey = `high_${minutes}`;
-      await this.sendFanCommand(commandKey);
-
-      // Update UI immediately to reflect the change
-      this.updateTimerUI(minutes);
-
-      console.log(`✅ Timer set to ${minutes} minutes successfully`);
-    } catch (error) {
-      console.error(`❌ Failed to set timer to ${minutes} minutes:`, error);
-    }
-  }
-
-  // Handle fan mode changes
-  async setFanMode(mode) {
-    console.log('Setting fan mode to:', mode);
-
-    if (mode === 'active') {
-      // Find the actual dehumidify switch entity
-      const deviceId = this.config.device_id;
-      const switchEntity = 'switch.dehumidify_' + deviceId.replace(/:/g, '_');
-
-      if (entityExists(this._hass, switchEntity)) {
-        // Toggle dehumidify mode by calling the switch service
-        console.log(`Toggling dehumidify switch: ${switchEntity}`);
-        await callService(this._hass, 'switch', 'toggle', {
-          entity_id: switchEntity
-        });
-      } else {
-        console.error(`Dehumidify switch not found: ${switchEntity}`);
-      }
-    } else {
-      // Handle other fan modes (if any)
-      console.log('Other fan mode:', mode);
-      await this.sendFanCommand(mode);
-    }
-  }
 
   // Toggle between normal and parameter edit modes
   async toggleParameterMode() {
@@ -796,12 +708,6 @@ class HvacFanCard extends HTMLElement {
             console.log('Executing onclick handler:', onclick);
             const fn = new Function('event', `try { ${onclick} } catch(e) { console.error('Error in button handler:', e); }`);
             fn.call(button, e);
-          } else if (button.dataset.mode) {
-            console.log('Calling setFanMode with mode:', button.dataset.mode);
-            this.setFanMode(button.dataset.mode);
-          } else if (button.dataset.timer) {
-            console.log('Calling setTimer with minutes:', button.dataset.timer);
-            this.setTimer(button.dataset.timer);
           }
         });
       });
@@ -880,24 +786,35 @@ window.updateParameter = function(paramKey, newValue) {
   }
 };
 
-window.setBypassMode = function(mode) {
-  const card = document.querySelector('hvac-fan-card');
-  if (card) {
-    card.sendBypassCommand(mode);
-  }
-};
+window.send_command = function(commandKey, deviceId, buttonElement) {
+  console.log(`window.send_command called with: ${commandKey}, deviceId: ${deviceId}, buttonElement:`, buttonElement);
 
-window.setTimer = function(minutes) {
-  const card = document.querySelector('hvac-fan-card');
-  if (card) {
-    card.setTimer(minutes);
+  // Get the command definition
+  const command = window.FAN_COMMANDS[commandKey];
+  if (!command) {
+    console.error(`No command defined for: ${commandKey}`);
+    return;
   }
-};
 
-window.setFanMode = function(mode) {
-  const card = document.querySelector('hvac-fan-card');
-  if (card) {
-    card.setFanMode(mode);
+  // Use the button element to find the host element
+  let element = buttonElement;
+  while (element && element.tagName !== 'HVAC-FAN-CARD') {
+    element = element.parentElement || element.getRootNode()?.host;
+  }
+
+  if (element && element._hass) {
+    console.log('Found HASS instance in host element');
+    element._hass.callService('ramses_cc', 'send_packet', {
+      device_id: deviceId,
+      from_id: deviceId, // fallback
+      verb: command.verb,
+      code: command.code,
+      payload: command.payload
+    });
+  } else {
+    console.error('Could not find HASS instance in host element');
+    console.log('Element found:', element);
+    console.log('Element _hass:', element?._hass);
   }
 };
 

@@ -87,6 +87,7 @@ export async function getBoundRemDevice(hass, deviceId) {
  * @returns {Promise<Object>} Service call result
  */
 export async function sendPacket(hass, deviceId, fromId, verb, code, payload) {
+  console.log(`send_packet to: ${deviceId}, from ${fromId} ${verb} ${code}  ${payload}`)
   return await callService(hass, 'ramses_cc', 'send_packet', {
     device_id: deviceId,
     from_id: fromId,
