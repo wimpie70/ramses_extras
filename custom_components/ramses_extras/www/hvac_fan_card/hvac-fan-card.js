@@ -42,20 +42,65 @@ class SimpleCardTranslator {
 
   async loadTranslations(cardPath) {
     const translationPath = `${cardPath}/translations/${this.currentLanguage}.json`;
+    console.log(`🌍 Fetching translations from: ${translationPath}`);
     try {
       const response = await fetch(translationPath);
+      console.log(`📡 Response for ${translationPath}:`, {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
       if (response.ok) {
-        this.translations = await response.json();
-      } else {
-        // Try English fallback
-        const fallbackPath = `${cardPath}/translations/en.json`;
-        const fallbackResponse = await fetch(fallbackPath);
-        if (fallbackResponse.ok) {
-          this.translations = await fallbackResponse.json();
+        try {
+          const responseText = await response.text();
+          console.log(`📄 Response content (first 200 chars): "${responseText.substring(0, 200)}..."`);
+          this.translations = JSON.parse(responseText);
+          console.log(`✅ Successfully loaded translations for ${this.currentLanguage}`);
+        } catch (jsonError) {
+          console.warn(`⚠️ Invalid JSON in translation file ${translationPath}:`, jsonError);
+          await this.loadFallbackTranslations(cardPath);
         }
+      } else {
+        console.warn(`⚠️ Translation file not found (${response.status}): ${translationPath}`);
+        await this.loadFallbackTranslations(cardPath);
       }
     } catch (error) {
       console.warn(`⚠️ Could not load translations:`, error);
+      await this.loadFallbackTranslations(cardPath);
+    }
+  }
+
+  async loadFallbackTranslations(cardPath) {
+    const fallbackPath = `${cardPath}/translations/en.json`;
+    console.log(`🌍 Fetching fallback translations from: ${fallbackPath}`);
+    try {
+      const fallbackResponse = await fetch(fallbackPath);
+      console.log(`📡 Fallback response for ${fallbackPath}:`, {
+        ok: fallbackResponse.ok,
+        status: fallbackResponse.status,
+        statusText: fallbackResponse.statusText,
+        headers: Object.fromEntries(fallbackResponse.headers.entries())
+      });
+
+      if (fallbackResponse.ok) {
+        try {
+          const responseText = await fallbackResponse.text();
+          console.log(`📄 Fallback response content (first 200 chars): "${responseText.substring(0, 200)}..."`);
+          this.translations = JSON.parse(responseText);
+          console.log(`✅ Successfully loaded fallback English translations`);
+        } catch (jsonError) {
+          console.warn(`⚠️ Invalid JSON in fallback translation file:`, jsonError);
+          this.translations = {};
+        }
+      } else {
+        console.warn(`⚠️ Fallback translation file not found: ${fallbackPath}`);
+        this.translations = {};
+      }
+    } catch (error) {
+      console.warn(`⚠️ Could not load fallback translations:`, error);
+      this.translations = {};
     }
   }
 
@@ -81,6 +126,23 @@ class SimpleCardTranslator {
     });
   }
 
+  has(key) {
+    if (!this.translations || !this.initialized) return false;
+
+    const keys = key.split('.');
+    let value = this.translations;
+
+    for (const k of keys) {
+      if (value && typeof value === 'object' && k in value) {
+        value = value[k];
+      } else {
+        return false;
+      }
+    }
+
+    return typeof value === 'string';
+  }
+
   getCurrentLanguage() {
     return this.currentLanguage;
   }
@@ -88,6 +150,9 @@ class SimpleCardTranslator {
 
 // Debug: Check if this file is being loaded
 console.log('🚀 hvac-fan-card.js is being loaded!');
+
+// Translation path configuration
+const TRANSLATION_BASE_PATH = '/local/ramses_extras/hvac_fan_card';
 
 import { NORMAL_SVG, BYPASS_OPEN_SVG } from './airflow-diagrams.js';
 import { CARD_STYLE } from './card-styles.js';
@@ -114,7 +179,7 @@ class HvacFanCard extends HTMLElement {
   // Initialize translations for this card
   async initTranslations() {
     this.translator = new SimpleCardTranslator('hvac-fan-card');
-    await this.translator.init('./www/hvac_fan_card');
+    await this.translator.init('/local/ramses_extras/hvac_fan_card');
   }
 
   // Helper method to get translated strings

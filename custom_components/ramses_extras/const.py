@@ -53,6 +53,7 @@ AVAILABLE_FEATURES = {
         "category": "cards",
         "location": "hvac_fan_card/hvac-fan-card.js",
         "editor": "hvac_fan_card/hvac-fan-card-editor.js",
+        "translations": "hvac_fan_card/translations",
         "default_enabled": False,
         "supported_device_types": [
             "HvacVentilator"

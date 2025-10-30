@@ -74,6 +74,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                         )
                     )
 
+                # Register HVAC fan card as a specific static path (entire directory)
+                hvac_card_path = INTEGRATION_DIR / "www" / "hvac_fan_card"
+                if hvac_card_path.exists():
+                    static_configs.append(
+                        StaticPathConfig(
+                            "/local/ramses_extras/hvac_fan_card",
+                            str(hvac_card_path),
+                            True,
+                        )
+                    )
+
                 if static_configs:
                     await hass.http.async_register_static_paths(static_configs)
                     _STATIC_PATHS_REGISTERED = True
