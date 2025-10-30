@@ -126,85 +126,7 @@ class HvacFanCard extends HTMLElement {
     });
   }
 
-  // Use service methods from shared helper
-  async getBoundRem(deviceId) {
-    return await getBoundRemDevice(this._hass, deviceId);
-  }
 
-  async sendPacket(deviceId, fromId, verb, code, payload) {
-    return await sendPacket(this._hass, deviceId, fromId, verb, code, payload);
-  }
-
-  async send_command(commandKey) {
-    console.log(`send_command ${commandKey}`)
-    if (!this._hass || !this.config?.device_id) {
-      console.error('Missing Home Assistant instance or device_id');
-      return false;
-    }
-
-    const command = HvacFanCard.FAN_COMMANDS[commandKey];
-    if (!command) {
-      console.error(`No command defined for: ${commandKey}`);
-      return false;
-    }
-
-    try {
-      // Use the configured device ID
-      const deviceId = this.config.device_id;
-
-      console.log(`Using configured device ID for commands: ${deviceId}`);
-
-      // Find the actual dehumidify switch entity
-      const switchEntity = 'switch.dehumidify_' + deviceId.replace(/:/g, '_');
-
-      if (commandKey === 'active') {
-        // Toggle dehumidify mode by calling the switch service
-        console.log(`Toggling dehumidify switch: ${switchEntity}`);
-        await callService(this._hass, 'switch', 'turn_on', {
-          entity_id: switchEntity
-        });
-        return true;
-      }
-
-      // Get the bound REM device first
-      let remId;
-      try {
-        remId = await this.getBoundRem(deviceId);
-        if (remId) {
-          console.log(`Using bound REM as from_id: ${remId}`);
-        } else {
-          console.log('No bound REM found, using device_id as from_id');
-          remId = deviceId;
-        }
-      } catch (error) {
-        console.warn(`WebSocket error getting bound REM: ${error.message}. Falling back to device_id.`);
-        remId = null;
-      }
-
-      // Send the packet
-      await this.sendPacket(deviceId, remId, command.verb, command.code, command.payload);
-
-      console.log(`SuRFessfully sent ${commandKey} command`);
-
-      // Update UI based on command type
-      if (commandKey.startsWith('bypass_')) {
-        const mode = commandKey.replace('bypass_', '');
-        this.updateBypassUI(mode);
-        this.render(); // Force re-render to update SVG
-      } else {
-        // Update fan mode display
-        const fanModeElement = this.shadowRoot?.querySelector('#fanMode');
-        if (fanModeElement) {
-          fanModeElement.textContent = commandKey;
-        }
-      }
-
-      return true;
-    } catch (error) {
-      console.error(`Error sending ${commandKey} command:`, error);
-      return false;
-    }
-  }
 
   setConfig(config) {
     // console.log('=== hvacFanCard setConfig Debug ===');
@@ -622,45 +544,6 @@ class HvacFanCard extends HTMLElement {
     }
   }
 
-  updateTimerUI(minutes) {
-    console.log('Updating timer UI to:', minutes, 'minutes');
-    const timerElement = this.shadowRoot?.querySelector('#timer');
-    if (timerElement) {
-      timerElement.textContent = minutes + ' min';
-    }
-
-    // Update active state
-    const buttons = this.shadowRoot?.querySelectorAll('.control-button');
-    if (buttons) {
-      buttons.forEach(btn => {
-        const label = btn.querySelector('.control-label')?.textContent;
-        if (label === minutes + 'm') {
-          btn.classList.add('active');
-        } else if (['15m', '30m', '60m'].includes(label)) {
-          btn.classList.remove('active');
-        }
-      });
-    }
-  }
-
-  updateBypassUI(mode) {
-    console.log('Updating bypass UI to:', mode);
-
-    // Update active state
-    const buttons = this.shadowRoot?.querySelectorAll('.control-button');
-    if (buttons) {
-      buttons.forEach(btn => {
-        const label = btn.querySelector('.control-label')?.textContent;
-        if ((mode === 'auto' && label === 'Bypass Auto') ||
-            (mode === 'close' && label === 'Bypass Close') ||
-            (mode === 'open' && label === 'Bypass Open')) {
-          btn.classList.add('active');
-        } else if (label?.startsWith('Bypass')) {
-          btn.classList.remove('active');
-        }
-      });
-    }
-  }
 
   // Add event listeners after the component is connected to the DOM
   connectedCallback() {
@@ -786,6 +669,8 @@ window.updateParameter = function(paramKey, newValue) {
   }
 };
 
+// Note: window.send_command is defined below
+
 window.send_command = function(commandKey, deviceId, buttonElement) {
   console.log(`window.send_command called with: ${commandKey}, deviceId: ${deviceId}, buttonElement:`, buttonElement);
 
@@ -803,14 +688,33 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
   }
 
   if (element && element._hass) {
-    console.log('Found HASS instance in host element');
-    element._hass.callService('ramses_cc', 'send_packet', {
-      device_id: deviceId,
-      from_id: deviceId, // fallback
-      verb: command.verb,
-      code: command.code,
-      payload: command.payload
-    });
+    console.log('Found HASS instance in host element, using proper from_id');
+
+    // Use the imported helper functions directly with the element's hass instance
+    (async () => {
+      try {
+        // Get the bound REM device first for proper from_id
+        let remId;
+        try {
+          remId = await getBoundRemDevice(element._hass, deviceId);
+          if (remId) {
+            console.log(`Using bound REM as from_id: ${remId}`);
+          } else {
+            console.log('No bound REM found, using device_id as from_id');
+            remId = deviceId;
+          }
+        } catch (error) {
+          console.warn(`WebSocket error getting bound REM: ${error.message}. Falling back to device_id.`);
+          remId = deviceId;
+        }
+
+        // Send the packet with proper from_id
+        await sendPacket(element._hass, deviceId, remId, command.verb, command.code, command.payload);
+        console.log(`Successfully sent ${commandKey} command`);
+      } catch (error) {
+        console.error('Error sending command:', error);
+      }
+    })();
   } else {
     console.error('Could not find HASS instance in host element');
     console.log('Element found:', element);
