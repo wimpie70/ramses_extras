@@ -23,6 +23,7 @@ DESCRIPTION_PLACEHOLDER_INFO = (
     "Ramses Extras provides additional functionality on top of Ramses RF."
 )
 CARD_FOLDER = "www"
+CARD_HELPERS_FOLDER = "www/helpers"
 
 # Device type to entity type mapping
 # Each feature defines a card/automation with specific requirements

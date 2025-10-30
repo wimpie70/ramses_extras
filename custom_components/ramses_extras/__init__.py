@@ -12,6 +12,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     AVAILABLE_FEATURES,
     CARD_FOLDER,
+    CARD_HELPERS_FOLDER,
     DEVICE_ENTITY_MAPPING,
     DEVICE_SERVICE_MAPPING,
     DOMAIN,
@@ -74,13 +75,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                         )
                     )
 
-                # Register HVAC fan card as a specific static path (entire directory)
-                hvac_card_path = INTEGRATION_DIR / "www" / "hvac_fan_card"
-                if hvac_card_path.exists():
+                # Register helpers directory for shared modules
+                helpers_path = INTEGRATION_DIR / CARD_HELPERS_FOLDER
+                if helpers_path.exists():
                     static_configs.append(
                         StaticPathConfig(
-                            "/local/ramses_extras/hvac_fan_card",
-                            str(hvac_card_path),
+                            "/local/ramses_extras/helpers",
+                            str(helpers_path),
                             True,
                         )
                     )

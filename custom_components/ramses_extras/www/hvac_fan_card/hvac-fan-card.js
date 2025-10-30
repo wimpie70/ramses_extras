@@ -16,11 +16,11 @@ import { createCardHeader, createTopSection, createParameterEditSection, createC
 import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
 
-// Import reusable helpers
-import { SimpleCardTranslator } from '../../../helpers/card-translations.js';
-import { FAN_COMMANDS } from '../../../helpers/card-commands.js';
-import { sendPacket, getBoundRemDevice, callService, entityExists, getEntityState, callWebSocket, setFanParameter } from '../../../helpers/card-services.js';
-import { validateCoreEntities, validateDehumidifyEntities, logValidationResults, getEntityValidationReport } from '../../../helpers/card-validation.js';
+// Import reusable helpers from shared location
+import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
+import { FAN_COMMANDS } from '/local/ramses_extras/helpers/card-commands.js';
+import { sendPacket, getBoundRemDevice, callService, entityExists, getEntityState, callWebSocket, setFanParameter } from '/local/ramses_extras/helpers/card-services.js';
+import { validateCoreEntities, validateDehumidifyEntities, logValidationResults, getEntityValidationReport } from '/local/ramses_extras/helpers/card-validation.js';
 
 // Debug: Check if imports work
 console.log('✅ ES6 imports loaded suRFessfully');
