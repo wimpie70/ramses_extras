@@ -4,6 +4,148 @@
 /* global fetch */
 
 /**
+ * Simple Localization Support
+ * Embedded translation system to avoid module import issues
+ */
+
+// Simple translation system embedded directly in the card
+export class SimpleCardTranslator {
+  constructor(cardName) {
+    this.cardName = cardName;
+    this.translations = {};
+    this.currentLanguage = 'en';
+    this.initialized = false;
+  }
+
+  async init(cardPath) {
+    try {
+      this.currentLanguage = this.detectLanguage();
+      await this.loadTranslations(cardPath);
+      this.initialized = true;
+      console.log(`🌍 ${this.cardName} translations loaded (${this.currentLanguage})`);
+    } catch (error) {
+      console.warn(`⚠️ Failed to load translations for ${this.cardName}:`, error);
+      this.initialized = true; // Continue without translations
+    }
+  }
+
+  detectLanguage() {
+    if (window.hass && window.hass.language) {
+      return window.hass.language.split('-')[0];
+    }
+    if (navigator.language) {
+      return navigator.language.split('-')[0];
+    }
+    return 'en';
+  }
+
+  async loadTranslations(cardPath) {
+    const translationPath = `${cardPath}/translations/${this.currentLanguage}.json`;
+    console.log(`🌍 Fetching translations from: ${translationPath}`);
+    try {
+      const response = await fetch(translationPath);
+      console.log(`📡 Response for ${translationPath}:`, {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
+      if (response.ok) {
+        try {
+          const responseText = await response.text();
+          this.translations = JSON.parse(responseText);
+          console.log(`✅ Successfully loaded translations for ${this.currentLanguage}`);
+        } catch (jsonError) {
+          console.warn(`⚠️ Invalid JSON in translation file ${translationPath}:`, jsonError);
+          await this.loadFallbackTranslations(cardPath);
+        }
+      } else {
+        console.warn(`⚠️ Translation file not found (${response.status}): ${translationPath}`);
+        await this.loadFallbackTranslations(cardPath);
+      }
+    } catch (error) {
+      console.warn(`⚠️ Could not load translations:`, error);
+      await this.loadFallbackTranslations(cardPath);
+    }
+  }
+
+  async loadFallbackTranslations(cardPath) {
+    const fallbackPath = `${cardPath}/translations/en.json`;
+    console.log(`🌍 Fetching fallback translations from: ${fallbackPath}`);
+    try {
+      const fallbackResponse = await fetch(fallbackPath);
+      console.log(`📡 Fallback response for ${fallbackPath}:`, {
+        ok: fallbackResponse.ok,
+        status: fallbackResponse.status,
+        statusText: fallbackResponse.statusText,
+        headers: Object.fromEntries(fallbackResponse.headers.entries())
+      });
+
+      if (fallbackResponse.ok) {
+        try {
+          const responseText = await fallbackResponse.text();
+          this.translations = JSON.parse(responseText);
+          console.log(`✅ Successfully loaded fallback English translations`);
+        } catch (jsonError) {
+          console.warn(`⚠️ Invalid JSON in fallback translation file:`, jsonError);
+          this.translations = {};
+        }
+      } else {
+        console.warn(`⚠️ Fallback translation file not found: ${fallbackPath}`);
+        this.translations = {};
+      }
+    } catch (error) {
+      console.warn(`⚠️ Could not load fallback translations:`, error);
+      this.translations = {};
+    }
+  }
+
+  t(key, params = {}) {
+    if (!this.initialized) return key;
+
+    const keys = key.split('.');
+    let value = this.translations;
+
+    for (const k of keys) {
+      if (value && typeof value === 'object' && k in value) {
+        value = value[k];
+      } else {
+        return key; // Return key if translation not found
+      }
+    }
+
+    if (typeof value !== 'string') return key;
+
+    // Simple string interpolation
+    return value.replace(/\{(\w+)\}/g, (match, paramKey) => {
+      return params[paramKey] !== undefined ? params[paramKey] : match;
+    });
+  }
+
+  has(key) {
+    if (!this.translations || !this.initialized) return false;
+
+    const keys = key.split('.');
+    let value = this.translations;
+
+    for (const k of keys) {
+      if (value && typeof value === 'object' && k in value) {
+        value = value[k];
+      } else {
+        return false;
+      }
+    }
+
+    return typeof value === 'string';
+  }
+
+  getCurrentLanguage() {
+    return this.currentLanguage;
+  }
+}
+
+/**
  * Translation Manager for Home Assistant Custom Cards
  * Provides flexible localization support following HA conventions
  */

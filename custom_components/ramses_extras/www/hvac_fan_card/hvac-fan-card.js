@@ -4,150 +4,6 @@
 /* global fetch */
 /* global navigator */
 
-/**
- * Simple Localization Support
- * Embedded translation system to avoid module import issues
- */
-
-// Simple translation system embedded directly in the card
-class SimpleCardTranslator {
-  constructor(cardName) {
-    this.cardName = cardName;
-    this.translations = {};
-    this.currentLanguage = 'en';
-    this.initialized = false;
-  }
-
-  async init(cardPath) {
-    try {
-      this.currentLanguage = this.detectLanguage();
-      await this.loadTranslations(cardPath);
-      this.initialized = true;
-      console.log(`🌍 ${this.cardName} translations loaded (${this.currentLanguage})`);
-    } catch (error) {
-      console.warn(`⚠️ Failed to load translations for ${this.cardName}:`, error);
-      this.initialized = true; // Continue without translations
-    }
-  }
-
-  detectLanguage() {
-    if (window.hass && window.hass.language) {
-      return window.hass.language.split('-')[0];
-    }
-    if (navigator.language) {
-      return navigator.language.split('-')[0];
-    }
-    return 'en';
-  }
-
-  async loadTranslations(cardPath) {
-    const translationPath = `${cardPath}/translations/${this.currentLanguage}.json`;
-    console.log(`🌍 Fetching translations from: ${translationPath}`);
-    try {
-      const response = await fetch(translationPath);
-      console.log(`📡 Response for ${translationPath}:`, {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
-      if (response.ok) {
-        try {
-          const responseText = await response.text();
-          console.log(`📄 Response content (first 200 chars): "${responseText.substring(0, 200)}..."`);
-          this.translations = JSON.parse(responseText);
-          console.log(`✅ Successfully loaded translations for ${this.currentLanguage}`);
-        } catch (jsonError) {
-          console.warn(`⚠️ Invalid JSON in translation file ${translationPath}:`, jsonError);
-          await this.loadFallbackTranslations(cardPath);
-        }
-      } else {
-        console.warn(`⚠️ Translation file not found (${response.status}): ${translationPath}`);
-        await this.loadFallbackTranslations(cardPath);
-      }
-    } catch (error) {
-      console.warn(`⚠️ Could not load translations:`, error);
-      await this.loadFallbackTranslations(cardPath);
-    }
-  }
-
-  async loadFallbackTranslations(cardPath) {
-    const fallbackPath = `${cardPath}/translations/en.json`;
-    console.log(`🌍 Fetching fallback translations from: ${fallbackPath}`);
-    try {
-      const fallbackResponse = await fetch(fallbackPath);
-      console.log(`📡 Fallback response for ${fallbackPath}:`, {
-        ok: fallbackResponse.ok,
-        status: fallbackResponse.status,
-        statusText: fallbackResponse.statusText,
-        headers: Object.fromEntries(fallbackResponse.headers.entries())
-      });
-
-      if (fallbackResponse.ok) {
-        try {
-          const responseText = await fallbackResponse.text();
-          console.log(`📄 Fallback response content (first 200 chars): "${responseText.substring(0, 200)}..."`);
-          this.translations = JSON.parse(responseText);
-          console.log(`✅ Successfully loaded fallback English translations`);
-        } catch (jsonError) {
-          console.warn(`⚠️ Invalid JSON in fallback translation file:`, jsonError);
-          this.translations = {};
-        }
-      } else {
-        console.warn(`⚠️ Fallback translation file not found: ${fallbackPath}`);
-        this.translations = {};
-      }
-    } catch (error) {
-      console.warn(`⚠️ Could not load fallback translations:`, error);
-      this.translations = {};
-    }
-  }
-
-  t(key, params = {}) {
-    if (!this.initialized) return key;
-
-    const keys = key.split('.');
-    let value = this.translations;
-
-    for (const k of keys) {
-      if (value && typeof value === 'object' && k in value) {
-        value = value[k];
-      } else {
-        return key; // Return key if translation not found
-      }
-    }
-
-    if (typeof value !== 'string') return key;
-
-    // Simple string interpolation
-    return value.replace(/\{(\w+)\}/g, (match, paramKey) => {
-      return params[paramKey] !== undefined ? params[paramKey] : match;
-    });
-  }
-
-  has(key) {
-    if (!this.translations || !this.initialized) return false;
-
-    const keys = key.split('.');
-    let value = this.translations;
-
-    for (const k of keys) {
-      if (value && typeof value === 'object' && k in value) {
-        value = value[k];
-      } else {
-        return false;
-      }
-    }
-
-    return typeof value === 'string';
-  }
-
-  getCurrentLanguage() {
-    return this.currentLanguage;
-  }
-}
-
 // Debug: Check if this file is being loaded
 console.log('🚀 hvac-fan-card.js is being loaded!');
 
@@ -159,6 +15,12 @@ import { CARD_STYLE } from './card-styles.js';
 import { createCardHeader, createTopSection, createParameterEditSection, createControlsSection, createCardFooter } from './templates/card-templates.js';
 import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
+
+// Import reusable helpers
+import { SimpleCardTranslator } from '../../../helpers/card-translations.js';
+import { FAN_COMMANDS } from '../../../helpers/card-commands.js';
+import { sendPacket, getBoundRemDevice, callService, entityExists, getEntityState, callWebSocket, setFanParameter } from '../../../helpers/card-services.js';
+import { validateCoreEntities, validateDehumidifyEntities, logValidationResults, getEntityValidationReport } from '../../../helpers/card-validation.js';
 
 // Debug: Check if imports work
 console.log('✅ ES6 imports loaded suRFessfully');
@@ -206,100 +68,9 @@ class HvacFanCard extends HTMLElement {
     return this.translator.getCurrentLanguage();
   }
 
-  // All fan commands in one simple object
+  // Use commands from the shared helper
   static get FAN_COMMANDS() {
-    return {
-      'request10D0': {
-        code: '10D0',
-        verb: 'RQ',
-        payload: '00'  // Request 10D0
-      },
-
-      'away': {
-        code: '22F1',
-        verb: ' I',
-        payload: '000007'  // Away mode
-      },
-      'low': {
-        code: '22F1',
-        verb: ' I',
-        payload: '000107'  // Low speed
-      },
-      'medium': {
-        code: '22F1',
-        verb: ' I',
-        payload: '000207'  // Medium speed
-      },
-      'high': {
-        code: '22F1',
-        verb: ' I',
-        payload: '000307'  // High speed
-      },
-      'active': {
-        code: '22F1',
-        verb: ' I',
-        payload: '000807'  // Active mode
-      },
-      'auto2': {
-        code: '22F1',
-        verb: ' I',
-        payload: '000507'  // Auto mode
-      },
-      'boost': {
-        code: '22F1',
-        verb: ' I',
-        payload: '000607'  // Boost mode
-      },
-      'disable': {
-        code: '22F1',
-        verb: ' I',
-        payload: '000707'  // Disable mode
-      },
-
-      'filter_reset': {
-        code: '10D0',
-        verb: ' W',
-        payload: '00FF'  // Filter reset
-      },
-
-      'high_15': {
-        code: '22F3',
-        verb: ' I',
-        payload: '00120F03040404'  // 15 minutes timer
-      },
-      'high_30': {
-        code: '22F3',
-        verb: ' I',
-        payload: '00121E03040404'  // 30 minutes timer
-      },
-      'high_60': {
-        code: '22F3',
-        verb: ' I',
-        payload: '00123C03040404'  // 60 minutes timer
-      },
-
-      'bypass_close': {
-        code: '22F7',
-        verb: ' W',
-        payload: '0000EF'  // Bypass close
-      },
-      'bypass_open': {
-        code: '22F7',
-        verb: ' W',
-        payload: '00C8EF'  // Bypass open
-      },
-      'bypass_auto': {
-        code: '22F7',
-        verb: ' W',
-        payload: '00FFEF'  // Bypass auto
-      },
-
-      'request31DA': {
-        code: '31DA',
-        verb: 'RQ',
-        payload: '00'
-      },
-    };
+    return FAN_COMMANDS;
   }
 
       // // 2411 commands (sorted by payload)
@@ -382,57 +153,13 @@ class HvacFanCard extends HTMLElement {
     });
   }
 
-  // Method to get bound REM device via WebSocket
+  // Use service methods from shared helper
   async getBoundRem(deviceId) {
-    if (!this._hass) {
-      throw new Error('Home Assistant instance not available');
-    }
-
-    const sensor_id = 'climate.' + deviceId.replace(/:/g, '_');
-    try {
-      console.log('bound_rem: ', this._hass.states[sensor_id].attributes.bound_rem);
-      const bound_rem = this._hass.states[sensor_id].attributes.bound_rem;
-      if (bound_rem) {
-        return bound_rem;
-      }
-    } catch (error) {
-      console.error('Error getting bound REM device:', error);
-      // Don't throw error, just return null to use device_id as from_id
-      return null;
-    }
-
-    // try {
-    //   const result = await this._hass.connection.sendMessagePromise({
-    //     type: 'ramses_RF/get_bound_rem',
-    //     device_id: deviceId
-    //   });
-
-    //   return result.rem_id;
-    // } catch (error) {
-    //   console.error('Error getting bound REM device:', error);
-    //   throw error;
-    // }
+    return await getBoundRemDevice(this._hass, deviceId);
   }
 
-  // Method to send packet via ramses_RF service
   async sendPacket(deviceId, fromId, verb, code, payload) {
-    if (!this._hass) {
-      throw new Error('Home Assistant instance not available');
-    }
-
-    try {
-      await this._hass.callService('ramses_cc', 'send_packet', {
-        device_id: deviceId,
-        from_id: fromId,
-        verb: verb,
-        code: code,
-        payload: payload
-      });
-      console.log(`SuRFessfully sent packet: ${verb} ${code} ${payload}`);
-    } catch (error) {
-      console.error('Error sending packet:', error);
-      throw error;
-    }
+    return await sendPacket(this._hass, deviceId, fromId, verb, code, payload);
   }
 
   async sendFanCommand(commandKey) {
@@ -459,7 +186,7 @@ class HvacFanCard extends HTMLElement {
       if (commandKey === 'active') {
         // Toggle dehumidify mode by calling the switch service
         console.log(`Toggling dehumidify switch: ${switchEntity}`);
-        await this._hass.callService('switch', 'turn_on', {
+        await callService(this._hass, 'switch', 'turn_on', {
           entity_id: switchEntity
         });
         return true;
@@ -770,92 +497,10 @@ class HvacFanCard extends HTMLElement {
       device_id: config?.device_id,
       fullConfig: config
     });
-    // Check core entities
-    const coreEntities = {
-      'Indoor Temperature': config.indoor_temp_entity,
-      'Outdoor Temperature': config.outdoor_temp_entity,
-      'Indoor Humidity': config.indoor_humidity_entity,
-      'Outdoor Humidity': config.outdoor_humidity_entity,
-      'Supply Temperature': config.supply_temp_entity,
-      'Exhaust Temperature': config.exhaust_temp_entity,
-      'Fan Speed': config.fan_speed_entity,
-      'Fan Mode': config.fan_mode_entity,
-      'Bypass': config.bypass_entity,
-    };
 
-    const missingCoreEntities = [];
-    const availableCoreEntities = [];
-
-    Object.entries(coreEntities).forEach(([name, entityId]) => {
-      const exists = !!hass.states[entityId];
-      if (exists) {
-        availableCoreEntities.push(name);
-      } else {
-        missingCoreEntities.push(name);
-      }
-    });
-
-    if (availableCoreEntities.length > 0) {
-      console.log('✅ Available entities:', availableCoreEntities.join(', '));
-    }
-
-    if (missingCoreEntities.length > 0) {
-      console.warn('⚠️ Missing entities:', missingCoreEntities.join(', '));
-    }
-
-    // Check dehumidify entities specifically
-    const dehumEntities = {
-      'Dehumidify Mode': config.dehum_mode_entity,
-      'Dehumidify Active': config.dehum_active_entity,
-    };
-
-    const missingDehumEntities = [];
-    const availableDehumEntities = [];
-
-    Object.entries(dehumEntities).forEach(([name, entityId]) => {
-      const exists = !!hass.states[entityId];
-      if (exists) {
-        availableDehumEntities.push(name);
-      } else {
-        missingDehumEntities.push(name);
-      }
-    });
-
-    if (availableDehumEntities.length > 0) {
-      console.log('💧 Dehumidify entities available:', availableDehumEntities.join(', '));
-    }
-
-    if (missingDehumEntities.length > 0) {
-      console.log('💧 Dehumidify entities missing:', missingDehumEntities.join(', '));
-    }
-
-    // Check absolute humidity entities
-    const absHumidEntities = {
-      'Indoor Absolute Humidity': config.indoor_abs_humid_entity,
-      'Outdoor Absolute Humidity': config.outdoor_abs_humid_entity,
-    };
-
-    const missingAbsEntities = [];
-    const availableAbsEntities = [];
-
-    Object.entries(absHumidEntities).forEach(([name, entityId]) => {
-      const exists = !!hass.states[entityId];
-      if (exists) {
-        availableAbsEntities.push(name);
-      } else {
-        missingAbsEntities.push(name);
-      }
-    });
-
-    if (availableAbsEntities.length > 0) {
-      console.log('🌫️ Absolute humidity entities available:', availableAbsEntities.join(', '));
-    }
-
-    if (missingAbsEntities.length > 0) {
-      console.log('🌫️ Absolute humidity entities missing:', missingAbsEntities.join(', '));
-    }
-
-    console.log('🔍 Entity validation complete');
+    // Use the shared validation helper
+    const validationReport = getEntityValidationReport(hass, config);
+    logValidationResults(validationReport);
   }
 
   // Check if dehumidify entities are available
@@ -864,21 +509,9 @@ class HvacFanCard extends HTMLElement {
     const config = this.config;
     const hass = this._hass;
 
-    // Check if both dehumidify entities exist with correct format
-    const dehumModeExists = !!hass.states[config.dehum_mode_entity];
-    const dehumActiveExists = !!hass.states[config.dehum_active_entity];
-
-    const entitiesAvailable = dehumModeExists && dehumActiveExists;
-
-    console.log('💧 Dehumidify entity check:', {
-      dehumModeEntity: config.dehum_mode_entity,
-      dehumActiveEntity: config.dehum_active_entity,
-      dehumModeExists,
-      dehumActiveExists,
-      entitiesAvailable
-    });
-
-    return entitiesAvailable;
+    // Use the shared validation helper
+    const dehumValidation = validateDehumidifyEntities(hass, config);
+    return dehumValidation.available;
   }
 
   // Handle bypass button clicks
@@ -928,10 +561,10 @@ class HvacFanCard extends HTMLElement {
       const deviceId = this.config.device_id;
       const switchEntity = 'switch.dehumidify_' + deviceId.replace(/:/g, '_');
 
-      if (this._hass.states[switchEntity]) {
+      if (entityExists(this._hass, switchEntity)) {
         // Toggle dehumidify mode by calling the switch service
         console.log(`Toggling dehumidify switch: ${switchEntity}`);
-        await this._hass.callService('switch', 'toggle', {
+        await callService(this._hass, 'switch', 'toggle', {
           entity_id: switchEntity
         });
       } else {
@@ -968,7 +601,7 @@ class HvacFanCard extends HTMLElement {
   async fetchParameterSchema() {
     try {
       console.log('Fetching 2411 parameter schema via WebSocket...');
-      const result = await this._hass.callWS({
+      const result = await callWebSocket(this._hass, {
         type: "ramses_extras/get_2411_schema"
       });
       console.log('Parameter schema received:', Object.keys(result));
@@ -1060,11 +693,7 @@ class HvacFanCard extends HTMLElement {
       console.log(`📡 Calling ramses_cc.set_fan_param service for ${paramKey}...`);
       // Extract the parameter ID from the entity name (e.g., "param_31" -> "31")
       const paramId = paramKey.startsWith('param_') ? paramKey.replace('param_', '') : paramKey;
-      await this._hass.callService('ramses_cc', 'set_fan_param', {
-        device_id: this.config.device_id,
-        param_id: paramId,
-        value: newValue.toString()
-      });
+      await setFanParameter(this._hass, this.config.device_id, paramId, newValue);
       console.log(`✅ Parameter ${paramKey} update sent successfully (fire and forget)`);
       // Don't wait for confirmation - service handles it asynchronously
       if (paramItem) {
