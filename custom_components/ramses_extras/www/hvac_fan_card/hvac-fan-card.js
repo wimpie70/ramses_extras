@@ -711,6 +711,29 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
         // Send the packet with proper from_id
         await sendPacket(element._hass, deviceId, remId, command.verb, command.code, command.payload);
         console.log(`Successfully sent ${commandKey} command`);
+
+        // After sending command, wait a bit then request status update and refresh entity states
+        setTimeout(async () => {
+          try {
+            console.log(`🔄 Requesting status update after ${commandKey} command...`);
+            // Send 31DA request to get updated status
+            await sendPacket(element._hass, deviceId, remId, 'RQ', '31DA', '00');
+            console.log('✅ 31DA status request sent');
+
+            // Wait a bit more for the status response, then refresh UI
+            setTimeout(() => {
+              console.log(`🔄 Refreshing entity states after ${commandKey} command...`);
+              if (element && element._hass) {
+                // Clear previous states to force update detection
+                element._prevStates = null;
+                // Trigger hass setter to re-render if states changed
+                element.hass = element._hass;
+              }
+            }, 1000); // Additional 1 second delay for status response
+          } catch (error) {
+            console.warn('Error requesting status update:', error);
+          }
+        }, 2000); // 2 second delay to allow device to respond
       } catch (error) {
         console.error('Error sending command:', error);
       }

@@ -4,12 +4,26 @@ on:
   push:
     branches: ['master', 'develop']
     paths:
-      ['.github/workflows/check-lint.yml', 'custom_components/**', 'tests/**', 'pyproject.toml', 'package.json', 'package-lock.json']
+      [
+        '.github/workflows/check-lint.yml',
+        'custom_components/**',
+        'tests/**',
+        'pyproject.toml',
+        'package.json',
+        'package-lock.json',
+      ]
 
   pull_request:
     branches: ['master', 'develop']
     paths:
-      ['.github/workflows/check-lint.yml', 'custom_components/**', 'tests/**', 'pyproject.toml', 'package.json', 'package-lock.json']
+      [
+        '.github/workflows/check-lint.yml',
+        'custom_components/**',
+        'tests/**',
+        'pyproject.toml',
+        'package.json',
+        'package-lock.json',
+      ]
 
   workflow_dispatch:
 

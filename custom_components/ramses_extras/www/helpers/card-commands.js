@@ -41,17 +41,17 @@ export const FAN_COMMANDS = {
     payload: '000307',  // High speed
     description: 'Set fan to high speed'
   },
-  'active': {
+  'auto': {
     code: '22F1',
     verb: ' I',
-    payload: '000807',  // Active mode
-    description: 'Set fan to active mode'
+    payload: '000407',  // Auto mode
+    description: 'Set fan to auto mode'
   },
   'auto2': {
     code: '22F1',
     verb: ' I',
-    payload: '000507',  // Auto mode
-    description: 'Set fan to auto mode'
+    payload: '000507',  // Auto2 mode
+    description: 'Set fan to auto2 mode'
   },
   'boost': {
     code: '22F1',
@@ -64,6 +64,12 @@ export const FAN_COMMANDS = {
     verb: ' I',
     payload: '000707',  // Disable mode
     description: 'Disable fan'
+  },
+  'active': {
+    code: '22F1',
+    verb: ' I',
+    payload: '000807',  // Active mode
+    description: 'Set fan to active mode'
   },
 
   // Maintenance commands
@@ -147,7 +153,7 @@ export function getAvailableCommands() {
  */
 export function getCommandsByCategory(category) {
   const categories = {
-    fan: ['away', 'low', 'medium', 'high', 'active', 'auto2', 'boost', 'disable'],
+    fan: ['away', 'low', 'medium', 'high', 'active', 'auto', 'auto2', 'boost', 'disable'],
     timer: ['high_15', 'high_30', 'high_60'],
     bypass: ['bypass_close', 'bypass_open', 'bypass_auto'],
     maintenance: ['filter_reset'],
