@@ -181,9 +181,6 @@ class HvacFanCard extends HTMLElement {
   render() {
     console.log('🎯 RENDER CALLED - checking config and hass...');
     console.log('🎯 this._config:', this._config);
-    console.log('🎯 this._hass:', this._hass);
-    console.log('🎯 this.config:', this.config);
-    console.log('🎯 parameterEditMode:', this.parameterEditMode);
 
     if (!this._hass || !this.config) {
       console.error('❌ Missing hass or config:', {
@@ -215,14 +212,12 @@ class HvacFanCard extends HTMLElement {
 
     // Ensure we have the parameter schema
     if (!this.parameterSchema) {
-      console.log('📡 Fetching parameter schema in render...');
       this.parameterSchema = await this.fetchParameterSchema();
-      console.log('✅ Schema fetched:', Object.keys(this.parameterSchema));
     }
 
     // Get available parameters based on entity existence
     this.availableParams = this.getAvailableParameters();
-    console.log('📋 Available parameters:', Object.keys(this.availableParams));
+//    console.log('📋 Available parameters:', Object.keys(this.availableParams));
 
     const templateData = {
       device_id: this.config.device_id,
@@ -230,7 +225,6 @@ class HvacFanCard extends HTMLElement {
       hass: this._hass
     };
 
-    console.log('🔧 Generating parameter edit HTML...');
 
     // Generate HTML for parameter edit mode
     const cardHtml = [
@@ -304,30 +298,30 @@ class HvacFanCard extends HTMLElement {
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
 
-    console.log('🔍 DEBUG - Raw temperature values:', {
-      supplyTemp, exhaustTemp, outdoorTemp,
-      indoorTemp
-    });
+    // console.log('🔍 DEBUG - Raw temperature values:', {
+    //   supplyTemp, exhaustTemp, outdoorTemp,
+    //   indoorTemp
+    // });
 
-    console.log('🔍 DEBUG - Humidity values:', {
-      indoorHumidity, outdoorHumidity,
-      indoorAbsHumidity, outdoorAbsHumidity,
-      indoorAbsFromIntegration: !!hass.states[config.indoor_abs_humid_entity]?.state,
-      outdoorAbsFromIntegration: !!hass.states[config.outdoor_abs_humid_entity]?.state,
-      indoorAbsEntity: config.indoor_abs_humid_entity,
-      outdoorAbsEntity: config.outdoor_abs_humid_entity
-    });
+    // console.log('🔍 DEBUG - Humidity values:', {
+    //   indoorHumidity, outdoorHumidity,
+    //   indoorAbsHumidity, outdoorAbsHumidity,
+    //   indoorAbsFromIntegration: !!hass.states[config.indoor_abs_humid_entity]?.state,
+    //   outdoorAbsFromIntegration: !!hass.states[config.outdoor_abs_humid_entity]?.state,
+    //   indoorAbsEntity: config.indoor_abs_humid_entity,
+    //   outdoorAbsEntity: config.outdoor_abs_humid_entity
+    // });
 
     // Enhanced dehumidify debugging
-    console.log('🔍 DEBUG - Dehumidify entities:', {
-      dehumModeEntity: config.dehum_mode_entity,
-      dehumActiveEntity: config.dehum_active_entity,
-      dehumEntitiesAvailable,
-      dehumMode: dehumMode,
-      dehumActive: dehumActive,
-      dehumModeState: dehumEntitiesAvailable ? hass.states[config.dehum_mode_entity]?.state : 'N/A',
-      dehumActiveState: dehumEntitiesAvailable ? hass.states[config.dehum_active_entity]?.state : 'N/A'
-    });
+    // console.log('🔍 DEBUG - Dehumidify entities:', {
+    //   dehumModeEntity: config.dehum_mode_entity,
+    //   dehumActiveEntity: config.dehum_active_entity,
+    //   dehumEntitiesAvailable,
+    //   dehumMode: dehumMode,
+    //   dehumActive: dehumActive,
+    //   dehumModeState: dehumEntitiesAvailable ? hass.states[config.dehum_mode_entity]?.state : 'N/A',
+    //   dehumActiveState: dehumEntitiesAvailable ? hass.states[config.dehum_active_entity]?.state : 'N/A'
+    // });
 
     const templateData = createTemplateData(rawData);
     // Add airflow SVG to template data
@@ -384,16 +378,16 @@ class HvacFanCard extends HTMLElement {
     const config = this.config;
     const hass = this._hass;
 
-    console.log('🔍 DEBUG - Config object:', {
-      hasConfig: !!config,
-      configKeys: config ? Object.keys(config) : 'NO CONFIG',
-      indoor_temp_entity: config?.indoor_temp_entity,
-      outdoor_temp_entity: config?.outdoor_temp_entity,
-      dehum_mode_entity: config?.dehum_mode_entity,
-      dehum_active_entity: config?.dehum_active_entity,
-      device_id: config?.device_id,
-      fullConfig: config
-    });
+    // console.log('🔍 DEBUG - Config object:', {
+    //   hasConfig: !!config,
+    //   configKeys: config ? Object.keys(config) : 'NO CONFIG',
+    //   indoor_temp_entity: config?.indoor_temp_entity,
+    //   outdoor_temp_entity: config?.outdoor_temp_entity,
+    //   dehum_mode_entity: config?.dehum_mode_entity,
+    //   dehum_active_entity: config?.dehum_active_entity,
+    //   device_id: config?.device_id,
+    //   fullConfig: config
+    // });
 
     // Use the shared validation helper
     const validationReport = getEntityValidationReport(hass, config);
@@ -506,7 +500,7 @@ class HvacFanCard extends HTMLElement {
         }
 
         available[entityName] = paramInfo;
-        console.log(`✅ Added parameter ${entityName} with description "${description}" and value ${entity.state}`);
+        // console.log(`✅ Added parameter ${entityName} with description "${description}" and value ${entity.state}`);
       }
     });
 
@@ -548,12 +542,12 @@ class HvacFanCard extends HTMLElement {
 
   // Add event listeners after the component is connected to the DOM
   connectedCallback() {
-    console.log('=== hvacFanCard connectedCallback Debug ===');
-    console.log('Card connected to DOM');
-    console.log('Card instance:', this);
-    console.log('Card shadowRoot:', this.shadowRoot);
-    console.log('Card config at connect:', this._config);
-    console.log('Card hass at connect:', this._hass);
+    // console.log('=== hvacFanCard connectedCallback Debug ===');
+    // console.log('Card connected to DOM');
+    // console.log('Card instance:', this);
+    // console.log('Card shadowRoot:', this.shadowRoot);
+    // console.log('Card config at connect:', this._config);
+    // console.log('Card hass at connect:', this._hass);
 
     // No need to call super.connectedCallback() as HTMLElement doesn't have it
 
@@ -573,9 +567,9 @@ class HvacFanCard extends HTMLElement {
         e.stopPropagation();
         this.toggleParameterMode();
       });
-      console.log('✅ Settings icon listener attached');
+      // console.log('✅ Settings icon listener attached');
     } else {
-      console.log('⚠️ Settings icon not found in DOM');
+      // console.log('⚠️ Settings icon not found in DOM');
     }
 
     // Control buttons
@@ -601,7 +595,7 @@ class HvacFanCard extends HTMLElement {
 
   // Attach event listeners for parameter edit mode
   attachParameterEditListeners() {
-    console.log('🔧 Attaching parameter edit mode event listeners');
+    // console.log('🔧 Attaching parameter edit mode event listeners');
 
     // Back/settings icons in parameter edit mode
     const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');
