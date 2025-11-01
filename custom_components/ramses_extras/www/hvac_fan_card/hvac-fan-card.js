@@ -161,7 +161,7 @@ class HvacFanCard extends HTMLElement {
       outdoor_humidity_entity: config.outdoor_humidity_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
       supply_temp_entity: config.supply_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
       exhaust_temp_entity: config.exhaust_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
-      fan_speed_entity: config.fan_speed_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_info',
+      fan_speed_entity: config.fan_speed_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_rate',
       fan_mode_entity: config.fan_mode_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
       co2_entity: config.co2_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_co2_level',
       flow_entity: config.flow_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
@@ -278,6 +278,7 @@ class HvacFanCard extends HTMLElement {
     const exhaustTemp = hass.states[config.exhaust_temp_entity]?.state || '?';
     const fanSpeed = hass.states[config.fan_speed_entity]?.state || 'speed ?';
     const fanMode = hass.states[config.fan_mode_entity]?.state || 'auto';
+
     const co2Level = hass.states[config.co2_entity]?.state || '?';
     const flowRate = hass.states[config.flow_entity]?.state || '?';
 
@@ -715,12 +716,21 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
         // After sending command, wait a bit then request status update and refresh entity states
         setTimeout(async () => {
           try {
-            console.log(`🔄 Requesting status update after ${commandKey} command...`);
-            // Send 31DA request to get updated status
+            console.log(`🔄 Requesting status updates after ${commandKey} command...`);
+
+            // Send 31DA request to get updated status (speed, flow, etc.)
             await sendPacket(element._hass, deviceId, remId, 'RQ', '31DA', '00');
             console.log('✅ 31DA status request sent');
 
-            // Wait a bit more for the status response, then refresh UI
+            // For speed commands, also request 10D0 to get fan mode information
+            const speedCommands = ['low', 'medium', 'high', 'away', 'boost', 'disable'];
+            if (speedCommands.includes(commandKey)) {
+              console.log('📡 Also requesting 10D0 for fan mode update...');
+              await sendPacket(element._hass, deviceId, remId, 'RQ', '10D0', '00');
+              console.log('✅ 10D0 fan mode request sent');
+            }
+
+            // Wait a bit more for the status responses, then refresh UI
             setTimeout(() => {
               console.log(`🔄 Refreshing entity states after ${commandKey} command...`);
               if (element && element._hass) {
@@ -729,7 +739,7 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
                 // Trigger hass setter to re-render if states changed
                 element.hass = element._hass;
               }
-            }, 1000); // Additional 1 second delay for status response
+            }, 1500); // Additional 1.5 second delay for status responses
           } catch (error) {
             console.warn('Error requesting status update:', error);
           }
