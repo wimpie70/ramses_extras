@@ -12,10 +12,10 @@
  * @returns {number} Efficiency percentage (0-100) or 75 if data invalid
  */
 function calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
-  console.log('🔍 DEBUG - Efficiency calculation inputs:', { supplyTemp, exhaustTemp, outdoorTemp, indoorTemp });
+  // console.log('🔍 DEBUG - Efficiency calculation inputs:', { supplyTemp, exhaustTemp, outdoorTemp, indoorTemp });
 
   if (supplyTemp === '?' || exhaustTemp === '?' || outdoorTemp === '?' || indoorTemp === '?') {
-    console.log('🔍 DEBUG - Invalid input values, returning default 75');
+    // console.log('🔍 DEBUG - Invalid input values, returning default 75');
     return 75; // Default fallback value
   }
 
@@ -24,16 +24,16 @@ function calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
   const outdoor = parseFloat(outdoorTemp);
   const indoor = parseFloat(indoorTemp);
 
-  console.log('🔍 DEBUG - Parsed values:', { supply, exhaust, outdoor, indoor });
+  // console.log('🔍 DEBUG - Parsed values:', { supply, exhaust, outdoor, indoor });
 
   if (isNaN(supply) || isNaN(exhaust) || isNaN(outdoor) || isNaN(indoor)) {
-    console.log('🔍 DEBUG - NaN values detected, returning default 75');
+    // console.log('🔍 DEBUG - NaN values detected, returning default 75');
     return 75; // Default fallback value
   }
 
   // Check if indoor temperature makes sense (should be warmest)
   if (indoor <= supply) {
-    console.log('🔍 DEBUG - Indoor temperature not warmer than supply - using alternative calculation');
+    // console.log('🔍 DEBUG - Indoor temperature not warmer than supply - using alternative calculation');
     // Fallback to original calculation if indoor data seems wrong
     const tempDiff = exhaust - outdoor;
     if (Math.abs(tempDiff) < 0.1) return 75;
@@ -42,13 +42,13 @@ function calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
 
   // Calculate the raw efficiency first
   const efficiency = (supply - outdoor) / (indoor - outdoor) * 100;
-  console.log('🔍 DEBUG - Alternative efficiency formula: (supply - outdoor) / (indoor - outdoor) * 100%');
-  console.log('🔍 DEBUG - Calculated efficiency:', efficiency);
+  // console.log('🔍 DEBUG - Alternative efficiency formula: (supply - outdoor) / (indoor - outdoor) * 100%');
+  // console.log('🔍 DEBUG - Calculated efficiency:', efficiency);
 
   // Check if supply temperature makes sense (shouldn't be warmer than indoor)
   if (supply > indoor) {
-    console.log('🔍 DEBUG - Supply temperature warmer than indoor - possible additional heating or sensor issue');
-    console.log('🔍 DEBUG - Supply > Indoor - this suggests additional heating from ventilators');
+    // console.log('🔍 DEBUG - Supply temperature warmer than indoor - possible additional heating or sensor issue');
+    // console.log('🔍 DEBUG - Supply > Indoor - this suggests additional heating from ventilators');
     // If supply is warmer than indoor, the efficiency calculation gives > 100%
     // This is possible with additional electrical heating, but cap it at 100% for display
     return Math.max(0, Math.min(100, Math.round(efficiency * 10) / 10));
@@ -75,18 +75,18 @@ export function createTemplateData(rawData) {
     ? efficiency
     : calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp);
 
-  console.log('🔍 DEBUG - Efficiency decision:', {
-    providedEfficiency: efficiency,
-    condition: efficiency !== 75,
-    finalEfficiency: calculatedEfficiency,
-    calculationTriggered: efficiency === 75
-  });
+  // console.log('🔍 DEBUG - Efficiency decision:', {
+  //   providedEfficiency: efficiency,
+  //   condition: efficiency !== 75,
+  //   finalEfficiency: calculatedEfficiency,
+  //   calculationTriggered: efficiency === 75
+  // });
 
   // Use integration-provided absolute humidity directly (no calculation fallback)
-  console.log('🔍 DEBUG - Using integration absolute humidity:', {
-    indoorAbsHumidity,
-    outdoorAbsHumidity
-  });
+  // console.log('🔍 DEBUG - Using integration absolute humidity:', {
+  //   indoorAbsHumidity,
+  //   outdoorAbsHumidity
+  // });
 
   return {
     // Temperature and humidity values
