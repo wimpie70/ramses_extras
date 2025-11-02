@@ -10,10 +10,6 @@
  * @returns {Object} Validation results with available/missing entities
  */
 export function validateCoreEntities(hass, config) {
-  console.log('🎯 VALIDATE ENTITIES CALLED!');
-  // console.log('🎯 hass exists:', !!hass);
-  // console.log('🎯 config exists:', !!config);
-
   if (!hass || !config) {
     return {
       valid: false,
@@ -48,7 +44,7 @@ export function validateCoreEntities(hass, config) {
   });
 
   if (availableCoreEntities.length > 0) {
-    console.log('✅ Available entities:', availableCoreEntities.join(', '));
+    // console.log('✅ Available entities:', availableCoreEntities.join(', '));
   }
 
   if (missingCoreEntities.length > 0) {
@@ -97,14 +93,6 @@ export function validateDehumidifyEntities(hass, config) {
 
   const entitiesAvailable = availableDehumEntities.length === Object.keys(dehumEntities).length;
 
-  // console.log('💧 Dehumidify entity check:', {
-  //   dehumModeEntity: config.dehum_mode_entity,
-  //   dehumActiveEntity: config.dehum_active_entity,
-  //   available: availableDehumEntities,
-  //   missing: missingDehumEntities,
-  //   entitiesAvailable
-  // });
-
   return {
     available: entitiesAvailable,
     entities: availableDehumEntities,
@@ -144,13 +132,6 @@ export function validateAbsoluteHumidityEntities(hass, config) {
       missingAbsEntities.push(name);
     }
   });
-
-  // console.log('🌫️ Absolute humidity entities:', {
-  //   available: availableAbsEntities.join(', '),
-  //   missing: missingAbsEntities.join(', '),
-  //   indoorEntity: config.indoor_abs_humid_entity,
-  //   outdoorEntity: config.outdoor_abs_humid_entity
-  // });
 
   return {
     available: availableAbsEntities,
@@ -205,27 +186,4 @@ export function getEntityValidationReport(hass, config) {
       ]
     }
   };
-}
-
-/**
- * Log entity validation results
- * @param {Object} report - Validation report from getEntityValidationReport
- */
-export function logValidationResults(report) {
-  // console.log('🔍 Entity validation complete');
-
-  if (report.summary.available.length > 0) {
-    // console.log('✅ Available entities:', report.summary.available.join(', '));
-  }
-
-  if (report.summary.missing.length > 0) {
-    // console.log('⚠️ Missing entities:', report.summary.missing.join(', '));
-  }
-
-  // console.log('📊 Validation summary:', {
-  //   total: report.overall.totalEntities,
-  //   available: report.overall.availableEntities,
-  //   missing: report.summary.missing.length,
-  //   valid: report.overall.valid
-  // });
 }

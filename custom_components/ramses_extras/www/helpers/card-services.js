@@ -17,7 +17,6 @@ export async function callService(hass, domain, service, serviceData = {}) {
   }
 
   try {
-    console.log(`📡 Calling ${domain}.${service} with data:`, serviceData);
     const result = await hass.callService(domain, service, serviceData);
     console.log(`✅ Service ${domain}.${service} called successfully`);
     return result;
@@ -39,7 +38,6 @@ export async function callWebSocket(hass, message) {
   }
 
   try {
-    console.log(`📡 Sending WebSocket message:`, message);
     const result = await hass.callWS(message);
     console.log(`✅ WebSocket message sent successfully`);
     return result;
@@ -62,7 +60,6 @@ export async function getBoundRemDevice(hass, deviceId) {
 
   const sensorId = 'climate.' + deviceId.replace(/:/g, '_');
   try {
-    console.log(`🔍 Getting bound REM for device: ${deviceId}`);
     const boundRem = hass.states[sensorId]?.attributes?.bound_rem;
     if (boundRem) {
       console.log(`✅ Found bound REM: ${boundRem}`);

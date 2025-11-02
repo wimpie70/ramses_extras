@@ -22,7 +22,7 @@ import { FAN_COMMANDS } from '/local/ramses_extras/helpers/card-commands.js';
 import { getRamsesMessageHelper } from '/local/ramses_extras/helpers/ramses-message-helper.js';
 import { HvacFanCardHandlers } from './message-handlers.js';
 import { sendPacket, getBoundRemDevice, callService, entityExists, getEntityState, callWebSocket, setFanParameter } from '/local/ramses_extras/helpers/card-services.js';
-import { validateCoreEntities, validateDehumidifyEntities, logValidationResults, getEntityValidationReport } from '/local/ramses_extras/helpers/card-validation.js';
+import { validateCoreEntities, validateDehumidifyEntities, getEntityValidationReport } from '/local/ramses_extras/helpers/card-validation.js';
 
 // Make FAN_COMMANDS globally available
 window.FAN_COMMANDS = FAN_COMMANDS;
@@ -139,11 +139,6 @@ class HvacFanCard extends HTMLElement {
 
 
   setConfig(config) {
-    // console.log('=== hvacFanCard setConfig Debug ===');
-    // console.log('Config received:', config);
-    // console.log('Config type:', typeof config);
-    // console.log('Config keys:', config ? Object.keys(config) : 'null');
-
     if (!config.fan_entity && !config.device_id) {
       console.error('Missing required config: need fan_entity or device_id');
       throw new Error('You need to define either fan_entity or device_id');
@@ -189,9 +184,6 @@ class HvacFanCard extends HTMLElement {
   }
 
   render() {
-    console.log('🎯 RENDER CALLED - checking config and hass...');
-    console.log('🎯 this._config:', this._config);
-
     if (!this._hass || !this.config) {
       console.error('❌ Missing hass or config:', {
         hass: !!this._hass,
@@ -200,8 +192,6 @@ class HvacFanCard extends HTMLElement {
       });
       return;
     }
-
-    console.log('✅ Hass and config available, proceeding with render');
 
     // Check if we're in parameter edit mode
     if (this.parameterEditMode) {
@@ -214,8 +204,6 @@ class HvacFanCard extends HTMLElement {
   }
 
   async renderParameterEditMode() {
-    console.log('🔧 Rendering parameter edit mode');
-
     // Save scroll position before re-rendering
     const scrollContainer = this.shadowRoot?.querySelector('.param-list');
     const scrollTop = scrollContainer?.scrollTop || 0;
@@ -227,7 +215,6 @@ class HvacFanCard extends HTMLElement {
 
     // Get available parameters based on entity existence
     this.availableParams = this.getAvailableParameters();
-//    console.log('📋 Available parameters:', Object.keys(this.availableParams));
 
     const templateData = {
       device_id: this.config.device_id,
@@ -244,7 +231,6 @@ class HvacFanCard extends HTMLElement {
     ].join('');
 
     this.shadowRoot.innerHTML = cardHtml;
-    console.log('✅ Parameter edit HTML generated successfully');
 
     // Restore scroll position after DOM update
     const newScrollContainer = this.shadowRoot?.querySelector('.param-list');
@@ -348,38 +334,9 @@ class HvacFanCard extends HTMLElement {
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
 
-    // console.log('🔍 DEBUG - Raw temperature values:', {
-    //   supplyTemp, exhaustTemp, outdoorTemp,
-    //   indoorTemp
-    // });
-
-    // console.log('🔍 DEBUG - Humidity values:', {
-    //   indoorHumidity, outdoorHumidity,
-    //   indoorAbsHumidity, outdoorAbsHumidity,
-    //   indoorAbsFromIntegration: !!hass.states[config.indoor_abs_humid_entity]?.state,
-    //   outdoorAbsFromIntegration: !!hass.states[config.outdoor_abs_humid_entity]?.state,
-    //   indoorAbsEntity: config.indoor_abs_humid_entity,
-    //   outdoorAbsEntity: config.outdoor_abs_humid_entity
-    // });
-
-    // Enhanced dehumidify debugging
-    // console.log('🔍 DEBUG - Dehumidify entities:', {
-    //   dehumModeEntity: config.dehum_mode_entity,
-    //   dehumActiveEntity: config.dehum_active_entity,
-    //   dehumEntitiesAvailable,
-    //   dehumMode: dehumMode,
-    //   dehumActive: dehumActive,
-    //   dehumModeState: dehumEntitiesAvailable ? hass.states[config.dehum_mode_entity]?.state : 'N/A',
-    //   dehumActiveState: dehumEntitiesAvailable ? hass.states[config.dehum_active_entity]?.state : 'N/A'
-    // });
-
     const templateData = createTemplateData(rawData);
     // Add airflow SVG to template data
     templateData.airflowSvg = selectedSvg;
-
-    console.log('🔍 DEBUG - Calculated efficiency:', templateData.efficiency);
-
-    console.log('🔧 Generating card HTML using templates...');
 
     // Generate HTML using template functions
     const cardHtml = [
@@ -417,29 +374,13 @@ class HvacFanCard extends HTMLElement {
 
   // Validate all required entities are available
   validateEntities() {
-    console.log('🎯 VALIDATE ENTITIES CALLED!');
-    console.log('🎯 this._config exists:', !!this._config);
-    console.log('🎯 this._hass exists:', !!this._hass);
-    console.log('🎯 this.config exists:', !!this.config);
 
     // Note: config and hass are already validated in render() before this is called
     const config = this.config;
     const hass = this._hass;
 
-    // console.log('🔍 DEBUG - Config object:', {
-    //   hasConfig: !!config,
-    //   configKeys: config ? Object.keys(config) : 'NO CONFIG',
-    //   indoor_temp_entity: config?.indoor_temp_entity,
-    //   outdoor_temp_entity: config?.outdoor_temp_entity,
-    //   dehum_mode_entity: config?.dehum_mode_entity,
-    //   dehum_active_entity: config?.dehum_active_entity,
-    //   device_id: config?.device_id,
-    //   fullConfig: config
-    // });
-
     // Use the shared validation helper
     const validationReport = getEntityValidationReport(hass, config);
-    logValidationResults(validationReport);
   }
 
   // Check if dehumidify entities are available
@@ -456,19 +397,13 @@ class HvacFanCard extends HTMLElement {
 
   // Toggle between normal and parameter edit modes
   async toggleParameterMode() {
-    console.log('🎛️ Toggling parameter edit mode, current:', this.parameterEditMode);
     this.parameterEditMode = !this.parameterEditMode;
 
     if (this.parameterEditMode) {
-      console.log('🔧 Entering parameter edit mode - fetching schema...');
       // Entering parameter edit mode - fetch schema if needed
       if (!this.parameterSchema) {
-        console.log('📡 Fetching parameter schema...');
         this.parameterSchema = await this.fetchParameterSchema();
-        console.log('✅ Parameter schema received:', Object.keys(this.parameterSchema));
       }
-    } else {
-      console.log('🏠 Returning to normal mode');
     }
 
     this.render();
@@ -477,7 +412,6 @@ class HvacFanCard extends HTMLElement {
   // Fetch parameter schema from WebSocket
   async fetchParameterSchema() {
     try {
-      console.log('Fetching 2411 parameter schema via WebSocket...');
       const result = await callWebSocket(this._hass, {
         type: "ramses_extras/get_2411_schema"
       });
@@ -491,8 +425,6 @@ class HvacFanCard extends HTMLElement {
 
   // Get available parameters based on entity existence
   getAvailableParameters() {
-    console.log('🔍 Getting available parameters for device:', this.config.device_id);
-
     // Check all possible number entities for this device
     const available = {};
 
@@ -504,8 +436,6 @@ class HvacFanCard extends HTMLElement {
         const entity = this._hass.states[entityId];
         const entityName = entityId.replace(devicePrefix, '');
 
-        console.log(`🔍 Found entity: ${entityId}, state: ${entity?.state}`);
-
         // Try to get description from 2411 schema if it's a param_ entity
         let description = entity.attributes?.friendly_name || entityName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
@@ -513,7 +443,6 @@ class HvacFanCard extends HTMLElement {
           const paramKey = entityName.replace('param_', '').toUpperCase();
           if (this.parameterSchema && this.parameterSchema[paramKey]) {
             description = this.parameterSchema[paramKey].description || this.parameterSchema[paramKey].name;
-            console.log(`📋 Using schema description for ${paramKey}: ${description}`);
           } else {
             // Fallback: try to create a readable description from the parameter key
             description = paramKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -548,11 +477,9 @@ class HvacFanCard extends HTMLElement {
         }
 
         available[entityName] = paramInfo;
-        // console.log(`✅ Added parameter ${entityName} with description "${description}" and value ${entity.state}`);
       }
     });
 
-    console.log('📋 Final available parameters:', Object.keys(available));
     return available;
   }
 
@@ -591,8 +518,6 @@ class HvacFanCard extends HTMLElement {
   // NEW: Subscribe to Ramses events using HA's connection
   _subscribeToRamsesEvents(connection) {
     this._subscribed = true;
-
-    console.log('🔗 Subscribing to Ramses CC events via HA connection...');
 
     connection.subscribeEvents(
       (event) => this._handleRamsesMessage(event),
@@ -657,8 +582,6 @@ class HvacFanCard extends HTMLElement {
       } else if (messageCode === '10D0') {
         console.log('🎯 Processing 10D0 message for filter data...');
         this.updateFrom10D0(data.payload || {});
-      } else {
-        console.log('🎯 Unknown message code:', messageCode);
       }
     } else {
       console.log('⚠️ Message device mismatch:', {
@@ -718,15 +641,11 @@ class HvacFanCard extends HTMLElement {
 
   // Message handler methods - called automatically by RamsesMessageHelper
   handle_31DA(messageData) {
-    console.log('🎯 31DA message handler called for device:', this._config?.device_id);
-
     // Use the handlers class to process the message
     HvacFanCardHandlers.handle_31DA(this, messageData);
   }
 
   handle_10D0(messageData) {
-    console.log('🎯 10D0 message handler called for device:', this._config?.device_id);
-
     // Use the handlers class to process the message
     HvacFanCardHandlers.handle_10D0(this, messageData);
   }
@@ -765,8 +684,6 @@ class HvacFanCard extends HTMLElement {
 
   // Attach event listeners for normal mode
   attachNormalModeListeners() {
-    console.log('🔧 Attaching normal mode event listeners');
-
     // Settings icon in top section
     const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');
     if (settingsIcon) {
@@ -804,8 +721,6 @@ class HvacFanCard extends HTMLElement {
 
   // Attach event listeners for parameter edit mode
   attachParameterEditListeners() {
-    // console.log('🔧 Attaching parameter edit mode event listeners');
-
     // Back/settings icons in parameter edit mode
     const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');
     const backIcon = this.shadowRoot?.querySelector('.back-icon');

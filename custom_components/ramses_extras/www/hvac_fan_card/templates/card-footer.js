@@ -6,8 +6,6 @@
 export function createCardFooter() {
   return `
       <script>
-        console.log('🔧 Card HTML generated, running inline scripts');
-
         // Update UI
         document.getElementById('fanMode').textContent = mode;
 

@@ -8,7 +8,6 @@ class RamsesMessageHelper {
     constructor() {
         this.listeners = new Map(); // device_id -> {card, handle_codes}
         this.setupGlobalListener();
-        console.log('✅ RamsesMessageHelper singleton initialized');
     }
 
     static get instance() {
@@ -31,14 +30,12 @@ class RamsesMessageHelper {
     checkEventReception() {
         console.log('🧪 RamsesMessageHelper: Basic event reception check...');
         // Keep minimal monitoring for debugging
-        console.log('✅ Event listeners registered for fallback');
     }
 
     // Force re-registration of event listeners (for debugging)
     forceReRegisterListeners() {
         console.log('🔧 RamsesMessageHelper: Re-registering basic event listeners...');
         this.setupGlobalListener();
-        console.log('✅ Basic event listeners re-registered');
     }
 
     // Fallback message handler for direct event reception

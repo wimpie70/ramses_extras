@@ -22,7 +22,6 @@ export class SimpleCardTranslator {
       this.currentLanguage = this.detectLanguage();
       await this.loadTranslations(cardPath);
       this.initialized = true;
-      console.log(`🌍 ${this.cardName} translations loaded (${this.currentLanguage})`);
     } catch (error) {
       console.warn(`⚠️ Failed to load translations for ${this.cardName}:`, error);
       this.initialized = true; // Continue without translations
@@ -41,21 +40,12 @@ export class SimpleCardTranslator {
 
   async loadTranslations(cardPath) {
     const translationPath = `${cardPath}/translations/${this.currentLanguage}.json`;
-    console.log(`🌍 Fetching translations from: ${translationPath}`);
     try {
       const response = await fetch(translationPath);
-      console.log(`📡 Response for ${translationPath}:`, {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
       if (response.ok) {
         try {
           const responseText = await response.text();
           this.translations = JSON.parse(responseText);
-          console.log(`✅ Successfully loaded translations for ${this.currentLanguage}`);
         } catch (jsonError) {
           console.warn(`⚠️ Invalid JSON in translation file ${translationPath}:`, jsonError);
           await this.loadFallbackTranslations(cardPath);
@@ -72,21 +62,13 @@ export class SimpleCardTranslator {
 
   async loadFallbackTranslations(cardPath) {
     const fallbackPath = `${cardPath}/translations/en.json`;
-    console.log(`🌍 Fetching fallback translations from: ${fallbackPath}`);
     try {
       const fallbackResponse = await fetch(fallbackPath);
-      console.log(`📡 Fallback response for ${fallbackPath}:`, {
-        ok: fallbackResponse.ok,
-        status: fallbackResponse.status,
-        statusText: fallbackResponse.statusText,
-        headers: Object.fromEntries(fallbackResponse.headers.entries())
-      });
 
       if (fallbackResponse.ok) {
         try {
           const responseText = await fallbackResponse.text();
           this.translations = JSON.parse(responseText);
-          console.log(`✅ Successfully loaded fallback English translations`);
         } catch (jsonError) {
           console.warn(`⚠️ Invalid JSON in fallback translation file:`, jsonError);
           this.translations = {};
@@ -171,7 +153,6 @@ export class CardTranslations {
     try {
       await this.loadTranslations(cardPath);
       this.initialized = true;
-      console.log(`✅ Translations loaded for ${this.cardName} (${this.currentLanguage})`);
     } catch (error) {
       console.error(`❌ Failed to load translations for ${this.cardName}:`, error);
       // Fallback to default language
@@ -219,7 +200,6 @@ export class CardTranslations {
 
       const translations = await response.json();
       this.translations[language] = translations;
-      console.log(`📁 Loaded translations: ${translationPath}`);
     } catch (error) {
       // If current language fails, try fallback
       if (language !== this.fallbackLanguage) {
@@ -308,7 +288,6 @@ export class CardTranslations {
   async switchLanguage(language, cardPath) {
     if (this.translations[language]) {
       this.currentLanguage = language;
-      console.log(`🔄 Switched to ${language} for ${this.cardName}`);
       return;
     }
 
@@ -316,7 +295,6 @@ export class CardTranslations {
     try {
       await this.loadTranslations(cardPath, language);
       this.currentLanguage = language;
-      console.log(`🔄 Loaded and switched to ${language} for ${this.cardName}`);
     } catch (error) {
       console.error(`❌ Failed to switch to language ${language}:`, error);
     }
