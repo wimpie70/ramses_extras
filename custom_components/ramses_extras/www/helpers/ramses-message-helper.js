@@ -6,24 +6,16 @@
 
 class RamsesMessageHelper {
     constructor() {
-        // Singleton pattern - return existing instance if already created
-        if (window.RamsesMessageHelper) {
-            return window.RamsesMessageHelper;
-        }
-
         this.listeners = new Map(); // device_id -> {card, handle_codes}
         this.setupGlobalListener();
-
-        // Make globally available
-        window.RamsesMessageHelper = this;
         console.log('✅ RamsesMessageHelper singleton initialized');
     }
 
     static get instance() {
-        if (!window.RamsesMessageHelper) {
-            new RamsesMessageHelper();
+        if (!window._RamsesMessageHelperInstance) {
+            window._RamsesMessageHelperInstance = new RamsesMessageHelper();
         }
-        return window.RamsesMessageHelper;
+        return window._RamsesMessageHelperInstance;
     }
 
     setupGlobalListener() {
