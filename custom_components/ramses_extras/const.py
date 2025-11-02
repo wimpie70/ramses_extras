@@ -19,11 +19,22 @@ WS_CMD_GET_BOUND_REM = f"{DOMAIN}/get_bound_rem"
 # Configuration constants
 CONF_NAME = "name"
 CONF_ENABLED_FEATURES = "enabled_features"
+CONF_ENABLED_WEB_SOCKETS = "enabled_web_sockets"
 DESCRIPTION_PLACEHOLDER_INFO = (
     "Ramses Extras provides additional functionality on top of Ramses RF."
 )
 CARD_FOLDER = "www"
 CARD_HELPERS_FOLDER = "www/helpers"
+
+# WebSocket features registry
+# Define all available WebSocket features here
+WEB_SOCKET_FEATURES = {
+    "get_bound_rem": {
+        "name": "Get Bound REM",
+        "description": "Get the REMote that was BOUND to this FAN  in Ramses RF. ",
+        "default_enabled": False,
+    },
+}
 
 # Device type to entity type mapping
 # Each feature defines a card/automation with specific requirements
@@ -34,7 +45,7 @@ AVAILABLE_FEATURES = {
             "Calculates Abs humidity from relative indoor&outdoor sensor entities."
         ),
         "category": "sensors",
-        "default_enabled": True,
+        "default_enabled": False,
         "supported_device_types": [
             "HvacVentilator"
         ],  # Can be extended for other device types
@@ -68,6 +79,7 @@ AVAILABLE_FEATURES = {
             "sensors": [],
             "switches": [],
         },
+        "web_sockets": ["get_bound_rem"],
     },
     "humidity_control": {
         "name": "Humidity Control",
