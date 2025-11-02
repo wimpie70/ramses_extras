@@ -20,6 +20,7 @@ WS_CMD_GET_BOUND_REM = f"{DOMAIN}/get_bound_rem"
 CONF_NAME = "name"
 CONF_ENABLED_FEATURES = "enabled_features"
 CONF_ENABLED_WEB_SOCKETS = "enabled_web_sockets"
+CONF_MESSAGE_EVENTS = "message_events"  # Import from ramses_cc for enabling events
 DESCRIPTION_PLACEHOLDER_INFO = (
     "Ramses Extras provides additional functionality on top of Ramses RF."
 )

@@ -1,11 +1,11 @@
 /* global customElements */
 /* global HTMLElement */
 /* global setTimeout */
+/* global clearTimeout */
+/* global setInterval */
+/* global clearInterval */
 /* global fetch */
 /* global navigator */
-
-// Debug: Check if this file is being loaded
-console.log('🚀 hvac-fan-card.js is being loaded!');
 
 // Translation path configuration
 const TRANSLATION_BASE_PATH = '/local/ramses_extras/hvac_fan_card';
@@ -27,9 +27,6 @@ import { validateCoreEntities, validateDehumidifyEntities, logValidationResults,
 // Make FAN_COMMANDS globally available
 window.FAN_COMMANDS = FAN_COMMANDS;
 
-// Debug: Check if imports work
-console.log('✅ ES6 imports loaded suRFessfully');
-
 class HvacFanCard extends HTMLElement {
   constructor() {
     super();
@@ -38,6 +35,11 @@ class HvacFanCard extends HTMLElement {
     this.parameterSchema = null;
     this.availableParams = {};
     this.translator = null;
+    this._subscribed = false; // Track if we're subscribed to Ramses events
+    this._subscription = null; // Track subscription promise
+    this._eventCheckTimer = null; // Timer for event checks
+    this._stateCheckInterval = null; // Interval for state monitoring
+    this._pollInterval = null; // Interval for polling
 
     // Initialize translations
     this.initTranslations();
@@ -89,6 +91,12 @@ class HvacFanCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+
+    // NEW: Subscribe to Ramses events when hass is available
+    if (!this._subscription && hass?.connection) {
+      this._subscribeToRamsesEvents(hass.connection);
+    }
+
     if (this.config && this.shouldUpdate()) {
       this.render();
     }
@@ -252,7 +260,7 @@ class HvacFanCard extends HTMLElement {
   }
 
   renderNormalMode() {
-    // Debug: Validate entities are available
+    // Validate entities are available
     this.validateEntities();
 
     const config = this.config;  // Use config consistently
@@ -300,6 +308,11 @@ class HvacFanCard extends HTMLElement {
 
     const fanMode = da31Data.fan_info !== undefined ? da31Data.fan_info.split(',')[0] :
       (hass.states[config.fan_mode_entity]?.state || 'auto');
+
+    // DEBUG: Log what we're actually using for fan data
+    console.log('🔍 RENDER DEBUG - Fan data from 31DA:', da31Data.fan_info);
+    console.log('🔍 RENDER DEBUG - Fan speed used:', fanSpeed);
+    console.log('🔍 RENDER DEBUG - Fan mode used:', fanMode);
 
     // Flow data - 31DA as primary, entity as fallback
     const flowRate = da31Data.supply_flow !== undefined ?
@@ -377,8 +390,6 @@ class HvacFanCard extends HTMLElement {
     ].join('');
 
     this.shadowRoot.innerHTML = cardHtml;
-
-    console.log('✅ Card HTML generated suRFessfully');
 
     // Attach event listeners for normal mode
     this.attachNormalModeListeners();
@@ -577,18 +588,99 @@ class HvacFanCard extends HTMLElement {
   }
 
 
+  // NEW: Subscribe to Ramses events using HA's connection
+  _subscribeToRamsesEvents(connection) {
+    this._subscribed = true;
+
+    console.log('🔗 Subscribing to Ramses CC events via HA connection...');
+
+    connection.subscribeEvents(
+      (event) => this._handleRamsesMessage(event),
+      "ramses_cc_message"
+    ).then(() => {
+      console.log('✅ Successfully subscribed to ramses_cc_message events');
+    }).catch((error) => {
+      console.error('❌ Failed to subscribe to ramses_cc_message events:', error);
+      this._subscribed = false; // Reset flag on failure
+    });
+  }
+
+  // NEW: Handle Ramses CC messages from HA
+  _handleRamsesMessage(event) {
+    console.log('🔥 Received Ramses CC message via HA subscription:', event);
+
+    const data = event.data;
+    console.log('📋 Event data:', data);
+
+    // Check if this message matches our device
+    const deviceId = data.src || data.device_id;
+    const messageCode = data.code;
+
+    console.log('🎯 Processing message:', {
+      deviceId,
+      messageCode,
+      ourDeviceId: this.config?.device_id,
+      match: deviceId === this.config?.device_id
+    });
+
+    if (deviceId && deviceId === this.config?.device_id) {
+      console.log('✅ Message matches our device, processing...');
+
+      // Handle specific message types
+      if (messageCode === '31DA') {
+        console.log('🎯 Processing 31DA message for real-time update...');
+
+        // Extract payload and process as 31DA data
+        const payload = data.payload || {};
+        const hvacData = {
+          hvac_id: payload.hvac_id || '00',
+          indoor_temp: payload.indoor_temp,
+          outdoor_temp: payload.outdoor_temp,
+          supply_temp: payload.supply_temp,
+          exhaust_temp: payload.exhaust_temp,
+          indoor_humidity: payload.indoor_humidity,
+          outdoor_humidity: payload.outdoor_humidity,
+          fan_info: payload.fan_info,
+          exhaust_fan_speed: payload.exhaust_fan_speed,
+          supply_fan_speed: payload.supply_fan_speed,
+          bypass_position: payload.bypass_position,
+          supply_flow: payload.supply_flow,
+          exhaust_flow: payload.exhaust_flow,
+          timestamp: data.dtm || new Date().toISOString()
+        };
+
+        console.log('🎯 Extracted HVAC data from 31DA:', hvacData);
+
+        // Update with 31DA data and force render
+        this.updateFrom31DA(hvacData);
+
+      } else if (messageCode === '10D0') {
+        console.log('🎯 Processing 10D0 message for filter data...');
+        this.updateFrom10D0(data.payload || {});
+      } else {
+        console.log('🎯 Unknown message code:', messageCode);
+      }
+    } else {
+      console.log('⚠️ Message device mismatch:', {
+        messageDevice: deviceId,
+        ourDevice: this.config?.device_id
+      });
+    }
+  }
+
   // Add event listeners after the component is connected to the DOM
   connectedCallback() {
-    console.log('🔌 HVAC Fan Card connected to DOM');
-
     // Register for real-time message updates if we have a device ID
     if (this._config?.device_id) {
       const messageHelper = getRamsesMessageHelper();
-      messageHelper.addListener(this, this._config.device_id, ["31DA", "10D0"]);
-      console.log('✅ Registered for 31DA and 10D0 message updates');
-    }
 
-    console.log('✅ Event listeners will be attached during render');
+      messageHelper.addListener(this, this._config.device_id, ["31DA", "10D0"]);
+
+      // NEW: Subscribe to HA events if connection is available
+      if (this._hass?.connection && !this._subscription) {
+        this._subscribeToRamsesEvents(this._hass.connection);
+      }
+    }
   }
 
   disconnectedCallback() {
@@ -596,9 +688,33 @@ class HvacFanCard extends HTMLElement {
     if (this._config?.device_id) {
       const messageHelper = getRamsesMessageHelper();
       messageHelper.removeListener(this, this._config.device_id);
-      console.log('🗑️ Removed message listener for device:', this._config.device_id);
+
+      // Clear any event reception check timers
+      if (this._eventCheckTimer) {
+        clearTimeout(this._eventCheckTimer);
+        this._eventCheckTimer = null;
+      }
+    }
+
+    // NEW: Clean up HA event subscription
+    if (this._subscription) {
+      this._subscription.then(unsubscribe => unsubscribe());
+      this._subscription = null;
+      this._subscribed = false;
+    }
+
+    // Clear other intervals
+    if (this._stateCheckInterval) {
+      clearInterval(this._stateCheckInterval);
+      this._stateCheckInterval = null;
+    }
+
+    if (this._pollInterval) {
+      clearInterval(this._pollInterval);
+      this._pollInterval = null;
     }
   }
+
 
   // Message handler methods - called automatically by RamsesMessageHelper
   handle_31DA(messageData) {
@@ -617,8 +733,6 @@ class HvacFanCard extends HTMLElement {
 
   // Update the card with 31DA data
   updateFrom31DA(hvacData) {
-    console.log('🔄 Updating HVAC card from 31DA data:', hvacData);
-
     // Store the data for rendering
     this._31daData = hvacData;
 
@@ -630,8 +744,6 @@ class HvacFanCard extends HTMLElement {
 
   // Update the card with 10D0 data
   updateFrom10D0(filterData) {
-    console.log('🔄 Updating HVAC card from 10D0 data:', filterData);
-
     // Store the filter data for rendering
     this._10d0Data = filterData;
 

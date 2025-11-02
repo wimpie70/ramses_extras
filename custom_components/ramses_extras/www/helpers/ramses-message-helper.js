@@ -19,32 +19,51 @@ class RamsesMessageHelper {
     }
 
     setupGlobalListener() {
-        // Set up global listener for ramses_cc_message events
+        console.log('🔧 Setting up basic global event listeners for fallback...');
+
+        // Keep simple fallback listeners for completeness
         if (window.addEventListener) {
+            window.addEventListener('ramses_cc_message', this.handleRamsesMessage.bind(this));
             window.addEventListener('hass-message', this.handleHassMessage.bind(this));
-            console.log('✅ RamsesMessageHelper global listener setup for hass-message events');
+            console.log('✅ RamsesMessageHelper basic listeners setup');
         } else {
-            // Fallback for environments without addEventListener
+            document.addEventListener('ramses_cc_message', this.handleRamsesMessage.bind(this));
             document.addEventListener('hass-message', this.handleHassMessage.bind(this));
-            console.log('✅ RamsesMessageHelper using document listener as fallback');
+            console.log('✅ RamsesMessageHelper using document listeners');
         }
     }
 
-    handleHassMessage(event) {
-        try {
-            const messageData = event.detail;
+    // Check if events are being received by monitoring events
+    checkEventReception() {
+        console.log('🧪 RamsesMessageHelper: Basic event reception check...');
+        // Keep minimal monitoring for debugging
+        console.log('✅ Event listeners registered for fallback');
+    }
 
-            // Check if this is a ramses_cc_message
+    // Force re-registration of event listeners (for debugging)
+    forceReRegisterListeners() {
+        console.log('🔧 RamsesMessageHelper: Re-registering basic event listeners...');
+        this.setupGlobalListener();
+        console.log('✅ Basic event listeners re-registered');
+    }
+
+    // Fallback message handler for direct event reception
+    handleRamsesMessage(event) {
+        try {
+            console.log('🎯 RamsesMessageHelper: Fallback ramses_cc_message event received');
+
+            const messageData = event.detail;
             if (messageData?.event_type === 'ramses_cc_message') {
                 const messageCode = messageData.data?.code;
-                const payload = messageData.data?.payload;
+                const deviceId = messageData.data?.src;
 
-                if (messageCode && payload?.hvac_id) {
-                    this.routeMessage(payload.hvac_id, messageCode, messageData);
+                if (messageCode && deviceId) {
+                    console.log('🎯 RamsesMessageHelper: Fallback routing message', messageCode, 'for device', deviceId);
+                    this.routeMessage(deviceId, messageCode, messageData);
                 }
             }
         } catch (error) {
-            console.error('Error in RamsesMessageHelper message handler:', error);
+            console.error('Error in RamsesMessageHelper fallback handler:', error);
         }
     }
 
@@ -65,12 +84,9 @@ class RamsesMessageHelper {
                 if (typeof card[handlerMethod] === 'function') {
                     try {
                         card[handlerMethod](messageData);
-                        console.log(`✅ Routed ${messageCode} message to ${card.constructor.name}`);
                     } catch (error) {
                         console.error(`Error calling ${handlerMethod} on card:`, error);
                     }
-                } else {
-                    console.warn(`No handler method ${handlerMethod} found on card`);
                 }
             }
         }
@@ -87,9 +103,6 @@ class RamsesMessageHelper {
 
         const listeners = this.listeners.get(normalizedDeviceId);
         listeners.push([card, handleCodes]);
-
-        console.log(`✅ Registered listener for device ${normalizedDeviceId}, codes: [${handleCodes.join(', ')}]`);
-        console.log(`Total listeners: ${this.listeners.size}`);
     }
 
     removeListener(card, deviceId) {
@@ -102,10 +115,8 @@ class RamsesMessageHelper {
 
             if (filteredListeners.length === 0) {
                 this.listeners.delete(normalizedDeviceId);
-                console.log(`🗑️ Removed all listeners for device ${normalizedDeviceId}`);
             } else {
                 this.listeners.set(normalizedDeviceId, filteredListeners);
-                console.log(`📋 Updated listeners for device ${normalizedDeviceId}`);
             }
         }
     }
@@ -119,16 +130,6 @@ class RamsesMessageHelper {
             }));
         }
         return info;
-    }
-
-    debugListeners() {
-        console.log('🔍 RamsesMessageHelper - Current listeners:');
-        for (const [deviceId, listeners] of this.listeners) {
-            console.log(`  Device ${deviceId}:`);
-            listeners.forEach(([card, handleCodes], index) => {
-                console.log(`    [${index}] ${card.constructor.name} -> [${handleCodes.join(', ')}]`);
-            });
-        }
     }
 }
 
