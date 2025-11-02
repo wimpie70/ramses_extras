@@ -19,17 +19,11 @@ class RamsesMessageHelper {
     }
 
     setupGlobalListener() {
-        console.log('🔧 Setting up basic global event listeners for fallback...');
-
         // Keep simple fallback listeners for completeness
         if (window.addEventListener) {
             window.addEventListener('ramses_cc_message', this.handleRamsesMessage.bind(this));
-            window.addEventListener('hass-message', this.handleHassMessage.bind(this));
-            console.log('✅ RamsesMessageHelper basic listeners setup');
         } else {
             document.addEventListener('ramses_cc_message', this.handleRamsesMessage.bind(this));
-            document.addEventListener('hass-message', this.handleHassMessage.bind(this));
-            console.log('✅ RamsesMessageHelper using document listeners');
         }
     }
 
