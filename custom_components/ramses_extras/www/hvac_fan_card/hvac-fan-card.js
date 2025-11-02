@@ -19,6 +19,8 @@ import './hvac-fan-card-editor.js';
 // Import reusable helpers from shared location
 import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
 import { FAN_COMMANDS } from '/local/ramses_extras/helpers/card-commands.js';
+import { RamsesMessageHelper } from '/local/ramses_extras/helpers/ramses-message-helper.js';
+import { HvacFanCardHandlers } from './message-handlers.js';
 import { sendPacket, getBoundRemDevice, callService, entityExists, getEntityState, callWebSocket, setFanParameter } from '/local/ramses_extras/helpers/card-services.js';
 import { validateCoreEntities, validateDehumidifyEntities, logValidationResults, getEntityValidationReport } from '/local/ramses_extras/helpers/card-validation.js';
 
@@ -259,22 +261,53 @@ class HvacFanCard extends HTMLElement {
     // Check dehumidify entity availability
     const dehumEntitiesAvailable = this.checkDehumidifyEntities();
 
-    const indoorTemp = hass.states[config.indoor_temp_entity]?.state || '?';
-    const outdoorTemp = hass.states[config.outdoor_temp_entity]?.state || '?';
-    const indoorHumidity = hass.states[config.indoor_humidity_entity]?.state || '?';
-    const outdoorHumidity = hass.states[config.outdoor_humidity_entity]?.state || '?';
+    // Get data from 31DA messages (primary source) or fall back to entities
+    const da31Data = this.get31DAData();
 
-    // Use ramses_extras absolute humidity sensors
+    // Temperature data - 31DA as primary, entity as fallback
+    const indoorTemp = da31Data.indoor_temp !== undefined ?
+      HvacFanCardHandlers.formatTemperature(da31Data.indoor_temp) :
+      (hass.states[config.indoor_temp_entity]?.state || '?');
+
+    const outdoorTemp = da31Data.outdoor_temp !== undefined ?
+      HvacFanCardHandlers.formatTemperature(da31Data.outdoor_temp) :
+      (hass.states[config.outdoor_temp_entity]?.state || '?');
+
+    const supplyTemp = da31Data.supply_temp !== undefined ?
+      HvacFanCardHandlers.formatTemperature(da31Data.supply_temp) :
+      (hass.states[config.supply_temp_entity]?.state || '?');
+
+    const exhaustTemp = da31Data.exhaust_temp !== undefined ?
+      HvacFanCardHandlers.formatTemperature(da31Data.exhaust_temp) :
+      (hass.states[config.exhaust_temp_entity]?.state || '?');
+
+    // Humidity data - 31DA as primary, entity as fallback
+    const indoorHumidity = da31Data.indoor_humidity !== undefined ?
+      HvacFanCardHandlers.formatHumidity(da31Data.indoor_humidity) :
+      (hass.states[config.indoor_humidity_entity]?.state || '?');
+
+    const outdoorHumidity = da31Data.outdoor_humidity !== undefined ?
+      HvacFanCardHandlers.formatHumidity(da31Data.outdoor_humidity) :
+      (hass.states[config.outdoor_humidity_entity]?.state || '?');
+
+    // Use ramses_extras absolute humidity sensors (if available)
     const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state || '?';
     const outdoorAbsHumidity = hass.states[config.outdoor_abs_humid_entity]?.state || '?';
 
-    const supplyTemp = hass.states[config.supply_temp_entity]?.state || '?';
-    const exhaustTemp = hass.states[config.exhaust_temp_entity]?.state || '?';
-    const fanSpeed = hass.states[config.fan_speed_entity]?.state || 'speed ?';
-    const fanMode = hass.states[config.fan_mode_entity]?.state || 'auto';
+    // Fan data - 31DA as primary, entity as fallback
+    const fanSpeed = da31Data.fan_info !== undefined ? da31Data.fan_info :
+      (hass.states[config.fan_speed_entity]?.state || 'speed ?');
 
+    const fanMode = da31Data.fan_info !== undefined ? da31Data.fan_info.split(',')[0] :
+      (hass.states[config.fan_mode_entity]?.state || 'auto');
+
+    // Flow data - 31DA as primary, entity as fallback
+    const flowRate = da31Data.supply_flow !== undefined ?
+      HvacFanCardHandlers.formatFlowRate(da31Data.supply_flow) :
+      (hass.states[config.flow_entity]?.state || '?');
+
+    // Other data
     const co2Level = hass.states[config.co2_entity]?.state || '?';
-    const flowRate = hass.states[config.flow_entity]?.state || '?';
 
     // Dehumidifier entities (only if available)
     const dehumMode = dehumEntitiesAvailable ? (hass.states[config.dehum_mode_entity]?.state || 'off') : null;
@@ -283,17 +316,21 @@ class HvacFanCard extends HTMLElement {
     // Comfort temperature entity (will be available when created)
     const comfortTemp = hass.states[config.comfort_temp_entity]?.state || '?';
 
-    // Determine which SVG to use based on bypass position
-    const isBypassOpen = hass.states[config.bypass_entity]?.state === 'on';
+    // Bypass position - 31DA as primary, entity as fallback
+    const isBypassOpen = da31Data.bypass_position !== undefined ?
+      (da31Data.bypass_position > 0) :
+      (hass.states[config.bypass_entity]?.state === 'on');
+
     const selectedSvg = isBypassOpen ? BYPASS_OPEN_SVG : NORMAL_SVG;
 
-    // Create template data object with integration-provided absolute humidity
+    // Create template data object
     const rawData = {
       indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
       indoorAbsHumidity, outdoorAbsHumidity,  // From integration sensors
       supplyTemp, exhaustTemp, fanSpeed, fanMode, co2Level, flowRate,
       dehumMode, dehumActive, comfortTemp,
       dehumEntitiesAvailable,  // Add availability flag
+      dataSource31DA: da31Data.source === '31DA_message',  // Flag for UI
       timerMinutes: 0, // This would come from timer state
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
@@ -542,16 +579,76 @@ class HvacFanCard extends HTMLElement {
 
   // Add event listeners after the component is connected to the DOM
   connectedCallback() {
-    // console.log('=== hvacFanCard connectedCallback Debug ===');
-    // console.log('Card connected to DOM');
-    // console.log('Card instance:', this);
-    // console.log('Card shadowRoot:', this.shadowRoot);
-    // console.log('Card config at connect:', this._config);
-    // console.log('Card hass at connect:', this._hass);
+    console.log('🔌 HVAC Fan Card connected to DOM');
 
-    // No need to call super.connectedCallback() as HTMLElement doesn't have it
+    // Register for real-time message updates if we have a device ID
+    if (this._config?.device_id) {
+      const messageHelper = RamsesMessageHelper.instance;
+      messageHelper.addListener(this, this._config.device_id, ["31DA", "10D0"]);
+      console.log('✅ Registered for 31DA and 10D0 message updates');
+    }
 
     console.log('✅ Event listeners will be attached during render');
+  }
+
+  disconnectedCallback() {
+    // Clean up message listener when card is removed
+    if (this._config?.device_id) {
+      const messageHelper = RamsesMessageHelper.instance;
+      messageHelper.removeListener(this, this._config.device_id);
+      console.log('🗑️ Removed message listener for device:', this._config.device_id);
+    }
+  }
+
+  // Message handler methods - called automatically by RamsesMessageHelper
+  handle_31DA(messageData) {
+    console.log('🎯 31DA message handler called for device:', this._config?.device_id);
+
+    // Use the handlers class to process the message
+    HvacFanCardHandlers.handle_31DA(this, messageData);
+  }
+
+  handle_10D0(messageData) {
+    console.log('🎯 10D0 message handler called for device:', this._config?.device_id);
+
+    // Use the handlers class to process the message
+    HvacFanCardHandlers.handle_10D0(this, messageData);
+  }
+
+  // Update the card with 31DA data
+  updateFrom31DA(hvacData) {
+    console.log('🔄 Updating HVAC card from 31DA data:', hvacData);
+
+    // Store the data for rendering
+    this._31daData = hvacData;
+
+    // Force a re-render to show updated data
+    if (this._hass && this.config) {
+      this.render();
+    }
+  }
+
+  // Update the card with 10D0 data
+  updateFrom10D0(filterData) {
+    console.log('🔄 Updating HVAC card from 10D0 data:', filterData);
+
+    // Store the filter data for rendering
+    this._10d0Data = filterData;
+
+    // Force a re-render to show updated data
+    if (this._hass && this.config) {
+      this.render();
+    }
+  }
+
+  // Get 31DA data (if available) for template rendering
+  get31DAData() {
+    return this._31daData || {};
+  }
+
+  // Get 10D0 data (if available) for template rendering
+  get10D0Data() {
+    return this._10d0Data || {};
   }
 
   // Attach event listeners for normal mode

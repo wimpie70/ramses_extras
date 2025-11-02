@@ -80,6 +80,9 @@ AVAILABLE_FEATURES = {
             "switches": [],
         },
         "web_sockets": ["get_bound_rem"],
+        # Message handling configuration for real-time updates
+        "handle_codes": ["31DA", "10D0"],
+        "callback_prefix": "handle_",
     },
     "humidity_control": {
         "name": "Humidity Control",
