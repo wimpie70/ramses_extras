@@ -19,7 +19,7 @@ import './hvac-fan-card-editor.js';
 // Import reusable helpers from shared location
 import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
 import { FAN_COMMANDS } from '/local/ramses_extras/helpers/card-commands.js';
-import { RamsesMessageHelper } from '/local/ramses_extras/helpers/ramses-message-helper.js';
+import { getRamsesMessageHelper } from '/local/ramses_extras/helpers/ramses-message-helper.js';
 import { HvacFanCardHandlers } from './message-handlers.js';
 import { sendPacket, getBoundRemDevice, callService, entityExists, getEntityState, callWebSocket, setFanParameter } from '/local/ramses_extras/helpers/card-services.js';
 import { validateCoreEntities, validateDehumidifyEntities, logValidationResults, getEntityValidationReport } from '/local/ramses_extras/helpers/card-validation.js';
@@ -583,7 +583,7 @@ class HvacFanCard extends HTMLElement {
 
     // Register for real-time message updates if we have a device ID
     if (this._config?.device_id) {
-      const messageHelper = RamsesMessageHelper.instance;
+      const messageHelper = getRamsesMessageHelper();
       messageHelper.addListener(this, this._config.device_id, ["31DA", "10D0"]);
       console.log('✅ Registered for 31DA and 10D0 message updates');
     }
@@ -594,7 +594,7 @@ class HvacFanCard extends HTMLElement {
   disconnectedCallback() {
     // Clean up message listener when card is removed
     if (this._config?.device_id) {
-      const messageHelper = RamsesMessageHelper.instance;
+      const messageHelper = getRamsesMessageHelper();
       messageHelper.removeListener(this, this._config.device_id);
       console.log('🗑️ Removed message listener for device:', this._config.device_id);
     }
