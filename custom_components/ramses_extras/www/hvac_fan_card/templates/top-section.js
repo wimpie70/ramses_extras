@@ -119,12 +119,10 @@ export function createTopSection(data) {
         </div>
 
         <!-- centre -->
-        <div class="centre-container">
-          <div class="centre">
-            <div class="centre-inner">
-              <div class="fanmode" id="fanMode">${fanMode}</div>
-              <div class="speed-display" id="fanSpeed">${fanSpeed}</div>
-            </div>
+        <div class="centre">
+          <div class="centre-inner">
+            <div class="fanmode" id="fanMode">${fanMode}</div>
+            <div class="speed-display" id="fanSpeed">${fanSpeed}</div>
           </div>
         </div>
 

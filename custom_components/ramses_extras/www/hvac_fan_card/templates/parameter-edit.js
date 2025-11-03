@@ -28,7 +28,7 @@ export function createParameterEditSection(params) {
       <!-- Navigation Header -->
       <div class="param-nav">
         <div class="nav-left">
-          <span class="settings-icon" onclick="toggleParameterMode()">⚙️</span>
+          <span class="settings-icon transition" onclick="toggleParameterMode()">⚙️</span>
           <span class="device-title">${settingsText} ${deviceId.replace(/_/g, ':')}</span>
         </div>
         <div class="nav-right">
@@ -71,13 +71,13 @@ function createParameterItem(paramKey, paramInfo, deviceId, hass) {
       </div>
       <div class="param-input-container">
         <input type="number"
-                class="param-input"
+                class="param-input transition"
                 min="${displayMin}"
                 max="${displayMax}"
                 step="${displayStep}"
                 value="${displayValue}"
                 data-entity="${entityId}">
-        <button class="param-update-btn" data-param="${paramKey}" onclick="updateParameter('${paramKey}', this.previousElementSibling.value)">Update</button>
+        <button class="param-update-btn transition" data-param="${paramKey}" onclick="updateParameter('${paramKey}', this.previousElementSibling.value)">Update</button>
         <span class="param-status"></span>
       </div>
     </div>
