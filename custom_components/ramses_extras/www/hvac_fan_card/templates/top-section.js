@@ -10,7 +10,7 @@ export function createTopSection(data) {
     dehumEntitiesAvailable,
     supplyTemp, exhaustTemp,
     fanSpeed, fanMode,
-    co2Level, flowRate, efficiency,
+    co2Level, flowRate, exhaustFlowRate, efficiency,
     timerMinutes, airflowSvg
   } = data;
 
@@ -99,9 +99,18 @@ export function createTopSection(data) {
         </div>
 
         <div class="side-value mid-left">
-          <button class="settings-icon" title="Edit device parameters">
-            ⚙️
-          </button>
+          <div class="efficiency-display">
+            <span>📊</span>
+            <span id="efficiency">${efficiency}%</span>
+          </div>
+          <div class="co2-display">
+            <span id="co2Level">${co2Level} ppm</span>
+          </div>
+          <div class="settings-container">
+            <button class="settings-icon" title="Edit device parameters">
+              ⚙️
+            </button>
+          </div>
         </div>
 
         <!-- SVG Flow Direction Arrows -->
@@ -121,12 +130,8 @@ export function createTopSection(data) {
 
         <!-- Bottom Stats -->
         <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; font-size: 13px; color: #333; z-index: 2;">
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <span>📊</span>
-            <span id="efficiency">${efficiency}%</span>
-          </div>
           <div>
-            <span id="co2Level">${co2Level} ppm</span>
+            <span id="exhaustFlowRate">${exhaustFlowRate} L/s</span>
           </div>
           <div>
             <span id="flowRate">${flowRate} L/s</span>

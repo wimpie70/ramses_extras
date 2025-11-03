@@ -137,19 +137,53 @@ export const CARD_STYLE = `
 
 .side-value.mid-left {
   position: absolute;
-  width: 100px;
-  height: 100px;
+  width: 120px;
+  height: 120px;
   top: 50%;
   left: 20px;
   display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.efficiency-display {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
   align-items: center;
+  gap: 6px;
+  color: #2d5aa0;
+  background: rgba(74, 144, 226, 0.1);
+  // padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(74, 144, 226, 0.2);
+}
+
+.co2-display {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #1e7e34;
+  background: rgba(40, 167, 69, 0.1);
+  // padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(40, 167, 69, 0.2);
+}
+
+.settings-container {
+  margin-top: auto;
+  display: flex;
   justify-content: center;
 }
 
-.settings-icon {
-  font-size: 24px;
+.settings-icon, .back-icon {
+  font-size: 32px;
   cursor: pointer;
-  padding: 8px;
+  // padding: 8px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.1);
   border: none;
@@ -206,12 +240,16 @@ export const CARD_STYLE = `
 }
 
 .comfort-temp {
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #1e3a8a;
+  color: #0000ffff;
+  background: rgba(92, 190, 255, 0.1);
+  // padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(40, 167, 69, 0.2);
 }
 
 .icon-circle {
@@ -318,9 +356,8 @@ export const CARD_STYLE = `
 }
 
 .settings-icon, .back-icon {
-  font-size: 20px;
   cursor: pointer;
-  padding: 8px;
+  padding: 2px;
   border-radius: 8px;
   transition: all 0.3s ease;
   background: rgba(255, 255, 255, 0.2);

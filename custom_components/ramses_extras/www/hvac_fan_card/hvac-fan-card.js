@@ -279,6 +279,8 @@ class HvacFanCard extends HTMLElement {
       // Flow data - depend solely on da31Data
       flowRate: da31Data.supply_flow !== undefined ?
         da31Data.supply_flow : null,
+      exhaustFlowRate: da31Data.exhaust_flow !== undefined ?
+        da31Data.exhaust_flow : null,
       // Other data - raw values only
       co2Level: hass.states[config.co2_entity]?.state ?
         (isNaN(parseFloat(hass.states[config.co2_entity].state)) ? null : parseFloat(hass.states[config.co2_entity].state)) : null,
@@ -595,7 +597,6 @@ class HvacFanCard extends HTMLElement {
     const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');
     if (settingsIcon) {
       settingsIcon.addEventListener('click', (e) => {
-        console.log('⚙️ Settings icon clicked');
         e.preventDefault();
         e.stopPropagation();
         this.toggleParameterMode();
@@ -607,19 +608,16 @@ class HvacFanCard extends HTMLElement {
     if (controlButtons) {
       controlButtons.forEach(button => {
         button.addEventListener('click', (e) => {
-          console.log('🔘 Control button clicked:', button);
           e.preventDefault();
           e.stopPropagation();
 
           const onclick = button.getAttribute('onclick');
           if (onclick) {
-            console.log('Executing onclick handler:', onclick);
             const fn = new Function('event', `try { ${onclick} } catch(e) { console.error('Error in button handler:', e); }`);
             fn.call(button, e);
           }
         });
       });
-      console.log(`✅ ${controlButtons.length} control button listeners attached`);
     }
   }
 
