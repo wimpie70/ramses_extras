@@ -35,8 +35,6 @@ class HvacFanCard extends HTMLElement {
     this.parameterSchema = null;
     this.availableParams = {};
     this.translator = null;
-    this._subscribed = false; // Track if we're subscribed to Ramses events
-    this._subscription = null; // Track subscription promise
     this._eventCheckTimer = null; // Timer for event checks
     this._stateCheckInterval = null; // Interval for state monitoring
     this._pollInterval = null; // Interval for polling
@@ -91,11 +89,6 @@ class HvacFanCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-
-    // NEW: Subscribe to Ramses events when hass is available
-    if (!this._subscription && hass?.connection) {
-      this._subscribeToRamsesEvents(hass.connection);
-    }
 
     if (this.config && this.shouldUpdate()) {
       this.render();
@@ -341,7 +334,7 @@ class HvacFanCard extends HTMLElement {
 
   // Card size for Home Assistant
   getCardSize() {
-    return 3;
+    return 4;
   }
 
   // Validate all required entities are available
@@ -487,60 +480,9 @@ class HvacFanCard extends HTMLElement {
   }
 
 
-  // NEW: Subscribe to Ramses events using HA's connection
-  _subscribeToRamsesEvents(connection) {
-    this._subscribed = true;
+  // REMOVED: Cards no longer subscribe directly - RamsesMessageHelper handles all subscriptions
 
-    connection.subscribeEvents(
-      (event) => this._handleRamsesMessage(event),
-      "ramses_cc_message"
-    ).then(() => {
-    }).catch((error) => {
-      console.error('❌ Failed to subscribe to ramses_cc_message events:', error);
-      this._subscribed = false; // Reset flag on failure
-    });
-  }
-
-  // NEW: Handle Ramses CC messages from HA
-  _handleRamsesMessage(event) {
-
-    const data = event.data;
-
-    // Check if this message matches our device
-    const deviceId = data.src || data.device_id;
-    const messageCode = data.code;
-
-    console.log('🎯 Processing message:', {
-      deviceId,
-      messageCode,
-      ourDeviceId: this.config?.device_id,
-      match: deviceId === this.config?.device_id
-    });
-
-    if (deviceId && deviceId === this.config?.device_id) {
-      console.log('✅ Message matches our device, processing...');
-
-      // Handle specific message types
-      if (messageCode === '31DA') {
-        console.log('🎯 Processing 31DA message for real-time update...');
-
-        // Route through RamsesMessageHelper to ensure proper handler chain
-        const messageHelper = getRamsesMessageHelper();
-        messageHelper.routeMessage(deviceId, messageCode, event);
-
-      } else if (messageCode === '10D0') {
-        console.log('🎯 Processing 10D0 message for filter data...');
-        // Route through RamsesMessageHelper for 10D0 as well
-        const messageHelper = getRamsesMessageHelper();
-        messageHelper.routeMessage(deviceId, messageCode, event);
-      }
-    } else {
-      console.log('⚠️ Message device mismatch:', {
-        messageDevice: deviceId,
-        ourDevice: this.config?.device_id
-      });
-    }
-  }
+  // REMOVED: Cards no longer handle messages directly - RamsesMessageHelper manages all subscriptions
 
   // Add event listeners after the component is connected to the DOM
   connectedCallback() {
@@ -548,11 +490,6 @@ class HvacFanCard extends HTMLElement {
     if (this._config?.device_id) {
       const messageHelper = getRamsesMessageHelper();
       messageHelper.addListener(this, this._config.device_id, ["31DA", "10D0"]);
-
-      // NEW: Subscribe to HA events if connection is available
-      if (this._hass?.connection && !this._subscription) {
-        this._subscribeToRamsesEvents(this._hass.connection);
-      }
     }
   }
 
@@ -569,12 +506,7 @@ class HvacFanCard extends HTMLElement {
       }
     }
 
-    // NEW: Clean up HA event subscription
-    if (this._subscription) {
-      this._subscription.then(unsubscribe => unsubscribe());
-      this._subscription = null;
-      this._subscribed = false;
-    }
+    // REMOVED: No direct subscriptions to clean up - RamsesMessageHelper handles all subscriptions
 
     // Clear other intervals
     if (this._stateCheckInterval) {
