@@ -3,8 +3,6 @@
 // HVAC Fan Card Message Handlers
 // Handles real-time 31DA and other ramses_cc messages for the HVAC fan card
 
-import { RamsesMessageHelper } from '/local/ramses_extras/helpers/ramses-message-helper.js';
-
 export class HvacFanCardHandlers {
 
     /**

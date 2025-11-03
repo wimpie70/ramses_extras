@@ -2,98 +2,96 @@
 /* global HTMLElement */
 /* global setTimeout */
 
-// Ramses Message Helper - Global singleton for handling ramses_cc_message events
+// Ramses Message Broker - Global singleton for handling ramses_cc_message events
 // Provides real-time message routing for cards and features
 
-class RamsesMessageHelper {
+class RamsesMessageBroker {
     constructor() {
         this.listeners = new Map(); // device_id -> {card, handle_codes}
         this.setupHAConnection();
     }
 
     static get instance() {
-        if (!window._RamsesMessageHelperInstance) {
-            window._RamsesMessageHelperInstance = new RamsesMessageHelper();
+        if (!window._RamsesMessageBrokerInstance) {
+            window._RamsesMessageBrokerInstance = new RamsesMessageBroker();
         }
-        return window._RamsesMessageHelperInstance;
+        return window._RamsesMessageBrokerInstance;
     }
 
     setupHAConnection() {
-        console.log('🎯 RamsesMessageHelper: Setting up HA connection...');
+        console.log('🎯 RamsesMessageBroker: Setting up HA connection...');
         // Subscribe to HA events via WebSocket
         this.setupGlobalListener();
-        console.log('✅ RamsesMessageHelper: Using WebSocket subscription approach');
-    }
-
-
-
-    setupGlobalListener() {
-        console.log('🎯 RamsesMessageHelper: Setting up HA bus event listener');
-        // Subscribe to HA events via WebSocket connection
-        this.subscribeToHAEvents();
+        console.log('✅ RamsesMessageBroker: Using WebSocket subscription approach');
     }
 
     async subscribeToHAEvents() {
-        console.log('🎯 RamsesMessageHelper: Attempting to subscribe to HA bus events');
+        console.log('🎯 RamsesMessageBroker: Attempting to subscribe to HA bus events');
 
         try {
             if (window.hassConnection) {
                 const connection = await window.hassConnection;
-                console.log('🎯 RamsesMessageHelper: Resolved HA connection:', connection);
+                console.log('🎯 RamsesMessageBroker: Resolved HA connection:', connection);
 
                 // Use the connection.conn object which has the actual methods
                 const actualConn = connection.conn || connection;
-                console.log('🎯 RamsesMessageHelper: actualConn object:', actualConn);
-                console.log('🎯 RamsesMessageHelper: actualConn methods:', Object.getOwnPropertyNames(actualConn));
+                console.log('🎯 RamsesMessageBroker: actualConn object:', actualConn);
+                console.log('🎯 RamsesMessageBroker: actualConn methods:', Object.getOwnPropertyNames(actualConn));
 
                 if (actualConn && typeof actualConn.subscribeEvents === 'function') {
-                    console.log('✅ RamsesMessageHelper: Subscribing to ramses_cc_message events');
+                    console.log('✅ RamsesMessageBroker: Subscribing to ramses_cc_message events');
 
                     actualConn.subscribeEvents(
                         (event) => {
-                            console.log('🎯 RamsesMessageHelper: Received HA event:', event);
+                            console.log('🎯 RamsesMessageBroker: Received HA event:', event);
                             if (event.event_type === 'ramses_cc_message') {
                                 this.handleHAEvent(event);
                             }
                         },
                         "ramses_cc_message"
                     ).then(() => {
-                        console.log('✅ RamsesMessageHelper: Successfully subscribed to ramses_cc_message events');
+                        console.log('✅ RamsesMessageBroker: Successfully subscribed to ramses_cc_message events');
                     }).catch((error) => {
-                        console.error('❌ RamsesMessageHelper: Failed to subscribe:', error);
+                        console.error('❌ RamsesMessageBroker: Failed to subscribe:', error);
                     });
                 } else {
-                    console.log('❌ RamsesMessageHelper: No subscribeEvents method available');
-                    console.log('🎯 RamsesMessageHelper: Trying fallback subscription methods...');
+                    console.log('❌ RamsesMessageBroker: No subscribeEvents method available');
+                    console.log('🎯 RamsesMessageBroker: Trying fallback subscription methods...');
 
                     // Try alternative subscription approaches
                     if (typeof actualConn.subscribe === 'function') {
-                        console.log('🎯 RamsesMessageHelper: Trying subscribe method');
+                        console.log('🎯 RamsesMessageBroker: Trying subscribe method');
                         actualConn.subscribe("ramses_cc_message", (event) => {
-                            console.log('🎯 RamsesMessageHelper: Received HA event via subscribe:', event);
+                            console.log('🎯 RamsesMessageBroker: Received HA event via subscribe:', event);
                             this.handleHAEvent(event);
                         });
                     }
                 }
             } else {
-                console.log('❌ RamsesMessageHelper: No hassConnection available, will retry later');
+                console.log('❌ RamsesMessageBroker: No hassConnection available, will retry later');
                 // Try again later
                 setTimeout(() => this.subscribeToHAEvents(), 2000);
             }
         } catch (error) {
-            console.error('❌ RamsesMessageHelper: Error setting up HA event subscription:', error);
+            console.error('❌ RamsesMessageBroker: Error setting up HA event subscription:', error);
         }
+    }
+
+    setupGlobalListener() {
+        console.log('🎯 RamsesMessageBroker: Setting up HA bus event listener');
+        // Subscribe to HA events via WebSocket connection
+        this.subscribeToHAEvents();
     }
 
     // Check if events are being received by monitoring events
     checkEventReception() {
-        console.log('🧪 RamsesMessageHelper: Basic event reception check...');
+        console.log('🧪 RamsesMessageBroker: Basic event reception check...');
         // Keep minimal monitoring for debugging
     }
 
     // Force re-registration of event listeners (for debugging)
     forceReRegisterListeners() {
-        console.log('🔧 RamsesMessageHelper: Re-registering basic event listeners...');
+        console.log('🔧 RamsesMessageBroker: Re-registering basic event listeners...');
         this.setupGlobalListener();
     }
 
@@ -121,44 +119,44 @@ class RamsesMessageHelper {
                 }
             }
         } catch (error) {
-            console.error('Error in RamsesMessageHelper event handler:', error);
+            console.error('Error in RamsesMessageBroker event handler:', error);
         }
     }
 
     routeMessage(deviceId, messageCode, messageData) {
-        console.log('🎯 RamsesMessageHelper: Routing message', messageCode, 'for device', deviceId);
+        console.log('🎯 RamsesMessageBroker: Routing message', messageCode, 'for device', deviceId);
 
         // Find listeners for this device
         const listeners = this.listeners.get(deviceId);
 
         if (!listeners) {
-            console.log('⚠️ RamsesMessageHelper: No listeners found for device', deviceId);
+            console.log('⚠️ RamsesMessageBroker: No listeners found for device', deviceId);
             return; // No listeners for this device
         }
 
-        console.log('✅ RamsesMessageHelper: Found', listeners.length, 'listeners for device', deviceId);
+        console.log('✅ RamsesMessageBroker: Found', listeners.length, 'listeners for device', deviceId);
 
         // Check if this message code is handled by any listener
         for (const [card, handleCodes] of listeners) {
-            console.log('🎯 RamsesMessageHelper: Checking card', card.constructor.name, 'with codes:', handleCodes);
+            console.log('🎯 RamsesMessageBroker: Checking card', card.constructor.name, 'with codes:', handleCodes);
 
             if (handleCodes.includes(messageCode)) {
                 // Call the appropriate handler method on the card
                 const handlerMethod = `handle_${messageCode}`;
-                console.log('🎯 RamsesMessageHelper: Calling method', handlerMethod, 'on card');
+                console.log('🎯 RamsesMessageBroker: Calling method', handlerMethod, 'on card');
 
                 if (typeof card[handlerMethod] === 'function') {
                     try {
                         card[handlerMethod](messageData);
-                        console.log('✅ RamsesMessageHelper: Successfully called', handlerMethod);
+                        console.log('✅ RamsesMessageBroker: Successfully called', handlerMethod);
                     } catch (error) {
                         console.error(`Error calling ${handlerMethod} on card:`, error);
                     }
                 } else {
-                    console.log('⚠️ RamsesMessageHelper: Method', handlerMethod, 'not found on card');
+                    console.log('⚠️ RamsesMessageBroker: Method', handlerMethod, 'not found on card');
                 }
             } else {
-                console.log('⚠️ RamsesMessageHelper: Card does not handle code', messageCode);
+                console.log('⚠️ RamsesMessageBroker: Card does not handle code', messageCode);
             }
         }
     }
@@ -167,7 +165,7 @@ class RamsesMessageHelper {
         // Normalize device ID format
         const normalizedDeviceId = deviceId.replace(/_/g, ':');
 
-        console.log('🎯 RamsesMessageHelper: Adding listener for device', normalizedDeviceId, 'with codes:', handleCodes);
+        console.log('🎯 RamsesMessageBroker: Adding listener for device', normalizedDeviceId, 'with codes:', handleCodes);
 
         // Store listener
         if (!this.listeners.has(normalizedDeviceId)) {
@@ -177,7 +175,7 @@ class RamsesMessageHelper {
         const listeners = this.listeners.get(normalizedDeviceId);
         listeners.push([card, handleCodes]);
 
-        console.log('✅ RamsesMessageHelper: Listener added. Total listeners for', normalizedDeviceId, ':', listeners.length);
+        console.log('✅ RamsesMessageBroker: Listener added. Total listeners for', normalizedDeviceId, ':', listeners.length);
     }
 
     removeListener(card, deviceId) {
@@ -208,13 +206,13 @@ class RamsesMessageHelper {
     }
 }
 
-// Make the helper globally available as both class and instance
-window.RamsesMessageHelper = RamsesMessageHelper;
-window.RamsesMessageHelperInstance = RamsesMessageHelper.instance;
+// Make the broker globally available as both class and instance
+window.RamsesMessageBroker = RamsesMessageBroker;
+window.RamsesMessageBrokerInstance = RamsesMessageBroker.instance;
 
 // Also provide a convenience method for easy importing
-export function getRamsesMessageHelper() {
-    return RamsesMessageHelper.instance;
+export function getRamsesMessageBroker() {
+    return RamsesMessageBroker.instance;
 }
 
-export { RamsesMessageHelper };
+export { RamsesMessageBroker };
