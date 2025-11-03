@@ -129,7 +129,7 @@ export function createTopSection(data) {
         </div>
 
         <!-- Bottom Stats -->
-        <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; font-size: 14px; color: #333; z-index: 2;">
+        <div class="bottom-stats">
           <div>
             <span id="exhaustFlowRate">${exhaustFlowRate} L/s</span>
           </div>

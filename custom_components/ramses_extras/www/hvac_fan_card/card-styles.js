@@ -24,6 +24,9 @@ export const CARD_STYLE = `
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
 }
 
 .centre-container {
@@ -58,12 +61,10 @@ export const CARD_STYLE = `
 }
 
 .speed-display {
-  font-size: 14px;
   margin-bottom: 4px;
 }
 
 .fanmode {
-  font-size: 12px;
   font-weight: 500;
 }
 
@@ -75,8 +76,6 @@ export const CARD_STYLE = `
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #333;
-  font-size: 14px;
   white-space: nowrap;
   padding: 6px 14px;
   background: rgba(255, 255, 255, 0.1);
@@ -95,7 +94,6 @@ export const CARD_STYLE = `
   display: flex;
   flex-direction: column;
   gap: 4px;
-  color: #333;
 }
 
 .corner-value.top-left {
@@ -131,9 +129,7 @@ export const CARD_STYLE = `
   display: flex;
   flex-direction: column;
   gap: 4px;
-  color: #333;
 }
-
 
 .side-value.mid-left {
   position: absolute;
@@ -149,14 +145,22 @@ export const CARD_STYLE = `
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 14px;
-  font-weight: 500;
 }
 
 .settings-container {
   margin-top: 8px;
   display: flex;
   justify-content: center;
+}
+
+.bottom-stats {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 20px;
+  z-index: 2;
 }
 
 .settings-icon, .back-icon {
@@ -181,7 +185,6 @@ export const CARD_STYLE = `
   transform: scale(1.1);
 }
 
-
 .temp-value {
   font-size: 20px;
   font-weight: 600;
@@ -192,34 +195,22 @@ export const CARD_STYLE = `
 
 .dehum-mode,
 .dehum-active {
-  font-size: 14px;
   color: #ff9800;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   min-height: 28px;
-  font-weight: 500;
 }
 
-.humidity-value {
-  font-size: 14px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
+.humidity-value,
 .humidity-abs {
-  font-size: 14px;
-  font-weight: 500;
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
 .comfort-temp {
-  font-size: 14px;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -287,13 +278,9 @@ export const CARD_STYLE = `
   flex: 1;
 }
 
-.control-button:hover {
-  background: #353535;
-  border-color: #4a90e2;
-}
-
+.control-button:hover,
 .control-button.active {
-  background: #3a3a3a;
+  background: #353535;
   border-color: #4a90e2;
 }
 
@@ -304,7 +291,6 @@ export const CARD_STYLE = `
 
 .control-label {
   color: #ffffff;
-  font-size: 13px;
   text-align: center;
 }
 
@@ -416,7 +402,6 @@ export const CARD_STYLE = `
 }
 
 .param-label {
-  font-size: 14px;
   font-weight: 500;
   color: #333;
   line-height: 1.3;
@@ -439,7 +424,6 @@ export const CARD_STYLE = `
   padding: 8px 12px;
   border: 2px solid #b8daff;
   border-radius: 6px;
-  font-size: 14px;
   text-align: center;
   background: white;
   transition: all 0.3s ease;
@@ -453,7 +437,6 @@ export const CARD_STYLE = `
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
