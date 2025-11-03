@@ -78,7 +78,7 @@ export const CARD_STYLE = `
   color: #333;
   font-size: 14px;
   white-space: nowrap;
-  padding: 8px 16px;
+  padding: 6px 14px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 20px;
   min-width: 80px;
@@ -137,45 +137,24 @@ export const CARD_STYLE = `
 
 .side-value.mid-left {
   position: absolute;
-  width: 120px;
-  height: 120px;
+  width: 100px;
   top: 50%;
   left: 20px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
+  gap: 6px;
 }
 
-.efficiency-display {
-  font-size: 14px;
-  font-weight: 600;
+.side-value-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #2d5aa0;
-  background: rgba(74, 144, 226, 0.1);
-  // padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(74, 144, 226, 0.2);
-}
-
-.co2-display {
+  gap: 4px;
   font-size: 14px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #1e7e34;
-  background: rgba(40, 167, 69, 0.1);
-  // padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(40, 167, 69, 0.2);
+  font-weight: 500;
 }
 
 .settings-container {
-  margin-top: auto;
+  margin-top: 8px;
   display: flex;
   justify-content: center;
 }
@@ -213,7 +192,7 @@ export const CARD_STYLE = `
 
 .dehum-mode,
 .dehum-active {
-  font-size: 20px;
+  font-size: 14px;
   color: #ff9800;
   display: flex;
   align-items: center;
@@ -224,7 +203,7 @@ export const CARD_STYLE = `
 }
 
 .humidity-value {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -232,7 +211,7 @@ export const CARD_STYLE = `
 }
 
 .humidity-abs {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -245,11 +224,11 @@ export const CARD_STYLE = `
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #0000ffff;
-  background: rgba(92, 190, 255, 0.1);
-  // padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(40, 167, 69, 0.2);
+  color: #2d5aa0;
+  background: rgba(74, 144, 226, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(74, 144, 226, 0.2);
 }
 
 .icon-circle {

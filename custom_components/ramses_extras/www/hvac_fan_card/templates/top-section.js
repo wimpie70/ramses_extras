@@ -43,12 +43,12 @@ export function createTopSection(data) {
             <span>🌡️</span>
           </div>
           <div class="humidity-value">
-            <span id="outdoorHumidity">${outdoorHumidity}%</span>
             <span>💧</span>
+            <span id="outdoorHumidity">${outdoorHumidity}%</span>
           </div>
           <div class="humidity-abs">
-            <span id="outdoorAbsHumidity">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
             <span>💨</span>
+            <span id="outdoorAbsHumidity">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
           </div>
         </div>
 
@@ -99,11 +99,11 @@ export function createTopSection(data) {
         </div>
 
         <div class="side-value mid-left">
-          <div class="efficiency-display">
+          <div class="side-value-item">
             <span>📊</span>
             <span id="efficiency">${efficiency}%</span>
           </div>
-          <div class="co2-display">
+          <div class="side-value-item">
             <span id="co2Level">${co2Level} ppm</span>
           </div>
           <div class="settings-container">
@@ -129,7 +129,7 @@ export function createTopSection(data) {
         </div>
 
         <!-- Bottom Stats -->
-        <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; font-size: 13px; color: #333; z-index: 2;">
+        <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; font-size: 14px; color: #333; z-index: 2;">
           <div>
             <span id="exhaustFlowRate">${exhaustFlowRate} L/s</span>
           </div>
