@@ -271,9 +271,11 @@ class HvacFanCard extends HTMLElement {
     const outdoorHumidity = da31Data.outdoor_humidity !== undefined ?
       da31Data.outdoor_humidity : null;
 
-    // Use ramses_extras absolute humidity sensors (if available)
-    const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state || '?';
-    const outdoorAbsHumidity = hass.states[config.outdoor_abs_humid_entity]?.state || '?';
+    // Use ramses_extras absolute humidity sensors (if available) - raw values only
+    const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state ?
+      (isNaN(parseFloat(hass.states[config.indoor_abs_humid_entity].state)) ? null : parseFloat(hass.states[config.indoor_abs_humid_entity].state)) : null;
+    const outdoorAbsHumidity = hass.states[config.outdoor_abs_humid_entity]?.state ?
+      (isNaN(parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) ? null : parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) : null;
 
     // Fan data - 31DA as primary, entity as fallback
     const rawData = {
@@ -281,18 +283,20 @@ class HvacFanCard extends HTMLElement {
       indoorAbsHumidity, outdoorAbsHumidity,  // From integration sensors
       supplyTemp, exhaustTemp,
       // Fan data - depend solely on da31Data, move into if-then-else
-      fanSpeed: da31Data.fan_info || null,
-      fanMode: da31Data.fan_info ? da31Data.fan_info.split(',')[0] : null,
+      fanSpeed: this._getFanSpeed(da31Data),
+      fanMode: this._getFanMode(da31Data),
       // Flow data - depend solely on da31Data
       flowRate: da31Data.supply_flow !== undefined ?
         da31Data.supply_flow : null,
-      // Other data
-      co2Level: hass.states[config.co2_entity]?.state || '?',
+      // Other data - raw values only
+      co2Level: hass.states[config.co2_entity]?.state ?
+        (isNaN(parseFloat(hass.states[config.co2_entity].state)) ? null : parseFloat(hass.states[config.co2_entity].state)) : null,
       // Dehumidifier entities (only if available)
       dehumMode: dehumEntitiesAvailable ? (hass.states[config.dehum_mode_entity]?.state || 'off') : null,
       dehumActive: dehumEntitiesAvailable ? (hass.states[config.dehum_active_entity]?.state || 'off') : null,
       // Comfort temperature entity (will be available when created)
-      comfortTemp: hass.states[config.comfort_temp_entity]?.state || '?',
+      comfortTemp: hass.states[config.comfort_temp_entity]?.state ?
+        (isNaN(parseFloat(hass.states[config.comfort_temp_entity].state)) ? null : parseFloat(hass.states[config.comfort_temp_entity].state)) : null,
       // Bypass position - depend solely on da31Data
       bypassPosition: da31Data.bypass_position !== undefined ?
         da31Data.bypass_position : null,
@@ -654,6 +658,31 @@ class HvacFanCard extends HTMLElement {
   get10D0Data() {
     return this._10d0Data || {};
   }
+
+  // Get fan speed from 31DA data - always show percentage
+  _getFanSpeed(da31Data) {
+    if (!da31Data.fan_info) return null;
+
+    // Try to get speed from supply/exhaust fan speed first
+    const supplySpeed = da31Data.supply_fan_speed;
+    const exhaustSpeed = da31Data.exhaust_fan_speed;
+
+    // Use supply speed if available, otherwise exhaust speed
+    const actualSpeed = supplySpeed !== undefined ? supplySpeed : exhaustSpeed;
+
+    // Always return percentage if we have speed data
+    if (actualSpeed !== undefined) {
+      return `${actualSpeed}%`;
+    }
+
+    return null;
+  }
+
+  // Get fan mode from 31DA data - always show fan_info as-is
+  _getFanMode(da31Data) {
+    return da31Data.fan_info || null;
+  }
+
 
   // Attach event listeners for normal mode
   attachNormalModeListeners() {
