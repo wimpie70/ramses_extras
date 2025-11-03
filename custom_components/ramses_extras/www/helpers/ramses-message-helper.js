@@ -20,70 +20,68 @@ class RamsesMessageHelper {
 
     setupHAConnection() {
         console.log('🎯 RamsesMessageHelper: Setting up HA connection...');
-        // Use the fallback listener approach that was working before
+        // Subscribe to HA events via WebSocket
         this.setupGlobalListener();
-        console.log('✅ RamsesMessageHelper: Using fallback listener approach');
+        console.log('✅ RamsesMessageHelper: Using WebSocket subscription approach');
     }
 
-    subscribeToHAEvents(connection) {
-        console.log('🎯 RamsesMessageHelper: Attempting to subscribe to ramses_cc_message events');
-        console.log('🎯 RamsesMessageHelper: connection object:', connection);
-        console.log('🎯 RamsesMessageHelper: connection methods:', Object.getOwnPropertyNames(connection));
 
-        // The connection is a Promise, we need to await it
-        connection.then((conn) => {
-            console.log('🎯 RamsesMessageHelper: Resolved connection:', conn);
-            console.log('🎯 RamsesMessageHelper: Resolved connection methods:', Object.getOwnPropertyNames(conn));
-            console.log('🎯 RamsesMessageHelper: conn.conn methods:', conn.conn ? Object.getOwnPropertyNames(conn.conn) : 'no conn.conn');
-
-            // Try the conn.conn object which might have the subscription methods
-            const actualConn = conn.conn || conn;
-
-            if (typeof actualConn.subscribeEvents === 'function') {
-                console.log('🎯 RamsesMessageHelper: Using actualConn.subscribeEvents');
-                actualConn.subscribeEvents(
-                    (event) => {
-                        console.log('🎯 RamsesMessageHelper: Received HA event:', event);
-                        this.handleHAEvent(event);
-                    },
-                    "ramses_cc_message"
-                ).then(() => {
-                    console.log('✅ RamsesMessageHelper: Successfully subscribed to ramses_cc_message events');
-                }).catch((error) => {
-                    console.error('❌ RamsesMessageHelper: Failed to subscribe to ramses_cc_message events:', error);
-                });
-            } else if (typeof actualConn.subscribe === 'function') {
-                console.log('🎯 RamsesMessageHelper: Using actualConn.subscribe');
-                actualConn.subscribe("ramses_cc_message", (event) => {
-                    console.log('🎯 RamsesMessageHelper: Received HA event via subscribe:', event);
-                    this.handleHAEvent(event);
-                });
-            } else if (typeof actualConn.addEventListener === 'function') {
-                console.log('🎯 RamsesMessageHelper: Using actualConn.addEventListener');
-                actualConn.addEventListener("ramses_cc_message", (event) => {
-                    console.log('🎯 RamsesMessageHelper: Received HA event via addEventListener:', event);
-                    this.handleHAEvent(event);
-                });
-            } else {
-                console.log('❌ RamsesMessageHelper: No suitable subscription method found');
-                console.log('🎯 RamsesMessageHelper: actualConn object:', actualConn);
-            }
-        }).catch((error) => {
-            console.error('❌ RamsesMessageHelper: Failed to resolve connection promise:', error);
-        });
-    }
 
     setupGlobalListener() {
-        console.log('🎯 RamsesMessageHelper: Setting up global listener for ramses_cc_message events');
-        // Listen for ramses_cc_message events on window
-        if (window.addEventListener) {
-            window.addEventListener('ramses_cc_message', this.handleRamsesMessage.bind(this));
-            console.log('✅ RamsesMessageHelper: Added window event listener');
-        } else if (document.addEventListener) {
-            document.addEventListener('ramses_cc_message', this.handleRamsesMessage.bind(this));
-            console.log('✅ RamsesMessageHelper: Added document event listener');
-        } else {
-            console.log('❌ RamsesMessageHelper: No addEventListener available');
+        console.log('🎯 RamsesMessageHelper: Setting up HA bus event listener');
+        // Subscribe to HA events via WebSocket connection
+        this.subscribeToHAEvents();
+    }
+
+    async subscribeToHAEvents() {
+        console.log('🎯 RamsesMessageHelper: Attempting to subscribe to HA bus events');
+
+        try {
+            if (window.hassConnection) {
+                const connection = await window.hassConnection;
+                console.log('🎯 RamsesMessageHelper: Resolved HA connection:', connection);
+
+                // Use the connection.conn object which has the actual methods
+                const actualConn = connection.conn || connection;
+                console.log('🎯 RamsesMessageHelper: actualConn object:', actualConn);
+                console.log('🎯 RamsesMessageHelper: actualConn methods:', Object.getOwnPropertyNames(actualConn));
+
+                if (actualConn && typeof actualConn.subscribeEvents === 'function') {
+                    console.log('✅ RamsesMessageHelper: Subscribing to ramses_cc_message events');
+
+                    actualConn.subscribeEvents(
+                        (event) => {
+                            console.log('🎯 RamsesMessageHelper: Received HA event:', event);
+                            if (event.event_type === 'ramses_cc_message') {
+                                this.handleHAEvent(event);
+                            }
+                        },
+                        "ramses_cc_message"
+                    ).then(() => {
+                        console.log('✅ RamsesMessageHelper: Successfully subscribed to ramses_cc_message events');
+                    }).catch((error) => {
+                        console.error('❌ RamsesMessageHelper: Failed to subscribe:', error);
+                    });
+                } else {
+                    console.log('❌ RamsesMessageHelper: No subscribeEvents method available');
+                    console.log('🎯 RamsesMessageHelper: Trying fallback subscription methods...');
+
+                    // Try alternative subscription approaches
+                    if (typeof actualConn.subscribe === 'function') {
+                        console.log('🎯 RamsesMessageHelper: Trying subscribe method');
+                        actualConn.subscribe("ramses_cc_message", (event) => {
+                            console.log('🎯 RamsesMessageHelper: Received HA event via subscribe:', event);
+                            this.handleHAEvent(event);
+                        });
+                    }
+                }
+            } else {
+                console.log('❌ RamsesMessageHelper: No hassConnection available, will retry later');
+                // Try again later
+                setTimeout(() => this.subscribeToHAEvents(), 2000);
+            }
+        } catch (error) {
+            console.error('❌ RamsesMessageHelper: Error setting up HA event subscription:', error);
         }
     }
 
@@ -112,25 +110,15 @@ class RamsesMessageHelper {
     // Handle ramses_cc_message events from window/document
     handleRamsesMessage(event) {
         try {
-            console.log('🎯 RamsesMessageHelper: Received ramses_cc_message event:', event);
-
             const messageData = event.detail;
-            console.log('🎯 RamsesMessageHelper: Event detail:', messageData);
 
             if (messageData?.event_type === 'ramses_cc_message') {
                 const messageCode = messageData.data?.code;
                 const deviceId = messageData.data?.src;
 
-                console.log('🎯 RamsesMessageHelper: Processing message:', { messageCode, deviceId });
-
                 if (messageCode && deviceId) {
-                    console.log('🎯 RamsesMessageHelper: Routing message', messageCode, 'for device', deviceId);
                     this.routeMessage(deviceId, messageCode, messageData);
-                } else {
-                    console.log('⚠️ RamsesMessageHelper: Missing messageCode or deviceId');
                 }
-            } else {
-                console.log('⚠️ RamsesMessageHelper: Not a ramses_cc_message event');
             }
         } catch (error) {
             console.error('Error in RamsesMessageHelper event handler:', error);
