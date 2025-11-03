@@ -39,8 +39,8 @@ export function createTopSection(data) {
         <div class="corner-value top-left">
           <div class="icon-circle blue">☁️</div>
           <div class="temp-value">
-            <span id="outdoorTemp">${outdoorTemp} °C</span>
             <span>🌡️</span>
+            <span id="outdoorTemp">${outdoorTemp} °C</span>
           </div>
           <div class="humidity-value">
             <span>💧</span>
@@ -100,8 +100,8 @@ export function createTopSection(data) {
 
         <div class="corner-value bottom-left">
           <div class="temp-value">
-            <span id="exhaustTemp">${exhaustTemp} °C</span>
             <span>🌡️</span>
+            <span id="exhaustTemp">${exhaustTemp} °C</span>
           </div>
         </div>
 
