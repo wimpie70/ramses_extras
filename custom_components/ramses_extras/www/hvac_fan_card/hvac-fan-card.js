@@ -670,9 +670,9 @@ class HvacFanCard extends HTMLElement {
     // Use supply speed if available, otherwise exhaust speed
     const actualSpeed = supplySpeed !== undefined ? supplySpeed : exhaustSpeed;
 
-    // Always return percentage if we have speed data
+    // Always return percentage if we have speed data (multiply by 100, no decimals)
     if (actualSpeed !== undefined) {
-      return `${actualSpeed}%`;
+      return `${Math.round(actualSpeed * 100)}%`;
     }
 
     return null;
