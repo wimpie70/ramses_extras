@@ -253,23 +253,23 @@ class HvacFanCard extends HTMLElement {
 
     // Temperature data - depend solely on 31DA
     const indoorTemp = da31Data.indoor_temp !== undefined ?
-      HvacFanCardHandlers.formatTemperature(da31Data.indoor_temp) : '?';
+      da31Data.indoor_temp : null;
 
     const outdoorTemp = da31Data.outdoor_temp !== undefined ?
-      HvacFanCardHandlers.formatTemperature(da31Data.outdoor_temp) : '?';
+      da31Data.outdoor_temp : null;
 
     const supplyTemp = da31Data.supply_temp !== undefined ?
-      HvacFanCardHandlers.formatTemperature(da31Data.supply_temp) : '?';
+      da31Data.supply_temp : null;
 
     const exhaustTemp = da31Data.exhaust_temp !== undefined ?
-      HvacFanCardHandlers.formatTemperature(da31Data.exhaust_temp) : '?';
+      da31Data.exhaust_temp : null;
 
     // Humidity data - depend solely on 31DA
     const indoorHumidity = da31Data.indoor_humidity !== undefined ?
-      HvacFanCardHandlers.formatHumidity(da31Data.indoor_humidity) : '?';
+      da31Data.indoor_humidity : null;
 
     const outdoorHumidity = da31Data.outdoor_humidity !== undefined ?
-      HvacFanCardHandlers.formatHumidity(da31Data.outdoor_humidity) : '?';
+      da31Data.outdoor_humidity : null;
 
     // Use ramses_extras absolute humidity sensors (if available)
     const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state || '?';
@@ -281,11 +281,11 @@ class HvacFanCard extends HTMLElement {
       indoorAbsHumidity, outdoorAbsHumidity,  // From integration sensors
       supplyTemp, exhaustTemp,
       // Fan data - depend solely on da31Data, move into if-then-else
-      fanSpeed: da31Data.fan_info || '?',
-      fanMode: da31Data.fan_info ? da31Data.fan_info.split(',')[0] : '?',
+      fanSpeed: da31Data.fan_info || null,
+      fanMode: da31Data.fan_info ? da31Data.fan_info.split(',')[0] : null,
       // Flow data - depend solely on da31Data
       flowRate: da31Data.supply_flow !== undefined ?
-        HvacFanCardHandlers.formatFlowRate(da31Data.supply_flow) : '?',
+        da31Data.supply_flow : null,
       // Other data
       co2Level: hass.states[config.co2_entity]?.state || '?',
       // Dehumidifier entities (only if available)
@@ -294,8 +294,8 @@ class HvacFanCard extends HTMLElement {
       // Comfort temperature entity (will be available when created)
       comfortTemp: hass.states[config.comfort_temp_entity]?.state || '?',
       // Bypass position - depend solely on da31Data
-      isBypassOpen: da31Data.bypass_position !== undefined ?
-        (da31Data.bypass_position > 0) : false,
+      bypassPosition: da31Data.bypass_position !== undefined ?
+        da31Data.bypass_position : null,
       dehumEntitiesAvailable,  // Add availability flag
       dataSource31DA: da31Data.source === '31DA_message',  // Flag for UI
       timerMinutes: 0, // This would come from timer state
@@ -305,7 +305,7 @@ class HvacFanCard extends HTMLElement {
     // DEBUG: Log what we're actually using for fan data
     console.log('🔍 RENDER DEBUG - Fan data from rawdata:', rawData);
 
-    const selectedSvg = rawData.isBypassOpen ? BYPASS_OPEN_SVG : NORMAL_SVG;
+    const selectedSvg = rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
 
     const templateData = createTemplateData(rawData);
     // Add airflow SVG to template data
