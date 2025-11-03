@@ -13,10 +13,6 @@ export class HvacFanCardHandlers {
      */
     static handle_31DA(card, messageData) {
         try {
-            console.log('🎯 31DA message received for HVAC fan card:', {
-                device: messageData?.data?.payload?.hvac_id,
-                timestamp: messageData?.time_fired
-            });
 
             const payload = messageData?.data?.payload;
             if (!payload) {
@@ -67,7 +63,7 @@ export class HvacFanCardHandlers {
      * Extract relevant HVAC data from 31DA message payload
      */
     static extract31DAData(payload) {
-        return {
+        const result = {
             // Basic HVAC identification
             hvac_id: payload.hvac_id,
 
@@ -94,7 +90,7 @@ export class HvacFanCardHandlers {
 
             // System status
             bypass_position: payload.bypass_position,
-            remaining_mins: payload.remaining_mins,
+            remaining_mins: payload.remaining_mins !== undefined ? payload.remaining_mins : null,
             speed_capabilities: payload.speed_capabilities || [],
 
             // Optional data
@@ -107,6 +103,8 @@ export class HvacFanCardHandlers {
             timestamp: payload._timestamp || new Date().toISOString(),
             source: '31DA_message'
         };
+
+        return result;
     }
 
     /**

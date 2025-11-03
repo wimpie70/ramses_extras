@@ -300,7 +300,7 @@ class HvacFanCard extends HTMLElement {
         da31Data.bypass_position : null,
       dehumEntitiesAvailable,  // Add availability flag
       dataSource31DA: da31Data.source === '31DA_message',  // Flag for UI
-      timerMinutes: 0, // This would come from timer state
+      timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
 
@@ -524,33 +524,15 @@ class HvacFanCard extends HTMLElement {
       if (messageCode === '31DA') {
         console.log('🎯 Processing 31DA message for real-time update...');
 
-        // Extract payload and process as 31DA data
-        const payload = data.payload || {};
-        const hvacData = {
-          hvac_id: payload.hvac_id || '00',
-          indoor_temp: payload.indoor_temp,
-          outdoor_temp: payload.outdoor_temp,
-          supply_temp: payload.supply_temp,
-          exhaust_temp: payload.exhaust_temp,
-          indoor_humidity: payload.indoor_humidity,
-          outdoor_humidity: payload.outdoor_humidity,
-          fan_info: payload.fan_info,
-          exhaust_fan_speed: payload.exhaust_fan_speed,
-          supply_fan_speed: payload.supply_fan_speed,
-          bypass_position: payload.bypass_position,
-          supply_flow: payload.supply_flow,
-          exhaust_flow: payload.exhaust_flow,
-          timestamp: data.dtm || new Date().toISOString()
-        };
-
-        console.log('🎯 Extracted HVAC data from 31DA:', hvacData);
-
-        // Update with 31DA data and force render
-        this.updateFrom31DA(hvacData);
+        // Route through RamsesMessageHelper to ensure proper handler chain
+        const messageHelper = getRamsesMessageHelper();
+        messageHelper.routeMessage(deviceId, messageCode, event);
 
       } else if (messageCode === '10D0') {
         console.log('🎯 Processing 10D0 message for filter data...');
-        this.updateFrom10D0(data.payload || {});
+        // Route through RamsesMessageHelper for 10D0 as well
+        const messageHelper = getRamsesMessageHelper();
+        messageHelper.routeMessage(deviceId, messageCode, event);
       }
     } else {
       console.log('⚠️ Message device mismatch:', {
@@ -565,7 +547,6 @@ class HvacFanCard extends HTMLElement {
     // Register for real-time message updates if we have a device ID
     if (this._config?.device_id) {
       const messageHelper = getRamsesMessageHelper();
-
       messageHelper.addListener(this, this._config.device_id, ["31DA", "10D0"]);
 
       // NEW: Subscribe to HA events if connection is available
