@@ -1,37 +1,4 @@
 export const CARD_STYLE = `
-/* ====== UTILITY CLASSES ====== */
-.flex { display: flex; }
-.flex-center { display: flex; align-items: center; justify-content: center; }
-.flex-column { display: flex; flex-direction: column; }
-.flex-center-column { display: flex; flex-direction: column; align-items: center; justify-content: center; }
-
-.gap-4 { gap: 4px; } .gap-6 { gap: 6px; } .gap-8 { gap: 8px; }
-.gap-12 { gap: 12px; } .gap-16 { gap: 16px; } .gap-20 { gap: 20px; }
-
-.transition { transition: all 0.3s ease; }
-.hover-scale:hover { transform: scale(1.1); }
-.hover-opacity:hover { opacity: 1; }
-
-.rounded-sm { border-radius: 6px; } .rounded-md { border-radius: 8px; }
-.rounded-lg { border-radius: 12px; } .rounded-xl { border-radius: 20px; }
-
-.p-6 { padding: 6px; } .p-8 { padding: 8px; } .p-12 { padding: 12px; }
-.p-16 { padding: 16px; } .p-20 { padding: 20px; }
-
-.text-sm { font-size: 12px; } .text-md { font-size: 14px; } .text-lg { font-size: 16px; }
-.text-xl { font-size: 20px; } .text-2xl { font-size: 32px; }
-
-.color-orange { color: #ff9800; } .color-blue { color: #4a90e2; } .color-green { color: #28a745; }
-.color-gray { color: #333; } .color-white { color: #ffffff; } .color-dark { color: #1e3a8a; }
-
-.bg-dark { background: #2a2a2a; } .bg-hover { background: #353535; }
-.bg-light { background: white; } .bg-disabled { background: #f8f9fa; }
-
-.border-blue { border-color: #4a90e2; } .border-warning { border-color: #ffc107; }
-.border-success { border-color: #28a745; } .border-error { border-color: #dc3545; } .border-light { border-color: #b8daff; }
-
-.shadow-focus { box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1); }
-.shadow-hover { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); }
 
 /* ====== BASE CARD STYLES ====== */
 .ventilation-card {
@@ -47,6 +14,7 @@ export const CARD_STYLE = `
   margin: 0 auto;
   box-sizing: border-box;
   display: block;
+  transition: all 0.3s ease;
 }
 
 .top-section {
@@ -62,6 +30,7 @@ export const CARD_STYLE = `
   font-size: 14px;
   color: #333;
   font-weight: 500;
+  transition: all 0.3s ease;
 }
 
 .centre {
@@ -83,15 +52,6 @@ export const CARD_STYLE = `
 }
 
 /* ====== TEXT DISPLAYS ====== */
-.speed-display {
-  margin-bottom: 4px;
-}
-
-.fanmode {
-  font-size: 12px;
-  font-weight: 500;
-}
-
 .timer-display {
   position: absolute;
   top: 15px;
@@ -102,8 +62,6 @@ export const CARD_STYLE = `
   gap: 12px;
   white-space: nowrap;
   padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
   min-width: 80px;
 }
 
@@ -119,7 +77,6 @@ export const CARD_STYLE = `
   display: flex;
   flex-direction: column;
   gap: 4px;
-  color: #333;
 }
 
 .corner-value.top-left { top: 20px; left: 20px; align-items: flex-start; text-align: left; }
@@ -135,12 +92,13 @@ export const CARD_STYLE = `
   color: #333;
 }
 
-.side-value.mid-left {
+.settings-container {
   position: absolute;
-  width: 100px;
-  height: 100px;
-  top: 50%;
-  left: 20px;
+  bottom: 45px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  z-index: 2;
 }
 
 .side-value-item {
@@ -207,7 +165,7 @@ export const CARD_STYLE = `
 
 .dehum-mode, .dehum-active {
   font-size: 20px;
-  color: #ff9800;
+  color: #4a90e2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -295,6 +253,7 @@ export const CARD_STYLE = `
   min-height: 280px;
   display: flex;
   flex-direction: column;
+  transition: all 0.3s ease;
 }
 
 .param-nav {

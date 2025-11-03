@@ -50,6 +50,13 @@ export function createTopSection(data) {
             <span>💨</span>
             <span id="outdoorAbsHumidity">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
           </div>
+          <div class="side-value-item">
+            <span>📊</span>
+            <span id="efficiency">${efficiency}%</span>
+          </div>
+          <div class="side-value-item">
+            <span id="co2Level">${co2Level} ppm</span>
+          </div>
         </div>
 
         <div class="corner-value top-right">
@@ -98,19 +105,10 @@ export function createTopSection(data) {
           </div>
         </div>
 
-        <div class="side-value mid-left">
-          <div class="side-value-item">
-            <span>📊</span>
-            <span id="efficiency">${efficiency}%</span>
-          </div>
-          <div class="side-value-item">
-            <span id="co2Level">${co2Level} ppm</span>
-          </div>
-          <div class="settings-container">
-            <button class="settings-icon" title="Edit device parameters">
-              ⚙️
-            </button>
-          </div>
+        <div class="settings-container">
+          <button class="settings-icon" title="Edit device parameters">
+            ⚙️
+          </button>
         </div>
 
         <!-- SVG Flow Direction Arrows -->
