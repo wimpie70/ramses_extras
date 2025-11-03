@@ -249,8 +249,6 @@ class HvacFanCard extends HTMLElement {
     // Get data from 31DA messages (primary source) or fall back to entities
     const da31Data = this.get31DAData();
 
-    console.log('🔍 RENDER DEBUG - data from 31DA:', da31Data);
-
     // Temperature data - depend solely on 31DA
     const indoorTemp = da31Data.indoor_temp !== undefined ?
       da31Data.indoor_temp : null;
@@ -305,9 +303,6 @@ class HvacFanCard extends HTMLElement {
       timerMinutes: 0, // This would come from timer state
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
-
-    // DEBUG: Log what we're actually using for fan data
-    console.log('🔍 RENDER DEBUG - Fan data from rawdata:', rawData);
 
     const selectedSvg = rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
 
@@ -500,7 +495,6 @@ class HvacFanCard extends HTMLElement {
       (event) => this._handleRamsesMessage(event),
       "ramses_cc_message"
     ).then(() => {
-      console.log('✅ Successfully subscribed to ramses_cc_message events');
     }).catch((error) => {
       console.error('❌ Failed to subscribe to ramses_cc_message events:', error);
       this._subscribed = false; // Reset flag on failure
@@ -509,10 +503,8 @@ class HvacFanCard extends HTMLElement {
 
   // NEW: Handle Ramses CC messages from HA
   _handleRamsesMessage(event) {
-    console.log('🔥 Received Ramses CC message via HA subscription:', event);
 
     const data = event.data;
-    console.log('📋 Event data:', data);
 
     // Check if this message matches our device
     const deviceId = data.src || data.device_id;
@@ -695,9 +687,6 @@ class HvacFanCard extends HTMLElement {
         e.stopPropagation();
         this.toggleParameterMode();
       });
-      // console.log('✅ Settings icon listener attached');
-    } else {
-      // console.log('⚠️ Settings icon not found in DOM');
     }
 
     // Control buttons
@@ -809,7 +798,7 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
   }
 
   if (element && element._hass) {
-    console.log('Found HASS instance in host element, using proper from_id');
+//    console.log('Found HASS instance in host element, using proper from_id');
 
     // Use the imported helper functions directly with the element's hass instance
     (async () => {
@@ -818,14 +807,11 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
         let remId;
         try {
           remId = await getBoundRemDevice(element._hass, deviceId);
-          if (remId) {
-            console.log(`Using bound REM as from_id: ${remId}`);
-          } else {
-            console.log('No bound REM found, using device_id as from_id');
-            remId = deviceId;
+          if (!remId) {
+            console.log('No bound REM found, add a "bound" REM device to Ramses RF Known Devices Config.');
           }
         } catch (error) {
-          console.warn(`WebSocket error getting bound REM: ${error.message}. Falling back to device_id.`);
+          console.warn(`WebSocket error getting bound REM: ${error.message}.`);
           remId = deviceId;
         }
 
@@ -840,15 +826,14 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
 
             // Send 31DA request to get updated status (speed, flow, etc.)
             await sendPacket(element._hass, deviceId, remId, 'RQ', '31DA', '00');
-            console.log('✅ 31DA status request sent');
 
-            // For speed commands, also request 10D0 to get fan mode information
-            const speedCommands = ['low', 'medium', 'high', 'away', 'boost', 'disable'];
-            if (speedCommands.includes(commandKey)) {
-              console.log('📡 Also requesting 10D0 for fan mode update...');
-              await sendPacket(element._hass, deviceId, remId, 'RQ', '10D0', '00');
-              console.log('✅ 10D0 fan mode request sent');
-            }
+            // // For speed commands, also request 10D0 to get fan mode information
+            // const speedCommands = ['low', 'medium', 'high', 'away', 'boost', 'disable'];
+            // if (speedCommands.includes(commandKey)) {
+            //   console.log('📡 Also requesting 10D0 for fan mode update...');
+            //   await sendPacket(element._hass, deviceId, remId, 'RQ', '10D0', '00');
+            //   console.log('✅ 10D0 fan mode request sent');
+            // }
 
             // Wait a bit more for the status responses, then refresh UI
             setTimeout(() => {
@@ -859,11 +844,11 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
                 // Trigger hass setter to re-render if states changed
                 element.hass = element._hass;
               }
-            }, 1500); // Additional 1.5 second delay for status responses
+            }, 1000); // Additional 1 second delay for status responses
           } catch (error) {
             console.warn('Error requesting status update:', error);
           }
-        }, 2000); // 2 second delay to allow device to respond
+        }, 1000); // 1 second delay to allow device to respond
       } catch (error) {
         console.error('Error sending command:', error);
       }
@@ -877,7 +862,6 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
 
 // Register it with HA for automatic discovery
 window.customCards = window.customCards || [];
-console.log('🔍 Current window.customCards before registration:', window.customCards.length);
 
 window.customCards.push({
   type: "hvac-fan-card",
@@ -886,10 +870,3 @@ window.customCards.push({
   preview: true, // Shows in card picker
   documentationURL: "https://github.com/wimpie70/ramses_extras"
 });
-
-console.log('✅ hvac-fan-card registered in window.customCards:', {
-  type: "hvac-fan-card",
-  name: "Hvac Fan Control Card",
-  length: window.customCards.length
-});
-console.log('📋 All registered cards:', window.customCards);

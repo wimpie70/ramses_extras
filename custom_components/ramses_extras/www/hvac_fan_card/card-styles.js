@@ -41,7 +41,7 @@ export const CARD_STYLE = `
   width: 100px;
   height: 100px;
   position: absolute;
-  top: 50%;
+  top: 10%;
   left: 50%;
   transform: translate(-50%, -50%);
   border-radius: 8px;
