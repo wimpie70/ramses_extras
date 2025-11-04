@@ -205,14 +205,17 @@ class RamsesExtraHumiditySensor(SensorEntity):
         try:
             # Get temperature from ramses_cc sensor
             temp_state = self.hass.states.get(temp_entity)
-            if temp_state is None:
+            if temp_state is None or temp_state.state in ("unavailable", "unknown"):
                 return None, None
 
             temp = float(temp_state.state)
 
             # Get humidity from ramses_cc sensor
             humidity_state = self.hass.states.get(humidity_entity)
-            if humidity_state is None:
+            if humidity_state is None or humidity_state.state in (
+                "unavailable",
+                "unknown",
+            ):
                 return None, None
 
             humidity = float(humidity_state.state)
