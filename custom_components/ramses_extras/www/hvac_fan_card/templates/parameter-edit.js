@@ -23,6 +23,9 @@ export function createParameterEditSection(params) {
     settingsText = 'Paramètres de l\'appareil:';
   }
 
+  // Check for humidity control entities
+  const humidityControlEntities = getHumidityControlEntities(deviceId, hass);
+
   return `
     <div class="parameter-edit-section">
       <!-- Navigation Header -->
@@ -36,11 +39,93 @@ export function createParameterEditSection(params) {
         </div>
       </div>
 
-      <!-- Parameter List -->
+      ${humidityControlEntities.length > 0 ? `
+      <!-- Humidity Control Settings Section -->
+      <div class="param-section-header">
+        <h3>Humidity Control Settings</h3>
+      </div>
+      <div class="param-list" style="max-height: 200px; overflow-y: auto;">
+        ${humidityControlEntities.map(entity =>
+          createHumidityControlItem(entity, hass)
+        ).join('')}
+      </div>
+      ` : ''}
+
+      ${Object.keys(availableParams).length > 0 ? `
+      <!-- Device Parameters Section -->
+      <div class="param-section-header">
+        <h3>Device Parameters (2411)</h3>
+      </div>
       <div class="param-list" style="max-height: 400px; overflow-y: auto;">
         ${Object.entries(availableParams).map(([key, param]) =>
           createParameterItem(key, param, deviceId, hass)
         ).join('')}
+      </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function getHumidityControlEntities(deviceId, hass) {
+  const humidityControlEntities = [];
+  const deviceIdUnderscore = deviceId.replace(/:/g, '_');
+
+  // Check for humidity control entities with full descriptive names
+  // Integration converts friendly names: "Relative Humidity Minimum" → "relative_humidity_minimum"
+  const humidityEntities = [
+    `number.relative_humidity_minimum_${deviceIdUnderscore}`,
+    `number.relative_humidity_maximum_${deviceIdUnderscore}`
+  ];
+
+  // console.log('🔍 Looking for humidity control entities:', humidityEntities);
+
+  humidityEntities.forEach(entityId => {
+    if (hass.states[entityId]) {
+      // console.log('✅ Found humidity entity:', entityId);
+      humidityControlEntities.push({
+        entity_id: entityId,
+        state: hass.states[entityId].state,
+        attributes: hass.states[entityId].attributes || {}
+      });
+    } else {
+      console.log('❌ Missing humidity entity:', entityId);
+    }
+  });
+
+  // console.log('🎯 Final humidity entities:', humidityControlEntities);
+  return humidityControlEntities;
+}
+
+function createHumidityControlItem(entity, hass) {
+  const entityId = entity.entity_id;
+  const currentValue = entity.state;
+  const friendlyName = entity.attributes.friendly_name || entityId.split('_').pop().replace(/([A-Z])/g, ' $1').toLowerCase();
+  const unit = entity.attributes.unit_of_measurement || '%';
+
+  // Create a readable name from the entity ID
+  let displayName = friendlyName;
+  if (entityId.includes('minimum')) {
+    displayName = 'Minimum Relative Humidity';
+  } else if (entityId.includes('maximum')) {
+    displayName = 'Maximum Relative Humidity';
+  }
+
+  return `
+    <div class="param-item" data-humidity-control="${entityId}">
+      <div class="param-info">
+        <label class="param-label">${displayName}</label>
+        <span class="param-unit">${unit}</span>
+      </div>
+      <div class="param-input-container">
+        <input type="number"
+                class="param-input"
+                min="${entity.attributes.min || 0}"
+                max="${entity.attributes.max || 100}"
+                step="${entity.attributes.step || 1}"
+                value="${currentValue}"
+                data-entity="${entityId}">
+        <button class="param-update-btn" onclick="updateHumidityControl('${entityId}', this.previousElementSibling.value, this)">Update</button>
+        <span class="param-status"></span>
       </div>
     </div>
   `;
@@ -49,7 +134,7 @@ export function createParameterEditSection(params) {
 function createParameterItem(paramKey, paramInfo, deviceId, hass) {
   const entityId = `number.${deviceId.replace(/:/g, '_')}_param_${paramKey}`;
   const currentValue = hass.states[entityId]?.state || paramInfo.current_value || paramInfo.default_value || paramInfo.min_value || 0;
-  console.log(`🔧 Creating parameter item for ${paramKey}: entity=${entityId}, currentValue=${currentValue}, paramInfo=`, paramInfo);
+  // console.log(`🔧 Creating parameter item for ${paramKey}: entity=${entityId}, currentValue=${currentValue}, paramInfo=`, paramInfo);
 
   // The schema already comes pre-scaled from the backend, so we just use the values directly
   // No additional scaling needed in the frontend

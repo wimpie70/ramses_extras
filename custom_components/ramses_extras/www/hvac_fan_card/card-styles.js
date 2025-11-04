@@ -273,6 +273,22 @@ export const CARD_STYLE = `
   color: #1e3a8a;
 }
 
+/* ====== PARAMETER SECTIONS ====== */
+.param-section-header {
+  margin: 16px 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(30, 58, 138, 0.2);
+}
+
+.param-section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e3a8a;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* ====== PARAMETER LIST ====== */
 .param-list {
   flex: 1;
@@ -282,6 +298,7 @@ export const CARD_STYLE = `
   max-height: 400px;
   overflow-y: auto;
   padding-right: 8px;
+  margin-bottom: 20px;
 }
 
 .param-list::-webkit-scrollbar { width: 6px; }

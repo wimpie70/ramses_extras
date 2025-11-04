@@ -388,7 +388,7 @@ class HvacFanCard extends HTMLElement {
       const result = await callWebSocket(this._hass, {
         type: "ramses_extras/get_2411_schema"
       });
-      console.log('Parameter schema received:', Object.keys(result));
+      // console.log('Parameter schema received:', Object.keys(result));
       return result;
     } catch (error) {
       console.error('Failed to fetch parameter schema:', error);
@@ -458,7 +458,7 @@ class HvacFanCard extends HTMLElement {
 
   // Update a parameter value
   async updateParameter(paramKey, newValue) {
-    console.log(`🔄 Updating parameter ${paramKey} to ${newValue}`);
+    // console.log(`🔄 Updating parameter ${paramKey} to ${newValue}`);
 
     const paramItem = this.shadowRoot?.querySelector(`[data-param="${paramKey}"]`);
     if (paramItem) {
@@ -467,11 +467,11 @@ class HvacFanCard extends HTMLElement {
     }
 
     try {
-      console.log(`📡 Calling ramses_cc.set_fan_param service for ${paramKey}...`);
+      // console.log(`📡 Calling ramses_cc.set_fan_param service for ${paramKey}...`);
       // Extract the parameter ID from the entity name (e.g., "param_31" -> "31")
       const paramId = paramKey.startsWith('param_') ? paramKey.replace('param_', '') : paramKey;
       await setFanParameter(this._hass, this.config.device_id, paramId, newValue);
-      console.log(`✅ Parameter ${paramKey} update sent successfully (fire and forget)`);
+      // console.log(`✅ Parameter ${paramKey} update sent successfully (fire and forget)`);
       // Don't wait for confirmation - service handles it asynchronously
       if (paramItem) {
         paramItem.classList.remove('loading');
@@ -648,7 +648,7 @@ class HvacFanCard extends HTMLElement {
 
     if (settingsIcon) {
       settingsIcon.addEventListener('click', (e) => {
-        console.log('🔙 Back icon clicked');
+        // console.log('🔙 Back icon clicked');
         e.preventDefault();
         e.stopPropagation();
         this.toggleParameterMode();
@@ -657,22 +657,24 @@ class HvacFanCard extends HTMLElement {
 
     if (backIcon) {
       backIcon.addEventListener('click', (e) => {
-        console.log('🔙 Back icon clicked');
+        // console.log('🔙 Back icon clicked');
         e.preventDefault();
         e.stopPropagation();
         this.toggleParameterMode();
       });
     }
 
-    // Parameter update buttons
+    // Parameter update buttons - only attach to device parameter buttons, not humidity control buttons
     const paramButtons = this.shadowRoot?.querySelectorAll('.param-update-btn');
-    if (paramButtons) {
-      paramButtons.forEach(button => {
+    const deviceParamButtons = this.shadowRoot?.querySelectorAll('.param-update-btn[data-param]');
+
+    if (deviceParamButtons) {
+      deviceParamButtons.forEach(button => {
         button.addEventListener('click', (e) => {
           const paramKey = button.getAttribute('data-param');
           const input = button.previousElementSibling;
           const newValue = input?.value;
-          console.log(`📝 Parameter ${paramKey} update button clicked with value ${newValue}`);
+          // console.log(`📝 Device parameter ${paramKey} update button clicked with value ${newValue}`);
           if (paramKey && newValue !== undefined) {
             this.updateParameter(paramKey, newValue);
           } else {
@@ -680,8 +682,14 @@ class HvacFanCard extends HTMLElement {
           }
         });
       });
-      console.log(`✅ ${paramButtons.length} parameter update button listeners attached`);
+      // console.log(`✅ ${deviceParamButtons.length} device parameter update button listeners attached`);
     }
+
+    // // Count humidity control buttons separately for info
+    // const humidityControlButtons = this.shadowRoot?.querySelectorAll('.param-update-btn:not([data-param])');
+    // if (humidityControlButtons && humidityControlButtons.length > 0) {
+    //   console.log(`🔧 ${humidityControlButtons.length} humidity control buttons found (using onclick handlers)`);
+    // }
   }
 }
 
@@ -690,7 +698,7 @@ class HvacFanCard extends HTMLElement {
 
 // Register the web component
 if (!customElements.get('hvac-fan-card')) {
-  console.log('Registering hvac-fan-card web component');
+  // console.log('Registering hvac-fan-card web component');
   customElements.define('hvac-fan-card', HvacFanCard);
 }
 
@@ -706,6 +714,41 @@ window.updateParameter = function(paramKey, newValue) {
   const card = document.querySelector('hvac-fan-card');
   if (card) {
     card.updateParameter(paramKey, newValue);
+  }
+};
+
+window.updateHumidityControl = function(entityId, newValue, buttonElement) {
+  // console.log(`🔧 updateHumidityControl called with:`, { entityId, newValue, buttonElement });
+
+  // Find the card element using the button element (similar to send_command)
+  let element = buttonElement;
+  while (element && element.tagName !== 'HVAC-FAN-CARD') {
+    element = element.parentElement || element.getRootNode()?.host;
+  }
+
+  if (element && element._hass) {
+    // console.log(`📡 Calling number.set_value service for ${entityId} = ${newValue}`);
+
+    // Call Home Assistant service to update the entity
+    element._hass.callService('number', 'set_value', {
+      entity_id: entityId,
+      value: parseFloat(newValue)
+    }).then(() => {
+      console.log(`✅ Humidity control updated: ${entityId} = ${newValue}`);
+      // Clear previous states to force update detection
+      element._prevStates = null;
+      // Trigger re-render
+      if (element._hass && element.config) {
+        element.render();
+      }
+    }).catch(error => {
+      console.error(`❌ Failed to update humidity control ${entityId}:`, error);
+    });
+  } else {
+    console.error(`❌ Cannot update humidity control - missing card or hass:`, {
+      element: !!element,
+      hass: element?._hass
+    });
   }
 };
 
