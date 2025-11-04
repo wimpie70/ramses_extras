@@ -224,9 +224,6 @@ class HvacFanCard extends HTMLElement {
 
     // Attach event listeners for parameter edit mode
     this.attachParameterEditListeners();
-
-    // Re-attach event listeners after DOM update
-    // Note: onchange removed from input, now using update button
   }
 
   renderNormalMode() {
@@ -239,10 +236,10 @@ class HvacFanCard extends HTMLElement {
     // Check dehumidify entity availability
     const dehumEntitiesAvailable = this.checkDehumidifyEntities();
 
-    // Get data from 31DA messages (primary source) or fall back to entities
+    // Get data from 31DA messages
     const da31Data = this.get31DAData();
 
-    // Temperature data - depend solely on 31DA
+    // Temperature data
     const indoorTemp = da31Data.indoor_temp !== undefined ?
       da31Data.indoor_temp : null;
 
@@ -255,7 +252,7 @@ class HvacFanCard extends HTMLElement {
     const exhaustTemp = da31Data.exhaust_temp !== undefined ?
       da31Data.exhaust_temp : null;
 
-    // Humidity data - depend solely on 31DA
+    // Humidity data
     const indoorHumidity = da31Data.indoor_humidity !== undefined ?
       da31Data.indoor_humidity : null;
 
@@ -264,33 +261,37 @@ class HvacFanCard extends HTMLElement {
 
     // Use ramses_extras absolute humidity sensors (if available) - raw values only
     const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state ?
-      (isNaN(parseFloat(hass.states[config.indoor_abs_humid_entity].state)) ? null : parseFloat(hass.states[config.indoor_abs_humid_entity].state)) : null;
+      (isNaN(parseFloat(hass.states[config.indoor_abs_humid_entity].state)) ?
+        null : parseFloat(hass.states[config.indoor_abs_humid_entity].state)) : null;
     const outdoorAbsHumidity = hass.states[config.outdoor_abs_humid_entity]?.state ?
-      (isNaN(parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) ? null : parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) : null;
+      (isNaN(parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) ?
+        null : parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) : null;
 
-    // Fan data - 31DA as primary, entity as fallback
+    // Fan data
     const rawData = {
       indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
       indoorAbsHumidity, outdoorAbsHumidity,  // From integration sensors
       supplyTemp, exhaustTemp,
-      // Fan data - depend solely on da31Data, move into if-then-else
+      // Fan data
       fanSpeed: this._getFanSpeed(da31Data),
       fanMode: this._getFanMode(da31Data),
-      // Flow data - depend solely on da31Data
+      // Flow data
       flowRate: da31Data.supply_flow !== undefined ?
         da31Data.supply_flow : null,
       exhaustFlowRate: da31Data.exhaust_flow !== undefined ?
         da31Data.exhaust_flow : null,
       // Other data - raw values only
       co2Level: hass.states[config.co2_entity]?.state ?
-        (isNaN(parseFloat(hass.states[config.co2_entity].state)) ? null : parseFloat(hass.states[config.co2_entity].state)) : null,
+        (isNaN(parseFloat(hass.states[config.co2_entity].state)) ?
+          null : parseFloat(hass.states[config.co2_entity].state)) : null,
       // Dehumidifier entities (only if available)
       dehumMode: dehumEntitiesAvailable ? (hass.states[config.dehum_mode_entity]?.state || 'off') : null,
       dehumActive: dehumEntitiesAvailable ? (hass.states[config.dehum_active_entity]?.state || 'off') : null,
       // Comfort temperature entity (will be available when created)
       comfortTemp: hass.states[config.comfort_temp_entity]?.state ?
-        (isNaN(parseFloat(hass.states[config.comfort_temp_entity].state)) ? null : parseFloat(hass.states[config.comfort_temp_entity].state)) : null,
-      // Bypass position - depend solely on da31Data
+        (isNaN(parseFloat(hass.states[config.comfort_temp_entity].state)) ?
+          null : parseFloat(hass.states[config.comfort_temp_entity].state)) : null,
+      // Bypass position
       bypassPosition: da31Data.bypass_position !== undefined ?
         da31Data.bypass_position : null,
       dehumEntitiesAvailable,  // Add availability flag
@@ -299,10 +300,10 @@ class HvacFanCard extends HTMLElement {
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
 
-    const selectedSvg = rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
-
+    // create templateData for rendering
     const templateData = createTemplateData(rawData);
     // Add airflow SVG to template data
+    const selectedSvg = rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
 
     // Generate HTML using template functions
@@ -481,17 +482,15 @@ class HvacFanCard extends HTMLElement {
     }
   }
 
-
-  // REMOVED: Cards no longer subscribe directly - RamsesMessageHelper handles all subscriptions
-
-  // REMOVED: Cards no longer handle messages directly - RamsesMessageHelper manages all subscriptions
-
   // Add event listeners after the component is connected to the DOM
   connectedCallback() {
     // Register for real-time message updates if we have a device ID
     if (this._config?.device_id) {
       const messageHelper = getRamsesMessageBroker();
       messageHelper.addListener(this, this._config.device_id, ["31DA", "10D0"]);
+
+      // Request initial data when card is fully loaded
+      this.requestInitialData();
     }
   }
 
@@ -507,8 +506,6 @@ class HvacFanCard extends HTMLElement {
         this._eventCheckTimer = null;
       }
     }
-
-    // REMOVED: No direct subscriptions to clean up - RamsesMessageHelper handles all subscriptions
 
     // Clear other intervals
     if (this._stateCheckInterval) {
@@ -532,6 +529,22 @@ class HvacFanCard extends HTMLElement {
   handle_10D0(messageData) {
     // Use the handlers class to process the message
     HvacFanCardHandlers.handle_10D0(this, messageData);
+  }
+
+  // Request initial data when card is fully loaded
+  async requestInitialData() {
+    if (!this._hass || !this._config?.device_id) {
+      console.warn('Cannot request initial data: missing hass or device_id');
+      return;
+    }
+
+    try {
+      const tempButton = this;
+      window.send_command('request31DA', this._config.device_id, tempButton);
+      window.send_command('request10D0', this._config.device_id, tempButton);
+    } catch (error) {
+      console.error('❌ Failed to request initial data:', error);
+    }
   }
 
   // Update the card with 31DA data
@@ -693,7 +706,7 @@ window.updateParameter = function(paramKey, newValue) {
 // Note: window.send_command is defined below
 
 window.send_command = function(commandKey, deviceId, buttonElement) {
-  console.log(`window.send_command called with: ${commandKey}, deviceId: ${deviceId}, buttonElement:`, buttonElement);
+  // console.log(`window.send_command called with: ${commandKey}, deviceId: ${deviceId}, buttonElement:`, buttonElement);
 
   // Get the command definition
   const command = window.FAN_COMMANDS[commandKey];
@@ -719,7 +732,7 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
         try {
           remId = await getBoundRemDevice(element._hass, deviceId);
           if (!remId) {
-            console.log('No bound REM found, add a "bound" REM device to Ramses RF Known Devices Config.');
+            console.warn('No bound REM found, add a "bound" REM device to Ramses RF Known Devices Config.');
           }
         } catch (error) {
           console.warn(`WebSocket error getting bound REM: ${error.message}.`);
@@ -728,12 +741,12 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
 
         // Send the packet with proper from_id
         await sendPacket(element._hass, deviceId, remId, command.verb, command.code, command.payload);
-        console.log(`Successfully sent ${commandKey} command`);
+        // console.log(`Successfully sent ${commandKey} command`);
 
         // After sending command, wait a bit then request status update and refresh entity states
         setTimeout(async () => {
           try {
-            console.log(`🔄 Requesting status updates after ${commandKey} command...`);
+            // console.log(`🔄 Requesting status updates after ${commandKey} command...`);
 
             // Send 31DA request to get updated status (speed, flow, etc.)
             await sendPacket(element._hass, deviceId, remId, 'RQ', '31DA', '00');
