@@ -519,17 +519,18 @@ class HvacFanCard extends HTMLElement {
     }
   }
 
-
-  // Message handler methods - called automatically by RamsesMessageHelper
+  // Message handler functions -
+  // called automatically by (Global) RamsesMessageBroker
+  // these were first registered in connectedCallback
   handle_31DA(messageData) {
-    // Use the handlers class to process the message
     HvacFanCardHandlers.handle_31DA(this, messageData);
   }
 
   handle_10D0(messageData) {
-    // Use the handlers class to process the message
     HvacFanCardHandlers.handle_10D0(this, messageData);
   }
+
+  // Update functions
 
   // Request initial data when card is fully loaded
   async requestInitialData() {
@@ -746,33 +747,28 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
         // After sending command, wait a bit then request status update and refresh entity states
         setTimeout(async () => {
           try {
-            // console.log(`🔄 Requesting status updates after ${commandKey} command...`);
-
-            // Send 31DA request to get updated status (speed, flow, etc.)
-            await sendPacket(element._hass, deviceId, remId, 'RQ', '31DA', '00');
-
-            // // For speed commands, also request 10D0 to get fan mode information
-            // const speedCommands = ['low', 'medium', 'high', 'away', 'boost', 'disable'];
-            // if (speedCommands.includes(commandKey)) {
-            //   console.log('📡 Also requesting 10D0 for fan mode update...');
-            //   await sendPacket(element._hass, deviceId, remId, 'RQ', '10D0', '00');
-            //   console.log('✅ 10D0 fan mode request sent');
-            // }
+            if (command.code != '31DA') {
+              await sendPacket(element._hass, deviceId, remId, 'RQ', '31DA', '00');
+            }
+            setTimeout(async () => {}, 200); // add a little wait between commands
+            if (command.code != '10D0') {
+              await sendPacket(element._hass, deviceId, remId, 'RQ', '10D0', '00');
+            }
 
             // Wait a bit more for the status responses, then refresh UI
             setTimeout(() => {
-              console.log(`🔄 Refreshing entity states after ${commandKey} command...`);
+              // console.log(`🔄 Refreshing entity states after ${commandKey} command...`);
               if (element && element._hass) {
                 // Clear previous states to force update detection
                 element._prevStates = null;
                 // Trigger hass setter to re-render if states changed
                 element.hass = element._hass;
               }
-            }, 1000); // Additional 1 second delay for status responses
+            }, 800); // Additional 1 second delay for status responses
           } catch (error) {
             console.warn('Error requesting status update:', error);
           }
-        }, 1000); // 1 second delay to allow device to respond
+        }, 800); // 1 second delay to allow device to respond
       } catch (error) {
         console.error('Error sending command:', error);
       }
