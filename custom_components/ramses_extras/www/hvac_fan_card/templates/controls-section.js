@@ -18,7 +18,7 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
           <div class="control-label">Auto</div>
         </div>
         ${dehumEntitiesAvailable ? `
-        <div class="control-button" onclick="send_command('active', '${config.device_id}', this)">
+        <div class="control-button" onclick="toggleDehumidify('${config.dehum_mode_entity || 'switch.dehumidify_' + config.device_id.replace(/:/g, '_')}', this)">
           <div class="control-icon">⚡</div>
           <div class="control-label">Dehumidify</div>
         </div>

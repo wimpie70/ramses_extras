@@ -622,21 +622,25 @@ class HvacFanCard extends HTMLElement {
       });
     }
 
-    // Control buttons
+    // Control buttons - only attach listeners to buttons without existing onclick handlers
     const controlButtons = this.shadowRoot?.querySelectorAll('.control-button');
     if (controlButtons) {
       controlButtons.forEach(button => {
-        button.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
+        // Skip buttons that already have onclick handlers
+        if (!button.getAttribute('onclick')) {
+          button.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
 
-          const onclick = button.getAttribute('onclick');
-          if (onclick) {
-            const fn = new Function('event', `try { ${onclick} } catch(e) { console.error('Error in button handler:', e); }`);
-            fn.call(button, e);
-          }
-        });
+            const onclick = button.getAttribute('onclick');
+            if (onclick) {
+              const fn = new Function('event', `try { ${onclick} } catch(e) { console.error('Error in button handler:', e); }`);
+              fn.call(button, e);
+            }
+          });
+        }
       });
+      // console.log(`✅ Attached event listeners to ${controlButtons.length - 1} control buttons (1 has onclick)`);
     }
   }
 
@@ -717,6 +721,7 @@ window.updateParameter = function(paramKey, newValue) {
   }
 };
 
+// controls min/max values
 window.updateHumidityControl = function(entityId, newValue, buttonElement) {
   // console.log(`🔧 updateHumidityControl called with:`, { entityId, newValue, buttonElement });
 
@@ -746,6 +751,46 @@ window.updateHumidityControl = function(entityId, newValue, buttonElement) {
     });
   } else {
     console.error(`❌ Cannot update humidity control - missing card or hass:`, {
+      element: !!element,
+      hass: element?._hass
+    });
+  }
+};
+
+window.toggleDehumidify = function(entityId, buttonElement) {
+  // console.log(`🔧 toggleDehumidify called with:`, { entityId, buttonElement });
+
+  // Find the card element using the button element (similar to send_command)
+  let element = buttonElement;
+  while (element && element.tagName !== 'HVAC-FAN-CARD') {
+    element = element.parentElement || element.getRootNode()?.host;
+  }
+
+  if (element && element._hass) {
+    // console.log(`📡 Toggling dehumidify switch ${entityId}`);
+
+    // Toggle the switch using Home Assistant's toggle service
+    element._hass.callService('switch', 'toggle', {
+      entity_id: entityId
+    }).then(() => {
+      // console.log(`✅ Dehumidify toggled: ${entityId}`);
+
+      // Clear previous states to force update detection
+      element._prevStates = null;
+
+      // Wait a brief moment for the entity state to update, then trigger re-render
+      setTimeout(() => {
+        // console.log(`🔄 Re-rendering card after dehumidify toggle`);
+        if (element._hass && element.config) {
+          element.render();
+        }
+      }, 100); // 100ms delay to ensure state is updated
+
+    }).catch(error => {
+      console.error(`❌ Failed to toggle dehumidify ${entityId}:`, error);
+    });
+  } else {
+    console.error(`❌ Cannot toggle dehumidify - missing card or hass:`, {
       element: !!element,
       hass: element?._hass
     });
