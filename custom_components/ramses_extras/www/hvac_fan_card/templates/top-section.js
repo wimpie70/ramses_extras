@@ -11,7 +11,7 @@ export function createTopSection(data) {
     supplyTemp, exhaustTemp,
     fanSpeed, fanMode,
     co2Level, flowRate, exhaustFlowRate, efficiency,
-    timerMinutes, airflowSvg
+    timerMinutes, airflowSvg, filterDaysRemaining
   } = data;
 
   // Helper function to format humidity values
@@ -56,6 +56,10 @@ export function createTopSection(data) {
           </div>
           <div class="side-value-item">
             <span id="co2Level">${co2Level} ppm</span>
+          </div>
+          <div class="side-value-item">
+            <span>📅</span>
+            <span id="filterDaysRemaining">${filterDaysRemaining} days</span>
           </div>
         </div>
 

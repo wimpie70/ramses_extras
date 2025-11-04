@@ -114,7 +114,9 @@ export class HvacFanCardHandlers {
 
             // Filter information (if available)
             filter_change_required: payload.filter_change_required || false,
-            filter_life_remaining: payload.filter_life_remaining || 100,
+            days_remaining: payload.days_remaining || null,
+            days_lifetime: payload.days_lifetime || null,
+            percent_remaining: payload.percent_remaining || null,
             maintenance_required: payload.maintenance_required || false,
 
             timestamp: new Date().toISOString(),

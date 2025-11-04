@@ -267,6 +267,9 @@ class HvacFanCard extends HTMLElement {
       (isNaN(parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) ?
         null : parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) : null;
 
+    // Get 10D0 data for filter information
+    const da10D0Data = this.get10D0Data();
+
     // Fan data
     const rawData = {
       indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
@@ -297,6 +300,8 @@ class HvacFanCard extends HTMLElement {
       dehumEntitiesAvailable,  // Add availability flag
       dataSource31DA: da31Data.source === '31DA_message',  // Flag for UI
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
+      // Filter days remaining from 10D0 data
+      filterDaysRemaining: da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
 
