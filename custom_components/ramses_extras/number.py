@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     AVAILABLE_FEATURES,
@@ -134,7 +135,7 @@ async def async_setup_entry(
     async_add_entities(numbers, True)
 
 
-class RamsesNumberEntity(NumberEntity):
+class RamsesNumberEntity(NumberEntity, RestoreEntity):
     """Number entity for Ramses device configuration values."""
 
     def __init__(
@@ -171,11 +172,72 @@ class RamsesNumberEntity(NumberEntity):
         self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
         _LOGGER.debug("Subscribed to %s for number %s", signal, self.name)
 
+        # Restore state for humidity control entities only
+        await self._async_restore_state()
+
     async def async_will_remove_from_hass(self) -> None:
         """Unsubscribe when removed."""
         if self._unsub is not None:
             self._unsub()
             self._unsub = None
+
+    async def _async_restore_state(self) -> None:
+        """Restore state from previous session for humidity control entities."""
+        # Only restore state for humidity control number entities
+        if self._number_type not in ["rel_humid_min", "rel_humid_max"]:
+            return
+
+        _LOGGER.debug("Restoring state for %s", self.name)
+
+        # Try to get previous state
+        if (last_state := await self.async_get_last_state()) is not None:
+            try:
+                # Convert the stored value back to float
+                restored_value = float(last_state.state)
+                # Validate the restored value is within allowed range
+                min_val = self._attr_native_min_value
+                max_val = self._attr_native_max_value
+
+                if min_val <= restored_value <= max_val:
+                    self._value = restored_value
+                    _LOGGER.debug(
+                        "Restored %s value: %.1f (valid range: %.1f-%.1f)",
+                        self._number_type,
+                        restored_value,
+                        min_val,
+                        max_val,
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Restored %s value %.1f is outside valid range (%.1f-%.1f), "
+                        "using default %.1f",
+                        self._number_type,
+                        restored_value,
+                        min_val,
+                        max_val,
+                        self._config.get("default_value", min_val),
+                    )
+                    self._value = self._config.get("default_value", min_val)
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning(
+                    "Failed to restore %s value from state '%s': %s, "
+                    "using default %.1f",
+                    self._number_type,
+                    last_state.state,
+                    e,
+                    self._config.get("default_value", self._attr_native_min_value),
+                )
+                self._value = self._config.get(
+                    "default_value", self._attr_native_min_value
+                )
+        else:
+            # No previous state found, use default value
+            self._value = self._config.get("default_value", self._attr_native_min_value)
+            _LOGGER.debug(
+                "No previous state found for %s, using default value: %.1f",
+                self._number_type,
+                self._value,
+            )
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""

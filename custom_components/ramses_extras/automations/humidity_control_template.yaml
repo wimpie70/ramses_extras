@@ -12,12 +12,12 @@
   triggers:
     - platform: numeric_state
       entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
-      above: "number.{{ device_id_underscore }}_rel_humid_max"
+      above: "number.relative_humidity_maximum_{{ device_id_underscore }}"
       for:
         minutes: 2
     - platform: numeric_state
       entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
-      below: "number.{{ device_id_underscore }}_rel_humid_min"
+      below: "number.relative_humidity_minimum_{{ device_id_underscore }}"
       for:
         minutes: 2
   conditions:
@@ -26,7 +26,7 @@
   actions:
     - if:
         - condition: template
-          value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float > states('number.{{ device_id_underscore }}_rel_humid_max') | float }}"
+          value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float > states('number.relative_humidity_maximum_{{ device_id_underscore }}') | float }}"
       then:
         - service: ramses_extras.set_fan_speed_mode
           data:
@@ -36,7 +36,7 @@
         - service: logbook.log
           data:
             name: "Dehumidifier"
-            message: "Activated - Humidity {{ states('sensor.{{ device_id_underscore }}_indoor_humidity') }}% > threshold {{ states('number.{{ device_id_underscore }}_rel_humid_max') }}%"
+            message: "Activated - Humidity {{ states('sensor.{{ device_id_underscore }}_indoor_humidity') }}% > threshold {{ states('number.relative_humidity_maximum_{{ device_id_underscore }}') }}%"
             entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
       else:
         - service: ramses_extras.set_fan_speed_mode
@@ -55,7 +55,7 @@
   description: "Logs when humidity is high but automation is not controlling fan"
   triggers:
     - platform: template
-      value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float > states('number.{{ device_id_underscore }}_rel_humid_max') | float }}"
+      value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float > states('number.relative_humidity_maximum_{{ device_id_underscore }}') | float }}"
   conditions:
     - condition: template
       value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') != 'unavailable' }}"
@@ -64,35 +64,6 @@
       data:
         name: "Humidity Monitor"
         message: "High humidity detected ({{ states('sensor.{{ device_id_underscore }}_indoor_humidity') }}%) - Manual intervention may be needed"
-        entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
-
-- id: "ramses_extras_dehumidifier_thresholds_{{ device_id }}"
-  alias: "Dehumidifier Default Thresholds - {{ device_id }}"
-  description: "Sets default humidity thresholds if not configured"
-  triggers:
-    - platform: homeassistant
-      event: start
-    - platform: state
-      entity_id: "number.{{ device_id_underscore }}_rel_humid_max"
-      to: "unavailable"
-      for:
-        minutes: 5
-  conditions:
-    - condition: template
-      value_template: "{{ states('number.{{ device_id_underscore }}_rel_humid_max') in ['unknown', 'unavailable', ''] or states('number.{{ device_id_underscore }}_rel_humid_min') in ['unknown', 'unavailable', ''] }}"
-  actions:
-    - service: number.set_value
-      entity_id: "number.{{ device_id_underscore }}_rel_humid_max"
-      data:
-        value: 60
-    - service: number.set_value
-      entity_id: "number.{{ device_id_underscore }}_rel_humid_min"
-      data:
-        value: 40
-    - service: logbook.log
-      data:
-        name: "Dehumidifier"
-        message: "Set default thresholds - High: 60%, Low: 40%"
         entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
 
 # === END RAMSES EXTRAS AUTOMATIONS ===

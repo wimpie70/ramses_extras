@@ -6,24 +6,37 @@
 
 ### Card Entity Availability
 
-- [ ] ✅ Check dehumidify entities exist before showing controls
-- [ ] ✅ Hide switch/status indicators when entities missing
-- [ ] ✅ Add debug logging for entity availability
+- [x] ✅ Check dehumidify entities exist before showing controls
+- [x] ✅ Hide switch/status indicators when entities missing
+- [x] ✅ Add debug logging for entity availability
 
 ## 🔧 Phase 2: Integration Features
 
-- [ ] Add 'Humidity Control' feature configuration
-- [ ] Create dehumidify entity configurations
-- [ ] Implement switch and binary_sensor entities
-- [ ] Add threshold number entities
+- [x] ✅ Add 'Humidity Control' feature configuration
+- [x] ✅ Create dehumidify entity configurations
+- [x] ✅ Implement switch and binary_sensor entities
+- [x] ✅ Add threshold number entities
 
 ## 🤖 Phase 3: Automation Logic
 
-- [ ] Create humidity monitoring automation
-- [ ] Implement threshold comparison
-- [ ] Add fan speed integration
-- [ ] Test auto/manual modes
+- [x] ✅ Create humidity monitoring automation
+- [x] ✅ Implement threshold comparison
+- [x] ✅ Add fan speed integration
+- [x] ✅ Test auto/manual modes
+
+## 🔄 Phase 4: Persistence Improvements
+
+- [x] ✅ **NEW: State Restoration**: Humidity threshold values now persist across Home Assistant restarts
+- [x] ✅ **NEW: Removed Default Threshold Automation**: No longer needed with state restoration
+- [x] ✅ **NEW: RestoreEntity Integration**: Number entities now inherit from RestoreEntity
+- [x] ✅ **NEW: Validation**: Restored values are validated against min/max constraints
 
 ## 📋 Current Focus
 
-🎮 **Working on:** Phase 1 - Card entity availability checks
+🎮 **Recently Completed:** State restoration implementation for humidity control thresholds
+
+### What Changed:
+- `RamsesNumberEntity` now inherits from `RestoreEntity`
+- Humidity threshold values persist automatically after Home Assistant restarts
+- Removed "Dehumidifier Default Thresholds" automation as it's no longer needed
+- Values are restored with proper validation and fallback to defaults if invalid
