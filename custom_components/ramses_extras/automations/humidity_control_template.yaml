@@ -10,12 +10,6 @@
   alias: "Dehumidifier Control - {{ device_id }}"
   description: "Controls dehumidifier based on humidity thresholds for device {{ device_id }}"
   triggers:
-    - platform: numeric_state
-      entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
-      above: "number.relative_humidity_maximum_{{ device_id_underscore }}"
-    - platform: numeric_state
-      entity_id: "sensor.{{ device_id_underscore }}_indoor_humidity"
-      below: "number.relative_humidity_minimum_{{ device_id_underscore }}"
     - platform: state
       entity_id: "switch.dehumidify_{{ device_id_underscore }}"
       to: "on"
@@ -28,7 +22,7 @@
   actions:
     - if:
         - condition: template
-          value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float > states('number.relative_humidity_maximum_{{ device_id_underscore }}') | float and states('sensor.{{ device_id_underscore }}_outdoor_abs_humid') | float > states('sensor.{{ device_id_underscore }}_indoor_abs_humid') | float + states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float }}"
+          value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float > states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float + states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float }}"
       then:
         - service: ramses_extras.set_fan_speed_mode
           data:
@@ -37,31 +31,13 @@
             reason: "Humidity control - high humidity detected, dryer outside"
     - if:
         - condition: template
-          value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float > states('number.relative_humidity_maximum_{{ device_id_underscore }}') | float and states('sensor.{{ device_id_underscore }}_outdoor_abs_humid') | float <= states('sensor.{{ device_id_underscore }}_indoor_abs_humid') | float }}"
+          value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float <= states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float }}"
       then:
         - service: ramses_extras.set_fan_speed_mode
           data:
             device_id: "{{ device_id }}"
             mode: "low"
             reason: "Humidity control - high humidity detected, not dryer outside"
-    - if:
-        - condition: template
-          value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float < states('number.relative_humidity_minimum_{{ device_id_underscore }}') | float and states('sensor.{{ device_id_underscore }}_outdoor_abs_humid') | float + states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float > states('sensor.{{ device_id_underscore }}_indoor_abs_humid') | float }}"
-      then:
-        - service: ramses_extras.set_fan_speed_mode
-          data:
-            device_id: "{{ device_id }}"
-            mode: "high"
-            reason: "Humidity control - low humidity detected, wetter outside"
-    - if:
-        - condition: template
-          value_template: "{{ states('sensor.{{ device_id_underscore }}_indoor_humidity') | float < states('number.relative_humidity_minimum_{{ device_id_underscore }}') | float and states('sensor.{{ device_id_underscore }}_outdoor_abs_humid') | float <= states('sensor.{{ device_id_underscore }}_indoor_abs_humid') | float }}"
-      then:
-        - service: ramses_extras.set_fan_speed_mode
-          data:
-            device_id: "{{ device_id }}"
-            mode: "low"
-            reason: "Humidity control - low humidity detected, not wetter outside"
 
 - id: "ramses_extras_dehumidifier_switch_off_{{ device_id }}"
   alias: "Dehumidifier Switch Off - {{ device_id }}"

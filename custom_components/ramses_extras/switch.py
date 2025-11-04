@@ -194,96 +194,13 @@ class RamsesDehumidifySwitch(SwitchEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Activate dehumidify mode."""
         _LOGGER.info("Activating dehumidify mode for %s", self.name)
-
-        try:
-            # Log what we would do instead of actually sending commands
-            device_id = self._device_id.replace("_", ":")
-
-            # Get the bound REM device first (similar to card logic)
-            try:
-                # Try to get bound REM from climate entity attributes
-                climate_entity = f"climate.{self._device_id}_climate"
-                climate_state = self.hass.states.get(climate_entity)
-
-                if climate_state and climate_state.attributes.get("bound_rem"):
-                    rem_id = climate_state.attributes["bound_rem"]
-                    _LOGGER.info("Found bound REM: %s", rem_id)
-                else:
-                    # Fallback to device_id as from_id
-                    rem_id = device_id
-                    _LOGGER.info(
-                        "No bound REM found, would use device_id: %s", device_id
-                    )
-
-                # Log what command would be sent (don't actually send it)
-                _LOGGER.info(
-                    "Would send dehumidify activation command: "
-                    "device_id=%s, from_id=%s, verb=' I', code='22F1', payl='000807'",
-                    device_id,
-                    rem_id,
-                )
-
-                self._is_on = True
-                _LOGGER.info(
-                    "Successfully logged dehumidify activation (state updated locally)"
-                )
-
-            except Exception as e:
-                _LOGGER.error("Error preparing dehumidify command: %s", e)
-                # Still update state even if command preparation fails
-                self._is_on = True
-
-        except Exception as e:
-            _LOGGER.error("Error activating dehumidify mode: %s", e)
-            self._is_on = True  # Keep local state updated
-
+        self._is_on = True
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Deactivate dehumidify mode."""
         _LOGGER.info("Deactivating dehumidify mode for %s", self.name)
-
-        try:
-            # Log what we would do instead of actually sending commands
-            device_id = self._device_id.replace("_", ":")
-
-            try:
-                # Get the bound REM device first (similar to card logic)
-                climate_entity = f"climate.{self._device_id}_climate"
-                climate_state = self.hass.states.get(climate_entity)
-
-                if climate_state and climate_state.attributes.get("bound_rem"):
-                    rem_id = climate_state.attributes["bound_rem"]
-                    _LOGGER.info("Found bound REM: %s", rem_id)
-                else:
-                    # Fallback to device_id as from_id
-                    rem_id = device_id
-                    _LOGGER.info(
-                        "No bound REM found, would use device_id: %s", device_id
-                    )
-
-                # Log what command would be sent (don't actually send it)
-                _LOGGER.info(
-                    "Would send dehumidify deactivation command: "
-                    "device_id=%s, from_id=%s, verb=' I', code='22F1', payl='000507'",
-                    device_id,
-                    rem_id,
-                )
-
-                self._is_on = False
-                _LOGGER.info(
-                    "Successfully logged dehumidify deact (state updated locally)"
-                )
-
-            except Exception as e:
-                _LOGGER.error("Error preparing dehumidify command: %s", e)
-                # Still update state even if command preparation fails
-                self._is_on = False
-
-        except Exception as e:
-            _LOGGER.error("Error deactivating dehumidify mode: %s", e)
-            self._is_on = False  # Keep local state updated
-
+        self._is_on = False
         self.async_write_ha_state()
 
     @property

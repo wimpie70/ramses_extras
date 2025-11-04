@@ -181,6 +181,17 @@ async def _register_enabled_card_resources(
         _LOGGER.info("No card resources are currently enabled in config flow")
 
 
+async def _register_services_early(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register services early in setup process."""
+    from .services import fan_services
+
+    # Check if humidity_control feature is enabled
+    enabled_features = entry.data.get("enabled_features", {})
+    if enabled_features.get("humidity_control", False):
+        fan_services.register_fan_services(hass)
+        _LOGGER.info("Registered fan services early for humidity control")
+
+
 async def _register_services(
     hass: HomeAssistant, feature_manager: FeatureManager
 ) -> None:
@@ -232,6 +243,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     register_ws_commands(hass)
     _LOGGER.info("Registered WebSocket commands for Ramses Extras")
+
+    # Register services early (before automations are created)
+    await _register_services_early(hass, entry)
 
     # Register enabled card resources dynamically
     await _register_enabled_card_resources(hass, entry.data.get("enabled_features", {}))

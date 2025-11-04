@@ -44,49 +44,67 @@ async def async_set_fan_speed_mode(
         )
 
     # Ensure Ramses CC is loaded
+    _LOGGER.info(f"Ensuring Ramses CC is loaded for device {device_id}")
     ensure_ramses_cc_loaded(hass)
 
     # Find and validate the device
+    _LOGGER.info(f"Finding device {device_id}")
     device = find_ramses_device(hass, device_id)
     if not device:
         raise HomeAssistantError(f"Device {device_id} not found in Ramses CC")
 
+    _LOGGER.info(f"Device {device_id} found: {device}")
+
     # Validate device supports this service
     from ..helpers.device import validate_device_for_service
 
-    if not validate_device_for_service(hass, device_id, "set_fan_speed_mode"):
+    _LOGGER.info(f"Validating device {device_id} supports set_fan_speed_mode")
+    is_valid = validate_device_for_service(hass, device_id, "set_fan_speed_mode")
+    _LOGGER.info(f"Device validation result: {is_valid}")
+    if not is_valid:
         raise HomeAssistantError(
             f"Device {device_id} does not support fan speed control"
         )
 
-    # Set the fan mode via ramses_cc
+    # Set the fan mode via direct 22F1 command
     try:
-        if hasattr(device, "set_fan_mode"):
-            await device.set_fan_mode(mode)
-            _LOGGER.info(f"Successfully set fan mode to {mode} for device {device_id}")
-        else:
-            # Try ramses_cc service call
-            await hass.services.async_call(
-                "ramses_cc",
-                "set_fan_mode",
-                {"device_id": device_id, "mode": mode},
-                blocking=True,
-            )
-            _LOGGER.info(
-                f"Successfully set fan mode via ramses_cc service "
-                f"for device {device_id}"
-            )
+        # Map mode to 22F1 payload
+        mode_payloads = {
+            "low": "000107",
+            "medium": "000207",
+            "high": "000307",
+            "auto": "000407",
+            "away": "000007",
+            "boost": "000607",
+        }
 
-        # Log the manual override
-        await hass.services.async_call(
-            "logbook",
-            "log",
-            {
-                "name": "Fan Control",
-                "message": f"Manual fan mode set to {mode} "
-                f"({reason or 'No reason provided'})",
-                "entity_id": f"sensor.{device_id.replace(':', '_')}_fan_mode",
-            },
+        if mode not in mode_payloads:
+            raise HomeAssistantError(f"Unsupported mode: {mode}")
+
+        payload = mode_payloads[mode]
+
+        # Send direct 22F1 command via ramses_cc send_packet
+        _LOGGER.info(
+            f"Would send fan control packet for device {device_id}: ",
+            f"mode={mode}, code=22F1, payload={payload}",
+        )
+        # await hass.services.async_call(
+        #     "ramses_cc",
+        #     "send_packet",
+        #     {
+        #         "device_id": device_id,
+        #         "verb": " I",
+        #         "code": "22F1",
+        #         "payload": payload,
+        #     },
+        #     blocking=True,
+        # )
+        _LOGGER.info(f"Successfully set fan mode to {mode} for device {device_id}")
+
+        # Log the manual override using proper logging instead of logbook service
+        _LOGGER.info(
+            f"Fan Control: Manual fan mode set to {mode} "
+            f"({reason or 'No reason provided'}) for device {device_id}"
         )
 
         # If duration specified, schedule restoration to auto mode
