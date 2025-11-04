@@ -24,7 +24,7 @@ export class HvacFanCardHandlers {
             // Update the card with new data
             card.updateFrom31DA(hvacData);
 
-            console.log('✅ 31DA data processed and card updated:', hvacData);
+            // console.log('✅ 31DA data processed and card updated:', hvacData);
 
         } catch (error) {
             console.error('Error handling 31DA message:', error);
@@ -36,7 +36,7 @@ export class HvacFanCardHandlers {
      */
     static handle_10D0(card, messageData) {
         try {
-            console.log('🎯 10D0 message received for HVAC fan card');
+            // console.log('🎯 10D0 message received for HVAC fan card');
 
             const payload = messageData?.data?.payload;
             if (!payload) {
@@ -50,7 +50,7 @@ export class HvacFanCardHandlers {
             // Update the card with filter information
             card.updateFrom10D0(filterData);
 
-            console.log('✅ 10D0 data processed and card updated:', filterData);
+            // console.log('✅ 10D0 data processed and card updated:', filterData);
 
         } catch (error) {
             console.error('Error handling 10D0 message:', error);

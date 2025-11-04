@@ -18,7 +18,7 @@ export async function callService(hass, domain, service, serviceData = {}) {
 
   try {
     const result = await hass.callService(domain, service, serviceData);
-    console.log(`✅ Service ${domain}.${service} called successfully`);
+    // console.log(`✅ Service ${domain}.${service} called successfully`);
     return result;
   } catch (error) {
     console.error(`❌ Service call ${domain}.${service} failed:`, error);
@@ -39,7 +39,7 @@ export async function callWebSocket(hass, message) {
 
   try {
     const result = await hass.callWS(message);
-    console.log(`✅ WebSocket message sent successfully`);
+    // console.log(`✅ WebSocket message sent successfully`);
     return result;
   } catch (error) {
     console.error(`❌ WebSocket message failed:`, error);
@@ -62,10 +62,10 @@ export async function getBoundRemDevice(hass, deviceId) {
   try {
     const boundRem = hass.states[sensorId]?.attributes?.bound_rem;
     if (boundRem) {
-      console.log(`✅ Found bound REM: ${boundRem}`);
+      // console.log(`✅ Found bound REM: ${boundRem}`);
       return boundRem;
     }
-    console.log(`⚠️ No bound REM found for device: ${deviceId}`);
+    console.log(`⚠️ No bound REM found for device: ${deviceId}. You can set it in Ramses RF`);
     return null;
   } catch (error) {
     console.error(`❌ Error getting bound REM device:`, error);
@@ -84,7 +84,7 @@ export async function getBoundRemDevice(hass, deviceId) {
  * @returns {Promise<Object>} Service call result
  */
 export async function sendPacket(hass, deviceId, fromId, verb, code, payload) {
-  console.log(`send_packet to: ${deviceId}, from ${fromId} ${verb} ${code}  ${payload}`)
+  // console.log(`send_packet to: ${deviceId}, from ${fromId} ${verb} ${code}  ${payload}`)
   return await callService(hass, 'ramses_cc', 'send_packet', {
     device_id: deviceId,
     from_id: fromId,

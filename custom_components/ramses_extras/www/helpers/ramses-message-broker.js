@@ -27,7 +27,7 @@ class RamsesMessageBroker {
         try {
             if (window.hassConnection) {
                 const connection = await window.hassConnection;
-                console.log('🎯 RamsesMessageBroker: Resolved HA connection:', connection);
+                // console.log('🎯 RamsesMessageBroker: Resolved HA connection:', connection);
 
                 // Use the connection.conn object which has the actual methods
                 const actualConn = connection.conn || connection;
