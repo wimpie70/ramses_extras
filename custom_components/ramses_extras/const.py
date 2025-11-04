@@ -97,7 +97,7 @@ AVAILABLE_FEATURES = {
         "required_entities": {
             "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
             "switches": ["dehumidify"],
-            "numbers": ["rel_humid_min", "rel_humid_max"],
+            "numbers": ["rel_humid_min", "rel_humid_max", "abs_humid_offset"],
             "binary_sensors": ["dehumidifying"],
         },
         "optional_entities": {
@@ -115,7 +115,7 @@ DEVICE_ENTITY_MAPPING = {
         "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
         "switches": ["dehumidify"],
         "binary_sensors": ["dehumidifying"],
-        "numbers": ["rel_humid_min", "rel_humid_max"],
+        "numbers": ["rel_humid_min", "rel_humid_max", "abs_humid_offset"],
     },
     # Future device types can be added here:
     # "CO2Remote": {
@@ -198,6 +198,20 @@ NUMBER_CONFIGS = {
         "max_value": 90,
         "step": 1,
         "default_value": 60,
+        "supported_device_types": [
+            "HvacVentilator"
+        ],  # Can be extended for other device types
+    },
+    "abs_humid_offset": {
+        "name_template": "Absolute Humidity Offset",
+        "entity_category": EntityCategory.CONFIG,
+        "unit": "g/m³",
+        "icon": "mdi:swap-horizontal",
+        "device_class": None,
+        "min_value": -1.0,
+        "max_value": 1.0,
+        "step": 0.1,
+        "default_value": 0.4,
         "supported_device_types": [
             "HvacVentilator"
         ],  # Can be extended for other device types
