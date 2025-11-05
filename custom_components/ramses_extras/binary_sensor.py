@@ -170,11 +170,30 @@ class RamsesBinarySensor(BinarySensorEntity):
 
         self._is_on = False
         self._unsub: Callable[[], None] | None = None
+        self._unsub_state_change: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
-        """Subscribe to Ramses RF device updates."""
+        """Subscribe to Ramses RF device updates and humidity entity changes."""
         signal = f"ramses_rf_device_update_{self._device_id}"
         self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
+
+        # For dehumidifying_active, also track humidity entity changes
+        if self._boolean_type == "dehumidifying_active":
+            device_id_underscore = self._device_id.replace(":", "_")
+            tracked_entities = [
+                f"switch.dehumidify_{device_id_underscore}",
+                f"sensor.indoor_absolute_humidity_{device_id_underscore}",
+                f"sensor.outdoor_absolute_humidity_{device_id_underscore}",
+                f"number.absolute_humidity_offset_{device_id_underscore}",
+            ]
+
+            self._unsub_state_change = async_track_state_change(
+                self.hass, tracked_entities, self._handle_humidity_change
+            )
+            _LOGGER.debug(
+                "Subscribed to humidity changes for %s: %s", self.name, tracked_entities
+            )
+
         _LOGGER.debug("Subscribed to %s for binary sensor %s", signal, self.name)
 
     async def async_will_remove_from_hass(self) -> None:
@@ -182,11 +201,26 @@ class RamsesBinarySensor(BinarySensorEntity):
         if self._unsub is not None:
             self._unsub()
             self._unsub = None
+        if self._unsub_state_change is not None:
+            self._unsub_state_change()
+            self._unsub_state_change = None
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""
         _LOGGER.debug("Device update for %s received", self.name)
         self.async_write_ha_state()
+
+    async def _handle_humidity_change(
+        self, entity_id: str, old_state: Any, new_state: Any, *args: Any, **kwargs: Any
+    ) -> None:
+        """Handle changes in humidity-related entities."""
+        if self._boolean_type == "dehumidifying_active":
+            _LOGGER.debug(
+                "Humidity entity %s changed, recalculating %s state",
+                entity_id,
+                self.name,
+            )
+            self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool:

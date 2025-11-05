@@ -27,45 +27,48 @@
     - platform: state
       entity_id: "number.absolute_humidity_offset_{{ device_id_underscore }}"
   actions:
+    # Set binary sensor based on fan speed (active ventilation indicator)
     - if:
         - condition: state
           entity_id: "switch.dehumidify_{{ device_id_underscore }}"
           state: "on"
       then:
-        # Set binary sensor to active when switch is turned on
-        - service: ramses_extras.set_dehumidifying_active
-          data:
-            entity_id: "binary_sensor.dehumidifying_active_{{ device_id_underscore }}"
-            active: true
         # Control fan speed based on humidity conditions
         - if:
             - condition: template
               value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float > states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float + states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float }}"
           then:
+            # Set binary sensor to active when conditions warrant high ventilation
+            - service: homeassistant.turn_on
+              data:
+                entity_id: "binary_sensor.dehumidifying_active_{{ device_id_underscore }}"
             - service: ramses_extras.set_fan_speed_mode
               data:
                 device_id: "{{ device_id }}"
                 mode: "high"
-                reason: "Humidity control - high humidity detected, dryer outside"
+                reason: "Humidity control - active ventilation needed"
         - if:
             - condition: template
               value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float <= states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float }}"
           then:
+            # Set binary sensor to inactive for minimal ventilation
+            - service: homeassistant.turn_off
+              data:
+                entity_id: "binary_sensor.dehumidifying_active_{{ device_id_underscore }}"
             - service: ramses_extras.set_fan_speed_mode
               data:
                 device_id: "{{ device_id }}"
                 mode: "low"
-                reason: "Humidity control - high humidity detected, not dryer outside"
+                reason: "Humidity control - minimal ventilation"
     - if:
         - condition: state
           entity_id: "switch.dehumidify_{{ device_id_underscore }}"
           state: ["off", "unavailable"]
       then:
-        # Set binary sensor to inactive when switch is turned off
-        - service: ramses_extras.set_dehumidifying_active
+        # Set binary sensor to inactive when dehumidifier is disabled
+        - service: homeassistant.turn_off
           data:
             entity_id: "binary_sensor.dehumidifying_active_{{ device_id_underscore }}"
-            active: false
         # Set fan back to auto mode when dehumidifier is disabled
         - service: ramses_extras.set_fan_speed_mode
           data:
