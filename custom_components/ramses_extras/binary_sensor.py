@@ -193,6 +193,18 @@ class RamsesBinarySensor(BinarySensorEntity):
         """Return true if the binary sensor state is on."""
         return self._is_on
 
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the binary sensor."""
+        _LOGGER.info("Turning on binary sensor %s", self.name)
+        self._is_on = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the binary sensor."""
+        _LOGGER.info("Turning off binary sensor %s", self.name)
+        self._is_on = False
+        self.async_write_ha_state()
+
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {"device_id": self._device_id, "boolean_type": self._boolean_type}

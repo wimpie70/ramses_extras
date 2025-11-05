@@ -10,47 +10,67 @@
   alias: "Dehumidifier Control - {{ device_id }}"
   description: "Controls dehumidifier based on humidity thresholds for device {{ device_id }}"
   triggers:
+    # Trigger when dehumidify switch is turned on/off
     - platform: state
       entity_id: "switch.dehumidify_{{ device_id_underscore }}"
       to: "on"
     - platform: state
       entity_id: "switch.dehumidify_{{ device_id_underscore }}"
       to: ["off", "unavailable"]
-  conditions:
-    - condition: template
-      value_template: "{{ is_state('switch.dehumidify_{{ device_id_underscore }}', 'on') }}"
-  actions:
-    - if:
-        - condition: template
-          value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float > states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float + states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float }}"
-      then:
-        - service: ramses_extras.set_fan_speed_mode
-          data:
-            device_id: "{{ device_id }}"
-            mode: "high"
-            reason: "Humidity control - high humidity detected, dryer outside"
-    - if:
-        - condition: template
-          value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float <= states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float }}"
-      then:
-        - service: ramses_extras.set_fan_speed_mode
-          data:
-            device_id: "{{ device_id }}"
-            mode: "low"
-            reason: "Humidity control - high humidity detected, not dryer outside"
-
-- id: "ramses_extras_dehumidifier_switch_off_{{ device_id }}"
-  alias: "Dehumidifier Switch Off - {{ device_id }}"
-  description: "Sets fan to auto when dehumidifier is turned off for device {{ device_id }}"
-  triggers:
+    # Trigger when indoor humidity changes
     - platform: state
-      entity_id: "switch.dehumidify_{{ device_id_underscore }}"
-      to: ["off", "unavailable"]
+      entity_id: "sensor.indoor_absolute_humidity_{{ device_id_underscore }}"
+    # Trigger when outdoor humidity changes
+    - platform: state
+      entity_id: "sensor.outdoor_absolute_humidity_{{ device_id_underscore }}"
+    # Trigger when humidity offset setting changes
+    - platform: state
+      entity_id: "number.absolute_humidity_offset_{{ device_id_underscore }}"
   actions:
-    - service: ramses_extras.set_fan_speed_mode
-      data:
-        device_id: "{{ device_id }}"
-        mode: "auto"
-        reason: "Humidity control - dehumidifier disabled"
+    - if:
+        - condition: state
+          entity_id: "switch.dehumidify_{{ device_id_underscore }}"
+          state: "on"
+      then:
+        # Set binary sensor to active when switch is turned on
+        - service: ramses_extras.set_dehumidifying_active
+          data:
+            entity_id: "binary_sensor.dehumidifying_active_{{ device_id_underscore }}"
+            active: true
+        # Control fan speed based on humidity conditions
+        - if:
+            - condition: template
+              value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float > states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float + states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float }}"
+          then:
+            - service: ramses_extras.set_fan_speed_mode
+              data:
+                device_id: "{{ device_id }}"
+                mode: "high"
+                reason: "Humidity control - high humidity detected, dryer outside"
+        - if:
+            - condition: template
+              value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float <= states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float }}"
+          then:
+            - service: ramses_extras.set_fan_speed_mode
+              data:
+                device_id: "{{ device_id }}"
+                mode: "low"
+                reason: "Humidity control - high humidity detected, not dryer outside"
+    - if:
+        - condition: state
+          entity_id: "switch.dehumidify_{{ device_id_underscore }}"
+          state: ["off", "unavailable"]
+      then:
+        # Set binary sensor to inactive when switch is turned off
+        - service: ramses_extras.set_dehumidifying_active
+          data:
+            entity_id: "binary_sensor.dehumidifying_active_{{ device_id_underscore }}"
+            active: false
+        # Set fan back to auto mode when dehumidifier is disabled
+        - service: ramses_extras.set_fan_speed_mode
+          data:
+            device_id: "{{ device_id }}"
+            mode: "auto"
+            reason: "Humidity control - dehumidifier disabled"
 
 # === END RAMSES EXTRAS AUTOMATIONS ===

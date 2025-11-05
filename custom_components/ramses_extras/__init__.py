@@ -183,13 +183,16 @@ async def _register_enabled_card_resources(
 
 async def _register_services_early(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Register services early in setup process."""
-    from .services import fan_services
+    from .services import dehumidify_services, fan_services
 
     # Check if humidity_control feature is enabled
     enabled_features = entry.data.get("enabled_features", {})
     if enabled_features.get("humidity_control", False):
         fan_services.register_fan_services(hass)
-        _LOGGER.info("Registered fan services early for humidity control")
+        dehumidify_services.register_dehumidify_services(hass)
+        _LOGGER.info(
+            "Registered fan and dehumidify services early for humidity control"
+        )
 
 
 async def _register_services(

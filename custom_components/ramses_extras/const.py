@@ -208,8 +208,8 @@ NUMBER_CONFIGS = {
         "unit": "g/m³",
         "icon": "mdi:swap-horizontal",
         "device_class": None,
-        "min_value": -1.0,
-        "max_value": 1.0,
+        "min_value": -3.0,  # for testing
+        "max_value": 3.0,
         "step": 0.1,
         "default_value": 0.4,
         "supported_device_types": [
@@ -255,5 +255,9 @@ SERVICE_SCHEMAS = {
             "max": 1440,
         },  # minutes
         "reason": {"required": False, "type": "string"},
+    },
+    "set_dehumidifying_active": {
+        "entity_id": {"required": True, "type": "string"},
+        "active": {"required": True, "type": "boolean"},
     },
 }
