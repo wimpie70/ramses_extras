@@ -240,13 +240,23 @@ class AutomationManager:
             else:
                 existing_automations = []
 
-            # Add new automations that don't already exist
+            # Add or replace automations
             for new_auto in new_automations:
                 automation_id = new_auto.get("id", "")
-                exists = any(
-                    auto.get("id") == automation_id for auto in existing_automations
-                )
-                if not exists:
+
+                # Find if automation with this ID already exists
+                existing_index = None
+                for i, existing_auto in enumerate(existing_automations):
+                    if existing_auto.get("id") == automation_id:
+                        existing_index = i
+                        break
+
+                if existing_index is not None:
+                    # Replace existing automation
+                    existing_automations[existing_index] = new_auto
+                    _LOGGER.info(f"Replaced existing automation: {automation_id}")
+                else:
+                    # Add new automation
                     existing_automations.append(new_auto)
 
             # Write back

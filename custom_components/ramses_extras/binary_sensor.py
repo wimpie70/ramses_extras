@@ -183,13 +183,17 @@ class RamsesBinarySensor(BinarySensorEntity):
             device_id_underscore = self._device_id.replace(":", "_")
             tracked_entities = [
                 f"switch.dehumidify_{device_id_underscore}",
+                f"sensor.indoor_relative_humidity_{device_id_underscore}",
                 f"sensor.indoor_absolute_humidity_{device_id_underscore}",
                 f"sensor.outdoor_absolute_humidity_{device_id_underscore}",
                 f"number.absolute_humidity_offset_{device_id_underscore}",
                 # Track min/max humidity threshold
                 f"number.max_humidity_{device_id_underscore}",
                 f"number.min_humidity_{device_id_underscore}",
-                f"fan.ventilation_{device_id_underscore}",  # Track fan speed changes
+                f"fan.ventilation_{device_id_underscore}",  # Track fan speed
+                f"automation.humidity_control_{device_id_underscore}",
+                # Track automation state
+                f"automation.ramses_extras_humidity_control_{self._device_id}",
             ]
 
             self._unsub_state_change = async_track_state_change(

@@ -29,61 +29,68 @@
       entity_id: "number.min_humidity_{{ device_id_underscore }}"  # Min humidity threshold (%)
 
   conditions:
-    # Only run when dehumidify switch is on
-    - condition: state
-      entity_id: "switch.dehumidify_{{ device_id_underscore }}"
-      state: "on"
+    # Only run when dehumidify switch is on (handle case where switch doesn't exist yet)
+    - condition: template
+      value_template: "{{ (states('switch.dehumidify_{{ device_id_underscore }}') or 'off') == 'on' }}"
 
   actions:
     # HIGH ventilation when: Switch is ON AND Indoor relative humidity exceeds maximum threshold
     - if:
         - condition: template
-          value_template: "{{ states('sensor.indoor_relative_humidity_{{ device_id_underscore }}') | float > states('number.max_humidity_{{ device_id_underscore }}') | float }}"
+          value_template: "{{ (states('sensor.indoor_relative_humidity_{{ device_id_underscore }}') or 0) | float(0) > (states('number.max_humidity_{{ device_id_underscore }}') or 0) | float(0) }}"
       then:
         # Additional check: Compare absolute indoor vs outdoor humidity + offset
         - if:
             - condition: template
-              value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float > states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float + states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float }}"
+              value_template: "{{ (states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') or 0) | float(0) > (states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') or 0) | float(0) + (states('number.absolute_humidity_offset_{{ device_id_underscore }}') or 0) | float(0) }}"
           then:
             # Set high ventilation mode for active dehumidification
             - service: ramses_cc.send_command
+              target:
+                entity_id: fan.ventilation_{{ device_id_underscore }}
               data:
                 command: "high"
                 num_repeats: 2
                 delay_secs: 0.1
-        - else:
+          else:
             # Set low ventilation mode (avoid bringing in more moisture)
             - service: ramses_cc.send_command
+              target:
+                entity_id: fan.ventilation_{{ device_id_underscore }}
               data:
                 command: "low"
                 num_repeats: 2
                 delay_secs: 0.1
-
-    # LOW ventilation when: Switch is ON AND Indoor relative humidity is below minimum threshold
-    - if:
-        - condition: template
-          value_template: "{{ states('sensor.indoor_relative_humidity_{{ device_id_underscore }}') | float < states('number.min_humidity_{{ device_id_underscore }}') | float }}"
-      then:
-        # Apply absolute humidity comparison for low humidity scenarios
+      else:
+        # LOW ventilation when: Switch is ON AND Indoor relative humidity is below minimum threshold
         - if:
             - condition: template
-              value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float < states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float - states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float }}"
+              value_template: "{{ (states('sensor.indoor_relative_humidity_{{ device_id_underscore }}') or 0) | float(0) < (states('number.min_humidity_{{ device_id_underscore }}') or 0) | float(0) }}"
           then:
-            # Set high ventilation mode (active humidification when indoor is much drier than outdoor)
-            - service: ramses_cc.send_command
-              data:
-                command: "high"
-                num_repeats: 2
-                delay_secs: 0.1
-        - else:
-            # Set low ventilation mode (avoid bringing in too much humidity when indoor is close to outdoor levels)
-            - service: ramses_cc.send_command
-              data:
-                command: "low"
-                num_repeats: 2
-                delay_secs: 0.1
+            # Apply absolute humidity comparison for low humidity scenarios
+            - if:
+                - condition: template
+                  value_template: "{{ (states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') or 0) | float(0) < (states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') or 0) | float(0) - (states('number.absolute_humidity_offset_{{ device_id_underscore }}') or 0) | float(0) }}"
+              then:
+                # Set high ventilation mode (active humidification when indoor is much drier than outdoor)
+                - service: ramses_cc.send_command
+                  target:
+                    entity_id: fan.ventilation_{{ device_id_underscore }}
+                  data:
+                    command: "high"
+                    num_repeats: 2
+                    delay_secs: 0.1
+              else:
+                # Set low ventilation mode (avoid bringing in too much humidity when indoor is close to outdoor levels)
+                - service: ramses_cc.send_command
+                  target:
+                    entity_id: fan.ventilation_{{ device_id_underscore }}
+                  data:
+                    command: "low"
+                    num_repeats: 2
+                    delay_secs: 0.1
 
-    # Note: When indoor humidity is between min/max thresholds with switch ON, no action is taken (acceptable range)
+# Note: When indoor humidity is between min/max thresholds with switch ON, no action is taken (acceptable range)
 
 # Separate automation to reset fan to AUTO when switch is turned OFF
 - id: "ramses_extras_humidity_control_reset_{{ device_id }}"
@@ -99,6 +106,8 @@
   actions:
     # Set fan to auto when humidity control is disabled
     - service: ramses_cc.send_command
+      target:
+        entity_id: fan.ventilation_{{ device_id_underscore }}
       data:
         command: "auto"
         num_repeats: 2

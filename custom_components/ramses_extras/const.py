@@ -98,7 +98,7 @@ AVAILABLE_FEATURES = {
             "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
             "switches": ["dehumidify"],
             "numbers": ["rel_humid_min", "rel_humid_max", "abs_humid_offset"],
-            "binary_sensors": [],
+            "binary_sensors": ["dehumidifying_active"],
         },
         "optional_entities": {
             "sensors": [],
@@ -114,7 +114,7 @@ DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
         "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
         "switches": ["dehumidify"],
-        "binary_sensors": [],
+        "binary_sensors": ["dehumidifying_active"],
         "numbers": ["rel_humid_min", "rel_humid_max", "abs_humid_offset"],
     },
     # Future device types can be added here:
