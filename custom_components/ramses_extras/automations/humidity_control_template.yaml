@@ -1,79 +1,107 @@
-# Ramses Extras - Humidity Control Automation Template
-# This template creates automation for humidity monitoring and dehumidifier control
+# Ramses Extras - Simple Humidity Control Automation Template
+# Based on the user's working automation example
 # The integration will substitute the correct device_id and entity names
 
 # === RAMSES EXTRAS AUTOMATIONS - DO NOT EDIT ===
 # These automations are managed by the Ramses Extras integration
 # They will be updated automatically when the integration configuration changes
 
-- id: "ramses_extras_dehumidifier_control_{{ device_id }}"
-  alias: "Dehumidifier Control - {{ device_id }}"
-  description: "Controls dehumidifier based on humidity thresholds for device {{ device_id }}"
+# Main humidity control automation (only runs when switch is ON)
+- id: "ramses_extras_humidity_control_{{ device_id }}"
+  alias: "Humidity Control - {{ device_id }}"
+  description: "Controls ventilation based on humidity conditions for device {{ device_id }}"
+
+  # Trigger when humidity conditions change
   triggers:
-    # Trigger when dehumidify switch is turned on/off
+    # Primary trigger: indoor relative humidity changes (for threshold checks)
     - platform: state
-      entity_id: "switch.dehumidify_{{ device_id_underscore }}"
-      to: "on"
-    - platform: state
-      entity_id: "switch.dehumidify_{{ device_id_underscore }}"
-      to: ["off", "unavailable"]
-    # Trigger when indoor humidity changes
+      entity_id: "sensor.indoor_relative_humidity_{{ device_id_underscore }}"
+    # Secondary triggers for absolute humidity comparisons
     - platform: state
       entity_id: "sensor.indoor_absolute_humidity_{{ device_id_underscore }}"
-    # Trigger when outdoor humidity changes
     - platform: state
       entity_id: "sensor.outdoor_absolute_humidity_{{ device_id_underscore }}"
-    # Trigger when humidity offset setting changes
     - platform: state
       entity_id: "number.absolute_humidity_offset_{{ device_id_underscore }}"
+    - platform: state
+      entity_id: "number.max_humidity_{{ device_id_underscore }}"  # Max humidity threshold (%)
+    - platform: state
+      entity_id: "number.min_humidity_{{ device_id_underscore }}"  # Min humidity threshold (%)
+
+  conditions:
+    # Only run when dehumidify switch is on
+    - condition: state
+      entity_id: "switch.dehumidify_{{ device_id_underscore }}"
+      state: "on"
+
   actions:
-    # Set binary sensor based on fan speed (active ventilation indicator)
+    # HIGH ventilation when: Switch is ON AND Indoor relative humidity exceeds maximum threshold
     - if:
-        - condition: state
-          entity_id: "switch.dehumidify_{{ device_id_underscore }}"
-          state: "on"
+        - condition: template
+          value_template: "{{ states('sensor.indoor_relative_humidity_{{ device_id_underscore }}') | float > states('number.max_humidity_{{ device_id_underscore }}') | float }}"
       then:
-        # Control fan speed based on humidity conditions
+        # Additional check: Compare absolute indoor vs outdoor humidity + offset
         - if:
             - condition: template
               value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float > states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float + states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float }}"
           then:
-            # Set binary sensor to active when conditions warrant high ventilation
-            - service: homeassistant.turn_on
+            # Set high ventilation mode for active dehumidification
+            - service: ramses_cc.send_command
               data:
-                entity_id: "binary_sensor.dehumidifying_active_{{ device_id_underscore }}"
-            - service: ramses_extras.set_fan_speed_mode
+                command: "high"
+                num_repeats: 2
+                delay_secs: 0.1
+        - else:
+            # Set low ventilation mode (avoid bringing in more moisture)
+            - service: ramses_cc.send_command
               data:
-                device_id: "{{ device_id }}"
-                mode: "high"
-                reason: "Humidity control - active ventilation needed"
+                command: "low"
+                num_repeats: 2
+                delay_secs: 0.1
+
+    # LOW ventilation when: Switch is ON AND Indoor relative humidity is below minimum threshold
+    - if:
+        - condition: template
+          value_template: "{{ states('sensor.indoor_relative_humidity_{{ device_id_underscore }}') | float < states('number.min_humidity_{{ device_id_underscore }}') | float }}"
+      then:
+        # Apply absolute humidity comparison for low humidity scenarios
         - if:
             - condition: template
-              value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float <= states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float }}"
+              value_template: "{{ states('sensor.indoor_absolute_humidity_{{ device_id_underscore }}') | float < states('sensor.outdoor_absolute_humidity_{{ device_id_underscore }}') | float - states('number.absolute_humidity_offset_{{ device_id_underscore }}') | float }}"
           then:
-            # Set binary sensor to inactive for minimal ventilation
-            - service: homeassistant.turn_off
+            # Set high ventilation mode (active humidification when indoor is much drier than outdoor)
+            - service: ramses_cc.send_command
               data:
-                entity_id: "binary_sensor.dehumidifying_active_{{ device_id_underscore }}"
-            - service: ramses_extras.set_fan_speed_mode
+                command: "high"
+                num_repeats: 2
+                delay_secs: 0.1
+        - else:
+            # Set low ventilation mode (avoid bringing in too much humidity when indoor is close to outdoor levels)
+            - service: ramses_cc.send_command
               data:
-                device_id: "{{ device_id }}"
-                mode: "low"
-                reason: "Humidity control - minimal ventilation"
-    - if:
-        - condition: state
-          entity_id: "switch.dehumidify_{{ device_id_underscore }}"
-          state: ["off", "unavailable"]
-      then:
-        # Set binary sensor to inactive when dehumidifier is disabled
-        - service: homeassistant.turn_off
-          data:
-            entity_id: "binary_sensor.dehumidifying_active_{{ device_id_underscore }}"
-        # Set fan back to auto mode when dehumidifier is disabled
-        - service: ramses_extras.set_fan_speed_mode
-          data:
-            device_id: "{{ device_id }}"
-            mode: "auto"
-            reason: "Humidity control - dehumidifier disabled"
+                command: "low"
+                num_repeats: 2
+                delay_secs: 0.1
+
+    # Note: When indoor humidity is between min/max thresholds with switch ON, no action is taken (acceptable range)
+
+# Separate automation to reset fan to AUTO when switch is turned OFF
+- id: "ramses_extras_humidity_control_reset_{{ device_id }}"
+  alias: "Humidity Control Reset - {{ device_id }}"
+  description: "Reset ventilation to auto when humidity control is turned off"
+
+  # Only trigger when switch is turned OFF
+  triggers:
+    - platform: state
+      entity_id: "switch.dehumidify_{{ device_id_underscore }}"
+      to: "off"
+
+  actions:
+    # Set fan to auto when humidity control is disabled
+    - service: ramses_cc.send_command
+      data:
+        command: "auto"
+        num_repeats: 2
+        delay_secs: 0.1
 
 # === END RAMSES EXTRAS AUTOMATIONS ===

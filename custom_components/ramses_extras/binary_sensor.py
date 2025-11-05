@@ -169,6 +169,7 @@ class RamsesBinarySensor(BinarySensorEntity):
         self._attr_device_class = config.get("device_class")
 
         self._is_on = False
+        self._current_fan_speed = "auto"  # Track current fan speed
         self._unsub: Callable[[], None] | None = None
         self._unsub_state_change: Callable[[], None] | None = None
 
@@ -177,7 +178,7 @@ class RamsesBinarySensor(BinarySensorEntity):
         signal = f"ramses_rf_device_update_{self._device_id}"
         self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
 
-        # For dehumidifying_active, also track humidity entity changes
+        # For dehumidifying_active, also track humidity entity changes and fan speed
         if self._boolean_type == "dehumidifying_active":
             device_id_underscore = self._device_id.replace(":", "_")
             tracked_entities = [
@@ -185,6 +186,10 @@ class RamsesBinarySensor(BinarySensorEntity):
                 f"sensor.indoor_absolute_humidity_{device_id_underscore}",
                 f"sensor.outdoor_absolute_humidity_{device_id_underscore}",
                 f"number.absolute_humidity_offset_{device_id_underscore}",
+                # Track min/max humidity threshold
+                f"number.max_humidity_{device_id_underscore}",
+                f"number.min_humidity_{device_id_underscore}",
+                f"fan.ventilation_{device_id_underscore}",  # Track fan speed changes
             ]
 
             self._unsub_state_change = async_track_state_change(
@@ -216,16 +221,59 @@ class RamsesBinarySensor(BinarySensorEntity):
         """Handle changes in humidity-related entities."""
         if self._boolean_type == "dehumidifying_active":
             _LOGGER.debug(
-                "Humidity entity %s changed, recalculating %s state",
+                "Humidity entity %s changed from %s to %s, recalculating %s state",
                 entity_id,
+                old_state,
+                new_state,
                 self.name,
             )
+            # Force state recalculation by updating the state
             self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool:
         """Return true if the binary sensor state is on."""
+        # For dehumidifying_active: binary ON when fan is HIGH AND switch is ON
+        if self._boolean_type == "dehumidifying_active":
+            return self._calculate_dehumidifying_state()
         return self._is_on
+
+    def _calculate_dehumidifying_state(self) -> bool:
+        """Calculate dehumidifying state based on fan speed and switch status."""
+        try:
+            device_id_underscore = self._device_id.replace(":", "_")
+
+            # Get entity states
+            dehumidify_state = self.hass.states.get(
+                f"switch.dehumidify_{device_id_underscore}"
+            )
+            fan_state = self.hass.states.get(f"fan.ventilation_{device_id_underscore}")
+
+            # Check if dehumidify switch is on
+            if not dehumidify_state or dehumidify_state.state != "on":
+                return False
+
+            # Check if fan speed is HIGH (indicating active dehumidification)
+            if not fan_state:
+                return False
+
+            # Parse fan attributes to get current speed/preset
+            fan_attributes = fan_state.attributes
+            current_speed = fan_attributes.get("speed", "auto").lower()
+            current_preset = fan_attributes.get("preset_mode", "auto").lower()
+
+            # Binary sensor is ON when fan is in HIGH mode and switch is ON
+            return (
+                current_speed in ["high", "3", "100"]
+                or current_preset in ["high", "boost"]
+                or "high" in str(fan_state.state).lower()
+            )
+
+        except (ValueError, AttributeError, TypeError) as e:
+            _LOGGER.warning(
+                f"Error calculating dehumidifying state for {self.name}: {e}"
+            )
+            return False
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the binary sensor."""

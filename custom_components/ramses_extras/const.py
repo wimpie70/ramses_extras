@@ -98,7 +98,7 @@ AVAILABLE_FEATURES = {
             "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
             "switches": ["dehumidify"],
             "numbers": ["rel_humid_min", "rel_humid_max", "abs_humid_offset"],
-            "binary_sensors": ["dehumidifying"],
+            "binary_sensors": [],
         },
         "optional_entities": {
             "sensors": [],
@@ -114,7 +114,7 @@ DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
         "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
         "switches": ["dehumidify"],
-        "binary_sensors": ["dehumidifying"],
+        "binary_sensors": [],
         "numbers": ["rel_humid_min", "rel_humid_max", "abs_humid_offset"],
     },
     # Future device types can be added here:
@@ -161,7 +161,7 @@ SWITCH_CONFIGS = {
 }
 
 BOOLEAN_CONFIGS = {
-    "dehumidifying": {
+    "dehumidifying_active": {
         "name_template": "Dehumidifying Active",
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.DIAGNOSTIC,
@@ -255,9 +255,5 @@ SERVICE_SCHEMAS = {
             "max": 1440,
         },  # minutes
         "reason": {"required": False, "type": "string"},
-    },
-    "set_dehumidifying_active": {
-        "entity_id": {"required": True, "type": "string"},
-        "active": {"required": True, "type": "boolean"},
     },
 }

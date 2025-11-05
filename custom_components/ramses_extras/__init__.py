@@ -189,9 +189,7 @@ async def _register_services_early(hass: HomeAssistant, entry: ConfigEntry) -> N
     enabled_features = entry.data.get("enabled_features", {})
     if enabled_features.get("humidity_control", False):
         fan_services.register_fan_services(hass)
-        _LOGGER.info(
-            "Registered fan and dehumidify services early for humidity control"
-        )
+        _LOGGER.info("Registered fan services early for humidity control")
 
 
 async def _register_services(
@@ -224,7 +222,7 @@ async def _register_services(
                                 f"Registered fan services for device {device_id} "
                                 f"({device_type})"
                             )
-                            return  # Only need to register once
+                            break  # Only need to register once
 
     _LOGGER.debug("No services registered - no supported devices found")
 
