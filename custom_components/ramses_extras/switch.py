@@ -197,11 +197,37 @@ class RamsesDehumidifySwitch(SwitchEntity):
         self._is_on = True
         self.async_write_ha_state()
 
+        # 🔧 TRIGGER HUMIDITY AUTOMATION
+        await self._trigger_humidity_automation()
+
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Deactivate dehumidify mode."""
         _LOGGER.info("Deactivating dehumidify mode for %s", self.name)
         self._is_on = False
         self.async_write_ha_state()
+
+        # 🔧 TRIGGER HUMIDITY AUTOMATION
+        await self._trigger_humidity_automation()
+
+    async def _trigger_humidity_automation(self) -> None:
+        """Trigger the hardcoded humidity automation for this device."""
+        device_id_underscore = self._device_id.replace(":", "_")
+        automation = (
+            self.hass.data.get(DOMAIN, {})
+            .get("automations", {})
+            .get(device_id_underscore)
+        )
+
+        if not automation:
+            _LOGGER.warning(f"No automation found for device {device_id_underscore}")
+            return
+
+        entity_id = f"switch.dehumidify_{device_id_underscore}"
+        old_state = None
+        new_state = self.hass.states.get(entity_id)
+
+        await automation._async_handle_state_change(entity_id, old_state, new_state)
+        _LOGGER.info(f"Triggered humidity automation for {device_id_underscore}")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

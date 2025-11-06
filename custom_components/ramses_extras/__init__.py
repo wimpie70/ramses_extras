@@ -231,7 +231,7 @@ async def _register_services(
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up entry for Ramses Extras."""
-    _LOGGER.debug("Setting up entry for Ramses Extras")
+    _LOGGER.info("🚀 STARTING Ramses Extras integration setup...")
 
     # Setup from UI (config entry)
     hass.data.setdefault(DOMAIN, {})
@@ -240,6 +240,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["config_entry"] = entry  # Store for async_setup_platforms access
     hass.data[DOMAIN]["enabled_features"] = entry.data.get("enabled_features", {})
 
+    _LOGGER.info(f"📋 Enabled features: {entry.data.get('enabled_features', {})}")
+
     # Register WebSocket commands
     from .websocket_api import register_ws_commands
 
@@ -247,17 +249,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Registered WebSocket commands for Ramses Extras")
 
     # Register services early (before automations are created)
+    _LOGGER.info("🔧 Registering services early...")
     await _register_services_early(hass, entry)
 
     # Register enabled card resources dynamically
+    _LOGGER.info("📦 Registering enabled card resources...")
     await _register_enabled_card_resources(hass, entry.data.get("enabled_features", {}))
 
     # Discover devices and set up platforms
+    _LOGGER.info("🔍 Starting async_setup_platforms...")
     await async_setup_platforms(hass)
 
     # Load platforms for this config entry
+    _LOGGER.info("🖥️ Forwarding entry setups...")
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    _LOGGER.info("✅ Ramses Extras integration setup completed")
     return True
 
 
@@ -380,21 +387,29 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
     _setup_in_progress = True
 
     try:
-        _LOGGER.info("Looking for Ramses devices using ramses_cc entity discovery...")
+        _LOGGER.info(
+            "🚀 Looking for Ramses devices using ramses_cc entity discovery..."
+        )
 
         # Check if ramses_cc is loaded and working
         ramses_cc_loaded = "ramses_cc" in hass.config.components
+        _LOGGER.info(f"🔍 Ramses CC loaded: {ramses_cc_loaded}")
+
         if ramses_cc_loaded:
-            _LOGGER.info("Ramses CC is loaded, discovering devices from entities...")
+            _LOGGER.info("🔍 Ramses CC is loaded, discovering devices from entities...")
 
             # Discover devices by looking for ramses_cc entities
             device_ids = await _discover_ramses_devices(hass)
+            _LOGGER.info(f"📋 Discovered device IDs: {device_ids}")
 
             if device_ids:
-                _LOGGER.info("Found %d Ramses devices: %s", len(device_ids), device_ids)
+                _LOGGER.info(
+                    "✅ Found %d Ramses devices: %s", len(device_ids), device_ids
+                )
                 hass.data.setdefault(DOMAIN, {})["devices"] = device_ids
 
                 # Initialize managers
+                _LOGGER.info("🏗️ Initializing managers...")
                 feature_manager = FeatureManager(hass)
                 card_manager = CardManager(hass)
                 entity_manager = EntityManager(hass)
@@ -416,21 +431,29 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
                 }
 
                 # Start device monitoring
+                _LOGGER.info("📡 Starting device monitoring...")
                 await device_monitor.start_monitoring()
 
                 # Load current feature state
+                _LOGGER.info("⚙️ Loading current feature state...")
                 config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
                 if config_entry:
                     feature_manager.load_enabled_features(config_entry)
+                    _LOGGER.info("✅ Feature state loaded")
+                else:
+                    _LOGGER.warning("⚠️ No config entry found for feature loading")
 
                 # Get enabled features by category
                 enabled_cards = feature_manager.get_enabled_cards()
+                _LOGGER.info(f"🃏 Enabled cards: {enabled_cards}")
                 # enabled_automations = feature_manager.get_enabled_automations()  # noqa: E501  # TODO: implement
 
                 # Install enabled cards
+                _LOGGER.info("📦 Installing enabled cards...")
                 await card_manager.install_cards(enabled_cards)
 
                 # Set up entities and automations
+                _LOGGER.info("🏗️ Calling _setup_entities_and_automations...")
                 await _setup_entities_and_automations(
                     hass,
                     device_ids,
@@ -440,12 +463,15 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
                     config_entry,
                 )
 
+                _LOGGER.info("✅ _setup_entities_and_automations completed")
+
+                _LOGGER.info("🔧 Registering services...")
                 await _register_services(hass, feature_manager)
 
                 return
-            _LOGGER.info("No Ramses devices found in entity registry")
+            _LOGGER.info("❌ No Ramses devices found in entity registry")
         else:
-            _LOGGER.info("Ramses CC not loaded yet, will retry in 60 seconds.")
+            _LOGGER.info("⚠️ Ramses CC not loaded yet, will retry in 60 seconds.")
 
         # Schedule a retry in 60 seconds - only if ramses_cc not loaded
         if "ramses_cc" not in hass.config.components:
@@ -458,7 +484,7 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
             await asyncio.sleep(60)
             hass.async_create_task(delayed_retry())
         else:
-            _LOGGER.info("Ramses CC is loaded but no devices found, not retrying")
+            _LOGGER.info("ℹ️ Ramses CC is loaded but no devices found, not retrying")
     finally:
         _setup_in_progress = False
 
@@ -543,6 +569,10 @@ async def _setup_entities_and_automations(
 
         # Start hardcoded humidity automation if enabled
         await _start_humidity_automation_if_enabled(hass, config_entry)
+
+        _LOGGER.info(
+            "🔧 Humidity automation startup called from _setup_entities_and_automations"
+        )
 
         # Note: Platforms are already set up in async_setup_entry, no need to duplicate
 

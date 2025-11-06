@@ -181,31 +181,16 @@ class RamsesBinarySensor(BinarySensorEntity):
         signal = f"ramses_rf_device_update_{self._device_id}"
         self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
 
-        # For dehumidifying_active, also track humidity entity changes and fan speed
+        # For dehumidifying_active, start the hardcoded automation
         if self._boolean_type == "dehumidifying_active":
-            device_id_underscore = self._device_id.replace(":", "_")
-            tracked_entities = [
-                f"switch.dehumidify_{device_id_underscore}",
-                f"sensor.indoor_relative_humidity_{device_id_underscore}",
-                f"sensor.indoor_absolute_humidity_{device_id_underscore}",
-                f"sensor.outdoor_absolute_humidity_{device_id_underscore}",
-                f"number.absolute_humidity_offset_{device_id_underscore}",
-                # Track min/max humidity threshold
-                f"number.max_humidity_{device_id_underscore}",
-                f"number.min_humidity_{device_id_underscore}",
-                f"fan.ventilation_{device_id_underscore}",  # Track fan speed
-            ]
+            # 🔧 START HUMIDITY AUTOMATION FOR THIS DEVICE
+            automation_manager = await self._start_humidity_automation_for_device(self)
+            # Store the automation manager for the switch to use
+            self.hass.data.setdefault(DOMAIN, {}).setdefault("automations", {})[
+                self._device_id
+            ] = automation_manager
 
-            # TODO: Replace with async_track_state_change_event in HA 2025.5
-            # https://github.com/home-assistant/core/issues/123456
-            self._unsub_state_change = async_track_state_change(
-                self.hass,
-                tracked_entities,
-                self._handle_humidity_change,  # noqa: E501
-            )
-            _LOGGER.debug(
-                "Subscribed to humidity changes for %s: %s", self.name, tracked_entities
-            )
+            # Binary sensor is controlled directly by the automation
 
         _LOGGER.debug("Subscribed to %s for binary sensor %s", signal, self.name)
 
@@ -214,91 +199,76 @@ class RamsesBinarySensor(BinarySensorEntity):
         if self._unsub is not None:
             self._unsub()
             self._unsub = None
-        if self._unsub_state_change is not None:
-            self._unsub_state_change()
-            self._unsub_state_change = None
+        # No listeners to unsubscribe
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""
         _LOGGER.debug("Device update for %s received", self.name)
         self.async_write_ha_state()
 
-    async def _handle_humidity_change(
-        self, event_data: dict[str, Any], *args: Any, **kwargs: Any
-    ) -> None:
-        """Handle changes in humidity-related entities."""
-        if self._boolean_type == "dehumidifying_active":
-            entity_id = event_data.get("entity_id", "")
-            new_state = event_data.get("new_state")
-            old_state = event_data.get("old_state")
+        # Binary sensor is controlled directly by the automation
 
-            _LOGGER.debug(
-                "Humidity entity %s changed from %s to %s, recalculating %s state",
-                entity_id,
-                old_state.state if old_state else "None",
-                new_state.state if new_state else "None",
-                self.name,
+    async def _start_humidity_automation_for_device(self, binary_sensor: Any) -> Any:
+        """Start the hardcoded humidity automation for this specific device."""
+        _LOGGER.info(
+            f"🔧 Starting hardcoded humidity automation for device {self._device_id}"
+        )
+
+        try:
+            from .automations.humidity_automation import HumidityAutomationManager
+
+            # Create automation manager for this device
+            automation_manager = HumidityAutomationManager(
+                self.hass, binary_sensor=binary_sensor
             )
-            # Force state recalculation by updating the state
-            self.async_write_ha_state()
+
+            # Start the automation
+            await automation_manager.start()
+
+            _LOGGER.info(
+                f"✅ Hardcoded humidity automation started for device {self._device_id}"
+            )
+
+            return automation_manager
+
+        except Exception as e:
+            _LOGGER.error(
+                f"❌ Failed to start humidity automation for device "
+                f"{self._device_id}: {e}"
+            )
+            return None
 
     @property
     def is_on(self) -> bool:
         """Return true if the binary sensor state is on."""
-        # For dehumidifying_active: binary ON when fan is HIGH AND switch is ON
-        if self._boolean_type == "dehumidifying_active":
-            return self._calculate_dehumidifying_state()
+        # For dehumidifying_active: read-only, controlled by automation
+        # Binary sensor is turned on/off by the automation, not calculated here
         return self._is_on
 
-    def _calculate_dehumidifying_state(self) -> bool:
-        """Calculate dehumidifying state based on fan speed and switch status."""
-        try:
-            device_id_underscore = self._device_id.replace(":", "_")
-
-            # Get entity states
-            dehumidify_state = self.hass.states.get(
-                f"switch.dehumidify_{device_id_underscore}"
-            )
-            fan_state = self.hass.states.get(f"fan.ventilation_{device_id_underscore}")
-
-            # Check if dehumidify switch is on
-            if not dehumidify_state or dehumidify_state.state != "on":
-                return False
-
-            # Check if fan speed is HIGH (indicating active dehumidification)
-            if not fan_state:
-                return False
-
-            # Parse fan attributes to get current speed/preset
-            fan_attributes = fan_state.attributes
-            current_speed = fan_attributes.get("speed", "auto").lower()
-            current_preset = fan_attributes.get("preset_mode", "auto").lower()
-
-            # Binary sensor is ON when fan is in HIGH mode and switch is ON
-            return (
-                current_speed in ["high", "3", "100"]
-                or current_preset in ["high", "boost"]
-                or "high" in str(fan_state.state).lower()
-            )
-
-        except (ValueError, AttributeError, TypeError) as e:
-            _LOGGER.warning(
-                f"Error calculating dehumidifying state for {self.name}: {e}"
-            )
-            return False
-
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the binary sensor."""
-        _LOGGER.info("Turning on binary sensor %s", self.name)
+        """Turn on the binary sensor - controlled by automation only."""
         self._is_on = True
         self.async_write_ha_state()
+        _LOGGER.info(
+            "Binary sensor %s turned ON by automation (is_on: %s)",
+            self.name,
+            self._is_on,
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the binary sensor."""
-        _LOGGER.info("Turning off binary sensor %s", self.name)
+        """Turn off the binary sensor - controlled by automation only."""
         self._is_on = False
         self.async_write_ha_state()
+        _LOGGER.info(
+            "Binary sensor %s turned OFF by automation (is_on: %s)",
+            self.name,
+            self._is_on,
+        )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"device_id": self._device_id, "boolean_type": self._boolean_type}
+        return {
+            "device_id": self._device_id,
+            "boolean_type": self._boolean_type,
+            "controlled_by": "automation",
+        }

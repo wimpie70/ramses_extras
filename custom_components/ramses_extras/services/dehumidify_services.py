@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict
 
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import entity_registry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,8 +18,8 @@ def register_dehumidify_services(hass: HomeAssistant) -> None:
         active = call.data.get("active", True)
 
         # Find the binary sensor entity
-        entity_registry = hass.helpers.entity_registry.async_get(hass)
-        entity = entity_registry.async_get(entity_id)
+        entity_registry_obj = entity_registry.async_get(hass)
+        entity = entity_registry_obj.async_get(entity_id)
 
         if not entity:
             _LOGGER.error(f"Entity {entity_id} not found")
@@ -26,13 +27,9 @@ def register_dehumidify_services(hass: HomeAssistant) -> None:
 
         # Call the appropriate method on the entity
         if active:
-            await hass.services.async_call(
-                "binary_sensor", "turn_on", {"entity_id": entity_id}, blocking=True
-            )
+            await entity.async_turn_on()
         else:
-            await hass.services.async_call(
-                "binary_sensor", "turn_off", {"entity_id": entity_id}, blocking=True
-            )
+            await entity.async_turn_off()
 
         _LOGGER.info(f"Set dehumidifying active for {entity_id} to {active}")
 

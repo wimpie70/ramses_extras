@@ -11,10 +11,16 @@ import asyncio
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, cast
 
 from homeassistant.core import HomeAssistant, State, callback
-from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers import entity_registry
+from homeassistant.helpers.event import (
+    async_track_state_change,
+    async_track_state_change_event,
+)
+
+from ..const import AVAILABLE_FEATURES, DEVICE_ENTITY_MAPPING
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,69 +33,272 @@ class HumidityAutomationManager:
     direct Python automation.
     """
 
-    # Global entity patterns to monitor across all devices
-    ENTITY_PATTERNS = [
-        "sensor.indoor_relative_humidity_*",
-        "sensor.indoor_absolute_humidity_*",
-        "sensor.outdoor_absolute_humidity_*",
-        "number.absolute_humidity_offset_*",
-        "number.max_humidity_*",
-        "number.min_humidity_*",
-        "switch.dehumidify_*",
-    ]
-
-    # Required entities for each device
-    REQUIRED_ENTITIES = [
-        "sensor.indoor_relative_humidity",
-        "sensor.indoor_absolute_humidity",
-        "sensor.outdoor_absolute_humidity",
-        "number.absolute_humidity_offset",
-        "number.max_humidity",
-        "number.min_humidity",
-        "switch.dehumidify",
-        "binary_sensor.dehumidifying_active",
-    ]
-
-    def __init__(self, hass: HomeAssistant):
+    def __init__(self, hass: HomeAssistant, binary_sensor: Any = None) -> None:
         """Initialize the humidity automation manager.
 
         Args:
             hass: Home Assistant instance
+            binary_sensor: The binary sensor entity to update
         """
         self.hass = hass
+        self.binary_sensor = binary_sensor
+        _LOGGER.info(
+            f"HumidityAutomationManager __init__ binary_sensor: {binary_sensor}"
+        )
         self._listeners: list[Any] = []  # State change listeners
         self._change_timers: dict[str, Any] = {}  # device_id -> timer for debouncing
         self._active = False
 
+        # Cache for dynamically generated entity patterns and mappings
+        self._entity_patterns: list[str] | None = None
+        self._required_entities: list[str] | None = None
+        self._state_mappings: dict[str, str] | None = None
+        self._entity_configs: dict[str, dict[str, Any]] | None = None
+
+    @property
+    def entity_patterns(self) -> list[str]:
+        """Generate entity patterns dynamically from const.py definitions."""
+        if self._entity_patterns is None:
+            self._entity_patterns = self._generate_entity_patterns()
+        return self._entity_patterns
+
+    @property
+    def required_entities(self) -> list[str]:
+        """Generate required entities dynamically from const.py definitions."""
+        if self._required_entities is None:
+            self._required_entities = self._generate_required_entities()
+        return self._required_entities
+
+    def _generate_entity_patterns(self) -> list[str]:
+        """Generate entity patterns based on const.py definitions."""
+        patterns = []
+
+        # Add CC entity pattern for relative humidity
+        patterns.append("*_indoor_humidity")  # CC: sensor.32_153289_indoor_humidity
+
+        # Get humidity control feature definition
+        humidity_feature = cast(
+            dict[str, Any], AVAILABLE_FEATURES.get("humidity_control", {})
+        )
+        required_entities = cast(
+            dict[str, list[str]], humidity_feature.get("required_entities", {})
+        )
+
+        # Add Extras entity patterns based on required entities -
+        # but use actual entity names
+        for entity_type, entity_list in required_entities.items():
+            for const_entity_name in entity_list:
+                # Convert const.py names to actual entity names
+                actual_entity_name = self._get_entity_name_from_const(const_entity_name)
+
+                if entity_type == "sensors":
+                    patterns.append(f"sensor.{actual_entity_name}_*")
+                elif entity_type == "switches":
+                    patterns.append(f"switch.{actual_entity_name}_*")
+                elif entity_type == "numbers":
+                    patterns.append(f"number.{actual_entity_name}_*")
+                elif entity_type == "binary_sensors":
+                    patterns.append(f"binary_sensor.{actual_entity_name}_*")
+
+        return patterns
+
+    def _generate_required_entities(self) -> list[str]:
+        """Generate required entities based on const.py definitions."""
+        entities = []
+
+        # Add CC entity for relative humidity
+        entities.append("indoor_humidity")  # CC: sensor.32_153289_indoor_humidity
+
+        # Get humidity control feature definition
+        humidity_feature = cast(
+            dict[str, Any], AVAILABLE_FEATURES.get("humidity_control", {})
+        )
+        required_entities = cast(
+            dict[str, list[str]], humidity_feature.get("required_entities", {})
+        )
+
+        # Add Extras entities based on required entities - but use actual entity names
+        for entity_type, entity_list in required_entities.items():
+            for const_entity_name in entity_list:
+                # Convert const.py names to actual entity names
+                actual_entity_name = self._get_entity_name_from_const(const_entity_name)
+
+                if entity_type == "sensors":
+                    entities.append(f"sensor.{actual_entity_name}")
+                elif entity_type == "switches":
+                    entities.append(f"switch.{actual_entity_name}")
+                elif entity_type == "numbers":
+                    entities.append(f"number.{actual_entity_name}")
+                elif entity_type == "binary_sensors":
+                    entities.append(f"binary_sensor.{actual_entity_name}")
+
+        return entities
+
+    def _get_entity_name_from_const(self, const_entity_name: str) -> str:
+        """Convert const.py entity name to actual entity_id name.
+
+        Args:
+            const_entity_name: Entity name from const.py (e.g., "indoor_abs_humid")
+
+        Returns:
+            Actual entity name used in entity_id (e.g., "indoor_absolute_humidity")
+        """
+        # Map from const.py names to actual entity_id names
+        name_mapping = {
+            "indoor_abs_humid": "indoor_absolute_humidity",
+            "outdoor_abs_humid": "outdoor_absolute_humidity",
+            "rel_humid_min": "relative_humidity_minimum",
+            "rel_humid_max": "relative_humidity_maximum",
+            "abs_humid_offset": "absolute_humidity_offset",
+        }
+
+        return name_mapping.get(const_entity_name, const_entity_name)
+
+    def _get_state_mappings(self, device_id: str) -> dict[str, str]:
+        """Generate state mappings dynamically using const.py entity names.
+
+        This method uses the const.py definitions to generate the correct entity IDs
+        that match what the entity managers actually create.
+
+        Args:
+            device_id: Device identifier (e.g., "32_153289")
+
+        Returns:
+            Dictionary mapping state names to entity IDs
+        """
+        # Get humidity control feature definition
+        humidity_feature = cast(
+            dict[str, Any], AVAILABLE_FEATURES.get("humidity_control", {})
+        )
+        required_entities = cast(
+            dict[str, list[str]], humidity_feature.get("required_entities", {})
+        )
+
+        # Map state names to const.py entity types
+        state_to_entity_mapping = {
+            "indoor_abs": "indoor_abs_humid",
+            "outdoor_abs": "outdoor_abs_humid",
+            "max_humidity": "rel_humid_max",
+            "min_humidity": "rel_humid_min",
+            "offset": "abs_humid_offset",
+        }
+
+        # Convert plural entity type to singular for prefix mapping
+        plural_to_singular = {
+            "sensors": "sensor",
+            "switches": "switch",
+            "numbers": "number",
+            "binary_sensors": "binary_sensor",
+        }
+
+        # Map entity types to correct prefixes (singular, not plural)
+        prefix_mapping = {
+            "sensor": "sensor",
+            "number": "number",
+            "switch": "switch",
+            "binary_sensor": "binary_sensor",
+        }
+
+        mappings = {
+            # CC entity: relative humidity sensor
+            "indoor_rh": f"sensor.{device_id}_indoor_humidity",
+        }
+
+        # Generate entity IDs for each state using the const.py definitions
+        for state_name, const_entity_type in state_to_entity_mapping.items():
+            # Check if this entity type is required
+            if self._is_entity_type_required(const_entity_type, required_entities):
+                # Get the actual entity name from const.py name
+                actual_entity_name = self._get_entity_name_from_const(const_entity_type)
+
+                # Find which entity type group this belongs to
+                singular_entity_type = None
+                for plural_type, singular_type in plural_to_singular.items():
+                    if const_entity_type in required_entities.get(plural_type, []):
+                        singular_entity_type = singular_type
+                        break
+
+                # Default to number if not found
+                if not singular_entity_type:
+                    if const_entity_type in ["indoor_abs_humid", "outdoor_abs_humid"]:
+                        singular_entity_type = "sensor"
+                    elif const_entity_type in [
+                        "rel_humid_min",
+                        "rel_humid_max",
+                        "abs_humid_offset",
+                    ]:
+                        singular_entity_type = "number"
+                    elif const_entity_type == "dehumidify":
+                        singular_entity_type = "switch"
+                    elif const_entity_type == "dehumidifying_active":
+                        singular_entity_type = "binary_sensor"
+                    else:
+                        singular_entity_type = "number"  # Default
+
+                # Get the correct entity prefix
+                entity_prefix = prefix_mapping.get(
+                    singular_entity_type, singular_entity_type
+                )
+
+                # Construct the full entity ID
+                # CORRECT FORMAT: {prefix}.{entity_name}_{device_id}
+                # (not {device_id}_{entity_name})
+                mappings[state_name] = (
+                    f"{entity_prefix}.{actual_entity_name}_{device_id}"
+                )
+
+        return mappings
+
+    def _is_entity_type_required(
+        self, entity_type: str, required_entities: dict[str, list[str]]
+    ) -> bool:
+        """Check if an entity type is required for humidity control.
+
+        Args:
+            entity_type: Entity type to check (e.g., "indoor_abs_humid")
+            required_entities: Required entities from const.py
+
+        Returns:
+            True if entity type is required, False otherwise
+        """
+        for entity_list in required_entities.values():
+            if entity_type in entity_list:
+                return True
+        return False
+
     async def start(self) -> None:
         """Start the humidity automation.
 
-        Waits for entities to be created, then registers global state listeners.
+        Starts immediately without waiting for entities to avoid blocking HA startup.
         """
         if self._active:
             _LOGGER.warning("Humidity automation already started")
             return
 
-        _LOGGER.info("Starting humidity automation")
-        _LOGGER.debug(
-            "Registering global state listeners first for immediate responsiveness"
+        _LOGGER.info(
+            "🚀 Starting humidity automation immediately (non-blocking startup)"
+        )
+        _LOGGER.info(f"📋 Entity patterns to listen for: {self.entity_patterns}")
+        _LOGGER.info(
+            "🔧 Registering global state listeners for immediate responsiveness"
         )
 
         # Register global state listeners immediately (don't wait for entities)
         # This allows the automation to respond as soon as entities become available
         await self._register_global_listeners()
 
-        # Try to wait for entities, but don't fail if they timeout
-        entities_ready = await self._wait_for_entities()
-
-        if not entities_ready:
-            _LOGGER.info("Humidity automation started without entity verification")
-            _LOGGER.info("Will activate when humidity control switches are turned ON")
-        else:
-            _LOGGER.info("Humidity automation ready for immediate operation")
-
+        # Start in non-blocking mode - will activate automatically
+        #  when entities are available
         self._active = True
-        _LOGGER.info("Humidity automation started successfully")
+        _LOGGER.info("✅ Humidity automation started successfully (non-blocking)")
+        _LOGGER.info(
+            "🎯 Will activate automatically when humidity control "
+            "switches are turned ON"
+        )
+
+        # Schedule entity verification to happen in the background
+        # This won't block startup but will verify entities are ready
+        self.hass.async_create_task(self._verify_entities_async())
 
     async def stop(self) -> None:
         """Stop the humidity automation and clean up resources."""
@@ -177,17 +386,79 @@ class HumidityAutomationManager:
 
         return False
 
+    async def _verify_entities_async(self) -> None:
+        """Verify entities in background without blocking startup."""
+        _LOGGER.debug("Starting background entity verification")
+        try:
+            entities_ready = await self._wait_for_entities()
+            if entities_ready:
+                _LOGGER.info("Humidity automation: Entities verified and ready")
+            else:
+                _LOGGER.debug(
+                    "Humidity automation: Entities not yet available - "
+                    "will activate when ready"
+                )
+        except Exception as e:
+            _LOGGER.debug(
+                f"Humidity automation: Background entity verification failed: {e}"
+            )
+
     async def _register_global_listeners(self) -> None:
         """Register global state change listeners for all entity patterns."""
-        _LOGGER.debug("Registering global state listeners")
+        _LOGGER.info("🔧 Registering global state listeners for humidity automation")
+        _LOGGER.info(f"📋 Entity patterns to register: {self.entity_patterns}")
 
-        for pattern in self.ENTITY_PATTERNS:
+        # 🔍 ADDITIONAL DEBUG: Log the actual patterns being generated
+        for pattern in self.entity_patterns:
+            _LOGGER.info(
+                f"🔍 PATTERN: '{pattern}' should match entities like: "
+                f"{pattern.replace('*', '32_153289')}"
+            )
+
+        for pattern in self.entity_patterns:
+            _LOGGER.info(f"📡 Registering listener for pattern: {pattern}")
+
+            # 📋 CRITICAL DEBUG: Add extra logging to listener registration
+            _LOGGER.debug(
+                f"🔍 About to call async_track_state_change for pattern: {pattern}"
+            )
+
             listener = async_track_state_change(
                 self.hass, pattern, self._handle_state_change
             )
-            self._listeners.append(listener)
 
-        _LOGGER.info(f"Registered {len(self._listeners)} state listeners")
+            # Verify listener was created
+            if listener:
+                self._listeners.append(listener)
+                _LOGGER.info(f"✅ Registered listener for pattern: {pattern}")
+                _LOGGER.debug(f"🔍 Listener created successfully for {pattern}")
+            else:
+                _LOGGER.error(f"❌ Failed to create listener for pattern: {pattern}")
+
+        _LOGGER.info(f"📡 Total state listeners registered: {len(self._listeners)}")
+
+        # 📋 CRITICAL DEBUG: Log all registered listeners
+        for i, pattern in enumerate(self.entity_patterns):
+            if i < len(self._listeners):
+                _LOGGER.debug(f"🔍 Listener {i + 1}: {pattern} -> {self._listeners[i]}")
+
+        # 🔍 TEST: Try to manually check if number entities exist
+        _LOGGER.info(
+            "🔍 MANUAL CHECK: Testing if number entities would match patterns:"
+        )
+        all_number_entities = self.hass.states.async_all("number")
+        for entity in all_number_entities:
+            for pattern in self.entity_patterns:
+                if pattern.endswith("*"):
+                    prefix = pattern[:-1]  # Remove the *
+                    if entity.entity_id.startswith(prefix):
+                        _LOGGER.info(
+                            f"🔍 MATCH: {entity.entity_id} matches pattern {pattern}"
+                        )
+                elif entity.entity_id == pattern:
+                    _LOGGER.info(
+                        f"🔍 EXACT MATCH: {entity.entity_id} matches pattern {pattern}"
+                    )
 
     async def _cancel_all_timers(self) -> None:
         """Cancel all pending debouncing timers."""
@@ -200,6 +471,16 @@ class HumidityAutomationManager:
         self, entity_id: str, old_state: State | None, new_state: State | None
     ) -> None:
         """Handle state changes following exact mermaid decision flow."""
+        # 📋 CRITICAL DEBUG: This should be called for every entity state change
+        _LOGGER.info(
+            f"🔍 STATE CHANGE DETECTED: {entity_id} -> "
+            f"{new_state.state if new_state else 'None'}"
+        )
+        _LOGGER.debug(
+            f"🔍 Debug: Listener called for {entity_id} in automation "
+            f"{self.__class__.__name__}"
+        )
+
         # Schedule async processing to avoid blocking the event loop
         self.hass.async_create_task(
             self._async_handle_state_change(entity_id, old_state, new_state)
@@ -237,9 +518,16 @@ class HumidityAutomationManager:
             f"State change: {entity_id} -> {new_state.state} (device: {device_id})"
         )
 
+        # Debug: Log switch state
+        switch_state = self.hass.states.get(f"switch.dehumidify_{device_id}")
+        _LOGGER.debug(
+            f"Device {device_id}: Current switch state: "
+            f"{switch_state.state if switch_state else 'NOT FOUND'}"
+        )
+
         # Validate all entities exist for this device
         if not await self._validate_device_entities(device_id):
-            _LOGGER.warning(f"Device {device_id} entities not ready")
+            _LOGGER.warning(f"Device {device_id}: Entities not ready")
             return
 
         # Reset logic: switch turned OFF (separate automation in YAML template)
@@ -261,6 +549,8 @@ class HumidityAutomationManager:
             _LOGGER.debug(f"Device {device_id}: Debouncing - ignoring rapid change")
             return
 
+        _LOGGER.info(f"Device {device_id}: Starting humidity processing (switch ON)")
+
         # Set debouncing timer
         self._change_timers[device_id] = self.hass.loop.call_later(
             120,  # 2 minutes
@@ -270,6 +560,7 @@ class HumidityAutomationManager:
         # Get all entity states for this device
         try:
             entity_states = await self._get_device_entity_states(device_id)
+            _LOGGER.info(f"Device {device_id}: Got entity states: {entity_states}")
         except ValueError as e:
             _LOGGER.warning(f"Device {device_id}: Invalid entity states - {e}")
             return
@@ -291,14 +582,8 @@ class HumidityAutomationManager:
         """
         states = {}
 
-        state_mappings = {
-            "indoor_rh": f"sensor.indoor_relative_humidity_{device_id}",
-            "indoor_abs": f"sensor.indoor_absolute_humidity_{device_id}",
-            "outdoor_abs": f"sensor.outdoor_absolute_humidity_{device_id}",
-            "max_humidity": f"number.max_humidity_{device_id}",
-            "min_humidity": f"number.min_humidity_{device_id}",
-            "offset": f"number.absolute_humidity_offset_{device_id}",
-        }
+        # Get dynamic state mappings from const.py
+        state_mappings = self._get_state_mappings(device_id)
 
         for state_name, entity_id in state_mappings.items():
             state = self.hass.states.get(entity_id)
@@ -340,62 +625,91 @@ class HumidityAutomationManager:
         min_humidity = entity_states["min_humidity"]
         offset = entity_states["offset"]
 
-        _LOGGER.debug(
-            f"Device {device_id}: Processing humidity logic "
-            f"RH={indoor_rh}%, Abs_in={indoor_abs}, Abs_out={outdoor_abs}, "
-            f"Min={min_humidity}%, Max={max_humidity}%, Offset={offset}"
+        _LOGGER.info(
+            f"Device {device_id}: Processing humidity logic - "
+            f"Indoor RH={indoor_rh}%, Indoor Abs={indoor_abs}g/m³, "
+            f"Outdoor Abs={outdoor_abs}g/m³, Min={min_humidity}%, "
+            f"Max={max_humidity}%, Offset={offset}"
+        )
+        _LOGGER.info(
+            f"Device {device_id}: Decision thresholds - "
+            f"High threshold = {max_humidity}%, Low threshold = {min_humidity}%, "
+            f"Dehumidify threshold = {outdoor_abs} + {offset} = "
+            f"{outdoor_abs + offset}, "
+            f"Humidify threshold = {outdoor_abs} - {offset} = {outdoor_abs - offset}"
         )
 
         # EXACT MERMAID LOGIC IMPLEMENTATION
 
         # Decision D1: Indoor RH > Max?
         if indoor_rh > max_humidity:
-            _LOGGER.debug(
-                f"Device {device_id}: Indoor RH ({indoor_rh}) > Max ({max_humidity})"
+            _LOGGER.info(
+                f"Device {device_id}: DECISION D1 - Indoor RH ({indoor_rh}%) > "
+                f"Max ({max_humidity}%) → CHECK DEHUMIDIFICATION"
             )
 
             # Decision I1: Indoor abs > Outdoor abs + Offset?
+            dehumidify_threshold = outdoor_abs + offset
+            _LOGGER.info(
+                f"Device {device_id}: DECISION I1 - "
+                f"Indoor abs ({indoor_abs}) vs Dehumidify threshold "
+                f"({outdoor_abs} + {offset} = {dehumidify_threshold})"
+            )
+
             if indoor_abs > outdoor_abs + offset:
                 _LOGGER.info(
-                    f"Device {device_id}: Active dehumidification - "
-                    f"Indoor abs ({indoor_abs}) > Outdoor abs ({outdoor_abs}) + "
-                    f"Offset ({offset})"
+                    f"Device {device_id}: ✅ ACTIVE DEHUMIDIFICATION - "
+                    f"Indoor abs ({indoor_abs}) > Outdoor abs "
+                    f"({outdoor_abs}) + Offset ({offset}) "
+                    f"→ Setting fan to HIGH"
                 )
                 await self._set_fan_high(device_id, "Active dehumidification")
             else:
                 _LOGGER.info(
-                    f"Device {device_id}: Avoid bringing moisture - "
-                    f"Indoor abs ({indoor_abs}) <= Outdoor abs ({outdoor_abs}) + "
-                    f"Offset ({offset})"
+                    f"Device {device_id}: 🔄 AVOID MOISTURE - "
+                    f"Indoor abs ({indoor_abs}) <= Outdoor abs "
+                    f"({outdoor_abs}) + Offset ({offset}) "
+                    f"→ Setting fan to LOW"
                 )
                 await self._set_fan_low(device_id, "Avoid bringing moisture")
 
         # Decision F1: Indoor RH < Min?
         elif indoor_rh < min_humidity:
-            _LOGGER.debug(
-                f"Device {device_id}: Indoor RH ({indoor_rh}) < Min ({min_humidity})"
+            _LOGGER.info(
+                f"Device {device_id}: DECISION F1 - Indoor RH ({indoor_rh}%) < "
+                f"Min ({min_humidity}%) → CHECK HUMIDIFICATION"
             )
 
             # Decision K1: Indoor abs < Outdoor abs - Offset?
+            humidify_threshold = outdoor_abs - offset
+            _LOGGER.info(
+                f"Device {device_id}: DECISION K1 - "
+                f"Indoor abs ({indoor_abs}) vs Humidify threshold "
+                f"({outdoor_abs} - {offset} = {humidify_threshold})"
+            )
+
             if indoor_abs < outdoor_abs - offset:
                 _LOGGER.info(
-                    f"Device {device_id}: Active humidification - "
-                    f"Indoor abs ({indoor_abs}) < Outdoor abs ({outdoor_abs}) - "
-                    f"Offset ({offset})"
+                    f"Device {device_id}: ✅ ACTIVE HUMIDIFICATION - "
+                    f"Indoor abs ({indoor_abs}) < Outdoor abs "
+                    f"({outdoor_abs}) - Offset ({offset}) "
+                    f"→ Setting fan to HIGH"
                 )
                 await self._set_fan_high(device_id, "Active humidification")
             else:
                 _LOGGER.info(
-                    f"Device {device_id}: Avoid over-humidifying - "
-                    f"Indoor abs ({indoor_abs}) >= Outdoor abs ({outdoor_abs}) - "
-                    f"Offset ({offset})"
+                    f"Device {device_id}: 🔄 AVOID OVER-HUMIDIFYING - "
+                    f"Indoor abs ({indoor_abs}) >= Outdoor abs "
+                    f"({outdoor_abs}) - Offset ({offset}) "
+                    f"→ Setting fan to LOW"
                 )
                 await self._set_fan_low(device_id, "Avoid over-humidifying")
         else:
             # No action: Indoor RH between Min/Max (acceptable range)
-            _LOGGER.debug(
-                f"Device {device_id}: Indoor RH ({indoor_rh}) between Min/Max range "
-                f"({min_humidity}%-{max_humidity}%) - no action"
+            _LOGGER.info(
+                f"Device {device_id}: 🎯 NO ACTION - Indoor RH ({indoor_rh}%) between "
+                f"Min/Max range ({min_humidity}%-{max_humidity}%) → "
+                f"Acceptable humidity level"
             )
 
     async def _set_fan_high(self, device_id: str, reason: str) -> None:
@@ -423,11 +737,16 @@ class HumidityAutomationManager:
                 reason=f"Humidity automation: {reason}",
             )
 
-            # Update binary sensor: HIGH mode = active dehumidifying
-            binary_entity_id = f"binary_sensor.dehumidifying_active_{device_id}"
-            await self.hass.services.async_call(
-                "binary_sensor", "turn_on", {"entity_id": binary_entity_id}
+            # Update binary sensor: active dehumidification
+            _LOGGER.info(
+                f"About to update binary sensor, self.binary_sensor: "
+                f"{self.binary_sensor}"
             )
+            if self.binary_sensor:
+                await self.binary_sensor.async_turn_on()
+                _LOGGER.info(f"Binary sensor {self.binary_sensor.name} set to ON")
+            else:
+                _LOGGER.warning("Binary sensor is None, cannot update")
 
             _LOGGER.info(f"Device {device_id}: Fan set HIGH - {reason}")
 
@@ -458,11 +777,10 @@ class HumidityAutomationManager:
                 reason=f"Humidity automation: {reason}",
             )
 
-            # Update binary sensor: LOW mode = not actively dehumidifying
-            binary_entity_id = f"binary_sensor.dehumidifying_active_{device_id}"
-            await self.hass.services.async_call(
-                "binary_sensor", "turn_off", {"entity_id": binary_entity_id}
-            )
+            # Update binary sensor: not actively dehumidifying
+            if self.binary_sensor:
+                await self.binary_sensor.async_turn_off()
+                _LOGGER.info(f"Binary sensor {self.binary_sensor.name} set to OFF")
 
             _LOGGER.info(f"Device {device_id}: Fan set LOW - {reason}")
 
@@ -492,11 +810,10 @@ class HumidityAutomationManager:
                 reason="Humidity automation: Switch turned OFF",
             )
 
-            # Update binary sensor: OFF when not actively controlling
-            binary_entity_id = f"binary_sensor.dehumidifying_active_{device_id}"
-            await self.hass.services.async_call(
-                "binary_sensor", "turn_off", {"entity_id": binary_entity_id}
-            )
+            # Update binary sensor: not actively controlling
+            if self.binary_sensor:
+                await self.binary_sensor.async_turn_off()
+                _LOGGER.info(f"Binary sensor {self.binary_sensor.name} set to OFF")
 
             _LOGGER.info(f"Device {device_id}: Fan reset to AUTO")
 
@@ -506,6 +823,8 @@ class HumidityAutomationManager:
     async def _validate_device_entities(self, device_id: str) -> bool:
         """Validate all required entities exist for a device.
 
+        Uses dynamic entity generation based on const.py definitions.
+
         Args:
             device_id: Device identifier
 
@@ -514,10 +833,81 @@ class HumidityAutomationManager:
         """
         missing_entities = []
 
-        for entity_template in self.REQUIRED_ENTITIES:
-            entity_id = f"{entity_template}_{device_id}"
-            if not self.hass.states.get(entity_id):
-                missing_entities.append(entity_id)
+        # CC entity: relative humidity sensor
+        cc_entity_id = f"sensor.{device_id}_indoor_humidity"
+        cc_exists = self.hass.states.get(cc_entity_id)
+        _LOGGER.debug(
+            f"Device {device_id}: CC entity {cc_entity_id} exists: "
+            f"{cc_exists is not None}"
+        )
+        if not cc_exists:
+            missing_entities.append(cc_entity_id)
+
+        # Get humidity control feature definition
+        humidity_feature = cast(
+            dict[str, Any], AVAILABLE_FEATURES.get("humidity_control", {})
+        )
+        required_entities = cast(
+            dict[str, list[str]], humidity_feature.get("required_entities", {})
+        )
+
+        # Debug: log all available entities for this device
+        all_entities = self.hass.states.async_all()
+        device_entities = [
+            e.entity_id for e in all_entities if device_id in e.entity_id
+        ]
+        _LOGGER.debug(f"Device {device_id}: Found {len(device_entities)} entities")
+
+        # Check each required entity type
+        for entity_type, entity_list in required_entities.items():
+            for const_entity_name in entity_list:
+                # Get the actual entity name from const.py name
+                actual_entity_name = self._get_entity_name_from_const(const_entity_name)
+
+                # Convert plural entity type to singular for prefix mapping
+                # "sensors" -> "sensor", "switches" -> "switch", etc.
+                plural_to_singular = {
+                    "sensors": "sensor",
+                    "switches": "switch",
+                    "numbers": "number",
+                    "binary_sensors": "binary_sensor",
+                }
+
+                # Get the correct singular entity type
+                singular_entity_type = plural_to_singular.get(entity_type, entity_type)
+
+                # Map entity types to correct prefixes (singular, not plural)
+                prefix_mapping = {
+                    "sensor": "sensor",
+                    "number": "number",
+                    "switch": "switch",
+                    "binary_sensor": "binary_sensor",
+                }
+
+                # Get the correct entity prefix
+                entity_prefix = prefix_mapping.get(
+                    singular_entity_type, singular_entity_type
+                )
+
+                # Construct the full entity ID
+                # CORRECT FORMAT: {prefix}.{entity_name}_{device_id}
+                # (not {device_id}_{entity_name})
+                expected_entity_id = f"{entity_prefix}.{actual_entity_name}_{device_id}"
+
+                # Check if this entity exists
+                entity_exists = self.hass.states.get(expected_entity_id)
+                _LOGGER.debug(
+                    f"Device {device_id}: Expected {expected_entity_id} exists: "
+                    f"{entity_exists is not None}"
+                )
+
+                if not entity_exists:
+                    missing_entities.append(expected_entity_id)
+                else:
+                    _LOGGER.debug(
+                        f"Device {device_id}: Found expected entity "
+                        f"{expected_entity_id}"
+                    )
 
         if missing_entities:
             _LOGGER.debug(f"Device {device_id}: Missing entities - {missing_entities}")
