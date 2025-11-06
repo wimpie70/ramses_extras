@@ -190,6 +190,8 @@ async def _register_services_early(hass: HomeAssistant, entry: ConfigEntry) -> N
     if enabled_features.get("humidity_control", False):
         fan_services.register_fan_services(hass)
         _LOGGER.info("Registered fan services early for humidity control")
+    else:
+        _LOGGER.info("Humidity control not enabled - fan services not registered early")
 
 
 async def _register_services(
@@ -263,10 +265,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload Ramses Extras entry."""
     _LOGGER.debug("Unloading Ramses Extras entry")
 
-    # Clean up humidity automations when feature is disabled
-    enabled_features = entry.data.get("enabled_features", {})
-    if enabled_features.get("humidity_control", False):
-        await _cleanup_humidity_automations(hass)
+    # Clean up humidity automations and stop hardcoded automation
+    await _cleanup_humidity_automations_and_automation(hass, entry)
 
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(
@@ -463,6 +463,55 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
         _setup_in_progress = False
 
 
+async def _start_humidity_automation_if_enabled(
+    hass: HomeAssistant, config_entry: ConfigEntry | None = None
+) -> None:
+    """Start hardcoded humidity automation if the feature is enabled."""
+    _LOGGER.debug("=== DEBUG: _start_humidity_automation_if_enabled called ===")
+
+    if not config_entry:
+        _LOGGER.warning("No config entry provided for humidity automation")
+        return
+
+    try:
+        _LOGGER.debug("Config entry found: %s", config_entry.entry_id)
+        from .automations.humidity_automation import HumidityAutomationManager
+
+        _LOGGER.debug("Imported HumidityAutomationManager successfully")
+
+        # Check if humidity_control feature is enabled
+        enabled_features = config_entry.data.get("enabled_features", {})
+        _LOGGER.debug("Enabled features: %s", enabled_features)
+
+        humidity_control_enabled = enabled_features.get("humidity_control", False)
+        _LOGGER.debug("Humidity control enabled: %s", humidity_control_enabled)
+
+        if humidity_control_enabled:
+            _LOGGER.info("Creating HumidityAutomationManager instance...")
+            # Start hardcoded humidity automation
+            humidity_automation = HumidityAutomationManager(hass)
+            _LOGGER.debug("HumidityAutomationManager created, storing in hass.data...")
+
+            hass.data.setdefault(DOMAIN, {}).setdefault(config_entry.entry_id, {})[
+                "humidity_automation"
+            ] = humidity_automation
+            _LOGGER.debug("Stored automation in hass.data, now starting...")
+
+            # Start the automation (will wait for entities and register listeners)
+            await humidity_automation.start()
+
+            _LOGGER.info(
+                "Started hardcoded humidity automation for humidity_control feature"
+            )
+            _LOGGER.debug("=== Humidity automation startup completed ===")
+        else:
+            _LOGGER.info("Humidity control not enabled - skipping automation startup")
+
+    except Exception as e:
+        _LOGGER.error(f"Failed to start humidity automation: {e}")
+        _LOGGER.exception("Full exception details:")
+
+
 async def _setup_entities_and_automations(
     hass: HomeAssistant,
     device_ids: list[str],
@@ -491,6 +540,9 @@ async def _setup_entities_and_automations(
 
         # Set up entities using entity manager
         await entity_manager.setup_entities_for_devices(device_ids)
+
+        # Start hardcoded humidity automation if enabled
+        await _start_humidity_automation_if_enabled(hass, config_entry)
 
         # Note: Platforms are already set up in async_setup_entry, no need to duplicate
 
@@ -574,6 +626,32 @@ async def _handle_device(device: Any) -> list[str]:
     return device_ids
 
 
+async def _cleanup_humidity_automations_and_automation(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Clean up both YAML and hardcoded humidity automations
+    when feature is disabled."""
+    # Clean up hardcoded humidity automation
+    try:
+        domain_data = hass.data.get(DOMAIN, {})
+        entry_data = domain_data.get(entry.entry_id, {})
+        humidity_automation = entry_data.get("humidity_automation")
+
+        if humidity_automation:
+            await humidity_automation.stop()
+            _LOGGER.info("Stopped hardcoded humidity automation")
+
+        # Remove from hass.data
+        if "humidity_automation" in entry_data:
+            del entry_data["humidity_automation"]
+
+    except Exception as e:
+        _LOGGER.error(f"Failed to stop humidity automation: {e}")
+
+    # Clean up YAML automations (legacy support)
+    await _cleanup_humidity_automations(hass)
+
+
 async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
     """Remove humidity control automations when feature is disabled."""
     automation_path = Path(hass.config.path("automations.yaml"))
@@ -610,7 +688,7 @@ async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
         for auto in automations_to_filter:
             automation_id = auto.get("id", "")
             is_ramses_humidity_auto = automation_id.startswith(
-                "ramses_extras_dehumidifier_"
+                ("ramses_extras_humidity_control_", "ramses_extras_dehumidifier_")
             )
 
             if not is_ramses_humidity_auto:

@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers.event import (
+    async_track_state_change,
+    async_track_state_change_event,
+)
 
 from .const import (
     AVAILABLE_FEATURES,
@@ -191,13 +194,14 @@ class RamsesBinarySensor(BinarySensorEntity):
                 f"number.max_humidity_{device_id_underscore}",
                 f"number.min_humidity_{device_id_underscore}",
                 f"fan.ventilation_{device_id_underscore}",  # Track fan speed
-                f"automation.humidity_control_{device_id_underscore}",
-                # Track automation state
-                f"automation.ramses_extras_humidity_control_{self._device_id}",
             ]
 
+            # TODO: Replace with async_track_state_change_event in HA 2025.5
+            # https://github.com/home-assistant/core/issues/123456
             self._unsub_state_change = async_track_state_change(
-                self.hass, tracked_entities, self._handle_humidity_change
+                self.hass,
+                tracked_entities,
+                self._handle_humidity_change,  # noqa: E501
             )
             _LOGGER.debug(
                 "Subscribed to humidity changes for %s: %s", self.name, tracked_entities
@@ -220,15 +224,19 @@ class RamsesBinarySensor(BinarySensorEntity):
         self.async_write_ha_state()
 
     async def _handle_humidity_change(
-        self, entity_id: str, old_state: Any, new_state: Any, *args: Any, **kwargs: Any
+        self, event_data: dict[str, Any], *args: Any, **kwargs: Any
     ) -> None:
         """Handle changes in humidity-related entities."""
         if self._boolean_type == "dehumidifying_active":
+            entity_id = event_data.get("entity_id", "")
+            new_state = event_data.get("new_state")
+            old_state = event_data.get("old_state")
+
             _LOGGER.debug(
                 "Humidity entity %s changed from %s to %s, recalculating %s state",
                 entity_id,
-                old_state,
-                new_state,
+                old_state.state if old_state else "None",
+                new_state.state if new_state else "None",
                 self.name,
             )
             # Force state recalculation by updating the state

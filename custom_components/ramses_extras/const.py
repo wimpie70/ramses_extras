@@ -87,9 +87,10 @@ AVAILABLE_FEATURES = {
     },
     "humidity_control": {
         "name": "Humidity Control",
-        "description": "Creates dehumidify control entities and automation",
+        "description": "Hardcoded humidity automation for ventilation control",
         "category": "automations",
-        "location": "automations/humidity_control_template.yaml",
+        "automation_type": "hardcoded",  # NEW: indicates hardcoded vs template
+        "location": "automations/humidity_automation.py",  # NEW: points to Python class
         "default_enabled": False,
         "supported_device_types": [
             "HvacVentilator"

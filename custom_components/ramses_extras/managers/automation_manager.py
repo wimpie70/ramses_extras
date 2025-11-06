@@ -43,6 +43,15 @@ class AutomationManager:
                 ):
                     continue
 
+                # Skip hardcoded automations - they are managed separately
+                automation_type = feature_config.get("automation_type", "template")
+                if automation_type == "hardcoded":
+                    _LOGGER.info(
+                        f"Skipping {feature_key} - hardcoded automation managed "
+                        f"separately"
+                    )
+                    continue
+
                 template_location = feature_config.get("location")
                 if not template_location:
                     _LOGGER.warning(f"No automation template for feature {feature_key}")
