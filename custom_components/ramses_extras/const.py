@@ -39,8 +39,15 @@ WEB_SOCKET_FEATURES = {
 
 # Device type to entity type mapping
 # Each feature defines a card/automation with specific requirements
+
+
+# Feature identifier constants
+FEATURE_ID_HUMIDITY_SENSORS = "humidity_sensors"
+FEATURE_ID_HVAC_FAN_CARD = "hvac_fan_card"
+FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
+
 AVAILABLE_FEATURES = {
-    "humidity_sensors": {
+    FEATURE_ID_HUMIDITY_SENSORS: {
         "name": "Absolute Humidity Sensors",
         "description": (
             "Calculates Abs humidity from relative indoor&outdoor sensor entities."
@@ -51,7 +58,7 @@ AVAILABLE_FEATURES = {
             "HvacVentilator"
         ],  # Can be extended for other device types
         "required_entities": {
-            "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
+            "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
             "switches": [],
             "binary_sensors": [],
         },
@@ -60,7 +67,7 @@ AVAILABLE_FEATURES = {
             "switches": [],
         },
     },
-    "hvac_fan_card": {
+    FEATURE_ID_HVAC_FAN_CARD: {
         "name": "Hvac Fan Control Card",
         "description": "Advanced control card for Orcon or other ventilation systems",
         "category": "cards",
@@ -72,7 +79,7 @@ AVAILABLE_FEATURES = {
             "HvacVentilator"
         ],  # Can be extended for other device types
         "required_entities": {
-            "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
+            "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
             "switches": [],
             "binary_sensors": [],
         },
@@ -85,7 +92,7 @@ AVAILABLE_FEATURES = {
         "handle_codes": ["31DA", "10D0"],
         "callback_prefix": "handle_",
     },
-    "humidity_control": {
+    FEATURE_ID_HUMIDITY_CONTROL: {
         "name": "Humidity Control",
         "description": "Hardcoded humidity automation for ventilation control",
         "category": "automations",
@@ -96,9 +103,13 @@ AVAILABLE_FEATURES = {
             "HvacVentilator"
         ],  # Can be extended for other device types
         "required_entities": {
-            "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
+            "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
             "switches": ["dehumidify"],
-            "numbers": ["rel_humid_min", "rel_humid_max", "abs_humid_offset"],
+            "numbers": [
+                "relative_humidity_minimum",
+                "relative_humidity_maximum",
+                "absolute_humidity_offset",
+            ],
             "binary_sensors": ["dehumidifying_active"],
         },
         "optional_entities": {
@@ -113,10 +124,14 @@ AVAILABLE_FEATURES = {
 # Add new device types here as they are supported
 DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
-        "sensors": ["indoor_abs_humid", "outdoor_abs_humid"],
+        "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
         "switches": ["dehumidify"],
         "binary_sensors": ["dehumidifying_active"],
-        "numbers": ["rel_humid_min", "rel_humid_max", "abs_humid_offset"],
+        "numbers": [
+            "relative_humidity_minimum",
+            "relative_humidity_maximum",
+            "absolute_humidity_offset",
+        ],
     },
     # Future device types can be added here:
     # "CO2Remote": {
@@ -125,27 +140,28 @@ DEVICE_ENTITY_MAPPING = {
     # },
 }
 
-# Entity configurations for different sensor types
-ENTITY_CONFIGS = {
-    "indoor_abs_humid": {
+# Sensor configurations with improved naming templates
+# Format: {name_template}_{device_id} -> generates "Indoor Absolute Humidity_32_153289"
+SENSOR_CONFIGS = {
+    "indoor_absolute_humidity": {
         "name_template": "Indoor Absolute Humidity",
         "entity_category": EntityCategory.DIAGNOSTIC,
         "unit": "g/m³",
         "icon": "mdi:water-percent",
         "device_class": None,
-        "supported_device_types": [
-            "HvacVentilator"
-        ],  # Can be extended for other device types
+        "supported_device_types": ["HvacVentilator"],
+        # NEW: Template for entity generation
+        "entity_template": "indoor_absolute_humidity_{device_id}",
     },
-    "outdoor_abs_humid": {
+    "outdoor_absolute_humidity": {
         "name_template": "Outdoor Absolute Humidity",
         "entity_category": EntityCategory.DIAGNOSTIC,
         "unit": "g/m³",
         "icon": "mdi:weather-partly-cloudy",
         "device_class": None,
-        "supported_device_types": [
-            "HvacVentilator"
-        ],  # Can be extended for other device types
+        "supported_device_types": ["HvacVentilator"],
+        # NEW: Template for entity generation
+        "entity_template": "outdoor_absolute_humidity_{device_id}",
     },
 }
 
@@ -155,9 +171,9 @@ SWITCH_CONFIGS = {
         "name_template": "Dehumidify",
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.CONFIG,
-        "supported_device_types": [
-            "HvacVentilator"
-        ],  # Can be extended for other device types
+        "supported_device_types": ["HvacVentilator"],
+        # NEW: Template for entity generation
+        "entity_template": "dehumidify_{device_id}",
     },
 }
 
@@ -167,15 +183,15 @@ BOOLEAN_CONFIGS = {
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.DIAGNOSTIC,
         "device_class": "running",
-        "supported_device_types": [
-            "HvacVentilator"
-        ],  # Can be extended for other device types
+        "supported_device_types": ["HvacVentilator"],
+        # NEW: Template for entity generation
+        "entity_template": "dehumidifying_active_{device_id}",
     },
 }
 
 # Number configurations for threshold values
 NUMBER_CONFIGS = {
-    "rel_humid_min": {
+    "relative_humidity_minimum": {
         "name_template": "Relative Humidity Minimum",
         "entity_category": EntityCategory.CONFIG,
         "unit": "%",
@@ -185,11 +201,11 @@ NUMBER_CONFIGS = {
         "max_value": 80,
         "step": 1,
         "default_value": 40,
-        "supported_device_types": [
-            "HvacVentilator"
-        ],  # Can be extended for other device types
+        "supported_device_types": ["HvacVentilator"],
+        # NEW: Template for entity generation
+        "entity_template": "relative_humidity_minimum_{device_id}",
     },
-    "rel_humid_max": {
+    "relative_humidity_maximum": {
         "name_template": "Relative Humidity Maximum",
         "entity_category": EntityCategory.CONFIG,
         "unit": "%",
@@ -199,11 +215,11 @@ NUMBER_CONFIGS = {
         "max_value": 90,
         "step": 1,
         "default_value": 60,
-        "supported_device_types": [
-            "HvacVentilator"
-        ],  # Can be extended for other device types
+        "supported_device_types": ["HvacVentilator"],
+        # NEW: Template for entity generation
+        "entity_template": "relative_humidity_maximum_{device_id}",
     },
-    "abs_humid_offset": {
+    "absolute_humidity_offset": {
         "name_template": "Absolute Humidity Offset",
         "entity_category": EntityCategory.CONFIG,
         "unit": "g/m³",
@@ -213,15 +229,15 @@ NUMBER_CONFIGS = {
         "max_value": 3.0,
         "step": 0.1,
         "default_value": 0.4,
-        "supported_device_types": [
-            "HvacVentilator"
-        ],  # Can be extended for other device types
+        "supported_device_types": ["HvacVentilator"],
+        # NEW: Template for entity generation
+        "entity_template": "absolute_humidity_offset_{device_id}",
     },
 }
 
 # Entity type to config mapping
 ENTITY_TYPE_CONFIGS = {
-    "sensor": ENTITY_CONFIGS,
+    "sensor": SENSOR_CONFIGS,
     "switch": SWITCH_CONFIGS,
     "binary_sensor": BOOLEAN_CONFIGS,
     "number": NUMBER_CONFIGS,

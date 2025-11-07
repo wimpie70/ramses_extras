@@ -14,6 +14,9 @@ sys.path.insert(
 from custom_components.ramses_extras.automations.humidity_automation import (
     HumidityAutomationManager,
 )
+from custom_components.ramses_extras.helpers.device import (
+    get_actual_entity_name_from_config,
+)
 
 
 class TestHumidityAutomationEntityNaming:

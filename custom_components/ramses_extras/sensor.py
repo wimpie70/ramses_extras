@@ -12,7 +12,11 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
-from .helpers.device import find_ramses_device, get_device_type
+from .helpers.device import (
+    find_ramses_device,
+    generate_entity_name_from_template,
+    get_device_type,
+)
 from .helpers.entities import calculate_absolute_humidity
 from .helpers.platform import (
     calculate_required_entities,
@@ -143,9 +147,8 @@ class RamsesExtraHumiditySensor(SensorEntity):
 
         # Set attributes from configuration
         self._attr_name = f"{config['name_template']} ({device_id})"
-        self._attr_unique_id = (
-            f"{device_id}_{sensor_type}"  # Format: 32:153289_indoor_abs_humid
-        )
+        # Use new format: sensor.indoor_absolute_humidity_32_153289
+        self._attr_unique_id = f"{sensor_type}_{device_id.replace(':', '_')}"
         self._attr_entity_category = config["entity_category"]
         self._attr_icon = config["icon"]
         self._attr_native_unit_of_measurement = config["unit"]
@@ -186,8 +189,8 @@ class RamsesExtraHumiditySensor(SensorEntity):
         """
         # Map sensor types to the corresponding temp/humidity entity patterns
         entity_patterns = {
-            "indoor_abs_humid": ("indoor_temp", "indoor_humidity"),
-            "outdoor_abs_humid": ("outdoor_temp", "outdoor_humidity"),
+            "indoor_absolute_humidity": ("indoor_temp", "indoor_humidity"),
+            "outdoor_absolute_humidity": ("outdoor_temp", "outdoor_humidity"),
         }
 
         if self._sensor_type not in entity_patterns:

@@ -13,7 +13,11 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
-from .helpers.device import find_ramses_device, get_device_type
+from .helpers.device import (
+    find_ramses_device,
+    generate_entity_name_from_template,
+    get_device_type,
+)
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -104,7 +108,10 @@ async def async_setup_entry(
                     numbers.append(
                         RamsesNumberEntity(hass, device_id, number_type, config)
                     )
-                    _LOGGER.debug(f"Creating number: number.{device_id}_{number_type}")
+                    entity_id = generate_entity_name_from_template(
+                        "number", number_type, device_id
+                    )
+                    _LOGGER.debug(f"Creating number: {entity_id}")
 
     # Remove orphaned entities (defer to after entity creation)
     async def cleanup_orphaned_entities() -> None:
@@ -152,8 +159,8 @@ class RamsesNumberEntity(NumberEntity, RestoreEntity):
 
         # Set attributes from configuration
         self._attr_name = f"{config['name_template']} ({device_id})"
-        # Use format that matches card expectations: number.32_153289_rel_humid_min
-        self._attr_unique_id = f"{device_id.replace(':', '_')}_{number_type}"
+        # Use new format: number.relative_humidity_minimum_32_153289
+        self._attr_unique_id = f"{number_type}_{device_id.replace(':', '_')}"
         self._attr_icon = config["icon"]
         self._attr_entity_category = config["entity_category"]
         self._attr_native_unit_of_measurement = config.get("unit")

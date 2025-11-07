@@ -21,6 +21,11 @@ from homeassistant.helpers.event import (
 )
 
 from ..const import AVAILABLE_FEATURES, DEVICE_ENTITY_MAPPING
+from ..helpers.device import (
+    generate_entity_name_from_template,
+    get_all_required_entity_ids_for_device,
+    parse_entity_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,7 +64,6 @@ class HumidityAutomationManager:
 
         # Cache for dynamically generated entity patterns and mappings
         self._entity_patterns: list[str] | None = None
-        self._required_entities: list[str] | None = None
         self._state_mappings: dict[str, str] | None = None
         self._entity_configs: dict[str, dict[str, Any]] | None = None
 
@@ -70,103 +74,41 @@ class HumidityAutomationManager:
             self._entity_patterns = self._generate_entity_patterns()
         return self._entity_patterns
 
-    @property
-    def required_entities(self) -> list[str]:
-        """Generate required entities dynamically from const.py definitions."""
-        if self._required_entities is None:
-            self._required_entities = self._generate_required_entities()
-        return self._required_entities
+    def _get_entity_mapping(self) -> dict[str, list[str]]:
+        """Get the common entity mapping used by multiple methods."""
+        # Direct mapping to new entity names (no more const_to_new_mapping needed)
+        return {
+            "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+            "number": [
+                "relative_humidity_minimum",
+                "relative_humidity_maximum",
+                "absolute_humidity_offset",
+            ],
+            "switch": ["dehumidify"],
+            "binary_sensor": ["dehumidifying_active"],
+        }
 
     def _generate_entity_patterns(self) -> list[str]:
-        """Generate entity patterns based on const.py definitions."""
+        """Generate entity patterns based on const.py definitions using new helpers."""
         patterns = []
 
         # Add CC entity pattern for relative humidity
         patterns.append("*_indoor_humidity")  # CC: sensor.32_153289_indoor_humidity
 
-        # Get humidity control feature definition
-        humidity_feature = cast(
-            dict[str, Any], AVAILABLE_FEATURES.get("humidity_control", {})
-        )
-        required_entities = cast(
-            dict[str, list[str]], humidity_feature.get("required_entities", {})
-        )
-
-        # Add Extras entity patterns based on required entities -
-        # but use actual entity names (name first, then device_id)
-        for entity_type, entity_list in required_entities.items():
-            for const_entity_name in entity_list:
-                # Convert const.py names to actual entity names
-                actual_entity_name = self._get_entity_name_from_const(const_entity_name)
-
-                if entity_type == "sensors":
-                    patterns.append(f"sensor.{actual_entity_name}_*")
-                elif entity_type == "switches":
-                    patterns.append(f"switch.{actual_entity_name}_*")
-                elif entity_type == "numbers":
-                    patterns.append(f"number.{actual_entity_name}_*")
-                elif entity_type == "binary_sensors":
-                    patterns.append(f"binary_sensor.{actual_entity_name}_*")
+        # Add Extras entity patterns using new naming convention
+        entity_mapping = self._get_entity_mapping()
+        for entity_type, entity_names in entity_mapping.items():
+            for entity_name in entity_names:
+                # Use wildcard pattern for dynamic device_id matching
+                patterns.append(f"{entity_type}.{entity_name}_*")
 
         return patterns
 
-    def _generate_required_entities(self) -> list[str]:
-        """Generate required entities based on const.py definitions."""
-        entities = []
-
-        # Add CC entity for relative humidity
-        entities.append("indoor_humidity")  # CC: sensor.32_153289_indoor_humidity
-
-        # Get humidity control feature definition
-        humidity_feature = cast(
-            dict[str, Any], AVAILABLE_FEATURES.get("humidity_control", {})
-        )
-        required_entities = cast(
-            dict[str, list[str]], humidity_feature.get("required_entities", {})
-        )
-
-        # Add Extras entities based on required entities - but use actual entity names
-        for entity_type, entity_list in required_entities.items():
-            for const_entity_name in entity_list:
-                # Convert const.py names to actual entity names
-                actual_entity_name = self._get_entity_name_from_const(const_entity_name)
-
-                if entity_type == "sensors":
-                    entities.append(f"sensor.{actual_entity_name}")
-                elif entity_type == "switches":
-                    entities.append(f"switch.{actual_entity_name}")
-                elif entity_type == "numbers":
-                    entities.append(f"number.{actual_entity_name}")
-                elif entity_type == "binary_sensors":
-                    entities.append(f"binary_sensor.{actual_entity_name}")
-
-        return entities
-
-    def _get_entity_name_from_const(self, const_entity_name: str) -> str:
-        """Convert const.py entity name to actual entity_id name.
-
-        Args:
-            const_entity_name: Entity name from const.py (e.g., "indoor_abs_humid")
-
-        Returns:
-            Actual entity name used in entity_id (e.g., "indoor_absolute_humidity")
-        """
-        # Map from const.py names to actual entity_id names
-        name_mapping = {
-            "indoor_abs_humid": "indoor_absolute_humidity",
-            "outdoor_abs_humid": "outdoor_absolute_humidity",
-            "rel_humid_min": "relative_humidity_minimum",
-            "rel_humid_max": "relative_humidity_maximum",
-            "abs_humid_offset": "absolute_humidity_offset",
-        }
-
-        return name_mapping.get(const_entity_name, const_entity_name)
-
     def _get_state_mappings(self, device_id: str) -> dict[str, str]:
-        """Generate state mappings dynamically using const.py entity names.
+        """Generate state mappings dynamically using AVAILABLE_FEATURES.
 
-        This method uses the const.py definitions to generate the correct entity IDs
-        that match what the entity managers actually create.
+        This method gets the state-to-entity mapping from AVAILABLE_FEATURES
+        and generates entity IDs using the helper methods.
 
         Args:
             device_id: Device identifier (e.g., "32_153289")
@@ -174,105 +116,86 @@ class HumidityAutomationManager:
         Returns:
             Dictionary mapping state names to entity IDs
         """
-        # Get humidity control feature definition
-        humidity_feature = cast(
-            dict[str, Any], AVAILABLE_FEATURES.get("humidity_control", {})
-        )
+        mappings = {
+            # CC entity: relative humidity sensor (unchanged)
+            "indoor_rh": f"sensor.{device_id}_indoor_humidity",
+        }
+
+        # Get humidity feature definition from AVAILABLE_FEATURES
+        humidity_feature = cast(dict[str, Any], AVAILABLE_FEATURES["humidity_control"])
         required_entities = cast(
             dict[str, list[str]], humidity_feature.get("required_entities", {})
         )
 
-        # Map state names to const.py entity types
-        state_to_entity_mapping = {
-            "indoor_abs": "indoor_abs_humid",
-            "outdoor_abs": "outdoor_abs_humid",
-            "max_humidity": "rel_humid_max",
-            "min_humidity": "rel_humid_min",
-            "offset": "abs_humid_offset",
+        # Define state to entity name mapping for humidity logic
+        # This is the only hardcoded part - the mapping of internal state names
+        # to the entity names used in REQUIRED_ENTITIES
+        state_to_entity_name_mapping = {
+            "indoor_abs": "indoor_absolute_humidity",
+            "outdoor_abs": "outdoor_absolute_humidity",
+            "max_humidity": "relative_humidity_maximum",
+            "min_humidity": "relative_humidity_minimum",
+            "offset": "absolute_humidity_offset",
         }
 
-        # Convert plural entity type to singular for prefix mapping
-        plural_to_singular = {
-            "sensors": "sensor",
-            "switches": "switch",
-            "numbers": "number",
-            "binary_sensors": "binary_sensor",
-        }
+        # Generate entity IDs using the new helper methods
+        for state_name, entity_name in state_to_entity_name_mapping.items():
+            # Find which entity type this belongs to
+            for entity_type, entity_list in required_entities.items():
+                if entity_name in entity_list:
+                    # Get the actual entity name from config
+                    # (convert const name to new format)
+                    actual_entity_name = self._get_actual_entity_name(entity_name)
 
-        # Map entity types to correct prefixes (singular, not plural)
-        prefix_mapping = {
-            "sensor": "sensor",
-            "number": "number",
-            "switch": "switch",
-            "binary_sensor": "binary_sensor",
-        }
-
-        mappings = {
-            # CC entity: relative humidity sensor
-            "indoor_rh": f"sensor.{device_id}_indoor_humidity",
-        }
-
-        # Generate entity IDs for each state using the const.py definitions
-        for state_name, const_entity_type in state_to_entity_mapping.items():
-            # Check if this entity type is required
-            if self._is_entity_type_required(const_entity_type, required_entities):
-                # Get the actual entity name from const.py name
-                actual_entity_name = self._get_entity_name_from_const(const_entity_type)
-
-                # Find which entity type group this belongs to
-                singular_entity_type = None
-                for plural_type, singular_type in plural_to_singular.items():
-                    if const_entity_type in required_entities.get(plural_type, []):
-                        singular_entity_type = singular_type
-                        break
-
-                # Default to number if not found
-                if not singular_entity_type:
-                    if const_entity_type in ["indoor_abs_humid", "outdoor_abs_humid"]:
-                        singular_entity_type = "sensor"
-                    elif const_entity_type in [
-                        "rel_humid_min",
-                        "rel_humid_max",
-                        "abs_humid_offset",
-                    ]:
-                        singular_entity_type = "number"
-                    elif const_entity_type == "dehumidify":
-                        singular_entity_type = "switch"
-                    elif const_entity_type == "dehumidifying_active":
-                        singular_entity_type = "binary_sensor"
+                    entity_id = generate_entity_name_from_template(
+                        entity_type.rstrip("s"),
+                        actual_entity_name,
+                        device_id,  # Remove 's' from plural
+                    )
+                    if entity_id:
+                        mappings[state_name] = entity_id
                     else:
-                        singular_entity_type = "number"  # Default
-
-                # Get the correct entity prefix
-                entity_prefix = prefix_mapping.get(
-                    singular_entity_type, singular_entity_type
-                )
-
-                # Construct the full entity ID
-                # CORRECT FORMAT: {prefix}.{entity_name}_{device_id}
-                # (not {device_id}_{entity_name})
-                mappings[state_name] = (
-                    f"{entity_prefix}.{actual_entity_name}_{device_id}"
-                )
+                        _LOGGER.warning(
+                            f"Could not generate entity ID for "
+                            f"{entity_type}.{entity_name}"
+                        )
+                    break
 
         return mappings
 
-    def _is_entity_type_required(
-        self, entity_type: str, required_entities: dict[str, list[str]]
-    ) -> bool:
-        """Check if an entity type is required for humidity control.
+    def _get_actual_entity_name(self, const_entity_name: str) -> str:
+        """Convert const.py entity name to actual entity name from configs.
 
         Args:
-            entity_type: Entity type to check (e.g., "indoor_abs_humid")
-            required_entities: Required entities from const.py
+            const_entity_name: Entity name from const.py (e.g., "indoor_abs_humid")
 
         Returns:
-            True if entity type is required, False otherwise
+            Actual entity name (e.g., "indoor_absolute_humidity")
         """
-        for entity_list in required_entities.values():
-            if entity_type in entity_list:
-                return True
-        return False
+        # Mapping from old const names to new entity names
+        name_mapping = {
+            "indoor_abs_humid": "indoor_absolute_humidity",
+            "outdoor_abs_humid": "outdoor_absolute_humidity",
+            "rel_humid_min": "relative_humidity_minimum",
+            "rel_humid_max": "relative_humidity_maximum",
+            "abs_humid_offset": "absolute_humidity_offset",
+            "dehumidify": "dehumidify",
+            "dehumidifying_active": "dehumidifying_active",
+        }
+        return name_mapping.get(const_entity_name, const_entity_name)
+
+    def _get_entity_name_from_const(self, const_entity_name: str) -> str | None:
+        """Get the actual entity name from config for a const entity name.
+
+        This method is kept for backward compatibility with existing tests.
+
+        Args:
+            const_entity_name: Entity name from const.py (e.g., "indoor_abs_humid")
+
+        Returns:
+            Actual entity name from config (e.g., "indoor_absolute_humidity") or None
+        """
+        return self._get_actual_entity_name(const_entity_name)
 
     async def start(self) -> None:
         """Start the humidity automation.
@@ -976,7 +899,7 @@ class HumidityAutomationManager:
     async def _validate_device_entities(self, device_id: str) -> bool:
         """Validate all required entities exist for a device.
 
-        Uses dynamic entity generation based on const.py definitions.
+        Uses the new entity generation helpers for consistent validation.
 
         Args:
             device_id: Device identifier
@@ -986,7 +909,7 @@ class HumidityAutomationManager:
         """
         missing_entities = []
 
-        # CC entity: relative humidity sensor
+        # CC entity: relative humidity sensor (unchanged)
         cc_entity_id = f"sensor.{device_id}_indoor_humidity"
         cc_exists = self.hass.states.get(cc_entity_id)
         _LOGGER.debug(
@@ -1011,56 +934,54 @@ class HumidityAutomationManager:
         ]
         _LOGGER.debug(f"Device {device_id}: Found {len(device_entities)} entities")
 
-        # Check each required entity type
+        # Check each required entity type using the new naming system
+        # Direct mapping to new entity names (no more const_to_new_mapping needed)
+        new_entity_mapping = {
+            "indoor_abs_humid": ("sensor", "indoor_absolute_humidity"),
+            "outdoor_abs_humid": ("sensor", "outdoor_absolute_humidity"),
+            "rel_humid_min": ("number", "relative_humidity_minimum"),
+            "rel_humid_max": ("number", "relative_humidity_maximum"),
+            "abs_humid_offset": ("number", "absolute_humidity_offset"),
+            "dehumidify": ("switch", "dehumidify"),
+            "dehumidifying_active": ("binary_sensor", "dehumidifying_active"),
+        }
+
         for entity_type, entity_list in required_entities.items():
             for const_entity_name in entity_list:
-                # Get the actual entity name from const.py name
-                actual_entity_name = self._get_entity_name_from_const(const_entity_name)
+                # Get the new entity type and name from direct mapping
+                if const_entity_name in new_entity_mapping:
+                    entity_type_new, entity_name_new = new_entity_mapping[
+                        const_entity_name
+                    ]
 
-                # Convert plural entity type to singular for prefix mapping
-                # "sensors" -> "sensor", "switches" -> "switch", etc.
-                plural_to_singular = {
-                    "sensors": "sensor",
-                    "switches": "switch",
-                    "numbers": "number",
-                    "binary_sensors": "binary_sensor",
-                }
-
-                # Get the correct singular entity type
-                singular_entity_type = plural_to_singular.get(entity_type, entity_type)
-
-                # Map entity types to correct prefixes (singular, not plural)
-                prefix_mapping = {
-                    "sensor": "sensor",
-                    "number": "number",
-                    "switch": "switch",
-                    "binary_sensor": "binary_sensor",
-                }
-
-                # Get the correct entity prefix
-                entity_prefix = prefix_mapping.get(
-                    singular_entity_type, singular_entity_type
-                )
-
-                # Construct the full entity ID
-                # CORRECT FORMAT: {prefix}.{entity_name}_{device_id}
-                # (not {device_id}_{entity_name})
-                expected_entity_id = f"{entity_prefix}.{actual_entity_name}_{device_id}"
-
-                # Check if this entity exists
-                entity_exists = self.hass.states.get(expected_entity_id)
-                _LOGGER.debug(
-                    f"Device {device_id}: Expected {expected_entity_id} exists: "
-                    f"{entity_exists is not None}"
-                )
-
-                if not entity_exists:
-                    missing_entities.append(expected_entity_id)
-                else:
-                    _LOGGER.debug(
-                        f"Device {device_id}: Found expected entity "
-                        f"{expected_entity_id}"
+                    # Generate the expected entity ID using helpers
+                    expected_entity_id = generate_entity_name_from_template(
+                        entity_type_new, entity_name_new, device_id
                     )
+
+                    if expected_entity_id:
+                        # Check if this entity exists
+                        entity_exists = self.hass.states.get(expected_entity_id)
+                        _LOGGER.debug(
+                            f"Device {device_id}: Expected {expected_entity_id} "
+                            f"exists: {entity_exists is not None}"
+                        )
+
+                        if not entity_exists:
+                            missing_entities.append(expected_entity_id)
+                        else:
+                            _LOGGER.debug(
+                                f"Device {device_id}: Found expected entity "
+                                f"{expected_entity_id}"
+                            )
+                    else:
+                        _LOGGER.warning(
+                            f"Device {device_id}: Could not generate entity ID for "
+                            f"{entity_type_new}.{entity_name_new}"
+                        )
+                        missing_entities.append(
+                            f"{entity_type_new}.{entity_name_new}_{device_id}"
+                        )
 
         if missing_entities:
             _LOGGER.debug(f"Device {device_id}: Missing entities - {missing_entities}")
@@ -1069,13 +990,9 @@ class HumidityAutomationManager:
         return True
 
     def _extract_device_id(self, entity_id: str) -> str | None:
-        """Extract device_id from entity name.
+        """Extract device_id from entity name using the new parsing helper.
 
-        Expected formats:
-        - {entity_type}.{entity_name}_{device_id} (e.g.,
-        number.relative_humidity_maximum_32_153289)
-        - {entity_type}.{entity_name}:{device_id} (e.g.,
-         number.32:153289_rel_humid_max)
+        This replaces the complex regex patterns with a clean parsing helper.
 
         Args:
             entity_id: Entity identifier
@@ -1084,34 +1001,10 @@ class HumidityAutomationManager:
             Device identifier in underscore format (e.g., "32_153289")
             or None if extraction fails
         """
-        # Pattern 1: entity_type.entity_name_deviceid (underscore format)
-        # Example: number.relative_humidity_maximum_32_153289
-        match = re.search(r"([^_]+)_(32_\d+)$", entity_id)
-        if match:
-            return match.group(2)  # "32_153289"
-
-        # Pattern 2: entity_type.entity_name_deviceid (colon format)
-        # Example: number.32:153289_rel_humid_max
-        match = re.search(r"([^:]+):([0-9]+:[0-9]+)_", entity_id)
-        if match:
-            return match.group(2).replace(":", "_")  # "32_153289"
-
-        # Pattern 3: entity_type.32_153289_entityname (reverse order)
-        # Example: switch.32_153289_dehumidify
-        match = re.search(r"\.(\d+_\d+)_", entity_id)
-        if match:
-            return match.group(1)  # "32_153289"
-
-        # Pattern 4: entity_type.32:153289_entityname (reverse order, colon)
-        # Example: switch.32:153289_dehumidify
-        match = re.search(r"\.(\d+:\d+)_", entity_id)
-        if match:
-            return match.group(1).replace(":", "_")  # "32_153289"
-
-        # Pattern 5: entity_type.entityname_32:153289 (colon at end)
-        match = re.search(r"_(\d+:\d+)$", entity_id)
-        if match:
-            return match.group(1).replace(":", "_")  # "32_153289"
+        parsed = parse_entity_id(entity_id)
+        if parsed:
+            _, _, device_id = parsed
+            return device_id
 
         _LOGGER.warning(f"Could not extract device_id from entity: {entity_id}")
         return None
