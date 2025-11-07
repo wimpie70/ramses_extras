@@ -197,37 +197,48 @@ class RamsesDehumidifySwitch(SwitchEntity):
         self._is_on = True
         self.async_write_ha_state()
 
-        # 🔧 TRIGGER HUMIDITY AUTOMATION
-        await self._trigger_humidity_automation()
+        # Use existing automation created by binary sensor
+        automation = (
+            self.hass.data.get("ramses_extras", {})
+            .get("automations", {})
+            .get(self._device_id)
+        )
+        if automation:
+            # Update switch state for the existing automation
+            automation.switch_state = self._is_on
+            # Immediately evaluate current conditions since switch is now on
+            await automation._evaluate_current_conditions()
+        else:
+            # Debug: log what's actually in the data
+            ramses_data = self.hass.data.get("ramses_extras", {})
+            automations_data = ramses_data.get("automations", {})
+            _LOGGER.warning(
+                f"No automation found for device {self._device_id}. "
+                f"Available automations: {list(automations_data.keys())}. "
+                f"Binary sensor should have created it."
+            )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Deactivate dehumidify mode."""
         _LOGGER.info("Deactivating dehumidify mode for %s", self.name)
+
+        # Update automation state if exists
+        automation = (
+            self.hass.data.get("ramses_extras", {})
+            .get("automations", {})
+            .get(self._device_id)
+        )
+        if automation:
+            # Update switch state for the existing automation
+            automation.switch_state = self._is_on
+            _LOGGER.info(f"Updated switch state in automation for {self._device_id}")
+        else:
+            _LOGGER.warning(
+                f"No automation found for device {self._device_id} when turning off"
+            )
+
         self._is_on = False
         self.async_write_ha_state()
-
-        # 🔧 TRIGGER HUMIDITY AUTOMATION
-        await self._trigger_humidity_automation()
-
-    async def _trigger_humidity_automation(self) -> None:
-        """Trigger the hardcoded humidity automation for this device."""
-        device_id_underscore = self._device_id.replace(":", "_")
-        automation = (
-            self.hass.data.get(DOMAIN, {})
-            .get("automations", {})
-            .get(device_id_underscore)
-        )
-
-        if not automation:
-            _LOGGER.warning(f"No automation found for device {device_id_underscore}")
-            return
-
-        entity_id = f"switch.dehumidify_{device_id_underscore}"
-        old_state = None
-        new_state = self.hass.states.get(entity_id)
-
-        await automation._async_handle_state_change(entity_id, old_state, new_state)
-        _LOGGER.info(f"Triggered humidity automation for {device_id_underscore}")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

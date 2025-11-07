@@ -183,12 +183,26 @@ class RamsesBinarySensor(BinarySensorEntity):
 
         # For dehumidifying_active, start the hardcoded automation
         if self._boolean_type == "dehumidifying_active":
+            _LOGGER.info(
+                f"🔧 Starting humidity automation for binary sensor {self.name} "
+                f"(device: {self._device_id})"
+            )
             # 🔧 START HUMIDITY AUTOMATION FOR THIS DEVICE
             automation_manager = await self._start_humidity_automation_for_device(self)
+
             # Store the automation manager for the switch to use
-            self.hass.data.setdefault(DOMAIN, {}).setdefault("automations", {})[
-                self._device_id
-            ] = automation_manager
+            if automation_manager:
+                self.hass.data.setdefault(DOMAIN, {}).setdefault("automations", {})[
+                    self._device_id
+                ] = automation_manager
+                _LOGGER.info(
+                    f"✅ Stored automation for device {self._device_id} in "
+                    f"hass.data['{DOMAIN}']['automations']"
+                )
+            else:
+                _LOGGER.error(
+                    f"❌ Failed to start automation for device {self._device_id}"
+                )
 
             # Binary sensor is controlled directly by the automation
 

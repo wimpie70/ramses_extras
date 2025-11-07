@@ -33,17 +33,22 @@ class HumidityAutomationManager:
     direct Python automation.
     """
 
-    def __init__(self, hass: HomeAssistant, binary_sensor: Any = None) -> None:
+    def __init__(
+        self, hass: HomeAssistant, binary_sensor: Any = None, switch_state: bool = False
+    ) -> None:
         """Initialize the humidity automation manager.
 
         Args:
             hass: Home Assistant instance
             binary_sensor: The binary sensor entity to update
+            switch_state: The current state of the switch (True for ON, False for OFF)
         """
         self.hass = hass
         self.binary_sensor = binary_sensor
+        self.switch_state = switch_state
         _LOGGER.info(
-            f"HumidityAutomationManager __init__ binary_sensor: {binary_sensor}"
+            f"HumidityAutomationManager __init__ binary_sensor: {binary_sensor}, "
+            f"switch_state: {switch_state}"
         )
         self._listeners: list[Any] = []  # State change listeners
         self._change_timers: dict[str, Any] = {}  # device_id -> timer for debouncing
@@ -300,6 +305,9 @@ class HumidityAutomationManager:
         # This won't block startup but will verify entities are ready
         self.hass.async_create_task(self._verify_entities_async())
 
+        # Immediately evaluate current humidity conditions if switch is on
+        await self._evaluate_current_conditions()
+
     async def stop(self) -> None:
         """Stop the humidity automation and clean up resources."""
         if not self._active:
@@ -403,6 +411,42 @@ class HumidityAutomationManager:
                 f"Humidity automation: Background entity verification failed: {e}"
             )
 
+    async def _evaluate_current_conditions(self) -> None:
+        """Evaluate current humidity conditions immediately when automation starts."""
+        if not self.binary_sensor:
+            return
+
+        # binary_sensor is actually the device_id - ensure underscore format
+        device_id = self.binary_sensor.replace(":", "_")  # Convert colon to underscore
+
+        # Check if switch is on using the passed switch_state
+        if not self.switch_state:
+            _LOGGER.debug(
+                f"Switch not on (state: {self.switch_state}), "
+                f"skipping initial evaluation"
+            )
+            return
+
+        _LOGGER.debug(f"Evaluating current conditions for device: {device_id}")
+
+        # Validate entities
+        if not await self._validate_device_entities(device_id):
+            _LOGGER.debug(
+                f"Entities not ready for device {device_id}, "
+                f"skipping initial evaluation"
+            )
+            return
+
+        # Get states and process
+        try:
+            entity_states = await self._get_device_entity_states(device_id)
+            _LOGGER.info(f"Initial evaluation for device {device_id}: {entity_states}")
+            await self._process_humidity_logic(device_id, entity_states)
+        except Exception as e:
+            _LOGGER.debug(
+                f"Could not evaluate current conditions for device {device_id}: {e}"
+            )
+
     async def _register_global_listeners(self) -> None:
         """Register global state change listeners for all entity patterns."""
         _LOGGER.info("🔧 Registering global state listeners for humidity automation")
@@ -481,6 +525,14 @@ class HumidityAutomationManager:
             f"{self.__class__.__name__}"
         )
 
+        # Update switch_state if this is a switch change
+        if entity_id.startswith("switch.dehumidify_") and new_state:
+            old_switch_state = getattr(self, "switch_state", False)
+            self.switch_state = new_state.state == "on"
+            _LOGGER.debug(
+                f"Updated switch_state from {old_switch_state} to {self.switch_state}"
+            )
+
         # Schedule async processing to avoid blocking the event loop
         self.hass.async_create_task(
             self._async_handle_state_change(entity_id, old_state, new_state)
@@ -521,9 +573,18 @@ class HumidityAutomationManager:
         # Debug: Log switch state
         switch_state = self.hass.states.get(f"switch.dehumidify_{device_id}")
         _LOGGER.debug(
-            f"Device {device_id}: Current switch state: "
+            f"Device {device_id}: Current switch state from hass.states: "
             f"{switch_state.state if switch_state else 'NOT FOUND'}"
         )
+        if hasattr(self, "switch_state"):
+            _LOGGER.debug(
+                f"Device {device_id}: Current switch state from automation: "
+                f"{self.switch_state}"
+            )
+        else:
+            _LOGGER.debug(
+                f"Device {device_id}: No switch_state attribute in automation"
+            )
 
         # Validate all entities exist for this device
         if not await self._validate_device_entities(device_id):
@@ -538,11 +599,17 @@ class HumidityAutomationManager:
             await self._reset_fan_to_auto(device_id)
             return
 
-        # Only process if switch is ON
-        switch_state = self.hass.states.get(f"switch.dehumidify_{device_id}")
-        if not switch_state or switch_state.state != "on":
-            _LOGGER.debug(f"Device {device_id}: Dehumidify switch not ON - skipping")
-            return
+        # Only process if switch is ON - use our tracked switch_state if available
+        if hasattr(self, "switch_state") and self.switch_state:
+            _LOGGER.debug(f"Device {device_id}: Switch is ON (tracked state)")
+        else:
+            # Fallback to hass.states.get() for older automation instances
+            switch_state = self.hass.states.get(f"switch.dehumidify_{device_id}")
+            if not switch_state or switch_state.state != "on":
+                _LOGGER.debug(
+                    f"Device {device_id}: Dehumidify switch not ON - skipping"
+                )
+                return
 
         # Apply 2-minute debouncing to prevent rapid fan changes
         if device_id in self._change_timers:
@@ -737,16 +804,9 @@ class HumidityAutomationManager:
                 reason=f"Humidity automation: {reason}",
             )
 
-            # Update binary sensor: active dehumidification
-            _LOGGER.info(
-                f"About to update binary sensor, self.binary_sensor: "
-                f"{self.binary_sensor}"
-            )
+            # Update binary sensor to show active dehumidification
             if self.binary_sensor:
                 await self.binary_sensor.async_turn_on()
-                _LOGGER.info(f"Binary sensor {self.binary_sensor.name} set to ON")
-            else:
-                _LOGGER.warning("Binary sensor is None, cannot update")
 
             _LOGGER.info(f"Device {device_id}: Fan set HIGH - {reason}")
 
@@ -777,10 +837,9 @@ class HumidityAutomationManager:
                 reason=f"Humidity automation: {reason}",
             )
 
-            # Update binary sensor: not actively dehumidifying
+            # Update binary sensor to show not actively dehumidifying
             if self.binary_sensor:
                 await self.binary_sensor.async_turn_off()
-                _LOGGER.info(f"Binary sensor {self.binary_sensor.name} set to OFF")
 
             _LOGGER.info(f"Device {device_id}: Fan set LOW - {reason}")
 
@@ -810,10 +869,9 @@ class HumidityAutomationManager:
                 reason="Humidity automation: Switch turned OFF",
             )
 
-            # Update binary sensor: not actively controlling
+            # Update binary sensor to show not actively controlling
             if self.binary_sensor:
                 await self.binary_sensor.async_turn_off()
-                _LOGGER.info(f"Binary sensor {self.binary_sensor.name} set to OFF")
 
             _LOGGER.info(f"Device {device_id}: Fan reset to AUTO")
 
@@ -937,6 +995,12 @@ class HumidityAutomationManager:
         match = re.search(r"_([0-9]+_[0-9]+)$", entity_id)
         if match:
             return match.group(1)  # "32_153289"
+
+        # Alternative pattern for colon format
+        match = re.search(r"_([0-9]+:[0-9]+)$", entity_id)
+        if match:
+            # Convert colon to underscore for consistent handling
+            return match.group(1).replace(":", "_")  # "32_153289"
 
         _LOGGER.warning(f"Could not extract device_id from entity: {entity_id}")
         return None

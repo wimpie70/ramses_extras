@@ -260,7 +260,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("🔍 Starting async_setup_platforms...")
     await async_setup_platforms(hass)
 
-    # Load platforms for this config entry
+    # Load platforms for this config entry (ha's core method)
     _LOGGER.info("🖥️ Forwarding entry setups...")
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
