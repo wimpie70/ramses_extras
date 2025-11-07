@@ -90,7 +90,7 @@ class HumidityAutomationManager:
         )
 
         # Add Extras entity patterns based on required entities -
-        # but use actual entity names
+        # but use actual entity names (name first, then device_id)
         for entity_type, entity_list in required_entities.items():
             for const_entity_name in entity_list:
                 # Convert const.py names to actual entity names
@@ -301,9 +301,18 @@ class HumidityAutomationManager:
             "switches are turned ON"
         )
 
-        # Schedule entity verification to happen in the background
-        # This won't block startup but will verify entities are ready
+        # Schedule entity verification and listener testing to happen in the background
+        # This won't block startup but will verify entities and
+        # test listeners when ready
         self.hass.async_create_task(self._verify_entities_async())
+
+        # Test listeners after entities are available (with a small delay)
+        self.hass.async_create_task(self._delayed_listener_test())
+
+    async def _delayed_listener_test(self) -> None:
+        """Run listener test with a small delay to ensure entities are created."""
+        await asyncio.sleep(5)  # Wait 5 seconds for entities to be created
+        await self._test_listeners_now()
 
         # Immediately evaluate current humidity conditions if switch is on
         await self._evaluate_current_conditions()
@@ -492,24 +501,6 @@ class HumidityAutomationManager:
             if i < len(self._listeners):
                 _LOGGER.debug(f"🔍 Listener {i + 1}: {pattern} -> {self._listeners[i]}")
 
-        # 🔍 TEST: Try to manually check if number entities exist
-        _LOGGER.info(
-            "🔍 MANUAL CHECK: Testing if number entities would match patterns:"
-        )
-        all_number_entities = self.hass.states.async_all("number")
-        for entity in all_number_entities:
-            for pattern in self.entity_patterns:
-                if pattern.endswith("*"):
-                    prefix = pattern[:-1]  # Remove the *
-                    if entity.entity_id.startswith(prefix):
-                        _LOGGER.info(
-                            f"🔍 MATCH: {entity.entity_id} matches pattern {pattern}"
-                        )
-                elif entity.entity_id == pattern:
-                    _LOGGER.info(
-                        f"🔍 EXACT MATCH: {entity.entity_id} matches pattern {pattern}"
-                    )
-
     async def _cancel_all_timers(self) -> None:
         """Cancel all pending debouncing timers."""
         for timer in self._change_timers.values():
@@ -531,12 +522,29 @@ class HumidityAutomationManager:
             f"{self.__class__.__name__}"
         )
 
+        # 🔍 DEBUG: Special logging for number entity changes
+        if entity_id.startswith("number."):
+            _LOGGER.info(
+                f"🔍 NUMBER ENTITY CHANGE: {entity_id} from "
+                f"{old_state.state if old_state else 'None'} to "
+                f"{new_state.state if new_state else 'None'}"
+            )
+
         # Update switch_state if this is a switch change
         if entity_id.startswith("switch.dehumidify_") and new_state:
             old_switch_state = getattr(self, "switch_state", False)
             self.switch_state = new_state.state == "on"
             _LOGGER.debug(
                 f"Updated switch_state from {old_switch_state} to {self.switch_state}"
+            )
+
+        # 🔍 DEBUG: Log device_id extraction attempt
+        device_id = self._extract_device_id(entity_id)
+        _LOGGER.debug(f"🔍 Device ID extraction for {entity_id}: {device_id}")
+        if not device_id:
+            _LOGGER.warning(
+                f"🔍 WARNING: Could not extract device_id from {entity_id} "
+                f"- this may prevent state change processing"
             )
 
         # Schedule async processing to avoid blocking the event loop
@@ -564,38 +572,45 @@ class HumidityAutomationManager:
             new_state: New state
         """
         if not new_state:
+            _LOGGER.debug(f"🔍 No new state for {entity_id}, skipping")
             return
+
+        # 🔍 COMPREHENSIVE DEBUGGING
+        _LOGGER.info(
+            f"🔍 ASYNC PROCESSING: {entity_id} -> {new_state.state} "
+            f"(was: {old_state.state if old_state else 'None'})"
+        )
 
         # Extract device_id from entity name
         device_id = self._extract_device_id(entity_id)
         if not device_id:
-            _LOGGER.warning(f"Could not extract device_id from entity: {entity_id}")
+            _LOGGER.warning(
+                f"🔍 CRITICAL: Could not extract device_id from entity: {entity_id}"
+            )
+            # 🔍 DEBUG: Try to show what patterns we're looking for
+            _LOGGER.debug(
+                "🔍 Expected patterns should match entities like: "
+                "number.relative_humidity_maximum_32_153289 or "
+                "number.32:153289_rel_humid_max"
+            )
             return
 
-        _LOGGER.debug(
-            f"State change: {entity_id} -> {new_state.state} (device: {device_id})"
-        )
+        _LOGGER.info(f"🔍 SUCCESS: Extracted device_id {device_id} from {entity_id}")
 
-        # Debug: Log switch state
+        # 🔍 ENHANCED SWITCH STATE LOGGING
         switch_state = self.hass.states.get(f"switch.dehumidify_{device_id}")
-        _LOGGER.debug(
-            f"Device {device_id}: Current switch state from hass.states: "
-            f"{switch_state.state if switch_state else 'NOT FOUND'}"
+        _LOGGER.info(
+            f"Device {device_id}: Switch state check - hass.states: "
+            f"{switch_state.state if switch_state else 'NOT FOUND'}, automation "
+            f"attribute: {getattr(self, 'switch_state', 'NOT SET')}"
         )
-        if hasattr(self, "switch_state"):
-            _LOGGER.debug(
-                f"Device {device_id}: Current switch state from automation: "
-                f"{self.switch_state}"
-            )
-        else:
-            _LOGGER.debug(
-                f"Device {device_id}: No switch_state attribute in automation"
-            )
 
         # Validate all entities exist for this device
         if not await self._validate_device_entities(device_id):
-            _LOGGER.warning(f"Device {device_id}: Entities not ready")
+            _LOGGER.warning(f"🔍 CRITICAL: Device {device_id}: Entities not ready")
             return
+
+        _LOGGER.info(f"🔍 SUCCESS: Device {device_id}: All entities validated")
 
         # Reset logic: switch turned OFF (separate automation in YAML template)
         if entity_id == f"switch.dehumidify_{device_id}" and new_state.state == "off":
@@ -605,24 +620,47 @@ class HumidityAutomationManager:
             await self._reset_fan_to_auto(device_id)
             return
 
-        # Only process if switch is ON - use our tracked switch_state if available
+        # 🔍 ENHANCED SWITCH CHECK LOGIC
+        should_process = False
         if hasattr(self, "switch_state") and self.switch_state:
-            _LOGGER.debug(f"Device {device_id}: Switch is ON (tracked state)")
+            _LOGGER.info(
+                f"Device {device_id}: Switch is ON (using tracked state: "
+                f"{self.switch_state})"
+            )
+            should_process = True
         else:
             # Fallback to hass.states.get() for older automation instances
             switch_state = self.hass.states.get(f"switch.dehumidify_{device_id}")
-            if not switch_state or switch_state.state != "on":
-                _LOGGER.debug(
-                    f"Device {device_id}: Dehumidify switch not ON - skipping"
+            if switch_state and switch_state.state == "on":
+                _LOGGER.info(
+                    f"Device {device_id}: Switch is ON (using hass.states: "
+                    f"{switch_state.state})"
+                )
+                should_process = True
+            else:
+                _LOGGER.info(
+                    f"Device {device_id}: Switch is OFF or not found - "
+                    f"tracked: {getattr(self, 'switch_state', 'NOT SET')}, "
+                    f"hass.states: "
+                    f"{switch_state.state if switch_state else 'NOT FOUND'} - "
+                    f"skipping automation"
                 )
                 return
+
+        if not should_process:
+            _LOGGER.debug(f"Device {device_id}: Skipping processing - switch not ON")
+            return
+
+        _LOGGER.info(f"🔍 SUCCESS: Device {device_id}: Will process state change")
 
         # Apply 2-minute debouncing to prevent rapid fan changes
         if device_id in self._change_timers:
             _LOGGER.debug(f"Device {device_id}: Debouncing - ignoring rapid change")
             return
 
-        _LOGGER.info(f"Device {device_id}: Starting humidity processing (switch ON)")
+        _LOGGER.info(
+            f"🔍 SUCCESS: Device {device_id}: Starting humidity processing (switch ON)"
+        )
 
         # Set debouncing timer
         self._change_timers[device_id] = self.hass.loop.call_later(
@@ -633,9 +671,13 @@ class HumidityAutomationManager:
         # Get all entity states for this device
         try:
             entity_states = await self._get_device_entity_states(device_id)
-            _LOGGER.info(f"Device {device_id}: Got entity states: {entity_states}")
+            _LOGGER.info(
+                f"🔍 SUCCESS: Device {device_id}: Got entity states: {entity_states}"
+            )
         except ValueError as e:
-            _LOGGER.warning(f"Device {device_id}: Invalid entity states - {e}")
+            _LOGGER.warning(
+                f"🔍 CRITICAL: Device {device_id}: Invalid entity states - {e}"
+            )
             return
 
         # Apply exact mermaid decision logic
@@ -982,31 +1024,102 @@ class HumidityAutomationManager:
     def _extract_device_id(self, entity_id: str) -> str | None:
         """Extract device_id from entity name.
 
-        Expected format: {entity_type}.{entity_name}_{device_id}
+        Expected formats:
+        - {entity_type}.{entity_name}_{device_id} (e.g.,
+        number.relative_humidity_maximum_32_153289)
+        - {entity_type}.{entity_name}:{device_id} (e.g.,
+         number.32:153289_rel_humid_max)
 
         Args:
             entity_id: Entity identifier
 
         Returns:
-            Device identifier (e.g., "32_153289") or None if extraction fails
+            Device identifier in underscore format (e.g., "32_153289")
+            or None if extraction fails
         """
-        # Pattern: entity_type.entity_name_deviceid
-        # Example: switch.dehumidify_32_153289
-
+        # Pattern 1: entity_type.entity_name_deviceid (underscore format)
+        # Example: number.relative_humidity_maximum_32_153289
         match = re.search(r"([^_]+)_(32_\d+)$", entity_id)
         if match:
             return match.group(2)  # "32_153289"
 
-        # Alternative pattern for different entity names
-        match = re.search(r"_([0-9]+_[0-9]+)$", entity_id)
+        # Pattern 2: entity_type.entity_name_deviceid (colon format)
+        # Example: number.32:153289_rel_humid_max
+        match = re.search(r"([^:]+):([0-9]+:[0-9]+)_", entity_id)
+        if match:
+            return match.group(2).replace(":", "_")  # "32_153289"
+
+        # Pattern 3: entity_type.32_153289_entityname (reverse order)
+        # Example: switch.32_153289_dehumidify
+        match = re.search(r"\.(\d+_\d+)_", entity_id)
         if match:
             return match.group(1)  # "32_153289"
 
-        # Alternative pattern for colon format
-        match = re.search(r"_([0-9]+:[0-9]+)$", entity_id)
+        # Pattern 4: entity_type.32:153289_entityname (reverse order, colon)
+        # Example: switch.32:153289_dehumidify
+        match = re.search(r"\.(\d+:\d+)_", entity_id)
         if match:
-            # Convert colon to underscore for consistent handling
+            return match.group(1).replace(":", "_")  # "32_153289"
+
+        # Pattern 5: entity_type.entityname_32:153289 (colon at end)
+        match = re.search(r"_(\d+:\d+)$", entity_id)
+        if match:
             return match.group(1).replace(":", "_")  # "32_153289"
 
         _LOGGER.warning(f"Could not extract device_id from entity: {entity_id}")
         return None
+
+    async def _test_listeners_now(self) -> None:
+        """Test if listeners are working by manually checking all number entities."""
+        _LOGGER.info("🔍 TESTING LISTENERS: Manual check of all number entities")
+
+        all_number_entities = self.hass.states.async_all("number")
+        _LOGGER.info(f"🔍 Found {len(all_number_entities)} number entities total")
+
+        # Show ALL number entities first
+        _LOGGER.info("🔍 ALL NUMBER ENTITIES:")
+        for i, entity in enumerate(all_number_entities):
+            _LOGGER.info(f"   {i + 1:2d}. {entity.entity_id} = {entity.state}")
+
+        # Find humidity-related entities
+        humidity_entities = [
+            e for e in all_number_entities if "humidity" in e.entity_id.lower()
+        ]
+        _LOGGER.info(
+            f"🔍 Found {len(humidity_entities)} humidity-related number entities:"
+        )
+        for entity in humidity_entities:
+            _LOGGER.info(f"   - {entity.entity_id} = {entity.state}")
+
+        # Test each pattern against each entity
+        _LOGGER.info(
+            f"🔍 Testing {len(self.entity_patterns)} patterns against entities:"
+        )
+        for pattern in self.entity_patterns:
+            _LOGGER.info(f"   Pattern: {pattern}")
+            matches = 0
+            for entity in all_number_entities:
+                if pattern.endswith("*"):
+                    prefix = pattern[:-1]  # Remove the *
+                    _LOGGER.debug(
+                        f"   Testing {entity.entity_id} startswith {prefix}: "
+                        f"{entity.entity_id.startswith(prefix)}"
+                    )
+                    if entity.entity_id.startswith(prefix):
+                        _LOGGER.info(f"   ✅ {entity.entity_id} matches {pattern}")
+                        matches += 1
+                elif entity.entity_id == pattern:
+                    _LOGGER.info(f"   ✅ {entity.entity_id} exactly matches {pattern}")
+                    matches += 1
+            _LOGGER.info(f"   Pattern {pattern} matched {matches} entities")
+
+        # Now try to find patterns that actually match
+        _LOGGER.info("🔍 REVERSE TEST: What patterns would match existing entities?")
+        for entity in all_number_entities:
+            for pattern in self.entity_patterns:
+                if pattern.endswith("*"):
+                    prefix = pattern[:-1]  # Remove the *
+                    if entity.entity_id.startswith(prefix):
+                        _LOGGER.info(
+                            f"   ✅ {entity.entity_id} matches pattern {pattern}"
+                        )
