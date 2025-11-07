@@ -54,6 +54,9 @@ class HumidityAutomationManager:
         self._change_timers: dict[str, Any] = {}  # device_id -> timer for debouncing
         self._active = False
 
+        # NEW: Track specific entity IDs for dynamic listener registration
+        self._specific_entity_ids: set[str] = set()
+
         # Cache for dynamically generated entity patterns and mappings
         self._entity_patterns: list[str] | None = None
         self._required_entities: list[str] | None = None
@@ -288,10 +291,6 @@ class HumidityAutomationManager:
             "🔧 Registering global state listeners for immediate responsiveness"
         )
 
-        # Register global state listeners immediately (don't wait for entities)
-        # This allows the automation to respond as soon as entities become available
-        await self._register_global_listeners()
-
         # Start in non-blocking mode - will activate automatically
         #  when entities are available
         self._active = True
@@ -301,13 +300,24 @@ class HumidityAutomationManager:
             "switches are turned ON"
         )
 
-        # Schedule entity verification and listener testing to happen in the background
-        # This won't block startup but will verify entities and
-        # test listeners when ready
-        self.hass.async_create_task(self._verify_entities_async())
+        # Schedule entity verification to happen in the background
+        # This will verify entities and register specific listeners when ready
+        self.hass.async_create_task(self._verify_entities_and_register_listeners())
 
-        # Test listeners after entities are available (with a small delay)
-        self.hass.async_create_task(self._delayed_listener_test())
+        # Schedule periodic checks for new entities
+        self.hass.async_create_task(self._periodic_entity_check())
+
+    async def _periodic_entity_check(self) -> None:
+        """Periodically check for new entities and register listeners."""
+        while self._active:
+            try:
+                # Check every 30 seconds for new entities
+                await asyncio.sleep(30)
+                await self._register_specific_entity_listeners()
+            except Exception as e:
+                _LOGGER.debug(f"Periodic entity check failed: {e}")
+                # Continue checking even if one check fails
+                continue
 
     async def _delayed_listener_test(self) -> None:
         """Run listener test with a small delay to ensure entities are created."""
@@ -333,6 +343,11 @@ class HumidityAutomationManager:
         await self._cancel_all_timers()
 
         self._active = False
+
+        # Clear specific entity tracking
+        self._specific_entity_ids.clear()
+        _LOGGER.debug("Cleared specific entity ID tracking")
+
         _LOGGER.info("Humidity automation stopped")
 
     async def _wait_for_entities(self, timeout: int = 90) -> bool:
@@ -403,13 +418,18 @@ class HumidityAutomationManager:
 
         return False
 
-    async def _verify_entities_async(self) -> None:
-        """Verify entities in background without blocking startup."""
-        _LOGGER.debug("Starting background entity verification")
+    async def _verify_entities_and_register_listeners(self) -> None:
+        """Verify entities and register specific listeners in background."""
+        _LOGGER.debug(
+            "Starting background entity verification and dynamic listener registration"
+        )
         try:
+            # Wait for entities to be ready
             entities_ready = await self._wait_for_entities()
             if entities_ready:
                 _LOGGER.info("Humidity automation: Entities verified and ready")
+                # Register specific listeners for discovered entity IDs
+                await self._register_specific_entity_listeners()
             else:
                 _LOGGER.debug(
                     "Humidity automation: Entities not yet available - "
@@ -419,6 +439,67 @@ class HumidityAutomationManager:
             _LOGGER.debug(
                 f"Humidity automation: Background entity verification failed: {e}"
             )
+
+    async def _register_specific_entity_listeners(self) -> None:
+        """Register listeners for specific entity IDs instead of patterns."""
+        _LOGGER.info("🎯 Registering specific entity listeners (dynamic approach)")
+
+        # Find all number entities that match our patterns
+        all_number_entities = self.hass.states.async_all("number")
+        _LOGGER.info(f"🔍 Found {len(all_number_entities)} number entities")
+
+        # Register listeners for each specific entity ID that matches our patterns
+        for entity in all_number_entities:
+            entity_id = entity.entity_id
+
+            # Check if this entity matches any of our humidity patterns
+            if self._entity_matches_patterns(entity_id):
+                if entity_id not in self._specific_entity_ids:
+                    _LOGGER.info(
+                        f"📡 Registering listener for specific entity: {entity_id}"
+                    )
+
+                    # Register a listener for this specific entity
+                    listener = async_track_state_change(
+                        self.hass, entity_id, self._handle_state_change
+                    )
+
+                    if listener:
+                        self._listeners.append(listener)
+                        self._specific_entity_ids.add(entity_id)
+                        _LOGGER.info(
+                            f"✅ Registered specific listener for: {entity_id}"
+                        )
+                    else:
+                        _LOGGER.error(
+                            f"❌ Failed to create specific listener for: {entity_id}"
+                        )
+                else:
+                    _LOGGER.debug(f"🔄 Already have listener for: {entity_id}")
+            else:
+                _LOGGER.debug(
+                    f"⏭️  Skipping {entity_id} - doesn't match humidity patterns"
+                )
+
+        _LOGGER.info(
+            f"🎯 Registered {len(self._specific_entity_ids)} spec. entity listeners: "
+            f"{sorted(self._specific_entity_ids)}"
+        )
+
+    def _entity_matches_patterns(self, entity_id: str) -> bool:
+        """Check if an entity ID matches any of our humidity patterns."""
+        # Check if it matches the number entity patterns we care about
+        humidity_patterns = [
+            "number.relative_humidity_minimum_",
+            "number.relative_humidity_maximum_",
+            "number.absolute_humidity_offset_",
+        ]
+
+        for pattern in humidity_patterns:
+            if entity_id.startswith(pattern):
+                return True
+
+        return False
 
     async def _evaluate_current_conditions(self) -> None:
         """Evaluate current humidity conditions immediately when automation starts."""
@@ -461,45 +542,6 @@ class HumidityAutomationManager:
             _LOGGER.debug(
                 f"Could not evaluate current conditions for device {device_id}: {e}"
             )
-
-    async def _register_global_listeners(self) -> None:
-        """Register global state change listeners for all entity patterns."""
-        _LOGGER.info("🔧 Registering global state listeners for humidity automation")
-        _LOGGER.info(f"📋 Entity patterns to register: {self.entity_patterns}")
-
-        # 🔍 ADDITIONAL DEBUG: Log the actual patterns being generated
-        for pattern in self.entity_patterns:
-            _LOGGER.info(
-                f"🔍 PATTERN: '{pattern}' should match entities like: "
-                f"{pattern.replace('*', '32_153289')}"
-            )
-
-        for pattern in self.entity_patterns:
-            _LOGGER.info(f"📡 Registering listener for pattern: {pattern}")
-
-            # 📋 CRITICAL DEBUG: Add extra logging to listener registration
-            _LOGGER.debug(
-                f"🔍 About to call async_track_state_change for pattern: {pattern}"
-            )
-
-            listener = async_track_state_change(
-                self.hass, pattern, self._handle_state_change
-            )
-
-            # Verify listener was created
-            if listener:
-                self._listeners.append(listener)
-                _LOGGER.info(f"✅ Registered listener for pattern: {pattern}")
-                _LOGGER.debug(f"🔍 Listener created successfully for {pattern}")
-            else:
-                _LOGGER.error(f"❌ Failed to create listener for pattern: {pattern}")
-
-        _LOGGER.info(f"📡 Total state listeners registered: {len(self._listeners)}")
-
-        # 📋 CRITICAL DEBUG: Log all registered listeners
-        for i, pattern in enumerate(self.entity_patterns):
-            if i < len(self._listeners):
-                _LOGGER.debug(f"🔍 Listener {i + 1}: {pattern} -> {self._listeners[i]}")
 
     async def _cancel_all_timers(self) -> None:
         """Cancel all pending debouncing timers."""
@@ -547,10 +589,15 @@ class HumidityAutomationManager:
                 f"- this may prevent state change processing"
             )
 
-        # Schedule async processing to avoid blocking the event loop
-        self.hass.async_create_task(
-            self._async_handle_state_change(entity_id, old_state, new_state)
-        )
+        # Schedule async processing with proper thread safety
+        # Create a callback that will be called safely from the main thread
+        def _create_async_task() -> None:
+            self.hass.async_create_task(
+                self._async_handle_state_change(entity_id, old_state, new_state)
+            )
+
+        # Use call_soon_threadsafe to ensure thread-safe execution
+        self.hass.loop.call_soon_threadsafe(_create_async_task)
 
     async def _async_handle_state_change(
         self, entity_id: str, old_state: State | None, new_state: State | None
@@ -561,7 +608,7 @@ class HumidityAutomationManager:
         1. Extract device_id from entity name
         2. Validate all entities exist for this device
         3. Check if dehumidify switch is ON (only process when ON)
-        4. Apply 2-minute debouncing
+        4. Apply 45-second debouncing
         5. Get all entity states
         6. Execute exact mermaid decision logic
         7. Control fan and update binary sensor
@@ -653,7 +700,7 @@ class HumidityAutomationManager:
 
         _LOGGER.info(f"🔍 SUCCESS: Device {device_id}: Will process state change")
 
-        # Apply 2-minute debouncing to prevent rapid fan changes
+        # Apply 45-second debouncing to prevent rapid fan changes
         if device_id in self._change_timers:
             _LOGGER.debug(f"Device {device_id}: Debouncing - ignoring rapid change")
             return
@@ -664,7 +711,7 @@ class HumidityAutomationManager:
 
         # Set debouncing timer
         self._change_timers[device_id] = self.hass.loop.call_later(
-            120,  # 2 minutes
+            45,  # 45 seconds
             lambda: self._change_timers.pop(device_id, None),
         )
 
