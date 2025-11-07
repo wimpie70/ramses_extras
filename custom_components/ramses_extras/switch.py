@@ -205,7 +205,7 @@ class RamsesDehumidifySwitch(SwitchEntity):
         )
         if automation:
             # Update switch state for the existing automation
-            automation.switch_state = self._is_on
+            automation.switch_state = True
             # Immediately evaluate current conditions since switch is now on
             await automation._evaluate_current_conditions()
         else:
@@ -230,8 +230,11 @@ class RamsesDehumidifySwitch(SwitchEntity):
         )
         if automation:
             # Update switch state for the existing automation
-            automation.switch_state = self._is_on
+            automation.switch_state = False
             _LOGGER.info(f"Updated switch state in automation for {self._device_id}")
+
+            # Reset fan to AUTO and turn off binary sensor
+            await automation._reset_fan_to_auto(self._device_id.replace(":", "_"))
         else:
             _LOGGER.warning(
                 f"No automation found for device {self._device_id} when turning off"
