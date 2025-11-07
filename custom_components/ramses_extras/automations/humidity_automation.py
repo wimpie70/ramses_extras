@@ -232,10 +232,17 @@ class HumidityAutomationManager:
 
     async def _periodic_entity_check(self) -> None:
         """Periodically check for new entities and register listeners."""
+        check_count = 0
         while self._active:
             try:
-                # Check every 30 seconds for new entities
-                await asyncio.sleep(30)
+                # Check every 300 seconds (5 minutes)
+                #  for new entities (much less frequent)
+                await asyncio.sleep(300)
+                check_count += 1
+
+                # Only log every check to track periodic activity
+                _LOGGER.debug(f"Periodic entity check #{check_count}")
+
                 await self._register_specific_entity_listeners()
             except Exception as e:
                 _LOGGER.debug(f"Periodic entity check failed: {e}")
@@ -365,11 +372,10 @@ class HumidityAutomationManager:
 
     async def _register_specific_entity_listeners(self) -> None:
         """Register listeners for specific entity IDs instead of patterns."""
-        _LOGGER.info("🎯 Registering specific entity listeners (dynamic approach)")
+        new_listeners_registered = False
 
         # Find all number entities that match our patterns
         all_number_entities = self.hass.states.async_all("number")
-        # _LOGGER.info(f"🔍 Found {len(all_number_entities)} number entities")
 
         # Register listeners for each specific entity ID that matches our patterns
         for entity in all_number_entities:
@@ -390,6 +396,7 @@ class HumidityAutomationManager:
                     if listener:
                         self._listeners.append(listener)
                         self._specific_entity_ids.add(entity_id)
+                        new_listeners_registered = True
                         _LOGGER.info(
                             f"✅ Registered specific listener for: {entity_id}"
                         )
@@ -397,17 +404,14 @@ class HumidityAutomationManager:
                         _LOGGER.error(
                             f"❌ Failed to create specific listener for: {entity_id}"
                         )
-                else:
-                    _LOGGER.debug(f"🔄 Already have listener for: {entity_id}")
-            # else:
-            # _LOGGER.debug(
-            #     f"⏭️  Skipping {entity_id} - doesn't match humidity patterns"
-            # )
+                # Skip logging "already have listener" to reduce spam
 
-        _LOGGER.info(
-            f"🎯 Registered {len(self._specific_entity_ids)} spec. entity listeners: "
-            f"{sorted(self._specific_entity_ids)}"
-        )
+        # Only log the summary when we've actually registered new listeners
+        if new_listeners_registered:
+            _LOGGER.info(
+                f"🎯 Total {len(self._specific_entity_ids)} spec. entity listeners: "
+                f"{sorted(self._specific_entity_ids)}"
+            )
 
     def _entity_matches_patterns(self, entity_id: str) -> bool:
         """Check if an entity ID matches any of our humidity patterns."""
