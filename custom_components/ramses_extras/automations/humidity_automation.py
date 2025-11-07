@@ -369,7 +369,7 @@ class HumidityAutomationManager:
 
         # Find all number entities that match our patterns
         all_number_entities = self.hass.states.async_all("number")
-        _LOGGER.info(f"🔍 Found {len(all_number_entities)} number entities")
+        # _LOGGER.info(f"🔍 Found {len(all_number_entities)} number entities")
 
         # Register listeners for each specific entity ID that matches our patterns
         for entity in all_number_entities:
@@ -399,10 +399,10 @@ class HumidityAutomationManager:
                         )
                 else:
                     _LOGGER.debug(f"🔄 Already have listener for: {entity_id}")
-            else:
-                _LOGGER.debug(
-                    f"⏭️  Skipping {entity_id} - doesn't match humidity patterns"
-                )
+            # else:
+            # _LOGGER.debug(
+            #     f"⏭️  Skipping {entity_id} - doesn't match humidity patterns"
+            # )
 
         _LOGGER.info(
             f"🎯 Registered {len(self._specific_entity_ids)} spec. entity listeners: "
@@ -928,11 +928,11 @@ class HumidityAutomationManager:
         )
 
         # Debug: log all available entities for this device
-        all_entities = self.hass.states.async_all()
-        device_entities = [
-            e.entity_id for e in all_entities if device_id in e.entity_id
-        ]
-        _LOGGER.debug(f"Device {device_id}: Found {len(device_entities)} entities")
+        # all_entities = self.hass.states.async_all()
+        # device_entities = [
+        #     e.entity_id for e in all_entities if device_id in e.entity_id
+        # ]
+        # _LOGGER.debug(f"Device {device_id}: Found {len(device_entities)} entities")
 
         # Check each required entity type using the new naming system
         # Direct mapping to new entity names (no more const_to_new_mapping needed)
@@ -962,10 +962,10 @@ class HumidityAutomationManager:
                     if expected_entity_id:
                         # Check if this entity exists
                         entity_exists = self.hass.states.get(expected_entity_id)
-                        _LOGGER.debug(
-                            f"Device {device_id}: Expected {expected_entity_id} "
-                            f"exists: {entity_exists is not None}"
-                        )
+                        # _LOGGER.debug(
+                        #     f"Device {device_id}: Expected {expected_entity_id} "
+                        #     f"exists: {entity_exists is not None}"
+                        # )
 
                         if not entity_exists:
                             missing_entities.append(expected_entity_id)
