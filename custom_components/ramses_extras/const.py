@@ -227,17 +227,33 @@ ENTITY_TYPE_CONFIGS = {
     "number": NUMBER_CONFIGS,
 }
 
-# Device type to service mapping
-# Defines which services are available for each device type
+# Service registry - maps device types to their available services
+# and registration handlers
+# Defines which services are available for each device type and how to register them
+SERVICE_REGISTRY = {
+    "HvacVentilator": {
+        "set_fan_speed_mode": {
+            "module": "ramses_extras.services.fan_services",
+            "function": "register_fan_services",
+        },
+        # Future device types can be added here
+        # "CO2Remote": {
+        #     "set_co2_mode": {
+        #         "module": "ramses_extras.services.co2_services",
+        #         "function": "register_co2_services"
+        #     },
+        #     "calibrate_sensor": {
+        #         "module": "ramses_extras.services.co2_services",
+        #         "function": "register_calibration_services"
+        #     },
+        # },
+    },
+}
+
+# Backward compatibility alias
 DEVICE_SERVICE_MAPPING = {
-    "HvacVentilator": [
-        "set_fan_speed_mode",
-    ],
-    # Future device types can be added here
-    # "CO2Remote": [
-    #     "set_co2_mode",
-    #     "calibrate_sensor",
-    # ],
+    device_type: list(services.keys())
+    for device_type, services in SERVICE_REGISTRY.items()
 }
 
 # Service configuration schemas

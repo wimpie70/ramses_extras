@@ -17,6 +17,7 @@ from .const import (
     DEVICE_SERVICE_MAPPING,
     DOMAIN,
     INTEGRATION_DIR,
+    SERVICE_REGISTRY,
 )
 from .managers import FeatureManager
 from .managers.automation_manager import AutomationManager
@@ -198,35 +199,55 @@ async def _register_services(
     hass: HomeAssistant, feature_manager: FeatureManager
 ) -> None:
     """Register services based on enabled features and discovered devices."""
+    import importlib
+
     from .helpers.device import (
         find_ramses_device,
         get_all_device_ids,
         get_device_type,
         validate_device_for_service,
     )
-    from .services import fan_services
 
     # Get discovered devices
     device_ids = get_all_device_ids(hass)
 
     if device_ids:
+        # Track which services have been registered to avoid duplicates
+        registered_services = set()
+
         # Register services for discovered device types
         for device_id in device_ids:
             device = find_ramses_device(hass, device_id)
             if device:
                 device_type = get_device_type(device)
-                if device_type in DEVICE_SERVICE_MAPPING:
-                    services_for_device = DEVICE_SERVICE_MAPPING[device_type]
-                    for service_name in services_for_device:
-                        if service_name == "set_fan_speed_mode":
-                            fan_services.register_fan_services(hass)
-                            _LOGGER.info(
-                                f"Registered fan services for device {device_id} "
-                                f"({device_type})"
-                            )
-                            break  # Only need to register once
+                if device_type in SERVICE_REGISTRY:
+                    services_for_device = SERVICE_REGISTRY[device_type]
+                    for service_name, handler_config in services_for_device.items():
+                        if service_name not in registered_services:
+                            try:
+                                # Dynamic import and registration
+                                module = importlib.import_module(
+                                    handler_config["module"]
+                                )
+                                register_function = getattr(
+                                    module, handler_config["function"]
+                                )
+                                register_function(hass)
+                                registered_services.add(service_name)
+                                _LOGGER.info(
+                                    f"Registered {service_name} service for device "
+                                    f"{device_id} ({device_type})"
+                                )
+                            except Exception as e:
+                                _LOGGER.error(f"Failed to register {service_name}: {e}")
+                        break  # Only need to register once per service type
 
-    _LOGGER.debug("No services registered - no supported devices found")
+    if not registered_services:
+        _LOGGER.debug("No services registered - no supported devices found")
+    else:
+        _LOGGER.info(
+            f"Registered {len(registered_services)} services: {registered_services}"
+        )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -344,19 +365,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 device = find_ramses_device(hass, device_id)
                 if device:
                     device_type = get_device_type(device)
-                    if device_type in DEVICE_SERVICE_MAPPING:
-                        services_for_device = DEVICE_SERVICE_MAPPING[device_type]
-                        for service_name in services_for_device:
-                            if service_name == "set_fan_speed_mode":
-                                # Unregister the service
-                                hass.services.async_remove(DOMAIN, service_name)
-                                _LOGGER.info(
-                                    "Unregistered %s service for device %s (%s)",
-                                    service_name,
-                                    device_id,
-                                    device_type,
-                                )
-                                break
+                    if device_type in SERVICE_REGISTRY:
+                        services_for_device = SERVICE_REGISTRY[device_type]
+                        for service_name in services_for_device.keys():
+                            # Unregister the service
+                            hass.services.async_remove(DOMAIN, service_name)
+                            _LOGGER.info(
+                                "Unregistered %s service for device %s (%s)",
+                                service_name,
+                                device_id,
+                                device_type,
+                            )
 
         hass.data[DOMAIN].pop(entry.entry_id, None)
 

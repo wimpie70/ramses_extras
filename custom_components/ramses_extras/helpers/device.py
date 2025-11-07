@@ -6,7 +6,7 @@ from typing import Any, List, Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from ..const import DEVICE_SERVICE_MAPPING, DOMAIN
+from ..const import DEVICE_SERVICE_MAPPING, DOMAIN, SERVICE_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
 
