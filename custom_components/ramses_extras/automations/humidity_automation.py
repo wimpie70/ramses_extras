@@ -416,8 +416,14 @@ class HumidityAutomationManager:
         if not self.binary_sensor:
             return
 
-        # binary_sensor is actually the device_id - ensure underscore format
-        device_id = self.binary_sensor.replace(":", "_")  # Convert colon to underscore
+        # Extract device_id from binary sensor object, not treat it as a string
+        if hasattr(self.binary_sensor, "_device_id"):
+            device_id = self.binary_sensor._device_id.replace(
+                ":", "_"
+            )  # Convert colon to underscore
+        else:
+            # Fallback: treat as string (for backwards compatibility)
+            device_id = str(self.binary_sensor).replace(":", "_")
 
         # Check if switch is on using the passed switch_state
         if not self.switch_state:
