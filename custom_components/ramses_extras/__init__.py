@@ -211,10 +211,10 @@ async def _register_services(
     # Get discovered devices
     device_ids = get_all_device_ids(hass)
 
-    if device_ids:
-        # Track which services have been registered to avoid duplicates
-        registered_services = set()
+    # Track which services have been registered to avoid duplicates
+    registered_services = set()
 
+    if device_ids:
         # Register services for discovered device types
         for device_id in device_ids:
             device = find_ramses_device(hass, device_id)
