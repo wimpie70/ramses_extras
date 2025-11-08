@@ -119,51 +119,6 @@ class EntityHelpers:
         return entity_ids
 
     @staticmethod
-    def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
-        """Parse an entity ID to extract entity type, name, and device ID.
-
-        Args:
-            entity_id: Full entity ID
-            (e.g., "sensor.indoor_absolute_humidity_32_153289")
-
-        Returns:
-            Tuple of (entity_type, entity_name, device_id) or None if parsing fails
-        """
-        try:
-            # Split on first dot to get type and rest
-            if "." not in entity_id:
-                return None
-
-            entity_type, rest = entity_id.split(".", 1)
-
-            # Device ID patterns we expect: 32_153289, 10_456789, etc.
-            # These have the pattern: digits_underscore_digits
-            # We need to find this pattern at the end of the string
-
-            # Look for device ID pattern: _ followed by digits,
-            # underscore, digits at the end
-            device_id_match = re.search(r"_(\d+_\d+)$", rest)
-            if device_id_match:
-                device_id = device_id_match.group(
-                    1
-                )  # The actual device ID part (e.g., "32_153289")
-                # Remove the device ID and underscore from the entity name
-                entity_name = rest[: device_id_match.start(0)]
-            else:
-                # No device ID found, return as is
-                return entity_type, rest, ""
-
-            # Validate entity type
-            valid_types = {"sensor", "switch", "number", "binary_sensor"}
-            if entity_type not in valid_types:
-                return None
-
-            return entity_type, entity_name, device_id
-
-        except (ValueError, IndexError):
-            return None
-
-    @staticmethod
     def cleanup_orphaned_entities(
         platform: str,
         hass: "HomeAssistant",
@@ -171,7 +126,7 @@ class EntityHelpers:
         required_entities: set[str],
         all_possible_types: list[str],
     ) -> int:
-        """Remove orphaned entities from the registry.
+        """Clean up orphaned entities from the registry.
 
         Args:
             platform: Platform type ('sensor', 'switch', 'binary_sensor')
@@ -248,6 +203,51 @@ class EntityHelpers:
                 _LOGGER.warning(f"Failed to remove {platform} entity {entity_id}: {e}")
 
         return removed_count
+
+    @staticmethod
+    def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
+        """Parse an entity ID to extract entity type, name, and device ID.
+
+        Args:
+            entity_id: Full entity ID
+            (e.g., "sensor.indoor_absolute_humidity_32_153289")
+
+        Returns:
+            Tuple of (entity_type, entity_name, device_id) or None if parsing fails
+        """
+        try:
+            # Split on first dot to get type and rest
+            if "." not in entity_id:
+                return None
+
+            entity_type, rest = entity_id.split(".", 1)
+
+            # Device ID patterns we expect: 32_153289, 10_456789, etc.
+            # These have the pattern: digits_underscore_digits
+            # We need to find this pattern at the end of the string
+
+            # Look for device ID pattern: _ followed by digits,
+            # underscore, digits at the end
+            device_id_match = re.search(r"_(\d+_\d+)$", rest)
+            if device_id_match:
+                device_id = device_id_match.group(
+                    1
+                )  # The actual device ID part (e.g., "32_153289")
+                # Remove the device ID and underscore from the entity name
+                entity_name = rest[: device_id_match.start(0)]
+            else:
+                # No device ID found, return as is
+                return entity_type, rest, ""
+
+            # Validate entity type
+            valid_types = {"sensor", "switch", "number", "binary_sensor"}
+            if entity_type not in valid_types:
+                return None
+
+            return entity_type, entity_name, device_id
+
+        except (ValueError, IndexError):
+            return None
 
 
 class ExtrasBaseEntity(ABC):

@@ -32,89 +32,11 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the switch platform."""
-    devices = hass.data.get(DOMAIN, {}).get("devices", [])
-    _LOGGER.info(f"Setting up switch platform for {len(devices)} devices")
+    _LOGGER.info("SWITCH PLATFORM: async_setup_entry called")
+    from .helpers.platform import async_setup_platform
 
-    if not config_entry:
-        _LOGGER.warning("Config entry not available, skipping switch setup")
-        return
-
-    if not devices:
-        _LOGGER.debug("No devices available for switches")
-        return
-
-    switches = []
-
-    # Get enabled features from config entry
-    enabled_features = get_enabled_features(hass, config_entry)
-    _LOGGER.info(f"Enabled features: {enabled_features}")
-
-    # Create switches based on enabled features and their requirements
-    for device_id in devices:
-        device = find_ramses_device(hass, device_id)
-        if not device:
-            _LOGGER.warning(f"Device {device_id} not found, skipping switch creation")
-            continue
-
-        device_type = get_device_type(device)
-        _LOGGER.debug(f"Creating switches for device {device_id} of type {device_type}")
-
-        if device_type in DEVICE_ENTITY_MAPPING:
-            entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-
-            # Get all possible switch types for this device
-            all_possible_switches = entity_mapping.get("switches", [])
-
-            # Check each possible switch type
-            for switch_type in all_possible_switches:
-                if switch_type not in ENTITY_TYPE_CONFIGS["switch"]:
-                    continue
-
-                # Check if this switch is needed by any enabled feature
-                is_needed = False
-                for feature_key, is_enabled in enabled_features.items():
-                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
-                        continue
-
-                    feature_config = AVAILABLE_FEATURES[feature_key]
-                    supported_types = feature_config.get("supported_device_types", [])
-                    if (
-                        isinstance(supported_types, list)
-                        and device_type in supported_types
-                    ):
-                        # Check if this switch is required or optional for this feature
-                        required_entities = feature_config.get("required_entities", {})
-                        optional_entities = feature_config.get("optional_entities", {})
-
-                        if isinstance(required_entities, dict):
-                            required_switches = required_entities.get("switches", [])
-                        else:
-                            required_switches = []
-
-                        if isinstance(optional_entities, dict):
-                            optional_switches = optional_entities.get("switches", [])
-                        else:
-                            optional_switches = []
-
-                        if (
-                            isinstance(required_switches, list)
-                            and switch_type in required_switches
-                        ) or (
-                            isinstance(optional_switches, list)
-                            and switch_type in optional_switches
-                        ):
-                            is_needed = True
-                            break
-
-                if is_needed:
-                    # Entity is needed - create it
-                    config = ENTITY_TYPE_CONFIGS["switch"][switch_type]
-                    switches.append(
-                        RamsesDehumidifySwitch(hass, device_id, switch_type, config)
-                    )
-                    _LOGGER.debug(f"Creating switch: switch.{device_id}_{switch_type}")
-
-    async_add_entities(switches, True)
+    await async_setup_platform("switch", hass, config_entry, async_add_entities)
+    _LOGGER.info("SWITCH PLATFORM: async_setup_entry completed")
 
 
 class RamsesDehumidifySwitch(SwitchEntity, ExtrasBaseEntity):
@@ -137,6 +59,12 @@ class RamsesDehumidifySwitch(SwitchEntity, ExtrasBaseEntity):
         self._attr_unique_id = f"dehumidify_{device_id.replace(':', '_')}"
 
         self._is_on = False
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to Ramses RF device updates."""
+        # Call base class method first
+        await super().async_added_to_hass()
+        _LOGGER.info("switch added to hass")
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""

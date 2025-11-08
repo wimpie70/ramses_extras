@@ -1,7 +1,8 @@
 """Tests for helpers/platform.py functions."""
 
 import sys
-from unittest.mock import Mock
+from unittest import mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -135,6 +136,109 @@ class TestOrphanedEntities:
         # Should find the two entities for 32:153289
         assert len(result) == 2
         assert all("32_153289" in entity for entity in result)
+
+
+class TestPlatformEntityCreation:
+    """Test entity creation for each platform."""
+
+    def test_switch_entity_instantiation(self) -> None:
+        """Test that switch entities can be instantiated correctly."""
+        from ramses_extras.const import SWITCH_CONFIGS
+        from ramses_extras.switch import RamsesDehumidifySwitch
+
+        # Mock HASS
+        mock_hass = Mock()
+
+        # Test entity instantiation
+        device_id = "32:153289"
+        switch_type = "dehumidify"
+        config = SWITCH_CONFIGS[switch_type]
+
+        switch_entity = RamsesDehumidifySwitch(
+            mock_hass, device_id, switch_type, config
+        )
+
+        # Verify entity properties
+        assert switch_entity.__class__.__name__ == "RamsesDehumidifySwitch"
+        assert switch_entity._device_id == device_id
+        assert switch_entity._switch_type == switch_type
+        assert switch_entity._attr_name == f"{config['name_template']} ({device_id})"
+        assert (
+            switch_entity._attr_unique_id == f"dehumidify_{device_id.replace(':', '_')}"
+        )
+
+    def test_number_entity_instantiation(self) -> None:
+        """Test that number entities can be instantiated correctly."""
+        from ramses_extras.const import NUMBER_CONFIGS
+        from ramses_extras.number import RamsesNumberEntity
+
+        # Mock HASS
+        mock_hass = Mock()
+
+        # Test entity instantiation
+        device_id = "32:153289"
+        number_type = "relative_humidity_minimum"
+        config = NUMBER_CONFIGS[number_type]
+
+        number_entity = RamsesNumberEntity(mock_hass, device_id, number_type, config)
+
+        # Verify entity properties
+        assert number_entity.__class__.__name__ == "RamsesNumberEntity"
+        assert number_entity._device_id == device_id
+        assert number_entity._number_type == number_type
+        assert number_entity._attr_native_min_value == config["min_value"]
+        assert number_entity._attr_native_max_value == config["max_value"]
+        assert number_entity._attr_native_step == config["step"]
+
+    def test_binary_sensor_entity_instantiation(self) -> None:
+        """Test that binary sensor entities can be instantiated correctly."""
+        from ramses_extras.binary_sensor import RamsesBinarySensor
+        from ramses_extras.const import BOOLEAN_CONFIGS
+
+        # Mock HASS
+        mock_hass = Mock()
+
+        # Test entity instantiation
+        device_id = "32:153289"
+        boolean_type = "dehumidifying_active"
+        config = BOOLEAN_CONFIGS[boolean_type]
+
+        binary_sensor_entity = RamsesBinarySensor(
+            mock_hass, device_id, boolean_type, config
+        )
+
+        # Verify entity properties
+        assert binary_sensor_entity.__class__.__name__ == "RamsesBinarySensor"
+        assert binary_sensor_entity._device_id == device_id
+        assert binary_sensor_entity._boolean_type == boolean_type
+        assert (
+            binary_sensor_entity._attr_name
+            == f"{config['name_template']} ({device_id})"
+        )
+
+    def test_sensor_entity_instantiation(self) -> None:
+        """Test that sensor entities can be instantiated correctly."""
+        from ramses_extras.const import SENSOR_CONFIGS
+        from ramses_extras.sensor import RamsesExtraHumiditySensor
+
+        # Mock HASS
+        mock_hass = Mock()
+
+        # Test entity instantiation
+        device_id = "32:153289"
+        sensor_type = "indoor_absolute_humidity"
+        config = SENSOR_CONFIGS[sensor_type]
+
+        sensor_entity = RamsesExtraHumiditySensor(
+            mock_hass, device_id, sensor_type, config
+        )
+
+        # Verify entity properties
+        assert sensor_entity.__class__.__name__ == "RamsesExtraHumiditySensor"
+        assert sensor_entity._device_id == device_id
+        assert sensor_entity._sensor_type == sensor_type
+        assert sensor_entity._attr_native_unit_of_measurement == config["unit"]
+        assert sensor_entity._attr_device_class == config["device_class"]
 
 
 # Fixtures for testing

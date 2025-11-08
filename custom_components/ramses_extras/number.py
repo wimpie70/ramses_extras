@@ -36,83 +36,9 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the number platform."""
-    devices = hass.data.get(DOMAIN, {}).get("devices", [])
-    _LOGGER.info(f"Setting up number platform for {len(devices)} devices")
+    from .helpers.platform import async_setup_platform
 
-    if not config_entry:
-        _LOGGER.warning("Config entry not available, skipping number setup")
-        return
-
-    if not devices:
-        _LOGGER.debug("No devices available for numbers")
-        return
-
-    numbers = []
-
-    # Get enabled features from config entry
-    enabled_features = get_enabled_features(hass, config_entry)
-    _LOGGER.info(f"Enabled features: {enabled_features}")
-
-    # Create numbers based on enabled features and their requirements
-    for device_id in devices:
-        device = find_ramses_device(hass, device_id)
-        if not device:
-            _LOGGER.warning(f"Device {device_id} not found, skipping number creation")
-            continue
-
-        device_type = get_device_type(device)
-        _LOGGER.debug(f"Creating numbers for device {device_id} of type {device_type}")
-
-        if device_type in DEVICE_ENTITY_MAPPING:
-            entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-
-            # Get all possible number types for this device
-            all_possible_numbers = entity_mapping.get("numbers", [])
-
-            # Check each possible number type
-            for number_type in all_possible_numbers:
-                if number_type not in ENTITY_TYPE_CONFIGS["number"]:
-                    continue
-
-                # Check if this number is needed by any enabled feature
-                is_needed = False
-                for feature_key, is_enabled in enabled_features.items():
-                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
-                        continue
-
-                    feature_config = AVAILABLE_FEATURES[feature_key]
-                    supported_types = feature_config.get("supported_device_types", [])
-                    if (
-                        isinstance(supported_types, list)
-                        and device_type in supported_types
-                    ):
-                        # Check if this number is required for this feature
-                        required_entities = feature_config.get("required_entities", {})
-
-                        if isinstance(required_entities, dict):
-                            required_numbers = required_entities.get("numbers", [])
-                        else:
-                            required_numbers = []
-
-                        if (
-                            isinstance(required_numbers, list)
-                            and number_type in required_numbers
-                        ):
-                            is_needed = True
-                            break
-
-                if is_needed:
-                    # Entity is needed - create it
-                    config = ENTITY_TYPE_CONFIGS["number"][number_type]
-                    numbers.append(
-                        RamsesNumberEntity(hass, device_id, number_type, config)
-                    )
-                    entity_id = EntityHelpers.generate_entity_name_from_template(
-                        "number", number_type, device_id
-                    )
-                    _LOGGER.debug(f"Creating number: {entity_id}")
-
-    async_add_entities(numbers, True)
+    await async_setup_platform("number", hass, config_entry, async_add_entities)
 
 
 class RamsesNumberEntity(NumberEntity, RestoreEntity, ExtrasBaseEntity):

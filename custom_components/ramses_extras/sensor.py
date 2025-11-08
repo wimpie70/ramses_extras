@@ -21,7 +21,6 @@ from .helpers.entity import EntityHelpers, ExtrasBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
-    remove_orphaned_entities,
 )
 
 if TYPE_CHECKING:
@@ -111,22 +110,6 @@ async def async_setup_entry(
                         RamsesExtraHumiditySensor(hass, device_id, sensor_type, config)
                     )
 
-    # Remove orphaned entities
-    async def cleanup_orphaned_entities() -> None:
-        try:
-            await remove_orphaned_entities(
-                "sensor",
-                hass,
-                devices,
-                calculate_required_entities("sensor", enabled_features, devices, hass),
-                list(all_possible_sensors)
-                if "all_possible_sensors" in locals()
-                else [],
-            )
-        except Exception as e:
-            _LOGGER.warning(f"Error during sensor entity cleanup: {e}")
-
-    hass.async_create_task(cleanup_orphaned_entities())
     async_add_entities(sensors, True)
 
 

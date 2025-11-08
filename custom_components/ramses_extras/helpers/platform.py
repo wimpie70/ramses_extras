@@ -7,14 +7,25 @@ This module contains reusable helper functions used across all platform modules
 import logging
 from typing import TYPE_CHECKING, Any, Optional
 
+from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.number import NumberEntity
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.restore_state import RestoreEntity
 
-from ..const import AVAILABLE_FEATURES, DEVICE_ENTITY_MAPPING, DOMAIN
+from ..const import (
+    AVAILABLE_FEATURES,
+    DEVICE_ENTITY_MAPPING,
+    DOMAIN,
+    ENTITY_TYPE_CONFIGS,
+)
 from .device import find_ramses_device, get_device_type
+from .entity import EntityHelpers, ExtrasBaseEntity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -222,70 +233,171 @@ def find_orphaned_entities(
     return orphaned_entities
 
 
-async def remove_orphaned_entities(
+async def async_setup_platform(
     platform: str,
     hass: "HomeAssistant",
-    devices: list[str],
-    required_entities: set[str],
-    all_possible_types: list[str],
-) -> int:
-    """Remove orphaned entities from the registry.
+    config_entry: ConfigEntry | None,
+    async_add_entities: "AddEntitiesCallback",
+) -> None:
+    """Generic setup function for all platforms
+    (sensor, switch, binary_sensor, number)."""
+    try:
+        devices = hass.data.get(DOMAIN, {}).get("devices", [])
+        _LOGGER.info(f"Setting up {platform} platform for {len(devices)} devices")
 
-    Args:
-        platform: Platform type ('sensor', 'switch', 'binary_sensor')
-        hass: Home Assistant instance
-        devices: List of device IDs
-        required_entities: Set of currently required entity IDs
-        all_possible_types: List of all possible entity types for this platform
+        if not config_entry:
+            _LOGGER.warning(f"Config entry not available, skipping {platform} setup")
+            return
 
-    Returns:
-        Number of entities removed
-    """
-    _LOGGER.info(f"Starting {platform} cleanup for devices: {devices}")
-    _LOGGER.info(f"Entity registry available: {get_entity_registry(hass) is not None}")
+        if not devices:
+            _LOGGER.debug(f"No devices available for {platform}s")
+            return
 
-    # Get the current config entry properly
-    config_entry = None
-    if DOMAIN in hass.data and "entry_id" in hass.data[DOMAIN]:
-        entry_id = hass.data[DOMAIN]["entry_id"]
-        config_entry = hass.config_entries.async_get_entry(entry_id)
+        entities = []
 
-    if config_entry is None:
-        _LOGGER.warning(f"No config entry available for {platform} cleanup")
-        return 0
+        # Get enabled features from config entry
+        enabled_features = get_enabled_features(hass, config_entry)
+        _LOGGER.info(f"Enabled features: {enabled_features}")
+        _LOGGER.info(f"Config entry data: {config_entry.data}")
 
-    current_required_entities = calculate_required_entities(
-        platform, get_enabled_features(hass, config_entry), devices, hass
-    )
-    _LOGGER.info(f"Required {platform} entities: {current_required_entities}")
+        # Create entities based on enabled features and their requirements
+        for device_id in devices:
+            device = find_ramses_device(hass, device_id)
+            if not device:
+                _LOGGER.warning(
+                    f"Device {device_id} not found, skipping {platform} creation"
+                )
+                continue
 
-    entity_registry = get_entity_registry(hass)
-    if not entity_registry:
-        _LOGGER.warning(f"Entity registry not available for {platform} cleanup")
-        return 0
+            device_type = get_device_type(device)
+            _LOGGER.debug(
+                f"Creating {platform}s for device {device_id} of type {device_type}"
+            )
+            _LOGGER.debug(
+                f"DEVICE_ENTITY_MAPPING keys: {list(DEVICE_ENTITY_MAPPING.keys())}"
+            )
+            _LOGGER.debug(
+                f"device_type in DEVICE_ENTITY_MAPPING: "
+                f"{device_type in DEVICE_ENTITY_MAPPING}"
+            )
 
-    _LOGGER.info(f"Found {len(entity_registry.entities)} entities in registry")
+            if device_type in DEVICE_ENTITY_MAPPING:
+                entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
 
-    # Debug: Log all entities for this platform
-    platform_entities = [
-        eid for eid in entity_registry.entities.keys() if eid.startswith(f"{platform}.")
-    ]
-    _LOGGER.info(f"All {platform} entities in registry: {platform_entities}")
+                # Get all possible entity types for this device
+                # Map platform names to their plural forms used in DEVICE_ENTITY_MAPPING
+                platform_to_plural = {
+                    "sensor": "sensors",
+                    "switch": "switches",
+                    "binary_sensor": "binary_sensors",
+                    "number": "numbers",
+                }
+                platform_key = platform_to_plural.get(platform, f"{platform}s")
+                all_possible_entities = entity_mapping.get(platform_key, [])
 
-    orphaned_entities = find_orphaned_entities(
-        platform, hass, devices, current_required_entities, all_possible_types
-    )
-    _LOGGER.info(
-        f"Found {len(orphaned_entities)} orphaned {platform} entities to remove"
-    )
+            # Check each possible entity type
+            for entity_type in all_possible_entities:
+                if entity_type not in ENTITY_TYPE_CONFIGS[platform]:
+                    continue
 
-    removed_count = 0
-    for entity_id in orphaned_entities:
-        try:
-            entity_registry.async_remove(entity_id)
-            _LOGGER.info(f"Removed orphaned {platform} entity: {entity_id}")
-            removed_count += 1
-        except Exception as e:
-            _LOGGER.warning(f"Failed to remove {platform} entity {entity_id}: {e}")
+                # Check if this entity is needed by any enabled feature
+                is_needed = False
+                _LOGGER.debug(
+                    f"Checking if {entity_type} is needed for "
+                    f"{device_id} ({device_type})"
+                )
+                _LOGGER.debug(f"Available features: {list(AVAILABLE_FEATURES.keys())}")
+                _LOGGER.debug(f"Enabled features: {enabled_features}")
 
-    return removed_count
+                for feature_key, is_enabled in enabled_features.items():
+                    _LOGGER.debug(
+                        f"Checking feature {feature_key}: enabled={is_enabled}"
+                    )
+                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                        continue
+
+                    feature_config = AVAILABLE_FEATURES[feature_key]
+                    _LOGGER.debug(f"Feature config: {feature_config}")
+                    supported_types = feature_config.get("supported_device_types", [])
+                    _LOGGER.debug(
+                        f"Supported types for {feature_key}: {supported_types}"
+                    )
+
+                    if (
+                        isinstance(supported_types, list)
+                        and device_type in supported_types
+                    ):
+                        # Check if this entity is required or optional for this feature
+                        required_entities = feature_config.get("required_entities", {})
+                        optional_entities = feature_config.get("optional_entities", {})
+
+                        if isinstance(required_entities, dict):
+                            required_list = required_entities.get(platform_key, [])
+                        else:
+                            required_list = []
+
+                        if isinstance(optional_entities, dict):
+                            optional_list = optional_entities.get(platform_key, [])
+                        else:
+                            optional_list = []
+
+                        _LOGGER.debug(
+                            f"Required {platform_key} for {feature_key}: "
+                            f"{required_list}"
+                        )
+                        _LOGGER.debug(
+                            f"Optional {platform_key} for {feature_key}: "
+                            f"{optional_list}"
+                        )
+
+                        if (
+                            isinstance(required_list, list)
+                            and entity_type in required_list
+                        ) or (
+                            isinstance(optional_list, list)
+                            and entity_type in optional_list
+                        ):
+                            is_needed = True
+                            _LOGGER.debug(
+                                f"Entity {entity_type} needed for feature {feature_key}"
+                            )
+                            break
+
+                if not is_needed:
+                    _LOGGER.debug(
+                        f"Entity {entity_type} not needed by any enabled feature"
+                    )
+
+                if is_needed:
+                    # Entity is needed - create it
+                    config = ENTITY_TYPE_CONFIGS[platform][entity_type]
+
+                    # Create appropriate entity class based on platform
+                    if platform == "number":
+                        from ..number import RamsesNumberEntity
+
+                        entity_class: Any = RamsesNumberEntity
+                    elif platform == "switch":
+                        from ..switch import RamsesDehumidifySwitch
+
+                        entity_class = RamsesDehumidifySwitch
+                    elif platform == "binary_sensor":
+                        from ..binary_sensor import RamsesBinarySensor
+
+                        entity_class = RamsesBinarySensor
+                    else:
+                        _LOGGER.warning(f"Unsupported platform: {platform}")
+                        continue
+
+                    entities.append(entity_class(hass, device_id, entity_type, config))
+                    entity_id = EntityHelpers.generate_entity_name_from_template(
+                        platform, entity_type, device_id
+                    )
+                    _LOGGER.debug(f"Creating {platform}: {entity_id}")
+
+        async_add_entities(entities, True)
+    except Exception as e:
+        _LOGGER.error(f"Error setting up {platform} platform: {e}")
+        import traceback
+
+        _LOGGER.error(f"Full traceback: {traceback.format_exc()}")

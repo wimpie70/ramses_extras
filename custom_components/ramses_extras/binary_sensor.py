@@ -36,87 +36,9 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the binary sensor platform."""
-    devices = hass.data.get(DOMAIN, {}).get("devices", [])
-    _LOGGER.info(f"Setting up binary_sensor platform for {len(devices)} devices")
+    from .helpers.platform import async_setup_platform
 
-    # Check if config entry is available (it might not be during initial load)
-    if not config_entry:
-        _LOGGER.warning("Config entry not available, skipping binary_sensor setup")
-        return
-
-    if not devices:
-        _LOGGER.debug("No devices available for binary sensors")
-        return
-
-    binary_sensors = []
-
-    # Get enabled features from config entry
-    enabled_features = get_enabled_features(hass, config_entry)
-    _LOGGER.info(f"Enabled features: {enabled_features}")
-
-    # Create binary sensors based on enabled features and their requirements
-    for device_id in devices:
-        device = find_ramses_device(hass, device_id)
-        if not device:
-            _LOGGER.warning(
-                f"Device {device_id} not found, skipping binary sensor creation"
-            )
-            continue
-
-        device_type = get_device_type(device)
-        _LOGGER.debug(
-            f"Creating binary sensors for device {device_id} of type {device_type}"
-        )
-
-        if device_type in DEVICE_ENTITY_MAPPING:
-            entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-
-            # Get all possible binary sensor types for this device
-            all_possible_booleans = entity_mapping.get("binary_sensors", [])
-
-            # Check each possible binary sensor type
-            for boolean_type in all_possible_booleans:
-                if boolean_type not in ENTITY_TYPE_CONFIGS["binary_sensor"]:
-                    continue
-
-                # Check if this binary sensor is needed by any enabled feature
-                is_needed = False
-                for feature_key, is_enabled in enabled_features.items():
-                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
-                        continue
-
-                    feature_config = AVAILABLE_FEATURES[feature_key]
-                    supported_types = feature_config.get("supported_device_types", [])
-                    if (
-                        isinstance(supported_types, list)
-                        and device_type in supported_types
-                    ):
-                        # Check if this binary sensor is required for this feature
-                        required_entities = feature_config.get("required_entities", {})
-
-                        if isinstance(required_entities, dict):
-                            required_booleans = required_entities.get(
-                                "binary_sensors", []
-                            )
-                        else:
-                            required_booleans = []
-
-                        if (
-                            isinstance(required_booleans, list)
-                            and boolean_type in required_booleans
-                        ):
-                            is_needed = True
-                            break
-
-                if is_needed:
-                    # Entity is needed - create it
-                    config = ENTITY_TYPE_CONFIGS["binary_sensor"][boolean_type]
-                    binary_sensors.append(
-                        RamsesBinarySensor(hass, device_id, boolean_type, config)
-                    )
-                    _LOGGER.debug(f"Creating binary sensor: {device_id}_{boolean_type}")
-
-    async_add_entities(binary_sensors, True)
+    await async_setup_platform("binary_sensor", hass, config_entry, async_add_entities)
 
 
 class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):

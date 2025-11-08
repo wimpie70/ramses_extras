@@ -21,7 +21,6 @@ from .const import (
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
-    remove_orphaned_entities,
 )
 
 if TYPE_CHECKING:
@@ -738,7 +737,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 )
 
                 # Remove orphaned sensor entities
-                removed_count = await remove_orphaned_entities(
+                from .helpers.entity import EntityHelpers
+
+                removed_count = EntityHelpers.cleanup_orphaned_entities(
                     "sensor",
                     self.hass,
                     devices,
