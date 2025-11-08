@@ -226,8 +226,11 @@ async def _register_services(
                         if service_name not in registered_services:
                             try:
                                 # Dynamic import and registration
-                                module = importlib.import_module(
-                                    handler_config["module"]
+                                # (run in executor to avoid blocking)
+                                module = await hass.async_add_executor_job(
+                                    importlib.import_module,
+                                    handler_config["module"],
+                                    __package__,
                                 )
                                 register_function = getattr(
                                     module, handler_config["function"]
@@ -237,6 +240,11 @@ async def _register_services(
                                 _LOGGER.info(
                                     f"Registered {service_name} service for device "
                                     f"{device_id} ({device_type})"
+                                )
+                            except ModuleNotFoundError as e:
+                                _LOGGER.error(
+                                    f"Module not found for {service_name}: "
+                                    f"{handler_config['module']} - {e}"
                                 )
                             except Exception as e:
                                 _LOGGER.error(f"Failed to register {service_name}: {e}")

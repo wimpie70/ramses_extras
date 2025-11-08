@@ -41,8 +41,10 @@ class TestDeviceHelpers:
         """Create a mock RamsesBroker instance."""
         broker = Mock(spec=MockRamsesBroker)
         broker.__class__.__name__ = "RamsesBroker"
-        broker.devices = {}
+        broker._devices = {}
         broker.client = Mock()
+        # Add _get_device method to mock
+        broker._get_device = Mock()
         return broker
 
     @pytest.fixture
@@ -58,12 +60,15 @@ class TestDeviceHelpers:
         """Test finding device when devices is a dictionary."""
         # Mock broker with devices as dict
         mock_device = Mock()
-        mock_ramses_broker.devices = {"32:153289": mock_device, "01:123456": Mock()}
+        mock_ramses_broker._devices = {"32:153289": mock_device, "01:123456": Mock()}
+        # Configure _get_device to return the mock device
+        mock_ramses_broker._get_device.return_value = mock_device
 
         device = find_ramses_device(mock_hass, "32:153289")
 
         assert device is not None
         assert device == mock_device
+        mock_ramses_broker._get_device.assert_called_once_with("32:153289")
 
     def test_find_ramses_device_list_structure(
         self, mock_hass: Mock, mock_ramses_broker
@@ -74,12 +79,15 @@ class TestDeviceHelpers:
         mock_device1.id = "32:153289"
         mock_device2 = Mock()
         mock_device2.id = "01:123456"
-        mock_ramses_broker.devices = [mock_device1, mock_device2]
+        mock_ramses_broker._devices = [mock_device1, mock_device2]
+        # Configure _get_device to return the mock device
+        mock_ramses_broker._get_device.return_value = mock_device1
 
         device = find_ramses_device(mock_hass, "32:153289")
 
         assert device is not None
         assert device == mock_device1
+        mock_ramses_broker._get_device.assert_called_once_with("32:153289")
 
     def test_find_ramses_device_not_found(self, mock_hass: Mock) -> None:
         """Test finding device when device doesn't exist."""
@@ -87,7 +95,7 @@ class TestDeviceHelpers:
         mock_broker = Mock()
         mock_device1 = Mock()
         mock_device1.id = "32:153289"
-        mock_broker.devices = [mock_device1]
+        mock_broker._devices = [mock_device1]
         mock_hass.data = {"ramses_cc": {"entry_123": mock_broker}}
 
         device = find_ramses_device(mock_hass, "99:000001")
@@ -96,7 +104,9 @@ class TestDeviceHelpers:
 
     def test_find_ramses_device_no_broker(self, mock_hass: Mock) -> None:
         """Test finding device when no broker available."""
-        # No ramses_cc data
+        # No ramses_cc data - remove ramses_cc from hass.data
+        mock_hass.data = {}
+
         device = find_ramses_device(mock_hass, "32:153289")
 
         assert device is None
@@ -105,7 +115,7 @@ class TestDeviceHelpers:
         self, mock_hass: Mock, mock_ramses_broker
     ) -> None:
         """Test getting all device IDs when devices is a dictionary."""
-        mock_ramses_broker.devices = {"32:153289": Mock(), "01:123456": Mock()}
+        mock_ramses_broker._devices = {"32:153289": Mock(), "01:123456": Mock()}
 
         device_ids = get_all_device_ids(mock_hass)
 
@@ -119,7 +129,7 @@ class TestDeviceHelpers:
         mock_device1.id = "32:153289"
         mock_device2 = Mock()
         mock_device2.id = "01:123456"
-        mock_ramses_broker.devices = [mock_device1, mock_device2]
+        mock_ramses_broker._devices = [mock_device1, mock_device2]
 
         device_ids = get_all_device_ids(mock_hass)
 
@@ -168,7 +178,7 @@ class TestDeviceHelpers:
         """Test getting broker when it's in nested dict structure."""
         mock_broker = Mock()
         mock_broker.client = Mock()
-        mock_broker.devices = []
+        mock_broker._devices = []
         mock_hass.data = {"ramses_cc": {"entry_123": {"broker": mock_broker}}}
 
         from ramses_extras.helpers.device import get_ramses_broker
@@ -182,7 +192,9 @@ class TestDeviceHelpers:
     ) -> None:
         """Test case-insensitive device ID matching."""
         mock_device = Mock()
-        mock_ramses_broker.devices = {"32:153289": mock_device, "01:123456": Mock()}
+        mock_ramses_broker._devices = {"32:153289": mock_device, "01:123456": Mock()}
+        # Configure _get_device to return the mock device for case-insensitive lookup
+        mock_ramses_broker._get_device.return_value = mock_device
 
         from ramses_extras.helpers.device import find_ramses_device
 
@@ -190,6 +202,7 @@ class TestDeviceHelpers:
         device = find_ramses_device(mock_hass, "32:153289".upper())
         assert device is not None
         assert device == mock_device
+        mock_ramses_broker._get_device.assert_called_once_with("32:153289")
 
     def test_find_ramses_device_different_id_attributes(
         self, mock_hass: Mock, mock_ramses_broker
@@ -206,7 +219,19 @@ class TestDeviceHelpers:
         mock_device2 = MockDevice("45:678901")
         mock_device3 = MockDevice("78:901234")
 
-        mock_ramses_broker.devices = [mock_device1, mock_device2, mock_device3]
+        mock_ramses_broker._devices = [mock_device1, mock_device2, mock_device3]
+
+        # Configure _get_device to return the appropriate device based on ID
+        def mock_get_device(device_id):
+            if device_id == "32:153289":
+                return mock_device1
+            if device_id == "45:678901":
+                return mock_device2
+            if device_id == "78:901234":
+                return mock_device3
+            return None
+
+        mock_ramses_broker._get_device.side_effect = mock_get_device
 
         from ramses_extras.helpers.device import find_ramses_device
 
@@ -228,19 +253,21 @@ class TestDeviceHelpers:
 
         mock_device = DeviceWithError()
 
-        mock_ramses_broker.devices = [mock_device]
+        mock_ramses_broker._devices = [mock_device]
+        # Configure _get_device to return None (device not found)
+        mock_ramses_broker._get_device.return_value = None
 
         from ramses_extras.helpers.device import find_ramses_device
 
         # Should not raise, should log the error and continue
         device = find_ramses_device(mock_hass, "32:153289")
         assert device is None  # Should not find the device due to error
-        assert "Error checking device" in caplog.text
+        # No longer logs "Error checking device" since we use _get_device
 
     def test_get_all_device_ids_empty(self, mock_hass: Mock) -> None:
         """Test getting device IDs with empty devices."""
         mock_broker = Mock()
-        mock_broker.devices = {}
+        mock_broker._devices = {}
         mock_hass.data = {"ramses_cc": {"entry_123": mock_broker}}
 
         from ramses_extras.helpers.device import get_all_device_ids
@@ -251,7 +278,7 @@ class TestDeviceHelpers:
     def test_get_all_device_ids_invalid_structure(self, mock_hass: Mock) -> None:
         """Test getting device IDs with invalid devices structure."""
         mock_broker = Mock()
-        mock_broker.devices = "not a list or dict"
+        mock_broker._devices = "not a list or dict"
         mock_hass.data = {"ramses_cc": {"entry_123": mock_broker}}
 
         from ramses_extras.helpers.device import get_all_device_ids
@@ -317,12 +344,15 @@ class TestDeviceHelpers:
                 return self.id
 
         mock_device = DeviceWithStr("32:153289")
-        mock_ramses_broker.devices = [mock_device]
+        mock_ramses_broker._devices = [mock_device]
+        # Configure _get_device to return the mock device
+        mock_ramses_broker._get_device.return_value = mock_device
 
         from ramses_extras.helpers.device import find_ramses_device
 
         device = find_ramses_device(mock_hass, "32:153289")
         assert device == mock_device
+        mock_ramses_broker._get_device.assert_called_once_with("32:153289")
 
     def test_get_all_device_ids_with_str_method(
         self, mock_hass: Mock, mock_ramses_broker
@@ -339,7 +369,7 @@ class TestDeviceHelpers:
 
         mock_device1 = DeviceWithStr("32:153289")
         mock_device2 = DeviceWithStr("45:678901")
-        mock_ramses_broker.devices = [mock_device1, mock_device2]
+        mock_ramses_broker._devices = [mock_device1, mock_device2]
 
         from ramses_extras.helpers.device import get_all_device_ids
 
@@ -353,7 +383,7 @@ class TestDeviceHelpers:
         """Test get_ramses_broker with broker missing client attribute."""
         # Remove client attribute to test error handling
         del mock_ramses_broker.client
-        mock_ramses_broker.devices = ["device1", "device2"]  # Has devices
+        mock_ramses_broker._devices = ["device1", "device2"]  # Has devices
 
         from ramses_extras.helpers.device import get_ramses_broker
 

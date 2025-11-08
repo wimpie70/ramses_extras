@@ -57,6 +57,8 @@ class TestServiceRegistration:
         broker.__class__.__name__ = "RamsesBroker"
         broker.devices = {}
         broker.client = Mock()
+        # Add _get_device method to mock
+        broker._get_device = Mock()
         return broker
 
     @pytest.fixture
@@ -86,7 +88,7 @@ class TestServiceRegistration:
         fan_service_config = hvac_services["set_fan_speed_mode"]
         assert "module" in fan_service_config
         assert "function" in fan_service_config
-        assert fan_service_config["module"] == "ramses_extras.services.fan_services"
+        assert fan_service_config["module"] == ".services.fan_services"
         assert fan_service_config["function"] == "register_fan_services"
 
     def test_device_service_mapping_backward_compatibility(self) -> None:
@@ -143,7 +145,7 @@ class TestServiceRegistration:
         mock_device.id = "32:153289"
         mock_device.__class__.__name__ = "HvacVentilator"
 
-        mock_hass.data["ramses_cc"]["entry_123"].devices = {"32:153289": mock_device}
+        mock_hass.data["ramses_cc"]["entry_123"]._devices = {"32:153289": mock_device}
         mock_hass.config.components = ["ramses_cc"]
 
         # Test that device discovery works
@@ -180,7 +182,7 @@ class TestServiceRegistration:
 
         # They should be the same config (proving no duplicates needed)
         assert service_config1 == service_config2
-        assert service_config1["module"] == "ramses_extras.services.fan_services"
+        assert service_config1["module"] == ".services.fan_services"
         assert service_config1["function"] == "register_fan_services"
 
     def test_no_devices_handling(self, mock_hass) -> None:
@@ -188,7 +190,7 @@ class TestServiceRegistration:
         from ramses_extras.helpers.device import get_all_device_ids
 
         # No devices available
-        mock_hass.data["ramses_cc"]["entry_123"].devices = {}
+        mock_hass.data["ramses_cc"]["entry_123"]._devices = {}
 
         # Should return empty list
         device_ids = get_all_device_ids(mock_hass)
@@ -225,7 +227,9 @@ class TestServiceRegistration:
         mock_device.id = "32:153289"
         mock_device.__class__.__name__ = "HvacVentilator"
 
-        mock_hass.data["ramses_cc"]["entry_123"].devices = {"32:153289": mock_device}
+        mock_hass.data["ramses_cc"]["entry_123"]._devices = {"32:153289": mock_device}
+        # Configure _get_device to return the mock device
+        mock_hass.data["ramses_cc"]["entry_123"]._get_device.return_value = mock_device
 
         # Test validation for supported service
         result = validate_device_for_service(
@@ -327,7 +331,9 @@ class TestServiceRegistration:
                 if service_name == "set_fan_speed_mode":
                     # Test that the module can be imported
                     try:
-                        module = importlib.import_module(config["module"])
+                        module = importlib.import_module(
+                            config["module"], "ramses_extras"
+                        )
                         # Test that the function exists in the module
                         assert hasattr(module, config["function"]), (
                             f"Function {config['function']} not found in "
@@ -401,7 +407,7 @@ class TestServiceRegistration:
         for module_path in modules_to_test:
             try:
                 # Try to import the module
-                module = importlib.import_module(module_path)
+                module = importlib.import_module(module_path, "ramses_extras")
                 assert module is not None
             except ImportError as e:
                 # Some modules might not exist in test environment

@@ -249,17 +249,17 @@ ENTITY_TYPE_CONFIGS = {
 SERVICE_REGISTRY = {
     "HvacVentilator": {
         "set_fan_speed_mode": {
-            "module": "ramses_extras.services.fan_services",
+            "module": ".services.fan_services",
             "function": "register_fan_services",
         },
         # Future device types can be added here
         # "CO2Remote": {
         #     "set_co2_mode": {
-        #         "module": "ramses_extras.services.co2_services",
+        #         "module": ".services.co2_services",
         #         "function": "register_co2_services"
         #     },
         #     "calibrate_sensor": {
-        #         "module": "ramses_extras.services.co2_services",
+        #         "module": ".services.co2_services",
         #         "function": "register_calibration_services"
         #     },
         # },

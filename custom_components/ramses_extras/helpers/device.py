@@ -31,68 +31,17 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     Returns:
         The Ramses device object or None if not found
     """
+    # Get the broker
     broker = get_ramses_broker(hass)
     if not broker:
         _LOGGER.warning("No Ramses broker available for device %s", device_id)
         return None
 
-    # Try different ways to access devices from the broker
-    devices = None
-
-    if hasattr(broker, "_devices"):
-        devices = broker._devices
-    elif hasattr(broker, "devices"):
-        devices = broker.devices
-    elif hasattr(broker, "client") and hasattr(broker.client, "devices"):
-        devices = broker.client.devices
-    elif hasattr(broker, "get_devices"):
-        devices = broker.get_devices()
-
-    if devices is None:
-        _LOGGER.warning("No devices found in broker")
-        return None
-
-    # Handle devices as a list of objects
-    if isinstance(devices, list | set):
-        devices_list = list(devices)
-
-        for device in devices_list:
-            try:
-                # Try to get the device ID - catch AttributeError if accessing .id fails
-                try:
-                    device_id_from_device = device.id
-                    if device_id_from_device == device_id:
-                        _LOGGER.info(
-                            "Found device %s (%s)", device_id, device.__class__.__name__
-                        )
-                        return device
-                except AttributeError as ex:
-                    # Log the error for debugging
-                    _LOGGER.warning("Error checking device: %s", str(ex), exc_info=True)
-                    continue
-
-            except Exception as ex:
-                _LOGGER.warning("Error checking device: %s", str(ex), exc_info=True)
-
-        _LOGGER.warning("Device %s not found in device list", device_id)
-        return None
-
-    # Handle devices as a dictionary
-    if isinstance(devices, dict):
-        # Try direct lookup first
-        device = devices.get(device_id)
-        if device:
-            _LOGGER.info(
-                "Found device %s in dict (%s)", device_id, device.__class__.__name__
-            )
-            return device
-
-        # Try case-insensitive lookup
-        device_id_lower = str(device_id).lower()
-        for dev_id, dev in devices.items():
-            if str(dev_id).lower() == device_id_lower:
-                _LOGGER.info("Found device %s (as %s) in dict", device_id, dev_id)
-                return dev
+    # Use broker's _get_device method for efficient lookup
+    device = broker._get_device(device_id)
+    if device:
+        _LOGGER.info("Found device %s (%s)", device_id, device.__class__.__name__)
+        return device
 
     _LOGGER.warning("Device %s not found in broker", device_id)
     return None
@@ -117,7 +66,7 @@ def get_ramses_broker(hass: HomeAssistant) -> Any | None:
         _LOGGER.warning("Ramses CC integration not loaded in hass.data")
         return None
 
-    # Check if ramses_data is the broker itself
+    # Since we know broker._devices is valid, check if ramses_data is the broker itself
     if ramses_data.__class__.__name__ == "RamsesBroker":
         _LOGGER.debug("Found RamsesBroker instance directly")
         return ramses_data
@@ -145,11 +94,11 @@ def get_ramses_broker(hass: HomeAssistant) -> Any | None:
                     ):
                         return value
 
-                    # Also check for devices attribute which
-                    # indicates it might be a broker
-                    if hasattr(value, "devices"):
+                    # Since we know broker._devices is valid,
+                    # check for _devices attribute
+                    if hasattr(value, "_devices"):
                         _LOGGER.debug(
-                            "Found broker-like object with devices attribute in %s",
+                            "Found broker-like object with _devices attribute in %s",
                             entry_id,
                         )
                         return value
@@ -296,7 +245,8 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
         _LOGGER.warning("No Ramses broker available to get device IDs")
         return []
 
-    devices = getattr(broker, "devices", {})
+    # Since we know broker._devices is valid, use it directly
+    devices = getattr(broker, "_devices", {})
 
     device_ids = []
 
