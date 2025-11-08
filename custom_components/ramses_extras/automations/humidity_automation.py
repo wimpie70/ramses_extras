@@ -25,12 +25,8 @@ from ..const import (
     DEVICE_ENTITY_MAPPING,
     FEATURE_ID_HUMIDITY_CONTROL,
 )
-from ..helpers.device import (
-    generate_entity_name_from_template,
-    get_all_required_entity_ids_for_device,
-    get_state_to_entity_mappings_v2,
-    parse_entity_id,
-)
+from ..helpers.device import get_state_to_entity_mappings_v2
+from ..helpers.entity import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -884,8 +880,10 @@ class HumidityAutomationManager:
                     actual_entity_name = const_entity_name
 
                     # Generate the expected entity ID using helpers
-                    expected_entity_id = generate_entity_name_from_template(
-                        entity_type_new, actual_entity_name, device_id
+                    expected_entity_id = (
+                        EntityHelpers.generate_entity_name_from_template(
+                            entity_type_new, actual_entity_name, device_id
+                        )
                     )
 
                     if expected_entity_id:
@@ -930,7 +928,7 @@ class HumidityAutomationManager:
             Device identifier in underscore format (e.g., "32_153289")
             or None if extraction fails
         """
-        parsed = parse_entity_id(entity_id)
+        parsed = EntityHelpers.parse_entity_id(entity_id)
         if parsed:
             _, _, device_id = parsed
             return device_id

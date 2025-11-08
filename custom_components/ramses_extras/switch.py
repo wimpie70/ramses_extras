@@ -13,7 +13,7 @@ from .const import (
     ENTITY_TYPE_CONFIGS,
 )
 from .helpers.device import find_ramses_device, get_device_type
-from .helpers.entity import RamsesBaseEntity
+from .helpers.entity import ExtrasBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -144,7 +144,7 @@ async def async_setup_entry(
     async_add_entities(switches, True)
 
 
-class RamsesDehumidifySwitch(SwitchEntity, RamsesBaseEntity):
+class RamsesDehumidifySwitch(SwitchEntity, ExtrasBaseEntity):
     """Switch to toggle dehumidify mode."""
 
     def __init__(
@@ -155,7 +155,7 @@ class RamsesDehumidifySwitch(SwitchEntity, RamsesBaseEntity):
         config: dict[str, Any],
     ):
         # Initialize base entity
-        RamsesBaseEntity.__init__(self, hass, device_id, switch_type, config)
+        ExtrasBaseEntity.__init__(self, hass, device_id, switch_type, config)
 
         # Set switch-specific attributes
         self._switch_type = switch_type

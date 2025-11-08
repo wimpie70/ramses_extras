@@ -15,10 +15,9 @@ from .const import (
 )
 from .helpers.device import (
     find_ramses_device,
-    generate_entity_name_from_template,
     get_device_type,
 )
-from .helpers.entity import RamsesBaseEntity
+from .helpers.entity import EntityHelpers, ExtrasBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -109,7 +108,7 @@ async def async_setup_entry(
                     numbers.append(
                         RamsesNumberEntity(hass, device_id, number_type, config)
                     )
-                    entity_id = generate_entity_name_from_template(
+                    entity_id = EntityHelpers.generate_entity_name_from_template(
                         "number", number_type, device_id
                     )
                     _LOGGER.debug(f"Creating number: {entity_id}")
@@ -143,7 +142,7 @@ async def async_setup_entry(
     async_add_entities(numbers, True)
 
 
-class RamsesNumberEntity(NumberEntity, RestoreEntity, RamsesBaseEntity):
+class RamsesNumberEntity(NumberEntity, RestoreEntity, ExtrasBaseEntity):
     """Number entity for Ramses device configuration values."""
 
     def __init__(
@@ -154,7 +153,7 @@ class RamsesNumberEntity(NumberEntity, RestoreEntity, RamsesBaseEntity):
         config: dict[str, Any],
     ):
         # Initialize base entity
-        RamsesBaseEntity.__init__(self, hass, device_id, number_type, config)
+        ExtrasBaseEntity.__init__(self, hass, device_id, number_type, config)
 
         # Set number-specific attributes
         self._number_type = number_type

@@ -17,7 +17,7 @@ from .const import (
     ENTITY_TYPE_CONFIGS,
 )
 from .helpers.device import find_ramses_device, get_device_type
-from .helpers.entity import RamsesBaseEntity
+from .helpers.entity import ExtrasBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -150,7 +150,7 @@ async def async_setup_entry(
     async_add_entities(binary_sensors, True)
 
 
-class RamsesBinarySensor(BinarySensorEntity, RamsesBaseEntity):
+class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
     """Binary sensor for Ramses device states."""
 
     def __init__(
@@ -161,7 +161,7 @@ class RamsesBinarySensor(BinarySensorEntity, RamsesBaseEntity):
         config: dict[str, Any],
     ):
         # Initialize base entity
-        RamsesBaseEntity.__init__(self, hass, device_id, boolean_type, config)
+        ExtrasBaseEntity.__init__(self, hass, device_id, boolean_type, config)
 
         # Set binary sensor-specific attributes
         self._boolean_type = boolean_type

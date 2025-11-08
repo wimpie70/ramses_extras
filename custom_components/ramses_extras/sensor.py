@@ -14,11 +14,10 @@ from .const import (
 )
 from .helpers.device import (
     find_ramses_device,
-    generate_entity_name_from_template,
     get_device_type,
 )
 from .helpers.entities import calculate_absolute_humidity
-from .helpers.entity import RamsesBaseEntity
+from .helpers.entity import EntityHelpers, ExtrasBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -131,7 +130,7 @@ async def async_setup_entry(
     async_add_entities(sensors, True)
 
 
-class RamsesExtraHumiditySensor(SensorEntity, RamsesBaseEntity):
+class RamsesExtraHumiditySensor(SensorEntity, ExtrasBaseEntity):
     """Extra sensor for absolute humidity."""
 
     def __init__(
@@ -142,7 +141,7 @@ class RamsesExtraHumiditySensor(SensorEntity, RamsesBaseEntity):
         config: dict[str, Any],
     ):
         # Initialize base entity
-        RamsesBaseEntity.__init__(self, hass, device_id, sensor_type, config)
+        ExtrasBaseEntity.__init__(self, hass, device_id, sensor_type, config)
 
         # Set sensor-specific attributes
         self._sensor_type = sensor_type

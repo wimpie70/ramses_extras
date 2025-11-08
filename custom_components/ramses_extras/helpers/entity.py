@@ -1,6 +1,7 @@
-"""Base entity class for Ramses entities with common functionality."""
+"""Base entity class and helpers for Ramses entities with common functionality."""
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any
@@ -8,10 +9,159 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
+from ..const import ENTITY_TYPE_CONFIGS
+
 _LOGGER = logging.getLogger(__name__)
 
 
-class RamsesBaseEntity(ABC):
+class EntityHelpers:
+    """Static helper methods for entity ID generation and parsing."""
+
+    @staticmethod
+    def generate_entity_id(entity_type: str, entity_name: str, device_id: str) -> str:
+        """Generate a consistent entity ID from type, name, and device ID.
+
+        Args:
+            entity_type: Type of entity ("sensor", "switch", "number", "binary_sensor")
+            entity_name: Name of the entity from config (e.g.,
+            "indoor_absolute_humidity")
+            device_id: Device ID in underscore format (e.g., "32_153289")
+
+        Returns:
+            Full entity ID (e.g., "sensor.indoor_absolute_humidity_32_153289")
+        """
+        # Map entity types to their prefixes
+        type_to_prefix = {
+            "sensor": "sensor",
+            "switch": "switch",
+            "number": "number",
+            "binary_sensor": "binary_sensor",
+        }
+
+        prefix = type_to_prefix.get(entity_type, entity_type)
+        return f"{prefix}.{entity_name}_{device_id}"
+
+    @staticmethod
+    def get_entity_template(entity_type: str, entity_name: str) -> str | None:
+        """Get the entity template for a specific entity type and name.
+
+        Args:
+            entity_type: Type of entity ("sensor", "switch", "number", "binary_sensor")
+            entity_name: Name of the entity from config
+            (e.g., "indoor_absolute_humidity")
+
+        Returns:
+            Entity template string with {device_id} placeholder, or None if not found
+        """
+        configs = ENTITY_TYPE_CONFIGS.get(entity_type, {})
+        entity_config = configs.get(entity_name, {})
+        template = entity_config.get("entity_template")
+        return template if template is not None else None
+
+    @staticmethod
+    def generate_entity_name_from_template(
+        entity_type: str, entity_name: str, device_id: str
+    ) -> str | None:
+        """Generate a full entity ID using the configured template.
+
+        Args:
+            entity_type: Type of entity ("sensor", "switch", "number", "binary_sensor")
+            entity_name: Name of the entity from config
+            (e.g., "indoor_absolute_humidity")
+            device_id: Device ID in underscore format (e.g., "32_153289")
+
+        Returns:
+            Full entity ID using the template, or None if template not found
+        """
+        template = EntityHelpers.get_entity_template(entity_type, entity_name)
+        if not template:
+            return None
+
+        # Replace {device_id} placeholder with actual device ID
+        entity_id_part = template.format(device_id=device_id)
+
+        # Add the entity type prefix
+        type_to_prefix = {
+            "sensor": "sensor",
+            "switch": "switch",
+            "number": "number",
+            "binary_sensor": "binary_sensor",
+        }
+
+        prefix = type_to_prefix.get(entity_type, entity_type)
+        return f"{prefix}.{entity_id_part}"
+
+    @staticmethod
+    def get_all_required_entity_ids_for_device(device_id: str) -> list[str]:
+        """Get all entity IDs required for a device based on its capabilities.
+
+        Args:
+            device_id: Device ID in underscore format (e.g., "32_153289")
+
+        Returns:
+            List of all required entity IDs for this device
+        """
+        entity_ids = []
+
+        # For each entity type configuration
+        for entity_type, configs in ENTITY_TYPE_CONFIGS.items():
+            # For each entity in that type
+            for entity_name in configs.keys():
+                entity_id = EntityHelpers.generate_entity_name_from_template(
+                    entity_type, entity_name, device_id
+                )
+                if entity_id:
+                    entity_ids.append(entity_id)
+
+        return entity_ids
+
+    @staticmethod
+    def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
+        """Parse an entity ID to extract entity type, name, and device ID.
+
+        Args:
+            entity_id: Full entity ID
+            (e.g., "sensor.indoor_absolute_humidity_32_153289")
+
+        Returns:
+            Tuple of (entity_type, entity_name, device_id) or None if parsing fails
+        """
+        try:
+            # Split on first dot to get type and rest
+            if "." not in entity_id:
+                return None
+
+            entity_type, rest = entity_id.split(".", 1)
+
+            # Device ID patterns we expect: 32_153289, 10_456789, etc.
+            # These have the pattern: digits_underscore_digits
+            # We need to find this pattern at the end of the string
+
+            # Look for device ID pattern: _ followed by digits,
+            # underscore, digits at the end
+            device_id_match = re.search(r"_(\d+_\d+)$", rest)
+            if device_id_match:
+                device_id = device_id_match.group(
+                    1
+                )  # The actual device ID part (e.g., "32_153289")
+                # Remove the device ID and underscore from the entity name
+                entity_name = rest[: device_id_match.start(0)]
+            else:
+                # No device ID found, return as is
+                return entity_type, rest, ""
+
+            # Validate entity type
+            valid_types = {"sensor", "switch", "number", "binary_sensor"}
+            if entity_type not in valid_types:
+                return None
+
+            return entity_type, entity_name, device_id
+
+        except (ValueError, IndexError):
+            return None
+
+
+class ExtrasBaseEntity(ABC):
     """Base entity class for all Ramses entities with common functionality."""
 
     def __init__(

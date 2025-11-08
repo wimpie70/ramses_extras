@@ -8,12 +8,8 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "../../custom_components/ramses_extras")
 )
 
-# Import the device helper functions from the custom component
-from ramses_extras.helpers.device import (
-    generate_entity_name_from_template,
-    get_all_required_entity_ids_for_device,
-    parse_entity_id,
-)
+# Import the entity helper functions from the custom component
+from ramses_extras.helpers.entity import EntityHelpers
 
 
 def test_entity_generation():
@@ -23,7 +19,7 @@ def test_entity_generation():
     device_id = "32_153289"
 
     # Test sensor entity generation
-    sensor_id = generate_entity_name_from_template(
+    sensor_id = EntityHelpers.generate_entity_name_from_template(
         "sensor", "indoor_absolute_humidity", device_id
     )
     print(f"✅ Sensor entity: {sensor_id}")
@@ -31,7 +27,7 @@ def test_entity_generation():
     assert sensor_id == expected_sensor, f"Expected {expected_sensor}, got {sensor_id}"
 
     # Test number entity generation
-    number_id = generate_entity_name_from_template(
+    number_id = EntityHelpers.generate_entity_name_from_template(
         "number", "relative_humidity_maximum", device_id
     )
     print(f"✅ Number entity: {number_id}")
@@ -39,13 +35,15 @@ def test_entity_generation():
     assert number_id == expected_number, f"Expected {expected_number}, got {number_id}"
 
     # Test switch entity generation
-    switch_id = generate_entity_name_from_template("switch", "dehumidify", device_id)
+    switch_id = EntityHelpers.generate_entity_name_from_template(
+        "switch", "dehumidify", device_id
+    )
     print(f"✅ Switch entity: {switch_id}")
     expected_switch = "switch.dehumidify_32_153289"
     assert switch_id == expected_switch, f"Expected {expected_switch}, got {switch_id}"
 
     # Test binary sensor entity generation
-    binary_id = generate_entity_name_from_template(
+    binary_id = EntityHelpers.generate_entity_name_from_template(
         "binary_sensor", "dehumidifying_active", device_id
     )
     print(f"✅ Binary sensor entity: {binary_id}")
@@ -82,7 +80,7 @@ def test_entity_parsing():
     ]
 
     for entity_id, expected_type, expected_name, expected_device in test_cases:
-        parsed = parse_entity_id(entity_id)
+        parsed = EntityHelpers.parse_entity_id(entity_id)
         if parsed:
             entity_type, entity_name, device_id = parsed
             print(f"✅ Parsed {entity_id}:")
@@ -110,7 +108,7 @@ def test_all_entities_for_device():
     print("\n🧪 Testing all entities for device...")
 
     device_id = "32_153289"
-    all_entities = get_all_required_entity_ids_for_device(device_id)
+    all_entities = EntityHelpers.get_all_required_entity_ids_for_device(device_id)
 
     print(f"Generated {len(all_entities)} entities for device {device_id}:")
     for entity_id in sorted(all_entities):
