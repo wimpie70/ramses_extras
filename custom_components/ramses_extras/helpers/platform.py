@@ -243,7 +243,7 @@ async def async_setup_platform(
     (sensor, switch, binary_sensor, number)."""
     try:
         devices = hass.data.get(DOMAIN, {}).get("devices", [])
-        _LOGGER.info(f"Setting up {platform} platform for {len(devices)} devices")
+        # _LOGGER.info(f"Setting up {platform} platform for {len(devices)} devices")
 
         if not config_entry:
             _LOGGER.warning(f"Config entry not available, skipping {platform} setup")
@@ -257,8 +257,8 @@ async def async_setup_platform(
 
         # Get enabled features from config entry
         enabled_features = get_enabled_features(hass, config_entry)
-        _LOGGER.info(f"Enabled features: {enabled_features}")
-        _LOGGER.info(f"Config entry data: {config_entry.data}")
+        # _LOGGER.info(f"Enabled features: {enabled_features}")
+        # _LOGGER.info(f"Config entry data: {config_entry.data}")
 
         # Create entities based on enabled features and their requirements
         for device_id in devices:
@@ -270,16 +270,16 @@ async def async_setup_platform(
                 continue
 
             device_type = get_device_type(device)
-            _LOGGER.debug(
-                f"Creating {platform}s for device {device_id} of type {device_type}"
-            )
-            _LOGGER.debug(
-                f"DEVICE_ENTITY_MAPPING keys: {list(DEVICE_ENTITY_MAPPING.keys())}"
-            )
-            _LOGGER.debug(
-                f"device_type in DEVICE_ENTITY_MAPPING: "
-                f"{device_type in DEVICE_ENTITY_MAPPING}"
-            )
+            # _LOGGER.debug(
+            #     f"Creating {platform}s for device {device_id} of type {device_type}"
+            # )
+            # _LOGGER.debug(
+            #     f"DEVICE_ENTITY_MAPPING keys: {list(DEVICE_ENTITY_MAPPING.keys())}"
+            # )
+            # _LOGGER.debug(
+            #     f"device_type in DEVICE_ENTITY_MAPPING: "
+            #     f"{device_type in DEVICE_ENTITY_MAPPING}"
+            # )
 
             if device_type in DEVICE_ENTITY_MAPPING:
                 entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
@@ -302,12 +302,13 @@ async def async_setup_platform(
 
                 # Check if this entity is needed by any enabled feature
                 is_needed = False
-                _LOGGER.debug(
-                    f"Checking if {entity_type} is needed for "
-                    f"{device_id} ({device_type})"
-                )
-                _LOGGER.debug(f"Available features: {list(AVAILABLE_FEATURES.keys())}")
-                _LOGGER.debug(f"Enabled features: {enabled_features}")
+                # _LOGGER.debug(
+                #     f"Checking if {entity_type} is needed for "
+                #     f"{device_id} ({device_type})"
+                # )
+                # _LOGGER.debug(f"Available features: ")
+                # _LOGGER.debug(f"{list(AVAILABLE_FEATURES.keys())}")
+                # _LOGGER.debug(f"Enabled features: {enabled_features}")
 
                 for feature_key, is_enabled in enabled_features.items():
                     _LOGGER.debug(
@@ -317,11 +318,11 @@ async def async_setup_platform(
                         continue
 
                     feature_config = AVAILABLE_FEATURES[feature_key]
-                    _LOGGER.debug(f"Feature config: {feature_config}")
+                    # _LOGGER.debug(f"Feature config: {feature_config}")
                     supported_types = feature_config.get("supported_device_types", [])
-                    _LOGGER.debug(
-                        f"Supported types for {feature_key}: {supported_types}"
-                    )
+                    # _LOGGER.debug(
+                    #     f"Supported types for {feature_key}: {supported_types}"
+                    # )
 
                     if (
                         isinstance(supported_types, list)
@@ -341,15 +342,6 @@ async def async_setup_platform(
                         else:
                             optional_list = []
 
-                        _LOGGER.debug(
-                            f"Required {platform_key} for {feature_key}: "
-                            f"{required_list}"
-                        )
-                        _LOGGER.debug(
-                            f"Optional {platform_key} for {feature_key}: "
-                            f"{optional_list}"
-                        )
-
                         if (
                             isinstance(required_list, list)
                             and entity_type in required_list
@@ -358,15 +350,16 @@ async def async_setup_platform(
                             and entity_type in optional_list
                         ):
                             is_needed = True
-                            _LOGGER.debug(
-                                f"Entity {entity_type} needed for feature {feature_key}"
-                            )
+                            # _LOGGER.debug(
+                            #     f"Entity {entity_type} needed for feature "
+                            #     f"{feature_key}"
+                            # )
                             break
 
-                if not is_needed:
-                    _LOGGER.debug(
-                        f"Entity {entity_type} not needed by any enabled feature"
-                    )
+                # if not is_needed:
+                # _LOGGER.debug(
+                #     f"Entity {entity_type} not needed by any enabled feature"
+                # )
 
                 if is_needed:
                     # Entity is needed - create it

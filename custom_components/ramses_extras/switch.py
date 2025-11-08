@@ -32,11 +32,11 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the switch platform."""
-    _LOGGER.info("SWITCH PLATFORM: async_setup_entry called")
+    # _LOGGER.info("SWITCH PLATFORM: async_setup_entry called")
     from .helpers.platform import async_setup_platform
 
     await async_setup_platform("switch", hass, config_entry, async_add_entities)
-    _LOGGER.info("SWITCH PLATFORM: async_setup_entry completed")
+    # _LOGGER.info("SWITCH PLATFORM: async_setup_entry completed")
 
 
 class RamsesDehumidifySwitch(SwitchEntity, ExtrasBaseEntity):

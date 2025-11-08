@@ -81,10 +81,10 @@ class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
                 self.hass.data.setdefault(DOMAIN, {}).setdefault("automations", {})[
                     self._device_id
                 ] = automation_manager
-                _LOGGER.info(
-                    f"✅ Stored automation for device {self._device_id} in "
-                    f"hass.data['{DOMAIN}']['automations']"
-                )
+                # _LOGGER.info(
+                #     f"✅ Stored automation for device {self._device_id} in "
+                #     f"hass.data['{DOMAIN}']['automations']"
+                # )
             else:
                 _LOGGER.error(
                     f"❌ Failed to start automation for device {self._device_id}"
@@ -116,9 +116,10 @@ class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
             # Start the automation
             await automation_manager.start()
 
-            _LOGGER.info(
-                f"✅ Hardcoded humidity automation started for device {self._device_id}"
-            )
+            # _LOGGER.info(
+            #     f"✅ Hardcoded humidity automation started for "
+            #     f"device {self._device_id}"
+            # )
 
             return automation_manager
 
