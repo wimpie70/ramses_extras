@@ -5,6 +5,7 @@ This document describes the exact flow from Home Assistant startup to switch int
 ## Overview
 
 The humidity automation is coordinated between three main components:
+
 1. **Binary Sensor** (binary_sensor.dehumidifying_active_32_153289) - Creates and controls the automation
 2. **Switch** (switch.dehumidify_32_153289) - User interface to activate/deactivate automation
 3. **Automation Manager** - Implements the humidity control logic
@@ -55,6 +56,12 @@ graph TD
     AA --> BB[Set fan speed to HIGH or LOW]
     BB --> CC[Update binary sensor async turn on or off]
     CC --> DD[Fan and binary sensor synchronized]
+
+    AA -->|Indoor RH between Min/Max| EE{Current fan speed HIGH?}
+    EE -->|YES| FF[Set fan to LOW<br/>Binary Sensor OFF]
+    EE -->|NO| GG[No action - maintain current state]
+    FF --> GG
+    GG --> DD
 ```
 
 ## Switch Deactivation Flow
@@ -115,16 +122,24 @@ graph TD
     EE --> FF[Set fan speed]
     FF --> GG[Update binary sensor]
     GG --> HH[Coordinated control]
+
+    EE -->|Indoor RH between Min/Max| II{Binary sensor ON?}
+    II -->|YES| JJ[Set fan to LOW<br/>Binary Sensor OFF]
+    II -->|NO| KK[No action - maintain current state]
+    JJ --> KK
+    KK --> HH
 ```
 
 ## Key File Locations
 
 ### Entry Point
+
 - **File**: `ramses_extras/custom_components/ramses_extras/__init__.py`
 - **Function**: `async def async_setup_entry` (line 232)
 - **Key**: `await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)` (line 265)
 
 ### Platforms
+
 - **Binary Sensor**: `ramses_extras/custom_components/ramses_extras/binary_sensor.py`
   - Setup: `async def async_setup_entry` (line 33)
   - Creation: `async def async_added_to_hass` (line 179)
@@ -137,17 +152,20 @@ graph TD
   - OFF Action: `async def async_turn_off` (line 219)
 
 ### Automation
+
 - **File**: `ramses_extras/custom_components/ramses_extras/automations/humidity_automation.py`
 - **Class**: `HumidityAutomationManager`
 
 ## Data Flow Summary
 
 ### Storage Path
+
 ```
 hass.data['ramses_extras']['automations']['32:153289'] = HumidityAutomationManager
 ```
 
 ### Lookup Path
+
 ```python
 automation = (
     self.hass.data.get("ramses_extras", {})
@@ -157,6 +175,7 @@ automation = (
 ```
 
 ### Device ID Format
+
 - **Format**: "32:153289" (colon, not underscore)
 - **Binary sensor stores**: "32:153289"
 - **Switch looks for**: "32:153289"
@@ -173,6 +192,7 @@ The switch reports "No automation found" when trying to activate, suggesting:
 ## Debug Strategy
 
 Added logging to both binary sensor and switch to identify the exact failure point:
+
 - **Binary sensor logs**: When automation starts and stores
 - **Switch logs**: What automations are actually available
 

@@ -1,4 +1,5 @@
 # Humidity Control Decision Flow Diagram
+
 # Split into two separate automations to prevent interference with manual control
 
 ## System Overview (Mermaid)
@@ -18,16 +19,20 @@ flowchart TD
         I1 -->|NO| J1[Set Fan to LOW<br/>Binary Sensor OFF]
 
         F1 -->|YES| K1{Absolute Indoor<br/>Less than<br/>Outdoor - Offset?}
-        F1 -->|NO| H1[No Action<br/>Maintain State]
+        F1 -->|NO| H1{Binary Sensor<br/>Currently ON?}
 
         K1 -->|YES| G1[Set Fan to HIGH<br/>Binary Sensor ON]
         K1 -->|NO| L1[Set Fan to LOW<br/>Binary Sensor OFF]
+
+        H1 -->|YES| M1[Set Fan to LOW<br/>Binary Sensor OFF]
+        H1 -->|NO| N1[No Action<br/>Maintain State]
 
         E1 --> END1
         J1 --> END1
         G1 --> END1
         L1 --> END1
-        H1 --> END1
+        M1 --> END1
+        N1 --> END1
     end
 
     subgraph Reset Automation
@@ -45,7 +50,9 @@ flowchart TD
     style J1 fill:#ffcdd2,color:#000000
     style G1 fill:#e8f5e8,color:#000000
     style L1 fill:#ffcdd2,color:#000000
-    style H1 fill:#f3e5f5,color:#000000
+    style M1 fill:#ffcdd2,color:#000000
+    style N1 fill:#f3e5f5,color:#000000
+    style H1 fill:#fff3e0,color:#000000
     style END1 fill:#f5f5f5,color:#000000
     style START2 fill:#ffebee,color:#000000
     style ACTION2 fill:#ffebee,color:#000000
@@ -54,22 +61,24 @@ flowchart TD
 
 ## State Transitions
 
-| Current State | Condition | New State | Binary Sensor |
-|---------------|-----------|-----------|---------------|
+| Current State                                         | Condition                                             | New State | Binary Sensor |
+| ----------------------------------------------------- | ----------------------------------------------------- | --------- | ------------- |
 | **Main Humidity Control Automation** (Switch ON only) |
-| Fan LOW/AUTO | Indoor RH > Max% + Indoor abs > Outdoor abs + Offset | Fan HIGH | ON |
-| Fan LOW/AUTO | Indoor RH > Max% + Indoor abs <= Outdoor abs + Offset | Fan LOW | OFF |
-| Fan HIGH/AUTO | Indoor RH < Min% + Indoor abs < Outdoor abs - Offset | Fan HIGH | ON |
-| Fan HIGH/AUTO | Indoor RH < Min% + Indoor abs >= Outdoor abs - Offset | Fan LOW | OFF |
-| Fan HIGH/LOW | Indoor RH Between Min/Max% | No Change | No Change |
-| **Reset Automation** (Separate) |
-| Any | Switch OFF Event | Fan AUTO | OFF |
-| **Manual Control Preservation** |
-| Any (Switch OFF) | Any Humidity Change | No Change | No Change |
+| Fan LOW/AUTO                                          | Indoor RH > Max% + Indoor abs > Outdoor abs + Offset  | Fan HIGH  | ON            |
+| Fan LOW/AUTO                                          | Indoor RH > Max% + Indoor abs <= Outdoor abs + Offset | Fan LOW   | OFF           |
+| Fan HIGH/AUTO                                         | Indoor RH < Min% + Indoor abs < Outdoor abs - Offset  | Fan HIGH  | ON            |
+| Fan HIGH/AUTO                                         | Indoor RH < Min% + Indoor abs >= Outdoor abs - Offset | Fan LOW   | OFF           |
+| Fan HIGH/LOW                                          | Indoor RH Between Min/Max% + Binary Sensor ON         | Fan LOW   | OFF           |
+| Fan HIGH/LOW                                          | Indoor RH Between Min/Max% + Fan Speed LOW/AUTO       | No Change | No Change     |
+| **Reset Automation** (Separate)                       |
+| Any                                                   | Switch OFF Event                                      | Fan AUTO  | OFF           |
+| **Manual Control Preservation**                       |
+| Any (Switch OFF)                                      | Any Humidity Change                                   | No Change | No Change     |
 
 ## Key Entities Monitored
 
 ### Main Humidity Control Automation
+
 - **Triggers:**
   - `sensor.indoor_relative_humidity_{device}` - Primary trigger for threshold comparisons (%)
   - `sensor.indoor_absolute_humidity_{device}` - For absolute humidity comparison logic (g/m³)
@@ -82,6 +91,7 @@ flowchart TD
   - `switch.dehumidify_{device}` - Only runs when switch is ON
 
 ### Reset Automation (Separate)
+
 - **Triggers:**
   - `switch.dehumidify_{device}` - Only triggers when switch is turned OFF (`to: "off"`)
 
@@ -116,6 +126,9 @@ graph TD
     F --> K[Fan HIGH<br/>Binary ON<br/>55% < 65% + 6.0 < 12.0 - 0.5<br/>Active Humidification]
     G --> L[Fan LOW<br/>Binary OFF<br/>62% < 65% + 7.0 > 8.0 - 0.5<br/>Avoid Over-Humidifying]
     H --> M[No Action<br/>Current State<br/>70% Between 65-75%]
+    I2[Indoor: 70% RH<br/>10.0 g/m³ abs<br/>Outdoor: 9.0 g/m³ abs<br/>Binary Sensor: ON] --> O[Fan LOW<br/>Binary OFF<br/>70% Between 65-75%<br/>+ Binary ON → Reset<br/>Active Control]
+
+    A --- B --- C --- I2
 
     A --- B --- C
 
@@ -132,9 +145,12 @@ graph TD
     style K fill:#e8f5e8,color:#000000
     style L fill:#ffcdd2,color:#000000
     style M fill:#f3e5f5,color:#000000
+    style I2 fill:#e1f5fe,color:#000000
+    style O fill:#ffcdd2,color:#000000
 ```
 
 This flow ensures:
+
 1. **Energy Efficiency**: Only activates when necessary
 2. **User Control**: Manual override capability
 3. **Smart Operation**: No unnecessary changes within acceptable ranges

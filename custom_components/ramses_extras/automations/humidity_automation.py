@@ -690,12 +690,21 @@ class HumidityAutomationManager:
                 )
                 await self._set_fan_low(device_id, "Avoid over-humidifying")
         else:
-            # No action: Indoor RH between Min/Max (acceptable range)
-            _LOGGER.info(
-                f"Device {device_id}: 🎯 NO ACTION - Indoor RH ({indoor_rh}%) between "
-                f"Min/Max range ({min_humidity}%-{max_humidity}%) → "
-                f"Acceptable humidity level"
-            )
+            # Indoor RH between Min/Max (acceptable range)
+
+            # NEW: Fallback check - if binary sensor is ON (active dehumidification),
+            # set fan to LOW. This handles the case where humidity is now acceptable
+            # but the fan was left in HIGH mode from previous active dehumidification
+            if self.binary_sensor and self.binary_sensor.is_on:
+                _LOGGER.info(
+                    f"Device {device_id}: 🔄 FALLBACK - Binary sensor is ON but RH is "
+                    f"acceptable - Setting fan to LOW"
+                )
+                await self._set_fan_low(device_id, "Fallback: Acceptable RH range")
+            else:
+                _LOGGER.debug(
+                    f"Device {device_id}: ✅ Binary sensor is OFF - no fallback needed"
+                )
 
     async def _set_fan_high(self, device_id: str, reason: str) -> None:
         """Set fan to HIGH mode via fan_services.py.
@@ -763,6 +772,48 @@ class HumidityAutomationManager:
 
         except Exception as e:
             _LOGGER.error(f"Failed to set fan LOW for device {device_id}: {e}")
+
+    async def _get_current_fan_speed(self, device_id: str) -> str:
+        """Get the current fan speed for a device.
+
+        Args:
+            device_id: Device identifier (e.g., "32_153289")
+
+        Returns:
+            Current fan speed ("high", "low", "auto") - always returns a string
+        """
+        try:
+            # Convert underscore device_id to colon format for entity lookup
+            colon_device_id = device_id.replace("_", ":")
+
+            # Look up the fan speed sensor entity
+            fan_speed_entity_id = f"sensor.{colon_device_id}_fan_speed"
+            fan_speed_state = self.hass.states.get(fan_speed_entity_id)
+
+            if fan_speed_state and fan_speed_state.state not in [
+                "unavailable",
+                "unknown",
+            ]:
+                current_speed = str(fan_speed_state.state).lower()
+                _LOGGER.debug(
+                    f"Device {device_id}: Current fan speed is {current_speed}"
+                )
+                return current_speed
+
+            _LOGGER.debug(
+                f"Device {device_id}: Fan speed sensor not available or unknown - "
+                f"assuming 'auto'"
+            )
+            # If we can't determine the current fan speed, assume it's in auto mode
+            # This is a safe fallback since auto is the default state
+            return "auto"
+
+        except Exception as e:
+            _LOGGER.warning(
+                f"Failed to get current fan speed for device {device_id}: {e}"
+            )
+            # On error, assume auto mode as safe fallback
+            return "auto"
 
     async def _reset_fan_to_auto(self, device_id: str) -> None:
         """Reset fan to AUTO when switch turned OFF.
