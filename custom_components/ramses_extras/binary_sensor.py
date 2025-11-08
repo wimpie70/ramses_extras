@@ -17,6 +17,7 @@ from .const import (
     ENTITY_TYPE_CONFIGS,
 )
 from .helpers.device import find_ramses_device, get_device_type
+from .helpers.entity import RamsesBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -149,7 +150,7 @@ async def async_setup_entry(
     async_add_entities(binary_sensors, True)
 
 
-class RamsesBinarySensor(BinarySensorEntity):
+class RamsesBinarySensor(BinarySensorEntity, RamsesBaseEntity):
     """Binary sensor for Ramses device states."""
 
     def __init__(
@@ -159,32 +160,26 @@ class RamsesBinarySensor(BinarySensorEntity):
         boolean_type: str,
         config: dict[str, Any],
     ):
-        self.hass = hass
-        self._device_id = device_id  # Store device ID as string
-        self._boolean_type = boolean_type
-        self._config = config
+        # Initialize base entity
+        RamsesBaseEntity.__init__(self, hass, device_id, boolean_type, config)
 
-        # Set attributes from configuration
-        self._attr_name = f"{config['name_template']} ({device_id})"
-        self._attr_unique_id = f"{device_id.replace(':', '_')}_{boolean_type}"
-        self._attr_icon = config["icon"]
-        self._attr_entity_category = config["entity_category"]
+        # Set binary sensor-specific attributes
+        self._boolean_type = boolean_type
         self._attr_device_class = config.get("device_class")
 
         self._is_on = False
         self._current_fan_speed = "auto"  # Track current fan speed
-        self._unsub: Callable[[], None] | None = None
         self._unsub_state_change: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates and humidity entity changes."""
-        signal = f"ramses_rf_device_update_{self._device_id}"
-        self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
+        # Call base class method first
+        await super().async_added_to_hass()
 
         # For dehumidifying_active, start the hardcoded automation
         if self._boolean_type == "dehumidifying_active":
             _LOGGER.info(
-                f"🔧 Starting humidity automation for binary sensor {self.name} "
+                f"🔧 Starting humidity automation for binary sensor {self._attr_name} "
                 f"(device: {self._device_id})"
             )
             # 🔧 START HUMIDITY AUTOMATION FOR THIS DEVICE
@@ -206,18 +201,9 @@ class RamsesBinarySensor(BinarySensorEntity):
 
             # Binary sensor is controlled directly by the automation
 
-        _LOGGER.debug("Subscribed to %s for binary sensor %s", signal, self.name)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Unsubscribe when removed."""
-        if self._unsub is not None:
-            self._unsub()
-            self._unsub = None
-        # No listeners to unsubscribe
-
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""
-        _LOGGER.debug("Device update for %s received", self.name)
+        _LOGGER.debug("Device update for %s received", self._attr_name)
         self.async_write_ha_state()
 
         # Binary sensor is controlled directly by the automation
@@ -265,7 +251,7 @@ class RamsesBinarySensor(BinarySensorEntity):
         self.async_write_ha_state()
         _LOGGER.info(
             "Binary sensor %s turned ON by automation (is_on: %s)",
-            self.name,
+            self._attr_name,
             self._is_on,
         )
 
@@ -275,14 +261,15 @@ class RamsesBinarySensor(BinarySensorEntity):
         self.async_write_ha_state()
         _LOGGER.info(
             "Binary sensor %s turned OFF by automation (is_on: %s)",
-            self.name,
+            self._attr_name,
             self._is_on,
         )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        base_attrs = super().extra_state_attributes or {}
         return {
-            "device_id": self._device_id,
+            **base_attrs,
             "boolean_type": self._boolean_type,
             "controlled_by": "automation",
         }

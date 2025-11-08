@@ -13,6 +13,7 @@ from .const import (
     ENTITY_TYPE_CONFIGS,
 )
 from .helpers.device import find_ramses_device, get_device_type
+from .helpers.entity import RamsesBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -143,7 +144,7 @@ async def async_setup_entry(
     async_add_entities(switches, True)
 
 
-class RamsesDehumidifySwitch(SwitchEntity):
+class RamsesDehumidifySwitch(SwitchEntity, RamsesBaseEntity):
     """Switch to toggle dehumidify mode."""
 
     def __init__(
@@ -153,36 +154,20 @@ class RamsesDehumidifySwitch(SwitchEntity):
         switch_type: str,
         config: dict[str, Any],
     ):
-        self.hass = hass
-        self._device_id = device_id  # Store device ID as string
-        self._switch_type = switch_type
-        self._config = config
+        # Initialize base entity
+        RamsesBaseEntity.__init__(self, hass, device_id, switch_type, config)
 
-        # Set attributes from configuration
-        self._attr_name = f"{config['name_template']} ({device_id})"
-        # Use format that matches existing entities: switch.dehumidify_32_153289
+        # Set switch-specific attributes
+        self._switch_type = switch_type
+
+        # Override unique_id for switch to match existing pattern
         self._attr_unique_id = f"dehumidify_{device_id.replace(':', '_')}"
-        self._attr_icon = config["icon"]
-        self._attr_entity_category = config["entity_category"]
 
         self._is_on = False
-        self._unsub: Callable[[], None] | None = None
-
-    async def async_added_to_hass(self) -> None:
-        """Subscribe to Ramses RF device updates."""
-        signal = f"ramses_rf_device_update_{self._device_id}"
-        self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
-        _LOGGER.debug("Subscribed to %s for switch %s", signal, self.name)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Unsubscribe when removed."""
-        if self._unsub is not None:
-            self._unsub()
-            self._unsub = None
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""
-        _LOGGER.debug("Device update for %s received", self.name)
+        _LOGGER.debug("Device update for %s received", self._attr_name)
         self.async_write_ha_state()
 
     @property
@@ -193,7 +178,7 @@ class RamsesDehumidifySwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Activate dehumidify mode."""
-        _LOGGER.info("Activating dehumidify mode for %s", self.name)
+        _LOGGER.info("Activating dehumidify mode for %s", self._attr_name)
         self._is_on = True
         self.async_write_ha_state()
 
@@ -220,7 +205,7 @@ class RamsesDehumidifySwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Deactivate dehumidify mode."""
-        _LOGGER.info("Deactivating dehumidify mode for %s", self.name)
+        _LOGGER.info("Deactivating dehumidify mode for %s", self._attr_name)
 
         # Update automation state if exists
         automation = (
@@ -245,4 +230,5 @@ class RamsesDehumidifySwitch(SwitchEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"dehumidifying": self.is_on}
+        base_attrs = super().extra_state_attributes or {}
+        return {**base_attrs, "dehumidifying": self.is_on}

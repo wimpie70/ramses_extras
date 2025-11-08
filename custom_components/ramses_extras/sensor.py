@@ -18,6 +18,7 @@ from .helpers.device import (
     get_device_type,
 )
 from .helpers.entities import calculate_absolute_humidity
+from .helpers.entity import RamsesBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -130,7 +131,7 @@ async def async_setup_entry(
     async_add_entities(sensors, True)
 
 
-class RamsesExtraHumiditySensor(SensorEntity):
+class RamsesExtraHumiditySensor(SensorEntity, RamsesBaseEntity):
     """Extra sensor for absolute humidity."""
 
     def __init__(
@@ -140,32 +141,13 @@ class RamsesExtraHumiditySensor(SensorEntity):
         sensor_type: str,
         config: dict[str, Any],
     ):
-        self.hass = hass
-        self._device_id = device_id  # Store device ID as string
-        self._sensor_type = sensor_type
-        self._config = config
+        # Initialize base entity
+        RamsesBaseEntity.__init__(self, hass, device_id, sensor_type, config)
 
-        # Set attributes from configuration
-        self._attr_name = f"{config['name_template']} ({device_id})"
-        # Use new format: sensor.indoor_absolute_humidity_32_153289
-        self._attr_unique_id = f"{sensor_type}_{device_id.replace(':', '_')}"
-        self._attr_entity_category = config["entity_category"]
-        self._attr_icon = config["icon"]
+        # Set sensor-specific attributes
+        self._sensor_type = sensor_type
         self._attr_native_unit_of_measurement = config["unit"]
         self._attr_device_class = config["device_class"]
-
-        self._unsub: Callable[[], None] | None = None
-
-    async def async_added_to_hass(self) -> None:
-        """Subscribe to Ramses RF device updates."""
-        signal = f"ramses_rf_device_update_{self._device_id}"
-        self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Unsubscribe when removed."""
-        if self._unsub is not None:
-            self._unsub()
-            self._unsub = None
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle device update from Ramses RF."""
@@ -228,7 +210,7 @@ class RamsesExtraHumiditySensor(SensorEntity):
                 _LOGGER.error(
                     "Invalid humidity value %.1f%% for %s (must be 0-100%%)",
                     humidity,
-                    self.name,
+                    self._attr_name,
                 )
                 return None, None
 
@@ -237,7 +219,7 @@ class RamsesExtraHumiditySensor(SensorEntity):
         except (ValueError, AttributeError) as e:
             _LOGGER.debug(
                 "Error parsing temp/humidity for %s: %s",
-                self.name,
+                self._attr_name,
                 e,
             )
             return None, None
@@ -255,3 +237,8 @@ class RamsesExtraHumiditySensor(SensorEntity):
     @property
     def native_unit_of_measurement(self) -> str:
         return "g/m³"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        base_attrs = super().extra_state_attributes or {}
+        return {**base_attrs, "sensor_type": self._sensor_type}

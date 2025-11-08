@@ -18,6 +18,7 @@ from .helpers.device import (
     generate_entity_name_from_template,
     get_device_type,
 )
+from .helpers.entity import RamsesBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -142,7 +143,7 @@ async def async_setup_entry(
     async_add_entities(numbers, True)
 
 
-class RamsesNumberEntity(NumberEntity, RestoreEntity):
+class RamsesNumberEntity(NumberEntity, RestoreEntity, RamsesBaseEntity):
     """Number entity for Ramses device configuration values."""
 
     def __init__(
@@ -152,17 +153,11 @@ class RamsesNumberEntity(NumberEntity, RestoreEntity):
         number_type: str,
         config: dict[str, Any],
     ):
-        self.hass = hass
-        self._device_id = device_id  # Store device ID as string
-        self._number_type = number_type
-        self._config = config
+        # Initialize base entity
+        RamsesBaseEntity.__init__(self, hass, device_id, number_type, config)
 
-        # Set attributes from configuration
-        self._attr_name = f"{config['name_template']} ({device_id})"
-        # Use new format: number.relative_humidity_minimum_32_153289
-        self._attr_unique_id = f"{number_type}_{device_id.replace(':', '_')}"
-        self._attr_icon = config["icon"]
-        self._attr_entity_category = config["entity_category"]
+        # Set number-specific attributes
+        self._number_type = number_type
         self._attr_native_unit_of_measurement = config.get("unit")
         self._attr_device_class = config.get("device_class")
         self._attr_native_min_value = config.get("min_value", 0)
@@ -171,22 +166,14 @@ class RamsesNumberEntity(NumberEntity, RestoreEntity):
 
         # Use default value if specified, otherwise use min_value
         self._value = config.get("default_value", self._attr_native_min_value)
-        self._unsub: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
-        signal = f"ramses_rf_device_update_{self._device_id}"
-        self._unsub = async_dispatcher_connect(self.hass, signal, self._handle_update)
-        _LOGGER.debug("Subscribed to %s for number %s", signal, self.name)
+        # Call base class method first
+        await super().async_added_to_hass()
 
         # Restore state for humidity control entities only
         await self._async_restore_state()
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Unsubscribe when removed."""
-        if self._unsub is not None:
-            self._unsub()
-            self._unsub = None
 
     async def _async_restore_state(self) -> None:
         """Restore state from previous session for humidity control entities."""
@@ -267,3 +254,8 @@ class RamsesNumberEntity(NumberEntity, RestoreEntity):
 
         self._value = value
         self.async_write_ha_state()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        base_attrs = super().extra_state_attributes or {}
+        return {**base_attrs, "number_type": self._number_type}
