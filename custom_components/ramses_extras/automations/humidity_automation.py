@@ -20,12 +20,14 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
 )
 
-from ..const import AVAILABLE_FEATURES, DEVICE_ENTITY_MAPPING
+from ..const import (
+    AVAILABLE_FEATURES,
+    DEVICE_ENTITY_MAPPING,
+    FEATURE_ID_HUMIDITY_CONTROL,
+)
 from ..helpers.device import (
     generate_entity_name_from_template,
-    get_actual_entity_name,
     get_all_required_entity_ids_for_device,
-    get_entity_mapping,
     get_state_to_entity_mappings_v2,
     parse_entity_id,
 )
@@ -84,22 +86,29 @@ class HumidityAutomationManager:
         # Add CC entity pattern for relative humidity
         patterns.append("*_indoor_humidity")  # CC: sensor.32_153289_indoor_humidity
 
-        # Add Extras entity patterns using new naming convention
-        entity_mapping = get_entity_mapping()
-        for entity_type, entity_names in entity_mapping.items():
+        # Add Extras entity patterns using const.py feature definition
+        humidity_feature = cast(
+            dict[str, Any], AVAILABLE_FEATURES[FEATURE_ID_HUMIDITY_CONTROL]
+        )
+        required_entities = cast(
+            dict[str, list[str]], humidity_feature.get("required_entities", {})
+        )
+
+        for entity_type, entity_names in required_entities.items():
             for entity_name in entity_names:
                 # Use wildcard pattern for dynamic device_id matching
-                patterns.append(f"{entity_type}.{entity_name}_*")
+                patterns.append(f"{entity_type.rstrip('s')}.{entity_name}_*")
 
         return patterns
 
     def _get_entity_name_from_const(self, const_entity_name: str) -> str:
         """Convert const.py entity name to actual entity name from configs.
 
-        This method is a wrapper for the moved get_actual_entity_name function.
+        In the new system, const entity names ARE the actual entity names.
+        This method just returns the input for compatibility.
         Used by tests to verify entity name transformation.
         """
-        return get_actual_entity_name(const_entity_name)
+        return const_entity_name
 
     def _get_state_mappings(self, device_id: str) -> dict[str, str]:
         """Generate state mappings dynamically using AVAILABLE_FEATURES.
@@ -871,8 +880,8 @@ class HumidityAutomationManager:
                         const_entity_name
                     ]
 
-                    # Get the actual entity name using the moved helper
-                    actual_entity_name = get_actual_entity_name(const_entity_name)
+                    # Entity names in const.py ARE the actual entity names
+                    actual_entity_name = const_entity_name
 
                     # Generate the expected entity ID using helpers
                     expected_entity_id = generate_entity_name_from_template(

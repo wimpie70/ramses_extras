@@ -194,39 +194,11 @@ def get_feature_entity_mappings(feature_id: str) -> dict[str, str]:
         all_entity_names.extend(entity_list)
 
     # Create mapping from const names to actual config names
+    # Entity names in const.py ARE the actual entity names
     for entity_name in all_entity_names:
-        actual_name = get_actual_entity_name_from_config(entity_name)
-        if actual_name:
-            entity_mappings[entity_name] = actual_name
+        entity_mappings[entity_name] = entity_name
 
     return entity_mappings
-
-
-def get_actual_entity_name_from_config(const_entity_name: str) -> str | None:
-    """Get the actual entity name from config for a const entity name.
-
-    Args:
-        const_entity_name: Entity name from const.py (e.g., "indoor_abs_humid")
-
-    Returns:
-        Actual entity name from config (e.g., "indoor_absolute_humidity") or None
-    """
-    # Check all entity type configs
-    for entity_type, configs in ENTITY_TYPE_CONFIGS.items():
-        if const_entity_name in configs:
-            return const_entity_name
-
-    # If not found directly, check if it's a known mapping
-    name_mapping = {
-        "indoor_abs_humid": "indoor_absolute_humidity",
-        "outdoor_abs_humid": "outdoor_absolute_humidity",
-        "rel_humid_min": "relative_humidity_minimum",
-        "rel_humid_max": "relative_humidity_maximum",
-        "abs_humid_offset": "absolute_humidity_offset",
-        "dehumidify": "dehumidify",
-        "dehumidifying_active": "dehumidifying_active",
-    }
-    return name_mapping.get(const_entity_name)
 
 
 def get_state_to_entity_mappings(feature_id: str) -> dict[str, tuple[str, str]]:
@@ -510,49 +482,6 @@ def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
         return None
 
 
-def get_entity_mapping() -> dict[str, list[str]]:
-    """Get the common entity mapping for humidity control features.
-
-    This provides a standardized mapping between entity types and their names,
-    which can be used across different parts of the integration.
-
-    Returns:
-        Dictionary mapping entity types to lists of entity names
-    """
-    return {
-        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
-        "number": [
-            "relative_humidity_minimum",
-            "relative_humidity_maximum",
-            "absolute_humidity_offset",
-        ],
-        "switch": ["dehumidify"],
-        "binary_sensor": ["dehumidifying_active"],
-    }
-
-
-def get_actual_entity_name(const_entity_name: str) -> str:
-    """Convert const.py entity name to actual entity name from configs.
-
-    Args:
-        const_entity_name: Entity name from const.py (e.g., "indoor_abs_humid")
-
-    Returns:
-        Actual entity name (e.g., "indoor_absolute_humidity")
-    """
-    # Mapping from old const names to new entity names
-    name_mapping = {
-        "indoor_abs_humid": "indoor_absolute_humidity",
-        "outdoor_abs_humid": "outdoor_absolute_humidity",
-        "rel_humid_min": "relative_humidity_minimum",
-        "rel_humid_max": "relative_humidity_maximum",
-        "abs_humid_offset": "absolute_humidity_offset",
-        "dehumidify": "dehumidify",
-        "dehumidifying_active": "dehumidifying_active",
-    }
-    return name_mapping.get(const_entity_name, const_entity_name)
-
-
 def get_state_to_entity_mappings_v2(feature_id: str, device_id: str) -> dict[str, str]:
     """Get state to entity mappings for a feature.
 
@@ -593,8 +522,8 @@ def get_state_to_entity_mappings_v2(feature_id: str, device_id: str) -> dict[str
             # Find which entity type this belongs to
             for entity_type, entity_list in required_entities.items():
                 if entity_name in entity_list:
-                    # Get the actual entity name from config
-                    actual_entity_name = get_actual_entity_name(entity_name)
+                    # Entity names in const.py ARE the actual entity names
+                    actual_entity_name = entity_name
 
                     entity_id = generate_entity_name_from_template(
                         entity_type.rstrip("s"),  # Remove 's' from plural
