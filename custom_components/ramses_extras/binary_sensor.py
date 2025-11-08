@@ -21,7 +21,6 @@ from .helpers.entity import ExtrasBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
-    remove_orphaned_entities,
 )
 
 if TYPE_CHECKING:
@@ -116,36 +115,6 @@ async def async_setup_entry(
                         RamsesBinarySensor(hass, device_id, boolean_type, config)
                     )
                     _LOGGER.debug(f"Creating binary sensor: {device_id}_{boolean_type}")
-
-    # Remove orphaned entities (defer to after entity creation)
-    async def cleanup_orphaned_entities() -> None:
-        try:
-            # Get all possible binary sensor types for all devices
-            all_possible_booleans = set()
-            for device_id in devices:
-                device = find_ramses_device(hass, device_id)
-                if device:
-                    device_type = get_device_type(device)
-                    if device_type in DEVICE_ENTITY_MAPPING:
-                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                        all_possible_booleans.update(
-                            entity_mapping.get("binary_sensors", [])
-                        )
-
-            await remove_orphaned_entities(
-                "binary_sensor",
-                hass,
-                devices,
-                calculate_required_entities(
-                    "binary_sensor", enabled_features, devices, hass
-                ),
-                list(all_possible_booleans),
-            )
-        except Exception as e:
-            _LOGGER.warning(f"Error during binary_sensor entity cleanup: {e}")
-
-    # Schedule cleanup after entity creation
-    hass.async_create_task(cleanup_orphaned_entities())
 
     async_add_entities(binary_sensors, True)
 

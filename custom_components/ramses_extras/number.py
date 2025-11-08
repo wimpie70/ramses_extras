@@ -21,7 +21,6 @@ from .helpers.entity import EntityHelpers, ExtrasBaseEntity
 from .helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
-    remove_orphaned_entities,
 )
 
 if TYPE_CHECKING:
@@ -112,32 +111,6 @@ async def async_setup_entry(
                         "number", number_type, device_id
                     )
                     _LOGGER.debug(f"Creating number: {entity_id}")
-
-    # Remove orphaned entities (defer to after entity creation)
-    async def cleanup_orphaned_entities() -> None:
-        try:
-            # Get all possible number types for all devices
-            all_possible_numbers = set()
-            for device_id in devices:
-                device = find_ramses_device(hass, device_id)
-                if device:
-                    device_type = get_device_type(device)
-                    if device_type in DEVICE_ENTITY_MAPPING:
-                        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
-                        all_possible_numbers.update(entity_mapping.get("numbers", []))
-
-            await remove_orphaned_entities(
-                "number",
-                hass,
-                devices,
-                calculate_required_entities("number", enabled_features, devices, hass),
-                list(all_possible_numbers),
-            )
-        except Exception as e:
-            _LOGGER.warning(f"Error during number entity cleanup: {e}")
-
-    # Schedule cleanup after entity creation
-    hass.async_create_task(cleanup_orphaned_entities())
 
     async_add_entities(numbers, True)
 

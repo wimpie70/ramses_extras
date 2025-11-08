@@ -281,6 +281,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("🔍 Starting async_setup_platforms...")
     await async_setup_platforms(hass)
 
+    # Clean up orphaned entities after all platforms are set up
+    _LOGGER.info("🧹 Starting global orphaned entity cleanup...")
+    await _cleanup_orphaned_entities_global(hass)
+
     # Load platforms for this config entry (ha's core method)
     _LOGGER.info("🖥️ Forwarding entry setups...")
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -767,6 +771,68 @@ async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
 
     except Exception as e:
         _LOGGER.error(f"Failed to cleanup humidity automations: {e}")
+
+
+async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
+    """Clean up orphaned entities across all platforms after setup."""
+    try:
+        from .helpers.entity import EntityHelpers
+        from .helpers.platform import (
+            calculate_required_entities,
+            get_enabled_features,
+        )
+
+        # Get devices and config entry
+        devices = hass.data.get(DOMAIN, {}).get("devices", [])
+        config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+
+        if not devices or not config_entry:
+            _LOGGER.debug("No devices or config entry available for global cleanup")
+            return
+
+        # Get enabled features
+        enabled_features = get_enabled_features(hass, config_entry)
+
+        # Clean up orphaned entities for all platforms
+        platforms = ["sensor", "switch", "binary_sensor", "number"]
+
+        for platform in platforms:
+            try:
+                required_entities = calculate_required_entities(
+                    platform, enabled_features, devices, hass
+                )
+
+                # Get all possible entity types for this platform
+                all_possible_types = set()
+                for device_id in devices:
+                    from .helpers.device import find_ramses_device, get_device_type
+
+                    device = find_ramses_device(hass, device_id)
+                    if device:
+                        device_type = get_device_type(device)
+                        if device_type in DEVICE_ENTITY_MAPPING:
+                            entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                            platform_key = (
+                                f"{platform}s"  # Convert 'sensor' -> 'sensors'
+                            )
+                            all_possible_types.update(
+                                entity_mapping.get(platform_key, [])
+                            )
+
+                removed_count = EntityHelpers.cleanup_orphaned_entities(
+                    platform, hass, devices, required_entities, list(all_possible_types)
+                )
+
+                if removed_count > 0:
+                    _LOGGER.info(
+                        f"Removed {removed_count} orphaned {platform} entities"
+                    )
+
+            except Exception as e:
+                _LOGGER.warning(f"Error during {platform} cleanup: {e}")
+
+    except Exception as e:
+        _LOGGER.warning(f"Error during global orphaned entity cleanup: {e}")
 
 
 async def handle_hvac_ventilator(device: Any) -> list[str]:

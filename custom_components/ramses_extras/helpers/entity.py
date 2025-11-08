@@ -4,12 +4,15 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from ..const import ENTITY_TYPE_CONFIGS
+
+if TYPE_CHECKING:
+    from homeassistant.helpers import entity_registry as er
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -159,6 +162,92 @@ class EntityHelpers:
 
         except (ValueError, IndexError):
             return None
+
+    @staticmethod
+    def cleanup_orphaned_entities(
+        platform: str,
+        hass: "HomeAssistant",
+        devices: list[str],
+        required_entities: set[str],
+        all_possible_types: list[str],
+    ) -> int:
+        """Remove orphaned entities from the registry.
+
+        Args:
+            platform: Platform type ('sensor', 'switch', 'binary_sensor')
+            hass: Home Assistant instance
+            devices: List of device IDs
+            required_entities: Set of currently required entity IDs
+            all_possible_types: List of all possible entity types for this platform
+
+        Returns:
+            Number of entities removed
+        """
+        from homeassistant.helpers import entity_registry as er
+
+        _LOGGER.info(f"Starting {platform} cleanup for devices: {devices}")
+
+        # Get entity registry
+        if "entity_registry" not in hass.data:
+            _LOGGER.warning("Entity registry not available")
+            return 0
+
+        entity_registry: er.EntityRegistry = hass.data["entity_registry"]
+        _LOGGER.info(f"Entity registry available: {entity_registry is not None}")
+
+        orphaned_entities: list[str] = []
+
+        for entity_id, _entity_entry in entity_registry.entities.items():
+            if not entity_id.startswith(f"{platform}."):
+                continue
+
+            # Extract device_id from entity_id
+            # Format: {platform}.{entity_type}_{device_id} where device_id is 32_153289
+            parts = entity_id.split(".")
+            if len(parts) >= 2:
+                entity_name_and_device = parts[1]  # entity_type_device_id
+
+                # Check if this entity belongs to one of our devices
+                for device_id in devices:
+                    # Convert device_id from colon format (32:153289)
+                    # to underscore format (32_153289)
+                    device_id_underscore = device_id.replace(":", "_")
+
+                    # Check if the entity belongs to this device (device_id at the end)
+                    if entity_name_and_device.endswith(f"_{device_id_underscore}"):
+                        # This entity belongs to our device, check if it's still needed
+                        entity_type = entity_name_and_device[
+                            : -len(f"_{device_id_underscore}") - 1
+                        ]  # Remove "_32_153289"
+
+                        # Check if this entity_type is still required
+                        expected_entity_id = (
+                            f"{platform}.{entity_type}_" + f"{device_id_underscore}"
+                        )
+                        if expected_entity_id not in required_entities:
+                            orphaned_entities.append(entity_id)
+                            _LOGGER.info(
+                                "Will remove orphaned %s: %s (type: %s)",
+                                platform,
+                                entity_id,
+                                entity_type,
+                            )
+                        break
+
+        _LOGGER.info(
+            f"Found {len(orphaned_entities)} orphaned {platform} entities to remove"
+        )
+
+        removed_count = 0
+        for entity_id in orphaned_entities:
+            try:
+                entity_registry.async_remove(entity_id)
+                _LOGGER.info(f"Removed orphaned {platform} entity: {entity_id}")
+                removed_count += 1
+            except Exception as e:
+                _LOGGER.warning(f"Failed to remove {platform} entity {entity_id}: {e}")
+
+        return removed_count
 
 
 class ExtrasBaseEntity(ABC):
