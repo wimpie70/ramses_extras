@@ -14,26 +14,23 @@ sys.path.insert(
 from custom_components.ramses_extras.automations.humidity_automation import (
     HumidityAutomationManager,
 )
-from custom_components.ramses_extras.helpers.device import (
-    get_actual_entity_name_from_config,
-)
 
 
 class TestHumidityAutomationEntityNaming:
     """Test class for humidity automation entity naming fixes."""
 
     def test_entity_name_transformation(self):
-        """Test conversion from const.py names to actual entity names."""
+        """Test that entity names pass through unchanged in new system."""
         # Create manager instance
         manager = HumidityAutomationManager(Mock())
 
-        # Test name transformations
+        # Test name transformations - in new system, names pass through unchanged
         test_cases = [
-            ("indoor_abs_humid", "indoor_absolute_humidity"),
-            ("outdoor_abs_humid", "outdoor_absolute_humidity"),
-            ("rel_humid_min", "relative_humidity_minimum"),
-            ("rel_humid_max", "relative_humidity_maximum"),
-            ("abs_humid_offset", "absolute_humidity_offset"),
+            ("indoor_absolute_humidity", "indoor_absolute_humidity"),
+            ("outdoor_absolute_humidity", "outdoor_absolute_humidity"),
+            ("relative_humidity_minimum", "relative_humidity_minimum"),
+            ("relative_humidity_maximum", "relative_humidity_maximum"),
+            ("absolute_humidity_offset", "absolute_humidity_offset"),
         ]
 
         for const_name, expected_name in test_cases:
