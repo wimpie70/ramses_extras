@@ -33,16 +33,7 @@ class EntityHelpers:
         Returns:
             Full entity ID (e.g., "sensor.indoor_absolute_humidity_32_153289")
         """
-        # Map entity types to their prefixes
-        type_to_prefix = {
-            "sensor": "sensor",
-            "switch": "switch",
-            "number": "number",
-            "binary_sensor": "binary_sensor",
-        }
-
-        prefix = type_to_prefix.get(entity_type, entity_type)
-        return f"{prefix}.{entity_name}_{device_id}"
+        return f"{entity_type}.{entity_name}_{device_id}"
 
     @staticmethod
     def get_entity_template(entity_type: str, entity_name: str) -> str | None:
@@ -83,16 +74,7 @@ class EntityHelpers:
         # Replace {device_id} placeholder with actual device ID
         entity_id_part = template.format(device_id=device_id)
 
-        # Add the entity type prefix
-        type_to_prefix = {
-            "sensor": "sensor",
-            "switch": "switch",
-            "number": "number",
-            "binary_sensor": "binary_sensor",
-        }
-
-        prefix = type_to_prefix.get(entity_type, entity_type)
-        return f"{prefix}.{entity_id_part}"
+        return f"{entity_type}.{entity_id_part}"
 
     @staticmethod
     def get_all_required_entity_ids_for_device(device_id: str) -> list[str]:
@@ -223,9 +205,6 @@ class EntityHelpers:
             entity_type, rest = entity_id.split(".", 1)
 
             # Device ID patterns we expect: 32_153289, 10_456789, etc.
-            # These have the pattern: digits_underscore_digits
-            # We need to find this pattern at the end of the string
-
             # Look for device ID pattern: _ followed by digits,
             # underscore, digits at the end
             device_id_match = re.search(r"_(\d+_\d+)$", rest)
@@ -239,9 +218,7 @@ class EntityHelpers:
                 # No device ID found, return as is
                 return entity_type, rest, ""
 
-            # Validate entity type
-            valid_types = {"sensor", "switch", "number", "binary_sensor"}
-            if entity_type not in valid_types:
+            if entity_type not in ENTITY_TYPE_CONFIGS:
                 return None
 
             return entity_type, entity_name, device_id
