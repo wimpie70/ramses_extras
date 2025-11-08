@@ -145,28 +145,6 @@ class HumidityAutomationManager:
         # This will verify entities and register specific listeners when ready
         self.hass.async_create_task(self._verify_entities_and_register_listeners())
 
-        # Schedule periodic checks for new entities
-        self.hass.async_create_task(self._periodic_entity_check())
-
-    async def _periodic_entity_check(self) -> None:
-        """Periodically check for new entities and register listeners."""
-        check_count = 0
-        while self._active:
-            try:
-                # Check every 300 seconds (5 minutes)
-                #  for new entities (much less frequent)
-                await asyncio.sleep(300)
-                check_count += 1
-
-                # Only log every check to track periodic activity
-                _LOGGER.debug(f"Periodic entity check #{check_count}")
-
-                await self._register_specific_entity_listeners()
-            except Exception as e:
-                _LOGGER.debug(f"Periodic entity check failed: {e}")
-                # Continue checking even if one check fails
-                continue
-
     async def _delayed_listener_test(self) -> None:
         """Run listener test with a small delay to ensure entities are created."""
         await asyncio.sleep(5)  # Wait 5 seconds for entities to be created
