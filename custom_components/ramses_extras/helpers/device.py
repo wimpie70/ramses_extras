@@ -1,7 +1,7 @@
 """Device finding and validation helpers for Ramses Extras."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -508,3 +508,104 @@ def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
 
     except (ValueError, IndexError):
         return None
+
+
+def get_entity_mapping() -> dict[str, list[str]]:
+    """Get the common entity mapping for humidity control features.
+
+    This provides a standardized mapping between entity types and their names,
+    which can be used across different parts of the integration.
+
+    Returns:
+        Dictionary mapping entity types to lists of entity names
+    """
+    return {
+        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        "number": [
+            "relative_humidity_minimum",
+            "relative_humidity_maximum",
+            "absolute_humidity_offset",
+        ],
+        "switch": ["dehumidify"],
+        "binary_sensor": ["dehumidifying_active"],
+    }
+
+
+def get_actual_entity_name(const_entity_name: str) -> str:
+    """Convert const.py entity name to actual entity name from configs.
+
+    Args:
+        const_entity_name: Entity name from const.py (e.g., "indoor_abs_humid")
+
+    Returns:
+        Actual entity name (e.g., "indoor_absolute_humidity")
+    """
+    # Mapping from old const names to new entity names
+    name_mapping = {
+        "indoor_abs_humid": "indoor_absolute_humidity",
+        "outdoor_abs_humid": "outdoor_absolute_humidity",
+        "rel_humid_min": "relative_humidity_minimum",
+        "rel_humid_max": "relative_humidity_maximum",
+        "abs_humid_offset": "absolute_humidity_offset",
+        "dehumidify": "dehumidify",
+        "dehumidifying_active": "dehumidifying_active",
+    }
+    return name_mapping.get(const_entity_name, const_entity_name)
+
+
+def get_state_to_entity_mappings_v2(feature_id: str, device_id: str) -> dict[str, str]:
+    """Get state to entity mappings for a feature.
+
+    Enhanced version that generates full entity IDs for a specific device.
+
+    Args:
+        feature_id: Feature ID (e.g., "humidity_control")
+        device_id: Device identifier (e.g., "32_153289")
+
+    Returns:
+        Dictionary mapping state names to full entity IDs
+    """
+    if feature_id == "humidity_control":
+        mappings = {
+            # CC entity: relative humidity sensor (unchanged)
+            "indoor_rh": f"sensor.{device_id}_indoor_humidity",
+        }
+
+        # Get humidity feature definition from AVAILABLE_FEATURES
+        humidity_feature = cast(
+            dict[str, Any], AVAILABLE_FEATURES.get("humidity_control", {})
+        )
+        required_entities = cast(
+            dict[str, list[str]], humidity_feature.get("required_entities", {})
+        )
+
+        # Define state to entity name mapping for humidity logic
+        state_to_entity_name_mapping = {
+            "indoor_abs": "indoor_absolute_humidity",
+            "outdoor_abs": "outdoor_absolute_humidity",
+            "max_humidity": "relative_humidity_maximum",
+            "min_humidity": "relative_humidity_minimum",
+            "offset": "absolute_humidity_offset",
+        }
+
+        # Generate entity IDs using the helper methods
+        for state_name, entity_name in state_to_entity_name_mapping.items():
+            # Find which entity type this belongs to
+            for entity_type, entity_list in required_entities.items():
+                if entity_name in entity_list:
+                    # Get the actual entity name from config
+                    actual_entity_name = get_actual_entity_name(entity_name)
+
+                    entity_id = generate_entity_name_from_template(
+                        entity_type.rstrip("s"),  # Remove 's' from plural
+                        actual_entity_name,
+                        device_id,
+                    )
+                    if entity_id:
+                        mappings[state_name] = entity_id
+                    break
+
+        return mappings
+
+    # For other features, this would need to be implemented based on their needs
+    return {}
