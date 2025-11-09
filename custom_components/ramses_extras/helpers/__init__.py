@@ -1,10 +1,10 @@
 """Helper functions package for Ramses Extras."""
 
+from .broker import get_ramses_broker
 from .device import (
     find_ramses_device,
     get_all_device_ids,
     get_device_type,
-    get_ramses_broker,
     validate_device_for_service,
 )
 

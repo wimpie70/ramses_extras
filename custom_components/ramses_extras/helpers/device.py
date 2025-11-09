@@ -1,7 +1,7 @@
 """Device finding and validation helpers for Ramses Extras."""
 
 import logging
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, cast
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -20,9 +20,6 @@ from ..const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Module-level cache for broker lookups to avoid repeated broker finding
-_broker_cache: Any | None = None
-
 
 def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     """Find a Ramses device by ID.
@@ -34,6 +31,8 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     Returns:
         The Ramses device object or None if not found
     """
+    from .broker import get_ramses_broker
+
     # Get the broker
     broker = get_ramses_broker(hass)
     if not broker:
@@ -47,50 +46,6 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
         return device
 
     _LOGGER.warning("Device %s not found in broker", device_id)
-    return None
-
-
-def get_ramses_broker(hass: HomeAssistant) -> Any | None:
-    """Get the Ramses CC broker safely.
-
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        The Ramses broker object or None if not available
-    """
-    global _broker_cache
-
-    # Return cached broker if available
-    if _broker_cache is not None:
-        return _broker_cache
-
-    if not hasattr(hass, "data") or not isinstance(hass.data, dict):
-        _LOGGER.error("Invalid hass.data structure")
-        return None
-
-    ramses_data = hass.data.get("ramses_cc")
-
-    if not ramses_data:
-        _LOGGER.warning("Ramses CC integration not loaded in hass.data")
-        return None
-
-    # Since we know broker._devices is valid, check if ramses_data is the broker itself
-    if ramses_data.__class__.__name__ == "RamsesBroker":
-        _LOGGER.debug("Found RamsesBroker instance directly")
-        _broker_cache = ramses_data
-        return ramses_data
-
-    # Handle the case where ramses_data is a dictionary of entries
-    if isinstance(ramses_data, dict):
-        for entry_id, data in ramses_data.items():
-            # If data is a RamsesBroker instance
-            if data.__class__.__name__ == "RamsesBroker":
-                _LOGGER.debug("Found RamsesBroker in data")
-                _broker_cache = data
-                return data
-
-    _LOGGER.warning("No Ramses broker found in ramses_data")
     return None
 
 
@@ -227,6 +182,8 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
     Returns:
         List of all device IDs found in Ramses CC
     """
+    from .broker import get_ramses_broker
+
     broker = get_ramses_broker(hass)
     if not broker:
         _LOGGER.warning("No Ramses broker available to get device IDs")
@@ -272,18 +229,13 @@ def ensure_ramses_cc_loaded(hass: HomeAssistant) -> None:
             "Please ensure Ramses CC is installed and configured."
         )
 
+    from .broker import get_ramses_broker
+
     if not get_ramses_broker(hass):
         raise HomeAssistantError(
             "Ramses CC broker is not available. "
             "Please check your Ramses CC configuration."
         )
-
-
-def clear_broker_cache() -> None:
-    """Clear the broker cache. Call this when broker may have changed."""
-    global _broker_cache
-    _broker_cache = None
-    _LOGGER.debug("Cleared broker cache")
 
 
 def get_state_to_entity_mappings_v2(feature_id: str, device_id: str) -> dict[str, str]:

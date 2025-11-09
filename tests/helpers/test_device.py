@@ -57,7 +57,7 @@ class TestDeviceHelpers:
     @pytest.fixture(autouse=True)
     def clear_caches(self):
         """Clear caches before each test."""
-        from ramses_extras.helpers.device import clear_broker_cache
+        from ramses_extras.helpers.broker import clear_broker_cache
 
         clear_broker_cache()
 
@@ -162,7 +162,7 @@ class TestDeviceHelpers:
         self, mock_hass: Mock, mock_ramses_broker
     ) -> None:
         """Test getting broker when it's directly in data."""
-        from ramses_extras.helpers.device import get_ramses_broker
+        from ramses_extras.helpers.broker import get_ramses_broker
 
         broker = get_ramses_broker(mock_hass)
 
@@ -175,7 +175,7 @@ class TestDeviceHelpers:
         # The broker is expected to be found directly in ramses_cc data
         mock_hass.data = {"ramses_cc": mock_ramses_broker}
 
-        from ramses_extras.helpers.device import get_ramses_broker
+        from ramses_extras.helpers.broker import get_ramses_broker
 
         broker = get_ramses_broker(mock_hass)
 
@@ -190,7 +190,7 @@ class TestDeviceHelpers:
         mock_broker.__class__.__name__ = "RamsesBroker"
         mock_hass.data = {"ramses_cc": mock_broker}
 
-        from ramses_extras.helpers.device import get_ramses_broker
+        from ramses_extras.helpers.broker import get_ramses_broker
 
         broker = get_ramses_broker(mock_hass)
 
@@ -321,19 +321,19 @@ class TestDeviceHelpers:
         """Test get_ramses_broker when ramses_cc is not in hass.data."""
         mock_hass.data = {}
 
-        from ramses_extras.helpers.device import get_ramses_broker
+        from ramses_extras.helpers.broker import get_ramses_broker
 
         broker = get_ramses_broker(mock_hass)
         assert broker is None
 
-    @patch("ramses_extras.helpers.device._LOGGER")
+    @patch("ramses_extras.helpers.broker._LOGGER")
     def test_get_ramses_broker_invalid_structure(
         self, mock_logger, mock_hass: Mock
     ) -> None:
         """Test get_ramses_broker with invalid broker structure."""
         mock_hass.data = {"ramses_cc": {"entry_123": "not a broker"}}
 
-        from ramses_extras.helpers.device import get_ramses_broker
+        from ramses_extras.helpers.broker import get_ramses_broker
 
         broker = get_ramses_broker(mock_hass)
         assert broker is None
@@ -385,7 +385,7 @@ class TestDeviceHelpers:
         device_ids = get_all_device_ids(mock_hass)
         assert set(device_ids) == {"32:153289", "45:678901"}
 
-    @patch("ramses_extras.helpers.device._LOGGER")
+    @patch("ramses_extras.helpers.broker._LOGGER")
     def test_get_ramses_broker_no_client_attr(
         self, mock_logger, mock_hass: Mock, mock_ramses_broker
     ) -> None:
@@ -394,7 +394,7 @@ class TestDeviceHelpers:
         del mock_ramses_broker.client
         mock_ramses_broker._devices = ["device1", "device2"]  # Has devices
 
-        from ramses_extras.helpers.device import get_ramses_broker
+        from ramses_extras.helpers.broker import get_ramses_broker
 
         broker = get_ramses_broker(mock_hass)
         # Should still return the broker

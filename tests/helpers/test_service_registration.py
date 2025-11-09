@@ -74,7 +74,7 @@ class TestServiceRegistration:
     @pytest.fixture(autouse=True)
     def clear_caches(self):
         """Clear caches before each test."""
-        from ramses_extras.helpers.device import clear_broker_cache
+        from ramses_extras.helpers.broker import clear_broker_cache
 
         clear_broker_cache()
 
