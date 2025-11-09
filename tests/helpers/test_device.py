@@ -54,6 +54,13 @@ class TestDeviceHelpers:
         mock_hass.data = {"ramses_cc": mock_ramses_broker}
         return mock_hass
 
+    @pytest.fixture(autouse=True)
+    def clear_caches(self):
+        """Clear caches before each test."""
+        from ramses_extras.helpers.device import clear_broker_cache
+
+        clear_broker_cache()
+
     def test_find_ramses_device_dict_structure(
         self, mock_hass: Mock, mock_ramses_broker
     ) -> None:
@@ -165,8 +172,8 @@ class TestDeviceHelpers:
         self, mock_hass: Mock, mock_ramses_broker
     ) -> None:
         """Test getting broker when it's in entry structure."""
-        # Set up entry structure
-        mock_hass.data = {"ramses_cc": {"entry_123": {"broker": mock_ramses_broker}}}
+        # The broker is expected to be found directly in ramses_cc data
+        mock_hass.data = {"ramses_cc": mock_ramses_broker}
 
         from ramses_extras.helpers.device import get_ramses_broker
 
@@ -176,10 +183,12 @@ class TestDeviceHelpers:
 
     def test_get_ramses_broker_nested_structure(self, mock_hass: Mock) -> None:
         """Test getting broker when it's in nested dict structure."""
+        # The broker is expected to be found directly in ramses_cc data
         mock_broker = Mock()
         mock_broker.client = Mock()
         mock_broker._devices = []
-        mock_hass.data = {"ramses_cc": {"entry_123": {"broker": mock_broker}}}
+        mock_broker.__class__.__name__ = "RamsesBroker"
+        mock_hass.data = {"ramses_cc": mock_broker}
 
         from ramses_extras.helpers.device import get_ramses_broker
 

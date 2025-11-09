@@ -71,6 +71,13 @@ class TestServiceRegistration:
         mock_hass.config.components = []
         return mock_hass
 
+    @pytest.fixture(autouse=True)
+    def clear_caches(self):
+        """Clear caches before each test."""
+        from ramses_extras.helpers.device import clear_broker_cache
+
+        clear_broker_cache()
+
     @pytest.fixture
     def mock_feature_manager(self) -> Mock:
         """Create mock FeatureManager instance."""
