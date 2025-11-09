@@ -244,32 +244,6 @@ def get_feature_required_entities(feature_id: str) -> dict[str, list[str]]:
     return {}
 
 
-def get_feature_entity_mappings(feature_id: str) -> dict[str, str]:
-    """Get entity mappings for a feature by combining
-     required entities with config names.
-
-    Args:
-        feature_id: Feature ID (e.g., "humidity_control")
-
-    Returns:
-        Dictionary mapping const entity names to actual entity names from configs
-    """
-    required_entities = get_feature_required_entities(feature_id)
-    entity_mappings = {}
-
-    # Flatten all entity names from all types
-    all_entity_names = []
-    for entity_type, entity_list in required_entities.items():
-        all_entity_names.extend(entity_list)
-
-    # Create mapping from const names to actual config names
-    # Entity names in const.py ARE the actual entity names
-    for entity_name in all_entity_names:
-        entity_mappings[entity_name] = entity_name
-
-    return entity_mappings
-
-
 def get_state_to_entity_mappings(feature_id: str) -> dict[str, tuple[str, str]]:
     """Get state to entity mappings for a feature.
 
@@ -294,6 +268,36 @@ def get_state_to_entity_mappings(feature_id: str) -> dict[str, tuple[str, str]]:
     # For other features, this would need to be implemented based on their needs
     # This is where you'd add mappings for other automations
     return {}
+
+
+def get_feature_entity_mappings(feature_id: str, device_id: str) -> dict[str, str]:
+    """Get entity mappings for a feature by
+    generating full entity IDs for a specific device.
+
+    Args:
+        feature_id: Feature ID (e.g., "humidity_control")
+        device_id: Device identifier (e.g., "32_153289")
+
+    Returns:
+        Dictionary mapping state names to full entity IDs
+    """
+    from typing import Any, cast
+
+    feature = AVAILABLE_FEATURES.get(feature_id, {})
+    if not feature:
+        return {}
+
+    mappings = {}
+
+    # Get unified entity mappings from feature configuration
+    # This handles both local and external entities with template support
+    entity_mappings = cast(dict[str, str], feature.get("entity_mappings", {}))
+
+    # Generate entity IDs using template substitution
+    for state_name, entity_template in entity_mappings.items():
+        mappings[state_name] = entity_template.format(device_id=device_id)
+
+    return mappings
 
 
 class ExtrasBaseEntity(ABC):

@@ -25,8 +25,7 @@ from ..const import (
     DEVICE_ENTITY_MAPPING,
     FEATURE_ID_HUMIDITY_CONTROL,
 )
-from ..helpers.device import get_state_to_entity_mappings_v2
-from ..helpers.entity import EntityHelpers
+from ..helpers.entity import EntityHelpers, get_feature_entity_mappings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -113,7 +112,7 @@ class HumidityAutomationManager:
         get_state_to_entity_mappings_v2 function.
         Kept for backward compatibility.
         """
-        return get_state_to_entity_mappings_v2("humidity_control", device_id)
+        return get_feature_entity_mappings("humidity_control", device_id)
 
     async def start(self) -> None:
         """Start the humidity automation.
@@ -568,7 +567,7 @@ class HumidityAutomationManager:
         states = {}
 
         # Get dynamic state mappings from const.py (now using moved function)
-        state_mappings = get_state_to_entity_mappings_v2("humidity_control", device_id)
+        state_mappings = get_feature_entity_mappings("humidity_control", device_id)
 
         for state_name, entity_id in state_mappings.items():
             state = self.hass.states.get(entity_id)

@@ -116,6 +116,15 @@ AVAILABLE_FEATURES = {
             "sensors": [],
             "switches": [],
         },
+        # Unified entity mappings - handles both local and external entities
+        "entity_mappings": {
+            "indoor_rh": "sensor.{device_id}_indoor_humidity",
+            "indoor_abs": "sensor.indoor_absolute_humidity_{device_id}",
+            "outdoor_abs": "sensor.outdoor_absolute_humidity_{device_id}",
+            "max_humidity": "number.relative_humidity_maximum_{device_id}",
+            "min_humidity": "number.relative_humidity_minimum_{device_id}",
+            "offset": "number.absolute_humidity_offset_{device_id}",
+        },
     },
 }
 
