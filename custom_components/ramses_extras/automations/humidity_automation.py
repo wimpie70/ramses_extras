@@ -25,17 +25,23 @@ from ..const import (
     DEVICE_ENTITY_MAPPING,
     FEATURE_ID_HUMIDITY_CONTROL,
 )
+from ..helpers.automation import ExtrasBaseAutomation
 from ..helpers.entity import EntityHelpers, get_feature_entity_mappings
 
 _LOGGER = logging.getLogger(__name__)
 
+# Humidity automation configuration constants
+HUMIDITY_DEBOUNCE_SECONDS = 15
 
-class HumidityAutomationManager:
+
+class HumidityAutomationManager(ExtrasBaseAutomation):
     """Manages hardcoded humidity automation logic.
 
     This class implements the exact decision logic from the mermaid diagram
     in humidity_decision_flow.md, replacing the YAML template system with
     direct Python automation.
+
+    Inherits generic automation patterns from ExtrasBaseAutomation.
     """
 
     def __init__(
@@ -48,53 +54,24 @@ class HumidityAutomationManager:
             binary_sensor: The binary sensor entity to update
             switch_state: The current state of the switch (True for ON, False for OFF)
         """
-        self.hass = hass
-        self.binary_sensor = binary_sensor
+        # Initialize base automation with humidity control feature
+        super().__init__(
+            hass=hass,
+            feature_id=FEATURE_ID_HUMIDITY_CONTROL,
+            binary_sensor=binary_sensor,
+            debounce_seconds=HUMIDITY_DEBOUNCE_SECONDS,
+        )
+
+        # Humidity-specific state tracking
         self.switch_state = switch_state
         _LOGGER.info(
             f"HumidityAutomationManager __init__ binary_sensor: {binary_sensor}, "
             f"switch_state: {switch_state}"
         )
-        self._listeners: list[Any] = []  # State change listeners
-        self._change_timers: dict[str, Any] = {}  # device_id -> timer for debouncing
-        self._active = False
-
-        # NEW: Track specific entity IDs for dynamic listener registration
-        self._specific_entity_ids: set[str] = set()
 
         # Cache for dynamically generated entity patterns and mappings
-        self._entity_patterns: list[str] | None = None
         self._state_mappings: dict[str, str] | None = None
         self._entity_configs: dict[str, dict[str, Any]] | None = None
-
-    @property
-    def entity_patterns(self) -> list[str]:
-        """Generate entity patterns dynamically from const.py definitions."""
-        if self._entity_patterns is None:
-            self._entity_patterns = self._generate_entity_patterns()
-        return self._entity_patterns
-
-    def _generate_entity_patterns(self) -> list[str]:
-        """Generate entity patterns based on const.py definitions using new helpers."""
-        patterns = []
-
-        # Add CC entity pattern for relative humidity
-        patterns.append("*_indoor_humidity")  # CC: sensor.32_153289_indoor_humidity
-
-        # Add Extras entity patterns using const.py feature definition
-        humidity_feature = cast(
-            dict[str, Any], AVAILABLE_FEATURES[FEATURE_ID_HUMIDITY_CONTROL]
-        )
-        required_entities = cast(
-            dict[str, list[str]], humidity_feature.get("required_entities", {})
-        )
-
-        for entity_type, entity_names in required_entities.items():
-            for entity_name in entity_names:
-                # Use wildcard pattern for dynamic device_id matching
-                patterns.append(f"{entity_type.rstrip('s')}.{entity_name}_*")
-
-        return patterns
 
     def _get_entity_name_from_const(self, const_entity_name: str) -> str:
         """Convert const.py entity name to actual entity name from configs.
@@ -114,36 +91,6 @@ class HumidityAutomationManager:
         """
         return get_feature_entity_mappings("humidity_control", device_id)
 
-    async def start(self) -> None:
-        """Start the humidity automation.
-
-        Starts immediately without waiting for entities to avoid blocking HA startup.
-        """
-        if self._active:
-            _LOGGER.warning("Humidity automation already started")
-            return
-
-        _LOGGER.info(
-            "🚀 Starting humidity automation immediately (non-blocking startup)"
-        )
-        _LOGGER.info(f"📋 Entity patterns to listen for: {self.entity_patterns}")
-        _LOGGER.info(
-            "🔧 Registering global state listeners for immediate responsiveness"
-        )
-
-        # Start in non-blocking mode - will activate automatically
-        #  when entities are available
-        self._active = True
-        _LOGGER.info("✅ Humidity automation started successfully (non-blocking)")
-        _LOGGER.info(
-            "🎯 Will activate automatically when humidity control "
-            "switches are turned ON"
-        )
-
-        # Schedule entity verification to happen in the background
-        # This will verify entities and register specific listeners when ready
-        self.hass.async_create_task(self._verify_entities_and_register_listeners())
-
     async def _delayed_listener_test(self) -> None:
         """Run listener test with a small delay to ensure entities are created."""
         await asyncio.sleep(5)  # Wait 5 seconds for entities to be created
@@ -151,177 +98,6 @@ class HumidityAutomationManager:
 
         # Immediately evaluate current humidity conditions if switch is on
         await self._evaluate_current_conditions()
-
-    async def stop(self) -> None:
-        """Stop the humidity automation and clean up resources."""
-        if not self._active:
-            return
-
-        _LOGGER.info("Stopping humidity automation")
-
-        # Remove all state listeners
-        for listener in self._listeners:
-            listener()
-        self._listeners.clear()
-
-        # Cancel all debouncing timers
-        await self._cancel_all_timers()
-
-        self._active = False
-
-        # Clear specific entity tracking
-        self._specific_entity_ids.clear()
-        _LOGGER.debug("Cleared specific entity ID tracking")
-
-        _LOGGER.info("Humidity automation stopped")
-
-    async def _wait_for_entities(self, timeout: int = 90) -> bool:
-        """Wait for entities to be created before starting automation.
-
-        Args:
-            timeout: Maximum time to wait in seconds
-
-        Returns:
-            True if entities are ready, False if timeout occurred
-        """
-        _LOGGER.info(f"Waiting for humidity entities (timeout: {timeout}s)")
-        start_time = time.time()
-        attempt = 0
-
-        while time.time() - start_time < timeout:
-            attempt += 1
-
-            # Check if we have any devices with all required entities
-            if await self._check_any_device_ready():
-                _LOGGER.info(
-                    f"Humidity automation: Entities ready after {attempt} attempts"
-                )
-                return True
-
-            # Log progress every 10 attempts
-            if attempt % 10 == 0:
-                elapsed = time.time() - start_time
-                _LOGGER.debug(
-                    f"Still waiting for entities... ({elapsed:.1f}s elapsed, "
-                    f"{attempt} attempts)"
-                )
-
-            await asyncio.sleep(1)
-
-        _LOGGER.warning(
-            "Humidity automation: Timeout waiting for entities, proceeding anyway"
-        )
-        _LOGGER.info(
-            "Starting automation without entity verification - "
-            "will activate when entities become available"
-        )
-        return False
-
-    async def _check_any_device_ready(self) -> bool:
-        """Check if any device has all required entities ready.
-
-        Returns:
-            True if at least one device is ready
-        """
-        # Look for humidity control switches
-        switches = self.hass.states.async_all("switch")
-        dehumidify_switches = [
-            state
-            for state in switches
-            if state.entity_id.startswith("switch.dehumidify_")
-        ]
-
-        if not dehumidify_switches:
-            return False
-
-        # Check each device has all required entities
-        for switch_state in dehumidify_switches:
-            device_id = self._extract_device_id(switch_state.entity_id)
-            if device_id and await self._validate_device_entities(device_id):
-                _LOGGER.debug(f"Device {device_id} has all entities ready")
-                return True
-
-        return False
-
-    async def _verify_entities_and_register_listeners(self) -> None:
-        """Verify entities and register specific listeners in background."""
-        _LOGGER.debug(
-            "Starting background entity verification and dynamic listener registration"
-        )
-        try:
-            # Wait for entities to be ready
-            entities_ready = await self._wait_for_entities()
-            if entities_ready:
-                _LOGGER.info("Humidity automation: Entities verified and ready")
-                # Register specific listeners for discovered entity IDs
-                await self._register_specific_entity_listeners()
-            else:
-                _LOGGER.debug(
-                    "Humidity automation: Entities not yet available - "
-                    "will activate when ready"
-                )
-        except Exception as e:
-            _LOGGER.debug(
-                f"Humidity automation: Background entity verification failed: {e}"
-            )
-
-    async def _register_specific_entity_listeners(self) -> None:
-        """Register listeners for specific entity IDs instead of patterns."""
-        new_listeners_registered = False
-
-        # Find all number entities that match our patterns
-        all_number_entities = self.hass.states.async_all("number")
-
-        # Register listeners for each specific entity ID that matches our patterns
-        for entity in all_number_entities:
-            entity_id = entity.entity_id
-
-            # Check if this entity matches any of our humidity patterns
-            if self._entity_matches_patterns(entity_id):
-                if entity_id not in self._specific_entity_ids:
-                    _LOGGER.info(
-                        f"📡 Registering listener for specific entity: {entity_id}"
-                    )
-
-                    # Register a listener for this specific entity
-                    listener = async_track_state_change(
-                        self.hass, entity_id, self._handle_state_change
-                    )
-
-                    if listener:
-                        self._listeners.append(listener)
-                        self._specific_entity_ids.add(entity_id)
-                        new_listeners_registered = True
-                        _LOGGER.info(
-                            f"✅ Registered specific listener for: {entity_id}"
-                        )
-                    else:
-                        _LOGGER.error(
-                            f"❌ Failed to create specific listener for: {entity_id}"
-                        )
-                # Skip logging "already have listener" to reduce spam
-
-        # Only log the summary when we've actually registered new listeners
-        if new_listeners_registered:
-            _LOGGER.info(
-                f"🎯 Total {len(self._specific_entity_ids)} spec. entity listeners: "
-                f"{sorted(self._specific_entity_ids)}"
-            )
-
-    def _entity_matches_patterns(self, entity_id: str) -> bool:
-        """Check if an entity ID matches any of our humidity patterns."""
-        # Check if it matches the number entity patterns we care about
-        humidity_patterns = [
-            "number.relative_humidity_minimum_",
-            "number.relative_humidity_maximum_",
-            "number.absolute_humidity_offset_",
-        ]
-
-        for pattern in humidity_patterns:
-            if entity_id.startswith(pattern):
-                return True
-
-        return False
 
     async def _evaluate_current_conditions(self) -> None:
         """Evaluate current humidity conditions immediately when automation starts."""
@@ -359,18 +135,51 @@ class HumidityAutomationManager:
         try:
             entity_states = await self._get_device_entity_states(device_id)
             _LOGGER.info(f"Initial evaluation for device {device_id}: {entity_states}")
-            await self._process_humidity_logic(device_id, entity_states)
+            await self._process_automation_logic(device_id, entity_states)
         except Exception as e:
             _LOGGER.debug(
                 f"Could not evaluate current conditions for device {device_id}: {e}"
             )
 
-    async def _cancel_all_timers(self) -> None:
-        """Cancel all pending debouncing timers."""
-        for timer in self._change_timers.values():
-            timer.cancel()
-        self._change_timers.clear()
-        _LOGGER.debug("Cancelled all debouncing timers")
+    # ==================== ABSTRACT METHOD IMPLEMENTATIONS ====================
+
+    def _generate_entity_patterns(self) -> list[str]:
+        """Generate entity patterns specific to humidity control.
+
+        Overrides base class to provide humidity-specific patterns including
+        CC entities and Extras entities.
+        """
+        patterns = []
+
+        # Add CC entity pattern for relative humidity
+        patterns.append("*_indoor_humidity")  # CC: sensor.32_153289_indoor_humidity
+
+        # Add Extras entity patterns using const.py feature definition
+        humidity_feature = cast(
+            dict[str, Any], AVAILABLE_FEATURES[FEATURE_ID_HUMIDITY_CONTROL]
+        )
+        required_entities = cast(
+            dict[str, list[str]], humidity_feature.get("required_entities", {})
+        )
+
+        for entity_type, entity_names in required_entities.items():
+            for entity_name in entity_names:
+                # Use wildcard pattern for dynamic device_id matching
+                patterns.append(f"{entity_type.rstrip('s')}.{entity_name}_*")
+
+        return patterns
+
+    async def _process_automation_logic(
+        self, device_id: str, entity_states: dict[str, float]
+    ) -> None:
+        """Process humidity automation logic.
+
+        This is the abstract method implementation from ExtrasBaseAutomation.
+        Implements the humidity-specific decision tree logic.
+        """
+        await self._process_humidity_logic(device_id, entity_states)
+
+    # ==================== HUMIDITY-SPECIFIC LOGIC ====================
 
     def _handle_state_change(
         self, entity_id: str, old_state: State | None, new_state: State | None
@@ -533,7 +342,7 @@ class HumidityAutomationManager:
 
         # Set debouncing timer
         self._change_timers[device_id] = self.hass.loop.call_later(
-            45,  # 45 seconds
+            HUMIDITY_DEBOUNCE_SECONDS,
             lambda: self._change_timers.pop(device_id, None),
         )
 
@@ -550,43 +359,7 @@ class HumidityAutomationManager:
             return
 
         # Apply exact mermaid decision logic
-        await self._process_humidity_logic(device_id, entity_states)
-
-    async def _get_device_entity_states(self, device_id: str) -> dict[str, float]:
-        """Get all entity states for a device with validation.
-
-        Args:
-            device_id: Device identifier (e.g., "32_153289")
-
-        Returns:
-            Dictionary with entity state values
-
-        Raises:
-            ValueError: If any entity is unavailable or has invalid values
-        """
-        states = {}
-
-        # Get dynamic state mappings from const.py (now using moved function)
-        state_mappings = get_feature_entity_mappings("humidity_control", device_id)
-
-        for state_name, entity_id in state_mappings.items():
-            state = self.hass.states.get(entity_id)
-
-            if not state:
-                raise ValueError(f"Entity {entity_id} not found")
-
-            if state.state in ["unavailable", "unknown"]:
-                raise ValueError(f"Entity {entity_id} state unavailable")
-
-            try:
-                value = float(state.state)
-                states[state_name] = value
-            except (ValueError, TypeError) as err:
-                raise ValueError(
-                    f"Entity {entity_id} has invalid numeric value: {state.state}"
-                ) from err
-
-        return states
+        await self._process_automation_logic(device_id, entity_states)
 
     async def _process_humidity_logic(
         self, device_id: str, entity_states: dict[str, float]
@@ -772,48 +545,6 @@ class HumidityAutomationManager:
         except Exception as e:
             _LOGGER.error(f"Failed to set fan LOW for device {device_id}: {e}")
 
-    async def _get_current_fan_speed(self, device_id: str) -> str:
-        """Get the current fan speed for a device.
-
-        Args:
-            device_id: Device identifier (e.g., "32_153289")
-
-        Returns:
-            Current fan speed ("high", "low", "auto") - always returns a string
-        """
-        try:
-            # Convert underscore device_id to colon format for entity lookup
-            colon_device_id = device_id.replace("_", ":")
-
-            # Look up the fan speed sensor entity
-            fan_speed_entity_id = f"sensor.{colon_device_id}_fan_speed"
-            fan_speed_state = self.hass.states.get(fan_speed_entity_id)
-
-            if fan_speed_state and fan_speed_state.state not in [
-                "unavailable",
-                "unknown",
-            ]:
-                current_speed = str(fan_speed_state.state).lower()
-                _LOGGER.debug(
-                    f"Device {device_id}: Current fan speed is {current_speed}"
-                )
-                return current_speed
-
-            _LOGGER.debug(
-                f"Device {device_id}: Fan speed sensor not available or unknown - "
-                f"assuming 'auto'"
-            )
-            # If we can't determine the current fan speed, assume it's in auto mode
-            # This is a safe fallback since auto is the default state
-            return "auto"
-
-        except Exception as e:
-            _LOGGER.warning(
-                f"Failed to get current fan speed for device {device_id}: {e}"
-            )
-            # On error, assume auto mode as safe fallback
-            return "auto"
-
     async def _reset_fan_to_auto(self, device_id: str) -> None:
         """Reset fan to AUTO when switch turned OFF.
 
@@ -846,6 +577,42 @@ class HumidityAutomationManager:
         except Exception as e:
             _LOGGER.error(f"Failed to reset fan AUTO for device {device_id}: {e}")
 
+    async def _get_device_entity_states(self, device_id: str) -> dict[str, float]:
+        """Get all entity states for a device with validation.
+
+        Args:
+            device_id: Device identifier (e.g., "32_153289")
+
+        Returns:
+            Dictionary with entity state values
+
+        Raises:
+            ValueError: If any entity is unavailable or has invalid values
+        """
+        states = {}
+
+        # Get dynamic state mappings from const.py (now using moved function)
+        state_mappings = get_feature_entity_mappings("humidity_control", device_id)
+
+        for state_name, entity_id in state_mappings.items():
+            state = self.hass.states.get(entity_id)
+
+            if not state:
+                raise ValueError(f"Entity {entity_id} not found")
+
+            if state.state in ["unavailable", "unknown"]:
+                raise ValueError(f"Entity {entity_id} state unavailable")
+
+            try:
+                value = float(state.state)
+                states[state_name] = value
+            except (ValueError, TypeError) as err:
+                raise ValueError(
+                    f"Entity {entity_id} has invalid numeric value: {state.state}"
+                ) from err
+
+        return states
+
     async def _validate_device_entities(self, device_id: str) -> bool:
         """Validate all required entities exist for a device.
 
@@ -876,13 +643,6 @@ class HumidityAutomationManager:
         required_entities = cast(
             dict[str, list[str]], humidity_feature.get("required_entities", {})
         )
-
-        # Debug: log all available entities for this device
-        # all_entities = self.hass.states.async_all()
-        # device_entities = [
-        #     e.entity_id for e in all_entities if device_id in e.entity_id
-        # ]
-        # _LOGGER.debug(f"Device {device_id}: Found {len(device_entities)} entities")
 
         # Check each required entity type using the new naming system
         # Direct mapping to new entity names (no more const_to_new_mapping needed)
@@ -917,11 +677,6 @@ class HumidityAutomationManager:
                     if expected_entity_id:
                         # Check if this entity exists
                         entity_exists = self.hass.states.get(expected_entity_id)
-                        # _LOGGER.debug(
-                        #     f"Device {device_id}: Expected {expected_entity_id} "
-                        #     f"exists: {entity_exists is not None}"
-                        # )
-
                         if not entity_exists:
                             missing_entities.append(expected_entity_id)
                         else:
@@ -943,26 +698,6 @@ class HumidityAutomationManager:
             return False
 
         return True
-
-    def _extract_device_id(self, entity_id: str) -> str | None:
-        """Extract device_id from entity name using the new parsing helper.
-
-        This replaces the complex regex patterns with a clean parsing helper.
-
-        Args:
-            entity_id: Entity identifier
-
-        Returns:
-            Device identifier in underscore format (e.g., "32_153289")
-            or None if extraction fails
-        """
-        parsed = EntityHelpers.parse_entity_id(entity_id)
-        if parsed:
-            _, _, device_id = parsed
-            return device_id
-
-        _LOGGER.warning(f"Could not extract device_id from entity: {entity_id}")
-        return None
 
     async def _test_listeners_now(self) -> None:
         """Test if listeners are working by manually checking all number entities."""
