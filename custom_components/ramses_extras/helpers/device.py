@@ -8,14 +8,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from ..const import (
     AVAILABLE_FEATURES,
-    BOOLEAN_CONFIGS,
     DEVICE_SERVICE_MAPPING,
-    DOMAIN,
-    ENTITY_TYPE_CONFIGS,
-    NUMBER_CONFIGS,
-    SENSOR_CONFIGS,
-    SERVICE_REGISTRY,
-    SWITCH_CONFIGS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,75 +40,6 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
 
     _LOGGER.warning("Device %s not found in broker", device_id)
     return None
-
-
-def get_feature_required_entities(feature_id: str) -> dict[str, list[str]]:
-    """Get required entities for a specific feature.
-
-    Args:
-        feature_id: Feature ID (e.g., "humidity_control")
-
-    Returns:
-        Dictionary mapping entity types to lists of entity names
-    """
-    feature = AVAILABLE_FEATURES.get(feature_id, {})
-    required_entities = feature.get("required_entities", {})
-    # Ensure the return type is correct
-    if isinstance(required_entities, dict):
-        return dict(required_entities)
-    return {}
-
-
-def get_feature_entity_mappings(feature_id: str) -> dict[str, str]:
-    """Get entity mappings for a feature by combining
-     required entities with config names.
-
-    Args:
-        feature_id: Feature ID (e.g., "humidity_control")
-
-    Returns:
-        Dictionary mapping const entity names to actual entity names from configs
-    """
-    required_entities = get_feature_required_entities(feature_id)
-    entity_mappings = {}
-
-    # Flatten all entity names from all types
-    all_entity_names = []
-    for entity_type, entity_list in required_entities.items():
-        all_entity_names.extend(entity_list)
-
-    # Create mapping from const names to actual config names
-    # Entity names in const.py ARE the actual entity names
-    for entity_name in all_entity_names:
-        entity_mappings[entity_name] = entity_name
-
-    return entity_mappings
-
-
-def get_state_to_entity_mappings(feature_id: str) -> dict[str, tuple[str, str]]:
-    """Get state to entity mappings for a feature.
-
-    This method provides the mapping between internal state names used in automations
-    and the actual entity types and names from the feature configuration.
-
-    Args:
-        feature_id: Feature ID (e.g., "humidity_control")
-
-    Returns:
-        Dictionary mapping state names to (entity_type, entity_name) tuples
-    """
-    if feature_id == "humidity_control":
-        return {
-            "indoor_abs": ("sensor", "indoor_absolute_humidity"),
-            "outdoor_abs": ("sensor", "outdoor_absolute_humidity"),
-            "max_humidity": ("number", "relative_humidity_maximum"),
-            "min_humidity": ("number", "relative_humidity_minimum"),
-            "offset": ("number", "absolute_humidity_offset"),
-        }
-
-    # For other features, this would need to be implemented based on their needs
-    # This is where you'd add mappings for other automations
-    return {}
 
 
 def get_device_type(device: Any) -> str:
