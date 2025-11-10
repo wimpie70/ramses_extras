@@ -532,7 +532,7 @@ async def _start_humidity_automation_if_enabled(
 
     try:
         _LOGGER.debug("Config entry found: %s", config_entry.entry_id)
-        from .automations.humidity_automation import HumidityAutomationManager
+        from .features.humidity_control.automation import HumidityAutomationManager
 
         _LOGGER.debug("Imported HumidityAutomationManager successfully")
 
@@ -546,7 +546,7 @@ async def _start_humidity_automation_if_enabled(
         if humidity_control_enabled:
             _LOGGER.info("Creating HumidityAutomationManager instance...")
             # Start hardcoded humidity automation
-            humidity_automation = HumidityAutomationManager(hass)
+            humidity_automation = HumidityAutomationManager(hass, config_entry)
             _LOGGER.debug("HumidityAutomationManager created, storing in hass.data...")
 
             hass.data.setdefault(DOMAIN, {}).setdefault(config_entry.entry_id, {})[

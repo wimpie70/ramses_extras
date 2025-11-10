@@ -106,11 +106,11 @@ class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
         )
 
         try:
-            from .automations.humidity_automation import HumidityAutomationManager
+            from .features.humidity_control.automation import HumidityAutomationManager
 
             # Create automation manager for this device
             automation_manager = HumidityAutomationManager(
-                self.hass, binary_sensor=binary_sensor
+                self.hass, self.hass.data[DOMAIN]["config_entry"]
             )
 
             # Start the automation
