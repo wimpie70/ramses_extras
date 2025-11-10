@@ -12,12 +12,13 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
+from .framework.base_classes import ExtrasBaseEntity
 from .framework.helpers.device.core import (
     find_ramses_device,
     get_device_type,
 )
 from .framework.helpers.entities import calculate_absolute_humidity
-from .framework.helpers.entity.core import EntityHelpers, ExtrasBaseEntity
+from .framework.helpers.entity.core import EntityHelpers
 from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,

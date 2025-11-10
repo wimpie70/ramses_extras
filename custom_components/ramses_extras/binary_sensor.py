@@ -16,8 +16,8 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
+from .framework.base_classes import ExtrasBaseEntity
 from .framework.helpers.device.core import find_ramses_device, get_device_type
-from .framework.helpers.entity.core import ExtrasBaseEntity
 from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,

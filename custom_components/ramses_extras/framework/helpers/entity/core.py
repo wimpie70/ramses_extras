@@ -1,8 +1,11 @@
-"""Core entity helper functions and classes for Ramses Extras framework.
+"""Core entity helper functions for Ramses Extras framework.
 
 This module provides reusable entity utilities that are shared across
 all features, including entity ID generation, state management, and
 pattern matching functionality.
+
+Note: Base entity classes are now in framework.base_classes.base_entity
+to maintain proper architectural separation.
 """
 
 import logging
@@ -15,39 +18,6 @@ from homeassistant.helpers import entity_registry
 from ....const import AVAILABLE_FEATURES
 
 _LOGGER = logging.getLogger(__name__)
-
-
-class ExtrasBaseEntity:
-    """Base entity class for Ramses Extras entities."""
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        device_id: str,
-        entity_type: str | None = None,
-        config: dict[str, Any] | None = None,
-    ) -> None:
-        """Initialize base entity.
-
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            entity_type: Optional entity type (for compatibility with legacy platforms)
-            config: Optional entity configuration (for compatibility
-             with legacy platforms)
-        """
-        self.hass = hass
-        self.device_id = device_id
-        self._device_id = device_id  # Also set with underscore for compatibility
-        self._entity_type = entity_type
-        self._config = config
-        self._attr_name = ""
-        self._attr_unique_id = ""
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID for this entity."""
-        return self._attr_unique_id
 
 
 class EntityHelpers:
@@ -276,7 +246,6 @@ def get_feature_entity_mappings(feature_id: str, device_id: str) -> dict[str, st
 
 # Export all functions and classes
 __all__ = [
-    "ExtrasBaseEntity",
     "EntityHelpers",
     "get_feature_entity_mappings",
     "generate_entity_id",
