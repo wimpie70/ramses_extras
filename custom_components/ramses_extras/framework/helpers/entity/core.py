@@ -38,6 +38,7 @@ class ExtrasBaseEntity:
         """
         self.hass = hass
         self.device_id = device_id
+        self._device_id = device_id  # Also set with underscore for compatibility
         self._entity_type = entity_type
         self._config = config
         self._attr_name = ""

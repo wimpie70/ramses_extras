@@ -12,13 +12,12 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
+
+# Avoid circular imports by importing when needed in methods
 from typing import Any, cast
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.event import async_track_state_change
-
-from ....const import AVAILABLE_FEATURES
-from ...helpers.entity import EntityHelpers, get_feature_entity_mappings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -141,6 +140,8 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             List of entity patterns
         """
+        from ...const import AVAILABLE_FEATURES
+
         patterns = []
 
         # Add pattern for the feature's required entities
@@ -216,6 +217,8 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             True if at least one device is ready
         """
+        from ...const import AVAILABLE_FEATURES
+
         # Get the first entity type to look for devices
         feature = AVAILABLE_FEATURES.get(self.feature_id, {})
         required_entities = feature.get("required_entities", {})
@@ -440,6 +443,9 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             True if all entities exist, False otherwise
         """
+        from ...const import AVAILABLE_FEATURES
+        from ...entity import EntityHelpers
+
         feature = AVAILABLE_FEATURES.get(self.feature_id, {})
         if not feature:
             _LOGGER.warning(f"No configuration found for feature: {self.feature_id}")
@@ -497,6 +503,8 @@ class ExtrasBaseAutomation(ABC):
             Device identifier in underscore format (e.g., "32_153289")
             or None if extraction fails
         """
+        from ...entity import EntityHelpers
+
         parsed = EntityHelpers.parse_entity_id(entity_id)
         if parsed:
             _, _, device_id = parsed
@@ -521,6 +529,8 @@ class ExtrasBaseAutomation(ABC):
         Raises:
             ValueError: If any entity is unavailable or has invalid values
         """
+        from ...entity import get_feature_entity_mappings
+
         states = {}
 
         # Get dynamic state mappings from feature configuration

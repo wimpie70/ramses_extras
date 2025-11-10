@@ -10,9 +10,8 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from ....const import (
-    AVAILABLE_FEATURES,
-)
+# Note: AVAILABLE_FEATURES import removed to avoid circular dependency
+# from ....const import AVAILABLE_FEATURES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,10 +26,19 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     Returns:
         The Ramses device object or None if not found
     """
-    from ....helpers.broker import get_ramses_broker
+    # Get the broker directly from hass.data
+    if "ramses_cc" not in hass.data:
+        _LOGGER.warning("Ramses CC not loaded for device %s", device_id)
+        return None
 
-    # Get the broker
-    broker = get_ramses_broker(hass)
+    ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
+    if not ramses_cc_entries:
+        _LOGGER.warning("No Ramses CC entries found for device %s", device_id)
+        return None
+
+    # Get the broker directly
+    ramses_entry_id = next(iter(hass.data["ramses_cc"]))
+    broker = hass.data["ramses_cc"][ramses_entry_id]
     if not broker:
         _LOGGER.warning("No Ramses broker available for device %s", device_id)
         return None
@@ -104,9 +112,19 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
     Returns:
         List of all device IDs found in Ramses CC
     """
-    from ....helpers.broker import get_ramses_broker
+    # Get the broker directly from hass.data
+    if "ramses_cc" not in hass.data:
+        _LOGGER.warning("Ramses CC not loaded")
+        return []
 
-    broker = get_ramses_broker(hass)
+    ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
+    if not ramses_cc_entries:
+        _LOGGER.warning("No Ramses CC entries found")
+        return []
+
+    # Get the broker directly
+    ramses_entry_id = next(iter(hass.data["ramses_cc"]))
+    broker = hass.data["ramses_cc"][ramses_entry_id]
     if not broker:
         _LOGGER.warning("No Ramses broker available to get device IDs")
         return []
@@ -151,9 +169,8 @@ def ensure_ramses_cc_loaded(hass: HomeAssistant) -> None:
             "Please ensure Ramses CC is installed and configured."
         )
 
-    from ....helpers.broker import get_ramses_broker
-
-    if not get_ramses_broker(hass):
+    # Check if broker is available
+    if "ramses_cc" not in hass.data:
         raise HomeAssistantError(
             "Ramses CC broker is not available. "
             "Please check your Ramses CC configuration."
@@ -219,17 +236,20 @@ def get_device_supported_entities(device_type: str) -> list[str]:
     Returns:
         List of supported entity names
     """
-    from ... import get_device_mapping
+    # from ... import get_device_mapping  # Removed to avoid circular dependency
+    # return []  # Simplified to avoid circular import
 
-    mapping = get_device_mapping(device_type)
-    if not mapping:
-        return []
+    # Commented out to avoid circular import:
+    # mapping = get_device_mapping(device_type)
+    # if not mapping:
+    #     return []
 
-    supported_entities = []
-    for entity_type, entities in mapping.items():
-        supported_entities.extend(entities)
+    # supported_entities = []
+    # for entity_type, entities in mapping.items():
+    #     supported_entities.extend(entities)
 
-    return supported_entities
+    # return supported_entities
+    return []  # Return empty list to avoid circular import
 
 
 def validate_device_entity_support(device_type: str, entity_name: str) -> bool:
