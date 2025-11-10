@@ -181,185 +181,50 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
     # ==================== HUMIDITY-SPECIFIC LOGIC ====================
 
-    def _handle_state_change(
-        self, entity_id: str, old_state: State | None, new_state: State | None
-    ) -> None:
-        """Handle state changes following exact mermaid decision flow."""
-        # 📋 CRITICAL DEBUG: This should be called for every entity state change
-        _LOGGER.info(
-            f"🔍 STATE CHANGE DETECTED: {entity_id} -> "
-            f"{new_state.state if new_state else 'None'}"
-        )
-        _LOGGER.debug(
-            f"🔍 Debug: Listener called for {entity_id} in automation "
-            f"{self.__class__.__name__}"
-        )
+    def _update_switch_state(self, entity_id: str, new_state: str) -> None:
+        """Update internal switch state tracking for humidity control.
 
-        # 🔍 DEBUG: Special logging for number entity changes
-        if entity_id.startswith("number."):
-            _LOGGER.info(
-                f"🔍 NUMBER ENTITY CHANGE: {entity_id} from "
-                f"{old_state.state if old_state else 'None'} to "
-                f"{new_state.state if new_state else 'None'}"
-            )
-
-        # Update switch_state if this is a switch change
-        if entity_id.startswith("switch.dehumidify_") and new_state:
+        Args:
+            entity_id: Switch entity ID
+            new_state: New state value
+        """
+        if entity_id.startswith("switch.dehumidify_"):
             old_switch_state = getattr(self, "switch_state", False)
-            self.switch_state = new_state.state == "on"
+            self.switch_state = new_state == "on"
             _LOGGER.debug(
                 f"Updated switch_state from {old_switch_state} to {self.switch_state}"
             )
 
-        # 🔍 DEBUG: Log device_id extraction attempt
-        device_id = self._extract_device_id(entity_id)
-        _LOGGER.debug(f"🔍 Device ID extraction for {entity_id}: {device_id}")
-        if not device_id:
-            _LOGGER.warning(
-                f"🔍 WARNING: Could not extract device_id from {entity_id} "
-                f"- this may prevent state change processing"
-            )
+    async def _should_process_state_change(
+        self, entity_id: str, new_state: State, device_id: str
+    ) -> bool:
+        """Check if this humidity state change should be processed.
 
-        # Schedule async processing with proper thread safety
-        # Create a callback that will be called safely from the main thread
-        def _create_async_task() -> None:
-            self.hass.async_create_task(
-                self._async_handle_state_change(entity_id, old_state, new_state)
-            )
-
-        # Use call_soon_threadsafe to ensure thread-safe execution
-        self.hass.loop.call_soon_threadsafe(_create_async_task)
-
-    async def _async_handle_state_change(
-        self, entity_id: str, old_state: State | None, new_state: State | None
-    ) -> None:
-        """Handle state changes following exact mermaid decision flow.
-
-        This method implements the decision logic from humidity_decision_flow.md:
-        1. Extract device_id from entity name
-        2. Validate all entities exist for this device
-        3. Check if dehumidify switch is ON (only process when ON)
-        4. Apply 45-second debouncing
-        5. Get all entity states
-        6. Execute exact mermaid decision logic
-        7. Control fan and update binary sensor
+        Only processes when the dehumidify switch is ON or for special reset logic.
 
         Args:
             entity_id: Entity that changed state
-            old_state: Previous state (if any)
             new_state: New state
+            device_id: Device identifier
+
+        Returns:
+            True if the state change should be processed
         """
-        if not new_state:
-            _LOGGER.debug(f"🔍 No new state for {entity_id}, skipping")
-            return
-
-        # 🔍 COMPREHENSIVE DEBUGGING
-        _LOGGER.info(
-            f"🔍 ASYNC PROCESSING: {entity_id} -> {new_state.state} "
-            f"(was: {old_state.state if old_state else 'None'})"
-        )
-
-        # Extract device_id from entity name
-        device_id = self._extract_device_id(entity_id)
-        if not device_id:
-            _LOGGER.warning(
-                f"🔍 CRITICAL: Could not extract device_id from entity: {entity_id}"
-            )
-            # 🔍 DEBUG: Try to show what patterns we're looking for
-            _LOGGER.debug(
-                "🔍 Expected patterns should match entities like: "
-                "number.relative_humidity_maximum_32_153289 or "
-                "number.32:153289_rel_humid_max"
-            )
-            return
-
-        _LOGGER.info(f"🔍 SUCCESS: Extracted device_id {device_id} from {entity_id}")
-
-        # 🔍 ENHANCED SWITCH STATE LOGGING
-        switch_state = self.hass.states.get(f"switch.dehumidify_{device_id}")
-        _LOGGER.info(
-            f"Device {device_id}: Switch state check - hass.states: "
-            f"{switch_state.state if switch_state else 'NOT FOUND'}, automation "
-            f"attribute: {getattr(self, 'switch_state', 'NOT SET')}"
-        )
-
-        # Validate all entities exist for this device
-        if not await self._validate_device_entities(device_id):
-            _LOGGER.warning(f"🔍 CRITICAL: Device {device_id}: Entities not ready")
-            return
-
-        _LOGGER.info(f"🔍 SUCCESS: Device {device_id}: All entities validated")
-
-        # Reset logic: switch turned OFF (separate automation in YAML template)
+        # Reset logic: switch turned OFF
         if entity_id == f"switch.dehumidify_{device_id}" and new_state.state == "off":
             _LOGGER.info(
                 f"Device {device_id}: Dehumidify switch turned OFF - resetting fan"
             )
             await self._reset_fan_to_auto(device_id)
-            return
+            return False  # Don't process through normal logic
 
-        # 🔍 ENHANCED SWITCH CHECK LOGIC
-        should_process = False
-        if hasattr(self, "switch_state") and self.switch_state:
-            _LOGGER.info(
-                f"Device {device_id}: Switch is ON (using tracked state: "
-                f"{self.switch_state})"
-            )
-            should_process = True
-        else:
-            # Fallback to hass.states.get() for older automation instances
-            switch_state = self.hass.states.get(f"switch.dehumidify_{device_id}")
-            if switch_state and switch_state.state == "on":
-                _LOGGER.info(
-                    f"Device {device_id}: Switch is ON (using hass.states: "
-                    f"{switch_state.state})"
-                )
-                should_process = True
-            else:
-                _LOGGER.info(
-                    f"Device {device_id}: Switch is OFF or not found - "
-                    f"tracked: {getattr(self, 'switch_state', 'NOT SET')}, "
-                    f"hass.states: "
-                    f"{switch_state.state if switch_state else 'NOT FOUND'} - "
-                    f"skipping automation"
-                )
-                return
+        # Only process when switch is ON
+        if self.switch_state:
+            return True
 
-        if not should_process:
-            _LOGGER.debug(f"Device {device_id}: Skipping processing - switch not ON")
-            return
-
-        _LOGGER.info(f"🔍 SUCCESS: Device {device_id}: Will process state change")
-
-        # Apply 45-second debouncing to prevent rapid fan changes
-        if device_id in self._change_timers:
-            _LOGGER.debug(f"Device {device_id}: Debouncing - ignoring rapid change")
-            return
-
-        _LOGGER.info(
-            f"🔍 SUCCESS: Device {device_id}: Starting humidity processing (switch ON)"
-        )
-
-        # Set debouncing timer
-        self._change_timers[device_id] = self.hass.loop.call_later(
-            HUMIDITY_DEBOUNCE_SECONDS,
-            lambda: self._change_timers.pop(device_id, None),
-        )
-
-        # Get all entity states for this device
-        try:
-            entity_states = await self._get_device_entity_states(device_id)
-            _LOGGER.info(
-                f"🔍 SUCCESS: Device {device_id}: Got entity states: {entity_states}"
-            )
-        except ValueError as e:
-            _LOGGER.warning(
-                f"🔍 CRITICAL: Device {device_id}: Invalid entity states - {e}"
-            )
-            return
-
-        # Apply exact mermaid decision logic
-        await self._process_automation_logic(device_id, entity_states)
+        # Fallback to hass.states check
+        switch_state = self.hass.states.get(f"switch.dehumidify_{device_id}")
+        return bool(switch_state and switch_state.state == "on")
 
     async def _process_humidity_logic(
         self, device_id: str, entity_states: dict[str, float]

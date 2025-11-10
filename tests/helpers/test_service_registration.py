@@ -273,18 +273,18 @@ class TestServiceRegistration:
         for device_type, services in SERVICE_REGISTRY.items():
             for service_name, config in services.items():
                 # All service configs should have required keys
-                assert (
-                    "module" in config
-                ), f"Service {service_name} missing 'module' key"
-                assert (
-                    "function" in config
-                ), f"Service {service_name} missing 'function' key"
-                assert isinstance(
-                    config["module"], str
-                ), f"Service {service_name} module should be string"
-                assert isinstance(
-                    config["function"], str
-                ), f"Service {service_name} function should be string"
+                assert "module" in config, (
+                    f"Service {service_name} missing 'module' key"
+                )
+                assert "function" in config, (
+                    f"Service {service_name} missing 'function' key"
+                )
+                assert isinstance(config["module"], str), (
+                    f"Service {service_name} module should be string"
+                )
+                assert isinstance(config["function"], str), (
+                    f"Service {service_name} function should be string"
+                )
 
     def test_backward_compatibility_maintained(self) -> None:
         """Test that old code using DEVICE_SERVICE_MAPPING still works."""

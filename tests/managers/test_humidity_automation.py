@@ -35,9 +35,9 @@ class TestHumidityAutomationEntityNaming:
 
         for const_name, expected_name in test_cases:
             actual_name = manager._get_entity_name_from_const(const_name)
-            assert (
-                actual_name == expected_name
-            ), f"Expected {expected_name}, got {actual_name}"
+            assert actual_name == expected_name, (
+                f"Expected {expected_name}, got {actual_name}"
+            )
 
     def test_state_mappings_generation(self):
         """Test state mappings generation for device 32_153289."""
@@ -67,9 +67,9 @@ class TestHumidityAutomationEntityNaming:
         # Verify all expected mappings are present and correct
         for state_name, expected_entity_id in expected_mappings.items():
             assert state_name in mappings, f"Missing state mapping: {state_name}"
-            assert (
-                mappings[state_name] == expected_entity_id
-            ), f"Expected {expected_entity_id}, got {mappings[state_name]}"
+            assert mappings[state_name] == expected_entity_id, (
+                f"Expected {expected_entity_id}, got {mappings[state_name]}"
+            )
 
     def test_entity_validation(self):
         """Test entity validation using dynamic approach."""
@@ -114,9 +114,9 @@ class TestHumidityAutomationEntityNaming:
         # Test validation should pass with all entities present
         # Since _validate_device_entities is async, we need to handle this differently
         # For now, just test that the method exists and can be called
-        assert hasattr(
-            manager, "_validate_device_entities"
-        ), "Validation method should exist"
+        assert hasattr(manager, "_validate_device_entities"), (
+            "Validation method should exist"
+        )
 
         # Test with missing entities - check that the method handles missing states
         # correctly
@@ -147,9 +147,9 @@ class TestHumidityAutomationEntityNaming:
         mock_states.get = mock_get_missing_state
 
         # The validation method exists and can handle missing entities
-        assert hasattr(
-            manager, "_validate_device_entities"
-        ), "Should handle missing entities"
+        assert hasattr(manager, "_validate_device_entities"), (
+            "Should handle missing entities"
+        )
 
     def test_humidity_decision_logic(self):
         """Test the humidity decision logic implementation."""
@@ -278,9 +278,9 @@ class TestHumidityAutomationEntityNaming:
             )
 
             # This demonstrates the old broken naming pattern
-            assert (
-                has_abbreviations
-            ), f"Old broken name should have abbreviations: {old_name}"
+            assert has_abbreviations, (
+                f"Old broken name should have abbreviations: {old_name}"
+            )
 
         # Show what the correct names should be
         correct_names = [
@@ -301,9 +301,9 @@ class TestHumidityAutomationEntityNaming:
                 or "absolute_humidity_offset" in correct_name
             )
 
-            assert (
-                has_full_names
-            ), f"Correct name should use full descriptive names: {correct_name}"
+            assert has_full_names, (
+                f"Correct name should use full descriptive names: {correct_name}"
+            )
 
     def test_solution_verification(self):
         """Test that the solution correctly generates entity names."""
@@ -329,26 +329,26 @@ class TestHumidityAutomationEntityNaming:
             actual_entity_id = mappings[state_name]
 
             # Verify we use full names, not abbreviated names
-            assert (
-                actual_entity_id == expected_entity_id
-            ), f"Expected {expected_entity_id}, got {actual_entity_id}"
+            assert actual_entity_id == expected_entity_id, (
+                f"Expected {expected_entity_id}, got {actual_entity_id}"
+            )
 
             # Verify no abbreviated names are used
-            assert (
-                "indoor_abs_humid" not in actual_entity_id
-            ), "Should not use abbreviated const names in entity IDs"
-            assert (
-                "outdoor_abs_humid" not in actual_entity_id
-            ), "Should not use abbreviated const names in entity IDs"
-            assert (
-                "rel_humid_min" not in actual_entity_id
-            ), "Should not use abbreviated const names in entity IDs"
-            assert (
-                "rel_humid_max" not in actual_entity_id
-            ), "Should not use abbreviated const names in entity IDs"
-            assert (
-                "abs_humid_offset" not in actual_entity_id
-            ), "Should not use abbreviated const names in entity IDs"
+            assert "indoor_abs_humid" not in actual_entity_id, (
+                "Should not use abbreviated const names in entity IDs"
+            )
+            assert "outdoor_abs_humid" not in actual_entity_id, (
+                "Should not use abbreviated const names in entity IDs"
+            )
+            assert "rel_humid_min" not in actual_entity_id, (
+                "Should not use abbreviated const names in entity IDs"
+            )
+            assert "rel_humid_max" not in actual_entity_id, (
+                "Should not use abbreviated const names in entity IDs"
+            )
+            assert "abs_humid_offset" not in actual_entity_id, (
+                "Should not use abbreviated const names in entity IDs"
+            )
 
 
 if __name__ == "__main__":

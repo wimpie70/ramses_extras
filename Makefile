@@ -153,6 +153,15 @@ fix-imports: env
 	@echo "Fixing imports and formatting..."
 	@bash -c "source ~/venvs/extras/bin/activate && ruff check . --fix && ruff format ."
 
+ruff-version:
+	@echo "Ruff version check..."
+	@bash -c "source ~/venvs/extras/bin/activate && ruff --version"
+
+ruff-install:
+	@echo "Installing/updating ruff to 0.14.4..."
+	@bash -c "source ~/venvs/extras/bin/activate && pip install --upgrade 'ruff==0.14.4'"
+	@echo "✅ Ruff updated to 0.14.4"
+
 qa: env
 	@echo "Running full QA suite..."
 	@bash -c "source ~/venvs/extras/bin/activate && \

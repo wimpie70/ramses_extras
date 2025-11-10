@@ -48,6 +48,20 @@ else
     # Don't exit on mypy failure for now
 fi
 
+# Check ruff version consistency
+echo "  🔍 Checking ruff version consistency..."
+MIN_VERSION="0.14.4"
+CURRENT_VERSION=$(ruff --version | cut -d' ' -f2)
+
+# Compare versions (handle cases like 0.14.4 vs 0.13.0)
+if [ "$(printf '%s\n' "$MIN_VERSION" "$CURRENT_VERSION" | sort -V | head -n1)" != "$MIN_VERSION" ]; then
+    print_error "Ruff version too old! Minimum required: $MIN_VERSION, Got: $CURRENT_VERSION"
+    print_error "Please install correct version: pip install 'ruff>=$MIN_VERSION'"
+    exit 1
+else
+    print_status "ruff version: $CURRENT_VERSION (>= $MIN_VERSION ✓)"
+fi
+
 # Run ruff
 echo "  🔍 Running ruff..."
 if ruff check . && ruff format --check .; then

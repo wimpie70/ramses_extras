@@ -88,15 +88,15 @@ def test_entity_parsing():
             print(f"   Name: {entity_name} (expected: {expected_name})")
             print(f"   Device: {device_id} (expected: {expected_device})")
 
-            assert (
-                entity_type == expected_type
-            ), f"Type mismatch: {entity_type} != {expected_type}"
-            assert (
-                entity_name == expected_name
-            ), f"Name mismatch: {entity_name} != {expected_name}"
-            assert (
-                device_id == expected_device
-            ), f"Device ID mismatch: {device_id} != {expected_device}"
+            assert entity_type == expected_type, (
+                f"Type mismatch: {entity_type} != {expected_type}"
+            )
+            assert entity_name == expected_name, (
+                f"Name mismatch: {entity_name} != {expected_name}"
+            )
+            assert device_id == expected_device, (
+                f"Device ID mismatch: {device_id} != {expected_device}"
+            )
         else:
             raise AssertionError(f"Failed to parse entity ID: {entity_id}")
 
@@ -122,9 +122,9 @@ def test_all_entities_for_device():
     print(f"Found entity types: {sorted(found_types)}")
     print(f"Expected entity types: {sorted(expected_types)}")
 
-    assert (
-        found_types == expected_types
-    ), f"Entity types mismatch: {found_types} != {expected_types}"
+    assert found_types == expected_types, (
+        f"Entity types mismatch: {found_types} != {expected_types}"
+    )
 
     print("✅ All entities for device test passed!")
 
@@ -158,15 +158,15 @@ def test_name_templates():
             print(f"    name_template: {name_template}")
             print(f"    entity_template: {template}")
 
-            assert (
-                template is not None
-            ), f"{config_type}.{entity_name} missing entity_template"
-            assert (
-                "{device_id}" in template
-            ), f"{config_type}.{entity_name} entity_template missing {{device_id}}"
-            assert (
-                name_template is not None
-            ), f"{config_type}.{entity_name} missing name_template"
+            assert template is not None, (
+                f"{config_type}.{entity_name} missing entity_template"
+            )
+            assert "{device_id}" in template, (
+                f"{config_type}.{entity_name} entity_template missing {{device_id}}"
+            )
+            assert name_template is not None, (
+                f"{config_type}.{entity_name} missing name_template"
+            )
 
     print("✅ All name template tests passed!")
 
