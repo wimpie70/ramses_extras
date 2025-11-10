@@ -36,9 +36,75 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the number platform."""
-    from .framework.helpers.platform import async_setup_platform
+    await _async_setup_number_platform(hass, config_entry, async_add_entities)
 
-    await async_setup_platform("number", hass, config_entry, async_add_entities)
+
+async def _async_setup_number_platform(
+    hass: "HomeAssistant",
+    config_entry: ConfigEntry | None,
+    async_add_entities: "AddEntitiesCallback",
+) -> None:
+    """Set up the number platform with entity creation."""
+    _LOGGER.info("Setting up number platform")
+
+    if not config_entry:
+        _LOGGER.warning("Config entry not available, skipping number setup")
+        return
+
+    devices = hass.data.get("ramses_extras", {}).get("devices", [])
+    if not devices:
+        _LOGGER.warning("No devices available for number")
+        return
+
+    # Get enabled features
+    enabled_features = get_enabled_features(hass, config_entry)
+    _LOGGER.info(f"Enabled features for number: {enabled_features}")
+
+    # Calculate required entities for this platform
+    required_entities = calculate_required_entities(
+        "number", enabled_features, devices, hass
+    )
+
+    if not required_entities:
+        _LOGGER.info("No required number entities, skipping setup")
+        return
+
+    _LOGGER.info(
+        f"Platform number setup completed with {len(required_entities)} "
+        f"required entity types: {required_entities}"
+    )
+
+    # Create entities for each device
+    number_entities = []
+    for device_id in devices:
+        device = find_ramses_device(hass, device_id)
+        if not device:
+            _LOGGER.warning(
+                f"Device {device_id} not found, skipping number entity creation"
+            )
+            continue
+
+        device_type = get_device_type(device)
+        if device_type not in DEVICE_ENTITY_MAPPING:
+            _LOGGER.debug(f"Device type {device_type} not in entity mapping, skipping")
+            continue
+
+        # Create number entities for each required entity type
+        for number_type in required_entities:
+            if number_type in ENTITY_TYPE_CONFIGS.get("number", {}):
+                config = ENTITY_TYPE_CONFIGS["number"][number_type]
+                number_entities.append(
+                    RamsesNumberEntity(hass, device_id, number_type, config)
+                )
+                _LOGGER.info(
+                    f"Created number entity: {number_type} for device {device_id}"
+                )
+
+    if number_entities:
+        async_add_entities(number_entities, True)
+        _LOGGER.info(f"Added {len(number_entities)} number entities")
+    else:
+        _LOGGER.info("No number entities to add")
 
 
 class RamsesNumberEntity(NumberEntity, RestoreEntity, ExtrasBaseEntity):

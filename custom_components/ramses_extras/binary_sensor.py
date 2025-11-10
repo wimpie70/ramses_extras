@@ -36,9 +36,76 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the binary sensor platform."""
-    from .framework.helpers.platform import async_setup_platform
+    await _async_setup_binary_sensor_platform(hass, config_entry, async_add_entities)
 
-    await async_setup_platform("binary_sensor", hass, config_entry, async_add_entities)
+
+async def _async_setup_binary_sensor_platform(
+    hass: "HomeAssistant",
+    config_entry: ConfigEntry | None,
+    async_add_entities: "AddEntitiesCallback",
+) -> None:
+    """Set up the binary sensor platform with entity creation."""
+    _LOGGER.info("Setting up binary_sensor platform")
+
+    if not config_entry:
+        _LOGGER.warning("Config entry not available, skipping binary_sensor setup")
+        return
+
+    devices = hass.data.get("ramses_extras", {}).get("devices", [])
+    if not devices:
+        _LOGGER.warning("No devices available for binary_sensor")
+        return
+
+    # Get enabled features
+    enabled_features = get_enabled_features(hass, config_entry)
+    _LOGGER.info(f"Enabled features for binary_sensor: {enabled_features}")
+
+    # Calculate required entities for this platform
+    required_entities = calculate_required_entities(
+        "binary_sensor", enabled_features, devices, hass
+    )
+
+    if not required_entities:
+        _LOGGER.info("No required binary_sensor entities, skipping setup")
+        return
+
+    _LOGGER.info(
+        f"Platform binary_sensor setup completed with {len(required_entities)} "
+        f"required entity types: {required_entities}"
+    )
+
+    # Create entities for each device
+    binary_sensors = []
+    for device_id in devices:
+        device = find_ramses_device(hass, device_id)
+        if not device:
+            _LOGGER.warning(
+                f"Device {device_id} not found, skipping binary_sensor creation"
+            )
+            continue
+
+        device_type = get_device_type(device)
+        if device_type not in DEVICE_ENTITY_MAPPING:
+            _LOGGER.debug(f"Device type {device_type} not in entity mapping, skipping")
+            continue
+
+        # Create binary sensors for each required entity type
+        for boolean_type in required_entities:
+            if boolean_type in ENTITY_TYPE_CONFIGS.get("binary_sensor", {}):
+                config = ENTITY_TYPE_CONFIGS["binary_sensor"][boolean_type]
+                binary_sensors.append(
+                    RamsesBinarySensor(hass, device_id, boolean_type, config)
+                )
+                _LOGGER.info(
+                    f"Created binary_sensor entity: {boolean_type} "
+                    f"for device {device_id}"
+                )
+
+    if binary_sensors:
+        async_add_entities(binary_sensors, True)
+        _LOGGER.info(f"Added {len(binary_sensors)} binary_sensor entities")
+    else:
+        _LOGGER.info("No binary_sensor entities to add")
 
 
 class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):

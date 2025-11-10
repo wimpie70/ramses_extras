@@ -53,7 +53,7 @@ class HumidityConfig:
             "auto_start": True,
             # Automation settings
             "automation_enabled": True,
-            "automation_debounce_seconds": 30,
+            "automation_debounce_seconds": 15,
             "decision_interval_seconds": 60,
             # Thresholds
             "default_min_humidity": 40.0,

@@ -32,11 +32,75 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the switch platform."""
-    # _LOGGER.info("SWITCH PLATFORM: async_setup_entry called")
-    from .framework.helpers.platform import async_setup_platform
+    await _async_setup_switch_platform(hass, config_entry, async_add_entities)
 
-    await async_setup_platform("switch", hass, config_entry, async_add_entities)
-    # _LOGGER.info("SWITCH PLATFORM: async_setup_entry completed")
+
+async def _async_setup_switch_platform(
+    hass: "HomeAssistant",
+    config_entry: ConfigEntry | None,
+    async_add_entities: "AddEntitiesCallback",
+) -> None:
+    """Set up the switch platform with entity creation."""
+    _LOGGER.info("Setting up switch platform")
+
+    if not config_entry:
+        _LOGGER.warning("Config entry not available, skipping switch setup")
+        return
+
+    devices = hass.data.get("ramses_extras", {}).get("devices", [])
+    if not devices:
+        _LOGGER.warning("No devices available for switch")
+        return
+
+    # Get enabled features
+    enabled_features = get_enabled_features(hass, config_entry)
+    _LOGGER.info(f"Enabled features for switch: {enabled_features}")
+
+    # Calculate required entities for this platform
+    required_entities = calculate_required_entities(
+        "switch", enabled_features, devices, hass
+    )
+
+    if not required_entities:
+        _LOGGER.info("No required switch entities, skipping setup")
+        return
+
+    _LOGGER.info(
+        f"Platform switch setup completed with {len(required_entities)} "
+        f"required entity types: {required_entities}"
+    )
+
+    # Create entities for each device
+    switch_entities = []
+    for device_id in devices:
+        device = find_ramses_device(hass, device_id)
+        if not device:
+            _LOGGER.warning(
+                f"Device {device_id} not found, skipping switch entity creation"
+            )
+            continue
+
+        device_type = get_device_type(device)
+        if device_type not in DEVICE_ENTITY_MAPPING:
+            _LOGGER.debug(f"Device type {device_type} not in entity mapping, skipping")
+            continue
+
+        # Create switch entities for each required entity type
+        for switch_type in required_entities:
+            if switch_type in ENTITY_TYPE_CONFIGS.get("switch", {}):
+                config = ENTITY_TYPE_CONFIGS["switch"][switch_type]
+                switch_entities.append(
+                    RamsesDehumidifySwitch(hass, device_id, switch_type, config)
+                )
+                _LOGGER.info(
+                    f"Created switch entity: {switch_type} for device {device_id}"
+                )
+
+    if switch_entities:
+        async_add_entities(switch_entities, True)
+        _LOGGER.info(f"Added {len(switch_entities)} switch entities")
+    else:
+        _LOGGER.info("No switch entities to add")
 
 
 class RamsesDehumidifySwitch(SwitchEntity, ExtrasBaseEntity):
