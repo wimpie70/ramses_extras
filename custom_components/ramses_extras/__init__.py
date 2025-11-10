@@ -14,10 +14,8 @@ from .const import (
     CARD_FOLDER,
     CARD_HELPERS_FOLDER,
     DEVICE_ENTITY_MAPPING,
-    DEVICE_SERVICE_MAPPING,
     DOMAIN,
     INTEGRATION_DIR,
-    SERVICE_REGISTRY,
 )
 from .managers import FeatureManager
 from .managers.automation_manager import AutomationManager
@@ -184,78 +182,20 @@ async def _register_enabled_card_resources(
 
 async def _register_services_early(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Register services early in setup process."""
-    from .services import fan_services
-
-    # Check if humidity_control feature is enabled
-    enabled_features = entry.data.get("enabled_features", {})
-    if enabled_features.get("humidity_control", False):
-        fan_services.register_fan_services(hass)
-        _LOGGER.info("Registered fan services early for humidity control")
-    else:
-        _LOGGER.info("Humidity control not enabled - fan services not registered early")
+    # Legacy services moved to feature-specific implementations
+    # No early service registration needed in new architecture
 
 
 async def _register_services(
     hass: HomeAssistant, feature_manager: FeatureManager
 ) -> None:
-    """Register services based on enabled features and discovered devices."""
-    import importlib
+    """Register services based on enabled features and discovered devices.
 
-    from .helpers.device import (
-        find_ramses_device,
-        get_all_device_ids,
-        get_device_type,
-        validate_device_for_service,
-    )
-
-    # Get discovered devices
-    device_ids = get_all_device_ids(hass)
-
-    # Track which services have been registered to avoid duplicates
-    registered_services = set()
-
-    if device_ids:
-        # Register services for discovered device types
-        for device_id in device_ids:
-            device = find_ramses_device(hass, device_id)
-            if device:
-                device_type = get_device_type(device)
-                if device_type in SERVICE_REGISTRY:
-                    services_for_device = SERVICE_REGISTRY[device_type]
-                    for service_name, handler_config in services_for_device.items():
-                        if service_name not in registered_services:
-                            try:
-                                # Dynamic import and registration
-                                # (run in executor to avoid blocking)
-                                module = await hass.async_add_executor_job(
-                                    importlib.import_module,
-                                    handler_config["module"],
-                                    __package__,
-                                )
-                                register_function = getattr(
-                                    module, handler_config["function"]
-                                )
-                                register_function(hass)
-                                registered_services.add(service_name)
-                                _LOGGER.info(
-                                    f"Registered {service_name} service for device "
-                                    f"{device_id} ({device_type})"
-                                )
-                            except ModuleNotFoundError as e:
-                                _LOGGER.error(
-                                    f"Module not found for {service_name}: "
-                                    f"{handler_config['module']} - {e}"
-                                )
-                            except Exception as e:
-                                _LOGGER.error(f"Failed to register {service_name}: {e}")
-                        break  # Only need to register once per service type
-
-    if not registered_services:
-        _LOGGER.debug("No services registered - no supported devices found")
-    else:
-        _LOGGER.info(
-            f"Registered {len(registered_services)} services: {registered_services}"
-        )
+    Services are now handled by feature-specific implementations.
+    Legacy service registration removed in cleanup.
+    """
+    # Services are now feature-based and handled by feature managers
+    _LOGGER.info("Service registration delegated to feature managers")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -364,30 +304,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     device_ids, disabled_features
                 )
 
-        # Remove services
-        from .helpers.device import (
-            find_ramses_device,
-            get_all_device_ids,
-            get_device_type,
-        )
-
-        device_ids = get_all_device_ids(hass)
-        if device_ids:
-            for device_id in device_ids:
-                device = find_ramses_device(hass, device_id)
-                if device:
-                    device_type = get_device_type(device)
-                    if device_type in SERVICE_REGISTRY:
-                        services_for_device = SERVICE_REGISTRY[device_type]
-                        for service_name in services_for_device.keys():
-                            # Unregister the service
-                            hass.services.async_remove(DOMAIN, service_name)
-                            _LOGGER.info(
-                                "Unregistered %s service for device %s (%s)",
-                                service_name,
-                                device_id,
-                                device_type,
-                            )
+        # Remove legacy services (moved to feature-based architecture)
+        # Service cleanup now handled by feature-specific managers
+        _LOGGER.info("Service cleanup delegated to feature managers")
 
         hass.data[DOMAIN].pop(entry.entry_id, None)
 

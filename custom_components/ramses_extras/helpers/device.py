@@ -8,7 +8,6 @@ from homeassistant.exceptions import HomeAssistantError
 
 from ..const import (
     AVAILABLE_FEATURES,
-    DEVICE_SERVICE_MAPPING,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,15 +84,10 @@ def validate_device_for_service(
 
     device_type = get_device_type(device)
 
-    # Check if device type supports this service
-    supported_services = DEVICE_SERVICE_MAPPING.get(device_type, [])
-    if service_name not in supported_services:
-        _LOGGER.warning(
-            f"Device {device_id} ({device_type}) does not support service "
-            f"{service_name}. Supported services: {supported_services}"
-        )
-        return False
-
+    # Service validation removed - services now handled by feature-based architecture
+    _LOGGER.debug(
+        f"Device {device_id} ({device_type}) service validation delegated to features"
+    )
     return True
 
 

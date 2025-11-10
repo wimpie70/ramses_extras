@@ -252,50 +252,6 @@ ENTITY_TYPE_CONFIGS = {
     "number": NUMBER_CONFIGS,
 }
 
-# Service registry - maps device types to their available services
-# and registration handlers
-# Defines which services are available for each device type and how to register them
-SERVICE_REGISTRY = {
-    "HvacVentilator": {
-        "set_fan_speed_mode": {
-            "module": ".services.fan_services",
-            "function": "register_fan_services",
-        },
-        # Future device types can be added here
-        # "CO2Remote": {
-        #     "set_co2_mode": {
-        #         "module": ".services.co2_services",
-        #         "function": "register_co2_services"
-        #     },
-        #     "calibrate_sensor": {
-        #         "module": ".services.co2_services",
-        #         "function": "register_calibration_services"
-        #     },
-        # },
-    },
-}
-
-# Backward compatibility alias
-DEVICE_SERVICE_MAPPING = {
-    device_type: list(services.keys())
-    for device_type, services in SERVICE_REGISTRY.items()
-}
-
-# Service configuration schemas
-SERVICE_SCHEMAS = {
-    "set_fan_speed_mode": {
-        "device_id": {"required": True, "type": "string"},
-        "mode": {
-            "required": True,
-            "type": "string",
-            "valid_values": ["low", "medium", "high", "auto", "away", "boost"],
-        },
-        "duration": {
-            "required": False,
-            "type": "integer",
-            "min": 1,
-            "max": 1440,
-        },  # minutes
-        "reason": {"required": False, "type": "string"},
-    },
-}
+# Services have been moved to feature-specific implementations
+# Legacy SERVICE_REGISTRY removed - services are now feature-based
+# Device-to-service mappings now handled in feature modules
