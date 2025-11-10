@@ -131,6 +131,9 @@ class RamsesExtraHumiditySensor(SensorEntity, ExtrasBaseEntity):
         self._attr_native_unit_of_measurement = config["unit"]
         self._attr_device_class = config["device_class"]
 
+        # Set unique_id to prevent duplicate entities
+        self._attr_unique_id = f"{sensor_type}_{device_id.replace(':', '_')}"
+
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle device update from Ramses RF."""
         self.async_write_ha_state()

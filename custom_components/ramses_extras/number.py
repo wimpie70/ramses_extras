@@ -65,6 +65,9 @@ class RamsesNumberEntity(NumberEntity, RestoreEntity, ExtrasBaseEntity):
         # Use default value if specified, otherwise use min_value
         self._value = config.get("default_value", self._attr_native_min_value)
 
+        # Set unique_id to prevent duplicate entities
+        self._attr_unique_id = f"{number_type}_{device_id.replace(':', '_')}"
+
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
         # Call base class method first

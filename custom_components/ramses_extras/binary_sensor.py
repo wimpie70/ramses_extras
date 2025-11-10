@@ -58,6 +58,9 @@ class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
         self._boolean_type = boolean_type
         self._attr_device_class = config.get("device_class")
 
+        # Set unique_id to prevent duplicate entities
+        self._attr_unique_id = f"{boolean_type}_{device_id.replace(':', '_')}"
+
         self._is_on = False
         self._current_fan_speed = "auto"  # Track current fan speed
         self._unsub_state_change: Callable[[], None] | None = None
