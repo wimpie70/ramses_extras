@@ -3,6 +3,7 @@
 #
 
 from pathlib import Path
+from typing import Any
 
 from homeassistant.helpers.entity import EntityCategory
 
@@ -46,7 +47,7 @@ FEATURE_ID_HUMIDITY_SENSORS = "humidity_sensors"
 FEATURE_ID_HVAC_FAN_CARD = "hvac_fan_card"
 FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
 
-AVAILABLE_FEATURES = {
+AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
     FEATURE_ID_HUMIDITY_SENSORS: {
         "name": "Absolute Humidity Sensors",
         "description": (
@@ -150,58 +151,54 @@ DEVICE_ENTITY_MAPPING = {
 }
 
 # Sensor configurations with improved naming templates
-# Format: {name_template}_{device_id} -> generates "Indoor Absolute Humidity_32_153289"
+# Format: {name_template}_{device_id} -> generates "Indoor Absolute Humidity 32_153289"
 SENSOR_CONFIGS = {
     "indoor_absolute_humidity": {
-        "name_template": "Indoor Absolute Humidity",
+        "name_template": "Indoor Absolute Humidity {device_id}",  # Human-friendly name
         "entity_category": EntityCategory.DIAGNOSTIC,
         "unit": "g/m³",
         "icon": "mdi:water-percent",
         "device_class": None,
         "supported_device_types": ["HvacVentilator"],
-        # NEW: Template for entity generation
-        "entity_template": "indoor_absolute_humidity_{device_id}",
+        "entity_template": "indoor_absolute_humidity_{device_id}",  # Entity Id
     },
     "outdoor_absolute_humidity": {
-        "name_template": "Outdoor Absolute Humidity",
+        "name_template": "Outdoor Absolute Humidity {device_id}",  # Human-friendly name
         "entity_category": EntityCategory.DIAGNOSTIC,
         "unit": "g/m³",
         "icon": "mdi:weather-partly-cloudy",
         "device_class": None,
         "supported_device_types": ["HvacVentilator"],
-        # NEW: Template for entity generation
-        "entity_template": "outdoor_absolute_humidity_{device_id}",
+        "entity_template": "outdoor_absolute_humidity_{device_id}",  # Entity Id
     },
 }
 
 # Switch configurations
 SWITCH_CONFIGS = {
     "dehumidify": {
-        "name_template": "Dehumidify",
+        "name_template": "Dehumidify {device_id}",  # Human-friendly name
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.CONFIG,
         "supported_device_types": ["HvacVentilator"],
-        # NEW: Template for entity generation
-        "entity_template": "dehumidify_{device_id}",
+        "entity_template": "dehumidify_{device_id}",  # Entity Id
     },
 }
 
 BOOLEAN_CONFIGS = {
     "dehumidifying_active": {
-        "name_template": "Dehumidifying Active",
+        "name_template": "Dehumidifying Active {device_id}",  # Human-friendly name
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.DIAGNOSTIC,
         "device_class": "running",
         "supported_device_types": ["HvacVentilator"],
-        # NEW: Template for entity generation
-        "entity_template": "dehumidifying_active_{device_id}",
+        "entity_template": "dehumidifying_active_{device_id}",  # Entity Id
     },
 }
 
 # Number configurations for threshold values
 NUMBER_CONFIGS = {
     "relative_humidity_minimum": {
-        "name_template": "Relative Humidity Minimum",
+        "name_template": "Min Humidity {device_id}",  # Human-friendly name
         "entity_category": EntityCategory.CONFIG,
         "unit": "%",
         "icon": "mdi:water-minus",
@@ -211,11 +208,10 @@ NUMBER_CONFIGS = {
         "step": 1,
         "default_value": 40,
         "supported_device_types": ["HvacVentilator"],
-        # NEW: Template for entity generation
-        "entity_template": "relative_humidity_minimum_{device_id}",
+        "entity_template": "relative_humidity_minimum_{device_id}",  # Entity Id
     },
     "relative_humidity_maximum": {
-        "name_template": "Relative Humidity Maximum",
+        "name_template": "Max Humidity {device_id}",  # Human-friendly name
         "entity_category": EntityCategory.CONFIG,
         "unit": "%",
         "icon": "mdi:water-plus",
@@ -225,11 +221,10 @@ NUMBER_CONFIGS = {
         "step": 1,
         "default_value": 60,
         "supported_device_types": ["HvacVentilator"],
-        # NEW: Template for entity generation
-        "entity_template": "relative_humidity_maximum_{device_id}",
+        "entity_template": "relative_humidity_maximum_{device_id}",  # Entity Id
     },
     "absolute_humidity_offset": {
-        "name_template": "Absolute Humidity Offset",
+        "name_template": "Humidity Offset {device_id}",  # Human-friendly name
         "entity_category": EntityCategory.CONFIG,
         "unit": "g/m³",
         "icon": "mdi:swap-horizontal",
@@ -239,8 +234,7 @@ NUMBER_CONFIGS = {
         "step": 0.1,
         "default_value": 0.4,
         "supported_device_types": ["HvacVentilator"],
-        # NEW: Template for entity generation
-        "entity_template": "absolute_humidity_offset_{device_id}",
+        "entity_template": "absolute_humidity_offset_{device_id}",  # Entity Id
     },
 }
 

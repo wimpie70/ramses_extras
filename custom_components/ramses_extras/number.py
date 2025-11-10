@@ -132,8 +132,18 @@ class RamsesNumberEntity(NumberEntity, RestoreEntity, ExtrasBaseEntity):
         # Use default value if specified, otherwise use min_value
         self._value = config.get("default_value", self._attr_native_min_value)
 
+        # Convert device_id to underscore format for entity generation
+        device_id_underscore = device_id.replace(":", "_")
+
         # Set unique_id to prevent duplicate entities
-        self._attr_unique_id = f"{number_type}_{device_id.replace(':', '_')}"
+        self._attr_unique_id = f"{number_type}_{device_id_underscore}"
+
+        # Set human-friendly name from template
+        name_template = (
+            config.get("name_template", f"{number_type} {device_id_underscore}")
+            or f"{number_type} {device_id_underscore}"
+        )
+        self._attr_name = name_template.format(device_id=device_id_underscore)
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""

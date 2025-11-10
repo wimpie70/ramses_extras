@@ -125,12 +125,30 @@ class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
         self._boolean_type = boolean_type
         self._attr_device_class = config.get("device_class")
 
+        # Convert device_id to underscore format for entity generation
+        device_id_underscore = device_id.replace(":", "_")
+
         # Set unique_id to prevent duplicate entities
-        self._attr_unique_id = f"{boolean_type}_{device_id.replace(':', '_')}"
+        self._attr_unique_id = f"{boolean_type}_{device_id_underscore}"
+
+        # Set human-friendly name from template
+        name_template = (
+            config.get("name_template", "Dehumidifying Active {device_id}")
+            or "Dehumidifying Active {device_id}"
+        )
+        self._attr_name = name_template.format(device_id=device_id_underscore)
 
         self._is_on = False
         self._current_fan_speed = "auto"  # Track current fan speed
         self._unsub_state_change: Callable[[], None] | None = None
+
+    @property
+    def name(self) -> str:
+        """Return the name of the entity."""
+        return (
+            self._attr_name
+            or f"Dehumidifying Active {self._device_id.replace(':', '_')}"
+        )
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates and humidity entity changes."""

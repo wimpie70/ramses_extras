@@ -709,7 +709,7 @@ async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
 async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
     """Clean up orphaned entities across all platforms after setup."""
     try:
-        from .framework.helpers.entity.core import EntityHelpers
+        from .framework.helpers.entity_core import EntityHelpers
         from .framework.helpers.platform import (
             calculate_required_entities,
             get_enabled_features,
@@ -732,10 +732,24 @@ async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
         for platform in platforms:
             try:
                 # Calculate required entities for this platform
-                calculate_required_entities(platform, enabled_features, devices, hass)
+                required_entities = calculate_required_entities(
+                    platform, enabled_features, devices, hass
+                )
+
+                # Convert device_ids to underscore format
+                #  and generate expected entity IDs
+                expected_entity_ids = set()
+                for device_id in devices:
+                    device_id_underscore = device_id.replace(":", "_")
+                    for entity_name in required_entities:
+                        entity_id = EntityHelpers.generate_entity_name_from_template(
+                            platform, entity_name, device_id_underscore
+                        )
+                        if entity_id:
+                            expected_entity_ids.add(entity_id)
 
                 # Get all possible entity types for this platform
-                all_possible_types = set()
+                all_possible_types = []
                 for device_id in devices:
                     from .framework.helpers.device.core import (
                         find_ramses_device,
@@ -750,11 +764,14 @@ async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
                             platform_key = (
                                 f"{platform}s"  # Convert 'sensor' -> 'sensors'
                             )
-                            all_possible_types.update(
+                            all_possible_types.extend(
                                 entity_mapping.get(platform_key, [])
                             )
 
-                removed_count = EntityHelpers.cleanup_orphaned_entities(hass, devices)
+                # Clean up orphaned entities with proper parameters
+                removed_count = EntityHelpers.cleanup_orphaned_entities(
+                    platform, hass, devices, expected_entity_ids, all_possible_types
+                )
 
                 if removed_count > 0:
                     _LOGGER.info(

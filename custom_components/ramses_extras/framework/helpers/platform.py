@@ -1,7 +1,7 @@
 """Platform helper functions for Ramses Extras."""
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.config_entries import ConfigEntry
 
@@ -9,6 +9,25 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _get_platform_key(platform: str) -> str:
+    """Convert platform name to the correct entity key in the configuration.
+
+    Args:
+        platform: Platform name (sensor, switch, binary_sensor, number)
+
+    Returns:
+        Correct key for required_entities configuration
+    """
+    # Convert platform name to plural form for configuration lookup
+    platform_to_key = {
+        "sensor": "sensors",
+        "switch": "switches",
+        "binary_sensor": "binary_sensors",
+        "number": "numbers",
+    }
+    return platform_to_key.get(platform, f"{platform}s")
 
 
 def get_enabled_features(
@@ -62,13 +81,15 @@ def calculate_required_entities(
 
         # Get required entities for this platform
         if isinstance(feature_required, dict):
-            required_for_platform = feature_required.get(f"{platform}s", [])
+            platform_key = _get_platform_key(platform)
+            required_for_platform = feature_required.get(platform_key, [])
         else:
             required_for_platform = []
 
         # Get optional entities for this platform (treat as required for now)
         if isinstance(feature_optional, dict):
-            optional_for_platform = feature_optional.get(f"{platform}s", [])
+            platform_key = _get_platform_key(platform)
+            optional_for_platform = feature_optional.get(platform_key, [])
         else:
             optional_for_platform = []
 
@@ -78,10 +99,30 @@ def calculate_required_entities(
             if entity not in required_entities:
                 required_entities.append(entity)
 
-    _LOGGER.debug(
+    _LOGGER.info(
         f"Platform {platform}: calculated {len(required_entities)} "
         f"required entities for {len(devices)} devices: {required_entities}"
     )
+
+    # Debug: Log detailed feature information
+    if platform in ["switch", "binary_sensor", "number", "sensor"]:
+        _LOGGER.info(f"Debug: {platform} platform analysis:")
+        platform_key = _get_platform_key(platform)
+        for feature_key, is_enabled in enabled_features.items():
+            if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+                continue
+
+            feature_config = AVAILABLE_FEATURES[feature_key]
+            _LOGGER.info(f"  Feature {feature_key}: {feature_config}")
+
+            required_entities_for_feature = cast(
+                dict[str, Any], feature_config.get("required_entities", {})
+            )
+            _LOGGER.info(f"    Required entities: {required_entities_for_feature}")
+            _LOGGER.info(f"    Looking for key: {platform_key}")
+            _LOGGER.info(
+                f"    Found: {required_entities_for_feature.get(platform_key, [])}"
+            )
 
     return required_entities
 

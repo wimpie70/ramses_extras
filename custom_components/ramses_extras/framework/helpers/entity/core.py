@@ -114,10 +114,8 @@ class EntityHelpers:
             List of entity patterns
         """
         patterns = []
-        feature = cast(dict[str, Any], AVAILABLE_FEATURES.get(feature_id, {}))
-        required_entities = cast(
-            dict[str, list[str]], feature.get("required_entities", {})
-        )
+        feature = AVAILABLE_FEATURES.get(feature_id, {})
+        required_entities = feature.get("required_entities", {})
 
         for entity_type, entity_names in required_entities.items():
             entity_base_type = entity_type.rstrip("s")  # "sensors" -> "sensor"
@@ -229,8 +227,8 @@ def get_feature_entity_mappings(feature_id: str, device_id: str) -> dict[str, st
     mappings = {}
 
     # Get feature definition
-    feature = cast(dict[str, Any], AVAILABLE_FEATURES.get(feature_id, {}))
-    required_entities = cast(dict[str, list[str]], feature.get("required_entities", {}))
+    feature = AVAILABLE_FEATURES.get(feature_id, {})
+    required_entities = feature.get("required_entities", {})
 
     # Generate entity IDs for each required entity type
     for entity_type, entity_names in required_entities.items():

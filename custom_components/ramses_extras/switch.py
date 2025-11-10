@@ -14,6 +14,7 @@ from .const import (
 )
 from .framework.base_classes import ExtrasBaseEntity
 from .framework.helpers.device.core import find_ramses_device, get_device_type
+from .framework.helpers.entity_core import EntityHelpers
 from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -56,10 +57,17 @@ async def _async_setup_switch_platform(
     enabled_features = get_enabled_features(hass, config_entry)
     _LOGGER.info(f"Enabled features for switch: {enabled_features}")
 
+    # Debug: Check config entry data
+    _LOGGER.info(
+        f"Config entry data: {config_entry.data if config_entry else 'No config entry'}"
+    )
+
     # Calculate required entities for this platform
     required_entities = calculate_required_entities(
         "switch", enabled_features, devices, hass
     )
+
+    _LOGGER.info(f"Required switch entities: {required_entities}")
 
     if not required_entities:
         _LOGGER.info("No required switch entities, skipping setup")
@@ -72,6 +80,8 @@ async def _async_setup_switch_platform(
 
     # Create entities for each device
     switch_entities = []
+    _LOGGER.info(f"Creating switch entities for {len(devices)} devices: {devices}")
+
     for device_id in devices:
         device = find_ramses_device(hass, device_id)
         if not device:
@@ -81,19 +91,46 @@ async def _async_setup_switch_platform(
             continue
 
         device_type = get_device_type(device)
+        _LOGGER.info(f"Device {device_id} has type: {device_type}")
+        _LOGGER.info(f"Available device mappings: {list(DEVICE_ENTITY_MAPPING.keys())}")
+
         if device_type not in DEVICE_ENTITY_MAPPING:
             _LOGGER.debug(f"Device type {device_type} not in entity mapping, skipping")
             continue
 
+        # Log what entities this device should have
+        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+        _LOGGER.info(f"Device {device_id} has mapping: {entity_mapping}")
+        switch_entities_for_device = entity_mapping.get("switches", [])
+        _LOGGER.info(
+            f"Device {device_id} should have switches: {switch_entities_for_device}"
+        )
+
         # Create switch entities for each required entity type
         for switch_type in required_entities:
+            _LOGGER.info(f"Processing switch type: {switch_type}")
+            _LOGGER.info(
+                f"Available switch configs: "
+                f"{list(ENTITY_TYPE_CONFIGS.get('switch', {}).keys())}"
+            )
             if switch_type in ENTITY_TYPE_CONFIGS.get("switch", {}):
                 config = ENTITY_TYPE_CONFIGS["switch"][switch_type]
-                switch_entities.append(
-                    RamsesDehumidifySwitch(hass, device_id, switch_type, config)
-                )
                 _LOGGER.info(
-                    f"Created switch entity: {switch_type} for device {device_id}"
+                    f"Creating switch entity: {switch_type} for device {device_id}"
+                )
+                _LOGGER.info(f"Switch config: {config}")
+                switch_entity = RamsesDehumidifySwitch(
+                    hass, device_id, switch_type, config
+                )
+                switch_entities.append(switch_entity)
+                _LOGGER.info(
+                    f"✅ Created switch entity: "
+                    f"{switch_type} for device {device_id} - "
+                    f"unique_id: {switch_entity._attr_unique_id}"
+                )
+            else:
+                _LOGGER.warning(
+                    f"❌ Switch type {switch_type} not found in ENTITY_TYPE_CONFIGS"
                 )
 
     if switch_entities:
@@ -119,10 +156,37 @@ class RamsesDehumidifySwitch(SwitchEntity, ExtrasBaseEntity):
         # Set switch-specific attributes
         self._switch_type = switch_type
 
-        # Override unique_id for switch to match existing pattern
-        self._attr_unique_id = f"dehumidify_{device_id.replace(':', '_')}"
+        # Convert device_id to underscore format for entity generation
+        device_id_underscore = device_id.replace(":", "_")
+
+        # Generate proper entity name using template system
+        entity_name = EntityHelpers.generate_entity_name_from_template(
+            "switch", switch_type, device_id_underscore
+        )
+
+        if entity_name:
+            # Set entity name and unique_id using proper template
+            name_template = (
+                config.get("name_template", "Dehumidify {device_id}")
+                or "Dehumidify {device_id}"
+            )
+            self._attr_name = name_template.format(device_id=device_id_underscore)
+            self._attr_unique_id = entity_name.replace("switch.", "")
+        else:
+            # Fallback to hardcoded format (legacy)
+            name_template = (
+                config.get("name_template", "Dehumidify {device_id}")
+                or "Dehumidify {device_id}"
+            )
+            self._attr_name = name_template.format(device_id=device_id_underscore)
+            self._attr_unique_id = f"dehumidify_{device_id_underscore}"
 
         self._is_on = False
+
+    @property
+    def name(self) -> str:
+        """Return the name of the entity."""
+        return self._attr_name or "Dehumidify"
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""

@@ -132,8 +132,26 @@ class RamsesExtraHumiditySensor(SensorEntity, ExtrasBaseEntity):
         self._attr_native_unit_of_measurement = config["unit"]
         self._attr_device_class = config["device_class"]
 
+        # Convert device_id to underscore format for entity generation
+        device_id_underscore = device_id.replace(":", "_")
+
         # Set unique_id to prevent duplicate entities
-        self._attr_unique_id = f"{sensor_type}_{device_id.replace(':', '_')}"
+        self._attr_unique_id = f"{sensor_type}_{device_id_underscore}"
+
+        # Set human-friendly name from template
+        name_template = (
+            config.get("name_template", f"{sensor_type} {device_id_underscore}")
+            or f"{sensor_type} {device_id_underscore}"
+        )
+        self._attr_name = name_template.format(device_id=device_id_underscore)
+
+    @property
+    def name(self) -> str:
+        """Return the name of the entity."""
+        return (
+            self._attr_name
+            or f"{self._sensor_type} {self._device_id.replace(':', '_')}"
+        )
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle device update from Ramses RF."""
