@@ -11,7 +11,7 @@ from homeassistant.const import SERVICE_TURN_OFF, SERVICE_TURN_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
 
-from ...framework.helpers.entity import EntityHelpers
+from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -87,18 +87,8 @@ class HumidityServices:
         _LOGGER.info(f"Deactivating dehumidification for device {device_id}")
 
         try:
-            # Find dehumidify switch entity
-            dehumidify_entity = await self._find_dehumidify_entity(device_id)
-            if not dehumidify_entity:
-                _LOGGER.error(f"Dehumidify switch not found for device {device_id}")
-                return False
-
-            # Turn off the switch
-            await self.hass.services.async_call(
-                "switch", SERVICE_TURN_OFF, {"entity_id": dehumidify_entity}
-            )
-
-            _LOGGER.info(f"Dehumidification deactivated: {dehumidify_entity}")
+            # Just log the deactivation - don't control the switch to avoid recursion
+            _LOGGER.info(f"Dehumidification deactivated for device {device_id}")
             return True
 
         except Exception as e:

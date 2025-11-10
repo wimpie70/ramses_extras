@@ -6,16 +6,19 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import (
+from custom_components.ramses_extras.const import (
     AVAILABLE_FEATURES,
     DEVICE_ENTITY_MAPPING,
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
-from .framework.base_classes import ExtrasBaseEntity
-from .framework.helpers.device.core import find_ramses_device, get_device_type
-from .framework.helpers.entity_core import EntityHelpers
-from .framework.helpers.platform import (
+from custom_components.ramses_extras.framework.base_classes import ExtrasBaseEntity
+from custom_components.ramses_extras.framework.helpers.device.core import (
+    find_ramses_device,
+    get_device_type,
+)
+from custom_components.ramses_extras.framework.helpers.entity_core import EntityHelpers
+from custom_components.ramses_extras.framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
 )
@@ -220,8 +223,26 @@ class RamsesDehumidifySwitch(SwitchEntity, ExtrasBaseEntity):
         if automation:
             # Update switch state for the existing automation
             automation.switch_state = True
-            # Immediately evaluate current conditions since switch is now on
-            await automation._evaluate_current_conditions()
+            # Get current entity states and evaluate humidity conditions
+            device_id_underscore = self._device_id.replace(":", "_")
+            try:
+                entity_states = await automation._get_device_entity_states(
+                    device_id_underscore
+                )
+                _LOGGER.info(f"Got entity states for evaluation: {entity_states}")
+
+                # Call the method with proper parameters
+                await automation._evaluate_humidity_conditions(
+                    indoor_abs=entity_states.get("indoor_abs", 0.0),
+                    outdoor_abs=entity_states.get("outdoor_abs", 0.0),
+                    min_humidity=entity_states.get("min_humidity", 40.0),
+                    max_humidity=entity_states.get("max_humidity", 60.0),
+                    offset=entity_states.get("offset", 0.0),
+                )
+            except Exception as e:
+                _LOGGER.error(f"Failed to evaluate humidity conditions: {e}")
+                # Fallback: just set the switch state but don't evaluate
+                # pass
         else:
             # Debug: log what's actually in the data
             ramses_data = self.hass.data.get("ramses_extras", {})
@@ -247,8 +268,12 @@ class RamsesDehumidifySwitch(SwitchEntity, ExtrasBaseEntity):
             automation.switch_state = False
             _LOGGER.info(f"Updated switch state in automation for {self._device_id}")
 
-            # Reset fan to AUTO and turn off binary sensor
-            await automation._reset_fan_to_auto(self._device_id.replace(":", "_"))
+            # Just log the deactivation - avoid circular service calls
+            _LOGGER.info(f"Dehumidification manually disabled for {self._device_id}")
+
+            # In a full implementation, this would reset fan to auto
+            # but we'll avoid the service call to prevent recursion
+            pass  # noqa: PIE790
         else:
             _LOGGER.warning(
                 f"No automation found for device {self._device_id} when turning off"

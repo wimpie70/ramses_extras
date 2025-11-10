@@ -140,7 +140,7 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             List of entity patterns
         """
-        from ...const import AVAILABLE_FEATURES
+        from custom_components.ramses_extras.const import AVAILABLE_FEATURES
 
         patterns = []
 
@@ -217,7 +217,7 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             True if at least one device is ready
         """
-        from ...const import AVAILABLE_FEATURES
+        from custom_components.ramses_extras.const import AVAILABLE_FEATURES
 
         # Get the first entity type to look for devices
         feature = AVAILABLE_FEATURES.get(self.feature_id, {})
@@ -443,8 +443,10 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             True if all entities exist, False otherwise
         """
-        from ...const import AVAILABLE_FEATURES
-        from ...entity import EntityHelpers
+        from custom_components.ramses_extras.const import AVAILABLE_FEATURES
+        from custom_components.ramses_extras.framework.helpers.entity.core import (
+            EntityHelpers,
+        )
 
         feature = AVAILABLE_FEATURES.get(self.feature_id, {})
         if not feature:
@@ -503,7 +505,9 @@ class ExtrasBaseAutomation(ABC):
             Device identifier in underscore format (e.g., "32_153289")
             or None if extraction fails
         """
-        from ...entity import EntityHelpers
+        from custom_components.ramses_extras.framework.helpers.entity.core import (
+            EntityHelpers,
+        )
 
         parsed = EntityHelpers.parse_entity_id(entity_id)
         if parsed:
@@ -529,7 +533,9 @@ class ExtrasBaseAutomation(ABC):
         Raises:
             ValueError: If any entity is unavailable or has invalid values
         """
-        from ...entity import get_feature_entity_mappings
+        from custom_components.ramses_extras.framework.helpers.entity.core import (
+            get_feature_entity_mappings,
+        )
 
         states = {}
 

@@ -10,8 +10,8 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from ...const import AVAILABLE_FEATURES
-from ...framework import entity_registry
+from custom_components.ramses_extras.const import AVAILABLE_FEATURES
+from custom_components.ramses_extras.framework import entity_registry
 
 _LOGGER = logging.getLogger(__name__)
 

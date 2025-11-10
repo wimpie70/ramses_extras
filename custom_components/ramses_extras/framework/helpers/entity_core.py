@@ -14,8 +14,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from ...const import ENTITY_TYPE_CONFIGS
-from ...framework import get_all_entities, get_device_mapping, get_entity_config
+from custom_components.ramses_extras.const import ENTITY_TYPE_CONFIGS
+from custom_components.ramses_extras.framework import (
+    get_all_entities,
+    get_device_mapping,
+    get_entity_config,
+)
 
 _LOGGER = logging.getLogger(__name__)
 

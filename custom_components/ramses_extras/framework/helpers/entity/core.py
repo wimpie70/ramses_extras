@@ -15,7 +15,7 @@ from typing import Any, cast
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
 
-from ....const import AVAILABLE_FEATURES
+from custom_components.ramses_extras.const import AVAILABLE_FEATURES
 
 _LOGGER = logging.getLogger(__name__)
 

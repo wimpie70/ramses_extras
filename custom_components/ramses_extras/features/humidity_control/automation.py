@@ -13,8 +13,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.event import async_track_state_change_event
 
-from ...framework.helpers.automation.base import ExtrasBaseAutomation
-from ...framework.helpers.entity import EntityHelpers
+from custom_components.ramses_extras.framework.helpers.automation.base import (
+    ExtrasBaseAutomation,
+)
+from custom_components.ramses_extras.framework.helpers.entity import EntityHelpers
+
 from .config import HumidityConfig
 from .const import HUMIDITY_CONTROL_CONST
 from .services import HumidityServices

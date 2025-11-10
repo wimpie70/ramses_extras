@@ -69,7 +69,10 @@ def calculate_required_entities(
     """
     required_entities = []
 
-    from ...const import AVAILABLE_FEATURES
+    from custom_components.ramses_extras.const import (
+        AVAILABLE_FEATURES,
+        FEATURE_ID_HUMIDITY_CONTROL,
+    )
 
     for feature_key, is_enabled in enabled_features.items():
         if not is_enabled or feature_key not in AVAILABLE_FEATURES:
@@ -115,14 +118,21 @@ def calculate_required_entities(
             feature_config = AVAILABLE_FEATURES[feature_key]
             _LOGGER.info(f"  Feature {feature_key}: {feature_config}")
 
-            required_entities_for_feature = cast(
-                dict[str, Any], feature_config.get("required_entities", {})
-            )
-            _LOGGER.info(f"    Required entities: {required_entities_for_feature}")
-            _LOGGER.info(f"    Looking for key: {platform_key}")
-            _LOGGER.info(
-                f"    Found: {required_entities_for_feature.get(platform_key, [])}"
-            )
+            # Get required entities for this platform
+            required_entities_for_feature = feature_config.get("required_entities", {})
+            if isinstance(required_entities_for_feature, dict):
+                _LOGGER.info(f"    Required entities: {required_entities_for_feature}")
+                _LOGGER.info(f"    Looking for key: {platform_key}")
+                _LOGGER.info(
+                    f"    Found: {required_entities_for_feature.get(platform_key, [])}"
+                )
+            else:
+                _LOGGER.info(
+                    f"    Required entities: "
+                    f"{required_entities_for_feature} (not a dict)"
+                )
+                _LOGGER.info(f"    Looking for key: {platform_key}")
+                _LOGGER.info("    Found: [] (invalid format)")
 
     return required_entities
 

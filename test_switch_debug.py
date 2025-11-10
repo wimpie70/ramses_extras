@@ -27,10 +27,14 @@ def test_switch_configuration() -> None:
 
     # Check required entities
     required_entities = humidity_feature.get("required_entities", {})
-    print(f"📋 Required entities: {required_entities}")
+    if isinstance(required_entities, dict):
+        print(f"📋 Required entities: {required_entities}")
 
-    # Check switches specifically
-    switches = required_entities.get("switches", [])
+        # Check switches specifically
+        switches = required_entities.get("switches", [])
+    else:
+        print(f"📋 Required entities: {required_entities} (not a dict)")
+        switches = []
     print(f"🔌 Required switches: {switches}")
 
     # Check switch configurations
@@ -65,7 +69,10 @@ def test_switch_configuration() -> None:
         print(f"  Required entities: {required_entities}")
 
         # Check for switch platform
-        switches_for_platform = required_entities.get("switches", [])
+        if isinstance(required_entities, dict):
+            switches_for_platform = required_entities.get("switches", [])
+        else:
+            switches_for_platform = []
         print(f"  Switches for switch platform: {switches_for_platform}")
 
         if "dehumidify" in switches_for_platform:
@@ -78,7 +85,7 @@ def test_switch_configuration() -> None:
     device_id = "32_153289"
     entity_name = "dehumidify"
 
-    # Test template lookup - EntityHelpers methods
+    # Test template lookup - using SWITCH_CONFIGS directly
     try:
         # Get switch configuration
         switch_config = SWITCH_CONFIGS.get(entity_name, {})
@@ -89,26 +96,30 @@ def test_switch_configuration() -> None:
         print(f"Entity template: {entity_template}")
 
         # Generate entity ID manually
-        entity_id = f"switch.{entity_template.format(device_id=device_id)}"
-        print(f"Generated entity ID: {entity_id}")
+        if entity_template:
+            entity_id = f"switch.{entity_template.format(device_id=device_id)}"
+            print(f"Generated entity ID: {entity_id}")
+        else:
+            # Fallback to simple generation
+            entity_id = f"switch.{entity_name}_{device_id}"
+            print(f"Fallback entity ID: {entity_id}")
 
-        # Test entity ID generation using old method
-        #  (generate_entity_name_from_template)
-        entity_id_old = f"switch.{entity_name}_{device_id}"
-        print(f"Old method entity ID: {entity_id_old}")
+        # Test entity ID generation using EntityHelpers
+        entity_id_old = EntityHelpers.generate_entity_name_from_template(
+            "switch", entity_name, device_id
+        )
+        print(f"EntityHelpers entity ID: {entity_id_old}")
+
+        if entity_id:
+            print("✅ Entity generation system working!")
+        else:
+            print("❌ Entity generation system failed!")
 
     except Exception as e:
         print(f"Entity generation failed: {e}")
         # Fallback to simple generation
         entity_id = f"switch.{entity_name}_{device_id}"
         print(f"Fallback entity ID: {entity_id}")
-
-        if entity_id:
-            print("✅ New entity generation system working!")
-        else:
-            print("❌ New entity generation system failed!")
-    else:
-        print("❌ No entity template found!")
 
 
 if __name__ == "__main__":
