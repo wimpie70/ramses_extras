@@ -12,9 +12,9 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
-from .helpers.device import find_ramses_device, get_device_type
-from .helpers.entity import ExtrasBaseEntity
-from .helpers.platform import (
+from .framework.helpers.device.core import find_ramses_device, get_device_type
+from .framework.helpers.entity.core import ExtrasBaseEntity
+from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
 )
@@ -33,7 +33,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the switch platform."""
     # _LOGGER.info("SWITCH PLATFORM: async_setup_entry called")
-    from .helpers.platform import async_setup_platform
+    from .framework.helpers.platform import async_setup_platform
 
     await async_setup_platform("switch", hass, config_entry, async_add_entities)
     # _LOGGER.info("SWITCH PLATFORM: async_setup_entry completed")

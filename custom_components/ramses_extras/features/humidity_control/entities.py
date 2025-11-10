@@ -16,7 +16,7 @@ from homeassistant.helpers import entity_registry
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_registry import async_get
 
-from ...helpers.entity import EntityHelpers
+from ...framework.helpers.entity import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 

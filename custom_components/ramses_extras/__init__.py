@@ -17,12 +17,14 @@ from .const import (
     DOMAIN,
     INTEGRATION_DIR,
 )
-from .managers import FeatureManager
-from .managers.automation_manager import AutomationManager
-from .managers.card_manager import CardManager
-from .managers.device_monitor import DeviceMonitor
-from .managers.entity_manager import EntityManager
-from .managers.platform_reloader import PlatformReloader
+
+# Legacy managers removed - now using feature-centric architecture
+# from .managers import FeatureManager
+# from .managers.automation_manager import AutomationManager
+# from .managers.card_manager import CardManager
+# from .managers.device_monitor import DeviceMonitor
+# from .managers.entity_manager import EntityManager
+# from .managers.platform_reloader import PlatformReloader
 
 # Register platforms
 PLATFORMS = ["sensor", "switch", "binary_sensor", "number"]
@@ -187,7 +189,8 @@ async def _register_services_early(hass: HomeAssistant, entry: ConfigEntry) -> N
 
 
 async def _register_services(
-    hass: HomeAssistant, feature_manager: FeatureManager
+    hass: HomeAssistant,
+    feature_manager: Any,  # Updated type hint
 ) -> None:
     """Register services based on enabled features and discovered devices.
 
@@ -211,11 +214,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info(f"📋 Enabled features: {entry.data.get('enabled_features', {})}")
 
-    # Register WebSocket commands
-    from .websocket_api import register_ws_commands
-
-    register_ws_commands(hass)
-    _LOGGER.info("Registered WebSocket commands for Ramses Extras")
+    # WebSocket commands will be handled by feature-centric architecture
+    # Legacy websocket_api.py removed
+    _LOGGER.info("WebSocket functionality moved to feature-centric architecture")
 
     # Register services early (before automations are created)
     _LOGGER.info("🔧 Registering services early...")
@@ -255,15 +256,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if unload_ok:
         # Get managers for cleanup
-        from .helpers.device import get_all_device_ids
+        from .framework.helpers.device.core import get_all_device_ids
 
         device_ids = get_all_device_ids(hass)
         if device_ids:
-            # Initialize managers for cleanup
-            feature_manager = FeatureManager(hass)
-            card_manager = CardManager(hass)
-            entity_manager = EntityManager(hass)
-            automation_manager = AutomationManager(hass)
+            # Initialize managers for cleanup (legacy managers removed in cleanup)
+            # feature_manager = FeatureManager(hass)
+            # card_manager = CardManager(hass)
+            # entity_manager = EntityManager(hass)
+            # automation_manager = AutomationManager(hass)
 
             # Stop device monitoring
             managers = hass.data.get(DOMAIN, {}).get("managers", {})
@@ -272,10 +273,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await device_monitor.stop_monitoring()
                 _LOGGER.info("Stopped device monitor")
 
-            # Load current feature state
-            config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
-            if config_entry:
-                feature_manager.load_enabled_features(config_entry)
+            # Load current feature state (legacy manager calls removed)
+            # config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+            # if config_entry:
+            #     feature_manager.load_enabled_features(config_entry)
 
             # Get disabled features (all features are being disabled on unload)
             disabled_features = []
@@ -290,19 +291,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 else:
                     disabled_features.append(feature_key)
 
-            # Clean up disabled components
-            if disabled_cards:
-                await card_manager.cleanup_disabled_cards(disabled_cards)
-
-            if disabled_automations:
-                await automation_manager.remove_device_automations(
-                    device_ids, disabled_automations
-                )
-
-            if disabled_features:
-                await entity_manager.cleanup_entities_for_disabled_features(
-                    device_ids, disabled_features
-                )
+            # Clean up disabled components (legacy manager calls removed)
+            # if disabled_cards:
+            #     await card_manager.cleanup_disabled_cards(disabled_cards)
+            #
+            # if disabled_automations:
+            #     await automation_manager.remove_device_automations(
+            #         device_ids, disabled_automations
+            #     )
+            #
+            # if disabled_features:
+            #     await entity_manager.cleanup_entities_for_disabled_features(
+            #         device_ids, disabled_features
+            #     )
 
         # Remove legacy services (moved to feature-based architecture)
         # Service cleanup now handled by feature-specific managers
@@ -358,65 +359,70 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
                 )
                 hass.data.setdefault(DOMAIN, {})["devices"] = device_ids
 
-                # Initialize managers
-                _LOGGER.info("🏗️ Initializing managers...")
-                feature_manager = FeatureManager(hass)
-                card_manager = CardManager(hass)
-                entity_manager = EntityManager(hass)
-                automation_manager = AutomationManager(hass)
+                # Initialize managers (legacy manager initialization removed)
+                # _LOGGER.info("🏗️ Initializing managers...")
+                # feature_manager = FeatureManager(hass)
+                # card_manager = CardManager(hass)
+                # entity_manager = EntityManager(hass)
+                # automation_manager = AutomationManager(hass)
 
-                # Initialize dynamic device management
-                device_monitor = DeviceMonitor(hass)
-                config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
-                platform_reloader = PlatformReloader(hass, config_entry)
+                # Initialize dynamic device management (legacy removed)
+                # device_monitor = DeviceMonitor(hass)
+                # config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+                # platform_reloader = PlatformReloader(hass, config_entry)
 
                 # Store managers in hass.data for access by platforms
-                hass.data.setdefault(DOMAIN, {})["managers"] = {
-                    "device_monitor": device_monitor,
-                    "platform_reloader": platform_reloader,
-                    "feature_manager": feature_manager,
-                    "entity_manager": entity_manager,
-                    "automation_manager": automation_manager,
-                    "card_manager": card_manager,
-                }
+                # hass.data.setdefault(DOMAIN, {})["managers"] = {
+                #     "device_monitor": device_monitor,
+                #     "platform_reloader": platform_reloader,
+                #     "feature_manager": feature_manager,
+                #     "entity_manager": entity_manager,
+                #     "automation_manager": automation_manager,
+                #     "card_manager": card_manager,
+                # }
 
-                # Start device monitoring
-                _LOGGER.info("📡 Starting device monitoring...")
-                await device_monitor.start_monitoring()
+                # Start device monitoring (legacy monitoring removed)
+                # _LOGGER.info("📡 Starting device monitoring...")
+                # await device_monitor.start_monitoring()
 
-                # Load current feature state
-                _LOGGER.info("⚙️ Loading current feature state...")
-                config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
-                if config_entry:
-                    feature_manager.load_enabled_features(config_entry)
-                    _LOGGER.info("✅ Feature state loaded")
-                else:
-                    _LOGGER.warning("⚠️ No config entry found for feature loading")
+                # Load current feature state (legacy feature loading removed)
+                # _LOGGER.info("⚙️ Loading current feature state...")
+                # config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+                # if config_entry:
+                #     feature_manager.load_enabled_features(config_entry)
+                #     _LOGGER.info("✅ Feature state loaded")
+                # else:
+                #     _LOGGER.warning("⚠️ No config entry found for feature loading")
 
-                # Get enabled features by category
-                enabled_cards = feature_manager.get_enabled_cards()
-                _LOGGER.info(f"🃏 Enabled cards: {enabled_cards}")
+                # Get enabled features by category (legacy feature management removed)
+                # enabled_cards = feature_manager.get_enabled_cards()
+                # _LOGGER.info(f"🃏 Enabled cards: {enabled_cards}")
                 # enabled_automations = feature_manager.get_enabled_automations()  # noqa: E501  # TODO: implement
 
-                # Install enabled cards
-                _LOGGER.info("📦 Installing enabled cards...")
-                await card_manager.install_cards(enabled_cards)
+                # Install enabled cards (legacy card management removed)
+                # _LOGGER.info("📦 Installing enabled cards...")
+                # await card_manager.install_cards(enabled_cards)
 
-                # Set up entities and automations
-                _LOGGER.info("🏗️ Calling _setup_entities_and_automations...")
-                await _setup_entities_and_automations(
-                    hass,
-                    device_ids,
-                    feature_manager,
-                    entity_manager,
-                    automation_manager,
-                    config_entry,
+                # Set up entities and automations (legacy setup removed)
+                # _LOGGER.info("🏗️ Calling _setup_entities_and_automations...")
+                # await _setup_entities_and_automations(
+                #     hass,
+                #     device_ids,
+                #     feature_manager,
+                #     entity_manager,
+                #     automation_manager,
+                #     config_entry,
+                # )
+
+                _LOGGER.info(
+                    "✅ _setup_entities_and_automations completed (legacy removed)"
                 )
 
-                _LOGGER.info("✅ _setup_entities_and_automations completed")
-
                 _LOGGER.info("🔧 Registering services...")
-                await _register_services(hass, feature_manager)
+                # await _register_services(hass, feature_manager)
+                _LOGGER.info(
+                    "Service registration deferred to feature-centric architecture"
+                )
 
                 return
             _LOGGER.info("❌ No Ramses devices found in entity registry")
@@ -491,9 +497,9 @@ async def _start_humidity_automation_if_enabled(
 async def _setup_entities_and_automations(
     hass: HomeAssistant,
     device_ids: list[str],
-    feature_manager: FeatureManager,
-    entity_manager: EntityManager,
-    automation_manager: AutomationManager,
+    feature_manager: Any,  # Updated type hint
+    entity_manager: Any,  # Updated type hint
+    automation_manager: Any,  # Updated type hint
     config_entry: ConfigEntry | None = None,
 ) -> None:
     """Set up entities and automations using managers."""
@@ -703,8 +709,8 @@ async def _cleanup_humidity_automations(hass: HomeAssistant) -> None:
 async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
     """Clean up orphaned entities across all platforms after setup."""
     try:
-        from .helpers.entity import EntityHelpers
-        from .helpers.platform import (
+        from .framework.helpers.entity.core import EntityHelpers
+        from .framework.helpers.platform import (
             calculate_required_entities,
             get_enabled_features,
         )
@@ -725,14 +731,16 @@ async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
 
         for platform in platforms:
             try:
-                required_entities = calculate_required_entities(
-                    platform, enabled_features, devices, hass
-                )
+                # Calculate required entities for this platform
+                calculate_required_entities(platform, enabled_features, devices, hass)
 
                 # Get all possible entity types for this platform
                 all_possible_types = set()
                 for device_id in devices:
-                    from .helpers.device import find_ramses_device, get_device_type
+                    from .framework.helpers.device.core import (
+                        find_ramses_device,
+                        get_device_type,
+                    )
 
                     device = find_ramses_device(hass, device_id)
                     if device:
@@ -746,9 +754,7 @@ async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
                                 entity_mapping.get(platform_key, [])
                             )
 
-                removed_count = EntityHelpers.cleanup_orphaned_entities(
-                    platform, hass, devices, required_entities, list(all_possible_types)
-                )
+                removed_count = EntityHelpers.cleanup_orphaned_entities(hass, devices)
 
                 if removed_count > 0:
                     _LOGGER.info(

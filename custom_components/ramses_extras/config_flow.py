@@ -18,7 +18,7 @@ from .const import (
     GITHUB_WIKI_URL,
     INTEGRATION_DIR,
 )
-from .helpers.platform import (
+from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
 )
@@ -729,7 +729,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
             if config_entry and devices:
                 # Calculate which sensor entities are still required
-                current_required_entities = calculate_required_entities(
+                calculate_required_entities(
                     "sensor",
                     get_enabled_features(self.hass, config_entry),
                     devices,
@@ -737,18 +737,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 )
 
                 # Remove orphaned sensor entities
-                from .helpers.entity import EntityHelpers
+                from .framework.helpers.entity.core import EntityHelpers
 
                 removed_count = EntityHelpers.cleanup_orphaned_entities(
-                    "sensor",
                     self.hass,
                     devices,
-                    current_required_entities,
-                    list(
-                        DEVICE_ENTITY_MAPPING.get("HvacVentilator", {}).get(
-                            "sensors", []
-                        )
-                    ),
                 )
                 _LOGGER.info(
                     f"Cleanup - Removed {removed_count} orphaned sensor entities"

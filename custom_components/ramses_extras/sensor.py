@@ -12,13 +12,13 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
-from .helpers.device import (
+from .framework.helpers.device.core import (
     find_ramses_device,
     get_device_type,
 )
-from .helpers.entities import calculate_absolute_humidity
-from .helpers.entity import EntityHelpers, ExtrasBaseEntity
-from .helpers.platform import (
+from .framework.helpers.entities import calculate_absolute_humidity
+from .framework.helpers.entity.core import EntityHelpers, ExtrasBaseEntity
+from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
 )
@@ -140,7 +140,8 @@ class RamsesExtraHumiditySensor(SensorEntity, ExtrasBaseEntity):
         """Return calculated absolute humidity."""
         try:
             temp, rh = self._get_temp_and_humidity()
-            return self._calculate_abs_humidity(temp, rh)
+            result = self._calculate_abs_humidity(temp, rh)
+            return result if result is not None else None
         except Exception as e:
             _LOGGER.debug("Error reading humidity for %s: %s", self._attr_name, e)
             return None
@@ -214,7 +215,8 @@ class RamsesExtraHumiditySensor(SensorEntity, ExtrasBaseEntity):
             return None
 
         # Use the calculation function from our helpers
-        return calculate_absolute_humidity(temp, rh)
+        result = calculate_absolute_humidity(temp, rh)
+        return float(result) if result is not None else None
 
     @property
     def native_unit_of_measurement(self) -> str:

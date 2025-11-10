@@ -11,7 +11,7 @@ from homeassistant.const import SERVICE_TURN_OFF, SERVICE_TURN_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
 
-from ...helpers.entity import EntityHelpers
+from ...framework.helpers.entity import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 

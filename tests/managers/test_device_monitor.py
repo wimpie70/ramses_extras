@@ -9,8 +9,25 @@ import pytest
 sys.path.insert(0, "custom_components")
 
 try:
-    from ramses_extras.const import DOMAIN
-    from ramses_extras.managers.device_monitor import DeviceMonitor
+    from custom_components.ramses_extras.helpers.device import (
+        find_ramses_device,
+        get_device_type,
+    )
+
+    from custom_components.ramses_extras.const import DOMAIN
+
+    # Check if DeviceMonitor exists in the legacy managers (for backward compatibility)
+    try:
+        from custom_components.ramses_extras.managers.device_monitor import (
+            DeviceMonitor,
+        )
+    except ImportError:
+        # DeviceMonitor might have been moved to framework or removed
+        DeviceMonitor = None
+        print(
+            "DeviceMonitor not found in legacy managers"
+            " - may be in framework or removed"
+        )
 except ImportError:
     pytest.skip(
         "Integration not properly installed for testing",
@@ -179,12 +196,16 @@ class TestDeviceMonitor:
         monitor = DeviceMonitor(mock_hass)
 
         # Patch the helper functions at the module level where they are imported
-        with patch("ramses_extras.helpers.device.find_ramses_device") as mock_find:
+        with patch(
+            "custom_components.ramses_extras.helpers.device.find_ramses_device"
+        ) as mock_find:
             mock_device = Mock()
             mock_device.id = "32:153289"  # Device needs an id attribute
             mock_find.return_value = mock_device
 
-            with patch("ramses_extras.helpers.device.get_device_type") as mock_get_type:
+            with patch(
+                "custom_components.ramses_extras.helpers.device.get_device_type"
+            ) as mock_get_type:
                 mock_get_type.return_value = "HvacVentilator"
 
                 result = await monitor._is_supported_device("32:153289")

@@ -16,9 +16,9 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
-from .helpers.device import find_ramses_device, get_device_type
-from .helpers.entity import ExtrasBaseEntity
-from .helpers.platform import (
+from .framework.helpers.device.core import find_ramses_device, get_device_type
+from .framework.helpers.entity.core import ExtrasBaseEntity
+from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
 )
@@ -36,7 +36,7 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the binary sensor platform."""
-    from .helpers.platform import async_setup_platform
+    from .framework.helpers.platform import async_setup_platform
 
     await async_setup_platform("binary_sensor", hass, config_entry, async_add_entities)
 

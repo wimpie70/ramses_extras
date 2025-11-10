@@ -13,12 +13,12 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_CONFIGS,
 )
-from .helpers.device import (
+from .framework.helpers.device.core import (
     find_ramses_device,
     get_device_type,
 )
-from .helpers.entity import EntityHelpers, ExtrasBaseEntity
-from .helpers.platform import (
+from .framework.helpers.entity.core import EntityHelpers, ExtrasBaseEntity
+from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
 )
@@ -36,7 +36,7 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up the number platform."""
-    from .helpers.platform import async_setup_platform
+    from .framework.helpers.platform import async_setup_platform
 
     await async_setup_platform("number", hass, config_entry, async_add_entities)
 
@@ -107,9 +107,9 @@ class RamsesNumberEntity(NumberEntity, RestoreEntity, ExtrasBaseEntity):
                         restored_value,
                         min_val,
                         max_val,
-                        self._config.get("default_value", min_val),
+                        (self._config or {}).get("default_value", min_val),
                     )
-                    self._value = self._config.get("default_value", min_val)
+                    self._value = (self._config or {}).get("default_value", min_val)
             except (ValueError, TypeError) as e:
                 _LOGGER.warning(
                     "Failed to restore %s value from state '%s': %s, "
@@ -117,14 +117,18 @@ class RamsesNumberEntity(NumberEntity, RestoreEntity, ExtrasBaseEntity):
                     self._number_type,
                     last_state.state,
                     e,
-                    self._config.get("default_value", self._attr_native_min_value),
+                    (self._config or {}).get(
+                        "default_value", self._attr_native_min_value
+                    ),
                 )
-                self._value = self._config.get(
+                self._value = (self._config or {}).get(
                     "default_value", self._attr_native_min_value
                 )
         else:
             # No previous state found, use default value
-            self._value = self._config.get("default_value", self._attr_native_min_value)
+            self._value = (self._config or {}).get(
+                "default_value", self._attr_native_min_value
+            )
             _LOGGER.debug(
                 "No previous state found for %s, using default value: %.1f",
                 self._number_type,

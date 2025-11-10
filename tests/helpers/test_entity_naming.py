@@ -9,7 +9,7 @@ sys.path.insert(
 )
 
 # Import the entity helper functions from the custom component
-from ramses_extras.helpers.entity import EntityHelpers
+from custom_components.ramses_extras.framework.helpers.entity import EntityHelpers
 
 
 def test_entity_generation():

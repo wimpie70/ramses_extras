@@ -18,8 +18,7 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.event import async_track_state_change
 
 from ....const import AVAILABLE_FEATURES
-from ....framework.helpers.entity import EntityHelpers
-from ....helpers.entity import get_feature_entity_mappings
+from ...helpers.entity import EntityHelpers, get_feature_entity_mappings
 
 _LOGGER = logging.getLogger(__name__)
 
