@@ -20,6 +20,28 @@ from custom_components.ramses_extras.const import AVAILABLE_FEATURES
 _LOGGER = logging.getLogger(__name__)
 
 
+def _singularize_entity_type(entity_type: str) -> str:
+    """Convert plural entity type to singular form.
+
+    Args:
+        entity_type: Plural entity type (e.g., "switches", "sensors", "numbers")
+
+    Returns:
+        Singular entity type (e.g., "switch", "sensor", "number")
+    """
+    # Handle common entity type plurals
+    entity_type_mapping = {
+        "sensors": "sensor",
+        "switches": "switch",
+        "binary_sensors": "binary_sensor",
+        "numbers": "number",
+        "devices": "device",
+        "entities": "entity",
+    }
+
+    return entity_type_mapping.get(entity_type, entity_type.rstrip("s"))
+
+
 class EntityHelpers:
     """Static helper methods for entity ID generation and parsing."""
 
@@ -118,7 +140,7 @@ class EntityHelpers:
         required_entities = feature.get("required_entities", {})
 
         for entity_type, entity_names in required_entities.items():
-            entity_base_type = entity_type.rstrip("s")  # "sensors" -> "sensor"
+            entity_base_type = _singularize_entity_type(entity_type)
             for entity_name in entity_names:
                 patterns.append(f"{entity_base_type}.{entity_name}_*")
 
@@ -232,7 +254,7 @@ def get_feature_entity_mappings(feature_id: str, device_id: str) -> dict[str, st
 
     # Generate entity IDs for each required entity type
     for entity_type, entity_names in required_entities.items():
-        entity_base_type = entity_type.rstrip("s")
+        entity_base_type = _singularize_entity_type(entity_type)
         for entity_name in entity_names:
             entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
             # Use the entity_name as the state key

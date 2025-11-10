@@ -24,6 +24,28 @@ from custom_components.ramses_extras.framework import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _singularize_entity_type(entity_type: str) -> str:
+    """Convert plural entity type to singular form.
+
+    Args:
+        entity_type: Plural entity type (e.g., "switches", "sensors", "numbers")
+
+    Returns:
+        Singular entity type (e.g., "switch", "sensor", "number")
+    """
+    # Handle common entity type plurals
+    entity_type_mapping = {
+        "sensors": "sensor",
+        "switches": "switch",
+        "binary_sensors": "binary_sensor",
+        "numbers": "number",
+        "devices": "device",
+        "entities": "entity",
+    }
+
+    return entity_type_mapping.get(entity_type, entity_type.rstrip("s"))
+
+
 class EntityHelpers:
     """Static helper methods for entity ID generation and parsing.
 
@@ -60,7 +82,8 @@ class EntityHelpers:
         # First try to get from entity registry
         config = get_entity_config(entity_name)
         if config:
-            return config.get("entity_template")
+            template = config.get("entity_template")
+            return str(template) if template is not None else None
 
         # Fallback to legacy ENTITY_TYPE_CONFIGS
         configs = ENTITY_TYPE_CONFIGS.get(entity_type, {})
@@ -364,8 +387,8 @@ class EntityHelpers:
 
         for entity_type, entity_names in required_entities.items():
             for entity_name in entity_names:
-                # Use wildcard pattern for dynamic device_id matching
-                entity_base_type = entity_type.rstrip("s")  # "sensors" -> "sensor"
+                # Use proper singularization for entity types
+                entity_base_type = _singularize_entity_type(entity_type)
                 patterns.append(f"{entity_base_type}.{entity_name}_*")
 
         return patterns

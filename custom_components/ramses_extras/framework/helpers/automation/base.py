@@ -22,6 +22,28 @@ from homeassistant.helpers.event import async_track_state_change
 _LOGGER = logging.getLogger(__name__)
 
 
+def _singularize_entity_type(entity_type: str) -> str:
+    """Convert plural entity type to singular form.
+
+    Args:
+        entity_type: Plural entity type (e.g., "switches", "sensors", "numbers")
+
+    Returns:
+        Singular entity type (e.g., "switch", "sensor", "number")
+    """
+    # Handle common entity type plurals
+    entity_type_mapping = {
+        "sensors": "sensor",
+        "switches": "switch",
+        "binary_sensors": "binary_sensor",
+        "numbers": "number",
+        "devices": "device",
+        "entities": "entity",
+    }
+
+    return entity_type_mapping.get(entity_type, entity_type.rstrip("s"))
+
+
 class ExtrasBaseAutomation(ABC):
     """Abstract base class for Ramses Extras automations.
 
@@ -153,8 +175,8 @@ class ExtrasBaseAutomation(ABC):
 
         for entity_type, entity_names in required_entities_dict.items():
             for entity_name in entity_names:
-                # Use wildcard pattern for dynamic device_id matching
-                entity_base_type = entity_type.rstrip("s")  # "sensors" -> "sensor"
+                # Use proper singularization for entity types
+                entity_base_type = _singularize_entity_type(entity_type)
                 patterns.append(f"{entity_base_type}.{entity_name}_*")
 
         return patterns
@@ -236,7 +258,7 @@ class ExtrasBaseAutomation(ABC):
             return False
 
         first_entity_name = first_entity_names[0]
-        entity_base_type = first_entity_type.rstrip("s")
+        entity_base_type = _singularize_entity_type(first_entity_type)
 
         # Look for entities of this type
         entities = self.hass.states.async_all(entity_base_type)
@@ -465,7 +487,7 @@ class ExtrasBaseAutomation(ABC):
         missing_entities = []
 
         for entity_type, entity_names in required_entities_dict.items():
-            entity_base_type = entity_type.rstrip("s")
+            entity_base_type = _singularize_entity_type(entity_type)
 
             for entity_name in entity_names:
                 # Generate expected entity ID
