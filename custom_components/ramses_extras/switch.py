@@ -6,16 +6,14 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from custom_components.ramses_extras.const import (
-    AVAILABLE_FEATURES,
-    DEVICE_ENTITY_MAPPING,
-    DOMAIN,
-    ENTITY_TYPE_CONFIGS,
-)
+from custom_components.ramses_extras.const import AVAILABLE_FEATURES, DOMAIN
 from custom_components.ramses_extras.framework.base_classes import ExtrasBaseEntity
 from custom_components.ramses_extras.framework.helpers.device.core import (
     find_ramses_device,
     get_device_type,
+)
+from custom_components.ramses_extras.framework.helpers.entity.registry import (
+    entity_registry,
 )
 from custom_components.ramses_extras.framework.helpers.entity_core import EntityHelpers
 from custom_components.ramses_extras.framework.helpers.platform import (
@@ -81,6 +79,10 @@ async def _async_setup_switch_platform(
         f"required entity types: {required_entities}"
     )
 
+    # Get entity definitions from EntityRegistry
+    all_device_mappings = entity_registry.get_all_device_mappings()
+    all_switch_configs = entity_registry.get_all_switch_configs()
+
     # Create entities for each device
     switch_entities = []
     _LOGGER.info(f"Creating switch entities for {len(devices)} devices: {devices}")
@@ -95,14 +97,14 @@ async def _async_setup_switch_platform(
 
         device_type = get_device_type(device)
         _LOGGER.info(f"Device {device_id} has type: {device_type}")
-        _LOGGER.info(f"Available device mappings: {list(DEVICE_ENTITY_MAPPING.keys())}")
+        _LOGGER.info(f"Available device mappings: {list(all_device_mappings.keys())}")
 
-        if device_type not in DEVICE_ENTITY_MAPPING:
+        if device_type not in all_device_mappings:
             _LOGGER.debug(f"Device type {device_type} not in entity mapping, skipping")
             continue
 
         # Log what entities this device should have
-        entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+        entity_mapping = all_device_mappings[device_type]
         _LOGGER.info(f"Device {device_id} has mapping: {entity_mapping}")
         switch_entities_for_device = entity_mapping.get("switches", [])
         _LOGGER.info(
@@ -112,12 +114,9 @@ async def _async_setup_switch_platform(
         # Create switch entities for each required entity type
         for switch_type in required_entities:
             _LOGGER.info(f"Processing switch type: {switch_type}")
-            _LOGGER.info(
-                f"Available switch configs: "
-                f"{list(ENTITY_TYPE_CONFIGS.get('switch', {}).keys())}"
-            )
-            if switch_type in ENTITY_TYPE_CONFIGS.get("switch", {}):
-                config = ENTITY_TYPE_CONFIGS["switch"][switch_type]
+            _LOGGER.info(f"Available switch configs: {list(all_switch_configs.keys())}")
+            if switch_type in all_switch_configs:
+                config = all_switch_configs[switch_type]
                 _LOGGER.info(
                     f"Creating switch entity: {switch_type} for device {device_id}"
                 )

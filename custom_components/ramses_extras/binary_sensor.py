@@ -10,14 +10,10 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
 )
 
-from .const import (
-    AVAILABLE_FEATURES,
-    DEVICE_ENTITY_MAPPING,
-    DOMAIN,
-    ENTITY_TYPE_CONFIGS,
-)
+from .const import AVAILABLE_FEATURES, DOMAIN
 from .framework.base_classes import ExtrasBaseEntity
 from .framework.helpers.device.core import find_ramses_device, get_device_type
+from .framework.helpers.entity.registry import entity_registry
 from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -74,6 +70,10 @@ async def _async_setup_binary_sensor_platform(
         f"required entity types: {required_entities}"
     )
 
+    # Get entity definitions from EntityRegistry
+    all_device_mappings = entity_registry.get_all_device_mappings()
+    all_boolean_configs = entity_registry.get_all_boolean_configs()
+
     # Create entities for each device
     binary_sensors = []
     for device_id in devices:
@@ -85,14 +85,14 @@ async def _async_setup_binary_sensor_platform(
             continue
 
         device_type = get_device_type(device)
-        if device_type not in DEVICE_ENTITY_MAPPING:
+        if device_type not in all_device_mappings:
             _LOGGER.debug(f"Device type {device_type} not in entity mapping, skipping")
             continue
 
         # Create binary sensors for each required entity type
         for boolean_type in required_entities:
-            if boolean_type in ENTITY_TYPE_CONFIGS.get("binary_sensor", {}):
-                config = ENTITY_TYPE_CONFIGS["binary_sensor"][boolean_type]
+            if boolean_type in all_boolean_configs:
+                config = all_boolean_configs[boolean_type]
 
                 # Use feature-specific binary sensor for humidity control
                 if boolean_type == "dehumidifying_active":

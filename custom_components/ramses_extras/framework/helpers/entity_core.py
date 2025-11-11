@@ -14,11 +14,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from custom_components.ramses_extras.const import ENTITY_TYPE_CONFIGS
 from custom_components.ramses_extras.framework import (
     get_all_entities,
     get_device_mapping,
     get_entity_config,
+)
+from custom_components.ramses_extras.framework.helpers.entity.registry import (
+    entity_registry,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,9 +87,19 @@ class EntityHelpers:
             template = config.get("entity_template")
             return str(template) if template is not None else None
 
-        # Fallback to legacy ENTITY_TYPE_CONFIGS
-        configs = ENTITY_TYPE_CONFIGS.get(entity_type, {})
-        entity_config = configs.get(entity_name, {})
+        # Get from entity registry
+        all_entities = (
+            entity_registry.get_all_sensor_configs()
+            if entity_type == "sensor"
+            else entity_registry.get_all_switch_configs()
+            if entity_type == "switch"
+            else entity_registry.get_all_number_configs()
+            if entity_type == "number"
+            else entity_registry.get_all_boolean_configs()
+            if entity_type == "binary_sensor"
+            else {}
+        )
+        entity_config = all_entities.get(entity_name, {})
         template = entity_config.get("entity_template")
         return template if template is not None else None
 
@@ -137,9 +149,15 @@ class EntityHelpers:
                 if entity_id:
                     entity_ids.append(entity_id)
 
-        # If no registry results, fall back to legacy method
+        # If no registry results, get from all entity configs
         if not entity_ids:
-            for entity_type, configs in ENTITY_TYPE_CONFIGS.items():
+            all_configs = {
+                "sensor": entity_registry.get_all_sensor_configs(),
+                "switch": entity_registry.get_all_switch_configs(),
+                "number": entity_registry.get_all_number_configs(),
+                "binary_sensor": entity_registry.get_all_boolean_configs(),
+            }
+            for entity_type, configs in all_configs.items():
                 for entity_name in configs.keys():
                     entity_id = EntityHelpers.generate_entity_name_from_template(
                         entity_type, entity_name, device_id
@@ -265,11 +283,9 @@ class EntityHelpers:
                 return entity_type, rest, ""
 
             # Check if this entity type is known
-            if entity_type not in ENTITY_TYPE_CONFIGS:
-                # Check if it's a valid type from the entity registry
-                known_types = {"sensor", "switch", "binary_sensor", "number"}
-                if entity_type not in known_types:
-                    return None
+            known_types = {"sensor", "switch", "binary_sensor", "number"}
+            if entity_type not in known_types:
+                return None
 
             return entity_type, entity_name, device_id
 

@@ -7,18 +7,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import (
-    AVAILABLE_FEATURES,
-    DEVICE_ENTITY_MAPPING,
-    DOMAIN,
-    ENTITY_TYPE_CONFIGS,
-)
+from .const import AVAILABLE_FEATURES, DOMAIN
 from .framework.base_classes import ExtrasBaseEntity
 from .framework.helpers.device.core import (
     find_ramses_device,
     get_device_type,
 )
 from .framework.helpers.entity.core import EntityHelpers
+from .framework.helpers.entity.registry import entity_registry
 from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -75,6 +71,10 @@ async def _async_setup_number_platform(
         f"required entity types: {required_entities}"
     )
 
+    # Get entity definitions from EntityRegistry
+    all_device_mappings = entity_registry.get_all_device_mappings()
+    all_number_configs = entity_registry.get_all_number_configs()
+
     # Create entities for each device
     number_entities = []
     for device_id in devices:
@@ -86,14 +86,14 @@ async def _async_setup_number_platform(
             continue
 
         device_type = get_device_type(device)
-        if device_type not in DEVICE_ENTITY_MAPPING:
+        if device_type not in all_device_mappings:
             _LOGGER.debug(f"Device type {device_type} not in entity mapping, skipping")
             continue
 
         # Create number entities for each required entity type
         for number_type in required_entities:
-            if number_type in ENTITY_TYPE_CONFIGS.get("number", {}):
-                config = ENTITY_TYPE_CONFIGS["number"][number_type]
+            if number_type in all_number_configs:
+                config = all_number_configs[number_type]
                 number_entities.append(
                     RamsesNumberEntity(hass, device_id, number_type, config)
                 )

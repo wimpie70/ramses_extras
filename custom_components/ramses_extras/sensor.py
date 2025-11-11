@@ -6,12 +6,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import (
-    AVAILABLE_FEATURES,
-    DEVICE_ENTITY_MAPPING,
-    DOMAIN,
-    ENTITY_TYPE_CONFIGS,
-)
+from .const import AVAILABLE_FEATURES, DOMAIN
 from .framework.base_classes import ExtrasBaseEntity
 from .framework.helpers.device.core import (
     find_ramses_device,
@@ -19,6 +14,7 @@ from .framework.helpers.device.core import (
 )
 from .framework.helpers.entities import calculate_absolute_humidity
 from .framework.helpers.entity.core import EntityHelpers
+from .framework.helpers.entity.registry import entity_registry
 from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -54,6 +50,10 @@ async def async_setup_entry(
     enabled_features = get_enabled_features(hass, config_entry)
     _LOGGER.info(f"Enabled features: {enabled_features}")
 
+    # Get entity definitions from EntityRegistry
+    all_device_mappings = entity_registry.get_all_device_mappings()
+    all_sensor_configs = entity_registry.get_all_sensor_configs()
+
     for device_id in devices:
         device = find_ramses_device(hass, device_id)
         if not device:
@@ -62,12 +62,12 @@ async def async_setup_entry(
 
         device_type = get_device_type(device)
 
-        if device_type in DEVICE_ENTITY_MAPPING:
-            entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+        if device_type in all_device_mappings:
+            entity_mapping = all_device_mappings[device_type]
             all_possible_sensors = entity_mapping.get("sensors", [])
 
             for sensor_type in all_possible_sensors:
-                if sensor_type not in ENTITY_TYPE_CONFIGS["sensor"]:
+                if sensor_type not in all_sensor_configs:
                     continue
 
                 # Check if this sensor is needed by any enabled feature
@@ -106,7 +106,7 @@ async def async_setup_entry(
                             break
 
                 if is_needed:
-                    config = ENTITY_TYPE_CONFIGS["sensor"][sensor_type]
+                    config = all_sensor_configs[sensor_type]
                     sensors.append(
                         RamsesExtraHumiditySensor(hass, device_id, sensor_type, config)
                     )

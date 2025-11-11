@@ -13,10 +13,13 @@ from .const import (
     AVAILABLE_FEATURES,
     CARD_FOLDER,
     CARD_HELPERS_FOLDER,
-    DEVICE_ENTITY_MAPPING,
     DOMAIN,
     INTEGRATION_DIR,
 )
+
+# Entity definitions now managed by framework entity registry
+# All constants are loaded from feature modules during startup
+# Platform files should use EntityRegistry for entity definitions
 
 # Legacy managers removed - now using feature-centric architecture
 # from .managers import FeatureManager
@@ -213,6 +216,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["enabled_features"] = entry.data.get("enabled_features", {})
 
     _LOGGER.info(f"📋 Enabled features: {entry.data.get('enabled_features', {})}")
+
+    # Load entity definitions from default feature and all enabled features
+    _LOGGER.info("📊 Loading entity definitions from features...")
+    from .framework.helpers.entity.registry import entity_registry
+
+    enabled_features_dict = entry.data.get("enabled_features", {})
+    enabled_feature_names = [
+        name for name, enabled in enabled_features_dict.items() if enabled
+    ]
+
+    _LOGGER.info(
+        f"🔧 Loading definitions from default + {len(enabled_feature_names)} "
+        f"enabled features: {enabled_feature_names}"
+    )
+    entity_registry.load_all_features(enabled_feature_names)
+
+    # Log loaded definitions for verification
+    sensor_count = len(entity_registry.get_all_sensor_configs())
+    switch_count = len(entity_registry.get_all_switch_configs())
+    number_count = len(entity_registry.get_all_number_configs())
+    boolean_count = len(entity_registry.get_all_boolean_configs())
+    _LOGGER.info(
+        f"✅ EntityRegistry loaded: {sensor_count} sensors, {switch_count} switches, "
+        f"{number_count} numbers, {boolean_count} binary sensors"
+    )
 
     # WebSocket commands will be handled by feature-centric architecture
     # Legacy websocket_api.py removed
@@ -749,6 +777,8 @@ async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
                             expected_entity_ids.add(entity_id)
 
                 # Get all possible entity types for this platform
+                from .framework.helpers.entity.registry import entity_registry
+
                 all_possible_types = []
                 for device_id in devices:
                     from .framework.helpers.device.core import (
@@ -759,8 +789,9 @@ async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
                     device = find_ramses_device(hass, device_id)
                     if device:
                         device_type = get_device_type(device)
-                        if device_type in DEVICE_ENTITY_MAPPING:
-                            entity_mapping = DEVICE_ENTITY_MAPPING[device_type]
+                        device_mappings = entity_registry.get_all_device_mappings()
+                        if device_type in device_mappings:
+                            entity_mapping = device_mappings[device_type]
                             platform_key = (
                                 f"{platform}s"  # Convert 'sensor' -> 'sensors'
                             )
@@ -789,14 +820,19 @@ async def handle_hvac_ventilator(device: Any) -> list[str]:
     """Handle HVAC Ventilator devices - create entities based on mapping."""
     device_id = device.id
 
+    # Get entity mappings from EntityRegistry
+    from .framework.helpers.entity.registry import entity_registry
+
+    device_mappings = entity_registry.get_all_device_mappings()
+
     # Check what entities this device type should have
-    if device.__class__.__name__ not in DEVICE_ENTITY_MAPPING:
+    if device.__class__.__name__ not in device_mappings:
         _LOGGER.warning(
             f"No entity mapping found for device type: {device.__class__.__name__}"
         )
         return []
 
-    entity_mapping = DEVICE_ENTITY_MAPPING[device.__class__.__name__]
+    entity_mapping = device_mappings[device.__class__.__name__]
 
     # Check if this device type has any entities defined
     has_entities = (

@@ -10,11 +10,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components"))
 from custom_components.ramses_extras.const import (
     AVAILABLE_FEATURES,
     FEATURE_ID_HUMIDITY_CONTROL,
-    SWITCH_CONFIGS,
 )
 
 # Test the new entity generation system
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
+from custom_components.ramses_extras.framework.helpers.entity.registry import (
+    entity_registry,
+)
 
 
 def test_switch_configuration() -> None:
@@ -37,16 +39,17 @@ def test_switch_configuration() -> None:
         switches = []
     print(f"🔌 Required switches: {switches}")
 
-    # Check switch configurations
-    print(f"⚙️ Available switch configs: {list(SWITCH_CONFIGS.keys())}")
+    # Check switch configurations from EntityRegistry
+    all_switch_configs = entity_registry.get_all_switch_configs()
+    print(f"⚙️ Available switch configs: {list(all_switch_configs.keys())}")
 
     # Check if dehumidify switch is configured
     if "dehumidify" in switches:
         print("✅ Dehumidify switch is required by humidity control feature")
 
-        if "dehumidify" in SWITCH_CONFIGS:
+        if "dehumidify" in all_switch_configs:
             print("✅ Dehumidify switch has configuration")
-            print(f"   Config: {SWITCH_CONFIGS['dehumidify']}")
+            print(f"   Config: {all_switch_configs['dehumidify']}")
         else:
             print("❌ Dehumidify switch configuration missing!")
     else:
@@ -85,10 +88,11 @@ def test_switch_configuration() -> None:
     device_id = "32_153289"
     entity_name = "dehumidify"
 
-    # Test template lookup - using SWITCH_CONFIGS directly
+    # Test template lookup - using EntityRegistry
     try:
-        # Get switch configuration
-        switch_config = SWITCH_CONFIGS.get(entity_name, {})
+        # Get switch configuration from registry
+        all_switch_configs = entity_registry.get_all_switch_configs()
+        switch_config = all_switch_configs.get(entity_name, {})
         print(f"Switch config: {switch_config}")
 
         # Get entity template
