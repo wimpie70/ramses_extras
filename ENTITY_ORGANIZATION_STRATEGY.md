@@ -2,31 +2,31 @@
 
 ## Problem Statement
 
-Current entity definitions in `const.py` show that some entities are **shared across multiple features**:
+Current entity definitions show **duplication across files**:
 
-- `indoor_absolute_humidity` → used by humidity_sensors, hvac_fan_card, humidity_control
-- `outdoor_absolute_humidity` → used by humidity_sensors, hvac_fan_card, humidity_control
-- `dehumidify` switch → used by humidity_control
-- `dehumidifying_active` binary sensor → used by humidity_control
+- `SENSOR_CONFIGS`, `SWITCH_CONFIGS`, `NUMBER_CONFIGS` duplicated between:
+  - Root `const.py`
+  - Feature `const.py` files
+- Same entity definitions scattered in multiple locations
+- No clear authority for which file owns which definitions
+- Difficult to maintain consistency across features
 
-**Key Question**: How do we avoid duplicating these shared entity definitions across features while maintaining clean feature boundaries?
+## Solution: Framework-Aggregated Feature Entity Management
 
-## Solution: Hybrid Entity Organization
+### 1. Default Feature (Shared Definitions)
 
-### 1. Core Entity Registry (Framework Level)
-
-**Location**: `framework/entity_registry.py`
+**Location**: `features/default/const.py`
 
 ```python
-"""Core entity registry shared across all features."""
+"""Shared entity definitions that all features can inherit from."""
 
 from homeassistant.helpers.entity import EntityCategory
 from typing import Dict, Any
 
-# Core entity definitions that can be used by multiple features
-CORE_ENTITY_CONFIGS = {
+# Base entity definitions (shared across features)
+DEFAULT_SENSOR_CONFIGS = {
     "indoor_absolute_humidity": {
-        "name_template": "Indoor Absolute Humidity",
+        "name_template": "Indoor Absolute Humidity {device_id}",
         "entity_category": EntityCategory.DIAGNOSTIC,
         "unit": "g/m³",
         "icon": "mdi:water-percent",
@@ -35,7 +35,7 @@ CORE_ENTITY_CONFIGS = {
         "entity_template": "indoor_absolute_humidity_{device_id}",
     },
     "outdoor_absolute_humidity": {
-        "name_template": "Outdoor Absolute Humidity",
+        "name_template": "Outdoor Absolute Humidity {device_id}",
         "entity_category": EntityCategory.DIAGNOSTIC,
         "unit": "g/m³",
         "icon": "mdi:weather-partly-cloudy",
@@ -43,83 +43,46 @@ CORE_ENTITY_CONFIGS = {
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "outdoor_absolute_humidity_{device_id}",
     },
+}
+
+# Empty base configs - features will define their own
+DEFAULT_SWITCH_CONFIGS = {}
+DEFAULT_NUMBER_CONFIGS = {}
+DEFAULT_BOOLEAN_CONFIGS = {}
+
+# Base device type to entity mapping (only shared sensors)
+DEFAULT_DEVICE_ENTITY_MAPPING = {
+    "HvacVentilator": {
+        "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        # Other entity types will be added by individual features
+    },
+}
+```
+
+### 2. Feature-Specific Entity Definitions
+
+**Location**: `features/humidity_control/const.py`
+
+```python
+"""Humidity control feature - feature-specific entity definitions."""
+
+from homeassistant.helpers.entity import EntityCategory
+from typing import Dict, Any
+
+# Feature-specific entities (prefixed with feature name)
+HUMIDITY_SWITCH_CONFIGS = {
     "dehumidify": {
-        "name_template": "Dehumidify",
+        "name_template": "Dehumidify {device_id}",
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.CONFIG,
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "dehumidify_{device_id}",
     },
-    "dehumidifying_active": {
-        "name_template": "Dehumidifying Active",
-        "icon": "mdi:air-humidifier",
-        "entity_category": EntityCategory.DIAGNOSTIC,
-        "device_class": "running",
-        "supported_device_types": ["HvacVentilator"],
-        "entity_template": "dehumidifying_active_{device_id}",
-    },
-    # ... other shared entities
 }
 
-# Core device type mappings
-CORE_DEVICE_ENTITY_MAPPING = {
-    "HvacVentilator": {
-        "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
-        "switches": ["dehumidify"],
-        "binary_sensors": ["dehumidifying_active"],
-        "numbers": [
-            "relative_humidity_minimum",
-            "relative_humidity_maximum",
-            "absolute_humidity_offset",
-        ],
-    },
-}
-
-class EntityRegistry:
-    """Registry for managing entity definitions across features."""
-
-    def __init__(self):
-        self._entities = CORE_ENTITY_CONFIGS.copy()
-        self._device_mappings = CORE_DEVICE_ENTITY_MAPPING.copy()
-
-    def register_entity(self, entity_name: str, config: Dict[str, Any]):
-        """Register a new entity definition."""
-        self._entities[entity_name] = config
-
-    def register_device_mapping(self, device_type: str, mapping: Dict[str, Any]):
-        """Register a new device type to entity mapping."""
-        self._device_mappings[device_type] = mapping
-
-    def get_entity_config(self, entity_name: str) -> Dict[str, Any]:
-        """Get entity configuration."""
-        return self._entities.get(entity_name)
-
-    def get_device_mapping(self, device_type: str) -> Dict[str, Any]:
-        """Get device type to entity mapping."""
-        return self._device_mappings.get(device_type)
-
-    def get_all_entities(self) -> Dict[str, Dict[str, Any]]:
-        """Get all registered entity configurations."""
-        return self._entities.copy()
-
-# Global registry instance
-entity_registry = EntityRegistry()
-```
-
-### 2. Feature Entity Extensions
-
-**Location**: `features/humidity_control/entities.py`
-
-```python
-"""Humidity control feature entity extensions."""
-
-from ...framework.entity_registry import entity_registry
-from homeassistant.helpers.entity import EntityCategory
-
-# Feature-specific entities that extend the core registry
-HUMIDITY_ENTITY_CONFIGS = {
+HUMIDITY_NUMBER_CONFIGS = {
     "relative_humidity_minimum": {
-        "name_template": "Relative Humidity Minimum",
+        "name_template": "Min Humidity {device_id}",
         "entity_category": EntityCategory.CONFIG,
         "unit": "%",
         "icon": "mdi:water-minus",
@@ -131,38 +94,23 @@ HUMIDITY_ENTITY_CONFIGS = {
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "relative_humidity_minimum_{device_id}",
     },
-    "relative_humidity_maximum": {
-        "name_template": "Relative Humidity Maximum",
-        "entity_category": EntityCategory.CONFIG,
-        "unit": "%",
-        "icon": "mdi:water-plus",
-        "device_class": None,
-        "min_value": 50,
-        "max_value": 90,
-        "step": 1,
-        "default_value": 60,
+}
+
+HUMIDITY_BOOLEAN_CONFIGS = {
+    "dehumidifying_active": {
+        "name_template": "Dehumidifying Active {device_id}",
+        "icon": "mdi:air-humidifier",
+        "entity_category": EntityCategory.DIAGNOSTIC,
+        "device_class": "running",
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "relative_humidity_maximum_{device_id}",
-    },
-    "absolute_humidity_offset": {
-        "name_template": "Absolute Humidity Offset",
-        "entity_category": EntityCategory.CONFIG,
-        "unit": "g/m³",
-        "icon": "mdi:swap-horizontal",
-        "device_class": None,
-        "min_value": -3.0,
-        "max_value": 3.0,
-        "step": 0.1,
-        "default_value": 0.4,
-        "supported_device_types": ["HvacVentilator"],
-        "entity_template": "absolute_humidity_offset_{device_id}",
+        "entity_template": "dehumidifying_active_{device_id}",
     },
 }
 
-# Feature-specific device mappings (extends core)
-HUMIDITY_DEVICE_MAPPING = {
+# Feature-specific device mapping (inherits base sensors, adds feature-specific)
+HUMIDITY_DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
-        "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],  # Inherited from default
         "switches": ["dehumidify"],
         "numbers": [
             "relative_humidity_minimum",
@@ -173,48 +121,105 @@ HUMIDITY_DEVICE_MAPPING = {
     },
 }
 
-def register_humidity_entities():
-    """Register humidity-specific entities with the core registry."""
-    # Register entities
-    for entity_name, config in HUMIDITY_ENTITY_CONFIGS.items():
-        entity_registry.register_entity(entity_name, config)
+# Feature-specific logic constants
+HUMIDITY_DECISION_THRESHOLDS = {
+    "activation": 1.0,  # g/m³
+    "deactivation": -1.0,  # g/m³
+    "high_confidence": 2.0,  # g/m³
+}
 
-    # Register device mappings
-    for device_type, mapping in HUMIDITY_DEVICE_MAPPING.items():
-        # Merge with existing mapping (extend, don't replace)
-        existing_mapping = entity_registry.get_device_mapping(device_type)
-        if existing_mapping:
-            # Merge entity lists, avoiding duplicates
-            for entity_type, entities in mapping.items():
-                if entity_type in existing_mapping:
-                    existing_entities = set(existing_mapping[entity_type])
-                    new_entities = set(entities)
-                    merged_entities = list(existing_entities.union(new_entities))
-                    existing_mapping[entity_type] = merged_entities
-                else:
-                    existing_mapping[entity_type] = entities
-        else:
-            entity_registry.register_device_mapping(device_type, mapping)
+HUMIDITY_DECISION_ACTIONS = {
+    "ACTIVATE": "dehumidify",
+    "DEACTIVATE": "stop",
+    "MAINTAIN": "maintain",
+}
 ```
 
-### 3. Feature Initialization
+### 3. Framework Aggregation System
 
-**Location**: `features/humidity_control/__init__.py`
+**Location**: `framework/helpers/entity/registry.py`
 
 ```python
-"""Humidity control feature initialization."""
+"""Framework entity registry - aggregates definitions from all features."""
 
-from .entities import register_humidity_entities
-from .config import HUMIDITY_FEATURE_CONFIG
+from typing import Dict, Any, List
+import importlib
 
-# Register entities when module is imported
-register_humidity_entities()
+class EntityDefinitionRegistry:
+    """Aggregates entity definitions from all enabled features."""
 
-# Export feature configuration
-FEATURE_CONFIG = HUMIDITY_FEATURE_CONFIG
+    def __init__(self):
+        self._sensor_configs = {}
+        self._switch_configs = {}
+        self._number_configs = {}
+        self._boolean_configs = {}
+        self._device_mappings = {}
+
+    def load_feature_definitions(self, feature_name: str, feature_module_path: str):
+        """Load entity definitions from a feature module."""
+        try:
+            # Import the feature module
+            feature_module = importlib.import_module(feature_module_path)
+
+            # Load feature's entity definitions
+            if hasattr(feature_module, f"{feature_name.upper()}_SENSOR_CONFIGS"):
+                sensor_configs = getattr(feature_module, f"{feature_name.upper()}_SENSOR_CONFIGS")
+                self._sensor_configs.update(sensor_configs)
+
+            if hasattr(feature_module, f"{feature_name.upper()}_SWITCH_CONFIGS"):
+                switch_configs = getattr(feature_module, f"{feature_name.upper()}_SWITCH_CONFIGS")
+                self._switch_configs.update(switch_configs)
+
+            if hasattr(feature_module, f"{feature_name.upper()}_NUMBER_CONFIGS"):
+                number_configs = getattr(feature_module, f"{feature_name.upper()}_NUMBER_CONFIGS")
+                self._number_configs.update(number_configs)
+
+            if hasattr(feature_module, f"{feature_name.upper()}_BOOLEAN_CONFIGS"):
+                boolean_configs = getattr(feature_module, f"{feature_name.upper()}_BOOLEAN_CONFIGS")
+                self._boolean_configs.update(boolean_configs)
+
+            if hasattr(feature_module, f"{feature_name.upper()}_DEVICE_ENTITY_MAPPING"):
+                device_mapping = getattr(feature_module, f"{feature_name.upper()}_DEVICE_ENTITY_MAPPING")
+                self._device_mappings.update(device_mapping)
+
+        except ImportError:
+            pass  # Feature not available
+
+    def load_all_features(self, enabled_features: List[str]):
+        """Load definitions from all enabled features."""
+        # Always load default feature definitions first
+        self.load_feature_definitions("default", "custom_components.ramses_extras.features.default")
+
+        # Load each enabled feature
+        for feature_name in enabled_features:
+            feature_module_path = f"custom_components.ramses_extras.features.{feature_name}"
+            self.load_feature_definitions(feature_name, feature_module_path)
+
+    def get_all_sensor_configs(self) -> Dict[str, Any]:
+        """Get all sensor configurations."""
+        return self._sensor_configs.copy()
+
+    def get_all_switch_configs(self) -> Dict[str, Any]:
+        """Get all switch configurations."""
+        return self._switch_configs.copy()
+
+    def get_all_number_configs(self) -> Dict[str, Any]:
+        """Get all number configurations."""
+        return self._number_configs.copy()
+
+    def get_all_boolean_configs(self) -> Dict[str, Any]:
+        """Get all boolean configurations."""
+        return self._boolean_configs.copy()
+
+    def get_all_device_mappings(self) -> Dict[str, Any]:
+        """Get all device to entity mappings."""
+        return self._device_mappings.copy()
+
+# Global registry instance
+entity_registry = EntityDefinitionRegistry()
 ```
 
-### 4. Consolidated Root const.py
+### 4. Minimal Root const.py
 
 **Location**: `const.py` (simplified)
 
@@ -222,130 +227,167 @@ FEATURE_CONFIG = HUMIDITY_FEATURE_CONFIG
 """Ramses Extras - Root constants (HA Required)."""
 
 from pathlib import Path
-from homeassistant.helpers.entity import EntityCategory
+from typing import Dict, Any
 
 # Integration basics
 DOMAIN = "ramses_extras"
 INTEGRATION_DIR = Path(__file__).parent
 
-# Import feature configurations
-from .features.humidity_control import FEATURE_CONFIG as HUMIDITY_CONFIG
-from .features.fan_control import FEATURE_CONFIG as FAN_CONFIG
-# ... other features
+# Feature identifiers
+FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
+FEATURE_ID_FAN_CONTROL = "fan_control"
+FEATURE_ID_HUMIDITY_SENSORS = "humidity_sensors"
 
-# Consolidated AVAILABLE_FEATURES
-AVAILABLE_FEATURES = {
-    "humidity_control": HUMIDITY_CONFIG,
-    "fan_control": FAN_CONFIG,
-    # ... other features
+# Lightweight feature registry (metadata only)
+AVAILABLE_FEATURES: Dict[str, Dict[str, Any]] = {
+    FEATURE_ID_HUMIDITY_CONTROL: {
+        "name": "Humidity Control",
+        "description": "Automatic humidity control and dehumidification management",
+        "category": "automations",
+        "default_enabled": False,
+        "feature_module": "features.humidity_control",
+    },
+    FEATURE_ID_FAN_CONTROL: {
+        "name": "Fan Control",
+        "description": "Advanced fan control and management",
+        "category": "controls",
+        "default_enabled": False,
+        "feature_module": "features.fan_control",
+    },
 }
 
-# Import entity registry for backward compatibility
-from .framework.entity_registry import entity_registry
-
-# Create legacy mappings for backward compatibility
-SENSOR_CONFIGS = {}
-SWITCH_CONFIGS = {}
-BOOLEAN_CONFIGS = {}
-NUMBER_CONFIGS = {}
-
-# Populate legacy mappings from registry
-for entity_name, config in entity_registry.get_all_entities().items():
-    entity_type = config.get("entity_type", "sensor")  # Determine type
-    if entity_type == "sensor":
-        SENSOR_CONFIGS[entity_name] = config
-    elif entity_type == "switch":
-        SWITCH_CONFIGS[entity_name] = config
-    elif entity_type == "binary_sensor":
-        BOOLEAN_CONFIGS[entity_name] = config
-    elif entity_type == "number":
-        NUMBER_CONFIGS[entity_name] = config
-
-# Legacy device mapping (backward compatibility)
-DEVICE_ENTITY_MAPPING = {}
-for device_type, mapping in entity_registry._device_mappings.items():
-    DEVICE_ENTITY_MAPPING[device_type] = mapping
-
-# Entity type to config mapping (backward compatibility)
-ENTITY_TYPE_CONFIGS = {
-    "sensor": SENSOR_CONFIGS,
-    "switch": SWITCH_CONFIGS,
-    "binary_sensor": BOOLEAN_CONFIGS,
-    "number": NUMBER_CONFIGS,
-}
+# NO ENTITY DEFINITIONS HERE - all moved to features
+# Entity definitions are now loaded by framework from feature modules
 ```
 
-### 5. Entity Access Patterns
+### 5. Feature Initialization with Aggregation
 
-#### For Framework/Helpers:
+**Location**: `features/humidity_control/__init__.py`
+
+```python
+"""Humidity control feature initialization."""
+
+from .const import (
+    HUMIDITY_SWITCH_CONFIGS,
+    HUMIDITY_NUMBER_CONFIGS,
+    HUMIDITY_BOOLEAN_CONFIGS,
+    HUMIDITY_DECISION_THRESHOLDS,
+    HUMIDITY_DECISION_ACTIONS,
+    FEATURE_ID_HUMIDITY_CONTROL
+)
+
+# Export all definitions for framework aggregation
+__all__ = [
+    "FEATURE_ID_HUMIDITY_CONTROL",
+    "HUMIDITY_SWITCH_CONFIGS",
+    "HUMIDITY_NUMBER_CONFIGS",
+    "HUMIDITY_BOOLEAN_CONFIGS",
+    "HUMIDITY_DECISION_THRESHOLDS",
+    "HUMIDITY_DECISION_ACTIONS",
+]
+```
+
+### 6. Entity Access Patterns
+
+#### Framework Level:
 
 ```python
 # In framework/helpers/entity/helpers.py
-from ...framework.entity_registry import entity_registry
+from custom_components.ramses_extras.framework.helpers.entity.registry import entity_registry
 
-def get_entity_config(entity_name: str):
-    """Get entity configuration from registry."""
-    return entity_registry.get_entity_config(entity_name)
+def get_all_entity_configs():
+    """Get all entity configurations from all features."""
+    return {
+        "sensors": entity_registry.get_all_sensor_configs(),
+        "switches": entity_registry.get_all_switch_configs(),
+        "numbers": entity_registry.get_all_number_configs(),
+        "booleans": entity_registry.get_all_boolean_configs(),
+    }
 ```
 
-#### For Features:
+#### Feature Level:
 
 ```python
 # In features/humidity_control/automation.py
-from ...framework.entity_registry import entity_registry
+from custom_components.ramses_extras.features.humidity_control.const import HUMIDITY_DECISION_THRESHOLDS
+from custom_components.ramses_extras.framework.helpers.entity.registry import entity_registry
 
-# Access shared entities
-indoor_humidity_config = entity_registry.get_entity_config("indoor_absolute_humidity")
+# Access own definitions
+own_switches = HUMIDITY_SWITCH_CONFIGS
 
-# Access feature-specific entities
-humidity_min_config = entity_registry.get_entity_config("relative_humidity_minimum")
-```
+# Access all definitions (including from other features)
+all_sensors = entity_registry.get_all_sensor_configs()
 
-#### For Platform (HA Integration):
-
-```python
-# In platform/sensor.py (unchanged)
-from ..const import SENSOR_CONFIGS  # Backward compatibility maintained
+# Access default definitions (always available)
+default_sensors = entity_registry.get_all_sensor_configs()  # Includes default from default feature
 ```
 
 ## Benefits of This Approach
 
 ### ✅ **No Duplication**
 
-- Shared entities defined once in core registry
-- Features extend rather than duplicate
-- Single source of truth for entity configurations
+- Each entity definition has exactly one owner (feature)
+- Base definitions in default feature
+- Feature-specific definitions in respective features
+- Framework aggregates, doesn't duplicate
 
-### ✅ **Clean Boundaries**
+### ✅ **Clear Authority**
 
-- Core entities in framework
-- Feature-specific entities in features
+- `DEFAULT_*` definitions owned by `features/default/`
+- `FEATURE_*` definitions owned by respective feature
+- Root const.py has no entity definitions
+- Framework is aggregation service only
+
+### ✅ **Clean Separation**
+
+- Each feature is self-contained
+- Features inherit shared sensors from default
+- Easy to add new features
 - Clear import paths and responsibilities
 
-### ✅ **Backward Compatibility**
+### ✅ **Feature Independence**
 
-- Root const.py maintains existing structure
-- Legacy mappings still work
-- No breaking changes for existing code
+- Features don't depend on each other's entity definitions
+- Framework provides unified access
+- Features can be enabled/disabled independently
+- Easy testing in isolation
 
 ### ✅ **Extensibility**
 
-- New features can easily add entities
-- Easy to override/extend core entities if needed
-- Plugin-style entity registration
+- New features add their own entity definitions
+- Existing features can be extended without modification
+- Framework automatically discovers and aggregates new features
 
-### ✅ **Testability**
+## Migration Plan
 
-- Entity registry can be mocked for testing
-- Features can be tested in isolation
-- Clear separation of concerns
+### Phase 1: Create Default Feature
 
-## Migration Strategy
+- [ ] Create `features/default/` with base entity definitions
+- [ ] Move `SENSOR_CONFIGS` from root to default (only indoor/outdoor humidity)
+- [ ] Create framework entity registry
 
-1. **Phase 1**: Create entity registry in framework
-2. **Phase 2**: Move core entities to registry
-3. **Phase 3**: Create feature entity extensions
-4. **Phase 4**: Update root const.py for backward compatibility
-5. **Phase 5**: Test all features work with new structure
+### Phase 2: Update Feature Definitions
 
-This hybrid approach gives us the best of both worlds: clean organization without duplication, while maintaining backward compatibility.
+- [ ] Update `features/humidity_control/const.py` with feature-specific definitions
+- [ ] Add `HUMIDITY_SWITCH_CONFIGS`, `HUMIDITY_NUMBER_CONFIGS`, etc.
+- [ ] Remove duplicate entity definitions from feature const.py
+
+### Phase 3: Framework Aggregation
+
+- [ ] Implement entity registry aggregation logic
+- [ ] Update framework to use registry instead of root const.py
+- [ ] Test aggregation from all features
+
+### Phase 4: Root const.py Cleanup
+
+- [ ] Remove all entity definitions from root const.py
+- [ ] Keep only domain constants and feature registry
+- [ ] Update imports throughout codebase
+
+### Phase 5: Validation
+
+- [ ] Test that all features work with new structure
+- [ ] Verify no breaking changes
+- [ ] Update documentation
+
+This approach eliminates all duplication while maintaining clear feature boundaries and providing a powerful aggregation system for the framework.
