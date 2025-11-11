@@ -7,7 +7,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components"))
 
 # Test the framework aggregation system
-from framework.helpers.entity.registry import entity_registry
+from custom_components.ramses_extras.framework.helpers.entity.registry import (
+    entity_registry,
+)
 
 # Test loading all features
 enabled_features = ["humidity_control"]
