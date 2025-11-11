@@ -237,19 +237,34 @@ def get_feature_entity_mappings(feature_id: str, device_id: str) -> dict[str, st
 
     Args:
         feature_id: Feature identifier
-        device_id: Device identifier
+        device_id: Device identifier (can contain colons like "32:153289")
 
     Returns:
         Dictionary mapping state names to entity IDs
     """
-    # This is a placeholder implementation
-    # The actual implementation would look up mappings from const.py
-    # or configuration files based on the feature and device
-
-    mappings = {}
+    mappings: dict[str, str] = {}
 
     # Get feature definition
     feature = AVAILABLE_FEATURES.get(feature_id, {})
+    if not feature:
+        _LOGGER.warning(f"Feature {feature_id} not found in AVAILABLE_FEATURES")
+        return mappings
+
+    # Check if feature has custom entity mappings
+    entity_mappings = feature.get("entity_mappings", {})
+    if entity_mappings:
+        # Convert device_id with colons to underscores for entity ID generation
+        device_id_underscore = device_id.replace(":", "_")
+
+        for state_key, entity_template in entity_mappings.items():
+            # Replace {device_id} placeholder with the actual device_id
+            entity_id = entity_template.replace("{device_id}", device_id_underscore)
+            mappings[state_key] = entity_id
+
+        _LOGGER.debug(f"Feature {feature_id} mappings for {device_id}: {mappings}")
+        return mappings
+
+    # Fallback to generic implementation using required_entities
     required_entities = feature.get("required_entities", {})
 
     # Generate entity IDs for each required entity type
@@ -261,6 +276,7 @@ def get_feature_entity_mappings(feature_id: str, device_id: str) -> dict[str, st
             state_key = entity_name
             mappings[state_key] = entity_id
 
+    _LOGGER.debug(f"Feature {feature_id} generic mappings for {device_id}: {mappings}")
     return mappings
 
 
