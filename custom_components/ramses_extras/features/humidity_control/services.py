@@ -87,8 +87,18 @@ class HumidityServices:
         _LOGGER.info(f"Deactivating dehumidification for device {device_id}")
 
         try:
-            # Just log the deactivation - don't control the switch to avoid recursion
-            _LOGGER.info(f"Dehumidification deactivated for device {device_id}")
+            # Find dehumidify switch entity
+            dehumidify_entity = await self._find_dehumidify_entity(device_id)
+            if not dehumidify_entity:
+                _LOGGER.error(f"Dehumidify switch not found for device {device_id}")
+                return False
+
+            # Turn off the switch
+            await self.hass.services.async_call(
+                "switch", SERVICE_TURN_OFF, {"entity_id": dehumidify_entity}
+            )
+
+            _LOGGER.info(f"Dehumidification deactivated: {dehumidify_entity}")
             return True
 
         except Exception as e:
@@ -255,7 +265,8 @@ class HumidityServices:
         Returns:
             Entity ID or None if not found
         """
-        entity_pattern = f"switch.dehumidify_{device_id}"
+        device_id_underscore = device_id.replace(":", "_")
+        entity_pattern = f"switch.dehumidify_{device_id_underscore}"
         return await self._find_entity_by_pattern(entity_pattern)
 
     async def _find_min_humidity_entity(self, device_id: str) -> str | None:
@@ -267,7 +278,8 @@ class HumidityServices:
         Returns:
             Entity ID or None if not found
         """
-        entity_pattern = f"number.relative_humidity_minimum_{device_id}"
+        device_id_underscore = device_id.replace(":", "_")
+        entity_pattern = f"number.relative_humidity_minimum_{device_id_underscore}"
         return await self._find_entity_by_pattern(entity_pattern)
 
     async def _find_max_humidity_entity(self, device_id: str) -> str | None:
@@ -279,7 +291,8 @@ class HumidityServices:
         Returns:
             Entity ID or None if not found
         """
-        entity_pattern = f"number.relative_humidity_maximum_{device_id}"
+        device_id_underscore = device_id.replace(":", "_")
+        entity_pattern = f"number.relative_humidity_maximum_{device_id_underscore}"
         return await self._find_entity_by_pattern(entity_pattern)
 
     async def _find_offset_entity(self, device_id: str) -> str | None:
@@ -291,7 +304,8 @@ class HumidityServices:
         Returns:
             Entity ID or None if not found
         """
-        entity_pattern = f"number.absolute_humidity_offset_{device_id}"
+        device_id_underscore = device_id.replace(":", "_")
+        entity_pattern = f"number.absolute_humidity_offset_{device_id_underscore}"
         return await self._find_entity_by_pattern(entity_pattern)
 
     async def _find_entity_by_pattern(self, pattern: str) -> str | None:
@@ -323,15 +337,24 @@ class HumidityServices:
         Returns:
             State dictionary or None if not found
         """
+        # Convert device_id to underscore format for entity lookup
+        device_id_underscore = device_id.replace(":", "_")
+
         # Map entity types to entity patterns
         entity_patterns = {
-            "indoor_absolute_humidity": f"sensor.indoor_abs_humidity_{device_id}",
-            "outdoor_absolute_humidity": f"sensor.outdoor_abs_humidity_{device_id}",
-            "relative_humidity_minimum": f"number.rel_humidity_minimum_{device_id}",
-            "relative_humidity_maximum": f"number.rel_humidity_maximum_{device_id}",
-            "absolute_humidity_offset": f"number.absolute_humidity_offset_{device_id}",
-            "dehumidify": f"switch.dehumidify_{device_id}",
-            "dehumidifying_active": f"binary_sensor.dehumidifying_active_{device_id}",
+            "indoor_absolute_humidity": f"sensor.indoor_absolute_humidity_"
+            f"{device_id_underscore}",
+            "outdoor_absolute_humidity": f"sensor.outdoor_absolute_humidity_"
+            f"{device_id_underscore}",
+            "relative_humidity_minimum": f"number.relative_humidity_minimum_"
+            f"{device_id_underscore}",
+            "relative_humidity_maximum": f"number.relative_humidity_maximum_"
+            f"{device_id_underscore}",
+            "absolute_humidity_offset": f"number.absolute_humidity_offset_"
+            f"{device_id_underscore}",
+            "dehumidify": f"switch.dehumidify_{device_id_underscore}",
+            "dehumidifying_active": f"binary_sensor.dehumidifying_active_"
+            f"{device_id_underscore}",
         }
 
         pattern = entity_patterns.get(entity_type)

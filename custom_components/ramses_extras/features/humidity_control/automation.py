@@ -56,6 +56,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._last_decision_state: dict[str, Any] | None = None
         self._decision_history: list[dict[str, Any]] = []
 
+        # Binary sensor reference for direct control
+        self._binary_sensor: Any = None
+
         # Performance tracking
         self._decision_count = 0
         self._active_cycles = 0
@@ -104,6 +107,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._automation_active = True
         _LOGGER.info("Humidity control automation started")
 
+    def set_binary_sensor(self, binary_sensor: Any) -> None:
+        """Set the binary sensor instance for direct control.
+
+        Args:
+            binary_sensor: The binary sensor entity to control
+        """
+        self._binary_sensor = binary_sensor
+        _LOGGER.debug("Binary sensor reference set for automation")
+
     async def stop(self) -> None:
         """Stop the humidity control automation.
 
@@ -149,7 +161,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             # Calculate decision
             decision = await self._evaluate_humidity_conditions(
-                indoor_abs, outdoor_abs, min_humidity, max_humidity, offset
+                device_id, indoor_abs, outdoor_abs, min_humidity, max_humidity, offset
             )
 
             # Apply decision
@@ -166,6 +178,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
     async def _evaluate_humidity_conditions(
         self,
+        device_id: str,
         indoor_abs: float,
         outdoor_abs: float,
         min_humidity: float,
@@ -177,6 +190,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         This implements the decision logic from the original humidity automation.
 
         Args:
+            device_id: Device identifier
             indoor_abs: Indoor absolute humidity
             outdoor_abs: Outdoor absolute humidity
             min_humidity: Minimum relative humidity threshold
@@ -193,7 +207,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         adjusted_diff = humidity_diff + offset
 
         # Decision logic from original automation
-        decision = {
+        decision: dict[str, Any] = {
             "action": "stop",  # Default action
             "reasoning": [],
             "values": {
@@ -212,7 +226,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if adjusted_diff > 2.0:
             # High humidity differential - activate dehumidification
             decision["action"] = "dehumidify"
-            decision["reasoning"].append(  # type: ignore[attr-defined]
+            decision["reasoning"].append(
                 f"High humidity differential: {adjusted_diff:.1f} > 2.0"
             )
             decision["confidence"] = 0.9
@@ -220,7 +234,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         elif adjusted_diff > 1.0:
             # Moderate differential - consider activating
             decision["action"] = "dehumidify"
-            decision["reasoning"].append(  # type: ignore[attr-defined]
+            decision["reasoning"].append(
                 f"Moderate humidity differential: {adjusted_diff:.1f} > 1.0"
             )
             decision["confidence"] = 0.7
@@ -228,15 +242,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         elif adjusted_diff < -1.0:
             # Negative differential - stop dehumidification
             decision["action"] = "stop"
-            decision["reasoning"].append(  # type: ignore[attr-defined]
+            decision["reasoning"].append(
                 f"Low humidity differential: {adjusted_diff:.1f} < -1.0"
             )
             decision["confidence"] = 0.8
 
         # Additional checks for extreme values
         if indoor_abs > 15.0:  # High absolute humidity
-            decision["confidence"] = min(1.0, decision["confidence"] + 0.1)  # type: ignore[operator]
-            decision["reasoning"].append(  # type: ignore[attr-defined]
+            decision["confidence"] = min(1.0, decision["confidence"] + 0.1)
+            decision["reasoning"].append(
                 f"High indoor absolute humidity: {indoor_abs:.1f} g/m³"
             )
 
@@ -248,10 +262,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if len(self._decision_history) > 100:
             self._decision_history.pop(0)
 
-            _LOGGER.debug(
-                f"Decision: {decision['action']} "
-                f"(confidence: {decision['confidence']:.2f})",
-            )
+        # Always log the decision for debugging
+        _LOGGER.info(
+            f"Decision for device {device_id}: {decision['action']} "
+            f"(confidence: {decision['confidence']:.2f}, "
+            f"diff: {decision['values']['adjusted_diff']:.2f})"
+        )
+        if decision["reasoning"]:
+            reasoning = "; ".join(decision["reasoning"])
+            _LOGGER.info(f"Reasoning: {reasoning}")
 
         return decision
 
@@ -315,13 +334,20 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             device_id: Device identifier
             decision: Decision information
         """
-        # Update binary sensor if available
-        if self.binary_sensor:
+        # Update binary sensor directly if available
+        if self._binary_sensor:
             try:
-                # state = "ON" if decision["action"] == "dehumidify" else "OFF" # Unused
-                self.binary_sensor.async_write_ha_state()
+                is_active = decision["action"] == "dehumidify"
+                if is_active:
+                    await self._binary_sensor.async_turn_on()
+                else:
+                    await self._binary_sensor.async_turn_off()
+                _LOGGER.debug(
+                    f"Updated binary sensor for {device_id}: "
+                    f"{'on' if is_active else 'off'}"
+                )
             except Exception as e:
-                _LOGGER.error(f"Failed to update status sensor: {e}")
+                _LOGGER.error(f"Failed to update binary sensor: {e}")
 
     # Public API methods
     async def async_set_min_humidity(self, device_id: str, value: float) -> bool:

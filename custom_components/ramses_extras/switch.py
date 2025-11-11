@@ -233,6 +233,7 @@ class RamsesDehumidifySwitch(SwitchEntity, ExtrasBaseEntity):
 
                 # Call the method with proper parameters
                 await automation._evaluate_humidity_conditions(
+                    device_id=self._device_id,
                     indoor_abs=entity_states.get("indoor_abs", 0.0),
                     outdoor_abs=entity_states.get("outdoor_abs", 0.0),
                     min_humidity=entity_states.get("min_humidity", 40.0),

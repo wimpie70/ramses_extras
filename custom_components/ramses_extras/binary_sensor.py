@@ -93,9 +93,23 @@ async def _async_setup_binary_sensor_platform(
         for boolean_type in required_entities:
             if boolean_type in ENTITY_TYPE_CONFIGS.get("binary_sensor", {}):
                 config = ENTITY_TYPE_CONFIGS["binary_sensor"][boolean_type]
-                binary_sensors.append(
-                    RamsesBinarySensor(hass, device_id, boolean_type, config)
-                )
+
+                # Use feature-specific binary sensor for humidity control
+                if boolean_type == "dehumidifying_active":
+                    from .features.humidity_control.binary_sensor import (
+                        create_humidity_control_binary_sensor,
+                    )
+
+                    binary_sensor = create_humidity_control_binary_sensor(
+                        hass, device_id, boolean_type, config
+                    )
+                else:
+                    # Use generic binary sensor for other types
+                    binary_sensor = RamsesBinarySensor(
+                        hass, device_id, boolean_type, config
+                    )
+
+                binary_sensors.append(binary_sensor)
                 _LOGGER.info(
                     f"Created binary_sensor entity: {boolean_type} "
                     f"for device {device_id}"
@@ -151,34 +165,13 @@ class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        """Subscribe to Ramses RF device updates and humidity entity changes."""
+        """Subscribe to Ramses RF device updates."""
         # Call base class method first
         await super().async_added_to_hass()
+        _LOGGER.debug("Binary sensor %s added to hass", self._attr_name)
 
-        # For dehumidifying_active, start the hardcoded automation
-        if self._boolean_type == "dehumidifying_active":
-            _LOGGER.info(
-                f"🔧 Starting humidity automation for binary sensor {self._attr_name} "
-                f"(device: {self._device_id})"
-            )
-            # 🔧 START HUMIDITY AUTOMATION FOR THIS DEVICE
-            automation_manager = await self._start_humidity_automation_for_device(self)
-
-            # Store the automation manager for the switch to use
-            if automation_manager:
-                self.hass.data.setdefault(DOMAIN, {}).setdefault("automations", {})[
-                    self._device_id
-                ] = automation_manager
-                # _LOGGER.info(
-                #     f"✅ Stored automation for device {self._device_id} in "
-                #     f"hass.data['{DOMAIN}']['automations']"
-                # )
-            else:
-                _LOGGER.error(
-                    f"❌ Failed to start automation for device {self._device_id}"
-                )
-
-            # Binary sensor is controlled directly by the automation
+        # Binary sensor is controlled by features - no platform-specific logic
+        # Feature-specific integration is handled by the features themselves
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""
@@ -186,37 +179,6 @@ class RamsesBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
         self.async_write_ha_state()
 
         # Binary sensor is controlled directly by the automation
-
-    async def _start_humidity_automation_for_device(self, binary_sensor: Any) -> Any:
-        """Start the hardcoded humidity automation for this specific device."""
-        _LOGGER.info(
-            f"🔧 Starting hardcoded humidity automation for device {self._device_id}"
-        )
-
-        try:
-            from .features.humidity_control.automation import HumidityAutomationManager
-
-            # Create automation manager for this device
-            automation_manager = HumidityAutomationManager(
-                self.hass, self.hass.data[DOMAIN]["config_entry"]
-            )
-
-            # Start the automation
-            await automation_manager.start()
-
-            # _LOGGER.info(
-            #     f"✅ Hardcoded humidity automation started for "
-            #     f"device {self._device_id}"
-            # )
-
-            return automation_manager
-
-        except Exception as e:
-            _LOGGER.error(
-                f"❌ Failed to start humidity automation for device "
-                f"{self._device_id}: {e}"
-            )
-            return None
 
     @property
     def is_on(self) -> bool:
