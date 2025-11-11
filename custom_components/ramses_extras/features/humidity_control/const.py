@@ -1,7 +1,98 @@
-"""Humidity Control Constants.
+"""Humidity control feature - feature-specific entity definitions."""
 
-This module defines constants and configuration for the humidity control feature.
-"""
+from homeassistant.helpers.entity import EntityCategory
+
+# Feature-specific entities (prefixed with feature name)
+HUMIDITY_SWITCH_CONFIGS = {
+    "dehumidify": {
+        "name_template": "Dehumidify {device_id}",
+        "icon": "mdi:air-humidifier",
+        "entity_category": EntityCategory.CONFIG,
+        "supported_device_types": ["HvacVentilator"],
+        "entity_template": "dehumidify_{device_id}",
+    },
+}
+
+HUMIDITY_NUMBER_CONFIGS = {
+    "relative_humidity_minimum": {
+        "name_template": "Min Humidity {device_id}",
+        "entity_category": EntityCategory.CONFIG,
+        "unit": "%",
+        "icon": "mdi:water-minus",
+        "device_class": None,
+        "min_value": 30,
+        "max_value": 80,
+        "step": 1,
+        "default_value": 40,
+        "supported_device_types": ["HvacVentilator"],
+        "entity_template": "relative_humidity_minimum_{device_id}",
+    },
+    "relative_humidity_maximum": {
+        "name_template": "Max Humidity {device_id}",
+        "entity_category": EntityCategory.CONFIG,
+        "unit": "%",
+        "icon": "mdi:water-plus",
+        "device_class": None,
+        "min_value": 50,
+        "max_value": 90,
+        "step": 1,
+        "default_value": 60,
+        "supported_device_types": ["HvacVentilator"],
+        "entity_template": "relative_humidity_maximum_{device_id}",
+    },
+    "absolute_humidity_offset": {
+        "name_template": "Humidity Offset {device_id}",
+        "entity_category": EntityCategory.CONFIG,
+        "unit": "g/m³",
+        "icon": "mdi:swap-horizontal",
+        "device_class": None,
+        "min_value": -3.0,
+        "max_value": 3.0,
+        "step": 0.1,
+        "default_value": 0.4,
+        "supported_device_types": ["HvacVentilator"],
+        "entity_template": "absolute_humidity_offset_{device_id}",
+    },
+}
+
+HUMIDITY_BOOLEAN_CONFIGS = {
+    "dehumidifying_active": {
+        "name_template": "Dehumidifying Active {device_id}",
+        "icon": "mdi:air-humidifier",
+        "entity_category": EntityCategory.DIAGNOSTIC,
+        "device_class": "running",
+        "supported_device_types": ["HvacVentilator"],
+        "entity_template": "dehumidifying_active_{device_id}",
+    },
+}
+
+# Feature-specific device mapping (inherits base sensors, adds feature-specific)
+HUMIDITY_DEVICE_ENTITY_MAPPING = {
+    "HvacVentilator": {
+        "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        # Inherited from default
+        "switches": ["dehumidify"],
+        "numbers": [
+            "relative_humidity_minimum",
+            "relative_humidity_maximum",
+            "absolute_humidity_offset",
+        ],
+        "binary_sensors": ["dehumidifying_active"],
+    },
+}
+
+# Feature-specific logic constants
+HUMIDITY_DECISION_THRESHOLDS = {
+    "activation": 1.0,  # g/m³
+    "deactivation": -1.0,  # g/m³
+    "high_confidence": 2.0,  # g/m³
+}
+
+HUMIDITY_DECISION_ACTIONS = {
+    "ACTIVATE": "dehumidify",
+    "DEACTIVATE": "stop",
+    "MAINTAIN": "maintain",
+}
 
 # Feature identification
 FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
@@ -69,94 +160,13 @@ HUMIDITY_CONTROL_CONST = {
     },
 }
 
-# Entity type constants
-ENTITY_TYPES = {
-    "SENSORS": "sensors",
-    "SWITCHES": "switches",
-    "NUMBERS": "numbers",
-    "BINARY_SENSORS": "binary_sensors",
-}
-
-# Sensor type constants
-SENSOR_TYPES = {
-    "INDOOR_ABSOLUTE_HUMIDITY": "indoor_absolute_humidity",
-    "OUTDOOR_ABSOLUTE_HUMIDITY": "outdoor_absolute_humidity",
-}
-
-# Switch type constants
-SWITCH_TYPES = {
-    "DEHUMIDIFY": "dehumidify",
-}
-
-# Number type constants
-NUMBER_TYPES = {
-    "RELATIVE_HUMIDITY_MINIMUM": "relative_humidity_minimum",
-    "RELATIVE_HUMIDITY_MAXIMUM": "relative_humidity_maximum",
-    "ABSOLUTE_HUMIDITY_OFFSET": "absolute_humidity_offset",
-}
-
-# Binary sensor type constants
-BINARY_SENSOR_TYPES = {
-    "DEHUMIDIFYING_ACTIVE": "dehumidifying_active",
-}
-
-# Decision constants
-DECISION_ACTIONS = {
-    "ACTIVATE": "dehumidify",
-    "DEACTIVATE": "stop",
-    "MAINTAIN": "maintain",
-}
-
-# Service names
-SERVICE_NAMES = {
-    "ACTIVATE_DEHUMIDIFICATION": "async_activate_dehumidification",
-    "DEACTIVATE_DEHUMIDIFICATION": "async_deactivate_dehumidification",
-    "SET_MIN_HUMIDITY": "async_set_min_humidity",
-    "SET_MAX_HUMIDITY": "async_set_max_humidity",
-    "SET_OFFSET": "async_set_offset",
-    "GET_STATUS": "async_get_status",
-}
-
-# Configuration keys
-CONFIG_KEYS = {
-    "ENABLED": "enabled",
-    "AUTO_START": "auto_start",
-    "AUTOMATION_ENABLED": "automation_enabled",
-    "DEBOUNCE_SECONDS": "automation_debounce_seconds",
-    "DECISION_INTERVAL": "decision_interval_seconds",
-    "MIN_HUMIDITY": "default_min_humidity",
-    "MAX_HUMIDITY": "default_max_humidity",
-    "OFFSET": "default_offset",
-}
-
-# Error codes
-ERROR_CODES = {
-    "ENTITY_NOT_FOUND": "entity_not_found",
-    "INVALID_THRESHOLD": "invalid_threshold",
-    "AUTOMATION_DISABLED": "automation_disabled",
-    "DEVICE_OFFLINE": "device_offline",
-    "SERVICE_FAILED": "service_failed",
-}
-
-# State values
-STATE_VALUES = {
-    "DEHUMIDIFYING": "dehumidifying",
-    "IDLE": "idle",
-    "ERROR": "error",
-    "MANUAL": "manual",
-}
-
 __all__ = [
     "FEATURE_ID_HUMIDITY_CONTROL",
     "HUMIDITY_CONTROL_CONST",
-    "ENTITY_TYPES",
-    "SENSOR_TYPES",
-    "SWITCH_TYPES",
-    "NUMBER_TYPES",
-    "BINARY_SENSOR_TYPES",
-    "DECISION_ACTIONS",
-    "SERVICE_NAMES",
-    "CONFIG_KEYS",
-    "ERROR_CODES",
-    "STATE_VALUES",
+    "HUMIDITY_SWITCH_CONFIGS",
+    "HUMIDITY_NUMBER_CONFIGS",
+    "HUMIDITY_BOOLEAN_CONFIGS",
+    "HUMIDITY_DEVICE_ENTITY_MAPPING",
+    "HUMIDITY_DECISION_THRESHOLDS",
+    "HUMIDITY_DECISION_ACTIONS",
 ]
