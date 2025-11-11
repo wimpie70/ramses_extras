@@ -68,6 +68,20 @@ class HumidityServices:
                 "switch", SERVICE_TURN_ON, {"entity_id": dehumidify_entity}
             )
 
+            # Set fan speed to HIGH for dehumidification
+            fan_entity = await self._find_fan_entity(device_id)
+            if fan_entity:
+                # Set fan to high speed for effective dehumidification
+                await self.hass.services.async_call(
+                    "fan", "turn_on", {"entity_id": fan_entity, "speed": "high"}
+                )
+                _LOGGER.info(f"Fan speed set to HIGH: {fan_entity}")
+            else:
+                _LOGGER.debug(
+                    f"Fan entity not found for device {device_id}, "
+                    f"skipping speed setting"
+                )
+
             _LOGGER.info(f"Dehumidification activated: {dehumidify_entity}")
             return True
 
@@ -97,6 +111,19 @@ class HumidityServices:
             await self.hass.services.async_call(
                 "switch", SERVICE_TURN_OFF, {"entity_id": dehumidify_entity}
             )
+
+            # Reset fan speed to AUTO/normal
+            fan_entity = await self._find_fan_entity(device_id)
+            if fan_entity:
+                # Set fan to auto speed (deactivate dehumidification mode)
+                await self.hass.services.async_call(
+                    "fan", "turn_on", {"entity_id": fan_entity, "speed": "auto"}
+                )
+                _LOGGER.info(f"Fan speed reset to AUTO: {fan_entity}")
+            else:
+                _LOGGER.debug(
+                    f"Fan entity not found for device {device_id}, skipping speed reset"
+                )
 
             _LOGGER.info(f"Dehumidification deactivated: {dehumidify_entity}")
             return True
@@ -294,6 +321,30 @@ class HumidityServices:
         device_id_underscore = device_id.replace(":", "_")
         entity_pattern = f"number.relative_humidity_maximum_{device_id_underscore}"
         return await self._find_entity_by_pattern(entity_pattern)
+
+    async def _find_fan_entity(self, device_id: str) -> str | None:
+        """Find fan entity for a device.
+
+        Args:
+            device_id: Device identifier
+
+        Returns:
+            Entity ID or None if not found
+        """
+        device_id_underscore = device_id.replace(":", "_")
+        # Common fan entity patterns for Ramses devices
+        fan_patterns = [
+            f"fan.ramses_fan_{device_id_underscore}",
+            f"fan.ventilation_fan_{device_id_underscore}",
+            "fan.32_153289",  # Direct device pattern
+        ]
+
+        for pattern in fan_patterns:
+            entity_id = await self._find_entity_by_pattern(pattern)
+            if entity_id:
+                return entity_id
+
+        return None
 
     async def _find_offset_entity(self, device_id: str) -> str | None:
         """Find humidity offset number entity for a device.

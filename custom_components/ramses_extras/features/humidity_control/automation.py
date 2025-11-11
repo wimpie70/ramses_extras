@@ -7,7 +7,7 @@ feature-centric architecture.
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
@@ -100,10 +100,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         # Start base automation
         await super().start()
 
-        # Initialize binary sensor if configured
-        if self.config_entry.options.get("enable_automation_status"):
-            await self._initialize_automation_status_sensor()
-
         self._automation_active = True
         _LOGGER.info("Humidity control automation started")
 
@@ -128,14 +124,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         _LOGGER.info("Humidity control automation stopped")
 
-    async def _initialize_automation_status_sensor(self) -> None:
-        """Initialize automation status binary sensor.
-
-        Creates a binary sensor to show automation status.
-        """
-        # This would create a binary sensor entity showing automation status
-        # Implementation would integrate with the entities module
-
     async def _process_automation_logic(
         self, device_id: str, entity_states: dict[str, Any]
     ) -> None:
@@ -148,7 +136,28 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if not self._automation_active:
             return
 
-        # Automation event logging
+        # Check if switch is manually OFF - if so, don't run automation
+        switch_state = entity_states.get("dehumidify")
+        if switch_state is not None:
+            switch_is_on = bool(switch_state)
+
+            # If switch is OFF, set indicator OFF and don't run automation
+            if not switch_is_on:
+                _LOGGER.debug(f"Switch is OFF for device {device_id} - no automation")
+                if self._dehumidify_active:
+                    # Call proper deactivation when switch is turned off
+                    await self._deactivate_dehumidification(
+                        device_id,
+                        {
+                            "action": "manual_off",
+                            "reasoning": ["Switch manually turned off"],
+                            "confidence": 1.0,
+                        },
+                    )
+                await self._set_indicator_off(device_id)
+                return
+
+        # Switch is ON - run automation
         _LOGGER.info(f"Processing humidity automation logic for device {device_id}")
 
         try:
@@ -170,11 +179,20 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             elif decision["action"] == "stop":
                 await self._deactivate_dehumidification(device_id, decision)
 
-            # Update status
+            # Update indicator based on decision
             await self._update_automation_status(device_id, decision)
 
         except Exception as e:
             _LOGGER.error(f"Automation logic error: {e}")
+
+    async def _set_indicator_off(self, device_id: str) -> None:
+        """Set indicator to OFF when switch is off or automation stops."""
+        if self._binary_sensor:
+            try:
+                await self._binary_sensor.async_turn_off()
+                _LOGGER.debug(f"Set indicator OFF for device {device_id}")
+            except Exception as e:
+                _LOGGER.error(f"Failed to set indicator off: {e}")
 
     async def _evaluate_humidity_conditions(
         self,
