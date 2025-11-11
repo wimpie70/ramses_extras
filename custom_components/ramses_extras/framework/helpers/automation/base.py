@@ -543,14 +543,14 @@ class ExtrasBaseAutomation(ABC):
 
     # ==================== DATA ACCESS ====================
 
-    async def _get_device_entity_states(self, device_id: str) -> dict[str, float]:
+    async def _get_device_entity_states(self, device_id: str) -> dict[str, Any]:
         """Get all entity states for a device with validation.
 
         Args:
             device_id: Device identifier (e.g., "32_153289")
 
         Returns:
-            Dictionary with entity state values
+            Dictionary with entity state values (numeric or boolean)
 
         Raises:
             ValueError: If any entity is unavailable or has invalid values
@@ -573,21 +573,63 @@ class ExtrasBaseAutomation(ABC):
             if state.state in ["unavailable", "unknown"]:
                 raise ValueError(f"Entity {entity_id} state unavailable")
 
-            try:
-                value = float(state.state)
-                states[state_name] = value
-            except (ValueError, TypeError) as err:
-                raise ValueError(
-                    f"Entity {entity_id} has invalid numeric value: {state.state}"
-                ) from err
+            # Determine entity type from entity_id and handle appropriately
+            entity_type = self._extract_entity_type_from_id(entity_id)
+            value = self._convert_entity_state(entity_type, state.state)
+            states[state_name] = value
 
         return states
+
+    def _extract_entity_type_from_id(self, entity_id: str) -> str:
+        """Extract entity type from entity ID.
+
+        Args:
+            entity_id: Entity identifier (e.g., "switch.dehumidify_32_153289")
+
+        Returns:
+            Entity type ("sensor", "switch", "number", "binary_sensor")
+        """
+        if "." in entity_id:
+            return entity_id.split(".")[0]
+        return "unknown"
+
+    def _convert_entity_state(self, entity_type: str, state_value: str) -> float | bool:
+        """Convert entity state value based on entity type.
+
+        Args:
+            entity_type: Type of entity
+            state_value: Raw state value from Home Assistant
+
+        Returns:
+            Converted value (float for sensors/numbers,
+            bool for switches/binary_sensors)
+        """
+        # Handle boolean entities (switches and binary sensors)
+        if entity_type in ["switch", "binary_sensor"]:
+            return state_value.lower() in ["on", "true", "1", "yes"]
+
+        # Handle numeric entities (sensors and numbers)
+        if entity_type in ["sensor", "number"]:
+            try:
+                return float(state_value)
+            except (ValueError, TypeError) as err:
+                raise ValueError(
+                    f"Entity {entity_type} has invalid numeric value: {state_value}"
+                ) from err
+
+        # Unknown entity type - try numeric conversion as fallback
+        else:
+            try:
+                return float(state_value)
+            except (ValueError, TypeError):
+                # If numeric conversion fails, treat as boolean
+                return state_value.lower() in ["on", "true", "1", "yes"]
 
     # ==================== ABSTRACT METHODS ====================
 
     @abstractmethod
     async def _process_automation_logic(
-        self, device_id: str, entity_states: dict[str, float]
+        self, device_id: str, entity_states: dict[str, Any]
     ) -> None:
         """Process automation logic specific to this feature.
 
@@ -596,7 +638,7 @@ class ExtrasBaseAutomation(ABC):
 
         Args:
             device_id: Device identifier
-            entity_states: Validated entity state values
+            entity_states: Validated entity state values (float or bool)
         """
         _LOGGER.debug("Abstract method _process_automation_logic called")
         # pass

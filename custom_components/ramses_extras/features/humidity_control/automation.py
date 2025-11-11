@@ -125,13 +125,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         # Implementation would integrate with the entities module
 
     async def _process_automation_logic(
-        self, device_id: str, entity_states: dict[str, float]
+        self, device_id: str, entity_states: dict[str, Any]
     ) -> None:
         """Process humidity control automation logic for a device.
 
         Args:
             device_id: Device identifier
-            entity_states: Validated entity state values
+            entity_states: Validated entity state values (float or bool)
         """
         if not self._automation_active:
             return
@@ -140,12 +140,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         _LOGGER.info(f"Processing humidity automation logic for device {device_id}")
 
         try:
-            # Extract humidity values
-            indoor_abs = entity_states.get("indoor_abs", 0.0)
-            outdoor_abs = entity_states.get("outdoor_abs", 0.0)
-            min_humidity = entity_states.get("min_humidity", 40.0)
-            max_humidity = entity_states.get("max_humidity", 60.0)
-            offset = entity_states.get("offset", 0.0)
+            # Extract humidity values (these should be float)
+            indoor_abs = float(entity_states.get("indoor_abs", 0.0))
+            outdoor_abs = float(entity_states.get("outdoor_abs", 0.0))
+            min_humidity = float(entity_states.get("min_humidity", 40.0))
+            max_humidity = float(entity_states.get("max_humidity", 60.0))
+            offset = float(entity_states.get("offset", 0.0))
 
             # Calculate decision
             decision = await self._evaluate_humidity_conditions(
