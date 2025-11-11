@@ -195,7 +195,17 @@ class RamsesExtraHumiditySensor(SensorEntity, ExtrasBaseEntity):
         try:
             # Get temperature from ramses_cc sensor
             temp_state = self.hass.states.get(temp_entity)
-            if temp_state is None or temp_state.state in ("unavailable", "unknown"):
+            if temp_state is None or temp_state.state in (
+                "unavailable",
+                "unknown",
+                "uninitialized",
+            ):
+                _LOGGER.debug(
+                    "Missing temperature entity %s for %s - "
+                    "absolute humidity cannot be calculated",
+                    temp_entity,
+                    self._attr_name,
+                )
                 return None, None
 
             temp = float(temp_state.state)
@@ -205,7 +215,14 @@ class RamsesExtraHumiditySensor(SensorEntity, ExtrasBaseEntity):
             if humidity_state is None or humidity_state.state in (
                 "unavailable",
                 "unknown",
+                "uninitialized",
             ):
+                _LOGGER.debug(
+                    "Missing humidity entity %s for %s - "
+                    "absolute humidity cannot be calculated",
+                    humidity_entity,
+                    self._attr_name,
+                )
                 return None, None
 
             humidity = float(humidity_state.state)
@@ -218,6 +235,14 @@ class RamsesExtraHumiditySensor(SensorEntity, ExtrasBaseEntity):
                     self._attr_name,
                 )
                 return None, None
+
+            _LOGGER.debug(
+                "Got temp=%.1f°C, humidity=%.1f%% for %s - "
+                "calculating absolute humidity",
+                temp,
+                humidity,
+                self._attr_name,
+            )
 
             return temp, humidity
 

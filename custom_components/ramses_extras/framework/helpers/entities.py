@@ -23,7 +23,6 @@ def calculate_absolute_humidity(
         temp_kelvin = temperature + 273.15
 
         # Magnus formula for saturation vapor pressure (hPa)
-        # For temperatures above 0°C
         a = 17.27
         b = 237.7
 
@@ -31,32 +30,38 @@ def calculate_absolute_humidity(
         gamma = (a * temperature) / (b + temperature)
         saturation_vapor_pressure = 6.112 * math.exp(gamma)
 
-        # Calculate actual vapor pressure
-        vapor_pressure = saturation_vapor_pressure * (relative_humidity / 100.0)
+        # Calculate actual vapor pressure in Pa (convert hPa to Pa)
+        vapor_pressure_hpa = saturation_vapor_pressure * (relative_humidity / 100.0)
+        vapor_pressure_pa = vapor_pressure_hpa * 100  # Convert hPa to Pa
 
-        # Calculate absolute humidity (g/m³)
-        # Formula: AH = (e * M) / (R * T)
+        # Calculate absolute humidity using correct formula
+        # AH = (e * M) / (R * T)
         # Where:
-        # e = vapor pressure (hPa)
+        # e = vapor pressure (Pa)
         # M = molecular weight of water (18.015 g/mol)
-        # R = gas constant (8314.4 J/kmol·K)
+        # R = gas constant (8.314 J/(mol·K))
         # T = temperature (K)
 
         molecular_weight_water = 18.015  # g/mol
-        gas_constant = 8314.4  # J/kmol·K = 8.3144 J/mol·K
+        gas_constant = 8.314  # J/(mol·K)
 
-        absolute_humidity = (vapor_pressure * molecular_weight_water) / (
-            gas_constant * temp_kelvin * 1000
+        absolute_humidity = (vapor_pressure_pa * molecular_weight_water) / (
+            gas_constant * temp_kelvin
         )
-
-        # Convert from g/mol to g/m³
-        absolute_humidity = absolute_humidity * 1000
 
         if absolute_humidity < 0:
             _LOGGER.error(
                 "Calculated negative absolute humidity: %.2f g/m³", absolute_humidity
             )
             return None
+
+        _LOGGER.debug(
+            "AH calculation: T=%.1f°C, RH=%.1f%%, e=%.1fPa -> AH=%.2fg/m³",
+            temperature,
+            relative_humidity,
+            vapor_pressure_pa,
+            absolute_humidity,
+        )
 
         return round(absolute_humidity, 2)
 
