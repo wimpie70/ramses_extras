@@ -8,7 +8,7 @@
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
 [![Home Assistant 2025.10.4](https://img.shields.io/badge/home%20assistant-2025.10.4-green.svg)](https://home-assistant.io)
 
-**Ramses Extras** is a Home Assistant integration that extends the [ramses_cc](https://github.com/ramses-rf/ramses_cc) integration with additional features, entities, automation, and UI components. Built on a clean, modular framework foundation for easy extension and maintenance.
+**Ramses Extras** is a Home Assistant integration that extends the Ramses RF ([ramses_cc](https://github.com/ramses-rf/ramses_cc)) integration with additional features, entities, automation, and UI components. Built on a clean, modular framework foundation for easy extension and maintenance.
 
 ## 🎯 **What is Ramses Extras?**
 
