@@ -7,9 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-sys.path.insert(
-    0, str(Path(__file__).parent.parent.parent / "custom_components" / "ramses_extras")
-)
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "custom_components"))
 
 from custom_components.ramses_extras.features.humidity_control.automation import (
     HumidityAutomationManager,
