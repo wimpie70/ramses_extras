@@ -15,30 +15,8 @@ from .humidity_control import (
     create_humidity_control_feature,
 )
 
-# TODO: Enable these when the feature modules are complete
-# from .fan_control import (
-#     FanAutomationManager,
-#     FanEntities,
-#     FanServices,
-#     FanConfig,
-#     FAN_CONTROL_CONST,
-#     create_fan_control_feature,
-# )
-#
-# from .sensor_management import (
-#     SensorAutomationManager,
-#     SensorEntities,
-#     SensorServices,
-#     SensorConfig,
-#     SENSOR_MANAGEMENT_CONST,
-#     create_sensor_management_feature,
-# )
-#
-# from .websocket_handler import (
-#     WebSocketHandler,
-#     WebSocketProtocols,
-#     create_websocket_handler_feature,
-# )
+# Add more below for future features
+
 
 __all__ = [
     # Humidity Control Feature
@@ -48,20 +26,5 @@ __all__ = [
     "HumidityConfig",
     "HUMIDITY_CONTROL_CONST",
     "create_humidity_control_feature",
-    # TODO: Enable these when the feature modules are complete
-    # "FanAutomationManager",
-    # "FanEntities",
-    # "FanServices",
-    # "FanConfig",
-    # "FAN_CONTROL_CONST",
-    # "create_fan_control_feature",
-    # "SensorAutomationManager",
-    # "SensorEntities",
-    # "SensorServices",
-    # "SensorConfig",
-    # "SENSOR_MANAGEMENT_CONST",
-    # "create_sensor_management_feature",
-    # "WebSocketHandler",
-    # "WebSocketProtocols",
-    # "create_websocket_handler_feature",
+    # Add more below for future features
 ]
