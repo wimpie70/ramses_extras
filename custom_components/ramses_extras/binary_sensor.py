@@ -96,7 +96,7 @@ async def _async_setup_binary_sensor_platform(
 
                 # Use feature-specific binary sensor for humidity control
                 if boolean_type == "dehumidifying_active":
-                    from .features.humidity_control.binary_sensor import (
+                    from .features.humidity_control.platforms.binary_sensor import (
                         create_humidity_control_binary_sensor,
                     )
 

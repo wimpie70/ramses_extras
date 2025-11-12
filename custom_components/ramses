@@ -1,6 +1,6 @@
-"""Ramses Extras Sensor Platform.
+"""Ramses Extras Binary Sensor Platform.
 
-This module provides the main Home Assistant sensor platform integration
+This module provides the main Home Assistant binary sensor platform integration
 for the ramses_extras custom component.
 
 NOTE: This is now a thin wrapper that forwards to feature-specific platforms.
@@ -23,23 +23,29 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the sensor platform.
+    """Set up the binary sensor platform.
 
     This is a thin wrapper that forwards to feature-specific platforms.
     All feature-specific business logic is handled by the feature platforms.
     """
-    _LOGGER.info("Setting up sensor platform (thin wrapper)")
+    _LOGGER.info("Setting up binary sensor platform (thin wrapper)")
 
     # Forward to humidity control feature platform
     try:
-        from .features.humidity_control.platforms.sensor import (
-            async_setup_entry as humidity_sensor_setup,
+        from .features.humidity_control.platforms.binary_sensor import (
+            async_setup_entry as humidity_binary_sensor_setup,
         )
 
-        await humidity_sensor_setup(hass, config_entry, async_add_entities)
-        _LOGGER.info("Successfully forwarded sensor setup to humidity control feature")
+        await humidity_binary_sensor_setup(hass, config_entry, async_add_entities)
+        _LOGGER.info(
+            "Successfully forwarded binary sensor setup to humidity control feature"
+        )
 
     except ImportError as e:
-        _LOGGER.warning("Could not import humidity control sensor platform: %s", e)
+        _LOGGER.warning(
+            "Could not import humidity control binary sensor platform: %s", e
+        )
     except Exception as e:
-        _LOGGER.error("Error forwarding sensor setup to feature platforms: %s", e)
+        _LOGGER.error(
+            "Error forwarding binary sensor setup to feature platforms: %s", e
+        )
