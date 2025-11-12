@@ -130,7 +130,58 @@ class HumidityControlBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
         """Subscribe to Ramses RF device updates."""
         # Call base class method first
         await super().async_added_to_hass()
+
+        # Register this binary sensor with the automation manager
+        await self._register_with_automation()
+
         _LOGGER.debug("Binary sensor %s added to hass", self._attr_name)
+
+    async def _register_with_automation(self) -> None:
+        """Register this binary sensor with the humidity automation manager."""
+        try:
+            # First, ensure the automation storage exists (legacy compatibility)
+            ramses_data = self.hass.data.setdefault("ramses_extras", {})
+            automations = ramses_data.setdefault("automations", {})
+
+            # Import automation creation functions
+            from ..automation import create_humidity_control_automation
+            from ..config import HumidityConfig
+
+            # Get or create automation for this device
+            if self._device_id not in automations:
+                # Create the automation manager
+                config_entries = self.hass.config_entries.async_entries("ramses_extras")
+                if config_entries:
+                    config_entry = config_entries[0]
+                    automation = create_humidity_control_automation(
+                        self.hass, config_entry
+                    )
+
+                    # Start the automation
+                    await automation.start()
+                    automations[self._device_id] = automation
+                    _LOGGER.info(
+                        "Created new humidity automation for device %s", self._device_id
+                    )
+                else:
+                    _LOGGER.error("Could not get config entry for automation creation")
+                    return
+
+            # Set the binary sensor reference in the automation
+            automation = automations[self._device_id]
+            automation.set_binary_sensor(self)
+
+            _LOGGER.info(
+                "Registered binary sensor %s with humidity automation for device %s",
+                self._attr_name,
+                self._device_id,
+            )
+        except Exception as e:
+            _LOGGER.error(
+                "Failed to register binary sensor %s with automation: %s",
+                self._attr_name,
+                e,
+            )
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""

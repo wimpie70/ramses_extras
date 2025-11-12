@@ -126,24 +126,24 @@ HUMIDITY_CONTROL_CONST = {
         "binary_sensors": ["dehumidifying_active"],
     },
     # Decision thresholds
-    "decision_thresholds": {
-        "activation": 1.0,  # g/m³ - moderate activation
-        "deactivation": -1.0,  # g/m³ - stop when humidity differential is too low
-        "high_confidence": 2.0,  # g/m³ - high confidence activation
-    },
+    # "decision_thresholds": {
+    #     "activation": 1.0,  # g/m³ - moderate activation
+    #     "deactivation": -1.0,  # g/m³ - stop when humidity differential is too low
+    #     "high_confidence": 2.0,  # g/m³ - high confidence activation
+    # },
     # Performance limits
-    "limits": {
-        "max_runtime_minutes": 120,
-        "cooldown_period_minutes": 15,
-        "max_decision_history": 100,
-    },
+    # "limits": {
+    #     "max_runtime_minutes": 120,
+    #     "cooldown_period_minutes": 15,
+    #     "max_decision_history": 100,
+    # },
     # Default values
     "defaults": {
         "min_humidity": 40.0,  # %
         "max_humidity": 60.0,  # %
         "offset": 0.4,  # g/m³
-        "debounce_seconds": 30,
-        "decision_interval": 60,  # seconds
+        # "debounce_seconds": 1,
+        # "decision_interval": 60,  # seconds
     },
     # WebSocket message types (if applicable)
     "websocket_messages": {

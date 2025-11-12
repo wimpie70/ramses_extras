@@ -37,6 +37,7 @@ class HumidityServices:
         self._services = {
             "async_activate_dehumidification": self.async_activate_dehumidification,
             "async_deactivate_dehumidification": self.async_deactivate_dehumidification,
+            "async_set_fan_speed": self.async_set_fan_speed,
             "async_set_min_humidity": self.async_set_min_humidity,
             "async_set_max_humidity": self.async_set_max_humidity,
             "async_set_offset": self.async_set_offset,
@@ -69,18 +70,9 @@ class HumidityServices:
             )
 
             # Set fan speed to HIGH for dehumidification
-            fan_entity = await self._find_fan_entity(device_id)
-            if fan_entity:
-                # Set fan to high speed for effective dehumidification
-                await self.hass.services.async_call(
-                    "fan", "turn_on", {"entity_id": fan_entity, "speed": "high"}
-                )
-                _LOGGER.info(f"Fan speed set to HIGH: {fan_entity}")
-            else:
-                _LOGGER.debug(
-                    f"Fan entity not found for device {device_id}, "
-                    f"skipping speed setting"
-                )
+            success = await self.async_set_fan_speed(device_id, "high")
+            if not success:
+                _LOGGER.warning(f"Failed to set fan speed for device {device_id}")
 
             _LOGGER.info(f"Dehumidification activated: {dehumidify_entity}")
             return True
@@ -113,23 +105,48 @@ class HumidityServices:
             )
 
             # Reset fan speed to AUTO/normal
-            fan_entity = await self._find_fan_entity(device_id)
-            if fan_entity:
-                # Set fan to auto speed (deactivate dehumidification mode)
-                await self.hass.services.async_call(
-                    "fan", "turn_on", {"entity_id": fan_entity, "speed": "auto"}
-                )
-                _LOGGER.info(f"Fan speed reset to AUTO: {fan_entity}")
-            else:
-                _LOGGER.debug(
-                    f"Fan entity not found for device {device_id}, skipping speed reset"
-                )
+            success = await self.async_set_fan_speed(device_id, "auto")
+            if not success:
+                _LOGGER.warning(f"Failed to set fan auto speed for device {device_id}")
 
             _LOGGER.info(f"Dehumidification deactivated: {dehumidify_entity}")
             return True
 
         except Exception as e:
             _LOGGER.error(f"Failed to deactivate dehumidification: {e}")
+            return False
+
+    async def async_set_fan_speed(self, device_id: str, speed: str) -> bool:
+        """Set fan speed without changing switch state.
+
+        Args:
+            device_id: Device identifier
+            speed: Fan speed ("low", "high", "auto", etc.)
+
+        Returns:
+            True if successful
+        """
+        _LOGGER.info(f"Setting fan speed to {speed} for device {device_id}")
+
+        try:
+            # Just set fan speed, don't touch the switch
+            fan_entity = await self._find_fan_entity(device_id)
+            if fan_entity:
+                # Set fan to specified speed
+                await self.hass.services.async_call(
+                    "fan", "turn_on", {"entity_id": fan_entity, "speed": speed}
+                )
+                _LOGGER.info(f"Fan speed set to {speed.upper()}: {fan_entity}")
+            else:
+                _LOGGER.debug(
+                    f"Fan entity not found for device {device_id}, "
+                    f"skipping speed setting"
+                )
+
+            return True
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to set fan speed to {speed}: {e}")
             return False
 
     async def async_set_min_humidity(self, device_id: str, value: float) -> bool:
@@ -432,6 +449,7 @@ class HumidityServices:
             "async_activate_dehumidification": "Activate dehumidification for a device",
             "async_deactivate_dehumidification": "Deactivate dehumidification "
             "for a device",
+            "async_set_fan_speed": "Set fan speed without changing switch state",
             "async_set_min_humidity": "Set minimum humidity threshold value",
             "async_set_max_humidity": "Set maximum humidity threshold value",
             "async_set_offset": "Set humidity offset adjustment value",

@@ -11,8 +11,11 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change
 
-from custom_components.ramses_extras.framework.base_classes import ExtrasBaseEntity
+from custom_components.ramses_extras.framework.base_classes.base_entity import (
+    ExtrasBaseEntity,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,6 +106,9 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
         )
         self._attr_name = name_template.format(device_id=device_id_underscore)
 
+        # Track if we have listeners set up
+        self._listeners_set_up = False
+
     @property
     def name(self) -> str:
         """Return the name of the entity."""
@@ -111,20 +117,68 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
             or f"{self._sensor_type} {self._device_id.replace(':', '_')}"
         )
 
-    async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
-        """Handle device update from Ramses RF."""
-        self.async_write_ha_state()
+    async def async_added_to_hass(self) -> None:
+        """Called when entity is added to hass."""
+        await super().async_added_to_hass()
+        # Set up listeners for underlying temperature and humidity sensors
+        await self._setup_listeners()
 
-    @property
-    def native_value(self) -> float | None:
-        """Return calculated absolute humidity."""
+    async def _setup_listeners(self) -> None:
+        """Set up listeners for temperature and humidity sensor changes."""
+        if self._listeners_set_up:
+            return
+
+        entity_patterns = {
+            "indoor_absolute_humidity": ("indoor_temp", "indoor_humidity"),
+            "outdoor_absolute_humidity": ("outdoor_temp", "outdoor_humidity"),
+        }
+
+        if self._sensor_type not in entity_patterns:
+            return
+
+        temp_type, humidity_type = entity_patterns[self._sensor_type]
+
+        # Construct entity IDs based on the device_id
+        temp_entity = f"sensor.{self._device_id.replace(':', '_')}_{temp_type}"
+        humidity_entity = f"sensor.{self._device_id.replace(':', '_')}_{humidity_type}"
+
+        # Track state changes on both temperature and humidity sensors
+        async def state_changed_listener(*args: Any) -> None:
+            """Handle state changes on temperature or humidity sensors."""
+            await self._recalculate_and_update()
+
+        # Listen for state changes on both sensors
+        async_track_state_change(
+            self.hass, [temp_entity, humidity_entity], state_changed_listener
+        )
+
+        self._listeners_set_up = True
+        _LOGGER.debug(
+            "Set up state change listeners for %s: %s, %s",
+            self._attr_name,
+            temp_entity,
+            humidity_entity,
+        )
+
+    async def _recalculate_and_update(self) -> None:
+        """Recalculate absolute humidity and update sensor state."""
         try:
             temp, rh = self._get_temp_and_humidity()
             result = self._calculate_abs_humidity(temp, rh)
-            return result if result is not None else None
+
+            if result is not None:
+                _LOGGER.debug(
+                    "Recalculated absolute humidity for"
+                    " %s: %.2f g/m³ (T=%.1f°C, RH=%.1f%%)",
+                    self._attr_name,
+                    result,
+                    temp,
+                    rh,
+                )
+                self._attr_native_value = result
+                self.async_write_ha_state()
         except Exception as e:
-            _LOGGER.debug("Error reading humidity for %s: %s", self._attr_name, e)
-            return None
+            _LOGGER.debug("Error recalculating humidity for %s: %s", self._attr_name, e)
 
     def _get_temp_and_humidity(self) -> tuple[float | None, float | None]:
         """Get temperature and humidity data from ramses_cc entities.
@@ -197,14 +251,6 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
                     self._attr_name,
                 )
                 return None, None
-
-            _LOGGER.debug(
-                "Got temp=%.1f°C, humidity=%.1f%% for %s - "
-                "calculating absolute humidity",
-                temp,
-                humidity,
-                self._attr_name,
-            )
 
             return temp, humidity
 

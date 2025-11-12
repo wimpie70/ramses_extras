@@ -43,7 +43,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             hass=hass,
             feature_id=cast(str, HUMIDITY_CONTROL_CONST["feature_id"]),
             binary_sensor=None,  # Will be set when entities are available
-            debounce_seconds=30,
+            debounce_seconds=0,  # No debouncing needed - event-driven approach
         )
 
         self.config_entry = config_entry
@@ -136,24 +136,23 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if not self._automation_active:
             return
 
-        # Check if switch is manually OFF - if so, don't run automation
+        # Check if switch is manually OFF - if so,
+        #  don't run automation but keep switch state
         switch_state = entity_states.get("dehumidify")
         if switch_state is not None:
             switch_is_on = bool(switch_state)
 
-            # If switch is OFF, set indicator OFF and don't run automation
+            # If switch is OFF, stop automation but don't turn the switch off
+            #  (it's already off)
             if not switch_is_on:
-                _LOGGER.debug(f"Switch is OFF for device {device_id} - no automation")
+                _LOGGER.debug(
+                    f"Switch is OFF for device {device_id} - automation disabled"
+                )
                 if self._dehumidify_active:
-                    # Call proper deactivation when switch is turned off
-                    await self._deactivate_dehumidification(
-                        device_id,
-                        {
-                            "action": "manual_off",
-                            "reasoning": ["Switch manually turned off"],
-                            "confidence": 1.0,
-                        },
-                    )
+                    # Stop dehumidification but don't touch the switch
+                    #  (user manually turned it off)
+                    await self._stop_dehumidification_without_switch_change(device_id)
+                # Just update binary sensor to reflect inactive state
                 await self._set_indicator_off(device_id)
                 return
 
@@ -175,9 +174,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             # Apply decision
             if decision["action"] == "dehumidify":
+                # Activate dehumidification: set fan HIGH, binary sensor ON
                 await self._activate_dehumidification(device_id, decision)
             elif decision["action"] == "stop":
-                await self._deactivate_dehumidification(device_id, decision)
+                # Stop dehumidification: set fan LOW, binary sensor OFF
+                # BUT DON'T TOUCH THE SWITCH - it's for automation enable/disable
+                await self._set_fan_low_and_binary_off(device_id, decision)
 
             # Update indicator based on decision
             await self._update_automation_status(device_id, decision)
@@ -218,8 +220,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Returns:
             Decision dictionary with action and reasoning
         """
-        # Calculate humidity differential
-        humidity_diff = indoor_abs - outdoor_abs
+        # Calculate humidity differential (outdoor - indoor)
+        # Positive = outdoor more humid (avoid bringing in),
+        # Negative = outdoor drier (good for ventilation)
+        humidity_diff = outdoor_abs - indoor_abs
 
         # Apply offset
         adjusted_diff = humidity_diff + offset
@@ -231,7 +235,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "values": {
                 "indoor_abs": indoor_abs,
                 "outdoor_abs": outdoor_abs,
-                "humidity_diff": humidity_diff,
+                "humidity_diff": humidity_diff,  # outdoor - indoor
                 "adjusted_diff": adjusted_diff,
                 "min_humidity": min_humidity,
                 "max_humidity": max_humidity,
@@ -241,27 +245,30 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         }
 
         # Rule-based decision making
-        if adjusted_diff > 2.0:
-            # High humidity differential - activate dehumidification
+        # When outdoor air is drier (negative differential),
+        #  dehumidify to bring in fresh air
+        if adjusted_diff < -2.0:
+            # Very dry outdoor air - definitely activate dehumidification
             decision["action"] = "dehumidify"
             decision["reasoning"].append(
-                f"High humidity differential: {adjusted_diff:.1f} > 2.0"
+                f"Very dry outdoor air: {adjusted_diff:.1f} < -2.0 "
+                f"(good for ventilation)"
             )
             decision["confidence"] = 0.9
 
-        elif adjusted_diff > 1.0:
-            # Moderate differential - consider activating
+        elif adjusted_diff < -1.0:
+            # Moderately dry outdoor air - activate dehumidification
             decision["action"] = "dehumidify"
             decision["reasoning"].append(
-                f"Moderate humidity differential: {adjusted_diff:.1f} > 1.0"
+                f"Dry outdoor air: {adjusted_diff:.1f} < -1.0 (good for ventilation)"
             )
             decision["confidence"] = 0.7
 
-        elif adjusted_diff < -1.0:
-            # Negative differential - stop dehumidification
+        elif adjusted_diff > 1.0:
+            # Outdoor air is more humid - stop dehumidification
             decision["action"] = "stop"
             decision["reasoning"].append(
-                f"Low humidity differential: {adjusted_diff:.1f} < -1.0"
+                f"Humid outdoor air: {adjusted_diff:.1f} > 1.0 (avoid bringing in)"
             )
             decision["confidence"] = 0.8
 
@@ -342,6 +349,57 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         except Exception as e:
             _LOGGER.error(_LOGGER, f"Failed to deactivate dehumidification: {e}")
+
+    async def _set_fan_low_and_binary_off(
+        self, device_id: str, decision: dict[str, Any]
+    ) -> None:
+        """Set fan to low speed and turn off binary sensor (don't touch switch).
+
+        Args:
+            device_id: Device identifier
+            decision: Decision information
+        """
+        try:
+            # Set fan to low speed (stop dehumidification)
+            await self.services.async_set_fan_speed(device_id, "low")
+
+            # Binary sensor will be updated by _update_automation_status
+            self._dehumidify_active = False
+
+            # Log the change
+            reasoning = "; ".join(decision["reasoning"])
+            _LOGGER.info(
+                f"Fan set to LOW speed (dehumidification stopped): {reasoning}"
+            )
+
+        except Exception as e:
+            _LOGGER.error(_LOGGER, f"Failed to set fan low speed: {e}")
+
+    async def _stop_dehumidification_without_switch_change(
+        self, device_id: str
+    ) -> None:
+        """Stop dehumidification without changing switch state.
+
+        Args:
+            device_id: Device identifier
+        """
+        if not self._dehumidify_active:
+            return  # Already inactive
+
+        try:
+            # Just stop dehumidification, don't touch the switch
+            # (user manually turned switch off, so we respect that)
+            await self.services.async_deactivate_dehumidification(device_id)
+
+            self._dehumidify_active = False
+
+            _LOGGER.info(
+                f"Dehumidification stopped for {device_id} "
+                f"(switch already off, respecting user choice)"
+            )
+
+        except Exception as e:
+            _LOGGER.error(_LOGGER, f"Failed to stop dehumidification: {e}")
 
     async def _update_automation_status(
         self, device_id: str, decision: dict[str, Any]

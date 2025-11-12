@@ -340,16 +340,17 @@ class ExtrasBaseAutomation(ABC):
             )
             return
 
-        # Apply debouncing to prevent rapid changes
-        if device_id in self._change_timers:
-            _LOGGER.debug(f"Device {device_id}: Debouncing - ignoring rapid change")
-            return
+        # Apply debouncing to prevent rapid changes (skip if debouncing is disabled)
+        if self.debounce_seconds > 0:
+            if device_id in self._change_timers:
+                _LOGGER.debug(f"Device {device_id}: Debouncing - ignoring rapid change")
+                return
 
-        # Set debouncing timer
-        self._change_timers[device_id] = self.hass.loop.call_later(
-            self.debounce_seconds,
-            lambda: self._change_timers.pop(device_id, None),
-        )
+            # Set debouncing timer
+            self._change_timers[device_id] = self.hass.loop.call_later(
+                self.debounce_seconds,
+                lambda: self._change_timers.pop(device_id, None),
+            )
 
         # Get all entity states for this device
         try:
