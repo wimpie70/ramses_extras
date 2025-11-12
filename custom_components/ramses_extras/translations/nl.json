@@ -1,18 +1,39 @@
 {
   "config": {
     "step": {
-      "features": {
-        "title": "Configure Ramses Extras Features",
-        "description": "Select which Ramses Extras features you want to enable. For detailed documentation, visit: https://github.com/YOUR_USERNAME/ramses_extras/wiki",
+      "user": {
+        "title": "Ramses Extras Setup",
+        "description": "Configureer uw Ramses Extras integratie. Deze integratie biedt extra functionaliteit voor uw Ramses RF systeem.",
         "data": {
-          "features": "Enabled Features"
+          "name": "Integratie Naam"
+        }
+      },
+      "features": {
+        "title": "Ramses Extras Functies Configureren",
+        "description": "{info}",
+        "data": {
+          "features": "Functies om In te Schakelen"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Slechts één Ramses Extras integratie is toegestaan."
+    }
+  },
+  "options": {
+    "step": {
+      "features": {
+        "title": "Ramses Extras Opties",
+        "description": "{info}",
+        "data": {
+          "features": "Functies om In te Schakelen"
         }
       },
       "confirm": {
-        "title": "Confirm Feature Removal",
+        "title": "Verwijdering van Functies Bevestigen",
         "description": "{info}",
         "data": {
-          "confirm": "I understand and want to proceed"
+          "confirm": "Ik begrijp het en wil doorgaan"
         }
       }
     }
