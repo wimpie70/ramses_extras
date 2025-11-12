@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import AVAILABLE_FEATURES, DOMAIN
+from .extras_registry import extras_registry
 from .framework.base_classes import ExtrasBaseEntity
 from .framework.helpers.device.core import (
     find_ramses_device,
@@ -14,7 +15,6 @@ from .framework.helpers.device.core import (
 )
 from .framework.helpers.entities import calculate_absolute_humidity
 from .framework.helpers.entity.core import EntityHelpers
-from .framework.helpers.entity.registry import entity_registry
 from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -51,8 +51,8 @@ async def async_setup_entry(
     _LOGGER.info(f"Enabled features: {enabled_features}")
 
     # Get entity definitions from EntityRegistry
-    all_device_mappings = entity_registry.get_all_device_mappings()
-    all_sensor_configs = entity_registry.get_all_sensor_configs()
+    all_device_mappings = extras_registry.get_all_device_mappings()
+    all_sensor_configs = extras_registry.get_all_sensor_configs()
 
     for device_id in devices:
         device = find_ramses_device(hass, device_id)

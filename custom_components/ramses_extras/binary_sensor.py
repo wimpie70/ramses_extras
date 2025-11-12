@@ -11,9 +11,9 @@ from homeassistant.helpers.event import (
 )
 
 from .const import AVAILABLE_FEATURES, DOMAIN
+from .extras_registry import extras_registry
 from .framework.base_classes import ExtrasBaseEntity
 from .framework.helpers.device.core import find_ramses_device, get_device_type
-from .framework.helpers.entity.registry import entity_registry
 from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -71,8 +71,8 @@ async def _async_setup_binary_sensor_platform(
     )
 
     # Get entity definitions from EntityRegistry
-    all_device_mappings = entity_registry.get_all_device_mappings()
-    all_boolean_configs = entity_registry.get_all_boolean_configs()
+    all_device_mappings = extras_registry.get_all_device_mappings()
+    all_boolean_configs = extras_registry.get_all_boolean_configs()
 
     # Create entities for each device
     binary_sensors = []

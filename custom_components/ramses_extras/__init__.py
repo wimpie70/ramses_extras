@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -219,24 +220,73 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Load entity definitions from default feature and all enabled features
     _LOGGER.info("📊 Loading entity definitions from features...")
-    from .framework.helpers.entity.registry import entity_registry
+    from .extras_registry import extras_registry
 
+    # Always load default feature definitions
+    _LOGGER.info("🔧 Loading default entity definitions...")
+    from .features.default.const import (
+        DEFAULT_BOOLEAN_CONFIGS,
+        DEFAULT_DEVICE_ENTITY_MAPPING,
+        DEFAULT_NUMBER_CONFIGS,
+        DEFAULT_SENSOR_CONFIGS,
+        DEFAULT_SWITCH_CONFIGS,
+    )
+
+    extras_registry.register_sensor_configs(DEFAULT_SENSOR_CONFIGS)
+    extras_registry.register_switch_configs(DEFAULT_SWITCH_CONFIGS)
+    extras_registry.register_number_configs(DEFAULT_NUMBER_CONFIGS)
+    extras_registry.register_boolean_configs(DEFAULT_BOOLEAN_CONFIGS)
+    extras_registry.register_device_mappings(DEFAULT_DEVICE_ENTITY_MAPPING)
+    extras_registry.register_feature("default")
+
+    # Load enabled feature definitions
     enabled_features_dict = entry.data.get("enabled_features", {})
     enabled_feature_names = [
         name for name, enabled in enabled_features_dict.items() if enabled
     ]
 
     _LOGGER.info(
-        f"🔧 Loading definitions from default + {len(enabled_feature_names)} "
+        f"🔧 Loading definitions from {len(enabled_feature_names)} "
         f"enabled features: {enabled_feature_names}"
     )
-    entity_registry.load_all_features(enabled_feature_names)
+
+    # Load each enabled feature
+    for feature_name in enabled_feature_names:
+        try:
+            if feature_name == "humidity_control":
+                from .features.humidity_control.const import (
+                    HUMIDITY_BOOLEAN_CONFIGS,
+                    HUMIDITY_DEVICE_ENTITY_MAPPING,
+                    HUMIDITY_NUMBER_CONFIGS,
+                    HUMIDITY_SWITCH_CONFIGS,
+                )
+
+                extras_registry.register_switch_configs(HUMIDITY_SWITCH_CONFIGS)
+                extras_registry.register_number_configs(HUMIDITY_NUMBER_CONFIGS)
+                extras_registry.register_boolean_configs(HUMIDITY_BOOLEAN_CONFIGS)
+                extras_registry.register_device_mappings(HUMIDITY_DEVICE_ENTITY_MAPPING)
+                extras_registry.register_feature("humidity_control")
+
+                _LOGGER.info("✅ Loaded humidity_control feature definitions")
+
+            # Add other features here as needed...
+            # elif feature_name == "fan_control":
+            #     from .features.fan_control.const import (
+            #         FAN_SWITCH_CONFIGS,
+            #         FAN_NUMBER_CONFIGS,
+            #         # ... etc
+            #     )
+            #     entity_registry.register_switch_configs(FAN_SWITCH_CONFIGS)
+            #     entity_registry.register_feature("fan_control")
+
+        except ImportError as e:
+            _LOGGER.warning(f"⚠️  Failed to load feature '{feature_name}': {e}")
 
     # Log loaded definitions for verification
-    sensor_count = len(entity_registry.get_all_sensor_configs())
-    switch_count = len(entity_registry.get_all_switch_configs())
-    number_count = len(entity_registry.get_all_number_configs())
-    boolean_count = len(entity_registry.get_all_boolean_configs())
+    sensor_count = len(extras_registry.get_all_sensor_configs())
+    switch_count = len(extras_registry.get_all_switch_configs())
+    number_count = len(extras_registry.get_all_number_configs())
+    boolean_count = len(extras_registry.get_all_boolean_configs())
     _LOGGER.info(
         f"✅ EntityRegistry loaded: {sensor_count} sensors, {switch_count} switches, "
         f"{number_count} numbers, {boolean_count} binary sensors"
@@ -777,7 +827,7 @@ async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
                             expected_entity_ids.add(entity_id)
 
                 # Get all possible entity types for this platform
-                from .framework.helpers.entity.registry import entity_registry
+                from .extras_registry import extras_registry
 
                 all_possible_types = []
                 for device_id in devices:
@@ -789,7 +839,7 @@ async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
                     device = find_ramses_device(hass, device_id)
                     if device:
                         device_type = get_device_type(device)
-                        device_mappings = entity_registry.get_all_device_mappings()
+                        device_mappings = extras_registry.get_all_device_mappings()
                         if device_type in device_mappings:
                             entity_mapping = device_mappings[device_type]
                             platform_key = (
@@ -821,9 +871,9 @@ async def handle_hvac_ventilator(device: Any) -> list[str]:
     device_id = device.id
 
     # Get entity mappings from EntityRegistry
-    from .framework.helpers.entity.registry import entity_registry
+    from .extras_registry import extras_registry
 
-    device_mappings = entity_registry.get_all_device_mappings()
+    device_mappings = extras_registry.get_all_device_mappings()
 
     # Check what entities this device type should have
     if device.__class__.__name__ not in device_mappings:

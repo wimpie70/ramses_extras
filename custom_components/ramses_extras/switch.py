@@ -12,14 +12,13 @@ from custom_components.ramses_extras.framework.helpers.device.core import (
     find_ramses_device,
     get_device_type,
 )
-from custom_components.ramses_extras.framework.helpers.entity.registry import (
-    entity_registry,
-)
 from custom_components.ramses_extras.framework.helpers.entity_core import EntityHelpers
 from custom_components.ramses_extras.framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
 )
+
+from .extras_registry import extras_registry
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -80,8 +79,8 @@ async def _async_setup_switch_platform(
     )
 
     # Get entity definitions from EntityRegistry
-    all_device_mappings = entity_registry.get_all_device_mappings()
-    all_switch_configs = entity_registry.get_all_switch_configs()
+    all_device_mappings = extras_registry.get_all_device_mappings()
+    all_switch_configs = extras_registry.get_all_switch_configs()
 
     # Create entities for each device
     switch_entities = []

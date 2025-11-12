@@ -11,22 +11,10 @@ The framework provides:
 - Common utilities and base classes
 """
 
-from .entity_registry import (
-    entity_registry,
-    get_all_entities,
-    get_device_mapping,
-    get_entity_config,
-    get_entity_type,
-    get_registry_statistics,
-    register_entity,
-)
+# Import the standalone Ramses EntityRegistry as the main registry
+from ..extras_registry import extras_registry as entity_registry
 
+# Export the main registry for framework access
 __all__ = [
     "entity_registry",
-    "get_entity_config",
-    "get_device_mapping",
-    "get_all_entities",
-    "register_entity",
-    "get_entity_type",
-    "get_registry_statistics",
 ]

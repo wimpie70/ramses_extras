@@ -8,7 +8,13 @@ from typing import Any, Dict
 
 from .automation import HumidityAutomationManager
 from .config import HumidityConfig
-from .const import HUMIDITY_CONTROL_CONST
+from .const import (
+    HUMIDITY_BOOLEAN_CONFIGS,
+    HUMIDITY_CONTROL_CONST,
+    HUMIDITY_DEVICE_ENTITY_MAPPING,
+    HUMIDITY_NUMBER_CONFIGS,
+    HUMIDITY_SWITCH_CONFIGS,
+)
 from .entities import HumidityEntities
 from .services import HumidityServices
 
@@ -18,6 +24,10 @@ __all__ = [
     "HumidityServices",
     "HumidityConfig",
     "HUMIDITY_CONTROL_CONST",
+    "HUMIDITY_SWITCH_CONFIGS",
+    "HUMIDITY_NUMBER_CONFIGS",
+    "HUMIDITY_BOOLEAN_CONFIGS",
+    "HUMIDITY_DEVICE_ENTITY_MAPPING",
 ]
 
 

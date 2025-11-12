@@ -28,18 +28,9 @@ DESCRIPTION_PLACEHOLDER_INFO = (
 CARD_FOLDER = "www"
 CARD_HELPERS_FOLDER = "www/helpers"
 
-# WebSocket features registry
-# Define all available WebSocket features here
-WEB_SOCKET_FEATURES = {
-    "get_bound_rem": {
-        "name": "Get Bound REM",
-        "description": "Get the REMote that was BOUND to this FAN  in Ramses RF. ",
-        "default_enabled": False,
-    },
-}
-
-# Feature identifier constants
-FEATURE_ID_HUMIDITY_SENSORS = "humidity_sensors"
+# Feature identifiers
+# FEATURE_ID_FAN_CONTROL = "fan_control"
+# FEATURE_ID_HUMIDITY_SENSORS = "humidity_sensors"
 FEATURE_ID_HVAC_FAN_CARD = "hvac_fan_card"
 FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
 
@@ -47,36 +38,21 @@ FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
 # Entity definitions are now in feature-specific const.py files
 # Framework entity registry aggregates all definitions from features
 AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
-    FEATURE_ID_HUMIDITY_SENSORS: {
-        "name": "Absolute Humidity Sensors",
-        "description": "Calculates absolute humidity from relative "
-        "indoor&outdoor sensor entities.",
-        "category": "sensors",
-        "default_enabled": False,
-        "feature_module": "custom_components.ramses_extras.features.humidity_sensors",
-    },
-    FEATURE_ID_HVAC_FAN_CARD: {
-        "name": "HVAC Fan Control Card",
-        "description": "Advanced control card for Orcon or other ventilation systems",
-        "category": "cards",
-        "default_enabled": False,
-        "feature_module": "custom_components.ramses_extras.features.hvac_fan_card",
-    },
     FEATURE_ID_HUMIDITY_CONTROL: {
         "name": "Humidity Control",
         "description": "Automatic humidity control and dehumidification management",
         "category": "automations",
         "default_enabled": False,
-        "feature_module": "custom_components.ramses_extras.features.humidity_control",
+        "feature_module": "features.humidity_control",
+    },
+    FEATURE_ID_HVAC_FAN_CARD: {
+        "name": "HVAC Fan Card",
+        "description": "Advanced fan card for control and configuration",
+        "category": "cards",
+        "default_enabled": False,
+        "feature_module": "features.hvac_fan_card",
     },
 }
 
-# Entity definitions have been moved to feature modules
-# This is part of the constant consolidation to eliminate duplication
-# Each feature now owns its own entity configurations
-# Framework entity registry collects all definitions dynamically
-
-# Entity definitions now managed exclusively by framework entity registry
-# All definitions loaded from feature modules via EntityRegistry
-# Default feature is loaded first, then enabled features
-# No need for legacy compatibility constants
+# Import global EntityRegistry - standalone to avoid circular imports
+from .extras_registry import extras_registry  # noqa: E402

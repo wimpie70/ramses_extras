@@ -14,13 +14,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from custom_components.ramses_extras.framework import (
-    get_all_entities,
-    get_device_mapping,
-    get_entity_config,
-)
-from custom_components.ramses_extras.framework.helpers.entity.registry import (
-    entity_registry,
+from custom_components.ramses_extras.extras_registry import (
+    extras_registry,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -81,21 +76,15 @@ class EntityHelpers:
         Returns:
             Entity template string with {device_id} placeholder, or None if not found
         """
-        # First try to get from entity registry
-        config = get_entity_config(entity_name)
-        if config:
-            template = config.get("entity_template")
-            return str(template) if template is not None else None
-
         # Get from entity registry
         all_entities = (
-            entity_registry.get_all_sensor_configs()
+            extras_registry.get_all_sensor_configs()
             if entity_type == "sensor"
-            else entity_registry.get_all_switch_configs()
+            else extras_registry.get_all_switch_configs()
             if entity_type == "switch"
-            else entity_registry.get_all_number_configs()
+            else extras_registry.get_all_number_configs()
             if entity_type == "number"
-            else entity_registry.get_all_boolean_configs()
+            else extras_registry.get_all_boolean_configs()
             if entity_type == "binary_sensor"
             else {}
         )
@@ -136,26 +125,17 @@ class EntityHelpers:
         Returns:
             List of all required entity IDs for this device
         """
-        entity_ids = []
+        entity_ids: list[str] = []
 
         # Try to get from entity registry first
-        all_entities = get_all_entities()
-        for entity_name, config in all_entities.items():
-            if device_id in config.get("supported_device_types", []):
-                entity_type = config.get("entity_type", "sensor")
-                entity_id = EntityHelpers.generate_entity_name_from_template(
-                    entity_type, entity_name, device_id
-                )
-                if entity_id:
-                    entity_ids.append(entity_id)
-
+        # For now, skip the registry aggregation and use direct registry access
         # If no registry results, get from all entity configs
         if not entity_ids:
             all_configs = {
-                "sensor": entity_registry.get_all_sensor_configs(),
-                "switch": entity_registry.get_all_switch_configs(),
-                "number": entity_registry.get_all_number_configs(),
-                "binary_sensor": entity_registry.get_all_boolean_configs(),
+                "sensor": extras_registry.get_all_sensor_configs(),
+                "switch": extras_registry.get_all_switch_configs(),
+                "number": extras_registry.get_all_number_configs(),
+                "binary_sensor": extras_registry.get_all_boolean_configs(),
             }
             for entity_type, configs in all_configs.items():
                 for entity_name in configs.keys():
@@ -340,7 +320,7 @@ class EntityHelpers:
         Returns:
             List of entity IDs for the device
         """
-        entity_ids = []
+        entity_ids: list[str] = []
 
         # Get all states
         all_states = hass.states.async_all()
