@@ -31,19 +31,31 @@ CARD_HELPERS_FOLDER = "www/helpers"
 # Feature identifiers
 # FEATURE_ID_FAN_CONTROL = "fan_control"
 # FEATURE_ID_HUMIDITY_SENSORS = "humidity_sensors"
+FEATURE_ID_DEFAULT = "default"
 FEATURE_ID_HVAC_FAN_CARD = "hvac_fan_card"
 FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
 
-# Lightweight feature registry (metadata only)
-# Entity definitions are now in feature-specific const.py files
+# Feature registry (minimal metadata - actual config in feature modules)
+# Entity definitions are in feature-specific const.py files
 # Framework entity registry aggregates all definitions from features
 AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
+    FEATURE_ID_DEFAULT: {
+        "name": "Default Sensors",
+        "description": "Base humidity sensors available for all devices",
+        "category": "sensors",
+        "default_enabled": True,
+        "feature_module": "features.default",
+        "supported_device_types": ["HvacVentilator"],
+        "handler": "handle_hvac_ventilator",
+    },
     FEATURE_ID_HUMIDITY_CONTROL: {
         "name": "Humidity Control",
         "description": "Automatic humidity control and dehumidification management",
         "category": "automations",
         "default_enabled": False,
         "feature_module": "features.humidity_control",
+        "supported_device_types": ["HvacVentilator"],
+        "handler": "handle_hvac_ventilator",
     },
     FEATURE_ID_HVAC_FAN_CARD: {
         "name": "HVAC Fan Card",
@@ -51,6 +63,8 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "category": "cards",
         "default_enabled": False,
         "feature_module": "features.hvac_fan_card",
+        "supported_device_types": ["HvacVentilator"],
+        "handler": "handle_hvac_ventilator",
     },
 }
 

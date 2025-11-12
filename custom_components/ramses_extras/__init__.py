@@ -59,29 +59,47 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         # Find all card features and check if their files exist
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
             if feature_config.get("category") == "cards":
-                location = str(feature_config.get("location", ""))
-                if location:
-                    card_path = INTEGRATION_DIR / CARD_FOLDER / location
+                # Import card configuration from the feature module
+                card_location = None
+                card_editor = None
+
+                try:
+                    if feature_key == "hvac_fan_card":
+                        from .features.hvac_fan_card.const import HVAC_FAN_CARD_CONFIG
+
+                        card_location = HVAC_FAN_CARD_CONFIG.get("location")
+                        card_editor = HVAC_FAN_CARD_CONFIG.get("editor")
+                    # Add other card features here as needed...
+
+                except ImportError as e:
+                    _LOGGER.warning(
+                        f"Could not import card config for {feature_key}: {e}"
+                    )
+                    continue
+
+                if card_location and isinstance(card_location, str):
+                    card_path = INTEGRATION_DIR / Path(CARD_FOLDER) / card_location
                     if card_path.exists():
-                        card_features.append((feature_key, location))
+                        card_features.append((feature_key, card_location, card_editor))
 
         if card_features:
             try:
                 # Register all card folders as static paths (for file access)
                 static_configs = []
 
-                for feature_key, location in card_features:
-                    card_path = INTEGRATION_DIR / CARD_FOLDER / location
-                    static_configs.append(
-                        StaticPathConfig(
-                            f"/local/ramses_extras/{feature_key}",
-                            str(card_path.parent),
-                            True,
+                for feature_key, location, editor in card_features:
+                    if isinstance(location, str):
+                        card_path = INTEGRATION_DIR / Path(CARD_FOLDER) / location
+                        static_configs.append(
+                            StaticPathConfig(
+                                f"/local/ramses_extras/{feature_key}",
+                                str(card_path.parent),
+                                True,
+                            )
                         )
-                    )
 
                 # Register helpers directory for shared modules
-                helpers_path = INTEGRATION_DIR / CARD_HELPERS_FOLDER
+                helpers_path = INTEGRATION_DIR / Path(CARD_HELPERS_FOLDER)
                 if helpers_path.exists():
                     static_configs.append(
                         StaticPathConfig(
@@ -122,11 +140,26 @@ async def _register_enabled_card_resources(
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
         if feature_config.get("category") == "cards":
             if enabled_features.get(feature_key, False):
-                location = str(feature_config.get("location", ""))
-                editor = feature_config.get("editor")
+                # Import card configuration from the feature module
+                card_location = None
+                card_editor = None
 
-                if location:
-                    card_path = INTEGRATION_DIR / CARD_FOLDER / location
+                try:
+                    if feature_key == "hvac_fan_card":
+                        from .features.hvac_fan_card.const import HVAC_FAN_CARD_CONFIG
+
+                        card_location = HVAC_FAN_CARD_CONFIG.get("location")
+                        card_editor = HVAC_FAN_CARD_CONFIG.get("editor")
+                    # Add other card features here as needed...
+
+                except ImportError as e:
+                    _LOGGER.warning(
+                        f"Could not import card config for {feature_key}: {e}"
+                    )
+                    continue
+
+                if card_location and isinstance(card_location, str):
+                    card_path = INTEGRATION_DIR / Path(CARD_FOLDER) / card_location
                     if card_path.exists():
                         resource_url = (
                             f"/local/ramses_extras/{feature_key}/{card_path.name}"
@@ -138,8 +171,8 @@ async def _register_enabled_card_resources(
                         )
 
                 # Register editor if available
-                if editor and isinstance(editor, str):
-                    editor_path = INTEGRATION_DIR / Path(CARD_FOLDER) / editor
+                if card_editor and isinstance(card_editor, str):
+                    editor_path = INTEGRATION_DIR / Path(CARD_FOLDER) / card_editor
                     if editor_path.exists():
                         editor_resource_url = (
                             f"/local/ramses_extras/{feature_key}/{editor_path.name}"
@@ -269,15 +302,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
                 _LOGGER.info("✅ Loaded humidity_control feature definitions")
 
-            # Add other features here as needed...
-            # elif feature_name == "fan_control":
-            #     from .features.fan_control.const import (
-            #         FAN_SWITCH_CONFIGS,
-            #         FAN_NUMBER_CONFIGS,
-            #         # ... etc
-            #     )
-            #     entity_registry.register_switch_configs(FAN_SWITCH_CONFIGS)
-            #     entity_registry.register_feature("fan_control")
+            elif feature_name == "hvac_fan_card":
+                from .features.hvac_fan_card.const import (
+                    HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
+                )
+
+                # HVAC Fan Card uses shared sensors from default feature
+                extras_registry.register_device_mappings(
+                    HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING
+                )
+                extras_registry.register_feature("hvac_fan_card")
+
+                _LOGGER.info("✅ Loaded hvac_fan_card feature definitions")
+
+            elif feature_name == "humidity_sensors":
+                # Humidity Sensors feature - no additional definitions needed
+                # Uses shared sensors from default feature
+                extras_registry.register_feature("humidity_sensors")
+                _LOGGER.info("✅ Loaded humidity_sensors feature definitions")
 
         except ImportError as e:
             _LOGGER.warning(f"⚠️  Failed to load feature '{feature_name}': {e}")
@@ -626,34 +668,81 @@ async def _discover_ramses_devices(hass: HomeAssistant) -> list[str]:
         if ramses_cc_entries:
             _LOGGER.info("Found ramses_cc integration, accessing broker...")
 
+            # Check if the broker is available in hass.data for the integration
             ramses_domain = "ramses_cc"
 
-            if ramses_domain not in hass.data:
-                _LOGGER.warning("Ramses CC integration not loaded")
-                return []
-
             # Get the first loaded Ramses entry
-            ramses_entry_id = next(iter(hass.data[ramses_domain]))
-            broker = hass.data[ramses_domain][ramses_entry_id]
+            if ramses_cc_entries:
+                _LOGGER.info(f"Found {len(ramses_cc_entries)} ramses_cc entries")
+                ramses_entry = ramses_cc_entries[0]
+                ramses_entry_id = ramses_entry.entry_id
+                _LOGGER.info(f"Using ramses_cc entry: {ramses_entry_id}")
 
-            if not hasattr(broker, "client"):
-                _LOGGER.warning("Ramses CC broker does not have client attribute")
-                return []
+                # Debug: Check what's available in hass.data for ramses_cc
+                _LOGGER.debug(f"Available hass.data keys: {list(hass.data.keys())}")
+                if ramses_domain in hass.data:
+                    _LOGGER.debug(
+                        f"ramses_cc data keys: {list(hass.data[ramses_domain].keys())}"
+                    )
 
-            # Access devices through the broker's client
-            gwy = broker.client
+                # Check if the broker data is available for this entry
+                if (
+                    ramses_domain in hass.data
+                    and ramses_entry_id in hass.data[ramses_domain]
+                ):
+                    broker = hass.data[ramses_domain][ramses_entry_id]
+                    _LOGGER.debug(
+                        f"Found broker: {type(broker)} "
+                        f"with attributes: {list(dir(broker))}"
+                    )
+                else:
+                    _LOGGER.warning("Ramses CC broker data not available in hass.data")
+                    _LOGGER.warning(
+                        f"Expected structure: "
+                        f"hass.data['{ramses_domain}']['{ramses_entry_id}']"
+                    )
+                    # Try alternative structure
+                    if hass_domain_data := hass.data.get(ramses_domain):
+                        _LOGGER.warning(
+                            f"Available entry IDs: {list(hass_domain_data.keys())}"
+                        )
+                    return []
 
-            # Discover devices using flexible handler approach
-            for device in gwy.devices:
-                device_ids.extend(await _handle_device(device))
+                if not hasattr(broker, "client"):
+                    _LOGGER.warning("Ramses CC broker does not have client attribute")
+                    return []
 
-            if device_ids:
-                _LOGGER.info(
-                    f"Successfully discovered {len(device_ids)} devices via broker"
+                # Access devices through the broker's client
+                gwy = broker.client
+                _LOGGER.debug(
+                    f"Gwy client type: {type(gwy)} with attributes: {list(dir(gwy))}"
                 )
-                return device_ids
 
-            _LOGGER.warning("No supported devices found in broker")
+                if not hasattr(gwy, "devices"):
+                    _LOGGER.warning("Ramses CC client does not have devices attribute")
+                    return []
+
+                _LOGGER.info(f"Found {len(gwy.devices)} devices in Ramses CC")
+                for i, device in enumerate(gwy.devices):
+                    _LOGGER.info(
+                        f"Device {i}: {device.id} ({device.__class__.__name__})"
+                    )
+
+                # Discover devices using flexible handler approach
+                for device in gwy.devices:
+                    device_ids.extend(await _handle_device(device))
+
+                if device_ids:
+                    _LOGGER.info(
+                        f"Successfully discovered {len(device_ids)} devices via broker"
+                    )
+                    return device_ids
+
+                _LOGGER.warning("No supported devices found in broker")
+            else:
+                _LOGGER.warning("No ramses_cc config entries found")
+        else:
+            _LOGGER.warning("No ramses_cc integration found")
 
     except Exception as e:
         _LOGGER.warning("Error discovering Ramses devices: %s", e)
@@ -869,20 +958,23 @@ async def _cleanup_orphaned_entities_global(hass: HomeAssistant) -> None:
 async def handle_hvac_ventilator(device: Any) -> list[str]:
     """Handle HVAC Ventilator devices - create entities based on mapping."""
     device_id = device.id
+    device_type = device.__class__.__name__
+
+    _LOGGER.info(f"🔧 Handling HVAC device: {device_id} ({device_type})")
 
     # Get entity mappings from EntityRegistry
     from .extras_registry import extras_registry
 
     device_mappings = extras_registry.get_all_device_mappings()
+    _LOGGER.debug(f"Available device mappings: {list(device_mappings.keys())}")
 
     # Check what entities this device type should have
-    if device.__class__.__name__ not in device_mappings:
-        _LOGGER.warning(
-            f"No entity mapping found for device type: {device.__class__.__name__}"
-        )
+    if device_type not in device_mappings:
+        _LOGGER.warning(f"No entity mapping found for device type: {device_type}")
         return []
 
-    entity_mapping = device_mappings[device.__class__.__name__]
+    entity_mapping = device_mappings[device_type]
+    _LOGGER.debug(f"Entity mapping for {device_type}: {entity_mapping}")
 
     # Check if this device type has any entities defined
     has_entities = (
@@ -894,13 +986,12 @@ async def handle_hvac_ventilator(device: Any) -> list[str]:
 
     if has_entities:
         _LOGGER.info(
-            f"Device {device_id} ({device.__class__.__name__}) will create entities"
+            f"✅ Device {device_id} ({device_type}) "
+            f"will create entities: {entity_mapping}"
         )
         return [device_id]
 
-    _LOGGER.debug(
-        f"Device {device_id} ({device.__class__.__name__}) has no entities defined"
-    )
+    _LOGGER.debug(f"Device {device_id} ({device_type}) has no entities defined")
     return []
 
 

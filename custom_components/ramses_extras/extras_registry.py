@@ -42,9 +42,24 @@ class RamsesEntityRegistry:
             self._boolean_configs.update(configs)
 
     def register_device_mappings(self, mappings: dict[str, dict[str, Any]]) -> None:
-        """Register device mappings."""
+        """Register device mappings, merging entity lists for each device type."""
         with self._lock:
-            self._device_mappings.update(mappings)
+            for device_type, entity_mapping in mappings.items():
+                if device_type not in self._device_mappings:
+                    # New device type, just add it
+                    self._device_mappings[device_type] = entity_mapping.copy()
+                else:
+                    # Device type exists, merge the entity lists
+                    existing_mapping = self._device_mappings[device_type]
+                    for entity_type, entities in entity_mapping.items():
+                        if entity_type not in existing_mapping:
+                            existing_mapping[entity_type] = entities.copy()
+                        else:
+                            # Merge entity lists, avoiding duplicates
+                            existing_entities = existing_mapping[entity_type]
+                            for entity in entities:
+                                if entity not in existing_entities:
+                                    existing_entities.append(entity)
 
     def register_feature(self, feature_name: str) -> None:
         """Mark a feature as registered."""

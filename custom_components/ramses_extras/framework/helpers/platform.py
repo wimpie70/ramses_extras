@@ -56,7 +56,7 @@ def calculate_required_entities(
     devices: list[str],
     hass: "HomeAssistant",
 ) -> list[str]:
-    """Calculate required entities for a platform based on enabled features.
+    """Calculate required entities for a platform based on device mappings.
 
     Args:
         platform: Platform type (sensor, switch, etc.)
@@ -69,36 +69,31 @@ def calculate_required_entities(
     """
     required_entities = []
 
-    from custom_components.ramses_extras.const import (
-        AVAILABLE_FEATURES,
-        FEATURE_ID_HUMIDITY_CONTROL,
+    # Get device mappings from extras_registry
+    from custom_components.ramses_extras.extras_registry import extras_registry
+    from custom_components.ramses_extras.framework.helpers.device.core import (
+        find_ramses_device,
+        get_device_type,
     )
 
-    for feature_key, is_enabled in enabled_features.items():
-        if not is_enabled or feature_key not in AVAILABLE_FEATURES:
+    platform_key = _get_platform_key(platform)
+    device_mappings = extras_registry.get_all_device_mappings()
+
+    # For each device, check what entities it should have
+    for device_id in devices:
+        device = find_ramses_device(hass, device_id)
+        if not device:
             continue
 
-        feature_config = AVAILABLE_FEATURES[feature_key]
-        feature_required = feature_config.get("required_entities", {})
-        feature_optional = feature_config.get("optional_entities", {})
+        device_type = get_device_type(device)
+        if device_type not in device_mappings:
+            continue
 
-        # Get required entities for this platform
-        if isinstance(feature_required, dict):
-            platform_key = _get_platform_key(platform)
-            required_for_platform = feature_required.get(platform_key, [])
-        else:
-            required_for_platform = []
+        entity_mapping = device_mappings[device_type]
+        entities_for_platform = entity_mapping.get(platform_key, [])
 
-        # Get optional entities for this platform (treat as required for now)
-        if isinstance(feature_optional, dict):
-            platform_key = _get_platform_key(platform)
-            optional_for_platform = feature_optional.get(platform_key, [])
-        else:
-            optional_for_platform = []
-
-        # Add all entities (required and optional)
-        all_entities = required_for_platform + optional_for_platform
-        for entity in all_entities:
+        # Add entities that aren't already in the list
+        for entity in entities_for_platform:
             if entity not in required_entities:
                 required_entities.append(entity)
 
@@ -107,32 +102,17 @@ def calculate_required_entities(
         f"required entities for {len(devices)} devices: {required_entities}"
     )
 
-    # Debug: Log detailed feature information
+    # Debug: Log device mapping information
     if platform in ["switch", "binary_sensor", "number", "sensor"]:
-        _LOGGER.info(f"Debug: {platform} platform analysis:")
-        platform_key = _get_platform_key(platform)
-        for feature_key, is_enabled in enabled_features.items():
-            if not is_enabled or feature_key not in AVAILABLE_FEATURES:
-                continue
-
-            feature_config = AVAILABLE_FEATURES[feature_key]
-            _LOGGER.info(f"  Feature {feature_key}: {feature_config}")
-
-            # Get required entities for this platform
-            required_entities_for_feature = feature_config.get("required_entities", {})
-            if isinstance(required_entities_for_feature, dict):
-                _LOGGER.info(f"    Required entities: {required_entities_for_feature}")
-                _LOGGER.info(f"    Looking for key: {platform_key}")
-                _LOGGER.info(
-                    f"    Found: {required_entities_for_feature.get(platform_key, [])}"
-                )
-            else:
-                _LOGGER.info(
-                    f"    Required entities: "
-                    f"{required_entities_for_feature} (not a dict)"
-                )
-                _LOGGER.info(f"    Looking for key: {platform_key}")
-                _LOGGER.info("    Found: [] (invalid format)")
+        _LOGGER.info(f"Debug: {platform} platform analysis from device mappings:")
+        for device_id in devices:
+            device = find_ramses_device(hass, device_id)
+            if device:
+                device_type = get_device_type(device)
+                if device_type in device_mappings:
+                    entity_mapping = device_mappings[device_type]
+                    entities = entity_mapping.get(platform_key, [])
+                    _LOGGER.info(f"  Device {device_id} ({device_type}): {entities}")
 
     return required_entities
 

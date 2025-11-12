@@ -46,13 +46,13 @@ async def async_setup_entry(
 
     sensors = []
 
-    # Get enabled features from config entry
-    enabled_features = get_enabled_features(hass, config_entry)
-    _LOGGER.info(f"Enabled features: {enabled_features}")
-
     # Get entity definitions from EntityRegistry
     all_device_mappings = extras_registry.get_all_device_mappings()
     all_sensor_configs = extras_registry.get_all_sensor_configs()
+
+    _LOGGER.info(f"Creating sensors for {len(devices)} devices")
+    _LOGGER.info(f"Available device mappings: {list(all_device_mappings.keys())}")
+    _LOGGER.info(f"Available sensor configs: {list(all_sensor_configs.keys())}")
 
     for device_id in devices:
         device = find_ramses_device(hass, device_id)
@@ -61,56 +61,32 @@ async def async_setup_entry(
             continue
 
         device_type = get_device_type(device)
+        _LOGGER.info(f"Processing device {device_id} of type {device_type}")
 
         if device_type in all_device_mappings:
             entity_mapping = all_device_mappings[device_type]
-            all_possible_sensors = entity_mapping.get("sensors", [])
+            sensors_for_device = entity_mapping.get("sensors", [])
+            _LOGGER.info(
+                f"Device {device_id} ({device_type}) should have sensors: "
+                f"{sensors_for_device}"
+            )
 
-            for sensor_type in all_possible_sensors:
+            for sensor_type in sensors_for_device:
                 if sensor_type not in all_sensor_configs:
+                    _LOGGER.warning(
+                        f"Sensor type {sensor_type} not found in sensor configs"
+                    )
                     continue
 
-                # Check if this sensor is needed by any enabled feature
-                is_needed = False
-                for feature_key, is_enabled in enabled_features.items():
-                    if not is_enabled or feature_key not in AVAILABLE_FEATURES:
-                        continue
+                config = all_sensor_configs[sensor_type]
+                _LOGGER.info(f"Creating sensor {sensor_type} for device {device_id}")
+                sensors.append(
+                    RamsesExtraHumiditySensor(hass, device_id, sensor_type, config)
+                )
+        else:
+            _LOGGER.info(f"No sensor mapping found for device type {device_type}")
 
-                    feature_config = AVAILABLE_FEATURES[feature_key]
-                    supported_types = feature_config.get("supported_device_types", [])
-                    if (
-                        isinstance(supported_types, list)
-                        and device_type in supported_types
-                    ):
-                        required_entities = feature_config.get("required_entities", {})
-                        optional_entities = feature_config.get("optional_entities", {})
-
-                        if isinstance(required_entities, dict):
-                            required_sensors = required_entities.get("sensors", [])
-                        else:
-                            required_sensors = []
-
-                        if isinstance(optional_entities, dict):
-                            optional_sensors = optional_entities.get("sensors", [])
-                        else:
-                            optional_sensors = []
-
-                        if (
-                            isinstance(required_sensors, list)
-                            and sensor_type in required_sensors
-                        ) or (
-                            isinstance(optional_sensors, list)
-                            and sensor_type in optional_sensors
-                        ):
-                            is_needed = True
-                            break
-
-                if is_needed:
-                    config = all_sensor_configs[sensor_type]
-                    sensors.append(
-                        RamsesExtraHumiditySensor(hass, device_id, sensor_type, config)
-                    )
-
+    _LOGGER.info(f"Created {len(sensors)} sensors total")
     async_add_entities(sensors, True)
 
 
