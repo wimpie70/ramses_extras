@@ -56,6 +56,27 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.humidity_control",
         "supported_device_types": ["HvacVentilator"],
         "handler": "handle_hvac_ventilator",
+        # Import entity mappings and required entities from feature config
+        "entity_mappings": {
+            "indoor_rh": "sensor.{device_id}_indoor_humidity",
+            "indoor_abs": "sensor.indoor_absolute_humidity_{device_id}",
+            "outdoor_abs": "sensor.outdoor_absolute_humidity_{device_id}",
+            "max_humidity": "number.relative_humidity_maximum_{device_id}",
+            "min_humidity": "number.relative_humidity_minimum_{device_id}",
+            "offset": "number.absolute_humidity_offset_{device_id}",
+            "dehumidify": "switch.dehumidify_{device_id}",
+            "dehumidifying_active": "binary_sensor.dehumidifying_active_{device_id}",
+        },
+        "required_entities": {
+            "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+            "switches": ["dehumidify"],
+            "numbers": [
+                "relative_humidity_minimum",
+                "relative_humidity_maximum",
+                "absolute_humidity_offset",
+            ],
+            "binary_sensors": ["dehumidifying_active"],
+        },
     },
     FEATURE_ID_HVAC_FAN_CARD: {
         "name": "HVAC Fan Card",
