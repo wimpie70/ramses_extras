@@ -51,7 +51,7 @@ fi
 
 # Create a test script
 echo "📝 Creating test script..."
-cat > test-lint.sh << 'EOL'
+cat > scripts/test-lint.sh << 'EOL'
 #!/bin/bash
 set -e
 
@@ -64,10 +64,10 @@ source ~/venvs/extras/bin/activate
 echo -e "\n✅ Linting completed successfully!"
 EOL
 
-chmod +x test-lint.sh
+chmod +x scripts/test-lint.sh
 
 echo -e "\n✨ ESLint setup complete!"
-echo "You can now run './test-lint.sh' to check your code."
+echo "You can now run './scripts/test-lint.sh' to check your code."
 echo "To fix auto-fixable issues, run: ./node_modules/.bin/eslint . --fix"
 
 exit 0

@@ -16,7 +16,7 @@ This directory contains the development environment for the Ramses Extras Home A
 
    ```bash
    cd /home/willem/dev/ramses_extras
-   ./activate_dev.sh
+   ./scripts/activate_dev.sh
    ```
 
 3. **Or install manually:**

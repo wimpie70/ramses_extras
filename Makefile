@@ -143,7 +143,7 @@ type-check: env
 
 type-check-clean: env
 	@echo "Running type checking (without package conflicts)..."
-	@./mypy_clean.sh
+	@./scripts/mypy_clean.sh
 
 format: env
 	@echo "Formatting code..."
