@@ -163,13 +163,20 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             # Extract humidity values (these should be float)
             indoor_abs = float(entity_states.get("indoor_abs", 0.0))
             outdoor_abs = float(entity_states.get("outdoor_abs", 0.0))
+            indoor_rh = float(entity_states.get("indoor_rh", 0.0))
             min_humidity = float(entity_states.get("min_humidity", 40.0))
             max_humidity = float(entity_states.get("max_humidity", 60.0))
             offset = float(entity_states.get("offset", 0.0))
 
-            # Calculate decision
+            # Calculate decision with proper relative humidity logic
             decision = await self._evaluate_humidity_conditions(
-                device_id, indoor_abs, outdoor_abs, min_humidity, max_humidity, offset
+                device_id,
+                indoor_rh,
+                indoor_abs,
+                outdoor_abs,
+                min_humidity,
+                max_humidity,
+                offset,
             )
 
             # Apply decision
@@ -199,6 +206,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     async def _evaluate_humidity_conditions(
         self,
         device_id: str,
+        indoor_rh: float,
         indoor_abs: float,
         outdoor_abs: float,
         min_humidity: float,
@@ -207,10 +215,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> dict[str, Any]:
         """Evaluate humidity conditions and make dehumidification decision.
 
-        This implements the decision logic from the original humidity automation.
+        This implements proper decision logic with relative humidity priority.
 
         Args:
             device_id: Device identifier
+            indoor_rh: Indoor relative humidity
             indoor_abs: Indoor absolute humidity
             outdoor_abs: Outdoor absolute humidity
             min_humidity: Minimum relative humidity threshold
@@ -228,11 +237,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         # Apply offset
         adjusted_diff = humidity_diff + offset
 
-        # Decision logic from original automation
+        # Decision logic with RELATIVE HUMIDITY PRIORITY
         decision: dict[str, Any] = {
             "action": "stop",  # Default action
             "reasoning": [],
             "values": {
+                "indoor_rh": indoor_rh,
                 "indoor_abs": indoor_abs,
                 "outdoor_abs": outdoor_abs,
                 "humidity_diff": humidity_diff,  # outdoor - indoor
@@ -244,35 +254,82 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "confidence": 0.0,
         }
 
-        # Rule-based decision making
-        # When outdoor air is drier (negative differential),
-        #  dehumidify to bring in fresh air
-        if adjusted_diff < -2.0:
-            # Very dry outdoor air - definitely activate dehumidification
-            decision["action"] = "dehumidify"
-            decision["reasoning"].append(
-                f"Very dry outdoor air: {adjusted_diff:.1f} < -2.0 "
-                f"(good for ventilation)"
-            )
-            decision["confidence"] = 0.9
+        # PRIORITY 1: High humidity check (relative humidity threshold) - ORIGINAL LOGIC
+        if indoor_rh > max_humidity:
+            if indoor_abs > outdoor_abs + offset:  # ORIGINAL COMPARISON
+                decision["action"] = "dehumidify"
+                decision["reasoning"].append(
+                    f"High indoor RH: {indoor_rh:.1f}% > {max_humidity:.1f}% "
+                    f"with indoor abs ({indoor_abs:.2f}) > outdoor abs "
+                    f"({outdoor_abs:.2f}) + offset ({offset:.2f})"
+                )
+                decision["confidence"] = 0.9
+            else:
+                decision["action"] = "stop"
+                decision["reasoning"].append(
+                    f"High indoor RH: {indoor_rh:.1f}% > {max_humidity:.1f}% "
+                    f"but indoor abs ({indoor_abs:.2f}) <= outdoor abs "
+                    f"({outdoor_abs:.2f}) + offset ({offset:.2f})"
+                )
+                decision["confidence"] = 0.6
 
-        elif adjusted_diff < -1.0:
-            # Moderately dry outdoor air - activate dehumidification
-            decision["action"] = "dehumidify"
-            decision["reasoning"].append(
-                f"Dry outdoor air: {adjusted_diff:.1f} < -1.0 (good for ventilation)"
-            )
-            decision["confidence"] = 0.7
+        # PRIORITY 2: Low humidity check (relative humidity threshold) - ORIGINAL LOGIC
+        elif indoor_rh < min_humidity:
+            if indoor_abs < outdoor_abs - offset:  # ORIGINAL COMPARISON
+                decision["action"] = "dehumidify"  # Bring in humid air
+                decision["reasoning"].append(
+                    f"Low indoor RH: {indoor_rh:.1f}% < {min_humidity:.1f}% "
+                    f"with indoor abs ({indoor_abs:.2f}) < outdoor abs "
+                    f"({outdoor_abs:.2f}) - offset ({offset:.2f})"
+                )
+                decision["confidence"] = 0.8
+            else:
+                decision["action"] = "stop"
+                decision["reasoning"].append(
+                    f"Low indoor RH: {indoor_rh:.1f}% < {min_humidity:.1f}% "
+                    f"but indoor abs ({indoor_abs:.2f}) >= outdoor abs "
+                    f"({outdoor_abs:.2f}) - offset ({offset:.2f})"
+                )
+                decision["confidence"] = 0.7
 
-        elif adjusted_diff > 1.0:
-            # Outdoor air is more humid - stop dehumidification
-            decision["action"] = "stop"
-            decision["reasoning"].append(
-                f"Humid outdoor air: {adjusted_diff:.1f} > 1.0 (avoid bringing in)"
-            )
-            decision["confidence"] = 0.8
+        # PRIORITY 3: In acceptable range - use absolute humidity differential
+        else:
+            if adjusted_diff < -2.0:
+                # Very dry outdoor air - activate dehumidification
+                decision["action"] = "dehumidify"
+                decision["reasoning"].append(
+                    f"Very dry outdoor air: {adjusted_diff:.1f} < -2.0 "
+                    f"(good for ventilation)"
+                )
+                decision["confidence"] = 0.7
 
-        # Additional checks for extreme values
+            elif adjusted_diff < -1.0:
+                # Moderately dry outdoor air - activate dehumidification
+                decision["action"] = "dehumidify"
+                decision["reasoning"].append(
+                    f"Dry outdoor air: {adjusted_diff:.1f} < -1.0 "
+                    f"(good for ventilation)"
+                )
+                decision["confidence"] = 0.6
+
+            elif adjusted_diff > 1.0:
+                # Outdoor air is more humid - stop dehumidification
+                decision["action"] = "stop"
+                decision["reasoning"].append(
+                    f"Humid outdoor air: {adjusted_diff:.1f} > 1.0 (avoid bringing in)"
+                )
+                decision["confidence"] = 0.7
+
+            else:
+                # In acceptable range with balanced humidity
+                decision["action"] = "stop"
+                decision["reasoning"].append(
+                    f"Humidity in acceptable range (RH: {indoor_rh:.1f}%, "
+                    f"diff: {adjusted_diff:.2f})"
+                )
+                decision["confidence"] = 0.8
+
+        # Additional checks for extreme absolute values
         if indoor_abs > 15.0:  # High absolute humidity
             decision["confidence"] = min(1.0, decision["confidence"] + 0.1)
             decision["reasoning"].append(
@@ -291,7 +348,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         _LOGGER.info(
             f"Decision for device {device_id}: {decision['action']} "
             f"(confidence: {decision['confidence']:.2f}, "
-            f"diff: {decision['values']['adjusted_diff']:.2f})"
+            f"diff: {decision['values']['adjusted_diff']:.2f}, "
+            f"indoor RH: {indoor_rh:.1f}%)"
         )
         if decision["reasoning"]:
             reasoning = "; ".join(decision["reasoning"])
