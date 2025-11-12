@@ -3,8 +3,27 @@ name: Tests
 on:
   push:
     branches: [main, master, develop, 'feature/*']
+    paths:
+      [
+        '.github/workflows/tests.yml',
+        'requirements_dev.txt',
+        'custom_components/**.py',
+        'tests/**',
+        'pyproject.toml',
+      ]
   pull_request:
     branches: [main, master, develop]
+    paths:
+      [
+        '.github/workflows/tests.yml',
+        'requirements_dev.txt',
+        'custom_components/**.py',
+        'tests/**',
+        'pyproject.toml',
+      ]
+  schedule:
+    - cron: '0 18 * * 5'
+  workflow_dispatch:
 
 jobs:
   test:
@@ -29,6 +48,8 @@ jobs:
           pip install "homeassistant==2025.10.4"
 
       - name: Run tests
+        env:
+          PYTEST_ADDOPTS: '--color=yes'
         run: |
           python -m pytest tests/ -v
 
