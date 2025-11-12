@@ -41,7 +41,7 @@ echo "📝 Running Python checks..."
 
 # Run mypy (skip for now due to HA version conflicts)
 echo "  🔍 Running mypy..."
-if mypy custom_components/ramses_extras/ --config-file mypy.ini 2>/dev/null; then
+if mypy custom_components/ramses_extras/ --config-file config/mypy.ini 2>/dev/null; then
     print_status "mypy passed"
 else
     print_warning "mypy failed (expected due to HA version conflicts)"

@@ -89,7 +89,7 @@ The tests cover:
 
 ## Configuration Files
 
-- **`.eslintrc.json`**: ESLint configuration for JavaScript code quality
+- **`config/.eslintrc.json`**: ESLint configuration for JavaScript code quality
 - **`.stylelintrc.json`**: Stylelint configuration for CSS code quality
 - **`jest.config.js`**: Jest configuration for JavaScript testing
 - **`package.json`**: Node.js dependencies and scripts

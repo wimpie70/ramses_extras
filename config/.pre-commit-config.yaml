@@ -1,0 +1,106 @@
+repos:
+  # Ruff linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # MyPy type checker (allowed to fail due to HA version conflicts)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        exclude: ^(setup\.py|tests/)
+        args: [--config-file=mypy.ini, custom_components/, tests/]
+        always_run: true
+        pass_filenames: false
+
+  # JavaScript/TypeScript linting
+  - repo: local
+    hooks:
+      - id: eslint
+        name: ESLint
+        entry: npm run lint
+        language: system
+        types: [file]
+        files: \.(js|jsx|ts|tsx)$
+        exclude: >-
+          (?x)^(
+            node_modules/|
+            \.venv/|
+            venv/|
+            tests/|
+            \..*\.(js|ts)$
+          )
+        verbose: true
+        require_serial: true
+        pass_filenames: false
+
+      - id: prettier
+        name: Prettier
+        entry: npm run format
+        language: system
+        types: [file]
+        files: \.(js|jsx|ts|tsx|json|md|css|scss|html|yaml|yml|graphql|mdx)$
+        exclude: >-
+          (?x)^(
+            node_modules/|
+            \.venv/|
+            venv/|
+            tests/|
+            \..*\.(js|ts|json|yaml|yml)$
+          )
+        verbose: true
+        pass_filenames: false
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+  # Spell checking
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        args:
+          - --ignore-words-list=hass
+          - --skip="./.*,*.csv,*.json,*.ambr"
+          - --quiet-level=2
+        exclude_types: [csv, json, html]
+        exclude: ^(tests/.+/fixtures|tests/.+/snapshots)/
+
+  # Additional validation hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-executables-have-shebangs
+      - id: check-toml
+      - id: check-yaml
+      - id: debug-statements
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+
+  # Python-specific checks
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: python-check-blanket-noqa
+      - id: python-check-blanket-type-ignore
+      - id: python-no-eval
+      - id: python-no-log-warn
+  - repo: local
+    hooks:
+      - id: debugs
+        name: check for DEBUG flags
+        entry: '_DBG_.*=.*True'
+        language: pygrep
+        args: [-i]
+        exclude: (.pre-commit-config.yaml|^tests/.*\.py$)

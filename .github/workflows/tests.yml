@@ -55,7 +55,7 @@ jobs:
 
       - name: Run mypy
         run: |
-          mypy custom_components/ tests/ --config-file mypy.ini || echo "mypy failed but continuing"
+          mypy custom_components/ tests/ --config-file config/mypy.ini || echo "mypy failed but continuing"
         continue-on-error: true
 
   lint:
@@ -115,4 +115,4 @@ jobs:
 
       - name: Run mypy
         run: |
-          mypy custom_components/ tests/ --config-file mypy.ini || echo "mypy failed but continuing"
+          mypy custom_components/ tests/ --config-file config/mypy.ini || echo "mypy failed but continuing"

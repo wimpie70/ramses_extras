@@ -14,9 +14,9 @@ echo "📦 Installing ESLint in the project..."
 npm install --save-dev eslint
 
 # Create a basic .eslintrc.json if it doesn't exist
-if [ ! -f ".eslintrc.json" ]; then
+if [ ! -f "config/.eslintrc.json" ]; then
     echo "📝 Creating .eslintrc.json..."
-    cat > .eslintrc.json << 'EOL'
+    cat > config/.eslintrc.json << 'EOL'
 {
   "root": true,
   "env": {

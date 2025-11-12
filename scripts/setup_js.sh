@@ -57,8 +57,8 @@ echo "📦 Installing JavaScript packages locally..."
 cd "$(dirname "$0")/.."  # Move to project root
 
 # Create package.json if it doesn't exist
-if [ ! -f "package.json" ]; then
-    echo '{"name": "ramses-extras", "version": "1.0.0", "private": true}' > package.json
+if [ ! -f "config/package.json" ]; then
+    echo '{"name": "ramses-extras", "version": "1.0.0", "private": true}' > config/package.json
 fi
 
 # Install packages locally

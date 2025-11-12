@@ -46,6 +46,6 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: Check with mypy
-        run: mypy custom_components/ tests/ --config-file mypy.ini
+        run: mypy custom_components/ tests/ --config-file config/mypy.ini
 
       - run: echo "🍏 This job's status is ${{ job.status }}."

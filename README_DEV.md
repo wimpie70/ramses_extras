@@ -76,8 +76,12 @@ ramses_extras/
 ├── requirements.txt             # Python dependencies
 ├── pyproject.toml              # Project configuration
 ├── setup.py                    # Package setup
-├── pytest.ini                 # Pytest configuration
-└── .pre-commit-config.yaml     # Pre-commit hooks
+├── config/                     # Configuration files
+│   ├── mypy.ini               # MyPy type checking
+│   ├── package.json           # Node.js dependencies
+│   ├── .eslintrc.json         # ESLint configuration
+│   └── .pre-commit-config.yaml # Pre-commit hooks
+└── pytest.ini                 # Pytest configuration
 ```
 
 ## Configuration Files

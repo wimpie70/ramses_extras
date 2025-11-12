@@ -8,9 +8,10 @@ on:
         '.github/workflows/check-lint.yml',
         'custom_components/**',
         'tests/**',
+        'config/**',
         'pyproject.toml',
-        'package.json',
-        'package-lock.json',
+        'config/package.json',
+        'config/package-lock.json',
       ]
 
   pull_request:
@@ -20,9 +21,10 @@ on:
         '.github/workflows/check-lint.yml',
         'custom_components/**',
         'tests/**',
+        'config/**',
         'pyproject.toml',
-        'package.json',
-        'package-lock.json',
+        'config/package.json',
+        'config/package-lock.json',
       ]
 
   workflow_dispatch:
