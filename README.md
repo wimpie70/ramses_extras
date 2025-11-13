@@ -8,18 +8,18 @@
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
 [![Home Assistant 2025.10.4](https://img.shields.io/badge/home%20assistant-2025.10.4-green.svg)](https://home-assistant.io)
 
-**Ramses Extras** is a Home Assistant integration that extends the Ramses RF ([ramses_cc](https://github.com/ramses-rf/ramses_cc)) integration with additional features, entities, automation, and UI components. Built on a clean, modular framework foundation for easy extension and maintenance.
+**Ramses Extras** is a Home Assistant integration that extends the Ramses RF ([ramses_cc](https://github.com/ramses-rf/ramses_cc)) integration with additional features, entities, automation, and UI components. Built on a modular framework for easy extension and maintenance.
 
 ## 🎯 **What is Ramses Extras?**
 
 Ramses Extras provides a collection of (front-end) utilities for the Ramses RF (ramses_cc) integration.
 
-note: This is a work in progress, contributions are welcome ([CONTRIBUTING.md](CONTRIBUTING.md)).
+`note: This is a work in progress, contributions are welcome ([CONTRIBUTING.md](CONTRIBUTING.md)).`
 
-- Easy to dis/enable features to the users needs
+- Easy to disable/enable features to the users needs
 - Features will create (or clean-up) their own entities, cards, webhooks, servicecalls or other logic
-- when editing dashboards, the provided cards will be available to choose from
-- creating new features made easy by the framework
+- when editing dashboards, the provided cards will be available as their own type
+- The framework provides a lot of the overhead needed when creating a new feature. Helpers, Entity creation (by definition),
 -
 
 ## ✨ **Current Features**
@@ -96,11 +96,13 @@ note: the following are tested with an Orcon WTW FAN
 
 ### **Basic Usage**
 
-After configuration, depending on the enabled features, you will get:
+After enabling a feature Ramses Extras will automatically create the associated tools, depending on the device type.
 
-- **New Entities**: Humidity sensors, control switches, configuration numbers
-- **New Automations**: Smart humidity-based ventilation control (hardcoded python)
-- **New Cards**: Advanced ventilation control interface
+- **New Entities**: Sensors, switches, numbers, input boolean, ... eg: `sensor.indoor_absolute_humidity_{device_id}`
+- **New Automations**: For now, only hardcoded python scripts are supported. (more control than the yaml automations)
+- **New Cards**: javascript cards, available as a card type when edititing a dashboard
+- **New Services**: extra service calls, to send commands
+- **New Websocket**: For use by javascript to get info from Ramses Extras (or Ramses RF) like `get_bound_rem`
 
 ## 🏗️ **Architecture Overview**
 
@@ -177,7 +179,7 @@ make local-ci
 
 ### **Code Quality**
 
-This project maintains high code quality through comprehensive tooling:
+The code is all tested with the following tools:
 
 #### **Python Quality Tools**
 
@@ -200,7 +202,7 @@ All tools are configured to work together following industry best practices. See
 The project follows specific patterns for adding new features:
 
 1. **Create Feature Structure**: Follow established patterns in `features/`
-2. **Implement Components**: Automation, services, entities, platforms
+2. **Implement Components**: Automation, services, entities, platforms, websockets
 3. **Add Templates**: Frontend templates for UI components
 4. **Write Tests**: Comprehensive test coverage
 5. **Update Documentation**: Keep architecture docs current
@@ -227,35 +229,6 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 - 🐛 **Bug Fixes**: Issue resolution
 - ⭐ **Feature Requests**: New functionality ideas
 
-## 📊 **Project Status**
-
-### **Current Implementation Status**
-
-| Component                    | Status      | Coverage |
-| ---------------------------- | ----------- | -------- |
-| **Framework Foundation**     | ✅ Complete | 100%     |
-| **Humidity Control Feature** | ✅ Complete | 100%     |
-| **HVAC Fan Card**            | 🟡 Partial  | 60%      |
-| **Translation System**       | ✅ Complete | 100%     |
-| **Test Suite**               | ✅ Complete | 85%      |
-| **Documentation**            | ✅ Complete | 100%     |
-
-### **Development Roadmap**
-
-#### **Near Term (Next Release)**
-
-- 🧪 Complete HVAC Fan Card implementation
-- 🧪 Expand test coverage to 95%
-- 🐛 Bug fixes and stability improvements
-- 📚 Enhanced user documentation
-
-#### **Medium Term (Future Releases)**
-
-- 🆕 **WebSocket Handler**: Real-time message processing
-- 🆕 **Fan Control Features**: Advanced ventilation controls
-- 🆕 **Sensor Management**: Extended sensor capabilities
-- 🆕 **Additional Cards**: More Lovelace card options
-
 ## 📜 **License**
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
@@ -274,5 +247,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - 📚 **Documentation Issues**: Report via GitHub Issues
 
 ---
-
-**Ramses Extras** - Making your ventilation system smarter, one feature at a time! 🌟
