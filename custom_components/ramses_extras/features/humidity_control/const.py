@@ -146,8 +146,22 @@ HUMIDITY_CONTROL_CONST = {
     },
 }
 
+
+def load_feature() -> None:
+    """Load humidity control feature into the registry."""
+    from custom_components.ramses_extras.extras_registry import extras_registry
+
+    # Register entity configurations
+    extras_registry.register_switch_configs(HUMIDITY_SWITCH_CONFIGS)
+    extras_registry.register_number_configs(HUMIDITY_NUMBER_CONFIGS)
+    extras_registry.register_boolean_configs(HUMIDITY_BOOLEAN_CONFIGS)
+    extras_registry.register_device_mappings(HUMIDITY_DEVICE_ENTITY_MAPPING)
+    extras_registry.register_feature("humidity_control")
+
+
 __all__ = [
     "FEATURE_ID_HUMIDITY_CONTROL",
+    "load_feature",
     "HUMIDITY_CONTROL_CONST",
     "HUMIDITY_SWITCH_CONFIGS",
     "HUMIDITY_NUMBER_CONFIGS",

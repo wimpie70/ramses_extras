@@ -50,8 +50,19 @@ HVAC_FAN_CARD_CONFIG = {
     "callback_prefix": "handle_",
 }
 
+
+def load_feature() -> None:
+    """Load hvac_fan_card feature into the registry."""
+    from custom_components.ramses_extras.extras_registry import extras_registry
+
+    # Register entity configurations (mostly inherits from default)
+    extras_registry.register_device_mappings(HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING)
+    extras_registry.register_feature("hvac_fan_card")
+
+
 __all__ = [
     "FEATURE_ID_HVAC_FAN_CARD",
+    "load_feature",
     "HVAC_FAN_CARD_CONFIG",
     "HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING",
 ]

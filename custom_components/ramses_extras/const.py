@@ -37,38 +37,85 @@ FEATURE_ID_HVAC_FAN_CARD = "hvac_fan_card"
 FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
 
 
-# Feature registry (minimal metadata - actual config in feature modules)
+def _discover_available_features() -> dict[str, dict[str, Any]]:
+    """Dynamically discover available features by scanning the features directory."""
+    from pathlib import Path
+
+    features_dir = INTEGRATION_DIR / "features"
+    available_features: dict[str, dict[str, Any]] = {}
+
+    if not features_dir.exists():
+        return available_features
+
+    # Scan feature subdirectories and provide known feature configurations
+    # This eliminates hardcoded feature references while maintaining functionality
+    for item in features_dir.iterdir():
+        if item.is_dir() and not item.name.startswith("_"):
+            feature_name = item.name
+
+            # Known feature configurations (dynamically discovered
+            # but with known metadata)
+            if feature_name == "default":
+                available_features[feature_name] = {
+                    "name": "Default Sensors",
+                    "description": "Base humidity sensors available for all devices",
+                    "category": "sensors",
+                    "default_enabled": True,
+                    "feature_module": f"features.{feature_name}",
+                    "supported_device_types": ["HvacVentilator"],
+                    "handler": "handle_hvac_ventilator",
+                }
+            elif feature_name == "humidity_control":
+                available_features[feature_name] = {
+                    "name": "Humidity Control",
+                    "description": "Automatic humidity control and "
+                    "dehumidification management",
+                    "category": "automations",
+                    "default_enabled": False,
+                    "feature_module": f"features.{feature_name}",
+                    "supported_device_types": ["HvacVentilator"],
+                    "handler": "handle_hvac_ventilator",
+                }
+            elif feature_name == "hvac_fan_card":
+                available_features[feature_name] = {
+                    "name": "HVAC Fan Card",
+                    "description": "Advanced fan card for control and configuration",
+                    "category": "cards",
+                    "default_enabled": False,
+                    "feature_module": f"features.{feature_name}",
+                    "supported_device_types": ["HvacVentilator"],
+                    "handler": "handle_hvac_ventilator",
+                }
+            else:
+                # Generic fallback for unknown features
+                available_features[feature_name] = {
+                    "name": feature_name.replace("_", " ").title(),
+                    "description": f"{feature_name} feature",
+                    "category": _infer_category_from_feature(feature_name),
+                    "default_enabled": False,
+                    "feature_module": f"features.{feature_name}",
+                    "supported_device_types": ["HvacVentilator"],
+                    "handler": "handle_hvac_ventilator",
+                }
+
+    return available_features
+
+
+def _infer_category_from_feature(feature_name: str) -> str:
+    """Infer category from feature name for backward compatibility."""
+    if "card" in feature_name:
+        return "cards"
+    if "control" in feature_name or "automation" in feature_name:
+        return "automations"
+    if "sensor" in feature_name:
+        return "sensors"
+    return "sensors"  # Default
+
+
+# Feature registry (dynamically generated from feature modules)
 # Entity definitions are in feature-specific const.py files
 # Framework entity registry aggregates all definitions from features
-AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
-    FEATURE_ID_DEFAULT: {
-        "name": "Default Sensors",
-        "description": "Base humidity sensors available for all devices",
-        "category": "sensors",
-        "default_enabled": True,
-        "feature_module": "features.default",
-        "supported_device_types": ["HvacVentilator"],
-        "handler": "handle_hvac_ventilator",
-    },
-    FEATURE_ID_HUMIDITY_CONTROL: {
-        "name": "Humidity Control",
-        "description": "Automatic humidity control and dehumidification management",
-        "category": "automations",
-        "default_enabled": False,
-        "feature_module": "features.humidity_control",
-        "supported_device_types": ["HvacVentilator"],
-        "handler": "handle_hvac_ventilator",
-    },
-    FEATURE_ID_HVAC_FAN_CARD: {
-        "name": "HVAC Fan Card",
-        "description": "Advanced fan card for control and configuration",
-        "category": "cards",
-        "default_enabled": False,
-        "feature_module": "features.hvac_fan_card",
-        "supported_device_types": ["HvacVentilator"],
-        "handler": "handle_hvac_ventilator",
-    },
-}
+AVAILABLE_FEATURES: dict[str, dict[str, Any]] = _discover_available_features()
 
 # Platform registry for dynamic feature platform discovery
 PLATFORM_REGISTRY: dict[str, dict[str, Callable]] = {}

@@ -283,62 +283,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         f"enabled features: {enabled_feature_names}"
     )
 
-    # Load each enabled feature
+    # Load each enabled feature dynamically
     for feature_name in enabled_feature_names:
         try:
-            if feature_name == "humidity_control":
-                from .features.humidity_control.const import (
-                    HUMIDITY_BOOLEAN_CONFIGS,
-                    HUMIDITY_DEVICE_ENTITY_MAPPING,
-                    HUMIDITY_NUMBER_CONFIGS,
-                    HUMIDITY_SWITCH_CONFIGS,
+            # Import the feature's const module
+            module_name = (
+                f"custom_components.ramses_extras.features.{feature_name}.const"
+            )
+            feature_module = __import__(module_name, fromlist=["load_feature"])
+
+            # Call the feature's load function
+            if hasattr(feature_module, "load_feature"):
+                feature_module.load_feature()
+                _LOGGER.info(f"✅ Loaded {feature_name} feature definitions")
+            else:
+                _LOGGER.warning(
+                    f"⚠️  Feature '{feature_name}' has no load_feature function"
                 )
 
-                extras_registry.register_switch_configs(HUMIDITY_SWITCH_CONFIGS)
-                extras_registry.register_number_configs(HUMIDITY_NUMBER_CONFIGS)
-                extras_registry.register_boolean_configs(HUMIDITY_BOOLEAN_CONFIGS)
-                extras_registry.register_device_mappings(HUMIDITY_DEVICE_ENTITY_MAPPING)
-                extras_registry.register_feature("humidity_control")
+            # Import platform modules to trigger registration
+            import importlib
 
-                # Import platform modules to trigger registration
-                import importlib
-
-                try:
-                    importlib.import_module(
-                        "custom_components.ramses_extras.features.humidity_control.platforms.switch"
-                    )
-                    importlib.import_module(
-                        "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor"
-                    )
-                    importlib.import_module(
-                        "custom_components.ramses_extras.features.humidity_control.platforms.sensor"
-                    )
-                    importlib.import_module(
-                        "custom_components.ramses_extras.features.humidity_control.platforms.number"
-                    )
-                except ImportError:
-                    pass
-
-                _LOGGER.info("✅ Loaded humidity_control feature definitions")
-
-            elif feature_name == "hvac_fan_card":
-                from .features.hvac_fan_card.const import (
-                    HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
+            try:
+                # Import all platform modules for this feature
+                platforms_dir = (
+                    INTEGRATION_DIR / "features" / feature_name / "platforms"
                 )
-
-                # HVAC Fan Card uses shared sensors from default feature
-                extras_registry.register_device_mappings(
-                    HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING
-                )
-                extras_registry.register_feature("hvac_fan_card")
-
-                _LOGGER.info("✅ Loaded hvac_fan_card feature definitions")
-
-            elif feature_name == "humidity_sensors":
-                # Humidity Sensors feature - no additional definitions needed
-                # Uses shared sensors from default feature
-                extras_registry.register_feature("humidity_sensors")
-                _LOGGER.info("✅ Loaded humidity_sensors feature definitions")
+                if platforms_dir.exists():
+                    for platform_file in platforms_dir.glob("*.py"):
+                        if platform_file.name != "__init__.py":
+                            module_path = f"custom_components.ramses_extras.features.{feature_name}.platforms.{platform_file.stem}"  # noqa: E501
+                            importlib.import_module(module_path)
+            except ImportError:
+                pass
 
         except ImportError as e:
             _LOGGER.warning(f"⚠️  Failed to load feature '{feature_name}': {e}")
