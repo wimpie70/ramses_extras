@@ -65,6 +65,27 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         _LOGGER.info("HumidityControl automation initialized")
 
+    def _singularize_entity_type(self, entity_type: str) -> str:
+        """Convert plural entity type to singular form.
+
+        Args:
+            entity_type: Plural entity type (e.g., "switches", "sensors", "numbers")
+
+        Returns:
+            Singular entity type (e.g., "switch", "sensor", "number")
+        """
+        # Handle common entity type plurals
+        entity_type_mapping = {
+            "sensors": "sensor",
+            "switches": "switch",
+            "binary_sensors": "binary_sensor",
+            "numbers": "number",
+            "devices": "device",
+            "entities": "entity",
+        }
+
+        return entity_type_mapping.get(entity_type, entity_type.rstrip("s"))
+
     def _generate_entity_patterns(self) -> list[str]:
         """Generate entity patterns for humidity control.
 
@@ -72,7 +93,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             List of entity patterns to listen for
         """
         patterns = [
-            # Primary humidity entities
+            # Primary humidity entities with device-specific naming
             "sensor.indoor_absolute_humidity_*",
             "sensor.outdoor_absolute_humidity_*",
             "number.relative_humidity_minimum_*",
@@ -80,12 +101,124 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "number.absolute_humidity_offset_*",
             "switch.dehumidify_*",
             "binary_sensor.dehumidifying_active_*",
-            # Cross-device reference entities
+            # Cross-device reference entities (ramses_cc entities)
             "sensor.*_indoor_humidity",  # CC sensor references
         ]
 
-        _LOGGER.debug(f"Generated {len(patterns)} entity patterns")
+        _LOGGER.debug(f"Generated {len(patterns)} entity patterns for humidity control")
+        _LOGGER.debug(f"Entity patterns: {patterns}")
         return patterns
+
+    async def _check_any_device_ready(self) -> bool:
+        """Check if any device has all required humidity control entities ready.
+
+        Returns:
+            True if at least one device is ready
+        """
+        # Use the humidity-specific entity patterns
+        patterns = self.entity_patterns
+
+        # Find any entities that match our patterns
+        for pattern in patterns:
+            if pattern.endswith("*"):
+                prefix = pattern[:-1]  # Remove the *
+                entity_type = prefix.split(".")[0]
+                entities = self.hass.states.async_all(entity_type)
+
+                matching_entities = [
+                    state for state in entities if state.entity_id.startswith(prefix)
+                ]
+
+                if matching_entities:
+                    # Check each matching entity's device has all required entities
+                    for entity_state in matching_entities:
+                        device_id = self._extract_device_id(entity_state.entity_id)
+                        if device_id and await self._validate_device_entities(
+                            device_id
+                        ):
+                            _LOGGER.debug(
+                                f"Device {device_id} has all "
+                                f"{self.feature_id} entities ready"
+                            )
+                            return True
+
+        return False
+
+    async def _validate_device_entities(self, device_id: str) -> bool:
+        """Validate all required entities exist for a humidity control device.
+
+        Args:
+            device_id: Device identifier
+
+        Returns:
+            True if all entities exist, False otherwise
+        """
+        # Use humidity control specific entity mappings
+        from .const import HUMIDITY_CONTROL_CONST
+
+        required_entities = cast(
+            dict[str, list[str]], HUMIDITY_CONTROL_CONST.get("required_entities", {})
+        )
+        missing_entities = []
+
+        for entity_type, entity_names in required_entities.items():
+            # Convert plural to singular with proper handling
+            entity_base_type = self._singularize_entity_type(entity_type)
+
+            for entity_name in entity_names:
+                # Generate expected entity ID using humidity control patterns
+                expected_entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
+                entity_exists = self.hass.states.get(expected_entity_id)
+                if not entity_exists:
+                    missing_entities.append(expected_entity_id)
+
+        if missing_entities:
+            _LOGGER.debug(
+                f"Device {device_id}: Missing {self.feature_id} "
+                f"entities - {missing_entities}"
+            )
+            return False
+
+        return True
+
+    async def _get_device_entity_states(self, device_id: str) -> dict[str, Any]:
+        """Get all entity states for a humidity control device.
+
+        Args:
+            device_id: Device identifier (e.g., "32_153289")
+
+        Returns:
+            Dictionary with entity state values (numeric or boolean)
+
+        Raises:
+            ValueError: If any entity is unavailable or has invalid values
+        """
+        from .const import HUMIDITY_CONTROL_CONST
+
+        states = {}
+
+        # Get entity mappings from humidity control constants
+        state_mappings = cast(
+            dict[str, str], HUMIDITY_CONTROL_CONST.get("entity_mappings", {})
+        )
+
+        for state_name, entity_template in state_mappings.items():
+            # Replace {device_id} placeholder in entity template
+            entity_id = entity_template.format(device_id=device_id)
+            state = self.hass.states.get(entity_id)
+
+            if not state:
+                raise ValueError(f"Entity {entity_id} not found")
+
+            if state.state in ["unavailable", "unknown"]:
+                raise ValueError(f"Entity {entity_id} state unavailable")
+
+            # Determine entity type from entity_id and handle appropriately
+            entity_type = self._extract_entity_type_from_id(entity_id)
+            value = self._convert_entity_state(entity_type, state.state)
+            states[state_name] = value
+
+        return states
 
     async def start(self) -> None:
         """Start the humidity control automation.
