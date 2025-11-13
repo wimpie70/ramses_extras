@@ -39,6 +39,12 @@ def _singularize_entity_type(entity_type: str) -> str:
         "numbers": "number",
         "devices": "device",
         "entities": "entity",
+        "covers": "cover",
+        "fans": "fan",
+        "lights": "light",
+        "climate": "climate",
+        "humidifiers": "humidifier",
+        "dehumidifiers": "dehumidifier",
     }
 
     return entity_type_mapping.get(entity_type, entity_type.rstrip("s"))

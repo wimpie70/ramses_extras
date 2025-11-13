@@ -162,12 +162,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         missing_entities = []
 
         for entity_type, entity_names in required_entities.items():
-            # Convert plural to singular with proper handling
+            # Convert plural to singular using the base class method
             entity_base_type = self._singularize_entity_type(entity_type)
 
             for entity_name in entity_names:
                 # Generate expected entity ID using humidity control patterns
                 expected_entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
+                _LOGGER.debug(f"Checking for entity: {expected_entity_id}")
                 entity_exists = self.hass.states.get(expected_entity_id)
                 if not entity_exists:
                     missing_entities.append(expected_entity_id)

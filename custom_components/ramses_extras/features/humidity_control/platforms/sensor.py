@@ -39,6 +39,39 @@ async def async_setup_entry(
     async_add_entities(sensors, True)
 
 
+async def _check_underlying_entities_exist(
+    hass: HomeAssistant, device_id: str, sensor_type: str
+) -> bool:
+    """Check if the underlying ramses_cc entities exist for a humidity sensor.
+
+    Args:
+        hass: Home Assistant instance
+        device_id: Device identifier
+        sensor_type: Type of humidity sensor
+
+    Returns:
+        True if underlying entities exist, False otherwise
+    """
+    entity_patterns = {
+        "indoor_absolute_humidity": ("indoor_temp", "indoor_humidity"),
+        "outdoor_absolute_humidity": ("outdoor_temp", "outdoor_humidity"),
+    }
+
+    if sensor_type not in entity_patterns:
+        return False
+
+    temp_type, humidity_type = entity_patterns[sensor_type]
+    device_id_underscore = device_id.replace(":", "_")
+
+    temp_entity = f"sensor.{device_id_underscore}_{temp_type}"
+    humidity_entity = f"sensor.{device_id_underscore}_{humidity_type}"
+
+    temp_state = hass.states.get(temp_entity)
+    humidity_state = hass.states.get(humidity_entity)
+
+    return temp_state is not None and humidity_state is not None
+
+
 async def create_humidity_sensors(
     hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
 ) -> list[SensorEntity]:
@@ -61,8 +94,15 @@ async def create_humidity_sensors(
     for sensor_type in ["indoor_absolute_humidity", "outdoor_absolute_humidity"]:
         config = entity_manager.get_entity_config("sensors", sensor_type)
         if config:
-            sensor = HumidityAbsoluteSensor(hass, device_id, sensor_type, config)
-            sensors.append(sensor)
+            # Check if underlying ramses_cc entities exist before creating sensor
+            if await _check_underlying_entities_exist(hass, device_id, sensor_type):
+                sensor = HumidityAbsoluteSensor(hass, device_id, sensor_type, config)
+                sensors.append(sensor)
+            else:
+                _LOGGER.warning(
+                    f"Skipping {sensor_type} sensor for device {device_id} - "
+                    "underlying ramses_cc entities not found"
+                )
 
     return sensors
 
