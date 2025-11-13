@@ -28,14 +28,23 @@ async def async_setup_entry(
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
+    _LOGGER.info(
+        f"Humidity control binary sensor platform: found {len(devices)} "
+        f"devices: {devices}"
+    )
 
     binary_sensors = []
     for device_id in devices:
         # Create humidity control binary sensors
-        binary_sensors.extend(
-            await create_humidity_control_binary_sensors(hass, device_id, config_entry)
+        device_sensors = await create_humidity_control_binary_sensors(
+            hass, device_id, config_entry
+        )
+        binary_sensors.extend(device_sensors)
+        _LOGGER.info(
+            f"Created {len(device_sensors)} binary sensors for device {device_id}"
         )
 
+    _LOGGER.info(f"Total binary sensors created: {len(binary_sensors)}")
     async_add_entities(binary_sensors, True)
 
 
@@ -231,6 +240,13 @@ class HumidityControlBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
             "current_fan_speed": self._current_fan_speed,
         }
 
+
+# Register this platform with the global registry
+from custom_components.ramses_extras.const import (  # noqa: E402
+    register_feature_platform,  # noqa: E402
+)
+
+register_feature_platform("binary_sensor", "humidity_control", async_setup_entry)
 
 __all__ = [
     "HumidityControlBinarySensor",

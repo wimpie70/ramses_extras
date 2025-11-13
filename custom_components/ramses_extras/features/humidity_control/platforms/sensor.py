@@ -30,12 +30,18 @@ async def async_setup_entry(
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
+    _LOGGER.info(
+        f"Humidity control sensor platform: found {len(devices)} devices: {devices}"
+    )
 
     sensors = []
     for device_id in devices:
         # Create humidity-specific sensors
-        sensors.extend(await create_humidity_sensors(hass, device_id, config_entry))
+        device_sensors = await create_humidity_sensors(hass, device_id, config_entry)
+        sensors.extend(device_sensors)
+        _LOGGER.info(f"Created {len(device_sensors)} sensors for device {device_id}")
 
+    _LOGGER.info(f"Total sensors created: {len(sensors)}")
     async_add_entities(sensors, True)
 
 
@@ -319,6 +325,13 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
         base_attrs = super().extra_state_attributes or {}
         return {**base_attrs, "sensor_type": self._sensor_type}
 
+
+# Register this platform with the global registry
+from custom_components.ramses_extras.const import (  # noqa: E402
+    register_feature_platform,  # noqa: E402
+)
+
+register_feature_platform("sensor", "humidity_control", async_setup_entry)
 
 __all__ = [
     "HumidityAbsoluteSensor",

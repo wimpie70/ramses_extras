@@ -300,6 +300,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 extras_registry.register_device_mappings(HUMIDITY_DEVICE_ENTITY_MAPPING)
                 extras_registry.register_feature("humidity_control")
 
+                # Import platform modules to trigger registration
+                import importlib
+
+                try:
+                    importlib.import_module(
+                        "custom_components.ramses_extras.features.humidity_control.platforms.switch"
+                    )
+                    importlib.import_module(
+                        "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor"
+                    )
+                    importlib.import_module(
+                        "custom_components.ramses_extras.features.humidity_control.platforms.sensor"
+                    )
+                    importlib.import_module(
+                        "custom_components.ramses_extras.features.humidity_control.platforms.number"
+                    )
+                except ImportError:
+                    pass
+
                 _LOGGER.info("✅ Loaded humidity_control feature definitions")
 
             elif feature_name == "hvac_fan_card":

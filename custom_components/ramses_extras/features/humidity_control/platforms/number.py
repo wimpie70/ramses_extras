@@ -27,12 +27,18 @@ async def async_setup_entry(
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
+    _LOGGER.info(
+        f"Humidity control number platform: found {len(devices)} devices: {devices}"
+    )
 
     numbers = []
     for device_id in devices:
         # Create humidity control numbers
-        numbers.extend(await create_humidity_numbers(hass, device_id, config_entry))
+        device_numbers = await create_humidity_numbers(hass, device_id, config_entry)
+        numbers.extend(device_numbers)
+        _LOGGER.info(f"Created {len(device_numbers)} numbers for device {device_id}")
 
+    _LOGGER.info(f"Total numbers created: {len(numbers)}")
     async_add_entities(numbers, True)
 
 
@@ -175,6 +181,13 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
             "step": self._attr_native_step,
         }
 
+
+# Register this platform with the global registry
+from custom_components.ramses_extras.const import (  # noqa: E402
+    register_feature_platform,  # noqa: E402
+)
+
+register_feature_platform("number", "humidity_control", async_setup_entry)
 
 __all__ = [
     "HumidityControlNumber",

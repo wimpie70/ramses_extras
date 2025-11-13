@@ -10,7 +10,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
 )
 
-from .const import AVAILABLE_FEATURES, DOMAIN
+from .const import DOMAIN
 from .extras_registry import extras_registry
 from .framework.base_classes import ExtrasBaseEntity
 from .framework.helpers.device.core import find_ramses_device, get_device_type
@@ -26,13 +26,29 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_feature_platform_setups(platform: str) -> list[Any]:
+    """Get registered feature platform setup functions."""
+    from .const import get_feature_platform_setups
+
+    return get_feature_platform_setups(platform)
+
+
 async def async_setup_entry(
     hass: "HomeAssistant",
     config_entry: ConfigEntry | None,
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
-    """Set up the binary sensor platform."""
-    await _async_setup_binary_sensor_platform(hass, config_entry, async_add_entities)
+    """Set up the binary sensor platform - dynamically discover
+    and call feature platforms."""
+    # Get registered feature binary_sensor platforms
+    feature_setups = _get_feature_platform_setups("binary_sensor")
+
+    # Call each discovered feature platform
+    for setup_func in feature_setups:
+        try:
+            await setup_func(hass, config_entry, async_add_entities)
+        except Exception as e:
+            _LOGGER.error(f"Error setting up binary_sensor platform: {e}")
 
 
 async def _async_setup_binary_sensor_platform(

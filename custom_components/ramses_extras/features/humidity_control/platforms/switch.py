@@ -32,12 +32,18 @@ async def async_setup_entry(
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
+    _LOGGER.info(
+        f"Humidity control switch platform: found {len(devices)} devices: {devices}"
+    )
 
     switches = []
     for device_id in devices:
         # Create humidity-specific switches
-        switches.extend(await create_humidity_switch(hass, device_id, config_entry))
+        device_switches = await create_humidity_switch(hass, device_id, config_entry)
+        switches.extend(device_switches)
+        _LOGGER.info(f"Created {len(device_switches)} switches for device {device_id}")
 
+    _LOGGER.info(f"Total switches created: {len(switches)}")
     async_add_entities(switches, True)
 
 
@@ -152,6 +158,13 @@ class HumidityControlSwitch(SwitchEntity, ExtrasBaseEntity):
         base_attrs = super().extra_state_attributes or {}
         return {**base_attrs, "dehumidifying": self.is_on}
 
+
+# Register this platform with the global registry
+from custom_components.ramses_extras.const import (  # noqa: E402
+    register_feature_platform,  # noqa: E402
+)
+
+register_feature_platform("switch", "humidity_control", async_setup_entry)
 
 __all__ = [
     "HumidityControlSwitch",

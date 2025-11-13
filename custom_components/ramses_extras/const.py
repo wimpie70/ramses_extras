@@ -3,7 +3,7 @@
 #
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.helpers.entity import EntityCategory
 
@@ -27,6 +27,7 @@ DESCRIPTION_PLACEHOLDER_INFO = (
 )
 CARD_FOLDER = "www"
 CARD_HELPERS_FOLDER = "www/helpers"
+FEATURE_FOLDER = "features"
 
 # Feature identifiers
 # FEATURE_ID_FAN_CONTROL = "fan_control"
@@ -34,6 +35,7 @@ CARD_HELPERS_FOLDER = "www/helpers"
 FEATURE_ID_DEFAULT = "default"
 FEATURE_ID_HVAC_FAN_CARD = "hvac_fan_card"
 FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
+
 
 # Feature registry (minimal metadata - actual config in feature modules)
 # Entity definitions are in feature-specific const.py files
@@ -68,5 +70,24 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
     },
 }
 
+# Platform registry for dynamic feature platform discovery
+PLATFORM_REGISTRY: dict[str, dict[str, Callable]] = {}
+
+
+def register_feature_platform(
+    platform: str, feature_name: str, setup_func: Callable
+) -> None:
+    """Register a feature platform setup function."""
+    if platform not in PLATFORM_REGISTRY:
+        PLATFORM_REGISTRY[platform] = {}
+    PLATFORM_REGISTRY[platform][feature_name] = setup_func
+
+
+def get_feature_platform_setups(platform: str) -> list[Callable]:
+    """Get all registered setup functions for a platform."""
+    return list(PLATFORM_REGISTRY.get(platform, {}).values())
+
+
 # Import global EntityRegistry - standalone to avoid circular imports
-from .extras_registry import extras_registry  # noqa: E402
+# Moved inside functions to avoid import issues during testing
+# from .extras_registry import extras_registry  # noqa: E402

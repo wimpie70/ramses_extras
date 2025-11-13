@@ -3,11 +3,12 @@
 This module provides the main Home Assistant sensor platform integration
 for the ramses_extras custom component.
 
-NOTE: This is now a thin wrapper that forwards to feature-specific platforms.
+NOTE: This dynamically discovers and calls feature-specific platforms.
 All entity classes and business logic have been moved to feature platforms.
 """
 
 import logging
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -18,28 +19,25 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_feature_platform_setups(platform: str) -> list[Any]:
+    """Get registered feature platform setup functions."""
+    from .const import get_feature_platform_setups
+
+    return get_feature_platform_setups(platform)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the sensor platform.
+    """Set up the sensor platform - dynamically discover and call feature platforms."""
+    # Get registered feature sensor platforms
+    feature_setups = _get_feature_platform_setups("sensor")
 
-    This is a thin wrapper that forwards to feature-specific platforms.
-    All feature-specific business logic is handled by the feature platforms.
-    """
-    _LOGGER.info("Setting up sensor platform (thin wrapper)")
-
-    # Forward to humidity control feature platform
-    try:
-        from .features.humidity_control.platforms.sensor import (
-            async_setup_entry as humidity_sensor_setup,
-        )
-
-        await humidity_sensor_setup(hass, config_entry, async_add_entities)
-        _LOGGER.info("Successfully forwarded sensor setup to humidity control feature")
-
-    except ImportError as e:
-        _LOGGER.warning("Could not import humidity control sensor platform: %s", e)
-    except Exception as e:
-        _LOGGER.error("Error forwarding sensor setup to feature platforms: %s", e)
+    # Call each discovered feature platform
+    for setup_func in feature_setups:
+        try:
+            await setup_func(hass, config_entry, async_add_entities)
+        except Exception as e:
+            _LOGGER.error(f"Error setting up sensor platform: {e}")

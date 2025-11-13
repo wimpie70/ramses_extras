@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 
@@ -10,15 +10,25 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_feature_platform_setups(platform: str) -> list[Any]:
+    """Get registered feature platform setup functions."""
+    from .const import get_feature_platform_setups
+
+    return get_feature_platform_setups(platform)
+
+
 async def async_setup_entry(
     hass: "HomeAssistant",
     config_entry: ConfigEntry | None,
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
-    """Set up the switch platform - thin wrapper forwarding to feature platforms."""
-    # Forward to humidity control feature switch platform
-    from .features.humidity_control.platforms.switch import (
-        async_setup_entry as humidity_switch_setup,
-    )
+    """Set up the switch platform - dynamically discover and call feature platforms."""
+    # Get registered feature switch platforms
+    feature_setups = _get_feature_platform_setups("switch")
 
-    await humidity_switch_setup(hass, config_entry, async_add_entities)
+    # Call each discovered feature platform
+    for setup_func in feature_setups:
+        try:
+            await setup_func(hass, config_entry, async_add_entities)
+        except Exception as e:
+            _LOGGER.error(f"Error setting up switch platform: {e}")
