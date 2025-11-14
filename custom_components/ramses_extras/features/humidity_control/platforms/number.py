@@ -69,7 +69,9 @@ async def create_humidity_numbers(
     ]:
         config = entity_manager.get_entity_config("numbers", number_type)
         if config:
-            number = HumidityControlNumber(hass, device_id, number_type, config)
+            number = HumidityControlNumber(
+                hass, device_id, number_type, config, config_entry
+            )
             numbers.append(number)
 
     return numbers
@@ -95,6 +97,7 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
         device_id: str,
         number_type: str,
         config: dict[str, Any],
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         """Initialize humidity control number.
 
@@ -103,9 +106,12 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
             device_id: Device identifier
             number_type: Type of number entity
             config: Number configuration
+            config_entry: Configuration entry for saving values
         """
         # Initialize base entity
         ExtrasBaseEntity.__init__(self, hass, device_id, number_type, config)
+
+        self.config_entry = config_entry
 
         # Set number-specific attributes
         self._number_type = number_type
@@ -124,8 +130,28 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
         )
         self._attr_name = name_template.format(device_id=device_id_underscore)
 
-        # Initialize value
-        self._native_value: float = config.get("default_value", 50.0)
+        # Initialize value - load from config entry if available, else default
+        self._native_value: float = self._load_value_from_config(
+            config.get("default_value", 50.0)
+        )
+
+    def _load_value_from_config(self, default_value: float) -> float:
+        """Load the number value from config entry.
+
+        Args:
+            default_value: Default value if not found in config
+
+        Returns:
+            The stored value or default
+        """
+        if not self.config_entry:
+            return default_value
+
+        device_key = self._device_id.replace(":", "_")
+        humidity_config = self.config_entry.options.get("humidity_control", {}).get(
+            device_key, {}
+        )
+        return float(humidity_config.get(self._number_type, default_value))
 
     @property
     def name(self) -> str:
@@ -155,6 +181,20 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
         """Set the value."""
         self._native_value = value
         self.async_write_ha_state()
+
+        # Save to config entry
+        if self.config_entry:
+            device_key = self._device_id.replace(":", "_")
+            options = dict(self.config_entry.options)
+            if "humidity_control" not in options:
+                options["humidity_control"] = {}
+            if device_key not in options["humidity_control"]:
+                options["humidity_control"][device_key] = {}
+            options["humidity_control"][device_key][self._number_type] = value
+            await self.hass.config_entries.async_update_entry(
+                self.config_entry, options=options
+            )
+
         _LOGGER.info(
             "Number %s value set to %s (min: %s, max: %s, step: %s)",
             self._attr_name,
