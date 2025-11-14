@@ -63,7 +63,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._decision_count = 0
         self._active_cycles = 0
 
-        _LOGGER.info("HumidityControl automation initialized")
+        _LOGGER.info("Enhanced Humidity Control automation initialized")
 
     def _singularize_entity_type(self, entity_type: str) -> str:
         """Convert plural entity type to singular form.
@@ -136,9 +136,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                         if device_id and await self._validate_device_entities(
                             device_id
                         ):
-                            _LOGGER.debug(
-                                f"Device {device_id} has all "
-                                f"{self.feature_id} entities ready"
+                            _LOGGER.info(
+                                f"Enhanced Humidity Control: Device {device_id} "
+                                f"has all {self.feature_id} entities ready"
                             )
                             return True
 
@@ -291,7 +291,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 return
 
         # Switch is ON - run automation
-        _LOGGER.info(f"Processing humidity automation logic for device {device_id}")
+        _LOGGER.info(
+            f"Enhanced Humidity Control processing automation logic for "
+            f"device {device_id}"
+        )
 
         try:
             # Extract humidity values (these should be float)
@@ -540,7 +543,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             _LOGGER.info(f"Dehumidification deactivated: {reasoning}")
 
         except Exception as e:
-            _LOGGER.error(_LOGGER, f"Failed to deactivate dehumidification: {e}")
+            _LOGGER.error(f"Failed to deactivate dehumidification: {e}")
 
     async def _set_fan_low_and_binary_off(
         self, device_id: str, decision: dict[str, Any]
@@ -565,7 +568,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
 
         except Exception as e:
-            _LOGGER.error(_LOGGER, f"Failed to set fan low speed: {e}")
+            _LOGGER.error(f"Failed to set fan low speed: {e}")
 
     async def _stop_dehumidification_without_switch_change(
         self, device_id: str
@@ -591,7 +594,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
 
         except Exception as e:
-            _LOGGER.error(_LOGGER, f"Failed to stop dehumidification: {e}")
+            _LOGGER.error(f"Failed to stop dehumidification: {e}")
 
     async def _update_automation_status(
         self, device_id: str, decision: dict[str, Any]

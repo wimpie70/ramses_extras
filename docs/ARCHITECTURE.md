@@ -172,7 +172,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
 ### **Feature Platforms (Business Logic)**
 
-```python
+````python
 # features/humidity_control/platforms/sensor.py
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Humidity control sensor platform setup."""
@@ -185,6 +185,188 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
     # All humidity calculation logic
     # Feature-specific behavior
 ```
+
+## 🚀 **Enhanced Device Discovery Architecture**
+class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
+    """Feature-specific sensor with business logic."""
+    # All humidity calculation logic
+    # Feature-specific behavior
+## 🚀 **Enhanced Device Discovery Architecture**
+
+### **Overview**
+
+The Enhanced Device Discovery system provides advanced device detection, brand-specific customization, and runtime entity management. It builds on the framework foundation to deliver better separation of concerns, extensibility, and user customization capabilities.
+
+### **Core Components**
+
+#### **1. Device Type Handler Mapping**
+
+Central framework-level mapping from device types to specialized handlers:
+
+```python
+# Framework mapping (const.py)
+DEVICE_TYPE_HANDLERS = {
+    "HvacVentilator": "handle_hvac_ventilator",
+    "HvacController": "handle_hvac_controller",  # Future device type
+    "Thermostat": "handle_thermostat",           # Future device type
+}
+````
+
+**Benefits:**
+
+- Single source of truth for device handling
+- No handler duplication across features
+- Clear separation between device handling and feature logic
+- Easy addition of new device types
+
+#### **2. Event System**
+
+**Event Name**: `ramses_device_ready_for_entities`
+
+**Timing**: After device handler completes but BEFORE entity creation
+
+**Event Data**:
+
+```python
+{
+    "device_id": "32:153289",
+    "device_type": "HvacVentilator",
+    "device_object": device,  # Full device object for inspection
+    "entity_ids": ["sensor.indoor_absolute_humidity_32_153289", ...],
+    "handled_by": "humidity_control"  # Which feature called the handler
+}
+```
+
+#### **3. Double Evaluation System**
+
+**Phase 1 - Discovery:**
+
+- Discover devices that should have entities
+- Fire event for each discovered device
+- Listeners can modify EntityRegistry or set flags
+
+**Phase 2 - Creation:**
+
+- Platform setup creates entities
+- Check entity-specific flags before creation
+- Apply any modifications from event listeners
+
+#### **4. Entity Configuration Enhancement**
+
+**New Flag**: `default_enabled` in all entity configurations
+
+```python
+HUMIDITY_SWITCH_CONFIGS = {
+    "dehumidify": {
+        "name_template": "Dehumidify {device_id}",
+        "default_enabled": True,  # NEW: defaults to True for existing entities
+        "entity_template": "dehumidify_{device_id}",
+        # ... other config
+    }
+}
+```
+
+### **Brand-Specific Customization**
+
+#### **Event Listener Pattern**
+
+```python
+async def _on_device_ready_for_entities(self, event_data):
+    """Handle device discovery with brand-specific logic."""
+    device = event_data["device_object"]
+
+    # Brand detection
+    if self._is_orcon_device(device):
+        await self._handle_orcon_device(event_data)
+
+    # Generic brand customization
+    brand_info = self._detect_device_brand(device)
+    if brand_info:
+        await self._apply_brand_customization(event_data, brand_info)
+```
+
+#### **Orcon Device Customization**
+
+```python
+async def _handle_orcon_device(self, event_data):
+    """Apply Orcon-specific customizations."""
+    device = event_data["device_object"]
+
+    # Add Orcon-specific entities
+    event_data["entity_ids"].extend([
+        f"sensor.orcon_filter_usage_{device.id}",
+        f"select.orcon_operation_mode_{device.id}",
+        f"number.orcon_target_humidity_{device.id}"
+    ])
+
+    # Set Orcon-specific defaults
+    event_data["orcon_defaults"] = {
+        "target_humidity": 55,
+        "auto_mode_enabled": True,
+        "smart_boost_enabled": True
+    }
+```
+
+### **Using Enhanced Discovery**
+
+#### **1. Enable Enhanced Discovery**
+
+In configuration:
+
+```python
+ramses_extras:
+  discovery:
+    enhanced_discovery: true
+    brand_detection: true
+    entity_filtering: false
+```
+
+#### **2. Add Event Listeners**
+
+```python
+class HumidityControlFeature:
+    async def async_setup(self):
+        """Setup event listeners for device discovery."""
+        async_dispatcher_connect(
+            self.hass,
+            EVENT_DEVICE_READY_FOR_ENTITIES,
+            self._on_device_ready_for_entities
+        )
+```
+
+#### **3. Brand-Specific Configuration**
+
+```python
+BRAND_CONFIGURATIONS = {
+    "orcon": {
+        "auto_mode_hysteresis": 5,
+        "boost_trigger_humidity": 70,
+        "smart_boost": True
+    },
+    "zehnder": {
+        "connection_type": "comfoconnect",
+        "poll_interval": 30,
+        "premium_features": True
+    }
+}
+```
+
+### **Implementation Strategy**
+
+- **Modern Architecture**: Built on clean separation of concerns with device type handlers
+- **Event-Driven Discovery**: Fully event-based with no legacy discovery logic
+- **Required Implementation**: All features must implement event listeners for enhanced discovery
+- **Unified Entity Management**: Centralized entity configuration with consistent behavior
+
+### **Benefits Summary**
+
+- **Cleaner Architecture**: Separation of device handling and feature logic
+- **Runtime Flexibility**: Entity list modification before creation
+- **Brand-Specific Logic**: Device model detection and customization
+- **Better User Experience**: Optimized entity sets per device brand
+- **Easy Extensibility**: Add new device types and brands without code duplication
+
+````
 
 ## 🔄 **Data Flow**
 
@@ -213,7 +395,7 @@ cd custom_components/ramses_extras/features/my_new_feature
 touch __init__.py automation.py services.py entities.py config.py const.py
 mkdir -p platforms
 touch platforms/__init__.py platforms/sensor.py platforms/switch.py
-```
+````
 
 ### **2. Implement Core Components**
 
@@ -273,6 +455,29 @@ from homeassistant.config_entries import ConfigEntry
 
 - **Feature Names**: snake_case (e.g., `humidity_control`)
 - **Entity Classes**: PascalCase with feature prefix (e.g., `HumidityAbsoluteSensor`)
+
+### **Enhanced Discovery Flow**
+
+1. **HA Integration Loads**: `__init__.py` handles integration setup
+2. **Enhanced Discovery**: Framework discovers devices with type handlers
+
+### **Feature Lifecycle**
+
+1. **Discovery**: Enhanced device discovery identifies available devices with brand detection
+2. **Customization**: Brand-specific listeners apply customizations via events
+3. **Feature Activation**: Features are enabled based on configuration
+4. **Entity Creation**: Platform entities are created for each device with filtering
+5. **Automation Start**: Feature automations begin monitoring and control
+6. **Runtime Operation**: Entities update states, automations make decisions
+7. **Event Firing**: `ramses_device_ready_for_entities` event fired for each device
+8. **Brand Detection**: Event listeners detect device brand and apply customizations
+9. **Entity Filtering**: Check `default_enabled` flags for each entity
+10. **Platform Forwarding**: Root platforms forward to feature platforms
+11. **Entity Creation**: Platform entities are created based on modified configuration
+12. **Feature Lifecycle**: Features activate with customized entity sets
+
+### **Integration Startup**
+
 - **Helper Functions**: snake_case (e.g., `calculate_absolute_humidity`)
 - **Constants**: UPPER_SNAKE_CASE (e.g., `HUMIDITY_CONTROL_FEATURE`)
 
@@ -412,6 +617,8 @@ Ramses Extras uses multiple template systems depending on the context and requir
 
 #### **Purpose**: Generate HTML dynamically for Home Assistant Lovelace cards
 
+This will allow for inserting device or entity id's on the fly. Configure a card with only the device and it can calculate and insert all other requirements.
+
 #### **Location**: `www/{feature}/templates/` directories
 
 #### **Structure**: Modular template organization
@@ -458,6 +665,15 @@ export function createTopSection(data) {
 - **Modular Organization**: Each section in separate file
 
 ### **2. Template Helper System**
+
+```
+docs/
+├── ARCHITECTURE.md               # ✅ Complete current architecture guide (includes enhanced device discovery)
+├── ENHANCED_DEVICE_DISCOVERY_ARCHITECTURE.md # ✅ Detailed enhanced discovery technical reference
+├── entity_naming_improvements.md # ✅ Technical solution documentation
+├── JS_MESSAGE_LISTENER.md        # ✅ JavaScript implementation guide
+└── FILES_NO_LONGER_NEEDED.md     # ✅ Historical cleanup record
+```
 
 #### **Purpose**: Transform and calculate data before template rendering
 

@@ -164,11 +164,6 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
             self._attr_native_step,
         )
 
-    def set_value(self, value: float) -> None:
-        """Set the value (synchronous version)."""
-        self._native_value = value
-        self.async_write_ha_state()
-
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
