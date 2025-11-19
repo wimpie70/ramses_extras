@@ -359,54 +359,11 @@ class EntityManager:
         except Exception:
             return "UnknownDevice"
 
-    async def _discover_devices_direct(self) -> list[Any]:
-        """Direct device discovery as fallback for EntityManager.
+    async def get_broker_for_entry(self, entry: Any) -> Any:
+        """Get broker for a config entry using all possible methods.
 
         This method supports multiple versions of ramses_cc for backwards compatibility.
-        Tries all possible broker and device access patterns.
-        """
-        devices_found = []
-
-        try:
-            # Get ramses_cc entries
-            ramses_cc_entries = self.hass.config_entries.async_entries("ramses_cc")
-            if not ramses_cc_entries:
-                _LOGGER.debug("No ramses_cc entries found")
-                return []
-
-            _LOGGER.debug(f"Found {len(ramses_cc_entries)} ramses_cc entries")
-
-            # Try each entry
-            for entry in ramses_cc_entries:
-                _LOGGER.debug(f"Processing entry: {entry.entry_id}")
-
-                # Try all possible broker access methods for this entry
-                broker = await self._find_broker_for_entry(entry)
-
-                if broker:
-                    _LOGGER.debug(
-                        f"Found broker for entry {entry.entry_id}: {type(broker)}"
-                    )
-                    # Try all possible device access methods
-                    entry_devices = await self._find_devices_for_broker(broker)
-                    if entry_devices:
-                        devices_found.extend(entry_devices)
-                        _LOGGER.debug(
-                            f"Found {len(entry_devices)} devices for entry "
-                            f"{entry.entry_id}"
-                        )
-                else:
-                    _LOGGER.debug(f"No broker found for entry {entry.entry_id}")
-
-            _LOGGER.info(f"Total devices discovered: {len(devices_found)}")
-            return devices_found
-
-        except Exception as e:
-            _LOGGER.debug(f"Direct device discovery failed: {e}")
-            return []
-
-    async def _find_broker_for_entry(self, entry: Any) -> Any:
-        """Find broker for a config entry using all possible methods.
+        Tries all possible broker access patterns from newest to oldest.
 
         Args:
             entry: Config entry
@@ -460,6 +417,52 @@ class EntityManager:
             _LOGGER.debug(f"Method 4 failed: {e}")
 
         return None
+
+    async def _discover_devices_direct(self) -> list[Any]:
+        """Direct device discovery as fallback for EntityManager.
+
+        This method supports multiple versions of ramses_cc for backwards compatibility.
+        Tries all possible broker and device access patterns.
+        """
+        devices_found = []
+
+        try:
+            # Get ramses_cc entries
+            ramses_cc_entries = self.hass.config_entries.async_entries("ramses_cc")
+            if not ramses_cc_entries:
+                _LOGGER.debug("No ramses_cc entries found")
+                return []
+
+            _LOGGER.debug(f"Found {len(ramses_cc_entries)} ramses_cc entries")
+
+            # Try each entry
+            for entry in ramses_cc_entries:
+                _LOGGER.debug(f"Processing entry: {entry.entry_id}")
+
+                # Try all possible broker access methods for this entry
+                broker = await self.get_broker_for_entry(entry)
+
+                if broker:
+                    _LOGGER.debug(
+                        f"Found broker for entry {entry.entry_id}: {type(broker)}"
+                    )
+                    # Try all possible device access methods
+                    entry_devices = await self._find_devices_for_broker(broker)
+                    if entry_devices:
+                        devices_found.extend(entry_devices)
+                        _LOGGER.debug(
+                            f"Found {len(entry_devices)} devices for entry "
+                            f"{entry.entry_id}"
+                        )
+                else:
+                    _LOGGER.debug(f"No broker found for entry {entry.entry_id}")
+
+            _LOGGER.info(f"Total devices discovered: {len(devices_found)}")
+            return devices_found
+
+        except Exception as e:
+            _LOGGER.debug(f"Direct device discovery failed: {e}")
+            return []
 
     async def _find_devices_for_broker(self, broker: Any) -> list[Any]:
         """Find devices for a broker using all possible methods.

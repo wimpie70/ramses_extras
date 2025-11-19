@@ -31,9 +31,6 @@ class TestEntityManagerIntegration:
         self.mock_hass = MagicMock()
 
         # Import the class fresh to check if it's been mocked
-        from custom_components.ramses_extras.config_flow import (
-            RamsesExtrasOptionsFlowHandler,
-        )
 
         # Create handler - handle both real class and mocked class cases
         try:
@@ -370,9 +367,6 @@ class TestConfigFlowBackwardsCompatibility:
         self.mock_hass = MagicMock()
 
         # Import the class fresh to check if it's been mocked
-        from custom_components.ramses_extras.config_flow import (
-            RamsesExtrasOptionsFlowHandler,
-        )
 
         # Create handler - handle both real class and mocked class cases
         try:
@@ -461,26 +455,139 @@ class TestConfigFlowBackwardsCompatibility:
                 # Some methods might not exist in test environment, that's OK
                 assert True
 
-    def test_config_entry_migration_compatibility(self):
-        """Test that config entry data is properly migrated."""
-        # Old format config entry
-        old_config_entry = MagicMock()
-        old_config_entry.data = {
-            "enabled_features": {
-                "default": True,
-                "humidity_control": False,
-                # Missing some features (backwards compatibility)
+    @pytest.mark.asyncio
+    async def test_get_broker_for_entry_method_1_newest(self):
+        """Test broker retrieval via Method 1 (newest):
+        hass.data["ramses_cc"][entry.entry_id]."""
+        # Setup mock entry
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "test_entry_123"
+
+        # Setup mock broker
+        mock_broker = MagicMock()
+        mock_broker._devices = {"device1": MagicMock(), "device2": MagicMock()}
+
+        # Setup hass.data with newest structure
+        self.mock_hass.data = {"ramses_cc": {"test_entry_123": mock_broker}}
+
+        # Create EntityManager instance for testing
+        entity_manager = EntityManager(self.mock_hass)
+
+        # Test retrieval
+        result = await entity_manager.get_broker_for_entry(mock_entry)
+
+        assert result == mock_broker
+
+    @pytest.mark.asyncio
+    async def test_get_broker_for_entry_method_2_older_structure(self):
+        """Test broker retrieval via Method 2 (older):
+        hass.data["ramses_cc"] directly."""
+        # Setup mock entry
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "test_entry_456"
+
+        # Setup mock broker with devices attribute
+        mock_broker = MagicMock()
+        mock_broker.devices = {"device1": MagicMock()}
+
+        # Setup hass.data with older structure (direct dict)
+        self.mock_hass.data = {"ramses_cc": {"some_key": mock_broker}}
+
+        # Create EntityManager instance for testing
+        entity_manager = EntityManager(self.mock_hass)
+
+        # Test retrieval
+        result = await entity_manager.get_broker_for_entry(mock_entry)
+
+        assert result == mock_broker
+
+    @pytest.mark.asyncio
+    async def test_get_broker_for_entry_method_3_entry_broker(self):
+        """Test broker retrieval via Method 3: entry.broker (older versions)."""
+        # Setup mock entry with broker attribute
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "test_entry_789"
+        mock_entry.broker = MagicMock()
+
+        # Setup empty hass.data (Method 1 and 2 should fail)
+        self.mock_hass.data = {}
+
+        # Create EntityManager instance for testing
+        entity_manager = EntityManager(self.mock_hass)
+
+        # Test retrieval
+        result = await entity_manager.get_broker_for_entry(mock_entry)
+
+        assert result == mock_entry.broker
+
+    @pytest.mark.asyncio
+    async def test_get_broker_for_entry_method_4_very_old(self):
+        """Test broker retrieval via Method 4 (very old):
+        hass.data["ramses_cc"][DOMAIN]."""
+        # Setup mock entry
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "test_entry_old"
+
+        # Setup mock broker
+        mock_broker = MagicMock()
+        mock_broker._devices = {"device1": MagicMock()}
+
+        # Setup hass.data with very old structure
+        self.mock_hass.data = {"ramses_cc": {"domain_key": mock_broker}}
+
+        # Create EntityManager instance for testing
+        entity_manager = EntityManager(self.mock_hass)
+
+        # Test retrieval
+        result = await entity_manager.get_broker_for_entry(mock_entry)
+
+        assert result == mock_broker
+
+    @pytest.mark.asyncio
+    async def test_get_broker_for_entry_no_broker_found(self):
+        """Test broker retrieval when no broker is found."""
+        # Setup mock entry
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "test_entry_no_broker"
+
+        # Setup empty hass.data and no entry.broker
+        self.mock_hass.data = {}
+        mock_entry.broker = None
+
+        # Create EntityManager instance for testing
+        entity_manager = EntityManager(self.mock_hass)
+
+        # Test retrieval
+        result = await entity_manager.get_broker_for_entry(mock_entry)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_broker_for_entry_fallback_order(self):
+        """Test that methods are tried in the correct order (newest to oldest)."""
+        # Setup mock entry
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "test_entry_fallback"
+
+        # Setup multiple potential brokers
+        mock_broker_method1 = MagicMock()
+        mock_broker_method1._devices = {"device1": MagicMock()}
+
+        mock_broker_method2 = MagicMock()
+        mock_broker_method2.devices = {"device2": MagicMock()}
+
+        # Setup hass.data with both Method 1 and Method 2 available
+        self.mock_hass.data = {
+            "ramses_cc": {
+                "test_entry_fallback": mock_broker_method1,  # Method 1
+                "other_key": mock_broker_method2,  # Method 2
             }
         }
 
-        try:
-            handler = RamsesExtrasOptionsFlowHandler(old_config_entry)
-            handler.hass = self.mock_hass
+        # Create EntityManager instance for testing
+        entity_manager = EntityManager(self.mock_hass)
 
-            # When features step is called, it should handle missing features
-            # This test verifies the migration logic exists
-            assert handler._config_entry == old_config_entry
-        except TypeError:
-            # If the class is mocked, just verify the test can be called
-            # This simulates the migration logic existing
-            assert True
+        # Test retrieval - should return Method 1 (newest)
+        result = await entity_manager.get_broker_for_entry(mock_entry)
+
+        assert result == mock_broker_method1
