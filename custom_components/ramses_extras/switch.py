@@ -1,11 +1,13 @@
+"""Switch platform for Ramses Extras."""
+
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,17 +20,23 @@ def _get_feature_platform_setups(platform: str) -> list[Any]:
 
 
 async def async_setup_entry(
-    hass: "HomeAssistant",
-    config_entry: ConfigEntry | None,
-    async_add_entities: "AddEntitiesCallback",
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the switch platform - dynamically discover and call feature platforms."""
-    # Get registered feature switch platforms
-    feature_setups = _get_feature_platform_setups("switch")
+    # Get registered feature switch platforms with enabled feature filtering
+    platform_registry = hass.data["ramses_extras"]["PLATFORM_REGISTRY"]
+    enabled_features = hass.data["ramses_extras"]["enabled_features"]
 
-    # Call each discovered feature platform
-    for setup_func in feature_setups:
-        try:
-            await setup_func(hass, config_entry, async_add_entities)
-        except Exception as e:
-            _LOGGER.error(f"Error setting up switch platform: {e}")
+    for feature_name, setup_func in platform_registry.get("switch", {}).items():
+        # Only call setup functions for enabled features
+        if enabled_features.get(feature_name, False):
+            try:
+                await setup_func(hass, config_entry, async_add_entities)
+            except Exception as e:
+                _LOGGER.error(
+                    f"Error setting up switch platform for {feature_name}: {e}"
+                )
+        else:
+            _LOGGER.debug(f"Skipping disabled switch feature: {feature_name}")

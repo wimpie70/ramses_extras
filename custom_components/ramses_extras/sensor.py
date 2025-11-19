@@ -1,11 +1,4 @@
-"""Ramses Extras Sensor Platform.
-
-This module provides the main Home Assistant sensor platform integration
-for the ramses_extras custom component.
-
-NOTE: This dynamically discovers and calls feature-specific platforms.
-All entity classes and business logic have been moved to feature platforms.
-"""
+"""Sensor platform for Ramses Extras."""
 
 import logging
 from typing import Any
@@ -32,12 +25,18 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensor platform - dynamically discover and call feature platforms."""
-    # Get registered feature sensor platforms
-    feature_setups = _get_feature_platform_setups("sensor")
+    # Get registered feature sensor platforms with enabled feature filtering
+    platform_registry = hass.data["ramses_extras"]["PLATFORM_REGISTRY"]
+    enabled_features = hass.data["ramses_extras"]["enabled_features"]
 
-    # Call each discovered feature platform
-    for setup_func in feature_setups:
-        try:
-            await setup_func(hass, config_entry, async_add_entities)
-        except Exception as e:
-            _LOGGER.error(f"Error setting up sensor platform: {e}")
+    for feature_name, setup_func in platform_registry.get("sensor", {}).items():
+        # Only call setup functions for enabled features
+        if enabled_features.get(feature_name, False):
+            try:
+                await setup_func(hass, config_entry, async_add_entities)
+            except Exception as e:
+                _LOGGER.error(
+                    f"Error setting up sensor platform for {feature_name}: {e}"
+                )
+        else:
+            _LOGGER.debug(f"Skipping disabled sensor feature: {feature_name}")

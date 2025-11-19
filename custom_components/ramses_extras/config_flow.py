@@ -17,6 +17,7 @@ from .const import (
     GITHUB_WIKI_URL,
     INTEGRATION_DIR,
 )
+from .framework.helpers.entity.manager import EntityManager
 from .framework.helpers.platform import (
     calculate_required_entities,
     get_enabled_features,
@@ -144,15 +145,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         """Initialize options flow."""
         self._config_entry = config_entry
         self._pending_data: dict[str, list[str]] | None = None
-        self._cards_deselected: list[str] = []
-        self._automations_deselected: list[str] = []
-        self._sensors_deselected: list[str] = []
-        self._other_deselected: list[str] = []
-        self._cards_selected: list[str] = []
-        self._automations_selected: list[str] = []
-        self._sensors_selected: list[str] = []
-        self._other_selected: list[str] = []
-        self._newly_enabled_features: list[str] = []
+        self._entity_manager: EntityManager | None = (
+            None  # Will be initialized when needed
+        )
+        self._feature_changes_detected = False
+        self._entities_to_remove: list[str] = []
+        self._entities_to_create: list[str] = []
 
     async def async_step_init(
         self, user_input: dict[str, list[str]] | None = None
@@ -165,7 +163,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> config_entries.FlowResult:
         """Handle the feature selection step for options."""
         if user_input is not None:
-            # Check if any currently enabled features would be disabled
+            # Get current features and determine feature changes
             current_features = self._config_entry.data.get("enabled_features", {})
             selected_features = user_input.get("features", [])
 
@@ -174,86 +172,42 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             for feature_key in AVAILABLE_FEATURES.keys():
                 enabled_features[feature_key] = feature_key in selected_features
 
-            # Check for deselected features
-            deselected_features = []
+            # Check for any feature changes using EntityManager
+            feature_changes = []
             for feature_key, feature_config in AVAILABLE_FEATURES.items():
                 currently_enabled = current_features.get(feature_key, False)
                 will_be_enabled = enabled_features[feature_key]
 
-                if currently_enabled and not will_be_enabled:
-                    deselected_features.append(feature_key)
+                if currently_enabled != will_be_enabled:
+                    change_type = "enabling" if will_be_enabled else "disabling"
+                    feature_changes.append((feature_key, change_type))
 
-            if deselected_features:
-                # Check what types of features are being deselected
-                cards_deselected = [
-                    f
-                    for f in deselected_features
-                    if str(AVAILABLE_FEATURES[f].get("category")) == "cards"
-                ]
-                sensors_deselected = [
-                    f
-                    for f in deselected_features
-                    if str(AVAILABLE_FEATURES[f].get("category")) == "sensors"
-                ]
-                automations_deselected = [
-                    f
-                    for f in deselected_features
-                    if str(AVAILABLE_FEATURES[f].get("category")) == "automations"
-                ]
-                other_deselected = [
-                    f
-                    for f in deselected_features
-                    if str(AVAILABLE_FEATURES[f].get("category"))
-                    not in ["cards", "automations", "sensors"]
-                ]
+            # If there are any feature changes, build entity catalog
+            #  and show confirmation
+            if feature_changes:
+                # Initialize EntityManager once and build catalog on current features
+                self._entity_manager = EntityManager(self.hass)
+                await self._entity_manager.build_entity_catalog(
+                    AVAILABLE_FEATURES, current_features
+                )
 
-                # Check what types of features are being selected
-                cards_selected = [
-                    f
-                    for f in user_input.get("features", [])
-                    if str(AVAILABLE_FEATURES[f].get("category")) == "cards"
-                ]
-                automations_selected = [
-                    f
-                    for f in user_input.get("features", [])
-                    if str(AVAILABLE_FEATURES[f].get("category")) == "automations"
-                ]
-                sensors_selected = [
-                    f
-                    for f in user_input.get("features", [])
-                    if str(AVAILABLE_FEATURES[f].get("category")) == "sensors"
-                ]
-                other_selected = [
-                    f
-                    for f in user_input.get("features", [])
-                    if str(AVAILABLE_FEATURES[f].get("category"))
-                    not in ["cards", "automations", "sensors"]
-                ]
+                # Update targets to new features for comparison
+                self._entity_manager.update_feature_targets(enabled_features)
 
-                # Show confirmation if any features are being deselected
+                # Store entity changes for confirmation
+                self._entities_to_remove = self._entity_manager.get_entities_to_remove()
+                self._entities_to_create = self._entity_manager.get_entities_to_create()
+                self._feature_changes_detected = True
                 self._pending_data = user_input
-                self._cards_deselected = cards_deselected
-                self._sensors_deselected = sensors_deselected
-                self._automations_deselected = automations_deselected
-                self._other_deselected = other_deselected
-                self._cards_selected = cards_selected
-                self._automations_selected = automations_selected
-                self._sensors_selected = sensors_selected
-                self._other_selected = other_selected
+
+                _LOGGER.info(
+                    f"EntityManager created for feature changes: {feature_changes}"
+                )
+
+                # Show confirmation with entity changes
                 return await self.async_step_confirm()
 
-            # No features deselected, check if any features are newly enabled
-            newly_enabled_features = []
-            for feature_key in user_input.get("features", []):
-                if feature_key not in [k for k, v in current_features.items() if v]:
-                    newly_enabled_features.append(feature_key)
-
-            if newly_enabled_features:
-                # Show confirmation for new feature enabling
-                self._pending_data = user_input
-                self._newly_enabled_features = newly_enabled_features
-                return await self.async_step_confirm()
-
+            # No feature changes detected, save config
             return await self._save_config(user_input)
 
         # Get current enabled features for default values
@@ -364,7 +318,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_confirm(
         self, user_input: dict[str, bool] | None = None
     ) -> config_entries.FlowResult:
-        """Handle confirmation step for feature deselection."""
+        """Handle confirmation step for feature changes using EntityManager."""
         if user_input is not None:
             if user_input.get("confirm", False):
                 return await self._save_config(
@@ -372,196 +326,58 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             return await self.async_step_features()
 
-        # Build confirmation message
-        current_features: dict[str, bool] = self._config_entry.data.get(
-            "enabled_features", {}
-        )
-        selected_features: list[str] = (
-            self._pending_data.get("features", []) if self._pending_data else []
-        )
+        # Use EntityManager to build clean confirmation message
+        if self._entity_manager is None:
+            # Fallback to old behavior if EntityManager not initialized
+            return await self.async_step_features()
 
-        enabled_features = {}
-        for feature_key in AVAILABLE_FEATURES.keys():
-            enabled_features[feature_key] = feature_key in selected_features
+        # Get entity changes from EntityManager
+        entities_to_remove = self._entities_to_remove
+        entities_to_create = self._entities_to_create
 
-        # Build details about what will be removed
-        removal_details = []
-        for feature_key, feature_config in AVAILABLE_FEATURES.items():
-            currently_enabled = current_features.get(feature_key, False)
-            will_be_enabled = enabled_features[feature_key]
+        # Get feature summary
+        entity_summary = self._entity_manager.get_entity_summary()
 
-            if currently_enabled and not will_be_enabled:
-                feature_name = str(feature_config.get("name", feature_key))
-                detail_parts = [f"  • {feature_name}\n"]
-
-                required_entities = feature_config.get("required_entities", {})
-                if isinstance(required_entities, dict):
-                    required_sensors = required_entities.get("sensors", [])
-                    required_switches = required_entities.get("switches", [])
-
-                    if isinstance(required_sensors, list) and required_sensors:
-                        detail_parts.append(
-                            f"  - {len(required_sensors)} sensor entities\n"
-                        )
-                    if isinstance(required_switches, list) and required_switches:
-                        detail_parts.append(
-                            f"  - {len(required_switches)} switch entities\n"
-                        )
-
-                if "card" in feature_key:
-                    detail_parts.append("  - Dashboard card")
-                if "automation" in feature_key:
-                    detail_parts.append("  - Related automations")
-
-                removal_details.append(" ".join(detail_parts))
-
-        # Add warnings for different feature types
-        warnings = []
-
-        if self._cards_deselected:
-            card_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._cards_deselected
-            ]
-            warnings.append(f"⚠️ **Cards being disabled:** {', '.join(card_names)}")
-            warnings.append("🔄 **Required:** Clear browser cache after restart")
-
-        if self._automations_deselected:
-            automation_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._automations_deselected
-            ]
-            warnings.append(
-                f"⚠️ **Automations being disabled:** {', '.join(automation_names)}"
-            )
-
-        if self._other_deselected:
-            other_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._other_deselected
-            ]
-            warnings.append(f"⚠️ **Features being disabled:** {', '.join(other_names)}")
-
-        if self._cards_selected:
-            card_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._cards_selected
-            ]
-            warnings.append(f"✅ **Cards being enabled:** {', '.join(card_names)}")
-            warnings.append("🔄 **Required:** Clear browser cache after restart")
-
-        if self._automations_selected:
-            automation_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._automations_selected
-            ]
-            warnings.append(
-                f"✅ **Automations being enabled:** {', '.join(automation_names)}"
-            )
-
-        if self._other_selected:
-            other_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._other_selected
-            ]
-            warnings.append(f"✅ **Features being enabled:** {', '.join(other_names)}")
-
-        if self._newly_enabled_features:
-            feature_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._newly_enabled_features
-            ]
-            warnings.append(
-                f"✅ **New features being enabled:** {', '.join(feature_names)}"
-            )
-
-        # Build confirmation text
+        # Build clean confirmation text
         confirmation_parts = []
 
-        # Features being disabled
-        disabled_parts = []
-        if self._cards_deselected:
-            cards_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._cards_deselected
-            ]
-            disabled_parts.append(f"**Cards:** {', '.join(cards_names)}")
-        if self._automations_deselected:
-            automation_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._automations_deselected
-            ]
-            disabled_parts.append(f"**Automations:** {', '.join(automation_names)}")
-        if self._sensors_deselected:
-            sensor_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._sensors_deselected
-            ]
-            disabled_parts.append(f"**Sensors:** {', '.join(sensor_names)}")
-        if self._other_deselected:
-            other_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._other_deselected
-            ]
-            disabled_parts.append(f"**Features:** {', '.join(other_names)}")
-
-        if disabled_parts:
-            disabled_text = "\n• ".join(["  • " + part for part in disabled_parts])
+        # Entities to be removed
+        if entities_to_remove:
             confirmation_parts.append(
-                f"**Features being disabled:**\n• {disabled_text}"
+                f"**Entities to be removed ({len(entities_to_remove)}):**\n"
+                f"• {', '.join(entities_to_remove[:5])}"
+                f"{'...' if len(entities_to_remove) > 5 else ''}"
             )
 
-        # Features being enabled
-        enabled_parts = []
-        if self._cards_selected:
-            cards_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._cards_selected
-            ]
-            enabled_parts.append(f"**Cards:** {', '.join(cards_names)}")
-        if self._automations_selected:
-            automation_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._automations_selected
-            ]
-            enabled_parts.append(f"**Automations:** {', '.join(automation_names)}")
-        if self._sensors_selected:
-            sensor_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._sensors_selected
-            ]
-            enabled_parts.append(f"**Sensors:** {', '.join(sensor_names)}")
-        if self._other_selected:
-            other_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f)) for f in self._other_selected
-            ]
-            enabled_parts.append(f"**Features:** {', '.join(other_names)}")
-        if self._newly_enabled_features:
-            new_names = [
-                str(AVAILABLE_FEATURES[f].get("name", f))
-                for f in self._newly_enabled_features
-            ]
-            enabled_parts.append(f"**New:** {', '.join(new_names)}")
+        # Entities to be created
+        if entities_to_create:
+            confirmation_parts.append(
+                f"**Entities to be created ({len(entities_to_create)}):**\n"
+                f"• {', '.join(entities_to_create[:5])}"
+                f"{'...' if len(entities_to_create) > 5 else ''}"
+            )
 
-        if enabled_parts:
-            enabled_text = "\n• ".join(["  • " + part for part in enabled_parts])
-            confirmation_parts.append(f"**Features being enabled:**\n• {enabled_text}")
+        # Entity summary
+        summary_parts = [
+            f"Total possible entities: {entity_summary['total_entities']}",
+            f"Existing and enabled: {entity_summary['existing_enabled']}",
+            f"Existing but will be removed: {entity_summary['existing_disabled']}",
+            f"Will be created: {entity_summary['non_existing_enabled']}",
+        ]
+        confirmation_parts.append(
+            "**Entity Summary:**\n• " + "\n• ".join(summary_parts)
+        )
 
         if not confirmation_parts:
-            confirmation_parts.append("No feature changes detected.")
+            confirmation_parts.append("No entity changes detected.")
 
         confirmation_text = "\n\n".join(confirmation_parts)
 
-        # Add instructions
-        if self._cards_deselected or self._cards_selected:
-            confirmation_text += "\n\n**Important:** After saving changes, you must:"
-            confirmation_text += (
-                "\n1. **Restart Home Assistant** (Settings → System → Restart)"
-            )
-            confirmation_text += (
-                "\n2. **Clear browser cache** (Ctrl+Shift+R or clear site data)"
-            )
-            confirmation_text += "\n3. **Refresh dashboards** to see card changes"
-
-        if warnings:
-            confirmation_text += "\n\n" + "\n".join(warnings)
+        # Add general warnings for card changes
+        if any("card" in entity for entity in entities_to_remove + entities_to_create):
+            confirmation_text += "\n\n**Important for card changes:**"
+            confirmation_text += "\n• After saving, restart Home Assistant"
+            confirmation_text += "\n• Clear browser cache to see changes"
 
         confirmation_text += (
             "\n\nThis action cannot be undone. Are you sure you want to proceed?"
@@ -582,82 +398,35 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     async def _save_config(
         self, user_input: dict[str, list[str]]
     ) -> config_entries.FlowResult:
-        """Save the configuration and reload the integration."""
+        """Save the configuration and apply entity changes using EntityManager."""
         enabled_features = {}
         selected_features = user_input.get("features", [])
 
         for feature_key in AVAILABLE_FEATURES.keys():
             enabled_features[feature_key] = feature_key in selected_features
 
-        # Check what features were disabled and clean them up
-        current_features = self._config_entry.data.get("enabled_features", {})
-        disabled_automations = []
-        disabled_cards = []
-        disabled_sensors = []
-
-        _LOGGER.info(f"Config flow - Current features: {current_features}")
+        _LOGGER.info(
+            f"Config flow - Current features: "
+            f"{self._config_entry.data.get('enabled_features', {})}"
+        )
         _LOGGER.info(f"Config flow - New features: {enabled_features}")
 
-        for feature_key, feature_config in AVAILABLE_FEATURES.items():
-            currently_enabled = current_features.get(feature_key, False)
-            will_be_enabled = enabled_features[feature_key]
-
-            _LOGGER.info(
-                f"Config flow - Feature {feature_key}: currently {currently_enabled}, "
-                f"will be {will_be_enabled}, category {feature_config.get('category')}"
-            )
-
-            # If automation feature was disabled, clean it up
-            if (
-                currently_enabled
-                and not will_be_enabled
-                and feature_config.get("category") == "automations"
-            ):
-                disabled_automations.append(feature_key)
-                _LOGGER.info(
-                    f"Config flow - Detected disabled automation feature: {feature_key}"
-                )
-
-            # If card feature was disabled, clean it up
-            if (
-                currently_enabled
-                and not will_be_enabled
-                and feature_config.get("category") == "cards"
-            ):
-                disabled_cards.append(feature_key)
-                _LOGGER.info(
-                    f"Config flow - Detected disabled card feature: {feature_key}"
-                )
-
-            # If sensor feature was disabled, clean it up
-            if (
-                currently_enabled
-                and not will_be_enabled
-                and feature_config.get("category") == "sensors"
-            ):
-                disabled_sensors.append(feature_key)
-                _LOGGER.info(
-                    f"Config flow - Detected disabled sensor feature: {feature_key}"
-                )
-
-        _LOGGER.info(
-            f"Config flow - Features to cleanup: automations={disabled_automations}, "
-            f"cards={disabled_cards}, sensors={disabled_sensors}"
-        )
-
-        # Clean up disabled features before updating config
-        if disabled_automations or disabled_cards or disabled_sensors:
+        # Apply entity changes using EntityManager if available
+        if self._entity_manager and self._feature_changes_detected:
             try:
                 _LOGGER.info(
-                    f"Cleaning up disabled features: "
-                    f"automations={disabled_automations}, "
-                    f"cards={disabled_cards}, sensors={disabled_sensors}"
+                    f"Applying entity changes using EntityManager: "
+                    f"remove={len(self._entities_to_remove)}, "
+                    f"create={len(self._entities_to_create)}"
                 )
-                await self._cleanup_disabled_features(
-                    disabled_automations, disabled_cards, disabled_sensors
-                )
+                await self._entity_manager.apply_entity_changes()
             except Exception as e:
-                _LOGGER.warning(f"Cleanup failed, continuing with config update: {e}")
+                _LOGGER.warning(
+                    f"EntityManager changes failed, continuing with config update: {e}"
+                )
+        else:
+            # No EntityManager available, should not happen in normal flow
+            _LOGGER.warning("EntityManager not available, skipping entity changes")
 
         # Update the config entry data
         new_data = self._config_entry.data.copy()
@@ -668,209 +437,15 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Install/remove cards based on new feature settings
         await _manage_cards_config_flow(self.hass, enabled_features)
 
-        # Reload the integration to apply changes
-        try:
-            await self.hass.config_entries.async_reload(self._config_entry.entry_id)
-        except Exception as e:
-            _LOGGER.warning(f"Integration reload failed, but config updated: {e}")
+        # Note: No full integration reload needed - entities managed selectively
+        _LOGGER.info("Config flow - Configuration updated with entity changes")
 
         return self.async_create_entry(title="", data={})
 
-    async def _cleanup_disabled_features(
-        self,
-        disabled_automations: list[str],
-        disabled_cards: list[str],
-        disabled_sensors: list[str],
-    ) -> None:
-        """Clean up entities and resources for disabled features."""
-        try:
-            # Clean up automation features
-            if disabled_automations:
-                await self._cleanup_disabled_automations(disabled_automations)
-
-            # Clean up card features (file removal)
-            if disabled_cards:
-                await self._cleanup_disabled_cards(disabled_cards)
-
-            # Clean up sensor features (entity cleanup)
-            if disabled_sensors:
-                await self._cleanup_disabled_sensors(disabled_sensors)
-
-        except Exception as e:
-            _LOGGER.error(f"Cleanup - Failed to cleanup disabled features: {e}")
-
-    async def _cleanup_disabled_cards(self, disabled_cards: list[str]) -> None:
-        """Clean up files for disabled card features."""
-        try:
-            www_community_path = Path(self.hass.config.path("www", "community"))
-
-            for feature_key in disabled_cards:
-                if feature_key in AVAILABLE_FEATURES:
-                    feature_config = AVAILABLE_FEATURES[feature_key]
-                    card_location = feature_config.get("location", "")
-                    if card_location:
-                        card_dest_path = www_community_path / feature_key
-                        await _remove_card_config_flow(self.hass, card_dest_path)
-                        _LOGGER.info(f"Cleanup - Removed card files for {feature_key}")
-
-        except Exception as e:
-            _LOGGER.error(f"Cleanup - Failed to cleanup disabled cards: {e}")
-
-    async def _cleanup_disabled_sensors(self, disabled_sensors: list[str]) -> None:
-        """Clean up entities for disabled sensor features."""
-        try:
-            # Get current devices and enabled features
-            devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
-            config_entry = None
-            if DOMAIN in self.hass.data and "entry_id" in self.hass.data[DOMAIN]:
-                entry_id = self.hass.data[DOMAIN]["entry_id"]
-                config_entry = self.hass.config_entries.async_get_entry(entry_id)
-
-            if config_entry and devices:
-                # Calculate which sensor entities are still required
-                calculate_required_entities(
-                    "sensor",
-                    get_enabled_features(self.hass, config_entry),
-                    devices,
-                    self.hass,
-                )
-
-                # Remove orphaned sensor entities
-                from .framework.helpers.entity.core import EntityHelpers
-
-                removed_count = EntityHelpers.cleanup_orphaned_entities(
-                    self.hass,
-                    devices,
-                )
-                _LOGGER.info(
-                    f"Cleanup - Removed {removed_count} orphaned sensor entities"
-                )
-
-        except Exception as e:
-            _LOGGER.error(f"Cleanup - Failed to cleanup disabled sensors: {e}")
-
-    async def _cleanup_disabled_automations(
-        self, disabled_automations: list[str]
-    ) -> None:
-        """Clean up automations for disabled features."""
-        try:
-            from pathlib import Path
-
-            import yaml
-
-            automation_path = Path(self.hass.config.path("automations.yaml"))
-
-            _LOGGER.info(
-                f"Cleanup - Starting cleanup for features: {disabled_automations}"
-            )
-            _LOGGER.info(f"Cleanup - Automation path: {automation_path}")
-
-            if not automation_path.exists():
-                _LOGGER.info("Cleanup - Automation file does not exist")
-                return
-
-            # Read file content asynchronously
-            def read_automations_file() -> str:
-                with open(automation_path, encoding="utf-8") as f:
-                    return f.read()
-
-            content_str = await self.hass.async_add_executor_job(read_automations_file)
-            content = yaml.safe_load(content_str)
-
-            _LOGGER.info(f"Cleanup - File content type: {type(content)}")
-            _LOGGER.info(
-                "Cleanup - File content keys: %s",
-                content.keys() if isinstance(content, dict) else "N/A (list format)",
-            )
-
-            if not content:
-                _LOGGER.info("Cleanup - No automation content found")
-                return
-
-            # Handle both formats: with or without automation wrapper
-            if isinstance(content, list):
-                automations_to_filter = content
-                _LOGGER.info(
-                    f"Cleanup - Found {len(automations_to_filter)} automations "
-                    f"in list format"
-                )
-            elif isinstance(content, dict) and "automation" in content:
-                automations_to_filter = content["automation"]
-                _LOGGER.info(
-                    f"Cleanup - Found {len(automations_to_filter)} automations "
-                    f"in dict format"
-                )
-            else:
-                _LOGGER.info("Cleanup - No valid automation format found")
-                return
-
-            # Log automation IDs before filtering
-            automation_ids = [auto.get("id", "") for auto in automations_to_filter]
-            _LOGGER.info(f"Cleanup - Automation IDs found: {automation_ids}")
-
-            # Remove automations for disabled features
-            filtered_automations = []
-            removed_count = 0
-
-            for auto in automations_to_filter:
-                automation_id = auto.get("id", "")
-                should_remove = False
-
-                # Check if this automation belongs to any disabled feature
-                for feature_key in disabled_automations:
-                    # Map feature keys to automation patterns
-                    feature_patterns = {
-                        "humidity_control": ["dehumidifier"],
-                    }
-
-                    patterns = feature_patterns.get(feature_key, [feature_key])
-                    for pattern in patterns:
-                        if pattern in automation_id:
-                            should_remove = True
-                            _LOGGER.info(
-                                f"Cleanup - Will remove automation {automation_id} "
-                                f"(matches pattern '{pattern}' "
-                                f"for feature '{feature_key}')"
-                            )
-                            break
-
-                    if should_remove:
-                        break
-
-                if not should_remove:
-                    filtered_automations.append(auto)
-
-            # Update file if any automations were removed
-            if len(filtered_automations) != len(automations_to_filter):
-                removed_count = len(automations_to_filter) - len(filtered_automations)
-
-                def write_automations_file() -> None:
-                    if isinstance(content, list):
-                        with open(automation_path, "w", encoding="utf-8") as f:
-                            yaml.dump(
-                                filtered_automations,
-                                f,
-                                default_flow_style=False,
-                                sort_keys=False,
-                            )
-                    else:
-                        content["automation"] = filtered_automations
-                        with open(automation_path, "w", encoding="utf-8") as f:
-                            yaml.dump(
-                                content, f, default_flow_style=False, sort_keys=False
-                            )
-
-                await self.hass.async_add_executor_job(write_automations_file)
-
-                _LOGGER.info(
-                    f"Cleanup - Successfully removed {removed_count} automations "
-                    f"for disabled features: {disabled_automations}"
-                )
-            else:
-                _LOGGER.info(
-                    "Cleanup - No automations removed for features: "
-                    f"{disabled_automations}"
-                )
-
-        except Exception as e:
-            _LOGGER.error(f"Cleanup - Failed to cleanup disabled automations: {e}")
+    async def _apply_targeted_changes(self) -> None:
+        """Apply targeted changes using EntityManager."""
+        if self._entity_manager:
+            await self._entity_manager.apply_entity_changes()
+        else:
+            # EntityManager is required for entity changes - should not reach here
+            _LOGGER.error("EntityManager not available for targeted changes")

@@ -10,9 +10,12 @@ from .core import (
     get_feature_entity_mappings,
     parse_entity_id,
 )
+from .manager import EntityInfo, EntityManager
 
 __all__ = [
     "EntityHelpers",
+    "EntityManager",
+    "EntityInfo",
     "filter_entities_by_patterns",
     "generate_entity_id",
     "generate_entity_patterns_for_feature",

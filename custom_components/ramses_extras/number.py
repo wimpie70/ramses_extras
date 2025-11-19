@@ -1,11 +1,4 @@
-"""Ramses Extras Number Platform.
-
-This module provides the main Home Assistant number platform integration
-for the ramses_extras custom component.
-
-NOTE: This dynamically discovers and calls feature-specific platforms.
-All entity classes and business logic have been moved to feature platforms.
-"""
+"""Number platform for Ramses Extras."""
 
 import logging
 from typing import Any
@@ -32,12 +25,18 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the number platform - dynamically discover and call feature platforms."""
-    # Get registered feature number platforms
-    feature_setups = _get_feature_platform_setups("number")
+    # Get registered feature number platforms with enabled feature filtering
+    platform_registry = hass.data["ramses_extras"]["PLATFORM_REGISTRY"]
+    enabled_features = hass.data["ramses_extras"]["enabled_features"]
 
-    # Call each discovered feature platform
-    for setup_func in feature_setups:
-        try:
-            await setup_func(hass, config_entry, async_add_entities)
-        except Exception as e:
-            _LOGGER.error(f"Error setting up number platform: {e}")
+    for feature_name, setup_func in platform_registry.get("number", {}).items():
+        # Only call setup functions for enabled features
+        if enabled_features.get(feature_name, False):
+            try:
+                await setup_func(hass, config_entry, async_add_entities)
+            except Exception as e:
+                _LOGGER.error(
+                    f"Error setting up number platform for {feature_name}: {e}"
+                )
+        else:
+            _LOGGER.debug(f"Skipping disabled number feature: {feature_name}")
