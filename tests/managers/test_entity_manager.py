@@ -154,6 +154,10 @@ class TestEntityManager:
         }
         existing_entities = set()
 
+        # Enable the feature for scanning
+        self.entity_manager.current_features = {feature_id: True}
+        self.entity_manager.target_features = {feature_id: False}
+
         await self.entity_manager._scan_feature_entities(
             feature_id, feature_config, existing_entities
         )
@@ -164,9 +168,7 @@ class TestEntityManager:
 
         entity_info = self.entity_manager.all_possible_entities[expected_key]
         assert entity_info["exists_already"] is False  # Cards are file-based
-        assert (
-            entity_info["enabled_by_feature"] is False
-        )  # Default from current_features
+        assert entity_info["enabled_by_feature"] is False  # Target is False
         assert entity_info["feature_id"] == feature_id
         assert entity_info["entity_type"] == "card"
 
@@ -180,6 +182,7 @@ class TestEntityManager:
         existing_entities = set()
 
         self.entity_manager.current_features = {feature_id: True}
+        self.entity_manager.target_features = {feature_id: True}
 
         # Mock the automation finding method
         with patch.object(
@@ -215,6 +218,7 @@ class TestEntityManager:
         }
 
         self.entity_manager.current_features = {feature_id: True}
+        self.entity_manager.target_features = {feature_id: True}
 
         # Mock device-related methods
         with patch.object(
@@ -222,20 +226,30 @@ class TestEntityManager:
             "_get_devices_for_feature",
             return_value=[Mock(id="device1")],
         ):
-            with patch(
-                "custom_components.ramses_extras.framework.helpers.entity.manager.get_feature_entity_mappings"
-            ) as mock_mappings:
-                mock_mappings.return_value = {
-                    "temperature": "sensor.device1_temperature",
-                    "humidity": "sensor.device1_humidity",
-                }
+            with patch.object(
+                self.entity_manager,
+                "_get_required_entities_for_feature",
+                return_value={"sensor": ["temperature", "humidity"]},
+            ):
+                with patch.object(
+                    self.entity_manager,
+                    "_get_all_existing_entities",
+                    return_value=set(),
+                ):
+                    await self.entity_manager._scan_feature_entities(
+                        feature_id, feature_config, existing_entities
+                    )
 
-                await self.entity_manager._scan_feature_entities(
-                    feature_id, feature_config, existing_entities
-                )
-
-                # Verify mappings were called for the device
-                mock_mappings.assert_called_once_with(feature_id, "device1")
+                    # Verify entities were added
+                    assert len(self.entity_manager.all_possible_entities) == 2
+                    assert (
+                        "sensor.temperature_device1"
+                        in self.entity_manager.all_possible_entities
+                    )
+                    assert (
+                        "sensor.humidity_device1"
+                        in self.entity_manager.all_possible_entities
+                    )
 
     def test_get_entities_to_remove(self):
         """Test getting entities that should be removed."""

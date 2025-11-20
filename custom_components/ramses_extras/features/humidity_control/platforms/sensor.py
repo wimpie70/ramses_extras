@@ -26,7 +26,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control sensor platform."""
-    _LOGGER.info("Setting up humidity control sensors")
+    _LOGGER.info("Setting up humidity control sensor")
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
@@ -34,15 +34,15 @@ async def async_setup_entry(
         f"Humidity control sensor platform: found {len(devices)} devices: {devices}"
     )
 
-    sensors = []
+    sensor = []
     for device_id in devices:
-        # Create humidity-specific sensors
-        device_sensors = await create_humidity_sensors(hass, device_id, config_entry)
-        sensors.extend(device_sensors)
-        _LOGGER.info(f"Created {len(device_sensors)} sensors for device {device_id}")
+        # Create humidity-specific sensor
+        device_sensor = await create_humidity_sensor(hass, device_id, config_entry)
+        sensor.extend(device_sensor)
+        _LOGGER.info(f"Created {len(device_sensor)} sensor for device {device_id}")
 
-    _LOGGER.info(f"Total sensors created: {len(sensors)}")
-    async_add_entities(sensors, True)
+    _LOGGER.info(f"Total sensor created: {len(sensor)}")
+    async_add_entities(sensor, True)
 
 
 async def _check_underlying_entities_exist(
@@ -58,6 +58,8 @@ async def _check_underlying_entities_exist(
     Returns:
         True if underlying entities exist, False otherwise
     """
+    from homeassistant.helpers import entity_registry
+
     entity_patterns = {
         "indoor_absolute_humidity": ("indoor_temp", "indoor_humidity"),
         "outdoor_absolute_humidity": ("outdoor_temp", "outdoor_humidity"),
@@ -72,16 +74,27 @@ async def _check_underlying_entities_exist(
     temp_entity = f"sensor.{device_id_underscore}_{temp_type}"
     humidity_entity = f"sensor.{device_id_underscore}_{humidity_type}"
 
-    temp_state = hass.states.get(temp_entity)
-    humidity_state = hass.states.get(humidity_entity)
+    # Check entity registry instead of states,
+    #  as states may not be available during setup
+    registry = entity_registry.async_get(hass)
+    temp_entity_entry = registry.async_get(temp_entity)
+    humidity_entity_entry = registry.async_get(humidity_entity)
 
-    return temp_state is not None and humidity_state is not None
+    exists = temp_entity_entry is not None and humidity_entity_entry is not None
+    if not exists:
+        _LOGGER.debug(
+            f"Underlying entities not found for {sensor_type}: {temp_entity}="
+            f"{temp_entity_entry is not None}, {humidity_entity}="
+            f"{humidity_entity_entry is not None}"
+        )
+
+    return exists
 
 
-async def create_humidity_sensors(
+async def create_humidity_sensor(
     hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
 ) -> list[SensorEntity]:
-    """Create humidity sensors for a device.
+    """Create humidity sensor for a device.
 
     Args:
         hass: Home Assistant instance
@@ -94,23 +107,15 @@ async def create_humidity_sensors(
     # Import entity configurations from management layer
     from ..entities import HumidityEntities
 
-    entity_manager = HumidityEntities(hass, config_entry)
-    sensors = []
+    # entity_manager = HumidityEntities(hass, config_entry)
+    sensor: list[Any] = []
 
-    for sensor_type in ["indoor_absolute_humidity", "outdoor_absolute_humidity"]:
-        config = entity_manager.get_entity_config("sensors", sensor_type)
-        if config:
-            # Check if underlying ramses_cc entities exist before creating sensor
-            if await _check_underlying_entities_exist(hass, device_id, sensor_type):
-                sensor = HumidityAbsoluteSensor(hass, device_id, sensor_type, config)
-                sensors.append(sensor)
-            else:
-                _LOGGER.warning(
-                    f"Skipping {sensor_type} sensor for device {device_id} - "
-                    "underlying ramses_cc entities not found"
-                )
+    # Humidity_control doesn't create any sensor in its platform
+    # - indoor_absolute_humidity is created by default feature
+    # - outdoor_absolute_humidity calculation is handled differently
+    # This platform only provides control entities (switch, number, binary_sensor)
 
-    return sensors
+    return sensor  # noqa: RET504
 
 
 class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
@@ -166,7 +171,7 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
     async def async_added_to_hass(self) -> None:
         """Called when entity is added to hass."""
         await super().async_added_to_hass()
-        # Set up listeners for underlying temperature and humidity sensors
+        # Set up listeners for underlying temperature and humidity sensor
         await self._setup_listeners()
 
     async def _setup_listeners(self) -> None:
@@ -188,12 +193,12 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
         temp_entity = f"sensor.{self._device_id.replace(':', '_')}_{temp_type}"
         humidity_entity = f"sensor.{self._device_id.replace(':', '_')}_{humidity_type}"
 
-        # Track state changes on both temperature and humidity sensors
+        # Track state changes on both temperature and humidity sensor
         async def state_changed_listener(*args: Any) -> None:
-            """Handle state changes on temperature or humidity sensors."""
+            """Handle state changes on temperature or humidity sensor."""
             await self._recalculate_and_update()
 
-        # Listen for state changes on both sensors
+        # Listen for state changes on both sensor
         async_track_state_change(
             self.hass, [temp_entity, humidity_entity], state_changed_listener
         )
@@ -230,7 +235,7 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
         """Get temperature and humidity data from ramses_cc entities.
 
         Returns:
-            tuple: (temperature, humidity) or (None, None) if sensors are missing/failed
+            tuple: (temperature, humidity) or (None, None) if sensor are missing/failed
         """
         # Import humidity calculation helper
         from custom_components.ramses_extras.framework.helpers.entities import (
@@ -336,5 +341,5 @@ register_feature_platform("sensor", "humidity_control", async_setup_entry)
 __all__ = [
     "HumidityAbsoluteSensor",
     "async_setup_entry",
-    "create_humidity_sensors",
+    "create_humidity_sensor",
 ]

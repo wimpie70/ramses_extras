@@ -5,14 +5,17 @@ config flow, replacing scattered list management with a clean, efficient
 EntityManager class.
 """
 
+import asyncio
+import importlib
 import logging
 from typing import Any, TypedDict
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry
 
-from ....const import AVAILABLE_FEATURES
 from .core import (
     EntityHelpers,
+    _singularize_entity_type,
     generate_entity_patterns_for_feature,
     get_feature_entity_mappings,
 )
@@ -54,6 +57,7 @@ class EntityManager:
         self,
         available_features: dict[str, dict[str, Any]],
         current_features: dict[str, bool],
+        target_features: dict[str, bool] | None = None,
     ) -> None:
         """Build complete entity catalog with existence and feature status.
 
@@ -64,10 +68,14 @@ class EntityManager:
         Args:
             available_features: All available features configuration
             current_features: Currently enabled features
+            target_features: Target enabled features (for feature change operations)
         """
         _LOGGER.debug("Building entity catalog...")
 
         self.current_features = current_features.copy()
+        self.target_features = (
+            target_features.copy() if target_features else current_features.copy()
+        )
         self.all_possible_entities = {}
 
         # Get all currently existing entities
@@ -99,12 +107,21 @@ class EntityManager:
         """
         _LOGGER.debug("Updating feature targets for entity comparison...")
 
+        # Always update target_features when this method is called
         self.target_features = target_features.copy()
 
         # Update enabled_by_feature status for all entities
         for entity_id, info in self.all_possible_entities.items():
             feature_id = info["feature_id"]
-            info["enabled_by_feature"] = self.target_features.get(feature_id, False)
+            # Get the feature config to determine default_enabled
+            # Import at function level to avoid blocking imports
+            from custom_components.ramses_extras.const import AVAILABLE_FEATURES
+
+            feature_config = AVAILABLE_FEATURES.get(feature_id, {})
+            default_enabled = feature_config.get("default_enabled", False)
+            info["enabled_by_feature"] = self.target_features.get(
+                feature_id, default_enabled
+            )
 
         _LOGGER.debug(
             f"Updated feature targets for {len(self.all_possible_entities)} entities"
@@ -117,8 +134,8 @@ class EntityManager:
             Set of existing entity IDs
         """
         try:
-            entity_registry = self.hass.helpers.entity_registry.async_get()
-            entities = entity_registry.entities
+            entity_registry_instance = entity_registry.async_get(self.hass)
+            entities = entity_registry_instance.entities
             return {entity.entity_id for entity in entities.values()}
         except Exception as e:
             _LOGGER.warning(f"Could not get entity registry: {e}")
@@ -138,24 +155,47 @@ class EntityManager:
             existing_entities: Set of currently existing entity IDs
         """
         # Get enabled status for this feature
-        enabled = self.current_features.get(feature_id, False)
+        # Only scan features that are currently enabled or will be enabled
+        default_enabled = feature_config.get("default_enabled", False)
+        target_enabled = self.target_features.get(feature_id, default_enabled)
+        current_enabled = self.current_features.get(feature_id, default_enabled)
 
-        # Get feature's supported device types
-        supported_devices = feature_config.get("supported_device_types", [])
+        # Only discover entities for features that are enabled
+        feature_is_enabled = target_enabled or current_enabled
+
+        _LOGGER.debug(
+            f"Scanning feature {feature_id}: current={current_enabled}, "
+            f"target={target_enabled}, enabled_for_discovery={feature_is_enabled}"
+        )
+
+        if not feature_is_enabled:
+            _LOGGER.debug(f"Skipping disabled feature: {feature_id}")
+            return
+
+        # Use target features for enabled_by_feature status
+        enabled_by_feature = target_enabled
 
         # Handle different feature categories
-        category = feature_config.get("category", "sensors")
+        category = feature_config.get("category", "sensor")
 
         if category == "cards":
             # Card entities (dashboard cards)
-            await self._add_card_entities(feature_id, feature_config, enabled)
+            await self._add_card_entities(
+                feature_id, feature_config, enabled_by_feature
+            )
         elif category == "automations":
             # Automation entities
-            await self._add_automation_entities(feature_id, feature_config, enabled)
+            await self._add_automation_entities(
+                feature_id, feature_config, enabled_by_feature
+            )
         else:
-            # Sensor/other entities - need device-specific entities
+            # Sensor/other features - track device entities
+            # Get feature's supported device types from the feature module
+            supported_devices = await self._get_supported_devices_from_feature(
+                feature_id
+            )
             await self._add_device_entities(
-                feature_id, feature_config, enabled, supported_devices
+                feature_id, feature_config, enabled_by_feature, supported_devices
             )
 
     async def _add_card_entities(
@@ -228,35 +268,84 @@ class EntityManager:
         # Get devices for this feature
         devices = await self._get_devices_for_feature(feature_id, supported_devices)
 
-        # For each device, add its required entities
+        _LOGGER.debug(
+            f"Processing {len(devices)} devices for feature {feature_id} "
+            f"(enabled={enabled})"
+        )
+
+        # For each device, add its required entities (not all mapped entities)
         for device in devices:
             device_id = self._extract_device_id(device)
-            entity_mappings = get_feature_entity_mappings(feature_id, device_id)
 
-            for state_key, entity_id in entity_mappings.items():
-                self.all_possible_entities[entity_id] = {
-                    "exists_already": entity_id
-                    in await self._get_all_existing_entities(),
-                    "enabled_by_feature": enabled,
-                    "feature_id": feature_id,
-                    "entity_type": state_key.split("_")[0]
-                    if "_" in state_key
-                    else "sensor",
-                    "entity_name": state_key,
-                }
+            # Get required entities from the feature's required_entities config
+            required_entities = await self._get_required_entities_for_feature(
+                feature_id
+            )
+
+            _LOGGER.debug(
+                f"Device {device_id} for feature {feature_id}: "
+                f"required entities: {required_entities}"
+            )
+
+            # Process each required entity type
+            for entity_type, entity_names in required_entities.items():
+                singular_type = entity_type  # Convert "switch" -> "switch"
+
+                for entity_name in entity_names:
+                    # Generate entity ID using the standard pattern
+                    entity_id = (
+                        f"{singular_type}.{entity_name}_{device_id.replace(':', '_')}"
+                    )
+
+                    # Check if entity already exists from another feature
+                    existing_entities = await self._get_all_existing_entities()
+                    exists_already = entity_id in existing_entities
+
+                    # Don't overwrite if entity already tracked by another feature
+                    # This prevents features from claiming ownership of shared entities
+                    if entity_id in self.all_possible_entities:
+                        # Entity already tracked - just update enabled status if needed
+                        existing_info = self.all_possible_entities[entity_id]
+                        _LOGGER.debug(
+                            f"Entity {entity_id} already tracked by feature "
+                            f"'{existing_info['feature_id']}', not overwriting with "
+                            f"'{feature_id}'"
+                        )
+                        # Update enabled status if this feature enables it
+                        if enabled:
+                            existing_info["enabled_by_feature"] = True
+                    else:
+                        # New entity - add it
+                        self.all_possible_entities[entity_id] = {
+                            "exists_already": exists_already,
+                            "enabled_by_feature": enabled,
+                            "feature_id": feature_id,
+                            "entity_type": singular_type,
+                            "entity_name": entity_name,
+                        }
+
+                        _LOGGER.debug(
+                            f"Added required entity: {entity_id} "
+                            f"(type={singular_type}, exists={exists_already}, "
+                            f"enabled={enabled}, feature={feature_id})"
+                        )
 
         _LOGGER.debug(f"Added {len(devices)} device entities for feature {feature_id}")
 
     def _extract_device_id(self, device: Any) -> str:
-        """Extract device ID from device object with robust error handling.
+        """Extract device ID from device object or string with robust error handling.
 
         Args:
-            device: Device object
+            device: Device object or device ID string
 
         Returns:
             Device ID as string
         """
-        # Try multiple ways to get device ID
+        # Handle device ID strings directly
+        if isinstance(device, str):
+            return device
+
+        # Try multiple ways to get device ID from object
         if hasattr(device, "id"):
             return str(device.id)
         if hasattr(device, "device_id"):
@@ -308,7 +397,8 @@ class EntityManager:
 
             if not devices_data:
                 _LOGGER.warning(
-                    f"No devices found in ramses_extras data for feature {feature_id}"
+                    f"No devices found in ramses_extras data for feature {feature_id}, "
+                    f"discovering directly"
                 )
                 # Try to discover devices directly as fallback
                 devices_data = await self._discover_devices_direct()
@@ -317,16 +407,32 @@ class EntityManager:
                         f"Discovered {len(devices_data)} devices directly for feature "
                         f"{feature_id}"
                     )
+                else:
+                    _LOGGER.warning(f"No devices discovered for feature {feature_id}")
 
             # Filter devices by supported types
             matching_devices = []
             for device in devices_data:
-                device_type = self._extract_device_type(device)
+                # Handle both device objects and device ID strings
+                if isinstance(device, str):
+                    # Device ID string - assume it's a supported type for now
+                    # This is a simplified approach for device IDs
+                    device_id = device
+                    device_type = "HvacVentilator"  # Default type for known device IDs
+                    _LOGGER.debug(
+                        f"Using device ID {device_id} (assumed type: {device_type}) "
+                        f"for feature {feature_id}"
+                    )
+                else:
+                    # Device object - extract type normally
+                    device_type = self._extract_device_type(device)
+                    device_id = self._extract_device_id(device)
+
                 if any(supported in device_type for supported in supported_devices):
                     matching_devices.append(device)
                     _LOGGER.debug(
-                        f"Matched device {self._extract_device_id(device)} "
-                        f"(type: {device_type}) for feature {feature_id}"
+                        f"Matched device {device_id} (type: {device_type}) "
+                        f"for feature {feature_id}"
                     )
 
             _LOGGER.info(
@@ -421,48 +527,69 @@ class EntityManager:
     async def _discover_devices_direct(self) -> list[Any]:
         """Direct device discovery as fallback for EntityManager.
 
-        This method supports multiple versions of ramses_cc for backwards compatibility.
-        Tries all possible broker and device access patterns.
+        This method uses the same device discovery logic as the main integration.
         """
-        devices_found = []
-
         try:
-            # Get ramses_cc entries
+            # Access the broker from the ramses_cc integration
             ramses_cc_entries = self.hass.config_entries.async_entries("ramses_cc")
             if not ramses_cc_entries:
-                _LOGGER.debug("No ramses_cc entries found")
-                return []
+                _LOGGER.warning("No ramses_cc entries found")
+                return await self._discover_devices_from_entity_registry()
 
-            _LOGGER.debug(f"Found {len(ramses_cc_entries)} ramses_cc entries")
+            # Use the first ramses_cc entry
+            entry = ramses_cc_entries[0]
 
-            # Try each entry
-            for entry in ramses_cc_entries:
-                _LOGGER.debug(f"Processing entry: {entry.entry_id}")
+            # Try to get broker using all possible methods
+            broker = await self.get_broker_for_entry(entry)
 
-                # Try all possible broker access methods for this entry
-                broker = await self.get_broker_for_entry(entry)
+            if broker is None:
+                _LOGGER.warning("Could not find ramses_cc broker via any method")
+                return await self._discover_devices_from_entity_registry()
 
-                if broker:
-                    _LOGGER.debug(
-                        f"Found broker for entry {entry.entry_id}: {type(broker)}"
-                    )
-                    # Try all possible device access methods
-                    entry_devices = await self._find_devices_for_broker(broker)
-                    if entry_devices:
-                        devices_found.extend(entry_devices)
-                        _LOGGER.debug(
-                            f"Found {len(entry_devices)} devices for entry "
-                            f"{entry.entry_id}"
-                        )
-                else:
-                    _LOGGER.debug(f"No broker found for entry {entry.entry_id}")
+            # Get devices from the broker with robust access
+            devices = getattr(broker, "_devices", None)
+            if devices is None:
+                devices = getattr(broker, "devices", None)
 
-            _LOGGER.info(f"Total devices discovered: {len(devices_found)}")
-            return devices_found
+            if not devices:
+                _LOGGER.debug(
+                    "No devices found in broker, using entity registry fallback"
+                )
+                return await self._discover_devices_from_entity_registry()
+
+            _LOGGER.debug(f"Found {len(devices)} total devices in broker")
+
+            # Filter for different device types based on feature requirements
+            discovered_devices = []
+
+            # Fan devices (HvacVentilator) for ventilation features
+            fan_devices = [
+                device
+                for device in devices
+                if hasattr(device, "__class__")
+                and "HvacVentilator" in device.__class__.__name__
+            ]
+            discovered_devices.extend(fan_devices)
+
+            # Sensor devices for sensor features
+            sensor_devices = [
+                device
+                for device in devices
+                if hasattr(device, "__class__")
+                and (
+                    "HvacController" in device.__class__.__name__
+                    or "Climate" in device.__class__.__name__
+                )
+            ]
+            discovered_devices.extend(sensor_devices)
+
+            _LOGGER.info(f"Discovered {len(discovered_devices)} relevant devices")
+            return discovered_devices
 
         except Exception as e:
-            _LOGGER.debug(f"Direct device discovery failed: {e}")
-            return []
+            _LOGGER.error(f"Error in direct device discovery: {e}")
+            # Fallback to entity registry discovery
+            return await self._discover_devices_from_entity_registry()
 
     async def _find_devices_for_broker(self, broker: Any) -> list[Any]:
         """Find devices for a broker using all possible methods.
@@ -518,6 +645,91 @@ class EntityManager:
 
         return []
 
+    async def _get_supported_devices_from_feature(self, feature_id: str) -> list[str]:
+        """Get supported device types from the feature's own const.py module.
+
+        Uses required_entities approach for registry building, not device mappings.
+
+        Args:
+            feature_id: Feature identifier
+
+        Returns:
+            List of supported device types
+        """
+        try:
+            # Run the blocking import operation in a thread pool
+            loop = asyncio.get_event_loop()
+            required_entities = await loop.run_in_executor(
+                None, self._import_required_entities, feature_id
+            )
+
+            # For entity registry building, we assume all
+            # features work with HvacVentilator
+            # (this is the primary device type for ramses_extras)
+            # In the future, this could be expanded to support multiple device types
+            supported_devices = ["HvacVentilator"]
+
+            _LOGGER.debug(
+                f"Found supported devices for {feature_id}: {supported_devices} "
+                f"(required_entities: {required_entities})"
+            )
+            return supported_devices
+        except Exception as e:
+            _LOGGER.debug(f"Could not get supported devices for {feature_id}: {e}")
+            # Fallback to default
+            return ["HvacVentilator"]
+
+    async def _get_required_entities_for_feature(
+        self, feature_id: str
+    ) -> dict[str, list[str]]:
+        """Get required entities for a feature (async wrapper).
+
+        Args:
+            feature_id: Feature identifier
+
+        Returns:
+            Required entities dictionary
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, self._import_required_entities, feature_id
+        )
+
+    def _import_required_entities(self, feature_id: str) -> dict[str, list[str]]:
+        """Import feature module and return required entities (blocking operation).
+
+        Args:
+            feature_id: Feature identifier
+
+        Returns:
+            Required entities dictionary
+        """
+        # Import the feature's const module
+        feature_module_path = (
+            f"custom_components.ramses_extras.features.{feature_id}.const"
+        )
+
+        feature_module = importlib.import_module(feature_module_path)
+
+        # Get the HUMIDITY_CONTROL_CONST (or similar) for this feature
+        const_key = f"{feature_id.upper()}_CONST"
+        if hasattr(feature_module, const_key):
+            const_data = getattr(feature_module, const_key, {})
+            result: dict[str, list[str]] = const_data.get("required_entities", {})
+            return result
+
+        # Fallback to device entity mapping for backwards compatibility
+        mapping_key = f"{feature_id.upper()}_DEVICE_ENTITY_MAPPING"
+        device_mapping = getattr(feature_module, mapping_key, {})
+
+        # Convert device mapping to required entities format
+        required_entities = {}
+        for device_type, entity_names in device_mapping.items():
+            entity_type = f"{device_type.lower()}s"  # Convert to plural
+            required_entities[entity_type] = entity_names
+
+        return required_entities
+
     def _normalize_devices_list(self, devices: Any) -> list[Any]:
         """Normalize different device storage formats to a list.
 
@@ -543,17 +755,65 @@ class EntityManager:
             _LOGGER.debug(f"Failed to normalize devices: {e}")
             return []
 
+    async def _discover_devices_from_entity_registry(self) -> list[str]:
+        """Fallback method to discover devices from entity registry.
+
+        Returns:
+            List of device IDs
+        """
+        try:
+            entity_registry = entity_registry.async_get(self.hass)  # noqa: F823
+            device_ids = []
+
+            # Look for ramses_cc entities across multiple domains
+            relevant_domains = [
+                "fan",
+                "climate",
+                "sensor",
+                "switch",
+                "number",
+                "binary_sensor",
+            ]
+
+            for entity in entity_registry.entities.values():
+                if (
+                    entity.domain in relevant_domains
+                    and entity.platform == "ramses_cc"
+                    and hasattr(entity, "device_id")
+                ):
+                    device_id = entity.device_id
+                    if device_id and device_id not in device_ids:
+                        device_ids.append(device_id)
+
+            _LOGGER.info(
+                f"Found {len(device_ids)} devices via entity registry fallback: "
+                f"{device_ids}"
+            )
+            return device_ids
+        except Exception as e:
+            _LOGGER.error(f"Error discovering devices from entity registry: {e}")
+            return []
+
     def get_entities_to_remove(self) -> list[str]:
         """Get list of entities to be removed.
 
         Entities to remove are those that exist_already but are not enabled_by_feature.
+        Only returns platform entities (sensor, switch, etc.), not cards or automations.
+        Excludes entities from always-enabled features like 'default'.
 
         Returns:
             List of entity IDs to remove
         """
         to_remove = []
         for entity_id, info in self.all_possible_entities.items():
-            if info["exists_already"] and not info["enabled_by_feature"]:
+            # Skip entities from always-enabled features (like 'default')
+            if info["feature_id"] == "default":
+                continue
+            if (
+                info["exists_already"]
+                and not info["enabled_by_feature"]
+                and info["entity_type"] not in ("card", "automation")
+            ):
                 to_remove.append(entity_id)
 
         _LOGGER.info(f"Entities to remove: {len(to_remove)}")
@@ -564,13 +824,18 @@ class EntityManager:
 
         Entities to create are those that are enabled_by_feature but do not
         exist_already.
+        Only returns platform entities (sensor, switch, etc.), not cards or automations.
 
         Returns:
             List of entity IDs to create
         """
         to_create = []
         for entity_id, info in self.all_possible_entities.items():
-            if info["enabled_by_feature"] and not info["exists_already"]:
+            if (
+                info["enabled_by_feature"]
+                and not info["exists_already"]
+                and info["entity_type"] not in ("card", "automation")
+            ):
                 to_create.append(entity_id)
 
         _LOGGER.info(f"Entities to create: {len(to_create)}")
@@ -579,18 +844,30 @@ class EntityManager:
     def get_entity_summary(self) -> dict[str, int]:
         """Get summary of entity catalog status.
 
+        Only counts platform entities (sensor, switch, etc.), not cards or automations.
+        Excludes entities from always-enabled features like 'default'.
+
         Returns:
             Dictionary with counts for different entity states
         """
+        # Filter to only platform entities
+        # (exclude cards and automations, and default feature)
+        platform_entities = {
+            entity_id: info
+            for entity_id, info in self.all_possible_entities.items()
+            if info["entity_type"] not in ("card", "automation")
+            and info["feature_id"] != "default"
+        }
+
         summary = {
-            "total_entities": len(self.all_possible_entities),
+            "total_entities": len(platform_entities),
             "existing_enabled": 0,
             "existing_disabled": 0,
             "non_existing_enabled": 0,
             "non_existing_disabled": 0,
         }
 
-        for info in self.all_possible_entities.values():
+        for info in platform_entities.values():
             if info["exists_already"] and info["enabled_by_feature"]:
                 summary["existing_enabled"] += 1
             elif info["exists_already"] and not info["enabled_by_feature"]:
@@ -691,19 +968,19 @@ class EntityManager:
     async def _remove_regular_entities(
         self, entity_ids: list[str], entity_type: str
     ) -> None:
-        """Remove regular entities (sensors, switches, etc.).
+        """Remove regular entities (sensor, switch, etc.).
 
         Args:
             entity_ids: List of entity IDs to remove
             entity_type: Type of entities (sensor, switch, etc.)
         """
         try:
-            entity_registry = self.hass.helpers.entity_registry.async_get()
+            entity_registry_instance = entity_registry.async_get(self.hass)
             removed_count = 0
 
             for entity_id in entity_ids:
                 try:
-                    entity_registry.async_remove(entity_id)
+                    entity_registry_instance.async_remove(entity_id)
                     removed_count += 1
                 except Exception as e:
                     _LOGGER.warning(f"Could not remove entity {entity_id}: {e}")

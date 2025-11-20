@@ -1,7 +1,7 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -29,6 +29,32 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_feature_details_from_module(feature_key: str) -> dict[str, Any]:
+    """Get feature details from AVAILABLE_FEATURES.
+
+    Args:
+        feature_key: Feature identifier
+
+    Returns:
+        Dictionary with feature details or empty dict if not found
+    """
+    feature_config = AVAILABLE_FEATURES.get(feature_key, {})
+    if not feature_config:
+        return {}
+
+    # Extract supported device types from feature configuration
+    supported_device_types = feature_config.get("supported_device_types", [])
+    if not supported_device_types:
+        # Default to HvacVentilator for most features
+        supported_device_types = ["HvacVentilator"]
+
+    # For now, return minimal details since entity loading is handled elsewhere
+    return {
+        "supported_device_types": supported_device_types,
+        "required_entities": {},  # Will be populated by entity manager
+    }
+
+
 async def _manage_cards_config_flow(
     hass: "HomeAssistant", enabled_features: dict[str, bool]
 ) -> None:
@@ -37,6 +63,10 @@ async def _manage_cards_config_flow(
 
     # Handle all card features dynamically
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
+        # Skip default feature from card management (it's not a card feature)
+        if feature_key == "default":
+            continue
+
         if feature_config.get("category") == "cards":
             # Use the same path resolution as the rest of the code
             card_source_path = (
@@ -120,7 +150,13 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow):
         # Just create the config entry directly
         enabled_features = {}
         for feature_key in AVAILABLE_FEATURES.keys():
-            enabled_features[feature_key] = False  # Start with all disabled
+            # Default feature is always enabled, others start disabled
+            if feature_key == "default":
+                enabled_features[feature_key] = True
+            else:
+                enabled_features[feature_key] = (
+                    False  # Start with all optional features disabled
+                )
 
         return self.async_create_entry(
             title="Ramses Extras",
@@ -170,7 +206,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             # Convert selected features to enabled features dict
             enabled_features = {}
             for feature_key in AVAILABLE_FEATURES.keys():
-                enabled_features[feature_key] = feature_key in selected_features
+                # Default feature is always enabled, regardless of user selection
+                if feature_key == "default":
+                    enabled_features[feature_key] = True
+                else:
+                    enabled_features[feature_key] = feature_key in selected_features
 
             # Check for any feature changes using EntityManager
             feature_changes = []
@@ -185,14 +225,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             # If there are any feature changes, build entity catalog
             #  and show confirmation
             if feature_changes:
-                # Initialize EntityManager once and build catalog on current features
+                # Initialize EntityManager once and build catalog with target features
                 self._entity_manager = EntityManager(self.hass)
                 await self._entity_manager.build_entity_catalog(
-                    AVAILABLE_FEATURES, current_features
+                    AVAILABLE_FEATURES, current_features, enabled_features
                 )
-
-                # Update targets to new features for comparison
-                self._entity_manager.update_feature_targets(enabled_features)
 
                 # Store entity changes for confirmation
                 self._entities_to_remove = self._entity_manager.get_entities_to_remove()
@@ -218,9 +255,13 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             # Initialize missing features with their default values
             for feature_key, feature_config in AVAILABLE_FEATURES.items():
                 if feature_key not in current_features:
-                    current_features[feature_key] = feature_config.get(
-                        "default_enabled", False
-                    )
+                    # Default feature is always enabled
+                    if feature_key == "default":
+                        current_features[feature_key] = True
+                    else:
+                        current_features[feature_key] = feature_config.get(
+                            "default_enabled", False
+                        )
 
             # Update the config entry with the complete feature set
             new_data = self._config_entry.data.copy()
@@ -230,11 +271,18 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             )
 
         # Get current selected features for the selector default
-        current_selected = [k for k, v in current_features.items() if v]
+        # Exclude "default" feature since it's not user-configurable in the selector
+        current_selected = [
+            k for k, v in current_features.items() if v and k != "default"
+        ]
 
         # Build options for multi-select
         feature_options = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            # Skip default feature from user configuration (it's always enabled)
+            if feature_key == "default":
+                continue
+
             feature_name = str(feature_config.get("name", feature_key))
             description = str(feature_config.get("description", ""))
             if description:
@@ -252,6 +300,10 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Build detailed summary for description area
         feature_summaries = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            # Skip default feature from user display (it's always enabled)
+            if feature_key == "default":
+                continue
+
             name = str(feature_config.get("name", feature_key))
             category = str(feature_config.get("category", ""))
             description = str(feature_config.get("description", ""))
@@ -260,32 +312,36 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             if description:
                 detail_parts.append(description)
 
-            # Add supported device types
-            supported_devices = feature_config.get("supported_device_types", [])
-            if isinstance(supported_devices, list) and supported_devices:
-                detail_parts.append(
-                    f"Device Types: {', '.join(str(d) for d in supported_devices)}"
-                )
+            # Get feature details from the feature module
+            feature_details = _get_feature_details_from_module(feature_key)
 
-            # Add entity requirements
-            required_entities = feature_config.get("required_entities", {})
-            if isinstance(required_entities, dict):
-                required_sensors = required_entities.get("sensors", [])
-                required_switches = required_entities.get("switches", [])
-                required_booleans = required_entities.get("booleans", [])
+            if feature_details:
+                # Add supported device types
+                supported_devices = feature_details.get("supported_device_types", [])
+                if isinstance(supported_devices, list) and supported_devices:
+                    detail_parts.append(
+                        f"Device Types: {', '.join(str(d) for d in supported_devices)}"
+                    )
 
-                if isinstance(required_sensors, list) and required_sensors:
-                    detail_parts.append(
-                        f"• Sensors: {', '.join(str(s) for s in required_sensors)}"
-                    )
-                if isinstance(required_switches, list) and required_switches:
-                    detail_parts.append(
-                        f"• Switches: {', '.join(str(s) for s in required_switches)}"
-                    )
-                if isinstance(required_booleans, list) and required_booleans:
-                    detail_parts.append(
-                        f"• Booleans: {', '.join(str(b) for b in required_booleans)}"
-                    )
+                # Add entity requirements
+                required_entities = feature_details.get("required_entities", {})
+                if isinstance(required_entities, dict):
+                    required_sensor = required_entities.get("sensor", [])
+                    required_switch = required_entities.get("switch", [])
+                    required_booleans = required_entities.get("booleans", [])
+
+                    if isinstance(required_sensor, list) and required_sensor:
+                        detail_parts.append(
+                            f"• sensor: {', '.join(str(s) for s in required_sensor)}"
+                        )
+                    if isinstance(required_switch, list) and required_switch:
+                        detail_parts.append(
+                            f"• switch: {', '.join(str(s) for s in required_switch)}"
+                        )
+                    if isinstance(required_booleans, list) and required_booleans:
+                        detail_parts.append(
+                            f"• Booleans: {', '.join(str(b) for b in required_booleans)}"  # noqa: E501
+                        )
 
             feature_summaries.append("• " + "\n  ".join(detail_parts))
 
@@ -403,7 +459,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         selected_features = user_input.get("features", [])
 
         for feature_key in AVAILABLE_FEATURES.keys():
-            enabled_features[feature_key] = feature_key in selected_features
+            # Default feature is always enabled, regardless of user selection
+            if feature_key == "default":
+                enabled_features[feature_key] = True
+            else:
+                enabled_features[feature_key] = feature_key in selected_features
 
         _LOGGER.info(
             f"Config flow - Current features: "
@@ -437,8 +497,10 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Install/remove cards based on new feature settings
         await _manage_cards_config_flow(self.hass, enabled_features)
 
-        # Note: No full integration reload needed - entities managed selectively
-        _LOGGER.info("Config flow - Configuration updated with entity changes")
+        # Reload the integration to apply entity changes
+        # This triggers platform setup which creates/removes entities
+        _LOGGER.info("Config flow - Reloading integration to apply entity changes")
+        await self.hass.config_entries.async_reload(self._config_entry.entry_id)
 
         return self.async_create_entry(title="", data={})
 

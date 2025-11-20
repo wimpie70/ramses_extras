@@ -22,10 +22,10 @@ def _get_platform_key(platform: str) -> str:
     """
     # Convert platform name to plural form for configuration lookup
     platform_to_key = {
-        "sensor": "sensors",
-        "switch": "switches",
-        "binary_sensor": "binary_sensors",
-        "number": "numbers",
+        "sensor": "sensor",
+        "switch": "switch",
+        "binary_sensor": "binary_sensor",
+        "number": "number",
     }
     return platform_to_key.get(platform, f"{platform}s")
 

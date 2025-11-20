@@ -23,23 +23,23 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control switch platform."""
-    _LOGGER.info("Setting up humidity control switches")
+    _LOGGER.info("Setting up humidity control switch")
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
 
-    switches = []
+    switch = []
     for device_id in devices:
-        # Create humidity control switches
-        switches.extend(await create_humidity_switches(hass, device_id, config_entry))
+        # Create humidity control switch
+        switch.extend(await create_humidity_switch(hass, device_id, config_entry))
 
-    async_add_entities(switches, True)
+    async_add_entities(switch, True)
 
 
-async def create_humidity_switches(
+async def create_humidity_switch(
     hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
 ) -> list[SwitchEntity]:
-    """Create humidity control switches for a device.
+    """Create humidity control switch for a device.
 
     Args:
         hass: Home Assistant instance
@@ -53,15 +53,15 @@ async def create_humidity_switches(
     from ..entities import HumidityEntities
 
     entity_manager = HumidityEntities(hass, config_entry)
-    switches = []
+    switch = []
 
     # Create dehumidify switch
-    config = entity_manager.get_entity_config("switches", "dehumidify")
+    config = entity_manager.get_entity_config("switch", "dehumidify")
     if config:
         switch = HumidityControlSwitch(hass, device_id, "dehumidify", config)
-        switches.append(switch)
+        switch.append(switch)
 
-    return switches
+    return switch
 
 
 def create_humidity_switch(
@@ -190,5 +190,5 @@ __all__ = [
     "HumidityControlSwitch",
     "async_setup_entry",
     "create_humidity_switch",
-    "create_humidity_switches",
+    "create_humidity_switch",
 ]

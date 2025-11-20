@@ -22,21 +22,56 @@ from homeassistant.helpers.event import async_track_state_change
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_required_entities_from_feature(feature_id: str) -> dict[str, list[str]]:
+    """Get required entities from the feature's own const.py module.
+
+    Args:
+        feature_id: Feature identifier
+
+    Returns:
+        Dictionary mapping entity types to entity names
+    """
+    try:
+        # Import the feature's const module
+        feature_module_path = (
+            f"custom_components.ramses_extras.features.{feature_id}.const"
+        )
+        import importlib
+
+        feature_module = importlib.import_module(feature_module_path)
+
+        # Get device mappings from the feature
+        mapping_key = f"{feature_id.upper()}_DEVICE_ENTITY_MAPPING"
+        device_mapping = getattr(feature_module, mapping_key, {})
+
+        # Convert device mapping to required entities format
+        required_entities = {}
+        for device_type, entity_names in device_mapping.items():
+            entity_type = f"{device_type.lower()}s"  # Convert to plural
+            required_entities[entity_type] = entity_names
+
+        _LOGGER.debug(f"Found required entities for {feature_id}: {required_entities}")
+        return required_entities
+    except Exception as e:
+        _LOGGER.debug(f"Could not get required entities for {feature_id}: {e}")
+        return {}
+
+
 def _singularize_entity_type(entity_type: str) -> str:
     """Convert plural entity type to singular form.
 
     Args:
-        entity_type: Plural entity type (e.g., "switches", "sensors", "numbers")
+        entity_type: Plural entity type (e.g., "switch", "sensor", "number")
 
     Returns:
         Singular entity type (e.g., "switch", "sensor", "number")
     """
     # Handle common entity type plurals
     entity_type_mapping = {
-        "sensors": "sensor",
-        "switches": "switch",
-        "binary_sensors": "binary_sensor",
-        "numbers": "number",
+        "sensor": "sensor",
+        "switch": "switch",
+        "binary_sensor": "binary_sensor",
+        "number": "number",
         "devices": "device",
         "entities": "entity",
         "covers": "cover",
@@ -47,7 +82,7 @@ def _singularize_entity_type(entity_type: str) -> str:
         "dehumidifiers": "dehumidifier",
     }
 
-    return entity_type_mapping.get(entity_type, entity_type.rstrip("s"))
+    return entity_type_mapping.get(entity_type, entity_type)
 
 
 class ExtrasBaseAutomation(ABC):
@@ -93,6 +128,10 @@ class ExtrasBaseAutomation(ABC):
 
         # Cache for entity patterns
         self._entity_patterns: list[str] | None = None
+
+        # Validation throttling
+        self._last_validation_time: dict[str, float] = {}  # device_id -> timestamp
+        self._validation_cooldown = 30  # seconds between validation for same device
 
         _LOGGER.info(
             f"ExtrasBaseAutomation initialized for feature: {feature_id}, "
@@ -168,18 +207,12 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             List of entity patterns
         """
-        from custom_components.ramses_extras.const import AVAILABLE_FEATURES
-
         patterns = []
 
-        # Add pattern for the feature's required entities
-        feature = AVAILABLE_FEATURES.get(self.feature_id, {})
-        required_entities = feature.get("required_entities", {})
+        # Get required entities from the feature's own module
+        required_entities = _get_required_entities_from_feature(self.feature_id)
 
-        # Cast to proper type to satisfy mypy
-        required_entities_dict = cast(dict[str, list[str]], required_entities)
-
-        for entity_type, entity_names in required_entities_dict.items():
+        for entity_type, entity_names in required_entities.items():
             for entity_name in entity_names:
                 # Use proper singularization for entity types
                 entity_base_type = _singularize_entity_type(entity_type)
@@ -245,21 +278,15 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             True if at least one device is ready
         """
-        from custom_components.ramses_extras.const import AVAILABLE_FEATURES
-
         # Get the first entity type to look for devices
-        feature = AVAILABLE_FEATURES.get(self.feature_id, {})
-        required_entities = feature.get("required_entities", {})
+        required_entities = _get_required_entities_from_feature(self.feature_id)
 
-        # Cast to proper type to satisfy mypy
-        required_entities_dict = cast(dict[str, list[str]], required_entities)
-
-        if not required_entities_dict:
+        if not required_entities:
             return False
 
         # Use the first entity type as a starting point
-        first_entity_type = list(required_entities_dict.keys())[0]
-        first_entity_names = required_entities_dict[first_entity_type]
+        first_entity_type = list(required_entities.keys())[0]
+        first_entity_names = required_entities[first_entity_type]
         if not first_entity_names:
             return False
 
@@ -339,10 +366,40 @@ class ExtrasBaseAutomation(ABC):
             _LOGGER.warning(f"Could not extract device_id from entity: {entity_id}")
             return
 
-        # Validate all entities exist for this device
-        if not await self._validate_device_entities(device_id):
+        # Check validation cooldown for this device
+        current_time = time.time()
+        last_validation = self._last_validation_time.get(device_id, 0)
+
+        # Only validate entities if cooldown period has passed or first time
+        should_validate = (current_time - last_validation) > self._validation_cooldown
+
+        # Track if we've validated before and passed
+        has_validated_successfully = last_validation > 0
+
+        if should_validate:
+            # Validate all entities exist for this device
+            if not await self._validate_device_entities(device_id):
+                _LOGGER.debug(
+                    f"Device {device_id}: Entities not ready for {self.feature_id}"
+                )
+                # Update validation time to prevent immediate re-checks
+                self._last_validation_time[device_id] = current_time
+                return
+            # Validation passed, update timestamp
+            self._last_validation_time[device_id] = current_time
+            has_validated_successfully = True
+        else:
             _LOGGER.debug(
-                f"Device {device_id}: Entities not ready for {self.feature_id}"
+                f"Device {device_id}: Skipping validation (cooldown active) for"
+                f" {self.feature_id}"
+            )
+
+        # Only proceed if we've successfully validated before or just
+        #  validated successfully
+        if not has_validated_successfully:
+            _LOGGER.debug(
+                f"Device {device_id}: No successful validation for {self.feature_id}, "
+                "skipping processing"
             )
             return
 
@@ -472,12 +529,12 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             True if all entities exist, False otherwise
         """
-        from custom_components.ramses_extras.const import AVAILABLE_FEATURES
         from custom_components.ramses_extras.framework.helpers.entity.core import (
             EntityHelpers,
         )
 
-        feature = AVAILABLE_FEATURES.get(self.feature_id, {})
+        # For now, simplified validation without AVAILABLE_FEATURES
+        feature: dict[str, Any] = {}
         if not feature:
             _LOGGER.warning(f"No configuration found for feature: {self.feature_id}")
             return False
@@ -569,7 +626,7 @@ class ExtrasBaseAutomation(ABC):
         states = {}
 
         # Get dynamic state mappings from feature configuration
-        state_mappings = get_feature_entity_mappings(self.feature_id, device_id)
+        state_mappings = await get_feature_entity_mappings(self.feature_id, device_id)
 
         for state_name, entity_id in state_mappings.items():
             state = self.hass.states.get(entity_id)
@@ -608,14 +665,14 @@ class ExtrasBaseAutomation(ABC):
             state_value: Raw state value from Home Assistant
 
         Returns:
-            Converted value (float for sensors/numbers,
-            bool for switches/binary_sensors)
+            Converted value (float for sensor/number,
+            bool for switch/binary_sensor)
         """
-        # Handle boolean entities (switches and binary sensors)
+        # Handle boolean entities (switch and binary sensor)
         if entity_type in ["switch", "binary_sensor"]:
             return state_value.lower() in ["on", "true", "1", "yes"]
 
-        # Handle numeric entities (sensors and numbers)
+        # Handle numeric entities (sensor and number)
         if entity_type in ["sensor", "number"]:
             try:
                 return float(state_value)

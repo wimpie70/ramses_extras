@@ -4,7 +4,10 @@ from typing import Any
 
 from homeassistant.helpers.entity import EntityCategory
 
-# Base entity definitions (shared across features)
+# Feature identification
+FEATURE_ID_DEFAULT = "default"
+
+# Base entity configurations (shared across features)
 DEFAULT_SENSOR_CONFIGS = {
     "indoor_absolute_humidity": {
         "name_template": "Indoor Absolute Humidity {device_id}",
@@ -31,10 +34,12 @@ DEFAULT_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {}
 DEFAULT_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {}
 DEFAULT_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
 
-# Base device type to entity mapping (only shared sensors)
-DEFAULT_DEVICE_ENTITY_MAPPING = {
+# Base device type to entity mapping
+# Note: Default feature doesn't create any entities itself
+# All sensors are maintained by the underlying ramses_rf integration
+DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
     "HvacVentilator": {
-        "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        # No entities created by default feature
         # Other entity types will be added by individual features
     },
 }
@@ -51,3 +56,14 @@ def load_feature() -> None:
     extras_registry.register_boolean_configs(DEFAULT_BOOLEAN_CONFIGS)
     extras_registry.register_device_mappings(DEFAULT_DEVICE_ENTITY_MAPPING)
     extras_registry.register_feature("default")
+
+
+__all__ = [
+    "FEATURE_ID_DEFAULT",
+    "DEFAULT_SENSOR_CONFIGS",
+    "DEFAULT_SWITCH_CONFIGS",
+    "DEFAULT_NUMBER_CONFIGS",
+    "DEFAULT_BOOLEAN_CONFIGS",
+    "DEFAULT_DEVICE_ENTITY_MAPPING",
+    "load_feature",
+]

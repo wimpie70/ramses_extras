@@ -561,24 +561,3 @@ class TestFeatureConflictResolution:
 
             # Verify: catalog built successfully
             assert len(self.entity_manager.all_possible_entities) >= 0
-
-    @pytest.mark.asyncio
-    async def test_feature_priority_ordering(self):
-        """Test that feature priority is respected."""
-        # This test verifies the _should_skip_entity logic
-        current_features = {
-            "default": True,
-            "humidity_control": True,
-            "hvac_fan_card": True,
-        }
-
-        self.entity_manager.current_features = current_features
-
-        # Test priority check (humidity_control has priority 1, default has 0)
-        should_skip = await self.entity_manager._should_skip_entity(
-            "default", "test_state", "sensor.test"
-        )
-
-        # Default feature should not be skipped (it's always enabled)
-        # This is a basic check - actual behavior depends on implementation
-        assert isinstance(should_skip, bool)

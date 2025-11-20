@@ -2,7 +2,7 @@
 
 from homeassistant.helpers.entity import EntityCategory
 
-# Feature-specific entities (prefixed with feature name)
+# Feature-specific switch configurations
 HUMIDITY_SWITCH_CONFIGS = {
     "dehumidify": {
         "name_template": "Dehumidify {device_id}",
@@ -13,6 +13,7 @@ HUMIDITY_SWITCH_CONFIGS = {
     },
 }
 
+# Feature-specific number configurations
 HUMIDITY_NUMBER_CONFIGS = {
     "relative_humidity_minimum": {
         "name_template": "Min Humidity {device_id}",
@@ -55,6 +56,7 @@ HUMIDITY_NUMBER_CONFIGS = {
     },
 }
 
+# Feature-specific binary sensor configurations
 HUMIDITY_BOOLEAN_CONFIGS = {
     "dehumidifying_active": {
         "name_template": "Dehumidifying Active {device_id}",
@@ -66,83 +68,42 @@ HUMIDITY_BOOLEAN_CONFIGS = {
     },
 }
 
-# Feature-specific device mapping (inherits base sensors, adds feature-specific)
+# Feature-specific device mapping
 HUMIDITY_DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
-        "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
-        # Inherited from default
-        "switches": ["dehumidify"],
-        "numbers": [
+        "switch": ["dehumidify"],
+        "number": [
             "relative_humidity_minimum",
             "relative_humidity_maximum",
             "absolute_humidity_offset",
         ],
-        "binary_sensors": ["dehumidifying_active"],
+        "binary_sensor": ["dehumidifying_active"],
     },
 }
 
-# Feature-specific logic constants
-HUMIDITY_DECISION_THRESHOLDS = {
-    "activation": 1.0,  # g/m³
-    "deactivation": -1.0,  # g/m³
-    "high_confidence": 2.0,  # g/m³
-}
-
-HUMIDITY_DECISION_ACTIONS = {
-    "ACTIVATE": "dehumidify",
-    "DEACTIVATE": "stop",
-    "MAINTAIN": "maintain",
-}
-
-# Feature identification
-FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
-
-# Configuration constants
+# Feature-specific constants for automation
 HUMIDITY_CONTROL_CONST = {
-    "feature_id": FEATURE_ID_HUMIDITY_CONTROL,
-    "name": "Humidity Control",
-    "description": "Automatic humidity control and dehumidification management",
-    "version": "1.0.0",
-    # Entity configurations
+    "feature_id": "humidity_control",
+    # Entities that this feature creates and manages
+    "required_entities": {
+        "number": [
+            "relative_humidity_minimum",
+            "relative_humidity_maximum",
+            "absolute_humidity_offset",
+        ],
+        "switch": ["dehumidify"],
+        "binary_sensor": ["dehumidifying_active"],
+    },
+    # Entity mappings for automation logic
+    # Note: Sensor entities are maintained by ramses_rf, not created by this feature
     "entity_mappings": {
-        "indoor_rh": "sensor.{device_id}_indoor_humidity",
         "indoor_abs": "sensor.indoor_absolute_humidity_{device_id}",
         "outdoor_abs": "sensor.outdoor_absolute_humidity_{device_id}",
-        "max_humidity": "number.relative_humidity_maximum_{device_id}",
+        "indoor_rh": "sensor.indoor_relative_humidity_{device_id}",
         "min_humidity": "number.relative_humidity_minimum_{device_id}",
+        "max_humidity": "number.relative_humidity_maximum_{device_id}",
         "offset": "number.absolute_humidity_offset_{device_id}",
         "dehumidify": "switch.dehumidify_{device_id}",
-        "dehumidifying_active": "binary_sensor.dehumidifying_active_{device_id}",
-    },
-    # Required entities
-    "required_entities": {
-        "sensors": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
-        "switches": ["dehumidify"],
-        "numbers": [
-            "relative_humidity_minimum",
-            "relative_humidity_maximum",
-            "absolute_humidity_offset",
-        ],
-        "binary_sensors": ["dehumidifying_active"],
-    },
-    # Default values
-    "defaults": {
-        "min_humidity": 40.0,  # %
-        "max_humidity": 60.0,  # %
-        "offset": 0.4,  # g/m³
-    },
-    # WebSocket message types (if applicable)
-    "websocket_messages": {
-        "HUMIDITY_STATUS": "humidity_control.status",
-        "HUMIDITY_DECISION": "humidity_control.decision",
-        "HUMIDITY_THRESHOLD_UPDATE": "humidity_control.threshold_update",
-    },
-    # Logging categories
-    "logging_categories": {
-        "automation": "ramses_extras.humidity_control.automation",
-        "services": "ramses_extras.humidity_control.services",
-        "entities": "ramses_extras.humidity_control.entities",
-        "config": "ramses_extras.humidity_control.config",
     },
 }
 
@@ -160,13 +121,10 @@ def load_feature() -> None:
 
 
 __all__ = [
-    "FEATURE_ID_HUMIDITY_CONTROL",
-    "load_feature",
-    "HUMIDITY_CONTROL_CONST",
     "HUMIDITY_SWITCH_CONFIGS",
     "HUMIDITY_NUMBER_CONFIGS",
     "HUMIDITY_BOOLEAN_CONFIGS",
     "HUMIDITY_DEVICE_ENTITY_MAPPING",
-    "HUMIDITY_DECISION_THRESHOLDS",
-    "HUMIDITY_DECISION_ACTIONS",
+    "HUMIDITY_CONTROL_CONST",
+    "load_feature",
 ]

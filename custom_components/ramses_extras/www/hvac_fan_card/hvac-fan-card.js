@@ -12,7 +12,13 @@ const TRANSLATION_BASE_PATH = '/local/ramses_extras/hvac_fan_card';
 
 import { NORMAL_SVG, BYPASS_OPEN_SVG } from './airflow-diagrams.js';
 import { CARD_STYLE } from './card-styles.js';
-import { createCardHeader, createTopSection, createParameterEditSection, createControlsSection, createCardFooter } from './templates/card-templates.js';
+import {
+  createCardHeader,
+  createTopSection,
+  createParameterEditSection,
+  createControlsSection,
+  createCardFooter,
+} from './templates/card-templates.js';
 import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
 
@@ -21,8 +27,20 @@ import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translat
 import { FAN_COMMANDS } from '/local/ramses_extras/helpers/card-commands.js';
 import { getRamsesMessageBroker } from '/local/ramses_extras/helpers/ramses-message-broker.js';
 import { HvacFanCardHandlers } from './message-handlers.js';
-import { sendPacket, getBoundRemDevice, callService, entityExists, getEntityState, callWebSocket, setFanParameter } from '/local/ramses_extras/helpers/card-services.js';
-import { validateCoreEntities, validateDehumidifyEntities, getEntityValidationReport } from '/local/ramses_extras/helpers/card-validation.js';
+import {
+  sendPacket,
+  getBoundRemDevice,
+  callService,
+  entityExists,
+  getEntityState,
+  callWebSocket,
+  setFanParameter,
+} from '/local/ramses_extras/helpers/card-services.js';
+import {
+  validateCoreEntities,
+  validateDehumidifyEntities,
+  getEntityValidationReport,
+} from '/local/ramses_extras/helpers/card-validation.js';
 
 // Make FAN_COMMANDS globally available
 window.FAN_COMMANDS = FAN_COMMANDS;
@@ -78,14 +96,12 @@ class HvacFanCard extends HTMLElement {
     return FAN_COMMANDS;
   }
 
-
   static get properties() {
     return {
       config: {},
       _hass: {},
     };
   }
-
 
   set hass(hass) {
     this._hass = hass;
@@ -101,17 +117,17 @@ class HvacFanCard extends HTMLElement {
     // Check if any of our monitored entities have changed
     // Only monitor entities that are NOT provided by 31DA messages
     const entities = [
-      // ramses_extras provided sensors (not from 31DA)
+      // ramses_extras provided sensor (not from 31DA)
       this.config.indoor_abs_humid_entity,
       this.config.outdoor_abs_humid_entity,
-      // Other sensors not provided by 31DA
+      // Other sensor not provided by 31DA
       this.config.co2_entity,
       this.config.dehum_mode_entity,
       this.config.dehum_active_entity,
       this.config.comfort_temp_entity,
     ].filter(Boolean);
 
-    return entities.some(entity => {
+    return entities.some((entity) => {
       const oldState = this._prevStates ? this._prevStates[entity] : null;
       const newState = this._hass.states[entity];
       this._prevStates = this._prevStates || {};
@@ -119,8 +135,6 @@ class HvacFanCard extends HTMLElement {
       return oldState !== newState;
     });
   }
-
-
 
   setConfig(config) {
     if (!config.fan_entity && !config.device_id) {
@@ -143,23 +157,38 @@ class HvacFanCard extends HTMLElement {
       // Auto-generate absolute humidity sensor entities (created by integration)
       indoor_abs_humid_entity: 'sensor.indoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
       outdoor_abs_humid_entity: 'sensor.outdoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
-      // Fallback to calculated humidity if absolute humidity sensors don't exist
-      indoor_temp_entity: config.indoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
-      outdoor_temp_entity: config.outdoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_temp',
-      indoor_humidity_entity: config.indoor_humidity_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_humidity',
-      outdoor_humidity_entity: config.outdoor_humidity_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
-      supply_temp_entity: config.supply_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
-      exhaust_temp_entity: config.exhaust_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
-      fan_speed_entity: config.fan_speed_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_rate',
-      fan_mode_entity: config.fan_mode_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
+      // Fallback to calculated humidity if absolute humidity sensor don't exist
+      indoor_temp_entity:
+        config.indoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
+      outdoor_temp_entity:
+        config.outdoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_temp',
+      indoor_humidity_entity:
+        config.indoor_humidity_entity ||
+        'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_humidity',
+      outdoor_humidity_entity:
+        config.outdoor_humidity_entity ||
+        'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
+      supply_temp_entity:
+        config.supply_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
+      exhaust_temp_entity:
+        config.exhaust_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
+      fan_speed_entity:
+        config.fan_speed_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_rate',
+      fan_mode_entity:
+        config.fan_mode_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
       co2_entity: config.co2_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_co2_level',
       flow_entity: config.flow_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
-      bypass_entity: config.bypass_entity || 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
+      bypass_entity:
+        config.bypass_entity || 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
       // Use configured entities if provided, otherwise auto-generate
-      dehum_mode_entity: config.dehum_mode_entity || 'switch.dehumidify_' + deviceId.replace(/:/g, '_'),
-      dehum_active_entity: config.dehum_active_entity || 'binary_sensor.dehumidifying_active_' + deviceId.replace(/:/g, '_'),
-      comfort_temp_entity: config.comfort_temp_entity || 'number.' + deviceId.replace(/:/g, '_') + '_param_75',
-      ...config
+      dehum_mode_entity:
+        config.dehum_mode_entity || 'switch.dehumidify_' + deviceId.replace(/:/g, '_'),
+      dehum_active_entity:
+        config.dehum_active_entity ||
+        'binary_sensor.dehumidifying_active_' + deviceId.replace(/:/g, '_'),
+      comfort_temp_entity:
+        config.comfort_temp_entity || 'number.' + deviceId.replace(/:/g, '_') + '_param_75',
+      ...config,
     };
 
     // Set the config property for Home Assistant's card framework
@@ -172,7 +201,7 @@ class HvacFanCard extends HTMLElement {
       console.error('❌ Missing hass or config:', {
         hass: !!this._hass,
         _config: !!this._config,
-        config: !!this.config
+        config: !!this.config,
       });
       return;
     }
@@ -203,15 +232,14 @@ class HvacFanCard extends HTMLElement {
     const templateData = {
       device_id: this.config.device_id,
       availableParams: this.availableParams,
-      hass: this._hass
+      hass: this._hass,
     };
-
 
     // Generate HTML for parameter edit mode
     const cardHtml = [
       createCardHeader(CARD_STYLE),
       createParameterEditSection(templateData),
-      createCardFooter()
+      createCardFooter(),
     ].join('');
 
     this.shadowRoot.innerHTML = cardHtml;
@@ -230,7 +258,7 @@ class HvacFanCard extends HTMLElement {
     // Validate entities are available
     this.validateEntities();
 
-    const config = this.config;  // Use config consistently
+    const config = this.config; // Use config consistently
     const hass = this._hass;
 
     // Check dehumidify entity availability
@@ -240,83 +268,94 @@ class HvacFanCard extends HTMLElement {
     const da31Data = this.get31DAData();
 
     // Temperature data
-    const indoorTemp = da31Data.indoor_temp !== undefined ?
-      da31Data.indoor_temp : null;
+    const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp : null;
 
-    const outdoorTemp = da31Data.outdoor_temp !== undefined ?
-      da31Data.outdoor_temp : null;
+    const outdoorTemp = da31Data.outdoor_temp !== undefined ? da31Data.outdoor_temp : null;
 
-    const supplyTemp = da31Data.supply_temp !== undefined ?
-      da31Data.supply_temp : null;
+    const supplyTemp = da31Data.supply_temp !== undefined ? da31Data.supply_temp : null;
 
-    const exhaustTemp = da31Data.exhaust_temp !== undefined ?
-      da31Data.exhaust_temp : null;
+    const exhaustTemp = da31Data.exhaust_temp !== undefined ? da31Data.exhaust_temp : null;
 
     // Humidity data
-    const indoorHumidity = da31Data.indoor_humidity !== undefined ?
-      da31Data.indoor_humidity : null;
+    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity : null;
 
-    const outdoorHumidity = da31Data.outdoor_humidity !== undefined ?
-      da31Data.outdoor_humidity : null;
+    const outdoorHumidity =
+      da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity : null;
 
-    // Use ramses_extras absolute humidity sensors (if available) - raw values only
-    const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state ?
-      (isNaN(parseFloat(hass.states[config.indoor_abs_humid_entity].state)) ?
-        null : parseFloat(hass.states[config.indoor_abs_humid_entity].state)) : null;
-    const outdoorAbsHumidity = hass.states[config.outdoor_abs_humid_entity]?.state ?
-      (isNaN(parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) ?
-        null : parseFloat(hass.states[config.outdoor_abs_humid_entity].state)) : null;
+    // Use ramses_extras absolute humidity sensor (if available) - raw values only
+    const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state
+      ? isNaN(parseFloat(hass.states[config.indoor_abs_humid_entity].state))
+        ? null
+        : parseFloat(hass.states[config.indoor_abs_humid_entity].state)
+      : null;
+    const outdoorAbsHumidity = hass.states[config.outdoor_abs_humid_entity]?.state
+      ? isNaN(parseFloat(hass.states[config.outdoor_abs_humid_entity].state))
+        ? null
+        : parseFloat(hass.states[config.outdoor_abs_humid_entity].state)
+      : null;
 
     // Get 10D0 data for filter information
     const da10D0Data = this.get10D0Data();
 
     // Fan data
     const rawData = {
-      indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
-      indoorAbsHumidity, outdoorAbsHumidity,  // From integration sensors
-      supplyTemp, exhaustTemp,
+      indoorTemp,
+      outdoorTemp,
+      indoorHumidity,
+      outdoorHumidity,
+      indoorAbsHumidity,
+      outdoorAbsHumidity, // From integration sensor
+      supplyTemp,
+      exhaustTemp,
       // Fan data
       fanSpeed: this._getFanSpeed(da31Data),
       fanMode: this._getFanMode(da31Data),
       // Flow data
-      flowRate: da31Data.supply_flow !== undefined ?
-        da31Data.supply_flow : null,
-      exhaustFlowRate: da31Data.exhaust_flow !== undefined ?
-        da31Data.exhaust_flow : null,
+      flowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow : null,
+      exhaustFlowRate: da31Data.exhaust_flow !== undefined ? da31Data.exhaust_flow : null,
       // Other data - raw values only
-      co2Level: hass.states[config.co2_entity]?.state ?
-        (isNaN(parseFloat(hass.states[config.co2_entity].state)) ?
-          null : parseFloat(hass.states[config.co2_entity].state)) : null,
+      co2Level: hass.states[config.co2_entity]?.state
+        ? isNaN(parseFloat(hass.states[config.co2_entity].state))
+          ? null
+          : parseFloat(hass.states[config.co2_entity].state)
+        : null,
       // Dehumidifier entities (only if available)
-      dehumMode: dehumEntitiesAvailable ? (hass.states[config.dehum_mode_entity]?.state || 'off') : null,
-      dehumActive: dehumEntitiesAvailable ? (hass.states[config.dehum_active_entity]?.state || 'off') : null,
+      dehumMode: dehumEntitiesAvailable
+        ? hass.states[config.dehum_mode_entity]?.state || 'off'
+        : null,
+      dehumActive: dehumEntitiesAvailable
+        ? hass.states[config.dehum_active_entity]?.state || 'off'
+        : null,
       // Comfort temperature entity (will be available when created)
-      comfortTemp: hass.states[config.comfort_temp_entity]?.state ?
-        (isNaN(parseFloat(hass.states[config.comfort_temp_entity].state)) ?
-          null : parseFloat(hass.states[config.comfort_temp_entity].state)) : null,
+      comfortTemp: hass.states[config.comfort_temp_entity]?.state
+        ? isNaN(parseFloat(hass.states[config.comfort_temp_entity].state))
+          ? null
+          : parseFloat(hass.states[config.comfort_temp_entity].state)
+        : null,
       // Bypass position
-      bypassPosition: da31Data.bypass_position !== undefined ?
-        da31Data.bypass_position : null,
-      dehumEntitiesAvailable,  // Add availability flag
-      dataSource31DA: da31Data.source === '31DA_message',  // Flag for UI
+      bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position : null,
+      dehumEntitiesAvailable, // Add availability flag
+      dataSource31DA: da31Data.source === '31DA_message', // Flag for UI
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
       // Filter days remaining from 10D0 data
-      filterDaysRemaining: da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
+      filterDaysRemaining:
+        da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
       // efficiency: 75   // Remove hardcoded value - let template calculate it
     };
 
     // create templateData for rendering
     const templateData = createTemplateData(rawData);
     // Add airflow SVG to template data
-    const selectedSvg = rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
+    const selectedSvg =
+      rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
 
     // Generate HTML using template functions
     const cardHtml = [
       createCardHeader(CARD_STYLE),
       createTopSection(templateData),
-      createControlsSection(dehumEntitiesAvailable, config),  // Pass availability flag and config
-      createCardFooter()
+      createControlsSection(dehumEntitiesAvailable, config), // Pass availability flag and config
+      createCardFooter(),
     ].join('');
 
     this.shadowRoot.innerHTML = cardHtml;
@@ -333,7 +372,7 @@ class HvacFanCard extends HTMLElement {
         console.error('HvacFanCardEditor is not defined on window');
         return null;
       }
-      return document.createElement("hvac-fan-card-editor");
+      return document.createElement('hvac-fan-card-editor');
     } catch (error) {
       console.error('Error creating config element:', error);
       return null;
@@ -347,7 +386,6 @@ class HvacFanCard extends HTMLElement {
 
   // Validate all required entities are available
   validateEntities() {
-
     // Note: config and hass are already validated in render() before this is called
     const config = this.config;
     const hass = this._hass;
@@ -367,7 +405,6 @@ class HvacFanCard extends HTMLElement {
     return dehumValidation.available;
   }
 
-
   // Toggle between normal and parameter edit modes
   async toggleParameterMode() {
     this.parameterEditMode = !this.parameterEditMode;
@@ -386,7 +423,7 @@ class HvacFanCard extends HTMLElement {
   async fetchParameterSchema() {
     try {
       const result = await callWebSocket(this._hass, {
-        type: "ramses_extras/get_2411_schema"
+        type: 'ramses_extras/get_2411_schema',
       });
       // console.log('Parameter schema received:', Object.keys(result));
       return result;
@@ -404,21 +441,24 @@ class HvacFanCard extends HTMLElement {
     // Get all states and filter for this device's number entities
     const devicePrefix = `number.${this.config.device_id.replace(/:/g, '_')}_`;
 
-    Object.keys(this._hass.states).forEach(entityId => {
+    Object.keys(this._hass.states).forEach((entityId) => {
       if (entityId.startsWith(devicePrefix) && entityId.startsWith('number.')) {
         const entity = this._hass.states[entityId];
         const entityName = entityId.replace(devicePrefix, '');
 
         // Try to get description from 2411 schema if it's a param_ entity
-        let description = entity.attributes?.friendly_name || entityName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        let description =
+          entity.attributes?.friendly_name ||
+          entityName.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 
         if (entityName.startsWith('param_')) {
           const paramKey = entityName.replace('param_', '').toUpperCase();
           if (this.parameterSchema && this.parameterSchema[paramKey]) {
-            description = this.parameterSchema[paramKey].description || this.parameterSchema[paramKey].name;
+            description =
+              this.parameterSchema[paramKey].description || this.parameterSchema[paramKey].name;
           } else {
             // Fallback: try to create a readable description from the parameter key
-            description = paramKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            description = paramKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
             console.log(`📋 No schema found for ${paramKey}, using fallback: ${description}`);
           }
         }
@@ -432,7 +472,7 @@ class HvacFanCard extends HTMLElement {
           default_value: entity.attributes?.min || 0,
           current_value: entity.state,
           data_type: '01', // Generic number
-          precision: entity.attributes?.step || 1
+          precision: entity.attributes?.step || 1,
         };
 
         // Override with schema data if available
@@ -492,7 +532,7 @@ class HvacFanCard extends HTMLElement {
     // Register for real-time message updates if we have a device ID
     if (this._config?.device_id) {
       const messageHelper = getRamsesMessageBroker();
-      messageHelper.addListener(this, this._config.device_id, ["31DA", "10D0"]);
+      messageHelper.addListener(this, this._config.device_id, ['31DA', '10D0']);
 
       // Request initial data when card is fully loaded
       this.requestInitialData();
@@ -609,7 +649,6 @@ class HvacFanCard extends HTMLElement {
     return da31Data.fan_info || null;
   }
 
-
   // Attach event listeners for normal mode
   attachNormalModeListeners() {
     // Settings icon in top section
@@ -625,7 +664,7 @@ class HvacFanCard extends HTMLElement {
     // Control buttons - only attach listeners to buttons without existing onclick handlers
     const controlButtons = this.shadowRoot?.querySelectorAll('.control-button');
     if (controlButtons) {
-      controlButtons.forEach(button => {
+      controlButtons.forEach((button) => {
         // Skip buttons that already have onclick handlers
         if (!button.getAttribute('onclick')) {
           button.addEventListener('click', (e) => {
@@ -634,7 +673,10 @@ class HvacFanCard extends HTMLElement {
 
             const onclick = button.getAttribute('onclick');
             if (onclick) {
-              const fn = new Function('event', `try { ${onclick} } catch(e) { console.error('Error in button handler:', e); }`);
+              const fn = new Function(
+                'event',
+                `try { ${onclick} } catch(e) { console.error('Error in button handler:', e); }`
+              );
               fn.call(button, e);
             }
           });
@@ -673,7 +715,7 @@ class HvacFanCard extends HTMLElement {
     const deviceParamButtons = this.shadowRoot?.querySelectorAll('.param-update-btn[data-param]');
 
     if (deviceParamButtons) {
-      deviceParamButtons.forEach(button => {
+      deviceParamButtons.forEach((button) => {
         button.addEventListener('click', (e) => {
           const paramKey = button.getAttribute('data-param');
           const input = button.previousElementSibling;
@@ -707,14 +749,14 @@ if (!customElements.get('hvac-fan-card')) {
 }
 
 // Make functions globally available for onclick handlers
-window.toggleParameterMode = function() {
+window.toggleParameterMode = function () {
   const card = document.querySelector('hvac-fan-card');
   if (card) {
     card.toggleParameterMode();
   }
 };
 
-window.updateParameter = function(paramKey, newValue) {
+window.updateParameter = function (paramKey, newValue) {
   const card = document.querySelector('hvac-fan-card');
   if (card) {
     card.updateParameter(paramKey, newValue);
@@ -722,7 +764,7 @@ window.updateParameter = function(paramKey, newValue) {
 };
 
 // controls min/max values
-window.updateHumidityControl = function(entityId, newValue, buttonElement) {
+window.updateHumidityControl = function (entityId, newValue, buttonElement) {
   // console.log(`🔧 updateHumidityControl called with:`, { entityId, newValue, buttonElement });
 
   // Find the card element using the button element (similar to send_command)
@@ -735,29 +777,32 @@ window.updateHumidityControl = function(entityId, newValue, buttonElement) {
     // console.log(`📡 Calling number.set_value service for ${entityId} = ${newValue}`);
 
     // Call Home Assistant service to update the entity
-    element._hass.callService('number', 'set_value', {
-      entity_id: entityId,
-      value: parseFloat(newValue)
-    }).then(() => {
-      console.log(`✅ Humidity control updated: ${entityId} = ${newValue}`);
-      // Clear previous states to force update detection
-      element._prevStates = null;
-      // Trigger re-render
-      if (element._hass && element.config) {
-        element.render();
-      }
-    }).catch(error => {
-      console.error(`❌ Failed to update humidity control ${entityId}:`, error);
-    });
+    element._hass
+      .callService('number', 'set_value', {
+        entity_id: entityId,
+        value: parseFloat(newValue),
+      })
+      .then(() => {
+        console.log(`✅ Humidity control updated: ${entityId} = ${newValue}`);
+        // Clear previous states to force update detection
+        element._prevStates = null;
+        // Trigger re-render
+        if (element._hass && element.config) {
+          element.render();
+        }
+      })
+      .catch((error) => {
+        console.error(`❌ Failed to update humidity control ${entityId}:`, error);
+      });
   } else {
     console.error(`❌ Cannot update humidity control - missing card or hass:`, {
       element: !!element,
-      hass: element?._hass
+      hass: element?._hass,
     });
   }
 };
 
-window.toggleDehumidify = function(entityId, buttonElement) {
+window.toggleDehumidify = function (entityId, buttonElement) {
   // console.log(`🔧 toggleDehumidify called with:`, { entityId, buttonElement });
 
   // Find the card element using the button element (similar to send_command)
@@ -770,36 +815,38 @@ window.toggleDehumidify = function(entityId, buttonElement) {
     // console.log(`📡 Toggling dehumidify switch ${entityId}`);
 
     // Toggle the switch using Home Assistant's toggle service
-    element._hass.callService('switch', 'toggle', {
-      entity_id: entityId
-    }).then(() => {
-      // console.log(`✅ Dehumidify toggled: ${entityId}`);
+    element._hass
+      .callService('switch', 'toggle', {
+        entity_id: entityId,
+      })
+      .then(() => {
+        // console.log(`✅ Dehumidify toggled: ${entityId}`);
 
-      // Clear previous states to force update detection
-      element._prevStates = null;
+        // Clear previous states to force update detection
+        element._prevStates = null;
 
-      // Wait a brief moment for the entity state to update, then trigger re-render
-      setTimeout(() => {
-        // console.log(`🔄 Re-rendering card after dehumidify toggle`);
-        if (element._hass && element.config) {
-          element.render();
-        }
-      }, 100); // 100ms delay to ensure state is updated
-
-    }).catch(error => {
-      console.error(`❌ Failed to toggle dehumidify ${entityId}:`, error);
-    });
+        // Wait a brief moment for the entity state to update, then trigger re-render
+        setTimeout(() => {
+          // console.log(`🔄 Re-rendering card after dehumidify toggle`);
+          if (element._hass && element.config) {
+            element.render();
+          }
+        }, 100); // 100ms delay to ensure state is updated
+      })
+      .catch((error) => {
+        console.error(`❌ Failed to toggle dehumidify ${entityId}:`, error);
+      });
   } else {
     console.error(`❌ Cannot toggle dehumidify - missing card or hass:`, {
       element: !!element,
-      hass: element?._hass
+      hass: element?._hass,
     });
   }
 };
 
 // Note: window.send_command is defined below
 
-window.send_command = function(commandKey, deviceId, buttonElement) {
+window.send_command = function (commandKey, deviceId, buttonElement) {
   // console.log(`window.send_command called with: ${commandKey}, deviceId: ${deviceId}, buttonElement:`, buttonElement);
 
   // Get the command definition
@@ -816,7 +863,7 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
   }
 
   if (element && element._hass) {
-//    console.log('Found HASS instance in host element, using proper from_id');
+    //    console.log('Found HASS instance in host element, using proper from_id');
 
     // Use the imported helper functions directly with the element's hass instance
     (async () => {
@@ -826,7 +873,9 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
         try {
           remId = await getBoundRemDevice(element._hass, deviceId);
           if (!remId) {
-            console.warn('No bound REM found, add a "bound" REM device to Ramses RF Known Devices Config.');
+            console.warn(
+              'No bound REM found, add a "bound" REM device to Ramses RF Known Devices Config.'
+            );
           }
         } catch (error) {
           console.warn(`WebSocket error getting bound REM: ${error.message}.`);
@@ -834,7 +883,14 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
         }
 
         // Send the packet with proper from_id
-        await sendPacket(element._hass, deviceId, remId, command.verb, command.code, command.payload);
+        await sendPacket(
+          element._hass,
+          deviceId,
+          remId,
+          command.verb,
+          command.code,
+          command.payload
+        );
         // console.log(`Successfully sent ${commandKey} command`);
 
         // After sending command, wait a bit then request status update and refresh entity states
@@ -877,9 +933,10 @@ window.send_command = function(commandKey, deviceId, buttonElement) {
 window.customCards = window.customCards || [];
 
 window.customCards.push({
-  type: "hvac-fan-card",
-  name: "Hvac Fan Control Card",
-  description: "Advanced control card for Orcon or other ventilation systems with multi-language support",
+  type: 'hvac-fan-card',
+  name: 'Hvac Fan Control Card',
+  description:
+    'Advanced control card for Orcon or other ventilation systems with multi-language support',
   preview: true, // Shows in card picker
-  documentationURL: "https://github.com/wimpie70/ramses_extras"
+  documentationURL: 'https://github.com/wimpie70/ramses_extras',
 });

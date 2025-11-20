@@ -35,38 +35,53 @@ class TestDefaultEntitiesStartup:
             with patch.object(
                 entity_manager, "_get_devices_for_feature", return_value=[mock_device]
             ):
-                with patch(
-                    "custom_components.ramses_extras.framework.helpers.entity.manager.get_feature_entity_mappings",
+                with patch.object(
+                    entity_manager,
+                    "_get_required_entities_for_feature",
                     return_value={
-                        "indoor_absolute_humidity": "sensor.indoor_absolute_humidity_32:153289",  # noqa: E501
-                        "outdoor_absolute_humidity": "sensor.outdoor_absolute_humidity_32:153289",  # noqa: E501
+                        "sensor": [
+                            "indoor_absolute_humidity",
+                            "outdoor_absolute_humidity",
+                        ]
                     },
                 ):
-                    # Build catalog with default enabled - use AVAILABLE_FEATURES
-                    current_features = {"default": True, "humidity_control": False}
+                    with patch.object(
+                        entity_manager,
+                        "_get_all_existing_entities",
+                        return_value=set(),
+                    ):
+                        # Build catalog with default enabled - use AVAILABLE_FEATURES
+                        current_features = {
+                            "default": True,
+                            "humidity_control": False,
+                        }
 
-                    await entity_manager.build_entity_catalog(
-                        AVAILABLE_FEATURES, current_features
-                    )
-
-                    # Update targets to establish what should exist
-                    target_features = {"default": True, "humidity_control": False}
-                    entity_manager.update_feature_targets(target_features)
-
-                    # Verify: entities should be in creation list since they don't exist
-                    to_create = entity_manager.get_entities_to_create()
-
-                    # The default entities should be found in creation list
-                    expected_entities = [
-                        "sensor.indoor_absolute_humidity_32:153289",
-                        "sensor.outdoor_absolute_humidity_32:153289",
-                    ]
-
-                    for expected_entity in expected_entities:
-                        assert expected_entity in to_create, (
-                            f"Expected {expected_entity} to be in creation list. "
-                            f"Full creation list: {to_create}"
+                        await entity_manager.build_entity_catalog(
+                            AVAILABLE_FEATURES, current_features
                         )
+
+                        # Update targets to establish what should exist
+                        target_features = {
+                            "default": True,
+                            "humidity_control": False,
+                        }
+                        entity_manager.update_feature_targets(target_features)
+
+                        # Verify: entities should be in creation list since they
+                        # don't exist
+                        to_create = entity_manager.get_entities_to_create()
+
+                        # The default entities should be found in creation list
+                        expected_entities = [
+                            "sensor.indoor_absolute_humidity_32_153289",
+                            "sensor.outdoor_absolute_humidity_32_153289",
+                        ]
+
+                        for expected_entity in expected_entities:
+                            assert expected_entity in to_create, (
+                                f"Expected {expected_entity} to be in creation list. "
+                                f"Full creation list: {to_create}"
+                            )
 
     @pytest.mark.asyncio
     async def test_startup_validation_matches_expected_behavior(self):
@@ -197,31 +212,39 @@ class TestDefaultEntitiesStartup:
             with patch.object(
                 entity_manager, "_get_devices_for_feature", return_value=[mock_device]
             ):
-                with patch(
-                    "custom_components.ramses_extras.framework.helpers.entity.manager.get_feature_entity_mappings",
+                with patch.object(
+                    entity_manager,
+                    "_get_required_entities_for_feature",
                     return_value={
-                        "indoor_absolute_humidity": "sensor.indoor_absolute_humidity_32:153289",  # noqa: E501
-                        "outdoor_absolute_humidity": "sensor.outdoor_absolute_humidity_32:153289",  # noqa: E501
+                        "sensor": [
+                            "indoor_absolute_humidity",
+                            "outdoor_absolute_humidity",
+                        ]
                     },
                 ):
-                    # Build catalog - this should now work with AVAILABLE_FEATURES
-                    current_features = {"default": True}
-                    await entity_manager.build_entity_catalog(
-                        AVAILABLE_FEATURES, current_features
-                    )
+                    with patch.object(
+                        entity_manager,
+                        "_get_all_existing_entities",
+                        return_value=set(),
+                    ):
+                        # Build catalog - this should now work with AVAILABLE_FEATURES
+                        current_features = {"default": True}
+                        await entity_manager.build_entity_catalog(
+                            AVAILABLE_FEATURES, current_features
+                        )
 
-                    # Check that entities were found
-                    assert len(entity_manager.all_possible_entities) > 0
+                        # Check that entities were found
+                        assert len(entity_manager.all_possible_entities) > 0
 
-                    # Update targets to establish what should exist
-                    target_features = {"default": True}
-                    entity_manager.update_feature_targets(target_features)
+                        # Update targets to establish what should exist
+                        target_features = {"default": True}
+                        entity_manager.update_feature_targets(target_features)
 
-                    # Get entities to create
-                    to_create = entity_manager.get_entities_to_create()
+                        # Get entities to create
+                        to_create = entity_manager.get_entities_to_create()
 
-                    # We should have found some entities
-                    #  (even if not the exact ones we expected)
-                    # The important thing is that the EntityManager
+                        # We should have found some entities
+                        #  (even if not the exact ones we expected)
+                        # The important thing is that the EntityManager
                     #  doesn't crash and finds entities
                     assert len(to_create) >= 0

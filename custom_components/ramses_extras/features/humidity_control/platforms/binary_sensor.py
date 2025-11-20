@@ -24,7 +24,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control binary sensor platform."""
-    _LOGGER.info("Setting up humidity control binary sensors")
+    _LOGGER.info("Setting up humidity control binary sensor")
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
@@ -33,25 +33,25 @@ async def async_setup_entry(
         f"devices: {devices}"
     )
 
-    binary_sensors = []
+    binary_sensor = []
     for device_id in devices:
-        # Create humidity control binary sensors
-        device_sensors = await create_humidity_control_binary_sensors(
+        # Create humidity control binary sensor
+        device_sensor = await create_humidity_control_binary_sensor(
             hass, device_id, config_entry
         )
-        binary_sensors.extend(device_sensors)
+        binary_sensor.extend(device_sensor)
         _LOGGER.info(
-            f"Created {len(device_sensors)} binary sensors for device {device_id}"
+            f"Created {len(device_sensor)} binary sensor for device {device_id}"
         )
 
-    _LOGGER.info(f"Total binary sensors created: {len(binary_sensors)}")
-    async_add_entities(binary_sensors, True)
+    _LOGGER.info(f"Total binary sensor created: {len(binary_sensor)}")
+    async_add_entities(binary_sensor, True)
 
 
-async def create_humidity_control_binary_sensors(
+async def create_humidity_control_binary_sensor(
     hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
 ) -> list[BinarySensorEntity]:
-    """Create humidity control binary sensors for a device.
+    """Create humidity control binary sensor for a device.
 
     Args:
         hass: Home Assistant instance
@@ -61,28 +61,22 @@ async def create_humidity_control_binary_sensors(
     Returns:
         List of binary sensor entities
     """
-    # Import entity configurations from management layer
-    from ..entities import HumidityEntities
+    # Import entity configurations from registry
+    from ..const import HUMIDITY_BOOLEAN_CONFIGS
 
-    entity_manager = HumidityEntities(hass, config_entry)
-    binary_sensors = []
+    binary_sensor = []
 
     # Create dehumidifying_active binary sensor
-    config = entity_manager.get_entity_config("binary_sensors", "dehumidifying_active")
-    if config:
-        binary_sensor = HumidityControlBinarySensor(
-            hass, device_id, "dehumidifying_active", config
-        )
-        binary_sensors.append(binary_sensor)
+    for binary_type, config in HUMIDITY_BOOLEAN_CONFIGS.items():
+        if config.get("supported_device_types") and "HvacVentilator" in config.get(
+            "supported_device_types", []
+        ):
+            binary_sensor_entity = HumidityControlBinarySensor(
+                hass, device_id, binary_type, config
+            )
+            binary_sensor.append(binary_sensor_entity)
 
-    return binary_sensors
-
-
-def create_humidity_control_binary_sensor(
-    hass: HomeAssistant, device_id: str, binary_type: str, config: dict[str, Any]
-) -> BinarySensorEntity:
-    """Create a humidity control binary sensor (legacy function for compatibility)."""
-    return HumidityControlBinarySensor(hass, device_id, binary_type, config)
+    return binary_sensor
 
 
 class HumidityControlBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
@@ -252,5 +246,4 @@ __all__ = [
     "HumidityControlBinarySensor",
     "async_setup_entry",
     "create_humidity_control_binary_sensor",
-    "create_humidity_control_binary_sensors",
 ]

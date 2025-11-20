@@ -8,6 +8,8 @@ Note: Base entity classes are now in framework.base_classes.base_entity
 to maintain proper architectural separation.
 """
 
+import asyncio
+import importlib
 import logging
 import re
 from typing import Any, cast
@@ -15,31 +17,92 @@ from typing import Any, cast
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
 
-from custom_components.ramses_extras.const import AVAILABLE_FEATURES
+# AVAILABLE_FEATURES import removed to avoid blocking imports
+# from ....const import AVAILABLE_FEATURES
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def _get_required_entities_from_feature(feature_id: str) -> dict[str, list[str]]:
+    """Get required entities from the feature's own const.py module.
+
+    Args:
+        feature_id: Feature identifier
+
+    Returns:
+        Dictionary mapping entity types to entity names
+    """
+    try:
+        # Run the blocking import operation in a thread pool
+        loop = asyncio.get_event_loop()
+        required_entities = await loop.run_in_executor(
+            None, _import_required_entities_sync, feature_id
+        )
+
+        _LOGGER.debug(f"Found required entities for {feature_id}: {required_entities}")
+        return required_entities
+    except Exception as e:
+        _LOGGER.debug(f"Could not get required entities for {feature_id}: {e}")
+        return {}
+
+
+def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
+    """Synchronous import of required entities (blocking operation).
+
+    Args:
+        feature_id: Feature identifier
+
+    Returns:
+        Dictionary mapping entity types to entity names
+    """
+    # Import the feature's const module
+    feature_module_path = f"custom_components.ramses_extras.features.{feature_id}.const"
+
+    feature_module = importlib.import_module(feature_module_path)
+
+    # First try to get required_entities from the const data
+    const_key = f"{feature_id.upper()}_CONST"
+    if hasattr(feature_module, const_key):
+        const_data = getattr(feature_module, const_key, {})
+        required_entities: dict[str, list[str]] = const_data.get(
+            "required_entities", {}
+        )
+        if required_entities:
+            return required_entities
+
+    # Fallback to device entity mapping for backwards compatibility
+    mapping_key = f"{feature_id.upper()}_DEVICE_ENTITY_MAPPING"
+    device_mapping = getattr(feature_module, mapping_key, {})
+
+    # Convert device mapping to required entities format
+    required_entities = {}
+    for device_type, entity_names in device_mapping.items():
+        entity_type = f"{device_type.lower()}s"  # Convert to plural
+        required_entities[entity_type] = entity_names
+
+    return required_entities
 
 
 def _singularize_entity_type(entity_type: str) -> str:
     """Convert plural entity type to singular form.
 
     Args:
-        entity_type: Plural entity type (e.g., "switches", "sensors", "numbers")
+        entity_type: Plural entity type (e.g., "switch", "sensor", "number")
 
     Returns:
         Singular entity type (e.g., "switch", "sensor", "number")
     """
     # Handle common entity type plurals
     entity_type_mapping = {
-        "sensors": "sensor",
-        "switches": "switch",
-        "binary_sensors": "binary_sensor",
-        "numbers": "number",
+        "sensor": "sensor",
+        "switch": "switch",
+        "binary_sensor": "binary_sensor",
+        "number": "number",
         "devices": "device",
         "entities": "entity",
     }
 
-    return entity_type_mapping.get(entity_type, entity_type.rstrip("s"))
+    return entity_type_mapping.get(entity_type, entity_type)
 
 
 class EntityHelpers:
@@ -126,7 +189,7 @@ class EntityHelpers:
         return matching_entities
 
     @staticmethod
-    def generate_entity_patterns_for_feature(feature_id: str) -> list[str]:
+    async def generate_entity_patterns_for_feature(feature_id: str) -> list[str]:
         """Generate entity patterns for a specific feature.
 
         Args:
@@ -136,8 +199,7 @@ class EntityHelpers:
             List of entity patterns
         """
         patterns = []
-        feature = AVAILABLE_FEATURES.get(feature_id, {})
-        required_entities = feature.get("required_entities", {})
+        required_entities = await _get_required_entities_from_feature(feature_id)
 
         for entity_type, entity_names in required_entities.items():
             entity_base_type = _singularize_entity_type(entity_type)
@@ -200,39 +262,52 @@ class EntityHelpers:
 
     @staticmethod
     def get_all_required_entity_ids_for_device(device_id: str) -> list[str]:
-        """Get all required entity IDs for a device.
+        """Get all required entity IDs for a device based on its capabilities.
+
+        This method uses the registry system to get all possible entities
+        for a device, regardless of which features are enabled.
 
         Args:
-            device_id: Device identifier
+            device_id: Device identifier in underscore format (e.g., "32_153289")
 
         Returns:
-            List of all required entity IDs for the device
+            List of all required entity IDs for this device
         """
-        entity_ids = []
+        entity_ids: list[str] = []
 
-        # Define the standard entity types and names for humidity control
-        entity_types = {
-            "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
-            "number": [
-                "relative_humidity_minimum",
-                "relative_humidity_maximum",
-                "absolute_humidity_offset",
-            ],
-            "switch": ["dehumidify"],
-            "binary_sensor": ["dehumidifying_active"],
-        }
+        # Use the registry system to get all entity configs
+        # This is feature-agnostic and will get all possible entities
+        try:
+            # Import the registry at runtime to avoid blocking imports
+            from custom_components.ramses_extras.extras_registry import (
+                extras_registry,
+            )
 
-        for entity_type, entity_names in entity_types.items():
-            for entity_name in entity_names:
-                entity_id = EntityHelpers.generate_entity_name_from_template(
-                    entity_type, entity_name, device_id
-                )
-                entity_ids.append(entity_id)
+            all_configs = {
+                "sensor": extras_registry.get_all_sensor_configs(),
+                "switch": extras_registry.get_all_switch_configs(),
+                "number": extras_registry.get_all_number_configs(),
+                "binary_sensor": extras_registry.get_all_boolean_configs(),
+            }
+            for entity_type, configs in all_configs.items():
+                for entity_name in configs.keys():
+                    entity_id = EntityHelpers.generate_entity_name_from_template(
+                        entity_type, entity_name, device_id
+                    )
+                    if entity_id:
+                        entity_ids.append(entity_id)
+
+        except Exception as e:
+            _LOGGER.debug(f"Could not get entity IDs from registry: {e}")
+            # Fallback: return empty list if registry is not available
+            # This maintains backward compatibility while avoiding hardcoded values
 
         return entity_ids
 
 
-def get_feature_entity_mappings(feature_id: str, device_id: str) -> dict[str, str]:
+async def get_feature_entity_mappings(
+    feature_id: str, device_id: str
+) -> dict[str, str]:
     """Get entity mappings for a feature and device.
 
     Args:
@@ -244,39 +319,95 @@ def get_feature_entity_mappings(feature_id: str, device_id: str) -> dict[str, st
     """
     mappings: dict[str, str] = {}
 
-    # Get feature definition
-    feature = AVAILABLE_FEATURES.get(feature_id, {})
-    if not feature:
-        _LOGGER.warning(f"Feature {feature_id} not found in AVAILABLE_FEATURES")
+    # Get feature entity mappings from the feature's own module
+    feature_entity_mappings = await _get_entity_mappings_from_feature(
+        feature_id, device_id
+    )
+    mappings.update(feature_entity_mappings)
+
+    _LOGGER.debug(f"Feature {feature_id} mappings for {device_id}: {mappings}")
+    return mappings
+
+
+async def _get_entity_mappings_from_feature(
+    feature_id: str, device_id: str
+) -> dict[str, str]:
+    """Get entity mappings from the feature's own const.py module.
+
+    Args:
+        feature_id: Feature identifier
+        device_id: Device identifier (can contain colons like "32:153289")
+
+    Returns:
+        Dictionary mapping state names to entity IDs
+    """
+    try:
+        # Run the blocking import operation in a thread pool
+        loop = asyncio.get_event_loop()
+        mappings = await loop.run_in_executor(
+            None, _import_entity_mappings_sync, feature_id, device_id
+        )
+
+        _LOGGER.debug(
+            f"Found entity mappings for {feature_id}: {list(mappings.keys())}"
+        )
         return mappings
+    except Exception as e:
+        _LOGGER.debug(f"Could not get entity mappings for {feature_id}: {e}")
+        return {}
 
-    # Check if feature has custom entity mappings
-    entity_mappings = feature.get("entity_mappings", {})
-    if entity_mappings:
-        # Convert device_id with colons to underscores for entity ID generation
-        device_id_underscore = device_id.replace(":", "_")
 
+def _import_entity_mappings_sync(feature_id: str, device_id: str) -> dict[str, str]:
+    """Synchronous import of entity mappings (blocking operation).
+
+    Args:
+        feature_id: Feature identifier
+        device_id: Device identifier (can contain colons like "32:153289")
+
+    Returns:
+        Dictionary mapping state names to entity IDs
+    """
+    # Import the feature's const module
+    feature_module_path = f"custom_components.ramses_extras.features.{feature_id}.const"
+
+    feature_module = importlib.import_module(feature_module_path)
+
+    mappings: dict[str, str] = {}
+    device_id_underscore = device_id.replace(":", "_")
+
+    # First try to get entity mappings from the const data
+    const_key = f"{feature_id.upper()}_CONST"
+    if hasattr(feature_module, const_key):
+        const_data = getattr(feature_module, const_key, {})
+        entity_mappings = const_data.get("entity_mappings", {})
         for state_key, entity_template in entity_mappings.items():
             # Replace {device_id} placeholder with the actual device_id
             entity_id = entity_template.replace("{device_id}", device_id_underscore)
             mappings[state_key] = entity_id
 
-        _LOGGER.debug(f"Feature {feature_id} mappings for {device_id}: {mappings}")
-        return mappings
+    # Check for feature-specific entity templates in various config types
+    config_types = [
+        "SENSOR_CONFIGS",
+        "SWITCH_CONFIGS",
+        "NUMBER_CONFIGS",
+        "BOOLEAN_CONFIGS",
+    ]
 
-    # Fallback to generic implementation using required_entities
-    required_entities = feature.get("required_entities", {})
+    for config_type in config_types:
+        config_key = f"{feature_id.upper()}_{config_type}"
+        if hasattr(feature_module, config_key):
+            configs = getattr(feature_module, config_key, {})
 
-    # Generate entity IDs for each required entity type
-    for entity_type, entity_names in required_entities.items():
-        entity_base_type = _singularize_entity_type(entity_type)
-        for entity_name in entity_names:
-            entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
-            # Use the entity_name as the state key
-            state_key = entity_name
-            mappings[state_key] = entity_id
+            for entity_name, config in configs.items():
+                entity_template = config.get("entity_template", "")
+                if entity_template:
+                    # Replace {device_id} placeholder with the actual device_id
+                    entity_id = entity_template.replace(
+                        "{device_id}", device_id_underscore
+                    )
+                    # Use the entity_name as the state key
+                    mappings[entity_name] = entity_id
 
-    _LOGGER.debug(f"Feature {feature_id} generic mappings for {device_id}: {mappings}")
     return mappings
 
 
@@ -337,10 +468,10 @@ def filter_entities_by_patterns(entities: list[Any], patterns: list[str]) -> lis
     return EntityHelpers.filter_entities_by_patterns(entities, patterns)
 
 
-def generate_entity_patterns_for_feature(feature_id: str) -> list[str]:
+async def generate_entity_patterns_for_feature(feature_id: str) -> list[str]:
     """Generate entity patterns for a specific feature.
 
     This is a convenience wrapper around
     EntityHelpers.generate_entity_patterns_for_feature.
     """
-    return EntityHelpers.generate_entity_patterns_for_feature(feature_id)
+    return await EntityHelpers.generate_entity_patterns_for_feature(feature_id)

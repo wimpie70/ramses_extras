@@ -31,21 +31,21 @@ async def async_setup_entry(
         f"Humidity control number platform: found {len(devices)} devices: {devices}"
     )
 
-    numbers = []
+    number = []
     for device_id in devices:
-        # Create humidity control numbers
-        device_numbers = await create_humidity_numbers(hass, device_id, config_entry)
-        numbers.extend(device_numbers)
-        _LOGGER.info(f"Created {len(device_numbers)} numbers for device {device_id}")
+        # Create humidity control number
+        device_number = await create_humidity_number(hass, device_id, config_entry)
+        number.extend(device_number)
+        _LOGGER.info(f"Created {len(device_number)} number for device {device_id}")
 
-    _LOGGER.info(f"Total numbers created: {len(numbers)}")
-    async_add_entities(numbers, True)
+    _LOGGER.info(f"Total number created: {len(number)}")
+    async_add_entities(number, True)
 
 
-async def create_humidity_numbers(
+async def create_humidity_number(
     hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
 ) -> list[NumberEntity]:
-    """Create humidity control numbers for a device.
+    """Create humidity control number for a device.
 
     Args:
         hass: Home Assistant instance
@@ -55,33 +55,22 @@ async def create_humidity_numbers(
     Returns:
         List of number entities
     """
-    # Import entity configurations from management layer
-    from ..entities import HumidityEntities
+    # Import entity configurations from registry
+    from ..const import HUMIDITY_NUMBER_CONFIGS
 
-    entity_manager = HumidityEntities(hass, config_entry)
-    numbers = []
+    number_list = []
 
     # Create configuration number entities
-    for number_type in [
-        "relative_humidity_minimum",
-        "relative_humidity_maximum",
-        "absolute_humidity_offset",
-    ]:
-        config = entity_manager.get_entity_config("numbers", number_type)
-        if config:
-            number = HumidityControlNumber(
+    for number_type, config in HUMIDITY_NUMBER_CONFIGS.items():
+        if config.get("supported_device_types") and "HvacVentilator" in config.get(
+            "supported_device_types", []
+        ):
+            number_entity = HumidityControlNumber(
                 hass, device_id, number_type, config, config_entry
             )
-            numbers.append(number)
+            number_list.append(number_entity)
 
-    return numbers
-
-
-def create_humidity_number(
-    hass: HomeAssistant, device_id: str, number_type: str, config: dict[str, Any]
-) -> NumberEntity:
-    """Create a humidity control number (legacy function for compatibility)."""
-    return HumidityControlNumber(hass, device_id, number_type, config)
+    return number_list
 
 
 class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
@@ -228,5 +217,4 @@ __all__ = [
     "HumidityControlNumber",
     "async_setup_entry",
     "create_humidity_number",
-    "create_humidity_numbers",
 ]

@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Any, cast
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -65,26 +65,36 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         _LOGGER.info("Enhanced Humidity Control automation initialized")
 
+    def _is_feature_enabled(self) -> bool:
+        """Check if humidity_control feature is enabled in config."""
+        try:
+            enabled_features = self.config_entry.data.get("enabled_features", {})
+            result: bool = enabled_features.get("humidity_control", False)
+            return result
+        except Exception as e:
+            _LOGGER.warning(f"Could not check feature status: {e}")
+            return False
+
     def _singularize_entity_type(self, entity_type: str) -> str:
         """Convert plural entity type to singular form.
 
         Args:
-            entity_type: Plural entity type (e.g., "switches", "sensors", "numbers")
+            entity_type: Plural entity type (e.g., "switch", "sensor", "number")
 
         Returns:
             Singular entity type (e.g., "switch", "sensor", "number")
         """
         # Handle common entity type plurals
         entity_type_mapping = {
-            "sensors": "sensor",
-            "switches": "switch",
-            "binary_sensors": "binary_sensor",
-            "numbers": "number",
+            "sensor": "sensor",
+            "switch": "switch",
+            "binary_sensor": "binary_sensor",
+            "number": "number",
             "devices": "device",
             "entities": "entity",
         }
 
-        return entity_type_mapping.get(entity_type, entity_type.rstrip("s"))
+        return entity_type_mapping.get(entity_type, entity_type)
 
     def _generate_entity_patterns(self) -> list[str]:
         """Generate entity patterns for humidity control.
@@ -115,6 +125,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Returns:
             True if at least one device is ready
         """
+        # Check if feature is still enabled first
+        if not self._is_feature_enabled():
+            _LOGGER.debug("Humidity control feature disabled, stopping device checks")
+            return False
+
         # Use the humidity-specific entity patterns
         patterns = self.entity_patterns
 
@@ -161,6 +176,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         )
         missing_entities = []
 
+        # Get entity registry
+        registry = entity_registry.async_get(self.hass)
+
         for entity_type, entity_names in required_entities.items():
             # Convert plural to singular using the base class method
             entity_base_type = self._singularize_entity_type(entity_type)
@@ -168,16 +186,27 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             for entity_name in entity_names:
                 # Generate expected entity ID using humidity control patterns
                 expected_entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
-                _LOGGER.debug(f"Checking for entity: {expected_entity_id}")
-                entity_exists = self.hass.states.get(expected_entity_id)
-                if not entity_exists:
+
+                # Check entity registry instead of states
+                entity_entry = registry.async_get(expected_entity_id)
+                if not entity_entry:
                     missing_entities.append(expected_entity_id)
 
         if missing_entities:
-            _LOGGER.debug(
-                f"Device {device_id}: Missing {self.feature_id} "
-                f"entities - {missing_entities}"
-            )
+            # Only log missing entities once per device to avoid log spam
+            # Store missing entities per device to track what we've already logged
+            if not hasattr(self, "_logged_missing_entities"):
+                self._logged_missing_entities: dict[str, list[str]] = {}
+
+            device_key = f"{device_id}_{self.feature_id}"
+            already_logged = self._logged_missing_entities.get(device_key)
+
+            if already_logged != missing_entities:
+                _LOGGER.debug(
+                    f"Device {device_id}: Missing {self.feature_id} "
+                    f"entities - {missing_entities}"
+                )
+                self._logged_missing_entities[device_key] = missing_entities
             return False
 
         return True
@@ -228,6 +257,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         """
         _LOGGER.info("Starting humidity control automation")
 
+        # Check if humidity_control feature is enabled
+        if not self._is_feature_enabled():
+            _LOGGER.info(
+                "Humidity control feature is not enabled, skipping automation start"
+            )
+            return
+
         # Load configuration
         await self.config.async_load()
 
@@ -267,7 +303,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             device_id: Device identifier
             entity_states: Validated entity state values (float or bool)
         """
-        if not self._automation_active:
+        if not self._automation_active or not self._is_feature_enabled():
             return
 
         # Check if switch is manually OFF - if so,
@@ -493,6 +529,30 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             _LOGGER.info(f"Reasoning: {reasoning}")
 
         return decision
+
+    async def _async_handle_state_change(
+        self, entity_id: str, old_state: State | None, new_state: State | None
+    ) -> None:
+        """Handle state changes with automation-specific processing.
+
+        This method provides the async processing logic that derived classes
+        can extend or override for feature-specific needs.
+
+        Args:
+            entity_id: Entity that changed state
+            old_state: Previous state (if any)
+            new_state: New state
+        """
+        # Check if feature is still enabled first
+        if not self._is_feature_enabled():
+            _LOGGER.debug(
+                f"Feature {self.feature_id} "
+                f"disabled, ignoring state change for {entity_id}"
+            )
+            return
+
+        # Call parent implementation
+        await super()._async_handle_state_change(entity_id, old_state, new_state)
 
     async def _activate_dehumidification(
         self, device_id: str, decision: dict[str, Any]

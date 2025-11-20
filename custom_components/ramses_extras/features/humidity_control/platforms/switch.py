@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from custom_components.ramses_extras.framework.base_classes.base_entity import (
     ExtrasBaseEntity,
 )
-from custom_components.ramses_extras.framework.helpers.entity_core import EntityHelpers
+from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -28,7 +28,7 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up humidity control switch platform."""
-    _LOGGER.info("Setting up humidity control switches")
+    _LOGGER.info("Setting up humidity control switch")
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
@@ -36,21 +36,21 @@ async def async_setup_entry(
         f"Humidity control switch platform: found {len(devices)} devices: {devices}"
     )
 
-    switches = []
+    switch = []
     for device_id in devices:
-        # Create humidity-specific switches
-        device_switches = await create_humidity_switch(hass, device_id, config_entry)
-        switches.extend(device_switches)
-        _LOGGER.info(f"Created {len(device_switches)} switches for device {device_id}")
+        # Create humidity-specific switch
+        device_switch = await create_humidity_switch(hass, device_id, config_entry)
+        switch.extend(device_switch)
+        _LOGGER.info(f"Created {len(device_switch)} switch for device {device_id}")
 
-    _LOGGER.info(f"Total switches created: {len(switches)}")
-    async_add_entities(switches, True)
+    _LOGGER.info(f"Total switch created: {len(switch)}")
+    async_add_entities(switch, True)
 
 
 async def create_humidity_switch(
     hass: "HomeAssistant", device_id: str, config_entry: ConfigEntry | None = None
 ) -> list[SwitchEntity]:
-    """Create humidity switches for a device.
+    """Create humidity switch for a device.
 
     Args:
         hass: Home Assistant instance
@@ -60,19 +60,21 @@ async def create_humidity_switch(
     Returns:
         List of switch entities
     """
-    # Import entity configurations from management layer
-    from ..entities import HumidityEntities
+    # Import entity configurations from registry
+    from custom_components.ramses_extras.extras_registry import extras_registry
 
-    entity_manager = HumidityEntities(hass, config_entry)
-    switches = []
+    from ..const import HUMIDITY_SWITCH_CONFIGS
 
-    for switch_type in ["dehumidify"]:
-        config = entity_manager.get_entity_config("switches", switch_type)
-        if config:
-            switch = HumidityControlSwitch(hass, device_id, switch_type, config)
-            switches.append(switch)
+    switch_list = []
 
-    return switches
+    for switch_type, config in HUMIDITY_SWITCH_CONFIGS.items():
+        if config.get("supported_device_types") and "HvacVentilator" in config.get(
+            "supported_device_types", []
+        ):
+            switch_entity = HumidityControlSwitch(hass, device_id, switch_type, config)
+            switch_list.append(switch_entity)
+
+    return switch_list
 
 
 class HumidityControlSwitch(SwitchEntity, ExtrasBaseEntity):

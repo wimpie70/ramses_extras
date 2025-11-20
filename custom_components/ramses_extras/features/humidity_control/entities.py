@@ -1,7 +1,7 @@
 """Humidity Control Entities.
 
 This module provides entity definitions specific to humidity control functionality,
-including sensors, switches, numbers, and binary sensors for humidity management.
+including sensor, switch, number, and binary sensor for humidity management.
 """
 
 import logging
@@ -25,7 +25,7 @@ class HumidityEntities:
     """Manages humidity control entities.
 
     This class handles the creation, registration, and management of all
-    humidity-related entities including sensors, switches, numbers, and binary sensors.
+    humidity-related entities including sensor, switch, number, and binary sensor.
     """
 
     def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
@@ -51,7 +51,7 @@ class HumidityEntities:
             Dictionary mapping entity types to configurations
         """
         return {
-            "sensors": {
+            "sensor": {
                 "indoor_absolute_humidity": {
                     "name": "Indoor Absolute Humidity",
                     "unit": "g/m³",
@@ -67,14 +67,14 @@ class HumidityEntities:
                     "category": "diagnostic",
                 },
             },
-            "switches": {
+            "switch": {
                 "dehumidify": {
                     "name": "Dehumidify",
                     "icon": "mdi:air-humidifier",
                     "category": "control",
                 },
             },
-            "numbers": {
+            "number": {
                 "relative_humidity_minimum": {
                     "name": "Relative Humidity Minimum",
                     "unit": "%",
@@ -109,7 +109,7 @@ class HumidityEntities:
                     "default_value": 0.4,
                 },
             },
-            "binary_sensors": {
+            "binary_sensor": {
                 "dehumidifying_active": {
                     "name": "Dehumidifying Active",
                     "device_class": "running",
@@ -131,44 +131,44 @@ class HumidityEntities:
         _LOGGER.info(f"Setting up humidity entities for device {device_id}")
 
         created_entities: dict[str, list[str]] = {
-            "sensors": [],
-            "switches": [],
-            "numbers": [],
-            "binary_sensors": [],
+            "sensor": [],
+            "switch": [],
+            "number": [],
+            "binary_sensor": [],
         }
 
         try:
-            # Create sensors
-            for sensor_type in self._entity_configs["sensors"]:
+            # Create sensor
+            for sensor_type in self._entity_configs["sensor"]:
                 sensor_entity_id: str | None = await self._create_sensor_entity(
                     device_id, sensor_type
                 )
                 if sensor_entity_id:
-                    created_entities["sensors"].append(sensor_entity_id)
+                    created_entities["sensor"].append(sensor_entity_id)
 
-            # Create switches
-            for switch_type in self._entity_configs["switches"]:
+            # Create switch
+            for switch_type in self._entity_configs["switch"]:
                 switch_entity_id: str | None = await self._create_switch_entity(
                     device_id, switch_type
                 )
                 if switch_entity_id:
-                    created_entities["switches"].append(switch_entity_id)
+                    created_entities["switch"].append(switch_entity_id)
 
             # Create number entities
-            for number_type in self._entity_configs["numbers"]:
+            for number_type in self._entity_configs["number"]:
                 number_entity_id: str | None = await self._create_number_entity(
                     device_id, number_type
                 )
                 if number_entity_id:
-                    created_entities["numbers"].append(number_entity_id)
+                    created_entities["number"].append(number_entity_id)
 
-            # Create binary sensors
-            for binary_type in self._entity_configs["binary_sensors"]:
+            # Create binary sensor
+            for binary_type in self._entity_configs["binary_sensor"]:
                 binary_entity_id: str | None = await self._create_binary_sensor_entity(
                     device_id, binary_type
                 )
                 if binary_entity_id:
-                    created_entities["binary_sensors"].append(binary_entity_id)
+                    created_entities["binary_sensor"].append(binary_entity_id)
             _LOGGER.info(
                 f"Created {sum(len(entities) for entities in created_entities.values())} "  # noqa: E501
                 f"humidity entities for device {device_id}",
@@ -193,7 +193,7 @@ class HumidityEntities:
             Entity ID or None if creation failed
         """
         try:
-            config = self._entity_configs["sensors"][sensor_type]
+            config = self._entity_configs["sensor"][sensor_type]
             entity_id = f"sensor.{sensor_type}_{device_id}"
 
             # This would register the entity with Home Assistant
@@ -227,7 +227,7 @@ class HumidityEntities:
             Entity ID or None if creation failed
         """
         try:
-            config = self._entity_configs["switches"][switch_type]
+            config = self._entity_configs["switch"][switch_type]
             entity_id = f"switch.{switch_type}_{device_id}"
 
             _LOGGER.debug(f"Creating switch: {entity_id}")
@@ -258,7 +258,7 @@ class HumidityEntities:
             Entity ID or None if creation failed
         """
         try:
-            config = self._entity_configs["numbers"][number_type]
+            config = self._entity_configs["number"][number_type]
             entity_id = f"number.{number_type}_{device_id}"
 
             _LOGGER.debug(f"Creating number: {entity_id}")
@@ -289,7 +289,7 @@ class HumidityEntities:
             Entity ID or None if creation failed
         """
         try:
-            config = self._entity_configs["binary_sensors"][binary_type]
+            config = self._entity_configs["binary_sensor"][binary_type]
             entity_id = f"binary_sensor.{binary_type}_{device_id}"
 
             _LOGGER.debug(f"Creating binary sensor: {entity_id}")
@@ -357,10 +357,10 @@ class HumidityEntities:
             Dictionary mapping entity types to entity IDs
         """
         device_entities: dict[str, list[str]] = {
-            "sensors": [],
-            "switches": [],
-            "numbers": [],
-            "binary_sensors": [],
+            "sensor": [],
+            "switch": [],
+            "number": [],
+            "binary_sensor": [],
         }
 
         for entity_id, info in self._entities.items():
@@ -386,10 +386,10 @@ class HumidityEntities:
             Dictionary with entity counts by type
         """
         stats = {
-            "sensors": 0,
-            "switches": 0,
-            "numbers": 0,
-            "binary_sensors": 0,
+            "sensor": 0,
+            "switch": 0,
+            "number": 0,
+            "binary_sensor": 0,
             "total": 0,
         }
 

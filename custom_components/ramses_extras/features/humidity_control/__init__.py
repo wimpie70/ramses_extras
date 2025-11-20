@@ -41,7 +41,7 @@ from .platforms import (
     binary_sensor_async_setup_entry,
     create_humidity_control_binary_sensor,
     create_humidity_number,
-    create_humidity_sensors,
+    create_humidity_sensor,
     create_humidity_switch,
     number_async_setup_entry,
     sensor_async_setup_entry,
@@ -820,7 +820,7 @@ __all__ = [
     "switch_async_setup_entry",
     "number_async_setup_entry",
     # Platform factory exports
-    "create_humidity_sensors",
+    "create_humidity_sensor",
     "create_humidity_control_binary_sensor",
     "create_humidity_switch",
     "create_humidity_number",
@@ -856,22 +856,22 @@ def create_humidity_control_feature(hass: Any, config_entry: Any) -> dict[str, A
         "platforms": {
             "sensor": {
                 "async_setup_entry": sensor_async_setup_entry,
-                "create_sensors": create_humidity_sensors,
+                "create_sensor": create_humidity_sensor,
                 "entity_class": HumidityAbsoluteSensor,
             },
             "binary_sensor": {
                 "async_setup_entry": binary_sensor_async_setup_entry,
-                "create_binary_sensors": create_humidity_control_binary_sensor,
+                "create_binary_sensor": create_humidity_control_binary_sensor,
                 "entity_class": HumidityControlBinarySensor,
             },
             "switch": {
                 "async_setup_entry": switch_async_setup_entry,
-                "create_switches": create_humidity_switch,
+                "create_switch": create_humidity_switch,
                 "entity_class": HumidityControlSwitch,
             },
             "number": {
                 "async_setup_entry": number_async_setup_entry,
-                "create_numbers": create_humidity_number,
+                "create_number": create_humidity_number,
                 "entity_class": HumidityControlNumber,
             },
         },
