@@ -12,6 +12,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity import EntityCategory
 
+_LOGGER = logging.getLogger(__name__)
+
 # Get the integration directory
 INTEGRATION_DIR = Path(__file__).parent
 
@@ -66,7 +68,10 @@ def _discover_available_features() -> dict[str, dict[str, Any]]:
     available_features: dict[str, dict[str, Any]] = {}
 
     if not features_dir.exists():
+        _LOGGER.warning(f"Features directory not found: {features_dir}")
         return available_features
+
+    _LOGGER.info(f"Scanning features directory: {features_dir}")
 
     # Scan feature subdirectories and provide known feature configurations
     # This eliminates hardcoded feature references while maintaining functionality
@@ -74,16 +79,11 @@ def _discover_available_features() -> dict[str, dict[str, Any]]:
         if item.is_dir() and not item.name.startswith("_"):
             feature_name = item.name
 
-            # Known feature configurations (dynamically discovered
-            # but with known metadata)
             if feature_name == "default":
                 available_features[feature_name] = {
                     "name": "Default Sensors",
                     "description": "Base humidity sensors available for all devices",
-                    "category": "sensors",
-                    "default_enabled": True,
                     "feature_module": f"features.{feature_name}",
-                    "supported_device_types": ["HvacVentilator"],
                     "handler": "handle_hvac_ventilator",
                 }
             elif feature_name == "humidity_control":
@@ -91,20 +91,14 @@ def _discover_available_features() -> dict[str, dict[str, Any]]:
                     "name": "Humidity Control",
                     "description": "Automatic humidity control and "
                     "dehumidification management",
-                    "category": "automations",
-                    "default_enabled": False,
                     "feature_module": f"features.{feature_name}",
-                    "supported_device_types": ["HvacVentilator"],
                     "handler": "handle_hvac_ventilator",
                 }
             elif feature_name == "hvac_fan_card":
                 available_features[feature_name] = {
                     "name": "HVAC Fan Card",
                     "description": "Advanced fan card for control and configuration",
-                    "category": "cards",
-                    "default_enabled": False,
                     "feature_module": f"features.{feature_name}",
-                    "supported_device_types": ["HvacVentilator"],
                     "handler": "handle_hvac_ventilator",
                 }
             else:
@@ -113,9 +107,7 @@ def _discover_available_features() -> dict[str, dict[str, Any]]:
                     "name": feature_name.replace("_", " ").title(),
                     "description": f"{feature_name} feature",
                     "category": _infer_category_from_feature(feature_name),
-                    "default_enabled": False,
                     "feature_module": f"features.{feature_name}",
-                    "supported_device_types": ["HvacVentilator"],
                     "handler": "handle_hvac_ventilator",
                 }
 
