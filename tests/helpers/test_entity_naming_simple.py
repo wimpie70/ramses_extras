@@ -204,7 +204,7 @@ def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
             device_id_candidate = "_".join(parts[i:])
             entity_name_candidate = "_".join(parts[:i])
 
-            # Validate device_id pattern (should be numbers and underscores only)
+            # Validate device_id pattern (should be number and underscores only)
             if device_id_candidate.replace("_", "").isdigit():
                 valid_candidates.append((entity_name_candidate, device_id_candidate))
 

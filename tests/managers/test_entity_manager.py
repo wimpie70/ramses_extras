@@ -53,7 +53,7 @@ class TestEntityManager:
         """Test basic entity catalog building."""
         available_features = {
             "test_feature": {
-                "category": "sensors",
+                "category": "sensor",
                 "supported_device_types": ["Device1"],
                 "default_enabled": False,
             }
@@ -112,21 +112,26 @@ class TestEntityManager:
     @pytest.mark.asyncio
     async def test_get_all_existing_entities(self):
         """Test getting all existing entities."""
-        # Mock entity registry
+        # Mock entity registry with proper structure
         mock_registry = MagicMock()
         mock_entity1 = MagicMock()
         mock_entity1.entity_id = "sensor.test1"
         mock_entity2 = MagicMock()
         mock_entity2.entity_id = "switch.test2"
-        mock_registry.entities = {"entity1": mock_entity1, "entity2": mock_entity2}
 
-        self.mock_hass.helpers.entity_registry.async_get.return_value = mock_registry
+        # Create a proper dict-like object that supports .values()
+        entities_dict = {"entity1": mock_entity1, "entity2": mock_entity2}
+        mock_registry.entities = entities_dict
 
-        existing = await self.entity_manager._get_all_existing_entities()
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.entity.manager.entity_registry.async_get",
+            return_value=mock_registry,
+        ):
+            existing = await self.entity_manager._get_all_existing_entities()
 
-        assert "sensor.test1" in existing
-        assert "switch.test2" in existing
-        assert len(existing) == 2
+            assert "sensor.test1" in existing
+            assert "switch.test2" in existing
+            assert len(existing) == 2
 
     @pytest.mark.asyncio
     async def test_get_all_existing_entities_error(self):
@@ -201,7 +206,7 @@ class TestEntityManager:
         """Test scanning device-based entities."""
         feature_id = "test_device_feature"
         feature_config = {
-            "category": "sensors",
+            "category": "sensor",
             "supported_device_types": ["TestDevice"],
         }
         existing_entities = {
@@ -514,7 +519,7 @@ class TestEntityManagerIntegration:
         # Simulate enabling a new feature
         available_features = {
             "new_feature": {
-                "category": "sensors",
+                "category": "sensor",
                 "supported_device_types": ["TestDevice"],
             }
         }
@@ -549,7 +554,7 @@ class TestEntityManagerIntegration:
         # Simulate disabling an existing feature
         available_features = {
             "existing_feature": {
-                "category": "sensors",
+                "category": "sensor",
                 "supported_device_types": ["TestDevice"],
             }
         }

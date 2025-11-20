@@ -40,9 +40,9 @@ try:
     )
     print("✅ Default feature loaded")
 
-    # Test 4: Check sensors loaded
-    sensors = registry.get_all_sensor_configs()
-    print(f"✅ Got {len(sensors)} sensor configs")
+    # Test 4: Check sensor loaded
+    sensor = registry.get_all_sensor_configs()
+    print(f"✅ Got {len(sensor)} sensor configs")
 
     # Test 5: Load all features
     registry.clear()
