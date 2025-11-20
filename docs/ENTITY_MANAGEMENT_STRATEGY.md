@@ -59,12 +59,8 @@ class EntityManager:
         """Get list of entities to be created."""
         pass
 
-    async def remove_entities(self, entity_ids: list[str]) -> None:
-        """Remove specified entities efficiently."""
-        pass
-
-    async def create_entities(self, entity_ids: list[str]) -> None:
-        """Create specified entities efficiently."""
+    async def validate_startup_entities(self) -> None:
+        """Validate entities created during startup and cleanup any discrepancies."""
         pass
 ```
 
@@ -253,3 +249,94 @@ Modified all platform files (`sensor.py`, `switch.py`, `binary_sensor.py`, `numb
 3. **Fixed the "found 0 devices" issue** with robust fallback mechanisms
 4. **Enhanced error handling** with multiple access methods and graceful degradation
 5. **Better coordination** between discovery and platform setup timing
+
+## ✅ CORRECTED: Startup Flow with EntityManager Post-Validation
+
+### New Understanding: EntityManager Role Clarification
+
+After careful analysis, we've identified that EntityManager has two distinct use cases:
+
+1. **Config Flow Operations** ✅ **Primary Role**
+   - Manage entity changes when users modify feature settings
+   - Compare current vs target feature configuration
+   - Calculate and apply create/remove operations
+
+2. **Startup Validation** ✅ **Secondary Role**
+   - Validate that initial entity creation worked correctly
+   - Clean up any discrepancies after startup
+   - Ensure consistency between intended features and actual entities
+
+### Corrected Startup Flow
+
+The startup sequence should now be:
+
+```
+1. ✅ Load all feature definitions (existing)
+2. ✅ Discover devices (existing)
+3. ✅ Create initial entities for enabled features + discovered devices (new approach)
+4. ✅ Register platforms (existing with filtering)
+5. ✅ Run EntityManager validation (NEW: post-creation validation)
+```
+
+### EntityManager Post-Creation Validation
+
+```python
+async def async_setup_entry(hass, entry):
+    # ... existing startup flow ...
+
+    # STEP 5: Post-creation validation with EntityManager
+    _LOGGER.info("🔍 Running EntityManager post-creation validation...")
+    await _validate_startup_entities(hass, entry)
+
+async def _validate_startup_entities(hass, entry):
+    """Validate startup entity creation and fix discrepancies."""
+    try:
+        from .framework.helpers.entity.manager import EntityManager
+
+        # Create EntityManager for validation
+        entity_manager = EntityManager(hass)
+
+        # Build catalog of what SHOULD exist vs what DOES exist
+        await entity_manager.build_entity_catalog(AVAILABLE_FEATURES, entry.data.get("enabled_features", {}))
+
+        # Get any discrepancies
+        entities_to_remove = entity_manager.get_entities_to_remove()
+        entities_to_create = entity_manager.get_entities_to_create()
+
+        if entities_to_remove or entities_to_create:
+            _LOGGER.warning(f"Startup validation found discrepancies: "
+                          f"remove {len(entities_to_remove)}, create {len(entities_to_create)}")
+            # Apply cleanup/creation as needed
+            await entity_manager.apply_entity_changes()
+        else:
+            _LOGGER.info("✅ Startup validation: all entities match expected configuration")
+
+    except Exception as e:
+        _LOGGER.error(f"EntityManager startup validation failed: {e}")
+        # Don't fail startup if validation fails
+```
+
+### Benefits of This Approach
+
+1. **Separation of Concerns**:
+   - Initial entity creation happens through normal platform setup
+   - EntityManager validates and cleans up afterward
+
+2. **Robustness**:
+   - Startup won't fail if EntityManager has issues
+   - Validation is best-effort, not required for basic functionality
+
+3. **Consistency**:
+   - Ensures final state matches intended configuration
+   - Catches any race conditions or setup issues
+
+4. **Debuggability**:
+   - Clear logging of validation results
+   - Easy to identify when cleanup is needed
+
+### Implementation Notes
+
+- **Platform filtering still required**: Even with EntityManager validation, platforms should only create entities for enabled features
+- **EntityManager becomes backup**: It's a safety net, not the primary mechanism
+- **Performance consideration**: Validation adds minimal overhead since it runs after everything else
+- **Graceful degradation**: Validation failures don't break startup

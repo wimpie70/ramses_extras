@@ -2,7 +2,12 @@
 
 ## Overview
 
-The EntityManager is a centralized system for managing entity lifecycle during config flow operations in the Ramses Extras integration. It provides a clean, efficient alternative to scattered list management for tracking, creating, and removing entities based on feature changes.
+The EntityManager is a centralized system for managing entity lifecycle with two primary use cases:
+
+1. **Config Flow Operations**: Managing entity changes during feature configuration updates
+2. **Startup Validation**: Validating and cleaning up entities after initial startup
+
+It provides a clean, efficient alternative to scattered list management for tracking, creating, and removing entities based on feature changes.
 
 ## Class: EntityManager
 
@@ -420,6 +425,49 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             self._entities_to_create = self._entity_manager.get_entities_to_create()
 
             return await self.async_step_confirm()
+```
+
+### Startup Validation Integration
+
+```python
+async def async_setup_entry(hass, entry):
+    """Main integration setup entry point."""
+    # ... existing startup flow (load features, discover devices, create entities) ...
+
+    # STEP: Post-creation validation with EntityManager
+    _LOGGER.info("🔍 Running EntityManager post-creation validation...")
+    await _validate_startup_entities(hass, entry)
+
+async def _validate_startup_entities(hass, entry):
+    """Validate startup entity creation and fix discrepancies."""
+    try:
+        from .framework.helpers.entity.manager import EntityManager
+
+        # Create EntityManager for validation
+        entity_manager = EntityManager(hass)
+
+        # Build catalog of what SHOULD exist vs what DOES exist
+        await entity_manager.build_entity_catalog(
+            AVAILABLE_FEATURES, entry.data.get("enabled_features", {})
+        )
+
+        # Get any discrepancies
+        entities_to_remove = entity_manager.get_entities_to_remove()
+        entities_to_create = entity_manager.get_entities_to_create()
+
+        if entities_to_remove or entities_to_create:
+            _LOGGER.warning(
+                f"Startup validation found discrepancies: "
+                f"remove {len(entities_to_remove)}, create {len(entities_to_create)}"
+            )
+            # Apply cleanup/creation as needed
+            await entity_manager.apply_entity_changes()
+        else:
+            _LOGGER.info("✅ Startup validation: all entities match expected configuration")
+
+    except Exception as e:
+        _LOGGER.error(f"EntityManager startup validation failed: {e}")
+        # Don't fail startup if validation fails
 ```
 
 ### Entity Summary for UI
