@@ -85,7 +85,7 @@ async def build_entity_catalog(
     Example:
         available_features = {
             "humidity_control": {
-                "category": "sensors",
+                "category": "sensor",
                 "supported_device_types": ["HvacVentilator"]
             },
             "hvac_fan_card": {
@@ -589,7 +589,7 @@ async def test_entity_manager_workflow():
 
     entity_manager = EntityManager(mock_hass)
 
-    available_features = {"test_feature": {"category": "sensors", "supported_device_types": []}}
+    available_features = {"test_feature": {"category": "sensor", "supported_device_types": []}}
     current_features = {"test_feature": False}
     target_features = {"test_feature": True}
 

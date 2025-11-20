@@ -1357,21 +1357,21 @@ ZEHNDER_DEVICE_MODELS = {
         "device_class": "premium",
         "max_fan_speed": 5,
         "filter_type": "G4",
-        "supported_sensors": ["co2", "voc", "humidity", "temperature"],
+        "supported_sensor": ["co2", "voc", "humidity", "temperature"],
         "special_features": ["heat_recovery", "summer_bypass", "frost_protection"]
     },
     "ComfoAir Q450": {
         "device_class": "premium",
         "max_fan_speed": 6,
         "filter_type": "G4/F7",
-        "supported_sensors": ["co2", "voc", "humidity", "temperature", "pm25"],
+        "supported_sensor": ["co2", "voc", "humidity", "temperature", "pm25"],
         "special_features": ["heat_recovery", "summer_bypass", "frost_protection", "extra_boost"]
     },
     "ComfoAir Q250": {
         "device_class": "standard",
         "max_fan_speed": 3,
         "filter_type": "G4",
-        "supported_sensors": ["humidity", "temperature"],
+        "supported_sensor": ["humidity", "temperature"],
         "special_features": ["heat_recovery", "frost_protection"]
     }
 }
@@ -1445,7 +1445,7 @@ class ZehnderDeviceCustomizer:
         entities.extend(standard_entities)
 
         # Sensor-specific entities
-        supported_sensors = model_info.get("supported_sensors", [])
+        supported_sensor = model_info.get("supported_sensor", [])
         sensor_mapping = {
             "co2": f"sensor.zehnder_co2_level_{device_id}",
             "voc": f"sensor.zehnder_voc_level_{device_id}",
@@ -1454,7 +1454,7 @@ class ZehnderDeviceCustomizer:
             "temperature": f"sensor.zehnder_temperature_{device_id}"
         }
 
-        for sensor_type in supported_sensors:
+        for sensor_type in supported_sensor:
             if sensor_type in sensor_mapping:
                 entities.append(sensor_mapping[sensor_type])
 
@@ -1533,7 +1533,7 @@ class ZehnderDeviceCustomizer:
                 }
             },
             "sensor_integration": {
-                "external_sensors": model_info.get("supported_sensors", []),
+                "external_sensor": model_info.get("supported_sensor", []),
                 "integration_methods": ["comfoconnect", "modbus", "analog"]
             }
         }
@@ -1750,9 +1750,9 @@ async def populate_device_capabilities():
 # Old configuration format (humidity_control.yaml)
 humidity_control:
   enabled: true
-  sensors:
+  sensor:
     - indoor_absolute_humidity
-  switches:
+  switch:
     - dehumidify
     - boost_mode
   target_humidity: 55
@@ -1773,7 +1773,7 @@ ramses_extras:
           orcon:
             enhanced: true
           zehnder:
-            sensors: ['co2', 'voc']
+            sensor: ['co2', 'voc']
 
       dehumidify:
         default_enabled: true

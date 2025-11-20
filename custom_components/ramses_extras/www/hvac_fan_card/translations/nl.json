@@ -47,7 +47,7 @@
     "success": "Bijgewerkt!",
     "error": "Fout"
   },
-  "sensors": {
+  "sensor": {
     "efficiency": "Efficiëntie",
     "absolute_humidity": "Absolute Luchtvochtigheid",
     "temperature": "Temperatuur",

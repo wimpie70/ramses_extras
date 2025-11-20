@@ -47,7 +47,7 @@
     "success": "Updated!",
     "error": "Error"
   },
-  "sensors": {
+  "sensor": {
     "efficiency": "Efficiency",
     "absolute_humidity": "Absolute Humidity",
     "temperature": "Temperature",
