@@ -10,7 +10,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
@@ -39,19 +39,33 @@ async def _import_module_in_executor(module_path: str) -> Any:
     return await loop.run_in_executor(None, _do_import)
 
 
+async def _handle_startup_event(
+    event: Event, hass: HomeAssistant, config: ConfigType
+) -> None:
+    """Handle Home Assistant startup event."""
+    # This will only be called if the user has Ramses Extras configured
+    # from a YAML file. If configured via UI, async_setup_entry will handle it.
+    _LOGGER.info("🏠  Starting Ramses Extras from YAML configuration")
+
+    await async_setup_yaml_config(hass, config)
+
+
 # Component will be loaded when hass starts up.
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Ramses Extras integration from YAML configuration."""
 
-    # Listen for when Home Assistant starts up
-    async def _async_startup(hass: HomeAssistant) -> None:
-        # This will only be called if the user has Ramses Extras configured
-        # from a YAML file. If configured via UI, async_setup_entry will handle it.
-        _LOGGER.info("🏠  Starting Ramses Extras from YAML configuration")
-        hass.async_create_task(async_setup_yaml_config(hass, config))
+    # Use module-level function with explicit parameters to avoid closure issues
+    # and thread-safe execution using run_coroutine_threadsafe
+    def _startup_callback(event: Event) -> None:
+        """Thread-safe callback for startup event."""
+        import asyncio
 
-    # Listen for when Home Assistant starts
-    hass.bus.async_listen(EVENT_HOMEASSISTANT_STARTED, _async_startup)
+        # Use run_coroutine_threadsafe for thread safety
+        asyncio.run_coroutine_threadsafe(
+            _handle_startup_event(event, hass, config), hass.loop
+        )
+
+    hass.bus.async_listen(EVENT_HOMEASSISTANT_STARTED, _startup_callback)
 
     return True
 
