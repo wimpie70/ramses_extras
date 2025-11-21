@@ -9,10 +9,13 @@ HVAC_FAN_CARD_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {}
 HVAC_FAN_CARD_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {}
 HVAC_FAN_CARD_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
 
-# Device mapping (inherits shared sensor from default)
-HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING = {
+# HVAC Fan Card is a dashboard card feature
+# The device mapping indicates which device types the card supports,
+# but the card doesn't create any entities - it uses existing ones from default feature
+# The empty lists indicate no entities are created by this feature
+HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {
     "HvacVentilator": {
-        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        "sensor": [],  # Uses sensors from default feature
         "switch": [],
         "number": [],
         "binary_sensor": [],
@@ -24,7 +27,7 @@ def load_feature() -> None:
     """Load hvac_fan_card feature into the registry."""
     from custom_components.ramses_extras.extras_registry import extras_registry
 
-    # Register entity configurations (mostly inherits from default)
+    # Register device mappings (indicates card is available for HvacVentilator devices)
     extras_registry.register_device_mappings(HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING)
     extras_registry.register_feature("hvac_fan_card")
 

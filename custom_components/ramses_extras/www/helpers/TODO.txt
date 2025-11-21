@@ -3,3 +3,5 @@ i want a new method in core.py to find the broker. ramses_cc has unpublished com
 need to fix entity manager not found/entities not created/removed
 
 we don't want extra backward compatible code. this integration is not live yet.
+
+need to make the hvac card available again: not injected ?

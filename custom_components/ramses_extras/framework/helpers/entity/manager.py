@@ -702,7 +702,7 @@ class EntityManager:
             feature_id: Feature identifier
 
         Returns:
-            Required entities dictionary
+            Required entities dictionary mapping entity_type to list of entity names
         """
         # Import the feature's const module
         feature_module_path = (
@@ -711,24 +711,15 @@ class EntityManager:
 
         feature_module = importlib.import_module(feature_module_path)
 
-        # Get the HUMIDITY_CONTROL_CONST (or similar) for this feature
+        # Get the FEATURE_CONST (e.g., HUMIDITY_CONTROL_CONST) for this feature
         const_key = f"{feature_id.upper()}_CONST"
         if hasattr(feature_module, const_key):
             const_data = getattr(feature_module, const_key, {})
             result: dict[str, list[str]] = const_data.get("required_entities", {})
             return result
 
-        # Fallback to device entity mapping for backwards compatibility
-        mapping_key = f"{feature_id.upper()}_DEVICE_ENTITY_MAPPING"
-        device_mapping = getattr(feature_module, mapping_key, {})
-
-        # Convert device mapping to required entities format
-        required_entities = {}
-        for device_type, entity_names in device_mapping.items():
-            entity_type = f"{device_type.lower()}s"  # Convert to plural
-            required_entities[entity_type] = entity_names
-
-        return required_entities
+        # No fallback - features should use the new required_entities format
+        return {}
 
     def _normalize_devices_list(self, devices: Any) -> list[Any]:
         """Normalize different device storage formats to a list.
