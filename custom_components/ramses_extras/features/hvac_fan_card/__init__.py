@@ -43,13 +43,17 @@ class HvacFanCardManager:
             Dictionary of registered card information
         """
         try:
-            _LOGGER.debug("Starting HVAC fan card registration")
+            _LOGGER.info("🎴 Starting HVAC fan card registration")
 
             # Get card configurations from const.py
             from .const import HVAC_FAN_CARD_CONFIGS
 
+            _LOGGER.info(f"📋 Card configurations found: {len(HVAC_FAN_CARD_CONFIGS)}")
+            _LOGGER.info(f"📄 Card configs: {HVAC_FAN_CARD_CONFIGS}")
+
             # Register each card
             for card_config in HVAC_FAN_CARD_CONFIGS:
+                _LOGGER.info(f"🔄 Registering card config: {card_config}")
                 card_info = await self._register_single_card(card_config)
 
                 if card_info:
@@ -57,11 +61,15 @@ class HvacFanCardManager:
                     _LOGGER.info(
                         f"✅ HVAC Fan Card registered successfully: {card_info['name']}"
                     )
+                    _LOGGER.info(f"📦 Card info: {card_info}")
+                else:
+                    _LOGGER.warning(f"⚠️ Failed to register card: {card_config}")
 
+            _LOGGER.info(f"🎯 Final registered cards: {self._registered_cards}")
             return self._registered_cards
 
         except Exception as e:
-            _LOGGER.error(f"Failed to register HVAC fan cards: {e}")
+            _LOGGER.error(f"❌ Failed to register HVAC fan cards: {e}")
             import traceback
 
             _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
@@ -83,20 +91,32 @@ class HvacFanCardManager:
             card_name = card_config["card_name"]
             card_location = card_config.get("location", card_id)
 
+            _LOGGER.info(f"🔍 Registering single card: {card_id} ({card_name})")
+            _LOGGER.info(f"📍 Card location: {card_location}")
+
             # Check if card files exist
             from pathlib import Path
 
-            from ...const import CARD_FOLDER, INTEGRATION_DIR
+            from ....framework.helpers.paths import DEPLOYMENT_PATHS
+            from ...const import INTEGRATION_DIR
 
-            card_path = INTEGRATION_DIR / CARD_FOLDER / card_location
+            # Use new feature-centric path structure
+            card_path = (
+                INTEGRATION_DIR / "features" / "hvac_fan_card" / "www" / card_location
+            )
             card_js_path = card_path / f"{card_id}.js"
 
+            _LOGGER.info(f"📁 Card directory path: {card_path}")
+            _LOGGER.info(f"📄 Card JS path: {card_js_path}")
+            _LOGGER.info(f"📂 Card directory exists: {card_path.exists()}")
+            _LOGGER.info(f"📄 Card JS file exists: {card_js_path.exists()}")
+
             if not card_path.exists():
-                _LOGGER.warning(f"Card directory not found at {card_path}")
+                _LOGGER.error(f"❌ Card directory not found at {card_path}")
                 return None
 
             if not card_js_path.exists():
-                _LOGGER.warning(f"Card JavaScript file not found at {card_js_path}")
+                _LOGGER.error(f"❌ Card JavaScript file not found at {card_js_path}")
                 return None
 
             # Create card registration info
@@ -109,17 +129,23 @@ class HvacFanCardManager:
                     "documentation_url", "https://github.com/wimpie70/ramses_extras"
                 ),
                 "js_path": str(card_js_path.relative_to(INTEGRATION_DIR)),
+                "card_dir_path": str(card_path.relative_to(INTEGRATION_DIR)),
                 "location": card_location,
                 "feature": "hvac_fan_card",
             }
 
-            _LOGGER.debug(f"Card registration info created for {card_id}")
+            _LOGGER.info(f"✅ Card registration info created for {card_id}")
+            _LOGGER.info(f"📦 Registration info: {registration_info}")
             return registration_info
 
         except Exception as e:
             _LOGGER.error(
-                f"Failed to register card {card_config.get('card_id', 'unknown')}: {e}"
+                f"❌ Failed to register card "
+                f"{card_config.get('card_id', 'unknown')}: {e}"
             )
+            import traceback
+
+            _LOGGER.error(f"Full traceback: {traceback.format_exc()}")
             return None
 
     async def async_cleanup(self) -> None:

@@ -9,6 +9,28 @@ HVAC_FAN_CARD_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {}
 HVAC_FAN_CARD_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {}
 HVAC_FAN_CARD_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
 
+# Feature web assets configuration for this feature
+FEATURE_WEB_CONFIGS = {
+    "hvac_fan_card": {
+        "web_folder": "hvac_fan_card",
+        "main_card": "hvac-fan-card.js",
+        "editor_card": "hvac-fan-card-editor.js",
+        "has_templates": True,
+        "has_translations": True,
+    },
+}
+
+# Feature deployment configuration
+FEATURE_CARD_CONFIG = {
+    "hvac_fan_card": {
+        "card_path": "features/hvac_fan_card",  # Updated path
+        "main_js": "hvac-fan-card.js",
+        "editor_js": "hvac-fan-card-editor.js",
+        "templates_path": "templates/",
+        "translations_path": "translations/",
+    }
+}
+
 # HVAC Fan Card is a dashboard card feature
 # The device mapping indicates which device types the card supports,
 # but the card doesn't create any entities - it uses existing ones from default feature
@@ -80,5 +102,7 @@ __all__ = [
     "HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING",
     "HVAC_FAN_CARD_CONFIGS",
     "HVAC_FAN_CARD_CONST",
+    "FEATURE_WEB_CONFIGS",
+    "FEATURE_CARD_CONFIG",
     "load_feature",
 ]

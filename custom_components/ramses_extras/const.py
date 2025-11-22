@@ -8,6 +8,16 @@ from typing import Any, Callable
 
 DOMAIN = "ramses_extras"
 
+# Import shared path constants
+try:
+    from .framework.helpers.paths import DEPLOYMENT_PATHS, HELPER_PATHS
+    from .framework.helpers.paths import PATHS as WEB_PATHS
+except ImportError:
+    # Fallback constants if paths module is not available
+    WEB_PATHS = None  # type: ignore[assignment]
+    HELPER_PATHS = None  # type: ignore[assignment]
+    DEPLOYMENT_PATHS = None  # type: ignore[assignment]
+
 # Get the integration directory
 INTEGRATION_DIR = Path(__file__).parent
 
@@ -24,8 +34,14 @@ CONF_MESSAGE_EVENTS = "message_events"
 # UI/Frontend constants
 WS_CMD_GET_BOUND_REM = f"{DOMAIN}/get_bound_rem"
 CARD_FOLDER = "www"
-CARD_HELPERS_FOLDER = "www/helpers"
+CARD_HELPERS_FOLDER = "framework/www"
 FEATURE_FOLDER = "features"
+
+# Web assets path constants (for reorganization)
+WEB_ASSETS_BASE = "www"
+FEATURE_WEB_BASE = "features"
+CARD_DEPLOYMENT_PATH = "www/ramses_extras"
+HELPERS_DEPLOYMENT_PATH = "www/ramses_extras/helpers"
 
 # Feature identifiers
 FEATURE_ID_DEFAULT = "default"

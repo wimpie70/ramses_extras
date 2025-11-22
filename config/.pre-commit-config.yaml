@@ -32,6 +32,7 @@ repos:
             \.venv/|
             venv/|
             tests/|
+            MagicMock/|
             \..*\.(js|ts)$
           )
         verbose: true
@@ -50,6 +51,7 @@ repos:
             \.venv/|
             venv/|
             tests/|
+            MagicMock/|
             \..*\.(js|ts|json|yaml|yml)$
           )
         verbose: true

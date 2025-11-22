@@ -51,7 +51,16 @@ custom_components/ramses_extras/
 │   │
 │   ├── hvac_fan_card/           # HVAC fan card feature
 │   │   ├── __init__.py
-│   │   └── const.py
+│   │   ├── const.py
+│   │   └── www/                 # Feature-specific web assets (integration structure)
+│   │       └── hvac_fan_card/   # Feature card files
+│   │           ├── hvac-fan-card.js
+│   │           ├── hvac-fan-card-editor.js
+│   │           ├── airflow-diagrams.js
+│   │           ├── card-styles.js
+│   │           ├── message-handlers.js
+│   │           ├── templates/
+│   │           └── translations/
 │   │
 │   └── default/                 # Default feature scaffold
 │       ├── __init__.py
@@ -62,7 +71,7 @@ custom_components/ramses_extras/
 │   │   ├── base_entity.py       # Entity base class
 │   │   └── __init__.py
 │   │
-│   ├── helpers/                 # Reusable utilities
+│   ├── helpers/                 # Reusable Python utilities
 │   │   ├── entity/              # Entity helpers
 │   │   │   ├── core.py          # Entity core functionality
 │   │   │   ├── manager.py       # Entity manager (config flow)
@@ -76,7 +85,16 @@ custom_components/ramses_extras/
 │   │   ├── common/              # Common utilities
 │   │   │   ├── validation.py    # Input validation
 │   │   │   └── __init__.py
+│   │   ├── paths.py             # Shared path constants (Python)
 │   │   └── __init__.py
+│   │
+│   ├── www/                     # Reusable JavaScript utilities
+│   │   ├── paths.js             # Environment-aware path constants
+│   │   ├── card-commands.js
+│   │   ├── card-services.js
+│   │   ├── card-translations.js
+│   │   ├── card-validation.js
+│   │   └── ramses-message-broker.js
 │   │
 │   ├── managers/                # Framework managers
 │   │   ├── feature_manager.py   # Feature lifecycle management
@@ -92,18 +110,65 @@ custom_components/ramses_extras/
 │   ├── number.py                # Root number platform
 │   └── __init__.py
 │
-└── 🌐 Frontend (Web Assets)
-    ├── www/
-    │   ├── hvac_fan_card/       # HVAC fan card UI
-    │   │   ├── translations/    # Card-specific translations
-    │   │   │   ├── en.json     # English card translations
-    │   │   │   └── nl.json     # Dutch card translations
-    │   │   └── templates/       # Card template files
-    │   └── helpers/             # Shared JavaScript helpers
-    └── translations/            # Integration-level translations
-        ├── en.json             # English integration strings
-        └── nl.json             # Dutch integration strings
+└── translations/                # Integration-level translations
+    ├── en.json                 # English integration strings
+    └── nl.json                 # Dutch integration strings
 ```
+
+## 🚀 Deployment Structure (Home Assistant)
+
+When features are enabled, files are copied to Home Assistant's `config/www/` directory with the following structure:
+
+### Current vs Target Deployment Structure
+
+**Current Structure:**
+
+```
+hass/config/www/community/ramses_extras/
+├── helpers/              # Shared utilities (mixed with features)
+└── hvac_fan_card/        # Feature files (mixed with helpers)
+```
+
+**Target Structure:**
+
+```
+hass/config/www/ramses_extras/
+├── helpers/                   # Shared utilities (copied from framework/www/)
+│   ├── paths.js
+│   ├── card-commands.js
+│   ├── card-services.js
+│   ├── card-translations.js
+│   ├── card-validation.js
+│   └── ramses-message-broker.js
+└── features/                  # Feature-specific folders
+    └── hvac_fan_card/         # Each feature gets its own folder
+        ├── hvac-fan-card.js
+        ├── hvac-fan-card-editor.js
+        ├── airflow-diagrams.js
+        ├── card-styles.js
+        ├── message-handlers.js
+        ├── templates/
+        └── translations/
+```
+
+**Source Locations:**
+
+- **Helpers**: Copied from `framework/www/` (JavaScript framework utilities)
+- **Features**: Copied from `features/{feature}/www/{feature}/` (feature-specific assets)
+
+### Benefits of Target Structure
+
+- **Clear Separation**: Helpers and features have distinct locations
+- **Scalable**: Each feature gets its own folder within `features/`
+- **Consistent URLs**: `/local/ramses_extras/features/hvac_fan_card/hvac-fan-card.js`
+- **Organized**: Easy to add multiple features without conflicts
+
+### Key Changes
+
+1. **Path Separation**: Helpers copied to `helpers/`, features to `features/`
+2. **Feature Folders**: Each feature gets its own folder (not single files)
+3. **URL Structure**: Predictable pattern for all feature assets
+4. **Integration Preservation**: Development file organization remains unchanged
 
 ## 🎯 Feature Architecture
 
@@ -549,7 +614,8 @@ Ramses Extras uses a **dual-level translation system** to support both Home Assi
 
 #### 2. Frontend-Level Translations
 
-- **Location**: `www/{feature}/translations/` directories
+- **Integration Location**: `features/{feature}/www/{feature}/translations/` directories
+- **Deployment Location**: `config/www/ramses_extras/features/{feature}/translations/` directories
 - **Purpose**: JavaScript cards, UI elements, and frontend strings
 - **Format**: JSON files per language (en.json, nl.json)
 - **Usage**: Lovelace cards, control interfaces, status displays
@@ -576,12 +642,16 @@ Ramses Extras uses multiple template systems depending on the context and requir
 
 **Purpose**: Generate HTML dynamically for Home Assistant Lovelace cards
 
-**Location**: `www/{feature}/templates/` directories
+**Integration Location**: `features/{feature}/www/{feature}/templates/` directories
+
+**Deployment Location**: `config/www/ramses_extras/features/{feature}/templates/` directories
 
 **Structure**: Modular template organization
 
 ```
-www/hvac_fan_card/templates/
+Integration: features/hvac_fan_card/www/hvac_fan_card/templates/
+Deployment:  config/www/ramses_extras/features/hvac_fan_card/templates/
+
 ├── card-templates.js        # Central export/import index
 ├── card-header.js          # Header section template
 ├── top-section.js          # Main data display template
@@ -828,13 +898,25 @@ Implemented a reusable JavaScript-based message listener system for handling ram
 
 ### File Structure
 
+**Integration Structure (Development):**
+
 ```
-www/
+custom_components/ramses_extras/
+├── framework/www/
+│   └── ramses-message-helper.js      # Global singleton helper
+└── features/hvac_fan_card/www/hvac_fan_card/
+    └── [card_files]                  # Feature card files
+```
+
+**Deployment Structure (Home Assistant):**
+
+```
+hass/config/www/ramses_extras/
 ├── helpers/
 │   └── ramses-message-helper.js      # Global singleton helper
-└── hvac_fan_card/
-    ├── hvac-fan-card.js             # Main card with integration
-    └── message-handlers.js          # Card-specific message handlers
+└── features/
+    └── hvac_fan_card/               # Feature card folder
+        └── [card_files]              # Feature card files
 ```
 
 ### Key Features

@@ -82,6 +82,7 @@ line-length = 88
 target-version = "py313"
 exclude = [
     "setup.py",
+    "MagicMock",
 ]
 
 [tool.ruff.lint]

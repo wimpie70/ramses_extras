@@ -3,8 +3,10 @@ systems."""
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ from .const import (
     PLATFORM_REGISTRY,
     register_feature_platform,
 )
+from .framework.helpers.paths import DEPLOYMENT_PATHS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -242,7 +245,9 @@ async def _register_feature_card_resources(
     handles its own business logic.
     """
     try:
-        _LOGGER.debug("Starting feature-centric card resource registration")
+        _LOGGER.info("🔧 Starting feature-centric card resource registration")
+        _LOGGER.info(f"📋 Enabled features: {enabled_features}")
+        _LOGGER.info(f"📋 Available features: {list(AVAILABLE_FEATURES.keys())}")
 
         # Initialize card resources storage
         hass.data.setdefault(DOMAIN, {})
@@ -253,18 +258,24 @@ async def _register_feature_card_resources(
 
         # Import card-capable features dynamically
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            _LOGGER.info(f"🔍 Processing feature: {feature_key}")
+
             # Skip default feature (it's not a card feature)
             if feature_key == "default":
+                _LOGGER.info("⏭️ Skipping default feature")
                 continue
 
             # Only process features that are enabled
-            if not enabled_features.get(feature_key, False):
+            is_enabled = enabled_features.get(feature_key, False)
+            _LOGGER.info(f"🔧 Feature {feature_key} enabled: {is_enabled}")
+            if not is_enabled:
                 _LOGGER.debug(
                     f"Feature {feature_key} not enabled, skipping card registration"
                 )
                 continue
 
             try:
+                _LOGGER.info(f"📦 Importing feature module: {feature_key}")
                 # Import the feature module
                 feature_module_name = (
                     f"custom_components.ramses_extras.features.{feature_key}"
@@ -274,26 +285,41 @@ async def _register_feature_card_resources(
                 )
 
                 # Check if feature has card management capability
+                create_func_name = f"create_{feature_key.replace('-', '_')}_feature"
+                _LOGGER.info(f"🔍 Looking for create function: {create_func_name}")
+                _LOGGER.info(
+                    f"🔍 Has create function: "
+                    f"{hasattr(feature_module, create_func_name)}"
+                )
+
                 if hasattr(
                     feature_module,
-                    f"create_{feature_key.replace('-', '_')}_feature",
+                    create_func_name,
                 ):
                     # Create feature instance for card management
                     create_feature_func = getattr(
                         feature_module,
-                        f"create_{feature_key.replace('-', '_')}_feature",
+                        create_func_name,
                     )
 
                     # Create feature instance
+                    _LOGGER.info("🎯 Creating feature instance...")
                     feature_instance = create_feature_func(
                         hass, None
                     )  # config_entry can be None for card-only features
 
+                    _LOGGER.info(f"📦 Feature instance created: {feature_instance}")
+
                     # Get card manager if available
                     card_manager = feature_instance.get("card_manager")
+                    _LOGGER.info(f"🎯 Card manager: {card_manager}")
+
                     if card_manager:
+                        _LOGGER.info("📝 Registering cards via card manager...")
                         # Delegate card registration to the feature
                         registered_cards = await card_manager.async_register_cards()
+                        _LOGGER.info(f"📋 Registered cards result: {registered_cards}")
+
                         if registered_cards:
                             feature_card_registrations[feature_key] = registered_cards
                             _LOGGER.info(
@@ -301,33 +327,306 @@ async def _register_feature_card_resources(
                                 f"{len(registered_cards)} cards"
                             )
                         else:
-                            _LOGGER.debug(
-                                f"Feature {feature_key} has no cards to register"
+                            _LOGGER.warning(
+                                f"⚠️ Feature {feature_key} has no cards to register"
                             )
+                    else:
+                        _LOGGER.warning(
+                            f"⚠️ No card manager found for feature {feature_key}"
+                        )
 
             except ImportError as e:
-                _LOGGER.warning(f"Could not import feature {feature_key}: {e}")
+                _LOGGER.error(f"❌ Could not import feature {feature_key}: {e}")
             except Exception as e:
-                _LOGGER.error(f"Error processing feature {feature_key} for cards: {e}")
+                _LOGGER.error(
+                    f"❌ Error processing feature {feature_key} for cards: {e}"
+                )
+                import traceback
+
+                _LOGGER.error(f"Full traceback: {traceback.format_exc()}")
 
         # Consolidate all card registrations
+        _LOGGER.info("🔗 Consolidating card registrations...")
         all_registered_cards = {}
         for feature_key, feature_cards in feature_card_registrations.items():
             all_registered_cards.update(feature_cards)
 
+        _LOGGER.info(f"📊 Final consolidated cards: {all_registered_cards}")
+
         # Store consolidated registrations
         hass.data[DOMAIN]["card_resources"] = all_registered_cards
 
+        # Register cards with Home Assistant's Lovelace system
+        await _register_lovelace_cards(hass, all_registered_cards)
+
         registered_cards = list(all_registered_cards.keys())
         _LOGGER.info(
-            f"Feature-centric card registration complete. "
+            f"✅ Feature-centric card registration complete. "
             f"Total cards registered: {len(all_registered_cards)} from "
             f"{len(feature_card_registrations)} features. "
             f"Cards: {registered_cards}"
         )
 
     except Exception as e:
-        _LOGGER.error(f"Failed to register feature card resources: {e}")
+        _LOGGER.error(f"❌ Failed to register feature card resources: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+
+
+async def _copy_helper_files(hass: HomeAssistant) -> None:
+    """Copy helper files to Home Assistant's www directory for card functionality."""
+    try:
+        _LOGGER.info("📦 Starting helper files copy process...")
+
+        # Source and destination paths
+        source_helpers_dir = INTEGRATION_DIR / "framework" / "www"
+        destination_helpers_dir = DEPLOYMENT_PATHS.get_destination_helpers_path(
+            hass.config.config_dir
+        )
+
+        _LOGGER.info(f"📁 Source helpers directory: {source_helpers_dir}")
+        _LOGGER.info(f"📁 Destination helpers directory: {destination_helpers_dir}")
+        _LOGGER.info(f"📂 Source directory exists: {source_helpers_dir.exists()}")
+
+        if not source_helpers_dir.exists():
+            _LOGGER.warning(f"⚠️ Helper files directory not found: {source_helpers_dir}")
+            return
+
+        # Create destination directory if it doesn't exist
+        destination_helpers_dir.mkdir(parents=True, exist_ok=True)
+        _LOGGER.info(f"📁 Created directory: {destination_helpers_dir}")
+
+        # Copy all helper files
+        await asyncio.to_thread(
+            shutil.copytree,
+            source_helpers_dir,
+            destination_helpers_dir,
+            dirs_exist_ok=True,
+        )
+        _LOGGER.info("✅ Helper files copied successfully")
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Failed to copy helper files: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+
+
+async def _register_lovelace_cards(
+    hass: HomeAssistant, registered_cards: dict[str, dict[str, Any]]
+) -> None:
+    """Register cards with Home Assistant's Lovelace UI system."""
+    try:
+        _LOGGER.info("🔧 Starting Lovelace card registration process...")
+        _LOGGER.info(f"📋 Input registered_cards: {registered_cards}")
+
+        if not registered_cards:
+            _LOGGER.warning("⚠️ No cards to register - registered_cards is empty!")
+            return
+
+        # Copy helper files when any card is enabled
+        _LOGGER.info("📦 Copying helper files for card functionality...")
+        await _copy_helper_files(hass)
+
+        for card_id, card_info in registered_cards.items():
+            try:
+                _LOGGER.info(f"🔄 Processing card: {card_id}")
+                _LOGGER.info(f"📄 Card info: {card_info}")
+
+                # For Home Assistant custom cards, ensure the JavaScript files
+                # are copied to the Home Assistant's www directory so they can be
+                # accessed via /local/ URLs
+
+                # Get the source directory path from the integration
+                # The js_path now points to the main card file,
+                # but we need the directory
+                integration_js_path = INTEGRATION_DIR / card_info["js_path"]
+                integration_card_dir = integration_js_path.parent
+                _LOGGER.info(f"🔍 Source integration file path: {integration_js_path}")
+                _LOGGER.info(f"📁 Source integration directory: {integration_card_dir}")
+                _LOGGER.info(
+                    f"📂 Source directory exists: {integration_card_dir.exists()}"
+                )
+
+                # Use proper deployment paths from paths.py
+                # Extract feature name from card info
+                feature_name = card_info.get("feature", "unknown")
+
+                # Get the correct destination path using DEPLOYMENT_PATHS
+                homeassistant_card_dir = DEPLOYMENT_PATHS.get_destination_features_path(
+                    hass.config.config_dir, feature_name
+                )
+
+                _LOGGER.info(f"🎯 Target HA directory: {homeassistant_card_dir}")
+                _LOGGER.info(f"📁 Source directory: {integration_card_dir}")
+
+                if integration_card_dir.exists():
+                    # Create the destination directory if it doesn't exist
+                    homeassistant_card_dir.mkdir(parents=True, exist_ok=True)
+                    _LOGGER.info(f"📁 Created directory: {homeassistant_card_dir}")
+
+                    # Copy all files from the card directory
+                    # to Home Assistant's www directory
+                    await asyncio.to_thread(
+                        shutil.copytree,
+                        integration_card_dir,
+                        homeassistant_card_dir,
+                        dirs_exist_ok=True,
+                    )
+                    _LOGGER.info("✅ Directory copied successfully")
+
+                    # Construct the correct URL for the card
+                    # Based on new deployment structure:
+                    # /local/ramses_extras/features/{feature_name}/
+                    clean_js_path = card_info["js_path"].split("/")[
+                        -1
+                    ]  # Just the filename
+                    card_url = (
+                        f"/local/ramses_extras/features/{feature_name}/{clean_js_path}"
+                    )
+
+                    _LOGGER.info(
+                        f"🎴 Card ready for Lovelace: {card_id} -> {card_info['name']} "
+                        f"(available at {card_url})"
+                    )
+                else:
+                    _LOGGER.error(
+                        f"❌ Card directory not found: {integration_card_dir}"
+                    )
+                    continue
+
+            except Exception as e:
+                _LOGGER.error(f"❌ Failed to setup card {card_id}: {e}")
+                import traceback
+
+                _LOGGER.error(f"Full traceback: {traceback.format_exc()}")
+                continue
+
+        _LOGGER.info("✅ Custom card files setup complete")
+
+        # Register cards with Home Assistant's Lovelace resources storage
+        await _register_lovelace_resources_storage(hass, registered_cards)
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Failed to setup custom card files: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+
+
+async def _register_lovelace_resources_storage(
+    hass: HomeAssistant, registered_cards: dict[str, dict[str, Any]]
+) -> None:
+    """Register cards in Home Assistant's Lovelace resources storage.
+
+    This ensures that custom cards are discoverable and can be used in dashboards.
+    """
+    try:
+        _LOGGER.info("🔧 Starting Lovelace resources storage registration...")
+
+        if not registered_cards:
+            _LOGGER.warning("⚠️ No cards to register in lovelace_resources storage!")
+            return
+
+        # Import Store for proper Home Assistant storage access
+        from homeassistant.helpers.storage import Store
+
+        # Get the resources storage using the proper Store API
+        store = Store(hass, 1, "lovelace_resources")
+        data = await store.async_load() or {"items": []}
+
+        _LOGGER.info(
+            f"📋 Current resources storage loaded: {len(data.get('items', []))} items"
+        )
+
+        # Get existing resources and fix any missing 'id' fields
+        existing_resources = data.get("items", [])
+        fixed_resources: list[dict[str, Any]] = []
+        fixed_any_resources = False
+        for resource in existing_resources:
+            # Fix missing 'id' field by using the URL as a unique identifier
+            if "id" not in resource:
+                resource_id = (
+                    resource.get("url", "").replace("/", "_").replace("-", "_")
+                )
+                if not resource_id:
+                    resource_id = f"resource_{len(fixed_resources)}"
+                resource["id"] = resource_id
+                fixed_any_resources = True
+                _LOGGER.warning(
+                    f"🔧 Fixed missing 'id' field for resource: "
+                    f"{resource.get('url', 'unknown')}"
+                )
+            fixed_resources.append(resource)
+
+        existing_resources = fixed_resources
+        existing_card_urls = {
+            resource["url"]
+            for resource in existing_resources
+            if resource.get("type") == "module"
+        }
+
+        _LOGGER.info(f"📄 Existing card URLs: {existing_card_urls}")
+
+        # Add new cards to resources
+        resources_to_add = []
+        for card_id, card_info in registered_cards.items():
+            try:
+                # Construct the URL for the card using the correct deployment path
+                feature_name = card_info.get("feature", "unknown")
+                js_filename = card_info["js_path"].split("/")[-1]  # Just the filename
+                card_url = f"/local/ramses_extras/features/{feature_name}/{js_filename}"
+
+                # Check if this card is already registered
+                if card_url in existing_card_urls:
+                    _LOGGER.info(f"⏭️ Card {card_id} already registered at {card_url}")
+                    continue
+
+                # Create resource entry with required id field
+                resource_entry = {
+                    "id": card_id,
+                    "url": card_url,
+                    "type": "module",
+                }
+
+                resources_to_add.append(resource_entry)
+                _LOGGER.info(f"📝 Added resource entry for {card_id}: {card_url}")
+
+            except Exception as e:
+                _LOGGER.error(f"❌ Failed to create resource entry for {card_id}: {e}")
+                continue
+
+        # Update the storage if we have new resources or fixed existing ones
+        if resources_to_add or fixed_any_resources:
+            updated_resources = existing_resources + resources_to_add
+            data["items"] = updated_resources
+
+            # Save the updated storage using the Store API
+            await store.async_save(data)
+
+            if resources_to_add:
+                _LOGGER.info(
+                    f"✅ Registered {len(resources_to_add)} new card resources"
+                )
+                _LOGGER.info(f"📋 Updated resources count: {len(updated_resources)}")
+
+                # Notify user about successful registration
+                if hasattr(hass.components, "persistent_notification"):
+                    hass.components.persistent_notification.create(
+                        "The Ramses Extras fan card has been registered "
+                        "as a Lovelace resource.<br>"
+                        "You can now add it to any dashboard.",
+                        title="Ramses Extras",
+                        notification_id="ramses_extras_lovelace_resource",
+                    )
+            if fixed_any_resources:
+                _LOGGER.info("🔧 Fixed existing resources with missing 'id' fields")
+        else:
+            _LOGGER.info("ℹ️ No new resources to add and no fixes needed")
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Failed to register lovelace resources storage: {e}")
         import traceback
 
         _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")

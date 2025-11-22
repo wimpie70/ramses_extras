@@ -1,8 +1,0 @@
-i want a new method in core.py to find the broker. ramses_cc has unpublished commits with a different way to store the broker and the device. We need to handle both ways. I also want a separate testfile that tests these old and new way. ~/dev/ramses_cc has the uncommitted new way. g
-
-need to fix entity manager not found/entities not created/removed
-
-we don't want extra backward compatible code. this integration is not live yet.
-
-need to make the hvac card available again: not injected ?
-- refactor feature centric architecture

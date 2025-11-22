@@ -7,8 +7,11 @@
 /* global fetch */
 /* global navigator */
 
-// Translation path configuration
-const TRANSLATION_BASE_PATH = '/local/ramses_extras/hvac_fan_card';
+// Import shared path constants (using new JS_FEATURE_REORGANIZATION pattern)
+import { PATHS, HELPER_PATHS, getFeatureTranslationPath } from '../../../../framework/www/paths.js';
+
+// Translation path configuration - using shared constants
+const TRANSLATION_BASE_PATH = getFeatureTranslationPath('hvac_fan_card', 'en').replace('/translations/en.json', '');
 
 import { NORMAL_SVG, BYPASS_OPEN_SVG } from './airflow-diagrams.js';
 import { CARD_STYLE } from './card-styles.js';
@@ -22,10 +25,10 @@ import {
 import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
 
-// Import reusable helpers from shared location
-import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
-import { FAN_COMMANDS } from '/local/ramses_extras/helpers/card-commands.js';
-import { getRamsesMessageBroker } from '/local/ramses_extras/helpers/ramses-message-broker.js';
+// Import reusable helpers using environment-aware path constants
+import { SimpleCardTranslator } from '/local/ramses_extras/framework/www/card-translations.js';
+import { FAN_COMMANDS } from '/local/ramses_extras/framework/www/card-commands.js';
+import { getRamsesMessageBroker } from '/local/ramses_extras/framework/www/ramses-message-broker.js';
 import { HvacFanCardHandlers } from './message-handlers.js';
 import {
   sendPacket,
@@ -35,12 +38,12 @@ import {
   getEntityState,
   callWebSocket,
   setFanParameter,
-} from '/local/ramses_extras/helpers/card-services.js';
+} from '/local/ramses_extras/framework/www/card-services.js';
 import {
   validateCoreEntities,
   validateDehumidifyEntities,
   getEntityValidationReport,
-} from '/local/ramses_extras/helpers/card-validation.js';
+} from '/local/ramses_extras/framework/www/card-validation.js';
 
 // Make FAN_COMMANDS globally available
 window.FAN_COMMANDS = FAN_COMMANDS;
@@ -64,7 +67,9 @@ class HvacFanCard extends HTMLElement {
   // Initialize translations for this card
   async initTranslations() {
     this.translator = new SimpleCardTranslator('hvac-fan-card');
-    await this.translator.init('/local/ramses_extras/hvac_fan_card');
+    // Use environment-aware path resolution
+    const translationPath = getFeatureTranslationPath('hvac_fan_card', 'en');
+    await this.translator.init(translationPath.replace('/translations/en.json', ''));
   }
 
   // Helper method to get translated strings

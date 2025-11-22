@@ -86,3 +86,6 @@ coverage.xml
 # Development tools
 *.egg-info/
 .coverage.*
+
+# Mock files and test directories
+MagicMock/
