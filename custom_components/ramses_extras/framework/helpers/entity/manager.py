@@ -175,28 +175,19 @@ class EntityManager:
         # Use target features for enabled_by_feature status
         enabled_by_feature = target_enabled
 
-        # Handle different feature categories
-        category = feature_config.get("category", "sensor")
-
-        if category == "cards":
-            # Card entities (dashboard cards)
+        # Check if feature has card configurations - add card entities if found
+        has_cards = await self._feature_has_cards(feature_id)
+        if has_cards:
             await self._add_card_entities(
                 feature_id, feature_config, enabled_by_feature
             )
-        elif category == "automations":
-            # Automation entities
-            await self._add_automation_entities(
-                feature_id, feature_config, enabled_by_feature
-            )
-        else:
-            # Sensor/other features - track device entities
-            # Get feature's supported device types from the feature module
-            supported_devices = await self._get_supported_devices_from_feature(
-                feature_id
-            )
-            await self._add_device_entities(
-                feature_id, feature_config, enabled_by_feature, supported_devices
-            )
+
+        # All features use device entities based on required_entities
+        # Get feature's supported device types from the feature module
+        supported_devices = await self._get_supported_devices_from_feature(feature_id)
+        await self._add_device_entities(
+            feature_id, feature_config, enabled_by_feature, supported_devices
+        )
 
     async def _add_card_entities(
         self, feature_id: str, feature_config: dict[str, Any], enabled: bool
@@ -220,35 +211,6 @@ class EntityManager:
         }
 
         _LOGGER.debug(f"Added card entity: {card_path} (enabled: {enabled})")
-
-    async def _add_automation_entities(
-        self, feature_id: str, feature_config: dict[str, Any], enabled: bool
-    ) -> None:
-        """Add automation entities for a feature.
-
-        Args:
-            feature_id: Feature identifier
-            feature_config: Feature configuration
-            enabled: Whether the feature is enabled
-        """
-        # Automations are YAML-based, identified by feature patterns
-        automation_pattern = f"automation_{feature_id}_*"
-
-        # Check for existing automations matching this pattern
-        existing_automations = await self._find_automations_by_pattern(feature_id)
-
-        self.all_possible_entities[automation_pattern] = {
-            "exists_already": len(existing_automations) > 0,
-            "enabled_by_feature": enabled,
-            "feature_id": feature_id,
-            "entity_type": "automation",
-            "entity_name": feature_id,
-        }
-
-        _LOGGER.debug(
-            f"Added automation pattern: {automation_pattern} (enabled: {enabled}, "
-            f"existing: {len(existing_automations)})"
-        )
 
     async def _add_device_entities(
         self,
@@ -357,27 +319,6 @@ class EntityManager:
         if hasattr(device, "__str__"):
             return str(device)
         return f"device_{id(device)}"  # Fallback to object id
-
-    async def _find_automations_by_pattern(self, feature_id: str) -> list[str]:
-        """Find automations matching a feature pattern.
-
-        Args:
-            feature_id: Feature identifier
-
-        Returns:
-            List of matching automation IDs
-        """
-        try:
-            # For now, use pattern matching similar to existing code
-            patterns = [f"*{feature_id}*"]
-            all_states = self.hass.states.async_all()
-            result = EntityHelpers.filter_entities_by_patterns(
-                [state.entity_id for state in all_states], patterns
-            )
-            return result if isinstance(result, list) else []
-        except Exception as e:
-            _LOGGER.warning(f"Could not find automations for {feature_id}: {e}")
-            return []
 
     async def _get_devices_for_feature(
         self, feature_id: str, supported_devices: list[str]
@@ -721,6 +662,46 @@ class EntityManager:
         # No fallback - features should use the new required_entities format
         return {}
 
+    async def _feature_has_cards(self, feature_id: str) -> bool:
+        """Check if a feature has card configurations defined.
+
+        Args:
+            feature_id: Feature identifier
+
+        Returns:
+            True if feature has card configurations, False otherwise
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._import_has_cards, feature_id)
+
+    def _import_has_cards(self, feature_id: str) -> bool:
+        """Import feature module and check for card configurations (blocking operation).
+
+        Args:
+            feature_id: Feature identifier
+
+        Returns:
+            True if feature has card configurations, False otherwise
+        """
+        try:
+            # Import the feature's const module
+            feature_module_path = (
+                f"custom_components.ramses_extras.features.{feature_id}.const"
+            )
+
+            feature_module = importlib.import_module(feature_module_path)
+
+            # Check for CARD_CONFIGS variable (e.g., HVAC_FAN_CARD_CONFIGS)
+            card_configs_key = f"{feature_id.upper()}_CARD_CONFIGS"
+            if hasattr(feature_module, card_configs_key):
+                card_configs = getattr(feature_module, card_configs_key, [])
+                return len(card_configs) > 0
+
+            return False
+        except Exception as e:
+            _LOGGER.debug(f"Could not check for cards in feature {feature_id}: {e}")
+            return False
+
     def _normalize_devices_list(self, devices: Any) -> list[Any]:
         """Normalize different device storage formats to a list.
 
@@ -918,7 +899,8 @@ class EntityManager:
                 if entity_type == "card":
                     await self._remove_card_entities(ids)
                 elif entity_type == "automation":
-                    await self._remove_automation_entities(ids)
+                    # Automations are no longer tracked separately
+                    _LOGGER.debug(f"Skipping automation entities: {ids}")
                 else:
                     await self._remove_regular_entities(ids, entity_type)
             except Exception as e:
@@ -946,15 +928,6 @@ class EntityManager:
         """
         # Implementation would remove card files from www/community
         _LOGGER.info(f"Removing card entities: {card_ids}")
-
-    async def _remove_automation_entities(self, automation_patterns: list[str]) -> None:
-        """Remove automation entities.
-
-        Args:
-            automation_patterns: List of automation patterns to remove
-        """
-        # Implementation would remove automations from automations.yaml
-        _LOGGER.info(f"Removing automation entities: {automation_patterns}")
 
     async def _remove_regular_entities(
         self, entity_ids: list[str], entity_type: str

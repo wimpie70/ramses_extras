@@ -149,7 +149,7 @@ class TestEntityManager:
         """Test scanning card entities."""
         feature_id = "test_card_feature"
         feature_config = {
-            "category": "cards",
+            "category": "sensor",  # Not cards category
             "location": "test_location",
         }
         existing_entities = set()
@@ -158,11 +158,14 @@ class TestEntityManager:
         self.entity_manager.current_features = {feature_id: True}
         self.entity_manager.target_features = {feature_id: False}
 
-        await self.entity_manager._scan_feature_entities(
-            feature_id, feature_config, existing_entities
-        )
+        # Mock the has_cards method to return True (simulating card
+        #  configurations found)
+        with patch.object(self.entity_manager, "_feature_has_cards", return_value=True):
+            await self.entity_manager._scan_feature_entities(
+                feature_id, feature_config, existing_entities
+            )
 
-        # Card entities should be added
+        # Card entities should be added even without category: "cards"
         expected_key = "www_community_test_card_feature"
         assert expected_key in self.entity_manager.all_possible_entities
 
@@ -171,38 +174,6 @@ class TestEntityManager:
         assert entity_info["enabled_by_feature"] is False  # Target is False
         assert entity_info["feature_id"] == feature_id
         assert entity_info["entity_type"] == "card"
-
-    @pytest.mark.asyncio
-    async def test_scan_feature_entities_automations(self):
-        """Test scanning automation entities."""
-        feature_id = "test_automation_feature"
-        feature_config = {
-            "category": "automations",
-        }
-        existing_entities = set()
-
-        self.entity_manager.current_features = {feature_id: True}
-        self.entity_manager.target_features = {feature_id: True}
-
-        # Mock the automation finding method
-        with patch.object(
-            self.entity_manager,
-            "_find_automations_by_pattern",
-            return_value=["automation1", "automation2"],
-        ):
-            await self.entity_manager._scan_feature_entities(
-                feature_id, feature_config, existing_entities
-            )
-
-        # Automation patterns should be added
-        expected_key = "automation_test_automation_feature_*"
-        assert expected_key in self.entity_manager.all_possible_entities
-
-        entity_info = self.entity_manager.all_possible_entities[expected_key]
-        assert entity_info["exists_already"] is True  # Mocked existing automations
-        assert entity_info["enabled_by_feature"] is True
-        assert entity_info["feature_id"] == feature_id
-        assert entity_info["entity_type"] == "automation"
 
     @pytest.mark.asyncio
     async def test_scan_feature_entities_devices(self):
@@ -317,6 +288,64 @@ class TestEntityManager:
         assert "entity3" not in to_create
         assert len(to_create) == 1
 
+    @pytest.mark.asyncio
+    async def test_scan_feature_entities_auto_detect_cards(self):
+        """Test that card entities are automatically
+        detected from card configurations."""
+        feature_id = "hvac_fan_card"
+        feature_config = {
+            "category": "sensor",  # Not cards category
+            "supported_device_types": ["HvacVentilator"],
+        }
+        existing_entities = set()
+
+        # Enable the feature for scanning
+        self.entity_manager.current_features = {feature_id: True}
+        self.entity_manager.target_features = {feature_id: True}
+
+        # Mock the has_cards method to return True
+        #  (simulating HVAC_FAN_CARD_CONFIGS found)
+        with patch.object(self.entity_manager, "_feature_has_cards", return_value=True):
+            await self.entity_manager._scan_feature_entities(
+                feature_id, feature_config, existing_entities
+            )
+
+        # Card entities should be added even without category: "cards"
+        expected_key = "www_community_hvac_fan_card"
+        assert expected_key in self.entity_manager.all_possible_entities
+
+        entity_info = self.entity_manager.all_possible_entities[expected_key]
+        assert entity_info["exists_already"] is False  # Cards are file-based
+        assert entity_info["enabled_by_feature"] is True  # Target is True
+        assert entity_info["feature_id"] == feature_id
+        assert entity_info["entity_type"] == "card"
+
+    @pytest.mark.asyncio
+    async def test_scan_feature_entities_no_cards(self):
+        """Test that features without cards don't create card entities."""
+        feature_id = "humidity_control"
+        feature_config = {
+            "category": "sensor",
+            "supported_device_types": ["HvacVentilator"],
+        }
+        existing_entities = set()
+
+        # Enable the feature for scanning
+        self.entity_manager.current_features = {feature_id: True}
+        self.entity_manager.target_features = {feature_id: True}
+
+        # Mock the has_cards method to return False (no card configurations)
+        with patch.object(
+            self.entity_manager, "_feature_has_cards", return_value=False
+        ):
+            await self.entity_manager._scan_feature_entities(
+                feature_id, feature_config, existing_entities
+            )
+
+        # Card entities should NOT be added
+        expected_key = "www_community_humidity_control"
+        assert expected_key not in self.entity_manager.all_possible_entities
+
     def test_get_entity_summary(self):
         """Test getting entity summary statistics."""
         self.entity_manager.all_possible_entities = {
@@ -382,14 +411,13 @@ class TestEntityManager:
     @pytest.mark.asyncio
     async def test_remove_entities_by_type(self):
         """Test removing entities grouped by type."""
-        entity_ids = ["card1", "card2", "sensor1", "sensor2", "automation1"]
+        entity_ids = ["card1", "card2", "sensor1", "sensor2"]
 
         self.entity_manager.all_possible_entities = {
             "card1": {"entity_type": "card"},
             "card2": {"entity_type": "card"},
             "sensor1": {"entity_type": "sensor"},
             "sensor2": {"entity_type": "sensor"},
-            "automation1": {"entity_type": "automation"},
         }
 
         with patch.object(
@@ -398,19 +426,13 @@ class TestEntityManager:
             with patch.object(
                 self.entity_manager, "_remove_regular_entities", new_callable=AsyncMock
             ) as mock_regular_remove:
-                with patch.object(
-                    self.entity_manager,
-                    "_remove_automation_entities",
-                    new_callable=AsyncMock,
-                ) as mock_auto_remove:
-                    await self.entity_manager._remove_entities(entity_ids)
+                await self.entity_manager._remove_entities(entity_ids)
 
-                    # Verify each type was called with correct entities
-                    mock_card_remove.assert_called_once_with(["card1", "card2"])
-                    mock_regular_remove.assert_called_once_with(
-                        ["sensor1", "sensor2"], "sensor"
-                    )
-                    mock_auto_remove.assert_called_once_with(["automation1"])
+                # Verify each type was called with correct entities
+                mock_card_remove.assert_called_once_with(["card1", "card2"])
+                mock_regular_remove.assert_called_once_with(
+                    ["sensor1", "sensor2"], "sensor"
+                )
 
     @pytest.mark.asyncio
     async def test_remove_entities_error_handling(self):
@@ -429,51 +451,6 @@ class TestEntityManager:
         ):
             # Should not raise exception, just log error
             await self.entity_manager._remove_entities(entity_ids)
-
-    @pytest.mark.asyncio
-    async def test_find_automations_by_pattern(self):
-        """Test finding automations by pattern."""
-        feature_id = "test_feature"
-
-        # Mock hass states
-        mock_state1 = MagicMock()
-        mock_state1.entity_id = "automation.test_feature_action"
-        mock_state2 = MagicMock()
-        mock_state2.entity_id = "automation.other_action"
-        mock_state3 = MagicMock()
-        mock_state3.entity_id = "sensor.test"
-
-        self.mock_hass.states.async_all.return_value = [
-            mock_state1,
-            mock_state2,
-            mock_state3,
-        ]
-
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.entity.manager.EntityHelpers"
-        ) as mock_helpers:
-            mock_helpers.filter_entities_by_patterns.return_value = [
-                "automation.test_feature_action"
-            ]
-
-            automations = await self.entity_manager._find_automations_by_pattern(
-                feature_id
-            )
-
-            # Should find automations matching the pattern
-            assert len(automations) == 1
-            assert "automation.test_feature_action" in automations
-
-    @pytest.mark.asyncio
-    async def test_find_automations_by_pattern_error(self):
-        """Test error handling when finding automations."""
-        feature_id = "test_feature"
-
-        self.mock_hass.states.async_all.side_effect = Exception("State error")
-
-        automations = await self.entity_manager._find_automations_by_pattern(feature_id)
-
-        assert automations == []
 
     @pytest.mark.asyncio
     async def test_get_devices_for_feature(self):

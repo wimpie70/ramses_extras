@@ -72,25 +72,24 @@ async def _manage_cards_config_flow(
 
         card_info = extras_registry.get_card_config(feature_key) or {}
 
-        if card_info.get("category") == "cards":
-            # Use the location from the feature's const.py file
-            card_source_path = (
-                INTEGRATION_DIR / CARD_FOLDER / card_info.get("location", feature_key)
-            )
-            card_dest_path = www_community_path / feature_key
+        # Use the location from the card_info or feature key
+        card_source_path = (
+            INTEGRATION_DIR / CARD_FOLDER / card_info.get("location", feature_key)
+        )
+        card_dest_path = www_community_path / feature_key
 
-            if enabled_features.get(feature_key, False):
-                if card_source_path.exists():
-                    # For automatic registration, we don't need to copy files anymore
-                    # The card is registered as a static resource in async_setup_entry
-                    _LOGGER.info(f"Card {feature_key} is automatically registered")
-                else:
-                    _LOGGER.warning(
-                        f"Cannot register {feature_key}: {card_source_path} not found"
-                    )
+        if enabled_features.get(feature_key, False):
+            if card_source_path.exists():
+                # For automatic registration, we don't need to copy files anymore
+                # The card is registered as a static resource in async_setup_entry
+                _LOGGER.info(f"Card {feature_key} is automatically registered")
             else:
-                # Remove card from community folder if it exists
-                await _remove_card_config_flow(hass, card_dest_path)
+                _LOGGER.warning(
+                    f"Cannot register {feature_key}: {card_source_path} not found"
+                )
+        else:
+            # Remove card from community folder if it exists
+            await _remove_card_config_flow(hass, card_dest_path)
 
 
 async def _install_card_config_flow(
@@ -310,10 +309,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 continue
 
             name = str(feature_config.get("name", feature_key))
-            category = str(feature_config.get("category", ""))
             description = str(feature_config.get("description", ""))
 
-            detail_parts = [f"**{name}** ({category})"]
+            detail_parts = [f"**{name}**"]
             if description:
                 detail_parts.append(description)
 
