@@ -67,10 +67,15 @@ async def _manage_cards_config_flow(
         if feature_key == "default":
             continue
 
-        if feature_config.get("category") == "cards":
-            # Use the same path resolution as the rest of the code
+        # Get card info from the registry
+        from .extras_registry import extras_registry
+
+        card_info = extras_registry.get_card_config(feature_key) or {}
+
+        if card_info.get("category") == "cards":
+            # Use the location from the feature's const.py file
             card_source_path = (
-                INTEGRATION_DIR / CARD_FOLDER / str(feature_config.get("location", ""))
+                INTEGRATION_DIR / CARD_FOLDER / card_info.get("location", feature_key)
             )
             card_dest_path = www_community_path / feature_key
 

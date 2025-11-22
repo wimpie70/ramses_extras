@@ -22,6 +22,41 @@ HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {
     },
 }
 
+# Card configurations for feature-centric card management
+# To add new cards, simply add another dictionary to this list
+HVAC_FAN_CARD_CONFIGS: list[dict[str, Any]] = [
+    {
+        "card_id": "hvac-fan-card",
+        "card_name": "HVAC Fan Card",
+        "description": "Advanced fan card for control and configuration",
+        "location": "hvac_fan_card",
+        "preview": True,
+        "documentation_url": "https://github.com/wimpie70/ramses_extras/wiki/HVAC-Fan-Card",
+        "supported_device_types": ["HvacVentilator"],
+        "javascript_file": "hvac-fan-card.js",
+    },
+    # Example: Uncomment and modify to add a second card
+    # {
+    #     "card_id": "hvac-status-card",
+    #     "card_name": "HVAC Status Card",
+    #     "description": "Status monitoring card for HVAC systems",
+    #     "location": "hvac_fan_card",
+    #     "preview": True,
+    #     "documentation_url": "https://github.com/wimpie70/ramses_extras/wiki/HVAC-Status-Card",
+    #     "supported_device_types": ["HvacVentilator"],
+    #     "javascript_file": "hvac-status-card.js",
+    # },
+]
+
+# Feature-specific constants for HVAC Fan Card management
+HVAC_FAN_CARD_CONST = {
+    "feature_id": "hvac_fan_card",
+    # Cards that this feature manages
+    "cards": HVAC_FAN_CARD_CONFIGS,
+    # Device mappings for the feature
+    "device_mappings": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
+}
+
 
 def load_feature() -> None:
     """Load hvac_fan_card feature into the registry."""
@@ -29,6 +64,11 @@ def load_feature() -> None:
 
     # Register device mappings (indicates card is available for HvacVentilator devices)
     extras_registry.register_device_mappings(HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING)
+
+    # Register each card configuration for feature-centric card management
+    for card_config in HVAC_FAN_CARD_CONFIGS:
+        extras_registry.register_card_config("hvac_fan_card", card_config)
+
     extras_registry.register_feature("hvac_fan_card")
 
 
@@ -38,5 +78,7 @@ __all__ = [
     "HVAC_FAN_CARD_NUMBER_CONFIGS",
     "HVAC_FAN_CARD_BOOLEAN_CONFIGS",
     "HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING",
+    "HVAC_FAN_CARD_CONFIGS",
+    "HVAC_FAN_CARD_CONST",
     "load_feature",
 ]

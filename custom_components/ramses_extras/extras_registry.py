@@ -18,6 +18,7 @@ class RamsesEntityRegistry:
         self._number_configs: dict[str, dict[str, Any]] = {}
         self._boolean_configs: dict[str, dict[str, Any]] = {}
         self._device_mappings: dict[str, dict[str, Any]] = {}
+        self._card_configs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._loaded_features: set[str] = set()
 
@@ -60,6 +61,13 @@ class RamsesEntityRegistry:
                             for entity in entities:
                                 if entity not in existing_entities:
                                     existing_entities.append(entity)
+
+    def register_card_config(
+        self, feature_name: str, card_config: dict[str, Any]
+    ) -> None:
+        """Register card configuration for a feature."""
+        with self._lock:
+            self._card_configs[feature_name] = card_config
 
     def register_feature(self, feature_name: str) -> None:
         """Mark a feature as registered."""
@@ -161,6 +169,19 @@ class RamsesEntityRegistry:
                 else:
                     _LOGGER.info(f"🗺️ No device mappings found for '{feature_name}'")
 
+                # Load feature's card configuration
+                _LOGGER.info(
+                    f"🔍 Checking for card configuration for '{feature_name}'..."
+                )
+                card_config_key = f"{feature_name.upper()}_CARD_CONFIG"
+                if hasattr(feature_module, card_config_key):
+                    _LOGGER.info(f"🎴 Found card configuration for '{feature_name}'")
+                    card_config = getattr(feature_module, card_config_key)
+                    self._card_configs[feature_name] = card_config
+                    _LOGGER.info(f"🎴 Loaded card configuration for '{feature_name}'")
+                else:
+                    _LOGGER.info(f"🎴 No card configuration found for '{feature_name}'")
+
                 self._loaded_features.add(feature_name)
                 total_time = time.time() - start_time
                 _LOGGER.info(
@@ -238,6 +259,7 @@ class RamsesEntityRegistry:
             self._number_configs.clear()
             self._boolean_configs.clear()
             self._device_mappings.clear()
+            self._card_configs.clear()
             self._loaded_features.clear()
             _LOGGER.info("✅ EntityRegistry state cleared")
 
@@ -271,6 +293,16 @@ class RamsesEntityRegistry:
         with self._lock:
             return list(self._loaded_features)
 
+    def get_card_config(self, feature_name: str) -> dict[str, Any] | None:
+        """Get card configuration for a specific feature."""
+        with self._lock:
+            return self._card_configs.get(feature_name)
+
+    def get_all_card_configs(self) -> dict[str, dict[str, Any]]:
+        """Get all card configurations."""
+        with self._lock:
+            return self._card_configs.copy()
+
     def clear_all(self) -> None:
         """Clear all configurations (useful for testing)."""
         with self._lock:
@@ -279,6 +311,7 @@ class RamsesEntityRegistry:
             self._number_configs.clear()
             self._boolean_configs.clear()
             self._device_mappings.clear()
+            self._card_configs.clear()
             self._loaded_features.clear()
 
 

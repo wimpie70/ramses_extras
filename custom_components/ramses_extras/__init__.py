@@ -16,6 +16,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
+    AVAILABLE_FEATURES,
     CARD_FOLDER,
     DOMAIN,
     PLATFORM_REGISTRY,
@@ -196,6 +197,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info("WebSocket functionality moved to feature-centric architecture")
 
+    # Register custom card resources via feature-centric approach
+    await _register_feature_card_resources(hass, enabled_features_dict)
+
     # Register services before setting up platforms
     _LOGGER.info("🔧 Registering services early...")
     await _register_services(hass)
@@ -226,6 +230,107 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _register_services(hass: HomeAssistant) -> None:
     """Register custom services."""
     _LOGGER.info("Service registration delegated to feature managers")
+
+
+async def _register_feature_card_resources(
+    hass: HomeAssistant, enabled_features: dict[str, bool]
+) -> None:
+    """Register custom card resources using feature-centric approach.
+
+    This function delegates card registration to individual feature managers,
+    following the feature-centric architecture pattern where each feature
+    handles its own business logic.
+    """
+    try:
+        _LOGGER.debug("Starting feature-centric card resource registration")
+
+        # Initialize card resources storage
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN].setdefault("card_resources", {})
+
+        # Create feature instances and delegate card registration
+        feature_card_registrations: dict[str, dict[str, Any]] = {}
+
+        # Import card-capable features dynamically
+        for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            # Skip default feature (it's not a card feature)
+            if feature_key == "default":
+                continue
+
+            # Only process features that are enabled
+            if not enabled_features.get(feature_key, False):
+                _LOGGER.debug(
+                    f"Feature {feature_key} not enabled, skipping card registration"
+                )
+                continue
+
+            try:
+                # Import the feature module
+                feature_module_name = (
+                    f"custom_components.ramses_extras.features.{feature_key}"
+                )
+                feature_module = __import__(
+                    feature_module_name, fromlist=["load_feature"]
+                )
+
+                # Check if feature has card management capability
+                if hasattr(
+                    feature_module,
+                    f"create_{feature_key.replace('-', '_')}_feature",
+                ):
+                    # Create feature instance for card management
+                    create_feature_func = getattr(
+                        feature_module,
+                        f"create_{feature_key.replace('-', '_')}_feature",
+                    )
+
+                    # Create feature instance
+                    feature_instance = create_feature_func(
+                        hass, None
+                    )  # config_entry can be None for card-only features
+
+                    # Get card manager if available
+                    card_manager = feature_instance.get("card_manager")
+                    if card_manager:
+                        # Delegate card registration to the feature
+                        registered_cards = await card_manager.async_register_cards()
+                        if registered_cards:
+                            feature_card_registrations[feature_key] = registered_cards
+                            _LOGGER.info(
+                                f"✅ Feature {feature_key} registered "
+                                f"{len(registered_cards)} cards"
+                            )
+                        else:
+                            _LOGGER.debug(
+                                f"Feature {feature_key} has no cards to register"
+                            )
+
+            except ImportError as e:
+                _LOGGER.warning(f"Could not import feature {feature_key}: {e}")
+            except Exception as e:
+                _LOGGER.error(f"Error processing feature {feature_key} for cards: {e}")
+
+        # Consolidate all card registrations
+        all_registered_cards = {}
+        for feature_key, feature_cards in feature_card_registrations.items():
+            all_registered_cards.update(feature_cards)
+
+        # Store consolidated registrations
+        hass.data[DOMAIN]["card_resources"] = all_registered_cards
+
+        registered_cards = list(all_registered_cards.keys())
+        _LOGGER.info(
+            f"Feature-centric card registration complete. "
+            f"Total cards registered: {len(all_registered_cards)} from "
+            f"{len(feature_card_registrations)} features. "
+            f"Cards: {registered_cards}"
+        )
+
+    except Exception as e:
+        _LOGGER.error(f"Failed to register feature card resources: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
 
 
 async def _validate_startup_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
