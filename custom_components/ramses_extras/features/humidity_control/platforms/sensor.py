@@ -105,17 +105,47 @@ async def create_humidity_sensor(
         List of sensor entities
     """
     # Import entity configurations from management layer
+    from ..const import HUMIDITY_CONTROL_CONST
     from ..entities import HumidityEntities
 
-    # entity_manager = HumidityEntities(hass, config_entry)
     sensor: list[Any] = []
 
-    # Humidity_control doesn't create any sensor in its platform
-    # - indoor_absolute_humidity is created by default feature
-    # - outdoor_absolute_humidity calculation is handled differently
-    # This platform only provides control entities (switch, number, binary_sensor)
+    # Create absolute humidity sensors that depend on temperature and humidity entities
+    humidity_sensor_types = ["indoor_absolute_humidity", "outdoor_absolute_humidity"]
 
-    return sensor  # noqa: RET504
+    # Get the sensor configurations from humidity control constants
+    sensor_configs = HUMIDITY_CONTROL_CONST.get("entity_mappings", {})  # noqa: F841
+
+    for sensor_type in humidity_sensor_types:
+        # Check if underlying temperature and humidity entities exist
+        if await _check_underlying_entities_exist(hass, device_id, sensor_type):
+            # Get the configuration for this sensor type from the default feature
+            from ...default.const import DEFAULT_SENSOR_CONFIGS
+
+            if sensor_type in DEFAULT_SENSOR_CONFIGS:
+                config = DEFAULT_SENSOR_CONFIGS[sensor_type]
+
+                # Create the HumidityAbsoluteSensor with calculation logic
+                sensor_entity = HumidityAbsoluteSensor(
+                    hass, device_id, sensor_type, config
+                )
+                sensor.append(sensor_entity)
+                _LOGGER.debug(
+                    f"Created {sensor_type} sensor with "
+                    f"calculation logic for device {device_id}"
+                )
+            else:
+                _LOGGER.warning(
+                    f"No configuration found for "
+                    f"{sensor_type} in default sensor configs"
+                )
+        else:
+            _LOGGER.debug(
+                f"Skipping {sensor_type} for device {device_id} - "
+                "underlying temperature/humidity entities not found"
+            )
+
+    return sensor
 
 
 class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
