@@ -1,5 +1,4 @@
-/* global customElements */
-/* global HTMLElement */
+/* eslint-disable no-console */
 /* global navigator */
 /* global fetch */
 

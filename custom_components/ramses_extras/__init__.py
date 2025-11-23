@@ -569,6 +569,30 @@ async def _register_lovelace_resources_storage(
 
         _LOGGER.info(f"📄 Existing card URLs: {existing_card_urls}")
 
+        # Clean up old hvac-fan-card entries before adding new ones
+        # This removes duplicate/old paths from previous deployments
+        cleaned_resources = []
+        removed_old_entries = []
+        for resource in existing_resources:
+            url = resource.get("url", "")
+            # Remove old hvac-fan-card entries (not in the new features/ structure)
+            if "hvac" in url.lower() and "/ramses_extras/features/" not in url:
+                removed_old_entries.append(url)
+                _LOGGER.info(f"🗑️  Removing old hvac-fan-card entry: {url}")
+            else:
+                cleaned_resources.append(resource)
+
+        if removed_old_entries:
+            _LOGGER.info(
+                f"✅ Cleaned up {len(removed_old_entries)} old hvac-fan-card entries"
+            )
+            existing_resources = cleaned_resources
+            existing_card_urls = {
+                resource["url"]
+                for resource in existing_resources
+                if resource.get("type") == "module"
+            }
+
         # Add new cards to resources
         resources_to_add = []
         for card_id, card_info in registered_cards.items():
@@ -597,8 +621,9 @@ async def _register_lovelace_resources_storage(
                 _LOGGER.error(f"❌ Failed to create resource entry for {card_id}: {e}")
                 continue
 
-        # Update the storage if we have new resources or fixed existing ones
-        if resources_to_add or fixed_any_resources:
+        # Update the storage if we have new resources,
+        #  fixed existing ones, or removed old ones
+        if resources_to_add or fixed_any_resources or removed_old_entries:
             updated_resources = existing_resources + resources_to_add
             data["items"] = updated_resources
 
@@ -612,16 +637,28 @@ async def _register_lovelace_resources_storage(
                 _LOGGER.info(f"📋 Updated resources count: {len(updated_resources)}")
 
                 # Notify user about successful registration
-                if hasattr(hass.components, "persistent_notification"):
-                    hass.components.persistent_notification.create(
-                        "The Ramses Extras fan card has been registered "
-                        "as a Lovelace resource.<br>"
-                        "You can now add it to any dashboard.",
-                        title="Ramses Extras",
-                        notification_id="ramses_extras_lovelace_resource",
+                try:
+                    await hass.services.async_create(
+                        "persistent_notification",
+                        "create",
+                        {
+                            "message": (
+                                "The Ramses Extras fan card has been registered "
+                                "as a Lovelace resource.<br>"
+                                "You can now add it to any dashboard."
+                            ),
+                            "title": "Ramses Extras",
+                            "notification_id": "ramses_extras_lovelace_resource",
+                        },
                     )
+                except Exception as e:
+                    _LOGGER.debug(f"Could not create persistent notification: {e}")
             if fixed_any_resources:
                 _LOGGER.info("🔧 Fixed existing resources with missing 'id' fields")
+            if removed_old_entries:
+                _LOGGER.info(
+                    f"🗑️  Removed {len(removed_old_entries)} old hvac-fan-card entries"
+                )
         else:
             _LOGGER.info("ℹ️ No new resources to add and no fixes needed")
 

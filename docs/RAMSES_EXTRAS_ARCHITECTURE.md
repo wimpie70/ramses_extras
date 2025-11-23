@@ -124,9 +124,23 @@ When features are enabled, files are copied to Home Assistant's `config/www/` di
 **Current Structure:**
 
 ```
-hass/config/www/community/ramses_extras/
-├── helpers/              # Shared utilities (mixed with features)
-└── hvac_fan_card/        # Feature files (mixed with helpers)
+hass/config/www/ramses_extras/
+├── helpers/                   # Shared utilities (copied from framework/www/)
+│   ├── paths.js
+│   ├── card-commands.js
+│   ├── card-services.js
+│   ├── card-translations.js
+│   ├── card-validation.js
+│   └── ramses-message-broker.js
+└── features/                  # Feature-specific folders
+    └── hvac_fan_card/         # Each feature gets its own folder
+        ├── hvac-fan-card.js
+        ├── hvac-fan-card-editor.js
+        ├── airflow-diagrams.js
+        ├── card-styles.js
+        ├── message-handlers.js
+        ├── templates/
+        └── translations/
 ```
 
 **Target Structure:**

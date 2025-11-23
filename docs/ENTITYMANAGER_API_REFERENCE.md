@@ -332,7 +332,7 @@ async def _scan_feature_entities(
 
 **Entity Type Handling:**
 
-- **Cards**: File-based entities in www/community
+- **Cards**: File-based entities in /local/ramses_extras/features
 - **Automations**: YAML-based automation patterns
 - **Devices**: Entity mappings for discovered devices
 

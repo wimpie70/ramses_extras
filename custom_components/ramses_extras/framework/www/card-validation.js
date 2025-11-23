@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Entity validation utilities for Home Assistant custom cards
  * Provides common validation patterns for entity checking

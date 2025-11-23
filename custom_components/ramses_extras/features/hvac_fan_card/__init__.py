@@ -97,12 +97,12 @@ class HvacFanCardManager:
             # Check if card files exist
             from pathlib import Path
 
-            from ....framework.helpers.paths import DEPLOYMENT_PATHS
             from ...const import INTEGRATION_DIR
+            from ...framework.helpers.paths import DEPLOYMENT_PATHS
 
-            # Use new feature-centric path structure
-            card_path = (
-                INTEGRATION_DIR / "features" / "hvac_fan_card" / "www" / card_location
+            # Use DEPLOYMENT_PATHS for proper deployment structure
+            card_path = DEPLOYMENT_PATHS.get_source_feature_path(
+                INTEGRATION_DIR, "hvac_fan_card"
             )
             card_js_path = card_path / f"{card_id}.js"
 

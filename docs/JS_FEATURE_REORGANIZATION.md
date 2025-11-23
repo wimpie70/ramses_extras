@@ -58,7 +58,7 @@ ramses_extras/custom_components/ramses_extras/
 When features are enabled, files are copied to:
 
 ```
-hass/config/www/community/ramses_extras/
+hass/config/www/ramses_extras/
 ├── helpers/                       # Current: mixed structure
 │   ├── paths.js
 │   ├── card-commands.js
@@ -118,7 +118,7 @@ hass/config/www/ramses_extras/
 # OLD: Mixed structure
 for feature_id, card_info in cards.items():
     source_path = INTEGRATION_DIR / "features" / feature_id / "www" / feature_id
-    destination_path = HASS_CONFIG_DIR / "www" / "community" / "ramses_extras" / feature_id
+    destination_path = HASS_CONFIG_DIR / "www" / "ramses_extras" / feature_id
 ```
 
 **Updated deployment logic:**

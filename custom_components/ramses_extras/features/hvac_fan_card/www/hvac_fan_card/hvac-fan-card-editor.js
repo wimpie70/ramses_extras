@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // hvac-fan-card-editor.js
 
 /* global customElements */

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Parameter Edit Template
  * Provides UI for editing 2411 device parameters
@@ -96,6 +97,7 @@ function getHumidityControlEntities(deviceId, hass) {
   return humidityControlEntities;
 }
 
+// eslint-disable-next-line no-unused-vars
 function createHumidityControlItem(entity, hass) {
   const entityId = entity.entity_id;
   const currentValue = entity.state;

@@ -1,17 +1,18 @@
+/* eslint-disable no-console */
 /* global customElements */
 /* global HTMLElement */
 /* global setTimeout */
 /* global clearTimeout */
-/* global setInterval */
 /* global clearInterval */
-/* global fetch */
-/* global navigator */
 
 // Import shared path constants (using new JS_FEATURE_REORGANIZATION pattern)
-import { PATHS, HELPER_PATHS, getFeatureTranslationPath } from '../../../../framework/www/paths.js';
+import {
+  // PATHS, HELPER_PATHS,
+  getFeatureTranslationPath
+} from '/local/ramses_extras/helpers/paths.js';
 
 // Translation path configuration - using shared constants
-const TRANSLATION_BASE_PATH = getFeatureTranslationPath('hvac_fan_card', 'en').replace('/translations/en.json', '');
+// const TRANSLATION_BASE_PATH = getFeatureTranslationPath('hvac_fan_card', 'en').replace('/translations/en.json', '');
 
 import { NORMAL_SVG, BYPASS_OPEN_SVG } from './airflow-diagrams.js';
 import { CARD_STYLE } from './card-styles.js';
@@ -26,24 +27,24 @@ import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
 
 // Import reusable helpers using environment-aware path constants
-import { SimpleCardTranslator } from '/local/ramses_extras/framework/www/card-translations.js';
-import { FAN_COMMANDS } from '/local/ramses_extras/framework/www/card-commands.js';
-import { getRamsesMessageBroker } from '/local/ramses_extras/framework/www/ramses-message-broker.js';
+import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
+import { FAN_COMMANDS } from '/local/ramses_extras/helpers/card-commands.js';
+import { getRamsesMessageBroker } from '/local/ramses_extras/helpers/ramses-message-broker.js';
 import { HvacFanCardHandlers } from './message-handlers.js';
 import {
   sendPacket,
   getBoundRemDevice,
-  callService,
-  entityExists,
-  getEntityState,
+  // callService,
+  // entityExists,
+  // getEntityState,
   callWebSocket,
   setFanParameter,
-} from '/local/ramses_extras/framework/www/card-services.js';
+} from '/local/ramses_extras/helpers/card-services.js';
 import {
-  validateCoreEntities,
+  // validateCoreEntities,
   validateDehumidifyEntities,
   getEntityValidationReport,
-} from '/local/ramses_extras/framework/www/card-validation.js';
+} from '/local/ramses_extras/helpers/card-validation.js';
 
 // Make FAN_COMMANDS globally available
 window.FAN_COMMANDS = FAN_COMMANDS;
@@ -396,6 +397,7 @@ class HvacFanCard extends HTMLElement {
     const hass = this._hass;
 
     // Use the shared validation helper
+    // eslint-disable-next-line no-unused-vars
     const validationReport = getEntityValidationReport(hass, config);
   }
 
@@ -716,12 +718,12 @@ class HvacFanCard extends HTMLElement {
     }
 
     // Parameter update buttons - only attach to device parameter buttons, not humidity control buttons
-    const paramButtons = this.shadowRoot?.querySelectorAll('.param-update-btn');
+    this.shadowRoot?.querySelectorAll('.param-update-btn');
     const deviceParamButtons = this.shadowRoot?.querySelectorAll('.param-update-btn[data-param]');
 
     if (deviceParamButtons) {
       deviceParamButtons.forEach((button) => {
-        button.addEventListener('click', (e) => {
+        button.addEventListener('click', () => {
           const paramKey = button.getAttribute('data-param');
           const input = button.previousElementSibling;
           const newValue = input?.value;

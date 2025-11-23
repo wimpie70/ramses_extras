@@ -166,7 +166,7 @@ class TestEntityManager:
             )
 
         # Card entities should be added even without category: "cards"
-        expected_key = "www_community_test_card_feature"
+        expected_key = "local_ramses_extras_features_test_card_feature"
         assert expected_key in self.entity_manager.all_possible_entities
 
         entity_info = self.entity_manager.all_possible_entities[expected_key]
@@ -311,7 +311,7 @@ class TestEntityManager:
             )
 
         # Card entities should be added even without category: "cards"
-        expected_key = "www_community_hvac_fan_card"
+        expected_key = "local_ramses_extras_features_hvac_fan_card"
         assert expected_key in self.entity_manager.all_possible_entities
 
         entity_info = self.entity_manager.all_possible_entities[expected_key]
@@ -343,7 +343,7 @@ class TestEntityManager:
             )
 
         # Card entities should NOT be added
-        expected_key = "www_community_humidity_control"
+        expected_key = "local_ramses_extras_features_humidity_control"
         assert expected_key not in self.entity_manager.all_possible_entities
 
     def test_get_entity_summary(self):

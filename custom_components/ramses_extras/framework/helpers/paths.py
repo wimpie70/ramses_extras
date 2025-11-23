@@ -145,7 +145,7 @@ class DeploymentPaths:
         # Convert to Path if it's a string
         if isinstance(hass_config_dir, str):
             hass_config_dir = Path(hass_config_dir)
-        return hass_config_dir / "www" / "ramses_extras" / "features"
+        return hass_config_dir / "www" / "ramses_extras" / "features" / feature_name
 
     @staticmethod
     def get_destination_helpers_path(hass_config_dir: str | Path) -> Path:

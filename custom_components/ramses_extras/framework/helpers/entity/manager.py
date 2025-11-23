@@ -199,8 +199,9 @@ class EntityManager:
             feature_config: Feature configuration
             enabled: Whether the feature is enabled
         """
-        # Cards are identified by their feature_id in the www/community folder
-        card_path = f"www_community_{feature_id}"
+        # Cards are identified by their feature_id in the
+        #  /local/ramses_extras/features/ folder
+        card_path = f"local_ramses_extras_features_{feature_id}"
 
         self.all_possible_entities[card_path] = {
             "exists_already": False,  # Cards are file-based, not entity-based
@@ -926,7 +927,7 @@ class EntityManager:
         Args:
             card_ids: List of card IDs to remove
         """
-        # Implementation would remove card files from www/community
+        # Implementation would remove card files from /local/ramses_extras/features/
         _LOGGER.info(f"Removing card entities: {card_ids}")
 
     async def _remove_regular_entities(

@@ -1,5 +1,4 @@
-/* global customElements */
-/* global HTMLElement */
+/* eslint-disable no-console */
 /* global setTimeout */
 
 // Ramses Message Broker - Global singleton for handling ramses_cc_message events

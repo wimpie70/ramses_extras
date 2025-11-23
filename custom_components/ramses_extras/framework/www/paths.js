@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /* global URL */
 /* global process */
 /**
@@ -52,6 +53,7 @@ function getCurrentScriptLocation() {
         const modulePath = globalThis.__dirname || process.cwd();
         return `${modulePath}/paths.js`;
       }
+    // eslint-disable-next-line no-unused-vars
     } catch (_) {
       // Continue to next method
     }
@@ -65,6 +67,7 @@ function getCurrentScriptLocation() {
           if (line.includes('paths.js') && line.includes('http')) {
             try {
               return new URL(line.match(/https?:\/\/[^\s]+/)[0]).pathname;
+            // eslint-disable-next-line no-unused-vars
             } catch (_) {
               // Continue to next method
             }
@@ -81,6 +84,7 @@ function getCurrentScriptLocation() {
       }
     }
 
+  // eslint-disable-next-line no-unused-vars
   } catch (_) {
     // Silently fail and return null
   }
@@ -123,8 +127,7 @@ function detectEnvironmentFromLocation() {
   }
 
   // Check for deployed production patterns
-  if (scriptPath.includes('/local/ramses_extras/') ||
-      scriptPath.includes('/www/community/ramses_extras/')) {
+  if (scriptPath.includes('/local/ramses_extras/')) {
     return 'production';
   }
 
@@ -204,7 +207,7 @@ const ENVIRONMENTS = {
     // Test environment - use relative paths
     RAMSES_EXTRAS_BASE: '../..',
     HELPERS_BASE: '../www/ramses_extras/helpers',
-    FEATURES_BASE: '../www/community/ramses_extras',
+    FEATURES_BASE: '../www/ramses_extras/features',
     DESCRIPTION: 'Test environment with mocks'
   },
 
@@ -454,7 +457,6 @@ export function isValidPath(path) {
  */
 export function debugPathResolution(context = 'unknown') {
   if (typeof console !== 'undefined' && console.debug) {
-    // eslint-disable-next-line no-console
     console.debug(`🔍 Ramses Extras Path Resolution [${context}]:`, getAllPaths());
   }
 }
@@ -499,6 +501,5 @@ export default {
 // Log path resolution info in development
 if (typeof window !== 'undefined' && getCurrentEnvironment() === 'development') {
   const debugInfo = getEnvironmentDebugInfo();
-  // eslint-disable-next-line no-console
   console.debug(`🔍 Ramses Extras Path Resolution [module-load]:`, debugInfo);
 }

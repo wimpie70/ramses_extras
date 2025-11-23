@@ -59,7 +59,8 @@ async def _manage_cards_config_flow(
     hass: "HomeAssistant", enabled_features: dict[str, bool]
 ) -> None:
     """Install or remove custom cards based on enabled features (for config flow)."""
-    www_community_path = Path(hass.config.path("www", "community"))
+    # Use the new /local/ramses_extras path structure instead of www/community
+    www_local_path = Path(hass.config.path("local")) / "ramses_extras"
 
     # Handle all card features dynamically
     for feature_key, feature_config in AVAILABLE_FEATURES.items():
@@ -76,7 +77,7 @@ async def _manage_cards_config_flow(
         card_source_path = (
             INTEGRATION_DIR / CARD_FOLDER / card_info.get("location", feature_key)
         )
-        card_dest_path = www_community_path / feature_key
+        card_dest_path = www_local_path / "features" / feature_key
 
         if enabled_features.get(feature_key, False):
             if card_source_path.exists():

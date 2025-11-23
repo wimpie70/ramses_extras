@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Service utilities for Home Assistant custom cards
  * Provides common service call patterns and error handling
