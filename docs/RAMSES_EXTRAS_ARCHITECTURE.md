@@ -1,3 +1,4 @@
+always read .kilocode/rules/kilo rules.txt
 # Ramses Extras Complete Architecture Guide
 
 ## Overview
