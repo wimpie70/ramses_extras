@@ -73,41 +73,51 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
         _LOGGER.warning("No WebSocket commands registered for any features")
         return
 
-    # Import commands dynamically for each feature
+    # Import commands dynamically for each feature using registry discovery
     for feature_name, commands in all_commands.items():
         try:
-            # Dynamic import based on feature name (correct relative import path)
-            if feature_name == "default":
-                from .features.default.websocket_commands import (
-                    ws_get_2411_schema,
-                    ws_get_bound_rem,
-                )
+            # Dynamic import of websocket_commands module for this feature
+            websocket_module_path = "custom_components.ramses_extras.features."
+            f"{feature_name}.websocket_commands"
+            websocket_module = __import__(websocket_module_path, fromlist=[""])
 
-                # Register commands if they exist in the commands dict
-                if "get_bound_rem" in commands:
-                    websocket_api.async_register_command(hass, ws_get_bound_rem)
+            # Register each command found in the feature's commands dictionary
+            registered_count = 0
+            for command_name in commands.keys():
+                # Get the handler function from the module
+                handler_func = getattr(websocket_module, f"ws_{command_name}", None)
+
+                if handler_func and callable(handler_func):
+                    websocket_api.async_register_command(hass, handler_func)
+                    registered_count += 1
                     _LOGGER.debug(
-                        f"Registered WebSocket command: get_bound_rem for feature: "
+                        f"Registered WebSocket command: {command_name} for feature: "
                         f"{feature_name}"
                     )
-                if "get_2411_schema" in commands:
-                    websocket_api.async_register_command(hass, ws_get_2411_schema)
-                    _LOGGER.debug(
-                        f"Registered WebSocket command: get_2411_schema for feature: "
-                        f"{feature_name}"
+                else:
+                    _LOGGER.warning(
+                        f"Handler function ws_{command_name} not found in "
+                        f"{websocket_module_path} for feature: {feature_name}"
                     )
-            else:
-                # For future features, use the pattern
-                # This will be expanded when new features are added
-                _LOGGER.debug(
-                    f"No import logic implemented yet for feature: {feature_name}"
-                )
+
+            _LOGGER.info(
+                f"Successfully registered {registered_count} WebSocket commands "
+                f"for feature: {feature_name}"
+            )
 
         except ImportError as error:
-            _LOGGER.warning(
-                f"Could not import WebSocket commands for feature '{feature_name}': "
-                f"{error}"
-            )
+            # Check if this is a missing websocket_commands.py file
+            if "websocket_commands" in str(error):
+                _LOGGER.info(
+                    f"Feature '{feature_name}' does not have a websocket_commands.py "
+                    f"file - commands are likely registered via decorators"
+                )
+            else:
+                _LOGGER.warning(
+                    f"Could not import WebSocket commands for feature '"
+                    f"{feature_name}': "
+                    f"{error}"
+                )
         except Exception as error:
             _LOGGER.error(
                 f"Error registering commands for feature '{feature_name}': {error}"
@@ -241,30 +251,41 @@ def get_enabled_websocket_commands(
     if not is_websocket_enabled(hass):
         return {}
 
-    # Get all registered commands
+    # Get all registered commands from registry
     all_commands = get_all_ws_commands()
 
-    # Check if feature has commands registered
+    # Check if feature has commands registered in the registry
     feature_commands = all_commands.get(feature_name, {})
 
     if not feature_commands:
+        _LOGGER.debug(f"No WebSocket commands registered for feature: {feature_name}")
         return {}
 
-    # Check if the feature is enabled
-    # Default feature is always considered enabled
+    # Check if the feature is enabled based on configuration
     config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+
+    # Default feature is always considered enabled
+    if feature_name == "default":
+        _LOGGER.debug(
+            f"Default feature always enabled, returning "
+            f"{len(feature_commands)} commands"
+        )
+        return feature_commands
+
+    # For other features, check if explicitly enabled in config
     if config_entry and hasattr(config_entry, "options"):
         enabled_features = config_entry.options.get("enabled_features", [])
 
-        # Default feature is always available
-        if feature_name == "default":
-            return feature_commands
-
-        # Other features must be explicitly enabled
         if feature_name in enabled_features:
+            _LOGGER.debug(
+                f"Feature {feature_name} enabled in config, returning "
+                f"{len(feature_commands)} commands"
+            )
             return feature_commands
 
+        _LOGGER.debug(f"Feature {feature_name} not enabled in config")
         return {}
 
-    # Fallback: if no config entry, only allow default feature
-    return feature_commands if feature_name == "default" else {}
+    # Fallback: if no config entry, deny non-default features
+    _LOGGER.debug("No config entry found, only allowing default feature")
+    return {}

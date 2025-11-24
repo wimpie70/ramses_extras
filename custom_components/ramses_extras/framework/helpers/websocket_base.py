@@ -108,56 +108,6 @@ class DeviceWebSocketCommand(BaseWebSocketCommand):
         super().__init__(hass, feature_name)
         self._ramses_data = hass.data.get("ramses_cc", {})
 
-    def _get_device_from_broker(self, device_id: str) -> Any | None:
-        """Get device object from ramses_cc broker.
-
-        Args:
-            device_id: Device ID to find
-
-        Returns:
-            Device object or None if not found
-        """
-        for _entry_id, data in self._ramses_data.items():
-            # Handle both direct broker storage and dict storage
-            if hasattr(data, "__class__") and "Broker" in data.__class__.__name__:
-                broker = data
-            elif isinstance(data, dict) and "broker" in data:
-                broker = data["broker"]
-            else:
-                continue
-            if not broker:
-                continue
-
-            # Each broker has devices as a list (_devices)
-            devices = getattr(broker, "_devices", None)
-            if devices is None:
-                devices = getattr(broker, "devices", [])
-            if not devices:
-                continue
-
-            # Find device by ID
-            for device in devices:
-                device_id_attr = getattr(device, "id", str(device))
-                if device_id_attr == device_id:
-                    return device
-
-        return None
-
-    def _get_bound_rem_for_device(self, device_id: str) -> str | None:
-        """Get bound REM device ID for a device.
-
-        Args:
-            device_id: Device ID to get bound REM for
-
-        Returns:
-            Bound REM device ID or None if not found
-        """
-        device = self._get_device_from_broker(device_id)
-        if device and hasattr(device, "get_bound_rem"):
-            bound = device.get_bound_rem()
-            return bound.id if bound else None
-        return None
-
 
 # WebSocket command registry for feature-centric organization
 WEBSOCKET_COMMANDS: dict[str, dict[str, Callable]] = {}

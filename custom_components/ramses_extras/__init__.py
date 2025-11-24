@@ -140,6 +140,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     extras_registry.register_device_mappings(DEFAULT_DEVICE_ENTITY_MAPPING)
     extras_registry.register_feature("default")
 
+    # Load default feature's WebSocket commands and other feature components
+    _LOGGER.info("🔧 Loading default feature...")
+    from .features.default.const import load_feature
+
+    load_feature()
+
     # Load enabled feature definitions
     enabled_features_dict = entry.data.get("enabled_features", {})
     enabled_feature_names = [
