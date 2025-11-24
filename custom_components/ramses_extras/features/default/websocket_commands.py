@@ -156,8 +156,9 @@ async def ws_get_2411_schema(
         if hasattr(device, "get_2411_schema"):
             schema = await device.get_2411_schema()
         else:
-            # Fallback to basic schema
-            schema = _get_fallback_2411_schema()
+            # Fallback to device-type specific schema
+            device_type = getattr(device, "type", "HvacVentilator")
+            schema = get_2411_schema_for_device_type(device_type)
 
         connection.send_result(msg["id"], schema)
         _LOGGER.debug(f"Returned 2411 schema for device {device_id}")
@@ -171,22 +172,25 @@ async def ws_get_2411_schema(
         )
 
 
+# Default fallback schema parameters for HVAC devices
+DEFAULT_2411_SCHEMA_PARAMS = [
+    "31",  # Temperature offset
+    "75",  # Comfort temperature
+    "89",  # Fan speed minimum
+    "90",  # Fan speed maximum
+]
+
+
 def _get_fallback_2411_schema() -> dict[str, Any]:
     """Get fallback 2411 schema when device-specific schema is not available.
 
     Returns:
         Basic parameter schema for HVAC devices
     """
-    # Common parameters that might be available on HVAC devices
-    common_params = [
-        "31",  # Temperature offset
-        "75",  # Comfort temperature
-        "89",  # Fan speed minimum
-        "90",  # Fan speed maximum
-    ]
-
     schema = {}
-    for param_id in common_params:
+
+    # Create schema for common parameters
+    for param_id in DEFAULT_2411_SCHEMA_PARAMS:
         schema[param_id] = {
             "description": f"Parameter {param_id}",
             "name": f"Parameter {param_id}",
@@ -199,6 +203,29 @@ def _get_fallback_2411_schema() -> dict[str, Any]:
         }
 
     return schema
+
+
+def get_2411_schema_for_device_type(device_type: str) -> dict[str, Any]:
+    """Get 2411 schema for a specific device type.
+
+    Args:
+        device_type: Type of device (e.g., "HvacVentilator")
+
+    Returns:
+        Device type specific parameter schema
+    """
+    # For now, all devices get the same default schema
+    # This can be extended in the future to support device-type specific schemas
+    return _get_fallback_2411_schema()
+
+
+def get_available_2411_parameters() -> list[str]:
+    """Get list of available 2411 parameters.
+
+    Returns:
+        List of parameter IDs that are available in the default schema
+    """
+    return DEFAULT_2411_SCHEMA_PARAMS.copy()
 
 
 def register_ws_commands(hass: HomeAssistant) -> None:
