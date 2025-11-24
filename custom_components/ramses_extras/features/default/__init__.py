@@ -1,4 +1,4 @@
-"""Default feature - shared entity definitions that all features can inherit from."""
+"""Default feature - shared entity definitions."""
 
 from .const import (
     DEFAULT_BOOLEAN_CONFIGS,
@@ -16,3 +16,6 @@ __all__ = [
     "DEFAULT_BOOLEAN_CONFIGS",
     "DEFAULT_DEVICE_ENTITY_MAPPING",
 ]
+
+# Note: WebSocket commands are now handled directly in websocket_integration.py
+# using HA's standard decorator pattern, not through the old class-based system

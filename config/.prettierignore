@@ -48,3 +48,6 @@ venv/
 
 # Custom
 custom_components/
+
+# Test mock files
+MagicMock/

@@ -88,6 +88,50 @@ DESCRIPTION_PLACEHOLDER_INFO = (
     "Ramses Extras provides additional functionality on top of Ramses RF."
 )
 
+# WebSocket command registry for feature-centric organization
+WS_COMMAND_REGISTRY: dict[str, dict[str, str]] = {}
+
+
+def register_ws_commands(feature_name: str, command_configs: dict[str, str]) -> None:
+    """Register WebSocket commands for a feature.
+
+    Args:
+        feature_name: Name of the feature
+        command_configs: Dictionary mapping command names to command types
+    """
+    WS_COMMAND_REGISTRY[feature_name] = command_configs
+
+
+def get_ws_commands_for_feature(feature_name: str) -> dict[str, str]:
+    """Get WebSocket commands for a feature.
+
+    Args:
+        feature_name: Name of the feature
+
+    Returns:
+        Dictionary mapping command names to command types
+    """
+    return WS_COMMAND_REGISTRY.get(feature_name, {})
+
+
+def get_all_ws_commands() -> dict[str, dict[str, str]]:
+    """Get all registered WebSocket commands.
+
+    Returns:
+        Dictionary of feature name to command mappings
+    """
+    return WS_COMMAND_REGISTRY.copy()
+
+
+def discover_ws_commands() -> list[str]:
+    """Discover all features that have WebSocket commands registered.
+
+    Returns:
+        List of feature names with WebSocket commands
+    """
+    return list(WS_COMMAND_REGISTRY.keys())
+
+
 # Available features registry - dynamically populated by feature discovery
 AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
     "default": {
@@ -96,6 +140,7 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.default",
         "handler": "handle_hvac_ventilator",
         "default_enabled": True,
+        "websocket_commands": ["get_bound_rem", "get_2411_schema"],
     },
     "humidity_control": {
         "name": "Humidity Control",
@@ -103,6 +148,7 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.humidity_control",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
+        "websocket_commands": [],
     },
     "hvac_fan_card": {
         "name": "HVAC Fan Card",
@@ -110,5 +156,6 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.hvac_fan_card",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
+        "websocket_commands": [],
     },
 }

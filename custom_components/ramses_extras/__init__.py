@@ -207,6 +207,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("🔧 Registering services early...")
     await _register_services(hass)
 
+    # Register WebSocket commands for features
+    _LOGGER.info("🔌 Setting up WebSocket integration...")
+    await _setup_websocket_integration(hass)
+
     # CRITICAL: Discover devices BEFORE setting up platforms
     # This ensures platforms have device data when they initialize
     _LOGGER.info("🔍 Discovering devices before platform setup...")
@@ -233,6 +237,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _register_services(hass: HomeAssistant) -> None:
     """Register custom services."""
     _LOGGER.info("Service registration delegated to feature managers")
+
+
+async def _setup_websocket_integration(hass: HomeAssistant) -> None:
+    """Set up WebSocket integration for Ramses Extras.
+
+    Args:
+        hass: Home Assistant instance
+    """
+    try:
+        from .websocket_integration import async_setup_websocket_integration
+
+        success = await async_setup_websocket_integration(hass)
+        if success:
+            _LOGGER.info("✅ WebSocket integration setup complete")
+        else:
+            _LOGGER.warning("⚠️ WebSocket integration setup failed")
+
+    except Exception as error:
+        _LOGGER.error(f"❌ Error setting up WebSocket integration: {error}")
+        # Don't fail the entire integration if WebSocket setup fails
 
 
 async def _register_feature_card_resources(

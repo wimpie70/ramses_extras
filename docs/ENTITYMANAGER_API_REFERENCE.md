@@ -67,6 +67,7 @@ async def build_entity_catalog(
     self,
     available_features: dict[str, dict[str, Any]],
     current_features: dict[str, bool],
+    target_features: dict[str, bool] | None = None,
 ) -> None:
     """Build complete entity catalog with existence and feature status.
 
@@ -78,6 +79,8 @@ async def build_entity_catalog(
     Args:
         available_features: All available features configuration from AVAILABLE_FEATURES
         current_features: Currently enabled features configuration
+        target_features: Target enabled features (for feature change operations).
+                        If None, defaults to current_features.
 
     Raises:
         Exception: If entity registry access fails (logged but not raised)
@@ -99,6 +102,12 @@ async def build_entity_catalog(
         await entity_manager.build_entity_catalog(available_features, current_features)
 
         # All entities now available in entity_manager.all_possible_entities
+
+        # For feature change operations, specify target features
+        target_features = {"humidity_control": False, "hvac_fan_card": True}
+        await entity_manager.build_entity_catalog(
+            available_features, current_features, target_features
+        )
     """
 ```
 
@@ -113,8 +122,11 @@ async def build_entity_catalog(
 
 **Error Handling:**
 
-- Entity registry access failures are logged but don't stop catalog building
-- Individual feature scanning errors are logged per feature
+- Entity registry access failures are logged but don't stop catalog building (returns empty set)
+- Individual feature scanning errors are logged per feature but don't stop other features
+- Device discovery failures fall back to entity registry discovery
+- Broker access failures try multiple access patterns before giving up
+- All operations are designed for graceful degradation - catalog building continues even with partial failures
 
 ### update_feature_targets()
 
@@ -125,6 +137,9 @@ def update_feature_targets(self, target_features: dict[str, bool]) -> None:
     This method updates the enabled_by_feature status for all entities
     based on the new target configuration, allowing proper comparison
     between current and target states.
+
+    For features not explicitly specified in target_features, it uses
+    the default_enabled value from AVAILABLE_FEATURES.
 
     Args:
         target_features: New target feature configuration
@@ -138,6 +153,7 @@ def update_feature_targets(self, target_features: dict[str, bool]) -> None:
         entity_manager.update_feature_targets(new_target)
 
         # Now entities_to_remove/entities_to_create reflect the change
+        # Features not in target_features use their default_enabled values
     """
 ```
 
@@ -145,7 +161,8 @@ def update_feature_targets(self, target_features: dict[str, bool]) -> None:
 
 1. Updates `target_features` attribute
 2. Iterates through all entities in catalog
-3. Updates `enabled_by_feature` based on new target configuration
+3. For each entity, gets the feature's default_enabled from AVAILABLE_FEATURES
+4. Updates `enabled_by_feature` based on target_features or default_enabled
 
 **Performance:** O(k) where k=number of entities in catalog
 
@@ -159,6 +176,9 @@ def get_entities_to_remove(self) -> list[str]:
     This represents entities that currently exist but should be removed because
     their features have been disabled.
 
+    Note: This method excludes entities from always-enabled features like 'default'
+    and only returns platform entities (sensor, switch, etc.), not cards or automations.
+
     Returns:
         List of entity IDs that should be removed
 
@@ -167,10 +187,11 @@ def get_entities_to_remove(self) -> list[str]:
         print(f"Removing {len(to_remove)} entities: {to_remove}")
 
         # Output: Removing 3 entities: ['sensor.humidity_32_153289', ...]
+        # Note: Entities from 'default' feature are never included in removal lists
     """
 ```
 
-**Logic:** `exists_already=True AND enabled_by_feature=False`
+**Logic:** `exists_already=True AND enabled_by_feature=False AND feature_id != "default" AND entity_type not in ("card", "automation")`
 
 **Performance:** O(k) where k=number of entities
 
@@ -190,6 +211,8 @@ def get_entities_to_create(self) -> list[str]:
     This represents entities that should exist because their features have been enabled,
     but they don't currently exist in Home Assistant.
 
+    Note: This method only returns platform entities (sensor, switch, etc.), not cards or automations.
+
     Returns:
         List of entity IDs that should be created
 
@@ -201,7 +224,7 @@ def get_entities_to_create(self) -> list[str]:
     """
 ```
 
-**Logic:** `enabled_by_feature=True AND exists_already=False`
+**Logic:** `enabled_by_feature=True AND exists_already=False AND entity_type not in ("card", "automation")`
 
 **Performance:** O(k) where k=number of entities
 
@@ -219,6 +242,9 @@ def get_entity_summary(self) -> dict[str, int]:
 
     Provides comprehensive statistics about the entity catalog state,
     useful for user feedback and logging.
+
+    Note: This method only counts platform entities (sensor, switch, etc.),
+    excluding cards, automations, and entities from always-enabled features like 'default'.
 
     Returns:
         Dictionary with counts for different entity states:
@@ -240,6 +266,7 @@ def get_entity_summary(self) -> dict[str, int]:
         # Keeping: 30
         # Removing: 5
         # Creating: 10
+        # Note: Cards, automations, and 'default' feature entities are excluded
     """
 ```
 
@@ -322,6 +349,8 @@ async def _scan_feature_entities(
     """Scan a specific feature for its entities.
 
     This is an internal method called by build_entity_catalog for each feature.
+    Only scans features that are currently enabled or will be enabled (target_enabled or current_enabled).
+    Uses default_enabled from feature_config for features not explicitly configured.
 
     Args:
         feature_id: Feature identifier
@@ -330,11 +359,16 @@ async def _scan_feature_entities(
     """
 ```
 
+**Feature Enablement Logic:**
+- Gets `default_enabled` from feature_config (defaults to False)
+- Checks `target_enabled = target_features.get(feature_id, default_enabled)`
+- Checks `current_enabled = current_features.get(feature_id, default_enabled)`
+- Only scans if `feature_is_enabled = target_enabled or current_enabled`
+
 **Entity Type Handling:**
 
-- **Cards**: File-based entities in /local/ramses_extras/features
-- **Automations**: YAML-based automation patterns
-- **Devices**: Entity mappings for discovered devices
+- **Cards**: File-based entities in /local/ramses_extras/features (if feature has cards)
+- **Devices**: Entity mappings for discovered devices (always scanned for enabled features)
 
 ### \_find_automations_by_pattern()
 
@@ -400,6 +434,231 @@ async def _create_entities(self, entity_ids: list[str]) -> None:
     """
 ```
 
+## Additional Internal Methods
+
+The EntityManager implementation includes several additional internal methods for enhanced device discovery, feature scanning, and entity management:
+
+### Device Discovery Methods
+
+#### get_broker_for_entry()
+
+```python
+async def get_broker_for_entry(self, entry: Any) -> Any:
+    """Get broker for a config entry using all possible methods.
+
+    This method supports multiple versions of ramses_cc for backwards compatibility.
+    Tries all possible broker access patterns from newest to oldest.
+
+    Args:
+        entry: Config entry
+
+    Returns:
+        Broker object or None
+    """
+```
+
+**Access Patterns (tried in order):**
+1. `hass.data["ramses_cc"][entry.entry_id]` (newest)
+2. `hass.data["ramses_cc"]` directly (older structure)
+3. `entry.broker` (older versions)
+4. `hass.data["ramses_cc"][DOMAIN]` (very old)
+5. Any attribute containing 'devices'
+
+#### \_discover_devices_direct()
+
+```python
+async def _discover_devices_direct(self) -> list[Any]:
+    """Direct device discovery as fallback for EntityManager.
+
+    This method uses the same device discovery logic as the main integration.
+    """
+```
+
+**Discovery Process:**
+1. Access ramses_cc broker using all possible methods
+2. Extract devices from broker (`_devices`, `devices`, etc.)
+3. Filter for relevant device types (HvacVentilator, HvacController, etc.)
+4. Return discovered devices
+
+#### \_discover_devices_from_entity_registry()
+
+```python
+async def _discover_devices_from_entity_registry(self) -> list[str]:
+    """Fallback method to discover devices from entity registry.
+
+    Returns:
+        List of device IDs
+    """
+```
+
+**Process:**
+- Scans entity registry for ramses_cc entities
+- Extracts unique device IDs from entity device_id fields
+- Returns list of device ID strings
+
+### Feature Scanning Methods
+
+#### \_get_supported_devices_from_feature()
+
+```python
+async def _get_supported_devices_from_feature(self, feature_id: str) -> list[str]:
+    """Get supported device types from the feature's own const.py module.
+
+    Uses required_entities approach for registry building.
+
+    Args:
+        feature_id: Feature identifier
+
+    Returns:
+        List of supported device types
+    """
+```
+
+#### \_get_required_entities_for_feature()
+
+```python
+async def _get_required_entities_for_feature(
+    self, feature_id: str
+) -> dict[str, list[str]]:
+    """Get required entities for a feature (async wrapper).
+
+    Args:
+        feature_id: Feature identifier
+
+    Returns:
+        Required entities dictionary mapping entity_type to list of entity names
+    """
+```
+
+#### \_feature_has_cards()
+
+```python
+async def _feature_has_cards(self, feature_id: str) -> bool:
+    """Check if a feature has card configurations defined.
+
+    Args:
+        feature_id: Feature identifier
+
+    Returns:
+        True if feature has card configurations, False otherwise
+    """
+```
+
+### Entity Addition Methods
+
+#### \_add_card_entities()
+
+```python
+async def _add_card_entities(
+    self, feature_id: str, feature_config: dict[str, Any], enabled: bool
+) -> None:
+    """Add card entities for a feature.
+
+    Args:
+        feature_id: Feature identifier
+        feature_config: Feature configuration
+        enabled: Whether the feature is enabled
+    """
+```
+
+**Process:**
+- Creates card entity with ID `local_ramses_extras_features_{feature_id}`
+- Sets `exists_already=False` (cards are file-based)
+- Adds to `all_possible_entities` catalog
+
+#### \_add_device_entities()
+
+```python
+async def _add_device_entities(
+    self,
+    feature_id: str,
+    feature_config: dict[str, Any],
+    enabled: bool,
+    supported_devices: list[str],
+) -> None:
+    """Add device-based entities for a feature.
+
+    Args:
+        feature_id: Feature identifier
+        feature_config: Feature configuration
+        enabled: Whether the feature is enabled
+        supported_devices: List of supported device types
+    """
+```
+
+**Process:**
+1. Gets devices for the feature
+2. For each device, gets required entities from feature config
+3. Generates entity IDs using standard naming pattern
+4. Checks entity existence in registry
+5. Handles entity ownership conflicts (prevents overwriting)
+6. Adds entities to catalog
+
+### Utility Methods
+
+#### \_extract_device_id()
+
+```python
+def _extract_device_id(self, device: Any) -> str:
+    """Extract device ID from device object or string with robust error handling.
+
+    Args:
+        device: Device object or device ID string
+
+    Returns:
+        Device ID as string
+    """
+```
+
+**Extraction Priority:**
+1. `device.id`
+2. `device.device_id`
+3. `device._id`
+4. `device.name`
+5. `str(device)`
+6. Fallback: `"device_{id(device)}"`
+
+#### \_extract_device_type()
+
+```python
+def _extract_device_type(self, device: Any) -> str:
+    """Extract device type with robust error handling.
+
+    Args:
+        device: Device object
+
+    Returns:
+        Device type as string
+    """
+```
+
+**Extraction Priority:**
+1. `device.__class__.__name__`
+2. `device.type`
+3. `device.device_type`
+4. `type(device).__name__`
+5. Fallback: `"UnknownDevice"`
+
+#### \_normalize_devices_list()
+
+```python
+def _normalize_devices_list(self, devices: Any) -> list[Any]:
+    """Normalize different device storage formats to a list.
+
+    Args:
+        devices: Devices in various formats
+
+    Returns:
+        List of devices
+    """
+```
+
+**Supported Formats:**
+- `dict`: Returns `list(devices.values())`
+- `list`: Returns as-is
+- `set`: Converts to `list(devices)`
+- Single object: Wraps in `[devices]`
+
 ## Usage Patterns
 
 ### Basic Config Flow Integration
@@ -412,13 +671,13 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             # Initialize EntityManager
             self._entity_manager = EntityManager(self.hass)
 
-            # Build catalog on current features
+            # Build catalog with current and target features
             await self._entity_manager.build_entity_catalog(
-                AVAILABLE_FEATURES, current_features
+                AVAILABLE_FEATURES, current_features, target_features=new_features
             )
 
-            # Update to target features
-            self._entity_manager.update_feature_targets(new_features)
+            # Update to target features (if not passed to build_entity_catalog)
+            # self._entity_manager.update_feature_targets(new_features)
 
             # Get change lists
             self._entities_to_remove = self._entity_manager.get_entities_to_remove()
@@ -709,6 +968,273 @@ class PluginEntityManager(EntityManager):
         for plugin in self.plugin_registry.get_active_plugins():
             await self._scan_plugin_entities(plugin)
 ```
+
+## WebSocket Integration Troubleshooting
+
+### Common WebSocket Errors
+
+#### 1. "WebSocket message failed: Unknown error"
+
+**Symptoms:**
+```
+❌ WebSocket message failed: Object { code: "unknown_error", message: "Unknown error" }
+card-services.js:46:13
+```
+
+**Cause:** Missing required parameters in WebSocket call (typically `device_id`)
+
+**Solution:**
+```javascript
+// INCORRECT - Missing device_id
+await callWebSocket(hass, {
+  type: 'ramses_extras/get_2411_schema',
+});
+
+// CORRECT - Include device_id
+await callWebSocket(hass, {
+  type: 'ramses_extras/get_2411_schema',
+  device_id: this.config.device_id,
+});
+```
+
+#### 2. "Failed to fetch parameter schema"
+
+**Symptoms:**
+```
+Failed to fetch parameter schema: Object { code: "unknown_error", message: "Unknown error" }
+hvac-fan-card.js:438:15
+```
+
+**Cause:** WebSocket command not properly registered or schema validation failing
+
+**Solution:**
+1. **Ensure WebSocket commands are registered:** Verify that `register_default_websocket_commands()` is called during module import
+2. **Check schema creation:** Ensure voluptuous schemas are properly created, not plain dictionaries
+
+#### 3. "Command registration failed"
+
+**Symptoms:**
+```
+Failed to register WebSocket command: [command_name]
+WebSocket integration setup failed
+```
+
+**Cause:** Issues with HA decorator pattern or feature-centric registration
+
+**Solution:**
+1. **Verify HA decorator usage:**
+```python
+# CORRECT - Use HA decorators properly
+@websocket_api.websocket_command({
+    vol.Required("type"): "ramses_extras/default/get_bound_rem",
+    vol.Required("device_id"): str,
+})
+@websocket_api.async_response
+async def ws_get_bound_rem_default(hass, connection, msg):
+    # Handler implementation
+```
+
+2. **Check feature enablement:**
+```python
+# Verify feature is enabled in AVAILABLE_FEATURES
+AVAILABLE_FEATURES = {
+    "default": {
+        "default_enabled": True,
+        "websocket_commands": ["get_bound_rem", "get_2411_schema"],
+    }
+}
+```
+
+3. **Check integration setup:**
+```python
+# Ensure websocket_integration.py is called during setup
+await async_setup_websocket_integration(hass)
+```
+
+### WebSocket Command Registration
+
+#### Automatic Registration
+WebSocket commands are automatically registered based on enabled features through the main integration:
+
+```python
+# In websocket_integration.py
+async def async_register_websocket_commands(hass: HomeAssistant) -> None:
+    """Register WebSocket commands for enabled features."""
+    enabled_features = get_enabled_features(hass)
+
+    if "default" in enabled_features:
+        # Register default feature commands using HA decorators
+        from .features.default.websocket_commands import get_default_websocket_commands
+        default_commands = get_default_websocket_commands()
+        for command_name, command_handler in default_commands.items():
+            websocket_api.async_register_command(hass, command_handler)
+```
+
+#### Feature-Centric Architecture
+Each feature defines its own WebSocket commands:
+
+```python
+# In features/default/websocket_commands.py
+@websocket_api.websocket_command({
+    vol.Required("type"): "ramses_extras/default/get_bound_rem",
+    vol.Required("device_id"): str,
+})
+@websocket_api.async_response
+async def ws_get_bound_rem_default(hass, connection, msg):
+    """Handle get_bound_rem command with HA decorators."""
+    # Implementation using HA's standard pattern
+```
+
+### Debugging WebSocket Issues
+
+#### 1. Check Command Registration
+```python
+from custom_components.ramses_extras.websocket_integration import get_websocket_commands_info
+
+info = get_websocket_commands_info()
+print(f"Registered commands: {info}")
+```
+
+#### 2. Verify WebSocket Integration Status
+```python
+from custom_components.ramses_extras.websocket_integration import is_websocket_enabled
+
+if is_websocket_enabled(hass):
+    print("WebSocket integration is enabled")
+else:
+    print("WebSocket integration is not enabled")
+```
+
+#### 3. Check Home Assistant Logs
+Look for WebSocket registration messages:
+```
+✅ WebSocket integration setup complete: X commands across Y features
+```
+
+### WebSocket Commands API
+
+#### Architecture Overview
+
+The Ramses Extras WebSocket API uses a **feature-centric architecture** where each feature defines its own WebSocket commands using Home Assistant's standard decorator pattern. This approach ensures:
+
+- **Feature isolation**: Commands are organized by feature
+- **HA compatibility**: Uses standard HA WebSocket decorators (`@websocket_api.websocket_command`, `@websocket_api.async_response`)
+- **Dynamic discovery**: Commands are registered based on enabled features
+- **Maintainability**: Each feature manages its own commands
+
+#### Available Commands
+
+**Default Feature Commands:**
+
+- **`ramses_extras/default/get_bound_rem`**
+  - **Purpose:** Get bound REM device information
+  - **Parameters:** `device_id` (string)
+  - **Returns:** `{"device_id": "string", "bound_rem": "string|null"}`
+
+- **`ramses_extras/default/get_2411_schema`**
+  - **Purpose:** Get device parameter schema for configuration
+  - **Parameters:** `device_id` (string)
+  - **Returns:** Dictionary of parameter definitions
+
+- **`ramses_extras` (info command)**
+  - **Purpose:** Get information about all available WebSocket commands
+  - **Parameters:** None required
+  - **Returns:** List of available commands and features
+
+#### JavaScript Usage Example
+```javascript
+import { callWebSocket } from '/local/ramses_extras/helpers/card-services.js';
+
+// Get bound REM device
+const boundRem = await callWebSocket(hass, {
+  type: 'ramses_extras/default/get_bound_rem',
+  device_id: '32:153289',
+});
+
+// Get parameter schema
+const schema = await callWebSocket(hass, {
+  type: 'ramses_extras/default/get_2411_schema',
+  device_id: '32:153289',
+});
+
+// Get command info
+const commandsInfo = await callWebSocket(hass, {
+  type: 'ramses_extras',
+});
+```
+
+### Integration with EntityManager
+
+WebSocket commands work alongside EntityManager for comprehensive device management:
+
+```python
+# EntityManager for entity lifecycle management
+entity_manager = EntityManager(hass)
+await entity_manager.build_entity_catalog(available_features, current_features)
+
+# WebSocket commands for real-time device communication
+# (Get parameter schemas, bound REM info, etc.)
+```
+
+## ✅ WebSocket Implementation - Production Ready
+
+### Current State (Feature-Centric Architecture)
+
+**✅ Implemented Features:**
+1. **Feature-centric WebSocket architecture** - Each feature defines its own commands
+2. **HA standard decorator pattern** - Using `@websocket_api.websocket_command` and `@websocket_api.async_response`
+3. **Dynamic command registration** - Commands registered based on enabled features
+4. **Proper error handling** - Graceful degradation and detailed logging
+5. **Command discovery** - Info endpoint to discover available commands
+
+**🎯 Architecture Benefits:**
+1. **Maintainability** - Commands organized by feature
+2. **Scalability** - Easy to add new features with their own WebSocket commands
+3. **HA Compatibility** - Uses standard Home Assistant WebSocket API patterns
+4. **Type Safety** - Proper voluptuous schema validation
+
+### Implementation Details
+
+**File Structure:**
+```
+websocket_integration.py           # Main integration and registration
+features/default/websocket_commands.py    # Default feature commands
+features/humidity_control/websocket_commands.py  # Future: humidity control commands
+features/hvac_fan_card/websocket_commands.py     # Future: HVAC fan card commands
+```
+
+**Registration Flow:**
+1. Integration setup calls `async_register_websocket_commands()`
+2. System discovers enabled features from configuration
+3. Each enabled feature's commands are imported and registered with HA
+4. Commands use HA decorators for proper API integration
+
+### Adding New WebSocket Commands
+
+To add WebSocket commands for a new feature:
+
+1. **Create feature websocket_commands.py:**
+```python
+# features/your_feature/websocket_commands.py
+@websocket_api.websocket_command({
+    vol.Required("type"): "ramses_extras/your_feature/your_command",
+    vol.Required("device_id"): str,
+})
+@websocket_api.async_response
+async def ws_your_command(hass, connection, msg):
+    """Handle your custom command."""
+    # Implementation here
+```
+
+2. **Add to feature config in const.py:**
+```python
+AVAILABLE_FEATURES["your_feature"] = {
+    "websocket_commands": ["your_command"],
+    # ... other config
+}
+```
+
+3. **Commands are automatically registered when feature is enabled**
 
 ## Version Compatibility
 

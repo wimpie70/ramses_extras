@@ -431,6 +431,7 @@ class HvacFanCard extends HTMLElement {
     try {
       const result = await callWebSocket(this._hass, {
         type: 'ramses_extras/get_2411_schema',
+        device_id: this.config.device_id,
       });
       // console.log('Parameter schema received:', Object.keys(result));
       return result;
