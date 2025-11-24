@@ -12,14 +12,12 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 
+from .const import WS_CMD_GET_2411_SCHEMA, WS_CMD_GET_BOUND_REM
+
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
 
 _LOGGER = logging.getLogger(__name__)
-
-# WebSocket command constants - using the same format as the old working implementation
-WS_CMD_GET_BOUND_REM = "ramses_extras/get_bound_rem"
-WS_CMD_GET_2411_SCHEMA = "ramses_extras/get_2411_schema"
 
 
 @websocket_api.websocket_command(  # type: ignore[misc]

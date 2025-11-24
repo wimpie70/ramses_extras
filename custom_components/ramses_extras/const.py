@@ -32,7 +32,6 @@ CONF_ENABLED_WEB_SOCKETS = "enabled_web_sockets"
 CONF_MESSAGE_EVENTS = "message_events"
 
 # UI/Frontend constants
-WS_CMD_GET_BOUND_REM = f"{DOMAIN}/get_bound_rem"
 CARD_FOLDER = "www"
 CARD_HELPERS_FOLDER = "framework/www"
 FEATURE_FOLDER = "features"
