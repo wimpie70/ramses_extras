@@ -77,8 +77,7 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
     for feature_name, commands in all_commands.items():
         try:
             # Dynamic import of websocket_commands module for this feature
-            websocket_module_path = "custom_components.ramses_extras.features."
-            f"{feature_name}.websocket_commands"
+            websocket_module_path = f"custom_components.ramses_extras.features.{feature_name}.websocket_commands"  # noqa: E501
             websocket_module = __import__(websocket_module_path, fromlist=[""])
 
             # Register each command found in the feature's commands dictionary
