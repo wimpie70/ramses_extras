@@ -81,6 +81,9 @@ HUMIDITY_DEVICE_ENTITY_MAPPING = {
     },
 }
 
+# WebSocket commands for the humidity control feature
+HUMIDITY_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {}
+
 # Feature-specific constants for automation
 HUMIDITY_CONTROL_CONST = {
     "feature_id": "humidity_control",
@@ -110,6 +113,7 @@ HUMIDITY_CONTROL_CONST = {
 
 def load_feature() -> None:
     """Load humidity control feature into the registry."""
+    from custom_components.ramses_extras.const import register_ws_commands
     from custom_components.ramses_extras.extras_registry import extras_registry
 
     # Register entity configurations
@@ -117,6 +121,10 @@ def load_feature() -> None:
     extras_registry.register_number_configs(HUMIDITY_NUMBER_CONFIGS)
     extras_registry.register_boolean_configs(HUMIDITY_BOOLEAN_CONFIGS)
     extras_registry.register_device_mappings(HUMIDITY_DEVICE_ENTITY_MAPPING)
+
+    # Register WebSocket commands
+    register_ws_commands("humidity_control", HUMIDITY_CONTROL_WEBSOCKET_COMMANDS)
+
     extras_registry.register_feature("humidity_control")
 
 
@@ -125,6 +133,7 @@ __all__ = [
     "HUMIDITY_NUMBER_CONFIGS",
     "HUMIDITY_BOOLEAN_CONFIGS",
     "HUMIDITY_DEVICE_ENTITY_MAPPING",
+    "HUMIDITY_CONTROL_WEBSOCKET_COMMANDS",
     "HUMIDITY_CONTROL_CONST",
     "load_feature",
 ]

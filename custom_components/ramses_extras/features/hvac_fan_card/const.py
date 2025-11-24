@@ -31,6 +31,9 @@ FEATURE_CARD_CONFIG = {
     }
 }
 
+# WebSocket commands for the HVAC fan card feature
+HVAC_FAN_CARD_WEBSOCKET_COMMANDS: dict[str, str] = {}
+
 # HVAC Fan Card is a dashboard card feature
 # The device mapping indicates which device types the card supports,
 # but the card doesn't create any entities - it uses existing ones from default feature
@@ -82,10 +85,14 @@ HVAC_FAN_CARD_CONST = {
 
 def load_feature() -> None:
     """Load hvac_fan_card feature into the registry."""
+    from custom_components.ramses_extras.const import register_ws_commands
     from custom_components.ramses_extras.extras_registry import extras_registry
 
     # Register device mappings (indicates card is available for HvacVentilator devices)
     extras_registry.register_device_mappings(HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING)
+
+    # Register WebSocket commands
+    register_ws_commands("hvac_fan_card", HVAC_FAN_CARD_WEBSOCKET_COMMANDS)
 
     # Register each card configuration for feature-centric card management
     for card_config in HVAC_FAN_CARD_CONFIGS:
@@ -100,6 +107,7 @@ __all__ = [
     "HVAC_FAN_CARD_NUMBER_CONFIGS",
     "HVAC_FAN_CARD_BOOLEAN_CONFIGS",
     "HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING",
+    "HVAC_FAN_CARD_WEBSOCKET_COMMANDS",
     "HVAC_FAN_CARD_CONFIGS",
     "HVAC_FAN_CARD_CONST",
     "FEATURE_WEB_CONFIGS",

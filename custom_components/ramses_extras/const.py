@@ -140,7 +140,6 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.default",
         "handler": "handle_hvac_ventilator",
         "default_enabled": True,
-        "websocket_commands": ["get_bound_rem", "get_2411_schema"],
     },
     "humidity_control": {
         "name": "Humidity Control",
@@ -148,7 +147,6 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.humidity_control",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
-        "websocket_commands": [],
     },
     "hvac_fan_card": {
         "name": "HVAC Fan Card",
@@ -156,6 +154,5 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.hvac_fan_card",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
-        "websocket_commands": [],
     },
 }

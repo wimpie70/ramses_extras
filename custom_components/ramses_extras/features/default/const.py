@@ -44,9 +44,16 @@ DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
     },
 }
 
+# WebSocket commands for the default feature
+DEFAULT_WEBSOCKET_COMMANDS = {
+    "get_bound_rem": "ramses_extras/get_bound_rem",
+    "get_2411_schema": "ramses_extras/get_2411_schema",
+}
+
 
 def load_feature() -> None:
     """Load default feature into the registry."""
+    from custom_components.ramses_extras.const import register_ws_commands
     from custom_components.ramses_extras.extras_registry import extras_registry
 
     # Register entity configurations
@@ -55,6 +62,10 @@ def load_feature() -> None:
     extras_registry.register_number_configs(DEFAULT_NUMBER_CONFIGS)
     extras_registry.register_boolean_configs(DEFAULT_BOOLEAN_CONFIGS)
     extras_registry.register_device_mappings(DEFAULT_DEVICE_ENTITY_MAPPING)
+
+    # Register WebSocket commands
+    register_ws_commands("default", DEFAULT_WEBSOCKET_COMMANDS)
+
     extras_registry.register_feature("default")
 
 
@@ -65,5 +76,6 @@ __all__ = [
     "DEFAULT_NUMBER_CONFIGS",
     "DEFAULT_BOOLEAN_CONFIGS",
     "DEFAULT_DEVICE_ENTITY_MAPPING",
+    "DEFAULT_WEBSOCKET_COMMANDS",
     "load_feature",
 ]
