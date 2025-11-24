@@ -173,7 +173,7 @@ async def ws_get_2411_schema(
 
 
 # Default fallback schema parameters for HVAC devices
-DEFAULT_2411_SCHEMA_PARAMS = [
+DEFAULT_2411_SCHEMA_PARAMS: list[str] = [
     "31",  # Temperature offset
     "75",  # Comfort temperature
     "89",  # Fan speed minimum
@@ -212,20 +212,36 @@ def get_2411_schema_for_device_type(device_type: str) -> dict[str, Any]:
         device_type: Type of device (e.g., "HvacVentilator")
 
     Returns:
-        Device type specific parameter schema
+        Device type specific parameter schema from ramses_tx
     """
-    # For now, all devices get the same default schema
-    # This can be extended in the future to support device-type specific schemas
-    return _get_fallback_2411_schema()
+    try:
+        # Import the comprehensive schema from ramses_tx
+        from ramses_tx.ramses import _2411_PARAMS_SCHEMA
+
+        return dict(_2411_PARAMS_SCHEMA)  # Convert to dict[str, Any] explicitly
+    except ImportError:
+        _LOGGER.warning(
+            "Could not import _2411_PARAMS_SCHEMA from ramses_tx, using fallback"
+        )
+        return _get_fallback_2411_schema()
 
 
 def get_available_2411_parameters() -> list[str]:
     """Get list of available 2411 parameters.
 
     Returns:
-        List of parameter IDs that are available in the default schema
+        List of parameter IDs that are available in the schema
     """
-    return DEFAULT_2411_SCHEMA_PARAMS.copy()
+    try:
+        # Import the comprehensive schema from ramses_tx
+        from ramses_tx.ramses import _2411_PARAMS_SCHEMA
+
+        return list(_2411_PARAMS_SCHEMA.keys())
+    except ImportError:
+        _LOGGER.warning(
+            "Could not import _2411_PARAMS_SCHEMA from ramses_tx, using fallback"
+        )
+        return DEFAULT_2411_SCHEMA_PARAMS.copy()
 
 
 def register_ws_commands(hass: HomeAssistant) -> None:
