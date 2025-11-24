@@ -104,13 +104,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         """
         patterns = [
             # Primary humidity entities with device-specific naming
-            "sensor.indoor_absolute_humidity_*",
-            "sensor.outdoor_absolute_humidity_*",
-            "number.relative_humidity_minimum_*",
-            "number.relative_humidity_maximum_*",
-            "number.absolute_humidity_offset_*",
-            "switch.dehumidify_*",
-            "binary_sensor.dehumidifying_active_*",
+            "sensor.*_indoor_absolute_humidity",
+            "sensor.*_outdoor_absolute_humidity",
+            "number.*_relative_humidity_minimum",
+            "number.*_relative_humidity_maximum",
+            "number.*_absolute_humidity_offset",
+            "switch.*_dehumidify",
+            "binary_sensor.*_dehumidifying_active",
             # Cross-device reference entities (ramses_cc entities)
             "sensor.*_indoor_humidity",  # CC sensor references
         ]
@@ -140,9 +140,29 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 entity_type = prefix.split(".")[0]
                 entities = self.hass.states.async_all(entity_type)
 
-                matching_entities = [
-                    state for state in entities if state.entity_id.startswith(prefix)
-                ]
+                if "*" in pattern:
+                    # Handle wildcard patterns
+                    if pattern.startswith(f"{entity_type}."):
+                        # Pattern like "sensor.*_indoor_absolute_humidity"
+                        suffix = pattern.split(".*_", 1)[1]
+                        matching_entities = [
+                            state
+                            for state in entities
+                            if state.entity_id.endswith(f"_{suffix}")
+                        ]
+                    else:
+                        # Fallback for other wildcard patterns
+                        matching_entities = [
+                            state
+                            for state in entities
+                            if state.entity_id.startswith(prefix[:-1])
+                        ]
+                else:
+                    matching_entities = [
+                        state
+                        for state in entities
+                        if state.entity_id.startswith(prefix)
+                    ]
 
                 if matching_entities:
                     # Check each matching entity's device has all required entities
@@ -185,7 +205,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             for entity_name in entity_names:
                 # Generate expected entity ID using humidity control patterns
-                expected_entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
+                expected_entity_id = f"{entity_base_type}.{device_id}_{entity_name}"
 
                 # Check entity registry instead of states
                 entity_entry = registry.async_get(expected_entity_id)

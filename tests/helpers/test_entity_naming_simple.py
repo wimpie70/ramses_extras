@@ -29,7 +29,7 @@ SENSOR_CONFIGS = {
         "icon": "mdi:water-percent",
         "device_class": None,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "indoor_absolute_humidity_{device_id}",
+        "entity_template": "{device_id}_indoor_absolute_humidity",
     },
     "outdoor_absolute_humidity": {
         "name_template": "Outdoor Absolute Humidity",
@@ -38,7 +38,7 @@ SENSOR_CONFIGS = {
         "icon": "mdi:weather-partly-cloudy",
         "device_class": None,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "outdoor_absolute_humidity_{device_id}",
+        "entity_template": "{device_id}_outdoor_absolute_humidity",
     },
 }
 
@@ -48,7 +48,7 @@ SWITCH_CONFIGS = {
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.CONFIG,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "dehumidify_{device_id}",
+        "entity_template": "{device_id}_dehumidify",
     },
 }
 
@@ -59,7 +59,7 @@ BOOLEAN_CONFIGS = {
         "entity_category": EntityCategory.DIAGNOSTIC,
         "device_class": "running",
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "dehumidifying_active_{device_id}",
+        "entity_template": "{device_id}_dehumidifying_active",
     },
 }
 
@@ -75,7 +75,7 @@ NUMBER_CONFIGS = {
         "step": 1,
         "default_value": 40,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "relative_humidity_minimum_{device_id}",
+        "entity_template": "{device_id}_relative_humidity_minimum",
     },
     "relative_humidity_maximum": {
         "name_template": "Relative Humidity Maximum",
@@ -88,7 +88,7 @@ NUMBER_CONFIGS = {
         "step": 1,
         "default_value": 60,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "relative_humidity_maximum_{device_id}",
+        "entity_template": "{device_id}_relative_humidity_maximum",
     },
     "absolute_humidity_offset": {
         "name_template": "Absolute Humidity Offset",
@@ -101,7 +101,7 @@ NUMBER_CONFIGS = {
         "step": 0.1,
         "default_value": 0.4,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "absolute_humidity_offset_{device_id}",
+        "entity_template": "{device_id}_absolute_humidity_offset",
     },
 }
 
@@ -124,7 +124,7 @@ def generate_entity_id(entity_type: str, entity_name: str, device_id: str) -> st
     }
 
     prefix = type_to_prefix.get(entity_type, entity_type)
-    return f"{prefix}.{entity_name}_{device_id}"
+    return f"{prefix}.{device_id}_{entity_name}"
 
 
 def get_entity_template(entity_type: str, entity_name: str) -> str | None:
@@ -183,36 +183,39 @@ def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
 
         entity_type, rest = entity_id.split(".", 1)
 
-        # Device IDs typically follow pattern: zone_device (e.g., "32_153289")
-        # We need to find where entity name ends and device ID begins
-        # Strategy: Look for known device ID patterns at the end
+        # New format: device_id comes first, then entity_name
+        # e.g., "32_153289_indoor_absolute_humidity"
 
-        # Common device ID patterns in Ramses RF:
-        # - zone_device (e.g., "32_153289")
-        # - single_number (e.g., "123")
-
-        # Split by underscores and try different combinations
+        # Split by underscores
         parts = rest.split("_")
 
         if len(parts) < 2:
             return None
 
+        # Device IDs typically follow pattern: zone_device (e.g., "32_153289")
+        # We need to find where device ID ends and entity name begins
+        # Strategy: Look for known device ID patterns at the beginning
+
+        # Common device ID patterns in Ramses RF:
+        # - zone_device (e.g., "32_153289")
+        # - single_number (e.g., "123")
+
         # Find all valid device ID candidates and return the longest one
         valid_candidates = []
 
         for i in range(1, len(parts)):
-            device_id_candidate = "_".join(parts[i:])
-            entity_name_candidate = "_".join(parts[:i])
+            device_id_candidate = "_".join(parts[:i])
+            entity_name_candidate = "_".join(parts[i:])
 
             # Validate device_id pattern (should be number and underscores only)
             if device_id_candidate.replace("_", "").isdigit():
-                valid_candidates.append((entity_name_candidate, device_id_candidate))
+                valid_candidates.append((device_id_candidate, entity_name_candidate))
 
         # Return the candidate with the longest device_id (most parts)
         if valid_candidates:
             # Sort by device_id length (longest first)
-            valid_candidates.sort(key=lambda x: len(x[1].split("_")), reverse=True)
-            entity_name, device_id = valid_candidates[0]
+            valid_candidates.sort(key=lambda x: len(x[0].split("_")), reverse=True)
+            device_id, entity_name = valid_candidates[0]
 
             # Validate entity type
             valid_types = {"sensor", "switch", "number", "binary_sensor"}
@@ -236,7 +239,7 @@ def test_entity_generation():
         "sensor", "indoor_absolute_humidity", device_id
     )
     print(f"✅ Sensor entity: {sensor_id}")
-    expected_sensor = "sensor.indoor_absolute_humidity_32_153289"
+    expected_sensor = "sensor.32_153289_indoor_absolute_humidity"
     assert sensor_id == expected_sensor, f"Expected {expected_sensor}, got {sensor_id}"
 
     # Test number entity generation
@@ -244,13 +247,13 @@ def test_entity_generation():
         "number", "relative_humidity_maximum", device_id
     )
     print(f"✅ Number entity: {number_id}")
-    expected_number = "number.relative_humidity_maximum_32_153289"
+    expected_number = "number.32_153289_relative_humidity_maximum"
     assert number_id == expected_number, f"Expected {expected_number}, got {number_id}"
 
     # Test switch entity generation
     switch_id = generate_entity_name_from_template("switch", "dehumidify", device_id)
     print(f"✅ Switch entity: {switch_id}")
-    expected_switch = "switch.dehumidify_32_153289"
+    expected_switch = "switch.32_153289_dehumidify"
     assert switch_id == expected_switch, f"Expected {expected_switch}, got {switch_id}"
 
     # Test binary sensor entity generation
@@ -258,7 +261,7 @@ def test_entity_generation():
         "binary_sensor", "dehumidifying_active", device_id
     )
     print(f"✅ Binary sensor entity: {binary_id}")
-    expected_binary = "binary_sensor.dehumidifying_active_32_153289"
+    expected_binary = "binary_sensor.32_153289_dehumidifying_active"
     assert binary_id == expected_binary, f"Expected {expected_binary}, got {binary_id}"
 
     print("✅ All entity generation tests passed!")
@@ -270,20 +273,20 @@ def test_entity_parsing():
 
     test_cases = [
         (
-            "sensor.indoor_absolute_humidity_32_153289",
+            "sensor.32_153289_indoor_absolute_humidity",
             "sensor",
             "indoor_absolute_humidity",
             "32_153289",
         ),
         (
-            "number.relative_humidity_maximum_32_153289",
+            "number.32_153289_relative_humidity_maximum",
             "number",
             "relative_humidity_maximum",
             "32_153289",
         ),
-        ("switch.dehumidify_32_153289", "switch", "dehumidify", "32_153289"),
+        ("switch.32_153289_dehumidify", "switch", "dehumidify", "32_153289"),
         (
-            "binary_sensor.dehumidifying_active_32_153289",
+            "binary_sensor.32_153289_dehumidifying_active",
             "binary_sensor",
             "dehumidifying_active",
             "32_153289",
@@ -388,11 +391,11 @@ def test_naming_consistency():
         # Generate all entities for this device
         entities = get_all_required_entity_ids_for_device(device_id)
 
-        # Verify all entities follow the pattern: {type}.{name}_{device_id}
+        # Verify all entities follow the pattern: {type}.{device_id}_{name}
         for entity_id in entities:
-            expected_suffix = f"_{device_id}"
-            assert entity_id.endswith(expected_suffix), (
-                f"Entity {entity_id} doesn't end with {expected_suffix}"
+            expected_prefix = f"{device_id}_"
+            assert expected_prefix in entity_id, (
+                f"Entity {entity_id} doesn't start with {expected_prefix}"
             )
 
             # Verify we can parse it back
@@ -426,10 +429,10 @@ if __name__ == "__main__":
         )
         print("\n📋 Summary of improvements:")
         print("  - ✅ Entity names now include device_id templates")
-        print("  - ✅ Consistent naming format: {type}.{name}_{device_id}")
+        print("  - ✅ Consistent naming format: {type}.{device_id}_{name}")
         print("  - ✅ Helper methods for entity generation and parsing")
         print("  - ✅ Refactored from ENTITY_CONFIGS to SENSOR_CONFIGS")
-        print("  - ✅ Backward compatibility maintained")
+        print("  - ✅ Device ID now used as prefix instead of suffix")
 
     except Exception as e:
         print(f"\n❌ Test failed: {e}")

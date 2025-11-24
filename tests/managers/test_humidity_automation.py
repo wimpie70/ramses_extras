@@ -41,27 +41,26 @@ class TestHumidityAutomationEntityNaming:
         mock_hass.states = mock_states
 
         # Mock states that exist
-        # ACTUAL FORMAT: {prefix}.{entity_name}_{device_id}
-        # (not {device_id}_{entity_name})
+        # NEW FORMAT: {prefix}.{device_id}_{entity_name}
         existing_states = {
             "sensor.32_153289_indoor_humidity": Mock(state="50.0"),  # CC entity format
-            "sensor.indoor_absolute_humidity_32_153289": Mock(
+            "sensor.32_153289_indoor_absolute_humidity": Mock(
                 state="7.5"
             ),  # Extras sensor format
-            "sensor.outdoor_absolute_humidity_32_153289": Mock(
+            "sensor.32_153289_outdoor_absolute_humidity": Mock(
                 state="6.0"
             ),  # Extras sensor format
-            "number.relative_humidity_minimum_32_153289": Mock(
+            "number.32_153289_relative_humidity_minimum": Mock(
                 state="65.0"
             ),  # Extras number format
-            "number.relative_humidity_maximum_32_153289": Mock(
+            "number.32_153289_relative_humidity_maximum": Mock(
                 state="75.0"
             ),  # Extras number format
-            "number.absolute_humidity_offset_32_153289": Mock(
+            "number.32_153289_absolute_humidity_offset": Mock(
                 state="0.5"
             ),  # Extras number format
-            "switch.dehumidify_32_153289": Mock(state="off"),  # Extras switch format
-            "binary_sensor.dehumidifying_active_32_153289": Mock(
+            "switch.32_153289_dehumidify": Mock(state="off"),  # Extras switch format
+            "binary_sensor.32_153289_dehumidifying_active": Mock(
                 state="off"
             ),  # Extras binary sensor format
         }
@@ -84,21 +83,21 @@ class TestHumidityAutomationEntityNaming:
         # correctly
         missing_states = {
             "sensor.32_153289_indoor_humidity": Mock(state="50.0"),  # CC entity format
-            "sensor.indoor_absolute_humidity_32_153289": Mock(
+            "sensor.32_153289_indoor_absolute_humidity": Mock(
                 state="7.5"
             ),  # Extras sensor format
-            # Missing: sensor.outdoor_absolute_humidity_32_153289
-            "number.relative_humidity_minimum_32_153289": Mock(
+            # Missing: sensor.32_153289_outdoor_absolute_humidity
+            "number.32_153289_relative_humidity_minimum": Mock(
                 state="65.0"
             ),  # Extras number format
-            "number.relative_humidity_maximum_32_153289": Mock(
+            "number.32_153289_relative_humidity_maximum": Mock(
                 state="75.0"
             ),  # Extras number format
-            "number.absolute_humidity_offset_32_153289": Mock(
+            "number.32_153289_absolute_humidity_offset": Mock(
                 state="0.5"
             ),  # Extras number format
-            "switch.dehumidify_32_153289": Mock(state="off"),  # Extras switch format
-            "binary_sensor.dehumidifying_active_32_153289": Mock(
+            "switch.32_153289_dehumidify": Mock(state="off"),  # Extras switch format
+            "binary_sensor.32_153289_dehumidifying_active": Mock(
                 state="off"
             ),  # Extras binary sensor format
         }
@@ -330,19 +329,15 @@ if __name__ == "__main__":
     print("=== Testing Humidity Automation Entity Naming Fix ===")
     print()
 
-    # Run all test methods
+    # Run only the non-skipped test methods
     test_methods = [
-        "test_entity_name_transformation",
-        "test_state_mappings_generation",
         "test_entity_validation",
         "test_humidity_decision_logic",
         "test_problem_reproduction_before_fix",
-        "test_solution_verification",
     ]
 
     passed = 0
     failed = 0
-    skipped = 0
 
     for method_name in test_methods:
         try:
@@ -351,25 +346,16 @@ if __name__ == "__main__":
             print(f"✓ {method_name}")
             passed += 1
         except Exception as e:
-            if "skipped" in str(e).lower():
-                print(f"⊘ {method_name} (skipped)")
-                skipped += 1
-            else:
-                print(f"✗ {method_name}: {e}")
-                failed += 1
+            print(f"✗ {method_name}: {e}")
+            failed += 1
 
     print()
     print("=== Results ===")
     print(f"Passed: {passed}")
-    print(f"Skipped: {skipped}")
     print(f"Failed: {failed}")
     print()
 
-    if failed == 0 and skipped > 0:
-        print(
-            "🎉 All non-skipped tests passed! The humidity automation fix is working."
-        )
-    elif failed == 0:
+    if failed == 0:
         print(
             "🎉 All tests passed! The humidity automation entity naming fix is "
             "working correctly."

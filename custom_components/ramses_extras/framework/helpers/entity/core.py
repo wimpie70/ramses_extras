@@ -121,9 +121,9 @@ class EntityHelpers:
             device_id: Device identifier (e.g., "32_153289")
 
         Returns:
-            Generated entity ID (e.g., "sensor.indoor_absolute_humidity_32_153289")
+            Generated entity ID (e.g., "sensor.32_153289_indoor_absolute_humidity")
         """
-        return f"{entity_type}.{entity_name}_{device_id}"
+        return f"{entity_type}.{device_id}_{entity_name}"
 
     @staticmethod
     def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
@@ -131,32 +131,30 @@ class EntityHelpers:
 
         Args:
             entity_id: Entity identifier
-            (e.g., "sensor.indoor_absolute_humidity_32_153289")
+            (e.g., "sensor.32_153289_indoor_absolute_humidity")
 
         Returns:
             Tuple of (entity_type, entity_name, device_id) or None if parsing fails
         """
-        # Handle the specific pattern: type.name_number_number
-        # Example: "sensor.indoor_absolute_humidity_32_153289"
-        parts = entity_id.split("_")
-        if len(parts) >= 3:
-            # The last two parts are the device_id components
-            device_id = f"{parts[-2]}_{parts[-1]}"
-            # Everything before that is the type.name part
-            type_and_name = "_".join(parts[:-2])
+        # Handle the new pattern: type.device_id_name
+        # Example: "sensor.32_153289_indoor_absolute_humidity"
+        if "." in entity_id:
+            dot_index = entity_id.index(".")
+            entity_type = entity_id[:dot_index]
+            remainder = entity_id[dot_index + 1 :]
 
-            # Split type_and_name into type and name
-            if "." in type_and_name:
-                dot_index = type_and_name.index(".")
-                entity_type = type_and_name[:dot_index]
-                entity_name = type_and_name[dot_index + 1 :]
+            # Split remainder into device_id and entity_name
+            parts = remainder.split("_", 1)  # Split only on first underscore
+            if len(parts) >= 2:
+                device_id = parts[0]
+                entity_name = parts[1]
                 return entity_type, entity_name, device_id
 
         # Fallback: simple pattern for other cases
-        pattern = r"^(\w+)\.(.+)_([\w:]+)$"
+        pattern = r"^(\w+)\.([\w:]+)_(.+)$"
         match = re.match(pattern, entity_id)
         if match:
-            return match.group(1), match.group(2), match.group(3)
+            return match.group(1), match.group(3), match.group(2)
         return None
 
     @staticmethod
@@ -204,7 +202,8 @@ class EntityHelpers:
         for entity_type, entity_names in required_entities.items():
             entity_base_type = _singularize_entity_type(entity_type)
             for entity_name in entity_names:
-                patterns.append(f"{entity_base_type}.{entity_name}_*")
+                # Pattern for matching entities with device_id prefix
+                patterns.append(f"{entity_base_type}.*_{entity_name}")
 
         return patterns
 
