@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.ramses_extras.framework.base_classes import ExtrasBaseEntity
+from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -110,10 +111,26 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
         self._attr_native_max_value = config.get("max_value", 100.0)
         self._attr_native_step = config.get("step", 1.0)
 
-        # Set unique_id and name
+        # Use automatic format detection with EntityHelpers
         device_id_underscore = device_id.replace(":", "_")
-        self._attr_unique_id = f"{number_type}_{device_id_underscore}"
 
+        # Get the template from config (e.g., "relative_humidity_minimum_{device_id}")
+        entity_template = config.get("entity_template", f"{number_type}_{{device_id}}")
+
+        try:
+            # Generate entity_id using automatic format detection
+            self.entity_id = EntityHelpers.generate_entity_name_from_template(
+                "number", entity_template, device_id=device_id_underscore
+            )
+            self._attr_unique_id = self.entity_id.replace("number.", "")
+        except Exception as e:
+            _LOGGER.warning(
+                f"Entity name generation failed for {number_type} device "
+                f"{device_id_underscore}: {e}. "
+                "This indicates a configuration issue that needs to be resolved."
+            )
+
+        # Set display name from template
         name_template = config.get(
             "name_template", f"{number_type} {device_id_underscore}"
         )

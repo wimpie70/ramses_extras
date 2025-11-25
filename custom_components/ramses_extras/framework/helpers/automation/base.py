@@ -556,7 +556,7 @@ class ExtrasBaseAutomation(ABC):
             for entity_name in entity_names:
                 # Generate expected entity ID
                 expected_entity_id = EntityHelpers.generate_entity_name_from_template(
-                    entity_base_type, entity_name, device_id
+                    entity_base_type, entity_name, device_id=device_id
                 )
 
                 if expected_entity_id:

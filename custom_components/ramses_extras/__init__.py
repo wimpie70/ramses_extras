@@ -357,11 +357,11 @@ async def _register_feature_card_resources(
                                 f"{len(registered_cards)} cards"
                             )
                         else:
-                            _LOGGER.warning(
+                            _LOGGER.debug(
                                 f"⚠️ Feature {feature_key} has no cards to register"
                             )
                     else:
-                        _LOGGER.warning(
+                        _LOGGER.debug(
                             f"⚠️ No card manager found for feature {feature_key}"
                         )
 

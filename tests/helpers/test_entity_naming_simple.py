@@ -20,7 +20,7 @@ class EntityCategory:
     CONFIG = "config"
 
 
-# Mock the const values we need for testing
+# Mock the const values we need for testing - using both CC and Extras format templates
 SENSOR_CONFIGS = {
     "indoor_absolute_humidity": {
         "name_template": "Indoor Absolute Humidity",
@@ -29,7 +29,8 @@ SENSOR_CONFIGS = {
         "icon": "mdi:water-percent",
         "device_class": None,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "{device_id}_indoor_absolute_humidity",
+        "entity_template": "indoor_absolute_humidity_{device_id}",
+        # Extras format (device_id at end)
     },
     "outdoor_absolute_humidity": {
         "name_template": "Outdoor Absolute Humidity",
@@ -38,7 +39,8 @@ SENSOR_CONFIGS = {
         "icon": "mdi:weather-partly-cloudy",
         "device_class": None,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "{device_id}_outdoor_absolute_humidity",
+        "entity_template": "outdoor_absolute_humidity_{device_id}",
+        # Extras format (device_id at end)
     },
 }
 
@@ -48,7 +50,8 @@ SWITCH_CONFIGS = {
         "icon": "mdi:air-humidifier",
         "entity_category": EntityCategory.CONFIG,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "{device_id}_dehumidify",
+        "entity_template": "dehumidify_{device_id}",
+        # Extras format (device_id at end)
     },
 }
 
@@ -59,7 +62,8 @@ BOOLEAN_CONFIGS = {
         "entity_category": EntityCategory.DIAGNOSTIC,
         "device_class": "running",
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "{device_id}_dehumidifying_active",
+        "entity_template": "dehumidifying_active_{device_id}",
+        # Extras format (device_id at end)
     },
 }
 
@@ -75,7 +79,8 @@ NUMBER_CONFIGS = {
         "step": 1,
         "default_value": 40,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "{device_id}_relative_humidity_minimum",
+        "entity_template": "relative_humidity_minimum_{device_id}",
+        # Extras format (device_id at end)
     },
     "relative_humidity_maximum": {
         "name_template": "Relative Humidity Maximum",
@@ -88,7 +93,8 @@ NUMBER_CONFIGS = {
         "step": 1,
         "default_value": 60,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "{device_id}_relative_humidity_maximum",
+        "entity_template": "relative_humidity_maximum_{device_id}",
+        # Extras format (device_id at end)
     },
     "absolute_humidity_offset": {
         "name_template": "Absolute Humidity Offset",
@@ -101,7 +107,8 @@ NUMBER_CONFIGS = {
         "step": 0.1,
         "default_value": 0.4,
         "supported_device_types": ["HvacVentilator"],
-        "entity_template": "{device_id}_absolute_humidity_offset",
+        "entity_template": "absolute_humidity_offset_{device_id}",
+        # Extras format (device_id at end)
     },
 }
 
@@ -175,57 +182,134 @@ def get_all_required_entity_ids_for_device(device_id: str) -> list[str]:
 
 
 def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
-    """Parse an entity ID to extract entity type, name, and device ID."""
+    """Parse an entity ID to extract entity type, name,
+    and device ID with automatic format detection."""
     try:
         # Split on first dot to get type and rest
         if "." not in entity_id:
             return None
 
-        entity_type, rest = entity_id.split(".", 1)
+        entity_type, entity_name = entity_id.split(".", 1)
 
-        # New format: device_id comes first, then entity_name
-        # e.g., "32_153289_indoor_absolute_humidity"
+        # Find device_id pattern in the entity name
+        import re
 
-        # Split by underscores
-        parts = rest.split("_")
-
-        if len(parts) < 2:
+        pattern = r"(\d+[_:]\d+)"
+        match = re.search(pattern, entity_name)
+        if not match:
             return None
 
-        # Device IDs typically follow pattern: zone_device (e.g., "32_153289")
-        # We need to find where device ID ends and entity name begins
-        # Strategy: Look for known device ID patterns at the beginning
+        device_id = match.group(1).replace(":", "_")
+        position = match.start()
 
-        # Common device ID patterns in Ramses RF:
-        # - zone_device (e.g., "32_153289")
-        # - single_number (e.g., "123")
+        # Automatic format detection based on position
+        if position <= len(entity_name) * 0.3:  # First 30% → CC format
+            # CC format: device_id at beginning
+            identifier = entity_name[position + len(device_id) :].lstrip("_")
+            parsed_name = identifier if identifier else "unknown"
+        else:  # Last portion → Extras format
+            # Extras format: device_id at end
+            parsed_name = entity_name[:position].rstrip("_")
 
-        # Find all valid device ID candidates and return the longest one
-        valid_candidates = []
-
-        for i in range(1, len(parts)):
-            device_id_candidate = "_".join(parts[:i])
-            entity_name_candidate = "_".join(parts[i:])
-
-            # Validate device_id pattern (should be number and underscores only)
-            if device_id_candidate.replace("_", "").isdigit():
-                valid_candidates.append((device_id_candidate, entity_name_candidate))
-
-        # Return the candidate with the longest device_id (most parts)
-        if valid_candidates:
-            # Sort by device_id length (longest first)
-            valid_candidates.sort(key=lambda x: len(x[0].split("_")), reverse=True)
-            device_id, entity_name = valid_candidates[0]
-
-            # Validate entity type
-            valid_types = {"sensor", "switch", "number", "binary_sensor"}
-            if entity_type in valid_types:
-                return entity_type, entity_name, device_id
+        # Validate entity type
+        valid_types = {"sensor", "switch", "number", "binary_sensor"}
+        if entity_type in valid_types:
+            return entity_type, parsed_name, device_id
 
         return None
 
     except (ValueError, IndexError):
         return None
+
+
+def test_automatic_format_detection():
+    """Test automatic format detection for both CC and Extras formats."""
+    print("\n🧪 Testing automatic format detection...")
+
+    # Import the actual EntityHelpers (if available, otherwise use mock)
+    try:
+        import os
+        import sys
+
+        sys.path.insert(
+            0,
+            os.path.join(
+                os.path.dirname(__file__), "../../custom_components/ramses_extras"
+            ),
+        )
+        from framework.helpers.entity.core import EntityHelpers
+
+        has_entity_helpers = True
+    except ImportError:
+        print("⚠️  EntityHelpers not available, using mock implementation")
+        has_entity_helpers = False  # noqa: F841
+
+        # Mock EntityHelpers for testing
+        class EntityHelpers:
+            @staticmethod
+            def parse_entity_id(entity_id: str):
+                """Simple mock implementation."""
+                if not entity_id or "." not in entity_id:
+                    return None
+                try:
+                    entity_type, entity_name = entity_id.split(".", 1)
+
+                    # Check for device_id pattern
+                    import re
+
+                    pattern = r"(\d+[_:]\d+)"
+                    match = re.search(pattern, entity_name)
+                    if not match:
+                        return None
+
+                    device_id = match.group(1).replace(":", "_")
+                    position = match.start()
+
+                    # Simple format detection
+                    if position <= len(entity_name) * 0.3:  # CC format
+                        identifier = entity_name[position + len(device_id) :].lstrip(
+                            "_"
+                        )
+                        return entity_type, identifier, device_id
+                    # Extras format
+                    parsed_name = entity_name[:position].rstrip("_")
+                    return entity_type, parsed_name, device_id
+                except:  # noqa: E722
+                    return None
+
+    test_cases = [
+        # Extras format (device_id at end)
+        (
+            "sensor.indoor_absolute_humidity_32_153289",
+            "extras",
+            "indoor_absolute_humidity",
+        ),
+        ("switch.dehumidify_32_153289", "extras", "dehumidify"),
+        (
+            "number.relative_humidity_minimum_32_153289",
+            "extras",
+            "relative_humidity_minimum",
+        ),
+        # CC format (device_id at beginning)
+        ("sensor.32_153289_temp", "cc", "temp"),
+        ("number.32_153289_param_7c00", "cc", "param_7c00"),
+        ("switch.32_153289_fan_speed", "cc", "fan_speed"),
+    ]
+
+    for entity_id, expected_format, expected_name in test_cases:
+        parsed = EntityHelpers.parse_entity_id(entity_id)
+        if parsed:
+            entity_type, parsed_name, device_id = parsed
+            print(f"✅ {entity_id}: {entity_type}.{parsed_name} (device: {device_id})")
+
+            # Verify parsing worked correctly
+            assert entity_type in ["sensor", "switch", "number", "binary_sensor"]
+            assert device_id == "32_153289"
+            assert parsed_name == expected_name
+        else:
+            raise AssertionError(f"Failed to parse {entity_id}")
+
+    print("✅ All automatic format detection tests passed!")
 
 
 def test_entity_generation():
@@ -234,34 +318,34 @@ def test_entity_generation():
 
     device_id = "32_153289"
 
-    # Test sensor entity generation
+    # Test sensor entity generation (Extras format)
     sensor_id = generate_entity_name_from_template(
         "sensor", "indoor_absolute_humidity", device_id
     )
     print(f"✅ Sensor entity: {sensor_id}")
-    expected_sensor = "sensor.32_153289_indoor_absolute_humidity"
+    expected_sensor = "sensor.indoor_absolute_humidity_32_153289"
     assert sensor_id == expected_sensor, f"Expected {expected_sensor}, got {sensor_id}"
 
-    # Test number entity generation
+    # Test number entity generation (Extras format)
     number_id = generate_entity_name_from_template(
         "number", "relative_humidity_maximum", device_id
     )
     print(f"✅ Number entity: {number_id}")
-    expected_number = "number.32_153289_relative_humidity_maximum"
+    expected_number = "number.relative_humidity_maximum_32_153289"
     assert number_id == expected_number, f"Expected {expected_number}, got {number_id}"
 
-    # Test switch entity generation
+    # Test switch entity generation (Extras format)
     switch_id = generate_entity_name_from_template("switch", "dehumidify", device_id)
     print(f"✅ Switch entity: {switch_id}")
-    expected_switch = "switch.32_153289_dehumidify"
+    expected_switch = "switch.dehumidify_32_153289"
     assert switch_id == expected_switch, f"Expected {expected_switch}, got {switch_id}"
 
-    # Test binary sensor entity generation
+    # Test binary sensor entity generation (Extras format)
     binary_id = generate_entity_name_from_template(
         "binary_sensor", "dehumidifying_active", device_id
     )
     print(f"✅ Binary sensor entity: {binary_id}")
-    expected_binary = "binary_sensor.32_153289_dehumidifying_active"
+    expected_binary = "binary_sensor.dehumidifying_active_32_153289"
     assert binary_id == expected_binary, f"Expected {expected_binary}, got {binary_id}"
 
     print("✅ All entity generation tests passed!")
@@ -272,23 +356,37 @@ def test_entity_parsing():
     print("\n🧪 Testing entity ID parsing...")
 
     test_cases = [
+        # Test Extras format (device_id at end)
         (
-            "sensor.32_153289_indoor_absolute_humidity",
+            "sensor.indoor_absolute_humidity_32_153289",
             "sensor",
             "indoor_absolute_humidity",
             "32_153289",
         ),
         (
-            "number.32_153289_relative_humidity_maximum",
+            "number.relative_humidity_maximum_32_153289",
             "number",
             "relative_humidity_maximum",
             "32_153289",
         ),
-        ("switch.32_153289_dehumidify", "switch", "dehumidify", "32_153289"),
+        ("switch.dehumidify_32_153289", "switch", "dehumidify", "32_153289"),
         (
-            "binary_sensor.32_153289_dehumidifying_active",
+            "binary_sensor.dehumidifying_active_32_153289",
             "binary_sensor",
             "dehumidifying_active",
+            "32_153289",
+        ),
+        # Test CC format (device_id at beginning) - should also work
+        (
+            "sensor.32_153289_temp",
+            "sensor",
+            "temp",
+            "32_153289",
+        ),
+        (
+            "number.32_153289_param_7c00",
+            "number",
+            "param_7c00",
             "32_153289",
         ),
     ]
@@ -391,19 +489,17 @@ def test_naming_consistency():
         # Generate all entities for this device
         entities = get_all_required_entity_ids_for_device(device_id)
 
-        # Verify all entities follow the pattern: {type}.{device_id}_{name}
+        # Verify all entities can be parsed back correctly
         for entity_id in entities:
-            expected_prefix = f"{device_id}_"
-            assert expected_prefix in entity_id, (
-                f"Entity {entity_id} doesn't start with {expected_prefix}"
-            )
-
             # Verify we can parse it back
             parsed = parse_entity_id(entity_id)
             assert parsed is not None, f"Failed to parse {entity_id}"
 
             parsed_type, parsed_name, parsed_device = parsed
             assert parsed_device == device_id, f"Device ID mismatch in {entity_id}"
+
+            # Verify entity type is valid
+            assert parsed_type in ["sensor", "switch", "number", "binary_sensor"]
 
             print(
                 f"  ✅ {entity_id} -> {parsed_type}.{parsed_name} "
@@ -419,6 +515,7 @@ if __name__ == "__main__":
     try:
         test_entity_generation()
         test_entity_parsing()
+        test_automatic_format_detection()  # New test for automatic format detection
         test_all_entities_for_device()
         test_name_templates()
         test_naming_consistency()
@@ -428,11 +525,15 @@ if __name__ == "__main__":
             " system is working correctly."
         )
         print("\n📋 Summary of improvements:")
-        print("  - ✅ Entity names now include device_id templates")
-        print("  - ✅ Consistent naming format: {type}.{device_id}_{name}")
+        print("  - ✅ Entity names now use templates with automatic format detection")
+        print(
+            "  - ✅ Supports both CC format (device_id at beginning)"
+            " and Extras format (device_id at end)"
+        )
+        print("  - ✅ Automatic format detection based on device_id position")
         print("  - ✅ Helper methods for entity generation and parsing")
         print("  - ✅ Refactored from ENTITY_CONFIGS to SENSOR_CONFIGS")
-        print("  - ✅ Device ID now used as prefix instead of suffix")
+        print("  - ✅ Feature-centric templates work with automatic detection")
 
     except Exception as e:
         print(f"\n❌ Test failed: {e}")

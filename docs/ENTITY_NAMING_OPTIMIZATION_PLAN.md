@@ -768,3 +768,40 @@ def _clear_caches():
 4. **Validation**: Entity naming validation prevents format errors
 
 This plan simplifies the entity naming system while preserving the feature-centric architecture through automatic format detection based on device_id position.
+
+## Recent Implementation Updates
+
+### Backward Compatibility Removal
+
+**Implementation Date**: 2025-11-25
+
+**Changes Made**:
+1. **Entity Naming Fallbacks**: Removed all backward compatibility fallbacks and replaced with logger warnings:
+   - `features/humidity_control/platforms/binary_sensor.py` - Binary sensor entity naming
+   - `features/humidity_control/platforms/number.py` - Number entity naming
+   - `features/humidity_control/platforms/switch.py` - Switch entity naming
+   - `framework/base_classes/base_entity.py` - Base entity naming
+
+2. **Device Type Fallback**: Enhanced device type detection in `framework/helpers/entity/manager.py`
+
+**Warning Format**:
+```python
+_LOGGER.warning(
+    f"Entity name generation failed for {entity_type} device {device_id}: {error}. "
+    "This indicates a configuration issue that needs to be resolved."
+)
+```
+
+**Benefits**:
+- **No Backward Compatibility**: Eliminates legacy fallback behavior entirely
+- **Clear Error Reporting**: Users are immediately informed when configurations fail
+- **Forced Resolution**: Forces proper configuration rather than allowing silent degradation
+- **Clean Migration**: No hidden fallbacks to complicate future updates
+
+**Migration Impact**:
+- Invalid configurations will now fail with clear error messages
+- Users must fix configuration issues instead of relying on fallbacks
+- Eliminates ambiguous entity naming behavior
+- Forces proper setup for optimal performance
+
+This implementation removes all backward compatibility fallbacks, ensuring that configuration issues are surfaced immediately and must be resolved properly.

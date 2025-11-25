@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 
 from ...const import DOMAIN
+from ..helpers.entity.core import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,10 +87,20 @@ class RamsesSensorEntity(ExtrasBaseEntity, SensorEntity):
         self._entity_name = entity_name
         self._config = config
 
-        # Generate entity ID (replace : with _ for entity IDs)
-        device_id_clean = device_id.replace(":", "_")
-        self.entity_id = f"sensor.{entity_name}_{device_id_clean}"
-        self._attr_unique_id = f"{device_id}_{entity_name}"
+        # Use automatic format detection from EntityHelpers
+        try:
+            self.entity_id = EntityHelpers.generate_entity_name_from_template(
+                "sensor",
+                entity_name + "_{device_id}",  # Use existing pattern from feature const
+                device_id=device_id,
+            )
+            self._attr_unique_id = f"{device_id}_{entity_name}"
+        except Exception as e:
+            _LOGGER.warning(
+                f"Entity name generation failed for {entity_name} device "
+                f"{device_id}: {e}. "
+                "This indicates a configuration issue that needs to be resolved."
+            )
 
         # Set name from config template or use entity_name
         name_template = config.get("name_template", "")

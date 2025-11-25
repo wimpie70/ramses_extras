@@ -96,27 +96,29 @@ class HumidityControlSwitch(SwitchEntity, ExtrasBaseEntity):
         # Convert device_id to underscore format for entity generation
         device_id_underscore = device_id.replace(":", "_")
 
-        # Generate proper entity name using template system
-        entity_name = EntityHelpers.generate_entity_name_from_template(
-            "switch", switch_type, device_id_underscore
-        )
+        # Use automatic format detection with EntityHelpers
+        # Get the template from config (e.g., "dehumidify_{device_id}")
+        entity_template = config.get("entity_template", f"{switch_type}_{{device_id}}")
 
-        if entity_name:
-            # Set entity name and unique_id using proper template
-            name_template = (
-                config.get("name_template", "Dehumidify {device_id}")
-                or "Dehumidify {device_id}"
+        try:
+            # Generate entity_id using automatic format detection
+            self.entity_id = EntityHelpers.generate_entity_name_from_template(
+                "switch", entity_template, device_id=device_id_underscore
             )
-            self._attr_name = name_template.format(device_id=device_id_underscore)
-            self._attr_unique_id = entity_name.replace("switch.", "")
-        else:
-            # Fallback to hardcoded format (legacy)
-            name_template = (
-                config.get("name_template", "Dehumidify {device_id}")
-                or "Dehumidify {device_id}"
+            self._attr_unique_id = self.entity_id.replace("switch.", "")
+        except Exception as e:
+            _LOGGER.warning(
+                f"Entity name generation failed for {switch_type} "
+                f"on device {device_id_underscore}: {e}. "
+                "This indicates a configuration issue that needs to be resolved."
             )
-            self._attr_name = name_template.format(device_id=device_id_underscore)
-            self._attr_unique_id = f"dehumidify_{device_id_underscore}"
+
+        # Set display name from template
+        name_template = (
+            config.get("name_template", "Dehumidify {device_id}")
+            or "Dehumidify {device_id}"
+        )
+        self._attr_name = name_template.format(device_id=device_id_underscore)
 
         self._is_on = False
 

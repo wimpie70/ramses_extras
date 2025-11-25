@@ -16,6 +16,7 @@ from homeassistant.helpers.event import async_track_state_change
 from custom_components.ramses_extras.framework.base_classes.base_entity import (
     ExtrasBaseEntity,
 )
+from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,8 +72,20 @@ async def _check_underlying_entities_exist(
     temp_type, humidity_type = entity_patterns[sensor_type]
     device_id_underscore = device_id.replace(":", "_")
 
-    temp_entity = f"sensor.{device_id_underscore}_{temp_type}"
-    humidity_entity = f"sensor.{device_id_underscore}_{humidity_type}"
+    # Use automatic format detection for entity IDs
+    temp_entity = (
+        EntityHelpers.generate_entity_name_from_template(
+            "sensor", temp_type + "_{device_id}", device_id=device_id_underscore
+        )
+        or f"sensor.{device_id_underscore}_{temp_type}"
+    )  # fallback
+
+    humidity_entity = (
+        EntityHelpers.generate_entity_name_from_template(
+            "sensor", humidity_type + "_{device_id}", device_id=device_id_underscore
+        )
+        or f"sensor.{device_id_underscore}_{humidity_type}"
+    )  # fallback
 
     # Check entity registry instead of states,
     #  as states may not be available during setup
@@ -219,9 +232,23 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
 
         temp_type, humidity_type = entity_patterns[self._sensor_type]
 
-        # Construct entity IDs based on the device_id
-        temp_entity = f"sensor.{self._device_id.replace(':', '_')}_{temp_type}"
-        humidity_entity = f"sensor.{self._device_id.replace(':', '_')}_{humidity_type}"
+        # Use automatic format detection for entity IDs
+        device_id_underscore = self._device_id.replace(":", "_")
+
+        # Generate entity IDs using automatic format detection
+        temp_entity = (
+            EntityHelpers.generate_entity_name_from_template(
+                "sensor", temp_type + "_{device_id}", device_id=device_id_underscore
+            )
+            or f"sensor.{device_id_underscore}_{temp_type}"
+        )  # fallback
+
+        humidity_entity = (
+            EntityHelpers.generate_entity_name_from_template(
+                "sensor", humidity_type + "_{device_id}", device_id=device_id_underscore
+            )
+            or f"sensor.{device_id_underscore}_{humidity_type}"
+        )  # fallback
 
         # Track state changes on both temperature and humidity sensor
         async def state_changed_listener(*args: Any) -> None:
@@ -285,9 +312,23 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
 
         temp_type, humidity_type = entity_patterns[self._sensor_type]
 
-        # Construct entity IDs based on the device_id
-        temp_entity = f"sensor.{self._device_id.replace(':', '_')}_{temp_type}"
-        humidity_entity = f"sensor.{self._device_id.replace(':', '_')}_{humidity_type}"
+        # Use automatic format detection for entity IDs
+        device_id_underscore = self._device_id.replace(":", "_")
+
+        # Generate entity IDs using automatic format detection
+        temp_entity = (
+            EntityHelpers.generate_entity_name_from_template(
+                "sensor", temp_type + "_{device_id}", device_id=device_id_underscore
+            )
+            or f"sensor.{device_id_underscore}_{temp_type}"
+        )  # fallback
+
+        humidity_entity = (
+            EntityHelpers.generate_entity_name_from_template(
+                "sensor", humidity_type + "_{device_id}", device_id=device_id_underscore
+            )
+            or f"sensor.{device_id_underscore}_{humidity_type}"
+        )  # fallback
 
         try:
             # Get temperature from ramses_cc sensor

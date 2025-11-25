@@ -404,7 +404,9 @@ class EntityManager:
             if hasattr(device, "device_type"):
                 return str(device.device_type)
             return str(type(device).__name__)
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug(f"Failed to get device type for {device}: {e}")
+            # Fallback to "UnknownDevice" if device type detection fails
             return "UnknownDevice"
 
     async def get_broker_for_entry(self, entry: Any) -> Any:
