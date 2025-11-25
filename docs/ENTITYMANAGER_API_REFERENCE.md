@@ -589,7 +589,7 @@ async def _add_device_entities(
 **Process:**
 1. Gets devices for the feature
 2. For each device, gets required entities from feature config
-3. Generates entity IDs using standard naming pattern
+3. Generates entity IDs using automatic format detection (CC/Extras)
 4. Checks entity existence in registry
 5. Handles entity ownership conflicts (prevents overwriting)
 6. Adds entities to catalog
@@ -791,20 +791,24 @@ await manager2.build_entity_catalog(features, target)
 
 ## Integration with EntityHelpers
 
-The EntityManager leverages existing EntityHelpers for consistency:
+The EntityManager leverages simplified EntityHelpers for automatic format detection:
 
 ```python
 from .core import EntityHelpers, generate_entity_patterns_for_feature, get_feature_entity_mappings
 
-# EntityManager uses EntityHelpers internally
+# EntityManager uses simplified EntityHelpers with automatic detection
 class EntityManager:
     async def _scan_feature_entities(self, feature_id, feature_config, existing_entities):
-        # Use existing pattern matching
-        patterns = generate_entity_patterns_for_feature(feature_id)
-        filtered_entities = EntityHelpers.filter_entities_by_patterns(all_entities, patterns)
+        # Use automatic format detection
+        for entity_id in existing_entities:
+            parsed = EntityHelpers.parse_entity_id(entity_id)  # Automatic CC/Extras detection
+            if parsed:
+                entity_type, entity_name, device_id = parsed
+                # Process entity regardless of format
 
-        # Use existing entity mappings
+        # Use simplified template generation
         entity_mappings = get_feature_entity_mappings(feature_id, device_id)
+        # Templates use automatic format detection - no manual specification needed
 ```
 
 ## Testing Patterns

@@ -467,76 +467,99 @@ async def _handle_orcon_device(self, event_data):
 
 ## 🔧 Entity Naming System
 
-### Entity Naming Convention
+### Universal Entity Format
 
-**Format:** `{entity_type}.{entity_name}_{device_id}`
+**Format:** `{entity_type}.{template}` with automatic format detection
 
-**Examples:**
+**Pattern Recognition:**
+- **CC Format** (device_id prefix): `{device_id}_{specific_identifier}`
+  - Example: `number.32_153289_param_7c00`
+  - Example: `sensor.29_099029_temp`
 
-```
-sensor.indoor_absolute_humidity_32_153289
-sensor.outdoor_absolute_humidity_32_153289
-number.relative_humidity_minimum_32_153289
-number.relative_humidity_maximum_32_153289
-number.absolute_humidity_offset_32_153289
-switch.dehumidify_32_153289
-binary_sensor.dehumidifying_active_32_153289
-```
+- **Extras Format** (device_id suffix): `{entity_name}_{device_id}`
+  - Example: `sensor.indoor_absolute_humidity_32_153289`
+  - Example: `switch.dehumidify_32_153289`
+  - Example: `number.relative_humidity_minimum_32_153289`
+
+### Automatic Format Detection
+
+**Detection Logic:**
+1. **Device ID Recognition**: Match patterns like `12_345678` or `12:345678`
+2. **Position Analysis**:
+   - Device ID at beginning → CC format (prefix)
+   - Device ID at end → Extras format (suffix)
+3. **Context Parsing**: Parse components based on detected format
 
 ### Entity Helper Methods
 
-#### 1. `generate_entity_name_from_template(entity_type, entity_name, device_id)`
+#### 1. `generate_entity_name_from_template(entity_type, template, **kwargs)`
 
-Generates consistent entity IDs using configured templates.
+Generates consistent entity IDs using templates with automatic format detection.
 
 ```python
-entity_id = generate_entity_name_from_template("sensor", "indoor_absolute_humidity", "32_153289")
+# Universal template - position determines format
+entity_id = generate_entity_name_from_template("sensor", "indoor_absolute_humidity_{device_id}", device_id="32_153289")
 # Returns: "sensor.indoor_absolute_humidity_32_153289"
+
+entity_id = generate_entity_name_from_template("number", "{device_id}_param_{param_id}", device_id="32_153289", param_id="7c00")
+# Returns: "number.32_153289_param_7c00"
 ```
 
 #### 2. `parse_entity_id(entity_id)`
 
-Parses entity IDs to extract components.
+Parses entity IDs with automatic format detection.
 
 ```python
+# Automatic detection - returns structured components
 result = parse_entity_id("sensor.indoor_absolute_humidity_32_153289")
-# Returns: ("sensor", "indoor_absolute_humidity", "32_153289")
+# Returns: ("sensor", "indoor_absolute_humidity", "32_153289") - Extras format
+
+result = parse_entity_id("number.32_153289_param_7c00")
+# Returns: ("number", "param_7c00", "32_153289") - CC format
 ```
 
 #### 3. `get_all_required_entity_ids_for_device(device_id)`
 
-Gets all entity IDs required for a device.
+Gets all entity IDs required for a device using automatic format detection.
 
 ```python
 entities = get_all_required_entity_ids_for_device("32_153289")
-# Returns list of all entity IDs for device "32_153289"
+# Returns list of all entity IDs for device "32_153289" - automatic format detection
 ```
 
 ### Configuration Structure
 
 ```python
-# Entity configuration templates
-ENTITY_CONFIGURATIONS = {
+# Existing feature const templates (Feature-Centric Design)
+# features/humidity_control/const.py
+HUMIDITY_SWITCH_CONFIGS = {
     "dehumidify": {
-        "name_template": "Dehumidify {device_id}",          # Display name template
-        "entity_template": "dehumidify_{device_id}",        # Entity ID template
-        "icon": "mdi:air-humidifier",
-        "supported_device_types": ["HvacVentilator"],
-    },
-    "relative_humidity_minimum": {
-        "name_template": "Min Humidity {device_id}",
-        "entity_template": "relative_humidity_minimum_{device_id}",
-        "entity_category": EntityCategory.CONFIG,
-        "supported_device_types": ["HvacVentilator"],
-    },
-    "indoor_absolute_humidity": {
-        "name_template": "Indoor Absolute Humidity {device_id}",
-        "entity_template": "indoor_absolute_humidity_{device_id}",
-        "entity_category": EntityCategory.DIAGNOSTIC,
-        "supported_device_types": ["HvacVentilator"],
+        "entity_template": "dehumidify_{device_id}",          # Extras format
+        "name_template": "Dehumidify {device_id}",
+        # ... other config
     }
 }
+
+# features/default/const.py
+DEFAULT_SENSOR_CONFIGS = {
+    "indoor_absolute_humidity": {
+        "entity_template": "indoor_absolute_humidity_{device_id}",  # Extras format
+        "name_template": "Indoor Absolute Humidity {device_id}",
+        # ... other config
+    }
+}
+
+# Framework CC templates for dynamic entities
+CC_TEMPLATES = {
+    "param": "{device_id}_param_{param_id}",                  # CC format
+    "temp": "{device_id}_temp",                              # CC format
+}
 ```
+
+**Key Design Principles:**
+- Feature-specific templates remain in feature const files (feature-centric)
+- Templates use `{device_id}` placeholders for automatic format detection
+- No new central template registry needed
 
 ## 🌐 Home Assistant Integration
 
