@@ -21,11 +21,10 @@ from .number import (
     async_setup_entry as number_async_setup_entry,
 )
 from .sensor import (
-    HumidityAbsoluteSensor,
-    create_humidity_sensor,
+    async_setup_entry as sensor_async_setup_entry,
 )
 from .sensor import (
-    async_setup_entry as sensor_async_setup_entry,
+    create_humidity_sensor,
 )
 from .switch import (
     HumidityControlSwitch,
@@ -37,7 +36,6 @@ from .switch import (
 
 __all__ = [
     # Sensor platform
-    "HumidityAbsoluteSensor",
     "sensor_async_setup_entry",
     "create_humidity_sensor",
     # Binary sensor platform

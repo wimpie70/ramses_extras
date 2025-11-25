@@ -35,11 +35,10 @@ DEFAULT_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {}
 DEFAULT_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
 
 # Base device type to entity mapping
-# Note: Default feature doesn't create any entities itself
-# All sensors are maintained by the underlying ramses_rf integration
+# Note: Default feature creates absolute humidity sensors for all devices
 DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
     "HvacVentilator": {
-        # No entities created by default feature
+        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
         # Other entity types will be added by individual features
     },
 }

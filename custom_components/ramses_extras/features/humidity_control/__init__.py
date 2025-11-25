@@ -34,7 +34,6 @@ from .entities import HumidityEntities
 
 # Import platform classes for HA integration
 from .platforms import (
-    HumidityAbsoluteSensor,
     HumidityControlBinarySensor,
     HumidityControlNumber,
     HumidityControlSwitch,
@@ -810,7 +809,6 @@ __all__ = [
     "HUMIDITY_BOOLEAN_CONFIGS",
     "HUMIDITY_DEVICE_ENTITY_MAPPING",
     # Platform class exports
-    "HumidityAbsoluteSensor",
     "HumidityControlBinarySensor",
     "HumidityControlSwitch",
     "HumidityControlNumber",
@@ -857,7 +855,6 @@ def create_humidity_control_feature(hass: Any, config_entry: Any) -> dict[str, A
             "sensor": {
                 "async_setup_entry": sensor_async_setup_entry,
                 "create_sensor": create_humidity_sensor,
-                "entity_class": HumidityAbsoluteSensor,
             },
             "binary_sensor": {
                 "async_setup_entry": binary_sensor_async_setup_entry,
