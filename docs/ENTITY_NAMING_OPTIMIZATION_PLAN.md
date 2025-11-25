@@ -207,6 +207,329 @@ class EntityManager:
 ## Implementation Plan
 
 ### Phase 1: Enhanced EntityHelpers Core (Priority 1) ✅ COMPLETED
+**Objective**: Refine implementation with advanced automatic detection algorithms and comprehensive validation
+
+**Enhanced Detection Algorithm:**
+```python
+@staticmethod
+def detect_and_parse(entity_id: str) -> dict:
+    """Complete automatic format detection and parsing with enhanced validation.
+
+    Returns comprehensive information about the entity including:
+    - entity_type, parsed_name, device_id
+    - format detection confidence
+    - position analysis for debugging
+    - validation status
+    """
+    # Step 1: Validate entity_id format
+    if not entity_id or '.' not in entity_id:
+        return None
+
+    # Step 2: Extract components with validation
+    try:
+        entity_type, entity_name = entity_id.split('.', 1)
+    except ValueError:
+        return None
+
+    # Step 3: Advanced device ID extraction with multiple patterns
+    device_id, position = EntityHelpers._extract_device_id(entity_name)
+    if not device_id:
+        return None
+
+    # Step 4: Enhanced format detection with confidence scoring
+    format_type = EntityHelpers._detect_format_by_position(position, entity_name)
+
+    # Step 5: Parse based on detected format with validation
+    if format_type == "cc":
+        # CC Format: device_id at beginning
+        identifier = entity_name[position + len(device_id):].lstrip('_')
+        parsed_name = identifier if identifier else "unknown"
+    else:
+        # Extras Format: device_id at end
+        parsed_name = entity_name[:position]
+
+    # Step 6: Validation and confidence assessment
+    confidence = EntityHelpers._calculate_format_confidence(position, entity_name, format_type)
+
+    return {
+        "entity_type": entity_type,
+        "parsed_name": parsed_name,
+        "device_id": device_id,
+        "format": format_type,
+        "position": position,
+        "confidence": confidence,
+        "is_valid": confidence > 0.7
+    }
+
+@staticmethod
+def _calculate_format_confidence(position: int, entity_name: str, format_type: str) -> float:
+    """Calculate confidence score for format detection based on multiple factors."""
+    if position == -1:
+        return 0.0
+
+    length = len(entity_name)
+    relative_position = position / length if length > 0 else 0
+
+    # Base confidence on position clarity
+    if format_type == "cc" and relative_position <= 0.1:
+        return 0.95  # Very confident - device_id at very beginning
+    elif format_type == "extras" and relative_position >= 0.7:
+        return 0.95  # Very confident - device_id at very end
+    elif format_type == "cc" and relative_position <= 0.3:
+        return 0.85  # Confident - device_id in first 30%
+    elif format_type == "extras" and relative_position >= 0.3:
+        return 0.85  # Confident - device_id in last 70%
+    else:
+        return 0.6   # Moderate confidence - boundary case
+```
+
+**Enhanced Universal Template System:**
+```python
+def generate_entity_name_from_template(
+    entity_type: str,
+    template: str,
+    validate_format: bool = True,
+    **kwargs
+) -> str:
+    """Enhanced universal template with validation and error handling.
+
+    Args:
+        entity_type: Type of entity (sensor, switch, etc.)
+        template: Template string with placeholders
+        validate_format: Whether to validate the generated format
+        **kwargs: Template placeholder values
+
+    Returns:
+        Generated entity ID with automatic format detection
+
+    Raises:
+        ValueError: If template is invalid or required placeholders missing
+    """
+    # Validate template structure
+    if not template or not isinstance(template, str):
+        raise ValueError("Template must be a non-empty string")
+
+    # Validate entity_type
+    valid_types = {"sensor", "switch", "number", "binary_sensor", "climate", "select"}
+    if entity_type not in valid_types:
+        raise ValueError(f"Invalid entity_type: {entity_type}. Must be one of {valid_types}")
+
+    # Extract placeholders and validate required values
+    placeholders = re.findall(r'\{(\w+)\}', template)
+    missing_placeholders = [p for p in placeholders if p not in kwargs]
+    if missing_placeholders:
+        raise ValueError(f"Missing required placeholders: {missing_placeholders}")
+
+    # Handle device_id with enhanced detection
+    if "device_id" in kwargs and "{device_id}" in template:
+        device_id = kwargs["device_id"]
+
+        # Validate device_id format
+        if not re.match(r'\d+[:_]\d+', device_id):
+            raise ValueError(f"Invalid device_id format: {device_id}")
+
+        # Detect format by template position
+        device_pos = template.find("{device_id}")
+        format_hint = EntityHelpers._get_format_hint_from_template(template)
+
+        # Generate entity name with format validation
+        entity_name = template.format(**kwargs)
+        full_entity_id = f"{entity_type}.{entity_name}"
+
+        # Optional format validation
+        if validate_format:
+            parsed = EntityHelpers.parse_entity_id(full_entity_id)
+            if not parsed:
+                raise ValueError(f"Generated entity_id failed validation: {full_entity_id}")
+
+        return full_entity_name
+
+    # Simple template processing for non-device_id templates
+    try:
+        entity_name = template.format(**kwargs)
+        return f"{entity_type}.{entity_name}"
+    except KeyError as e:
+        raise ValueError(f"Template processing failed for placeholder: {e}")
+
+@staticmethod
+def _get_format_hint_from_template(template: str) -> str:
+    """Analyze template structure to provide format hints."""
+    device_id_pos = template.find("{device_id}")
+    if device_id_pos == 0:
+        return "cc"  # Device ID at beginning suggests CC format
+    elif device_id_pos > 0:
+        # Check if device_id is at the end
+        remaining = template[device_id_pos:].replace("{device_id}", "")
+        if not remaining or remaining.endswith("_") or remaining.endswith("-"):
+            return "extras"  # Device ID at end suggests Extras format
+    return "unknown"
+```
+
+**Advanced Validation Framework:**
+```python
+@staticmethod
+def validate_entity_name(entity_id: str) -> dict:
+    """Comprehensive entity name validation with detailed feedback.
+
+    Returns:
+        dict with validation results including:
+        - is_valid: Overall validation status
+        - format_confidence: Confidence in format detection
+        - issues: List of specific issues found
+        - suggestions: List of suggested fixes
+    """
+    result = {
+        "is_valid": False,
+        "format_confidence": 0.0,
+        "issues": [],
+        "suggestions": [],
+        "detected_format": None,
+        "entity_type": None,
+        "device_id": None
+    }
+
+    # Basic structure validation
+    if not entity_id or '.' not in entity_id:
+        result["issues"].append("Entity ID must contain a dot separator")
+        result["suggestions"].append("Use format: entity_type.entity_name")
+        return result
+
+    try:
+        entity_type, entity_name = entity_id.split('.', 1)
+    except ValueError:
+        result["issues"].append("Invalid entity ID structure")
+        result["suggestions"].append("Ensure exactly one dot separator")
+        return result
+
+    # Validate entity type
+    valid_types = {"sensor", "switch", "number", "binary_sensor", "climate", "select"}
+    if entity_type not in valid_types:
+        result["issues"].append(f"Invalid entity type: {entity_type}")
+        result["suggestions"].append(f"Use one of: {', '.join(valid_types)}")
+        return result
+
+    # Enhanced parsing with confidence
+    parsed = EntityHelpers.detect_and_parse(entity_id)
+    if not parsed:
+        result["issues"].append("Could not parse entity name")
+        result["suggestions"].append("Ensure entity name contains a valid device_id")
+        return result
+
+    # Update result with parsing details
+    result.update({
+        "format_confidence": parsed["confidence"],
+        "detected_format": parsed["format"],
+        "entity_type": entity_type,
+        "device_id": parsed["device_id"]
+    })
+
+    # Validation checks
+    if parsed["confidence"] < 0.7:
+        result["issues"].append(f"Low format detection confidence: {parsed['confidence']:.2f}")
+        result["suggestions"].append("Consider repositioning device_id in entity name")
+
+    if not parsed["is_valid"]:
+        result["issues"].append("Entity name failed validation checks")
+        result["suggestions"].append("Check device_id format and position")
+
+    result["is_valid"] = len(result["issues"]) == 0
+    return result
+```
+
+**Enhanced Error Handling and Logging:**
+```python
+import logging
+_LOGGER = logging.getLogger(__name__)
+
+class EntityNamingError(Exception):
+    """Base exception for entity naming operations."""
+    pass
+
+class InvalidEntityFormatError(EntityNamingError):
+    """Raised when entity format is invalid or cannot be determined."""
+    pass
+
+class TemplateValidationError(EntityNamingError):
+    """Raised when template validation fails."""
+    pass
+
+# Enhanced methods with comprehensive error handling
+def parse_entity_id_with_validation(entity_id: str) -> tuple[str, str, str]:
+    """Parse entity ID with comprehensive validation and error handling."""
+    try:
+        result = EntityHelpers.detect_and_parse(entity_id)
+        if not result:
+            raise InvalidEntityFormatError(f"Cannot parse entity ID: {entity_id}")
+
+        if result["confidence"] < 0.5:
+            _LOGGER.warning(
+                f"Low confidence format detection for {entity_id}: {result['confidence']:.2f}"
+            )
+
+        return result["entity_type"], result["parsed_name"], result["device_id"]
+
+    except Exception as e:
+        _LOGGER.error(f"Entity parsing failed for {entity_id}: {e}")
+        raise InvalidEntityFormatError(f"Failed to parse entity ID: {e}")
+
+def generate_entity_name_with_validation(
+    entity_type: str,
+    template: str,
+    **kwargs
+) -> str:
+    """Generate entity name with comprehensive validation and error handling."""
+    try:
+        result = EntityHelpers.generate_entity_name_from_template(
+            entity_type, template, validate_format=True, **kwargs
+        )
+
+        _LOGGER.debug(f"Generated entity: {result} from template: {template}")
+        return result
+
+    except ValueError as e:
+        _LOGGER.error(f"Template validation failed: {e}")
+        raise TemplateValidationError(f"Template generation failed: {e}")
+    except Exception as e:
+        _LOGGER.error(f"Unexpected error during entity generation: {e}")
+        raise EntityNamingError(f"Entity generation failed: {e}")
+```
+
+**Performance Optimizations:**
+```python
+# Caching for frequently used patterns
+_DEVICE_ID_CACHE = {}
+_FORMAT_CACHE = {}
+
+@staticmethod
+def _extract_device_id_cached(entity_name: str) -> tuple[str | None, int]:
+    """Cached version of device ID extraction for improved performance."""
+    if entity_name in _DEVICE_ID_CACHE:
+        return _DEVICE_ID_CACHE[entity_name]
+
+    result = EntityHelpers._extract_device_id(entity_name)
+    _DEVICE_ID_CACHE[entity_name] = result
+
+    # Limit cache size to prevent memory issues
+    if len(_DEVICE_ID_CACHE) > 1000:
+        _DEVICE_ID_CACHE.clear()
+
+    return result
+
+@staticmethod
+def _clear_caches():
+    """Clear internal caches for memory management."""
+    _DEVICE_ID_CACHE.clear()
+    _FORMAT_CACHE.clear()
+    _LOGGER.debug("Entity naming caches cleared")
+```
+
+**Key Enhancements in Phase 1.5:**
+- ✅ **Confidence Scoring**: Advanced algorithm for format detection confidence
+- ✅ **Comprehensive Validation**: Multi-level validation with detailed feedback
+- ✅ **Enhanced Error Handling**: Custom exceptions and structured error responses
+- ✅ **Performance Optimization**: Caching for frequently used entity patterns
+- ✅ **Detailed Logging**: Comprehensive logging for debugging and monitoring
+- ✅ **Template Analysis**: Advanced template structure analysis for better format hints
 ### Phase 1.5: Enhanced Implementation Approach (Priority 1) ✅ COMPLETED
 
 **Objective**: Implement automatic format detection in core EntityHelpers class

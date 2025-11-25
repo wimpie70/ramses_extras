@@ -791,44 +791,366 @@ await manager2.build_entity_catalog(features, target)
 
 ## Integration with Enhanced EntityHelpers
 
-The EntityManager leverages enhanced EntityHelpers with automatic format detection for seamless entity processing:
+The EntityManager leverages enhanced EntityHelpers with automatic format detection for seamless entity processing across all use cases. This integration provides a unified approach to entity management that automatically handles both CC and Extras formats.
+
+### Core Integration Architecture
 
 ```python
 from .core import EntityHelpers
 
-# EntityManager uses enhanced EntityHelpers with automatic format detection
 class EntityManager:
-    async def _scan_feature_entities(self, feature_id, feature_config, existing_entities):
-        # ✅ Automatic format detection for existing entities
-        for entity_id in existing_entities:
-            parsed = EntityHelpers.parse_entity_id(entity_id)  # Works for both CC/Extras formats
-            if parsed:
-                entity_type, entity_name, device_id = parsed
-                # Process entity regardless of format - no manual specification needed
-                self.all_possible_entities[entity_id] = {
-                    "exists_already": True,
-                    "entity_type": entity_type,
-                    "entity_name": entity_name,
-                    "feature_id": feature_id,
-                    "enabled_by_feature": target_enabled
-                }
+    """Enhanced EntityManager with automatic format detection integration."""
 
-        # ✅ Universal template generation for new entities
-        if target_enabled:
-            for device in await self._get_devices_for_feature(feature_id, supported_devices):
-                device_id = self._extract_device_id(device)
-
-                # Get entity mappings using automatic format detection
-                entity_mappings = await self._get_required_entities_for_feature(feature_id)
-
-                for entity_type, entity_names in entity_mappings.items():
-                    for entity_name in entity_names:
-                        # Generate entity ID using automatic format detection
-                        entity_id = EntityHelpers.generate_entity_name_from_template(
-                            entity_type, entity_name, device_id=device_id
-                        )
-                        # Format detected automatically based on template structure
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+        self.all_possible_entities: dict[str, EntityInfo] = {}
+        self.current_features: dict[str, bool] = {}
+        self.target_features: dict[str, bool] = {}
+        self._format_cache = {}  # Cache for format detection results
+        self._entity_validation_cache = {}  # Cache for entity validation results
 ```
+
+### Advanced Entity Processing with Enhanced Helpers
+
+```python
+async def _scan_feature_entities(self, feature_id, feature_config, existing_entities):
+    """Enhanced feature scanning with automatic format detection and validation."""
+
+    # ✅ Advanced format detection for existing entities
+    for entity_id in existing_entities:
+        try:
+            # Use enhanced parsing with validation and confidence scoring
+            validation_result = EntityHelpers.validate_entity_name(entity_id)
+
+            if validation_result["is_valid"]:
+                parsed = EntityHelpers.parse_entity_id(entity_id)
+                if parsed:
+                    entity_type, entity_name, device_id = parsed
+
+                    # Enhanced entity info with format confidence
+                    self.all_possible_entities[entity_id] = {
+                        "exists_already": True,
+                        "entity_type": entity_type,
+                        "entity_name": entity_name,
+                        "device_id": device_id,
+                        "feature_id": feature_id,
+                        "enabled_by_feature": target_enabled,
+                        "format_confidence": validation_result["format_confidence"],
+                        "detected_format": validation_result["detected_format"],
+                        "validation_issues": validation_result.get("issues", [])
+                    }
+
+                    # Log low confidence detections for monitoring
+                    if validation_result["format_confidence"] < 0.8:
+                        _LOGGER.warning(
+                            f"Low format confidence for {entity_id}: "
+                            f"{validation_result['format_confidence']:.2f}"
+                        )
+
+            else:
+                _LOGGER.warning(
+                    f"Invalid entity format detected: {entity_id} - "
+                    f"Issues: {validation_result.get('issues', [])}"
+                )
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to process entity {entity_id}: {e}")
+            continue
+
+    # ✅ Enhanced universal template generation for new entities
+    if target_enabled:
+        for device in await self._get_devices_for_feature(feature_id, supported_devices):
+            device_id = self._extract_device_id(device)
+
+            # Validate device_id format before entity generation
+            device_validation = EntityHelpers.validate_entity_name(f"sensor.test_{device_id}")
+            if not device_validation["is_valid"]:
+                _LOGGER.warning(f"Invalid device_id format: {device_id}")
+                continue
+
+            # Get entity mappings using automatic format detection
+            entity_mappings = await self._get_required_entities_for_feature(feature_id)
+
+            for entity_type, entity_names in entity_mappings.items():
+                for entity_name in entity_names:
+                    try:
+                        # Generate entity ID using enhanced template system
+                        entity_id = EntityHelpers.generate_entity_name_from_template(
+                            entity_type, entity_name, device_id=device_id, validate_format=True
+                        )
+
+                        # Validate generated entity
+                        generation_validation = EntityHelpers.validate_entity_name(entity_id)
+                        if generation_validation["is_valid"]:
+                            # Add to catalog with enhanced metadata
+                            if entity_id not in self.all_possible_entities:
+                                self.all_possible_entities[entity_id] = {
+                                    "exists_already": False,
+                                    "entity_type": entity_type,
+                                    "entity_name": entity_name,
+                                    "device_id": device_id,
+                                    "feature_id": feature_id,
+                                    "enabled_by_feature": True,
+                                    "format_confidence": generation_validation["format_confidence"],
+                                    "detected_format": generation_validation["detected_format"]
+                                }
+                        else:
+                            _LOGGER.warning(
+                                f"Generated invalid entity: {entity_id} - "
+                                f"Issues: {generation_validation.get('issues', [])}"
+                            )
+
+                    except Exception as e:
+                        _LOGGER.error(f"Failed to generate entity for {entity_name}: {e}")
+                        continue
+```
+
+### Enhanced Entity Generation Patterns
+
+```python
+async def _generate_feature_entities_with_enhancement(
+    self,
+    feature_id: str,
+    device_id: str,
+    entity_mappings: dict[str, list[str]]
+) -> dict[str, list[str]]:
+    """Generate entities with enhanced validation and error handling."""
+
+    generated_entities = {}
+
+    for entity_type, entity_names in entity_mappings.items():
+        valid_entities = []
+
+        for entity_name in entity_names:
+            try:
+                # Use enhanced generation with comprehensive validation
+                entity_id = EntityHelpers.generate_entity_name_from_template(
+                    entity_type,
+                    entity_name,
+                    device_id=device_id,
+                    validate_format=True
+                )
+
+                # Additional validation for entity naming conventions
+                naming_validation = self._validate_entity_naming_conventions(entity_id)
+                if naming_validation["is_compliant"]:
+                    valid_entities.append(entity_id)
+
+                    # Cache successful generation for performance
+                    self._entity_generation_cache[f"{entity_type}_{entity_name}_{device_id}"] = entity_id
+                else:
+                    _LOGGER.warning(
+                        f"Entity naming convention violation: {entity_id} - "
+                        f"Issues: {naming_validation.get('issues', [])}"
+                    )
+
+            except Exception as e:
+                _LOGGER.error(f"Entity generation failed for {entity_type}.{entity_name}: {e}")
+                continue
+
+        if valid_entities:
+            generated_entities[entity_type] = valid_entities
+
+    return generated_entities
+
+def _validate_entity_naming_conventions(self, entity_id: str) -> dict:
+    """Validate entity against naming conventions and standards."""
+
+    validation_result = {
+        "is_compliant": True,
+        "issues": [],
+        "suggestions": []
+    }
+
+    # Check entity type validity
+    entity_type = entity_id.split('.')[0] if '.' in entity_id else None
+    valid_types = {"sensor", "switch", "number", "binary_sensor", "climate", "select"}
+
+    if entity_type not in valid_types:
+        validation_result["issues"].append(f"Invalid entity type: {entity_type}")
+        validation_result["suggestions"].append(f"Use one of: {', '.join(valid_types)}")
+        validation_result["is_compliant"] = False
+
+    # Check device_id format consistency
+    if "_" in entity_id and ":" in entity_id:
+        validation_result["issues"].append("Mixed separator usage in entity_id")
+        validation_result["suggestions"].append("Use consistent separators")
+        validation_result["is_compliant"] = False
+
+    # Check entity name length
+    entity_name = entity_id.split('.', 1)[1] if '.' in entity_id else ""
+    if len(entity_name) > 100:
+        validation_result["issues"].append("Entity name too long")
+        validation_result["suggestions"].append("Keep entity names under 100 characters")
+        validation_result["is_compliant"] = False
+
+    return validation_result
+```
+
+### Enhanced Error Handling and Recovery
+
+```python
+async def _process_entities_with_recovery(
+    self,
+    entity_operations: list[tuple[str, str]],  # (operation, entity_id)
+    max_retries: int = 3
+) -> dict[str, dict]:
+    """Process entities with comprehensive error handling and recovery."""
+
+    results = {
+        "successful": [],
+        "failed": [],
+        "retried": [],
+        "warnings": []
+    }
+
+    for operation, entity_id in entity_operations:
+        retry_count = 0
+        success = False
+
+        while retry_count < max_retries and not success:
+            try:
+                if operation == "create":
+                    success = await self._create_single_entity(entity_id)
+                elif operation == "remove":
+                    success = await self._remove_single_entity(entity_id)
+                elif operation == "validate":
+                    success = await self._validate_single_entity(entity_id)
+
+                if success:
+                    results["successful"].append({"operation": operation, "entity_id": entity_id})
+                    break
+                else:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        results["retried"].append({
+                            "operation": operation,
+                            "entity_id": entity_id,
+                            "attempt": retry_count + 1
+                        })
+                        await asyncio.sleep(0.1 * retry_count)  # Exponential backoff
+
+            except Exception as e:
+                retry_count += 1
+                _LOGGER.error(f"Entity operation failed for {entity_id} (attempt {retry_count}): {e}")
+
+                if retry_count >= max_retries:
+                    results["failed"].append({
+                        "operation": operation,
+                        "entity_id": entity_id,
+                        "error": str(e),
+                        "attempts": retry_count
+                    })
+
+                    # Add to warnings for manual review
+                    results["warnings"].append({
+                        "entity_id": entity_id,
+                        "issue": f"Operation failed after {max_retries} attempts",
+                        "recommendation": "Manual review required"
+                    })
+
+    return results
+
+async def _create_single_entity(self, entity_id: str) -> bool:
+    """Create a single entity with enhanced validation."""
+    try:
+        # Pre-validation
+        validation = EntityHelpers.validate_entity_name(entity_id)
+        if not validation["is_valid"]:
+            _LOGGER.warning(f"Skipping invalid entity creation: {entity_id}")
+            return False
+
+        # Extract entity information
+        parsed = EntityHelpers.parse_entity_id(entity_id)
+        if not parsed:
+            _LOGGER.error(f"Cannot parse entity for creation: {entity_id}")
+            return False
+
+        entity_type, entity_name, device_id = parsed
+
+        # Create entity based on type with enhanced error handling
+        if entity_type == "sensor":
+            await self._create_sensor_entity(entity_name, device_id)
+        elif entity_type == "switch":
+            await self._create_switch_entity(entity_name, device_id)
+        # ... other entity types
+
+        _LOGGER.info(f"Successfully created entity: {entity_id}")
+        return True
+
+    except Exception as e:
+        _LOGGER.error(f"Failed to create entity {entity_id}: {e}")
+        return False
+```
+
+### Performance Optimization with Caching
+
+```python
+class EntityManager:
+    """Enhanced EntityManager with intelligent caching and performance optimization."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+        self.all_possible_entities: dict[str, EntityInfo] = {}
+        self.current_features: dict[str, bool] = {}
+        self.target_features: dict[str, bool] = {}
+
+        # Enhanced caching for performance
+        self._device_id_cache = {}
+        self._entity_generation_cache = {}
+        self._format_detection_cache = {}
+        self._validation_cache = {}
+
+        # Performance metrics
+        self._performance_metrics = {
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "entities_processed": 0,
+            "validation_time_total": 0.0
+        }
+
+    @property
+    def cache_hit_rate(self) -> float:
+        """Calculate cache hit rate for performance monitoring."""
+        total_requests = self._performance_metrics["cache_hits"] + self._performance_metrics["cache_misses"]
+        return self._performance_metrics["cache_hits"] / total_requests if total_requests > 0 else 0.0
+
+    def _get_cached_format_detection(self, entity_name: str) -> tuple[str | None, int]:
+        """Get cached format detection result."""
+        if entity_name in self._format_detection_cache:
+            self._performance_metrics["cache_hits"] += 1
+            return self._format_detection_cache[entity_name]
+
+        self._performance_metrics["cache_misses"] += 1
+        result = EntityHelpers._extract_device_id(entity_name)
+
+        # Cache with size limit to prevent memory issues
+        if len(self._format_detection_cache) < 1000:
+            self._format_detection_cache[entity_name] = result
+
+        return result
+
+    def _clear_caches(self) -> None:
+        """Clear all caches for memory management."""
+        self._device_id_cache.clear()
+        self._entity_generation_cache.clear()
+        self._format_detection_cache.clear()
+        self._validation_cache.clear()
+
+        _LOGGER.debug(
+            f"Cleared EntityManager caches. "
+            f"Final cache hit rate: {self.cache_hit_rate:.2%}"
+        )
+```
+
+### Enhanced Integration Benefits
+
+1. **Seamless Entity Processing**: EntityManager handles both CC and Extras entity formats automatically
+2. **Comprehensive Validation**: Enhanced validation with confidence scoring and detailed error reporting
+3. **Performance Optimization**: Intelligent caching and performance metrics for monitoring
+4. **Robust Error Handling**: Multi-level error handling with retry mechanisms and graceful degradation
+5. **Future-Proof Architecture**: Extensible design that supports new entity formats and validation rules
+6. **Developer Experience**: Detailed logging, suggestions, and performance insights for easier debugging
 
 ### Enhanced Integration Patterns
 

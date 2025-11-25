@@ -469,108 +469,44 @@ async def _handle_orcon_device(self, event_data):
 
 ### Simplified Universal Entity Naming
 
-The Ramses Extras entity naming system uses **automatic format detection** to handle both CC and Extras entity formats seamlessly. This eliminates the need for manual format specification and simplifies entity management throughout the system.
+Ramses Extras uses **automatic format detection** to handle entity naming seamlessly across both CC and Extras formats. The system automatically detects and processes entity formats without manual specification.
 
-#### Universal Entity Format
+#### Core Concept
 
-**Format:** `{entity_type}.{template}` with automatic format detection
+**Template Format**: `{entity_type}.{template}` where `{device_id}` position determines the format automatically:
 
-**Key Innovation:** Templates use `{device_id}` placeholders, and the position within the template automatically determines the entity format:
+- **CC Format**: `{device_id}_identifier` → `number.32_153289_param_7c00`
+- **Extras Format**: `name_{device_id}` → `sensor.indoor_absolute_humidity_32_153289`
 
-- **CC Format** (device_id prefix): `{device_id}_{specific_identifier}`
-  - Example: `number.32_153289_param_7c00`
-  - Example: `sensor.29_099029_temp`
+#### How It Works
 
-- **Extras Format** (device_id suffix): `{entity_name}_{device_id}`
-  - Example: `sensor.indoor_absolute_humidity_32_153289`
-  - Example: `switch.dehumidify_32_153289`
-  - Example: `number.relative_humidity_minimum_32_153289`
+1. **Device ID Detection**: System identifies device patterns like `12_345678`
+2. **Position Analysis**: Device position determines format automatically
+3. **Universal Processing**: Same logic handles all entity formats
 
-#### Automatic Format Detection
+#### Usage
 
-**How It Works:**
-1. **Device ID Recognition**: System matches patterns like `12_345678` or `12:345678`
-2. **Position Analysis**:
-   - Device ID at beginning (≤30% of entity name) → CC format (prefix)
-   - Device ID at end → Extras format (suffix)
-3. **Seamless Processing**: All entities processed using the same logic regardless of format
-
-#### Core Entity Helper Methods
-
-**1. Universal Entity Generation**
 ```python
-# Automatic format detection based on template position
+# Simple template generation with automatic format detection
 EntityHelpers.generate_entity_name_from_template(
     "sensor", "indoor_absolute_humidity_{device_id}",
     device_id="32_153289"
 )
-# Returns: "sensor.indoor_absolute_humidity_32_153289" (Extras format)
+# Returns: "sensor.indoor_absolute_humidity_32_153289"
 
-EntityHelpers.generate_entity_name_from_template(
-    "number", "{device_id}_param_{param_id}",
-    device_id="32_153289", param_id="7c00"
-)
-# Returns: "number.32_153289_param_7c00" (CC format)
-```
-
-**2. Universal Entity Parsing**
-```python
-# Works for both formats automatically
-EntityHelpers.parse_entity_id("sensor.indoor_absolute_humidity_32_153289")
-# Returns: ("sensor", "indoor_absolute_humidity", "32_153289")
-
+# Universal parsing works for all formats
 EntityHelpers.parse_entity_id("number.32_153289_param_7c00")
 # Returns: ("number", "param_7c00", "32_153289")
 ```
 
-#### Feature-Centric Template Organization
+#### Key Benefits
 
-**Template Structure (No Changes Required):**
-```python
-# features/humidity_control/const.py - Unchanged, works automatically
-HUMIDITY_SWITCH_CONFIGS = {
-    "dehumidify": {
-        "entity_template": "dehumidify_{device_id}",  # Automatic Extras format
-        "name_template": "Dehumidify {device_id}",
-    }
-}
+- ✅ **Zero Configuration**: No manual format specification needed
+- ✅ **Backward Compatible**: All existing templates work unchanged
+- ✅ **Single System**: Unified entity processing for all formats
+- ✅ **Feature Integration**: Works seamlessly with EntityManager
 
-# features/default/const.py - Unchanged, works automatically
-DEFAULT_SENSOR_CONFIGS = {
-    "indoor_absolute_humidity": {
-        "entity_template": "indoor_absolute_humidity_{device_id}",  # Automatic Extras format
-        "name_template": "Indoor Absolute Humidity {device_id}",
-    }
-}
-```
-
-**Benefits:**
-- ✅ **Feature-Centric**: Templates remain in feature const files as designed
-- ✅ **Backward Compatible**: All existing templates continue to work unchanged
-- ✅ **No Manual Specification**: Automatic format detection eliminates format choices
-- ✅ **Simplified Maintenance**: Single template system with intelligent detection
-
-#### Integration with EntityManager
-
-The EntityManager automatically uses the enhanced EntityHelpers for all entity operations:
-
-```python
-# EntityManager leverages automatic detection
-class EntityManager:
-    async def _scan_feature_entities(self, feature_id, feature_config, existing_entities):
-        # Use automatic format detection for all entities
-        for entity_id in existing_entities:
-            parsed = EntityHelpers.parse_entity_id(entity_id)  # Works for both formats
-            if parsed:
-                entity_type, entity_name, device_id = parsed
-                # Process entity regardless of format
-
-        # Generate new entities using universal templates
-        entity_mappings = get_feature_entity_mappings(feature_id, device_id)
-        # Automatic format detection works for all generated entities
-```
-
-This approach provides a **unified, maintainable entity naming system** that automatically handles format differences without requiring manual specification or complex conditional logic.
+The automatic detection system eliminates format complexity while maintaining full compatibility with existing entity structures.
 
 ## 🌐 Home Assistant Integration
 
