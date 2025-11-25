@@ -789,26 +789,185 @@ manager2 = EntityManager(self.hass)  # Overwrites first!
 await manager2.build_entity_catalog(features, target)
 ```
 
-## Integration with EntityHelpers
+## Integration with Enhanced EntityHelpers
 
-The EntityManager leverages simplified EntityHelpers for automatic format detection:
+The EntityManager leverages enhanced EntityHelpers with automatic format detection for seamless entity processing:
 
 ```python
-from .core import EntityHelpers, generate_entity_patterns_for_feature, get_feature_entity_mappings
+from .core import EntityHelpers
 
-# EntityManager uses simplified EntityHelpers with automatic detection
+# EntityManager uses enhanced EntityHelpers with automatic format detection
 class EntityManager:
     async def _scan_feature_entities(self, feature_id, feature_config, existing_entities):
-        # Use automatic format detection
+        # ✅ Automatic format detection for existing entities
         for entity_id in existing_entities:
-            parsed = EntityHelpers.parse_entity_id(entity_id)  # Automatic CC/Extras detection
+            parsed = EntityHelpers.parse_entity_id(entity_id)  # Works for both CC/Extras formats
             if parsed:
                 entity_type, entity_name, device_id = parsed
-                # Process entity regardless of format
+                # Process entity regardless of format - no manual specification needed
+                self.all_possible_entities[entity_id] = {
+                    "exists_already": True,
+                    "entity_type": entity_type,
+                    "entity_name": entity_name,
+                    "feature_id": feature_id,
+                    "enabled_by_feature": target_enabled
+                }
 
-        # Use simplified template generation
-        entity_mappings = get_feature_entity_mappings(feature_id, device_id)
-        # Templates use automatic format detection - no manual specification needed
+        # ✅ Universal template generation for new entities
+        if target_enabled:
+            for device in await self._get_devices_for_feature(feature_id, supported_devices):
+                device_id = self._extract_device_id(device)
+
+                # Get entity mappings using automatic format detection
+                entity_mappings = await self._get_required_entities_for_feature(feature_id)
+
+                for entity_type, entity_names in entity_mappings.items():
+                    for entity_name in entity_names:
+                        # Generate entity ID using automatic format detection
+                        entity_id = EntityHelpers.generate_entity_name_from_template(
+                            entity_type, entity_name, device_id=device_id
+                        )
+                        # Format detected automatically based on template structure
+```
+
+### Enhanced Integration Patterns
+
+#### 1. Config Flow Integration with Summary
+```python
+class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
+    async def async_step_features(self, user_input):
+        # Detect feature changes
+        feature_changes = self._detect_feature_changes(user_input)
+
+        if feature_changes:
+            # Initialize EntityManager for change analysis
+            self._entity_manager = EntityManager(self.hass)
+
+            # Build comprehensive entity catalog
+            await self._entity_manager.build_entity_catalog(
+                AVAILABLE_FEATURES,
+                current_features=self.current_features,
+                target_features=user_input["enabled_features"]
+            )
+
+            # Generate detailed user feedback
+            summary = self._entity_manager.get_entity_summary()
+            change_message = self._build_detailed_change_message(summary)
+
+            # Store change information for confirmation step
+            self._entities_to_remove = self._entity_manager.get_entities_to_remove()
+            self._entities_to_create = self._entity_manager.get_entities_to_create()
+
+            return self.async_show_form(
+                step_id="confirm_changes",
+                description=change_message,
+                data_schema=vol.Schema({})
+            )
+
+    def _build_detailed_change_message(self, summary) -> str:
+        """Build comprehensive user-friendly change message."""
+        message_parts = []
+
+        message_parts.append("## Entity Changes Summary")
+        message_parts.append(f"**Total entities affected:** {summary['total_entities']}")
+        message_parts.append("")
+
+        if summary['existing_disabled'] > 0:
+            message_parts.append(f"🗑️ **Remove {summary['existing_disabled']} entities** (features being disabled)")
+            message_parts.append(f"   These entities will be permanently removed from Home Assistant.")
+            message_parts.append("")
+
+        if summary['non_existing_enabled'] > 0:
+            message_parts.append(f"➕ **Create {summary['non_existing_enabled']} entities** (features being enabled)")
+            message_parts.append(f"   These entities will be added to Home Assistant.")
+            message_parts.append("")
+
+        if summary['existing_enabled'] > 0:
+            message_parts.append(f"✅ **Keep {summary['existing_enabled']} entities** (no changes)")
+            message_parts.append("")
+
+        return "\n".join(message_parts)
+```
+
+#### 2. Startup Validation Integration
+```python
+async def _validate_startup_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Comprehensive startup validation with EntityManager."""
+    try:
+        entity_manager = EntityManager(hass)
+
+        # Build catalog of expected vs actual entities
+        await entity_manager.build_entity_catalog(
+            AVAILABLE_FEATURES,
+            current_features=entry.data.get("enabled_features", {})
+        )
+
+        # Analyze discrepancies
+        entities_to_remove = entity_manager.get_entities_to_remove()
+        entities_to_create = entity_manager.get_entities_to_create()
+        summary = entity_manager.get_entity_summary()
+
+        if entities_to_remove or entities_to_create:
+            _LOGGER.warning(
+                f"🏠 Startup validation found discrepancies:\n"
+                f"   Remove: {len(entities_to_remove)} entities\n"
+                f"   Create: {len(entities_to_create)} entities\n"
+                f"   Summary: {summary}"
+            )
+
+            # Apply corrections
+            await entity_manager.apply_entity_changes()
+
+            _LOGGER.info("✅ Startup validation completed - discrepancies corrected")
+        else:
+            _LOGGER.info("✅ Startup validation: All entities match expected configuration")
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Startup validation failed: {e}")
+        # Don't fail startup, but log the issue for manual review
+```
+
+### Automatic Format Detection Benefits
+
+1. **Seamless Entity Processing**: EntityManager handles both CC and Extras entity formats automatically
+2. **No Format Specification**: Developers don't need to specify entity format when adding new features
+3. **Backward Compatibility**: Existing entities continue to work without modification
+4. **Future-Proof**: New entity formats can be added without changing EntityManager logic
+
+### Enhanced Error Handling
+
+```python
+class EntityManager:
+    async def build_entity_catalog(self, available_features, current_features):
+        """Build entity catalog with enhanced error handling and logging."""
+        try:
+            # Log start of operation
+            _LOGGER.info(f"🏗️ Building entity catalog for {len(available_features)} features")
+
+            # Get existing entities with error recovery
+            existing_entities = await self._get_all_existing_entities()
+            _LOGGER.info(f"📋 Found {len(existing_entities)} existing entities")
+
+            # Process each feature with individual error handling
+            for feature_id, feature_config in available_features.items():
+                try:
+                    await self._scan_feature_entities(
+                        feature_id, feature_config, existing_entities
+                    )
+                    _LOGGER.debug(f"✅ Scanned feature: {feature_id}")
+                except Exception as e:
+                    _LOGGER.error(f"❌ Failed to scan feature {feature_id}: {e}")
+                    # Continue with other features - don't fail entire operation
+                    continue
+
+            # Log completion with statistics
+            total_entities = len(self.all_possible_entities)
+            _LOGGER.info(f"🎯 Entity catalog complete: {total_entities} total possible entities")
+
+        except Exception as e:
+            _LOGGER.error(f"💥 Critical failure in entity catalog building: {e}")
+            # Initialize empty catalog to prevent cascade failures
+            self.all_possible_entities = {}
 ```
 
 ## Testing Patterns
@@ -973,9 +1132,216 @@ class PluginEntityManager(EntityManager):
             await self._scan_plugin_entities(plugin)
 ```
 
+## Enhanced WebSocket Integration Patterns
+
+### 1. JavaScript Card Integration with Error Handling
+
+```javascript
+// Enhanced card integration with comprehensive error handling
+class HVACFanCard extends HTMLElement {
+  constructor() {
+    super();
+    this.hass = null;
+    this.config = {};
+  }
+
+  async _updateFromWebSocket() {
+    try {
+      // Get device information using WebSocket
+      const boundRem = await callWebSocket(this.hass, {
+        type: 'ramses_extras/default/get_bound_rem',
+        device_id: this.config.device_id,
+      });
+
+      if (boundRem.bound_rem) {
+        this._boundRemDeviceId = boundRem.bound_rem;
+        await this._updateBoundDeviceInfo();
+      }
+
+      // Get parameter schema for configuration
+      const schema = await callWebSocket(this.hass, {
+        type: 'ramses_extras/default/get_2411_schema',
+        device_id: this.config.device_id,
+      });
+
+      this._parameterSchema = schema;
+      this._renderControls();
+
+    } catch (error) {
+      this._handleWebSocketError(error);
+    }
+  }
+
+  _handleWebSocketError(error) {
+    console.error('WebSocket operation failed:', error);
+
+    // User-friendly error display
+    const errorMessage = this._getUserFriendlyErrorMessage(error);
+    this._showErrorMessage(errorMessage);
+
+    // Fallback to entity-based data
+    this._updateFromEntities();
+  }
+
+  _getUserFriendlyErrorMessage(error) {
+    if (error.code === 'unknown_error') {
+      return 'Unable to communicate with device. Please check device connectivity.';
+    }
+
+    if (error.message?.includes('device_id')) {
+      return 'Invalid device configuration. Please verify device settings.';
+    }
+
+    return 'Communication error. Using cached data where available.';
+  }
+
+  _updateFromEntities() {
+    // Fallback: Use Home Assistant entities when WebSocket unavailable
+    const humiditySensor = this.hass.states[`sensor.indoor_absolute_humidity_${this.config.device_id}`];
+    if (humiditySensor) {
+      this._updateDisplay({ humidity: humiditySensor.state });
+    }
+  }
+}
+```
+
+### 2. Python WebSocket Command Implementation
+
+```python
+# features/default/websocket_commands.py
+from homeassistant.components import websocket_api
+import voluptuous as vol
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "ramses_extras/default/get_bound_rem",
+    vol.Required("device_id"): str,
+})
+@websocket_api.async_response
+async def ws_get_bound_rem_default(hass, connection, msg):
+    """Get bound REM device information with enhanced error handling."""
+    try:
+        device_id = msg["device_id"]
+
+        # Get broker with fallback strategies
+        broker = await _get_broker_for_entry(hass)
+        if not broker:
+            connection.send_error(
+                msg["id"], "broker_unavailable", "RAMSES broker not available"
+            )
+            return
+
+        # Find device and get bound REM
+        device = _find_device_by_id(broker, device_id)
+        if not device:
+            connection.send_error(
+                msg["id"], "device_not_found", f"Device {device_id} not found"
+            )
+            return
+
+        # Get bound REM device information
+        bound_rem = getattr(device, 'bound_rem', None)
+
+        connection.send_result(msg["id"], {
+            "device_id": device_id,
+            "bound_rem": bound_rem,
+            "device_type": device.__class__.__name__,
+            "status": "success"
+        })
+
+    except Exception as e:
+        _LOGGER.error(f"Error getting bound REM for {device_id}: {e}")
+        connection.send_error(
+            msg["id"], "internal_error", f"Internal error: {str(e)}"
+        )
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "ramses_extras/default/get_2411_schema",
+    vol.Required("device_id"): str,
+})
+@websocket_api.async_response
+async def ws_get_2411_schema_default(hass, connection, msg):
+    """Get device parameter schema with validation."""
+    try:
+        device_id = msg["device_id"]
+
+        # Validate device_id format
+        if not re.match(r'\d+[:_]\d+', device_id):
+            connection.send_error(
+                msg["id"], "invalid_device_id",
+                f"Invalid device_id format: {device_id}"
+            )
+            return
+
+        # Get broker and device
+        broker = await _get_broker_for_entry(hass)
+        device = _find_device_by_id(broker, device_id)
+
+        if not device:
+            connection.send_error(
+                msg["id"], "device_not_found", f"Device {device_id} not found"
+            )
+            return
+
+        # Generate schema based on device capabilities
+        schema = _generate_device_schema(device)
+
+        connection.send_result(msg["id"], {
+            "device_id": device_id,
+            "schema": schema,
+            "timestamp": datetime.now().isoformat(),
+            "status": "success"
+        })
+
+    except Exception as e:
+        _LOGGER.error(f"Error generating schema for {device_id}: {e}")
+        connection.send_error(
+            msg["id"], "schema_generation_error", f"Failed to generate schema: {str(e)}"
+        )
+```
+
+### 3. Integration Setup with Feature Detection
+
+```python
+# websocket_integration.py
+async def async_setup_websocket_integration(hass: HomeAssistant) -> None:
+    """Set up WebSocket integration with feature-based command registration."""
+    try:
+        # Get enabled features
+        enabled_features = await _get_enabled_features(hass)
+        registered_commands = 0
+
+        # Register commands for each enabled feature
+        for feature_id in enabled_features:
+            if feature_id == "default":
+                # Register default feature commands
+                from .features.default.websocket_commands import (
+                    ws_get_bound_rem_default,
+                    ws_get_2411_schema_default
+                )
+
+                websocket_api.async_register_command(hass, ws_get_bound_rem_default)
+                websocket_api.async_register_command(hass, ws_get_2411_schema_default)
+                registered_commands += 2
+
+            elif feature_id == "humidity_control":
+                # Future: Register humidity control commands
+                # from .features.humidity_control.websocket_commands import ws_humidity_commands
+                # websocket_api.async_register_command(hass, ws_humidity_commands)
+                pass
+
+        _LOGGER.info(
+            f"✅ WebSocket integration setup complete: "
+            f"{registered_commands} commands across {len(enabled_features)} features"
+        )
+
+    except Exception as e:
+        _LOGGER.error(f"❌ WebSocket integration setup failed: {e}")
+        # Don't fail entire integration if WebSocket setup fails
+```
+
 ## WebSocket Integration Troubleshooting
 
-### Common WebSocket Errors
+### Common WebSocket Errors and Solutions
 
 #### 1. "WebSocket message failed: Unknown error"
 
@@ -999,6 +1365,24 @@ await callWebSocket(hass, {
   type: 'ramses_extras/get_2411_schema',
   device_id: this.config.device_id,
 });
+```
+
+**Enhanced Validation:**
+```javascript
+// Add parameter validation before WebSocket call
+function validateWebSocketParams(command, params) {
+  const requiredParams = {
+    'ramses_extras/default/get_bound_rem': ['device_id'],
+    'ramses_extras/default/get_2411_schema': ['device_id']
+  };
+
+  const required = requiredParams[command] || [];
+  for (const param of required) {
+    if (!params[param]) {
+      throw new Error(`Missing required parameter: ${param}`);
+    }
+  }
+}
 ```
 
 #### 2. "Failed to fetch parameter schema"
