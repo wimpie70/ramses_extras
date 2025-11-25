@@ -310,7 +310,10 @@ class HumidityServices:
             Entity ID or None if not found
         """
         device_id_underscore = device_id.replace(":", "_")
-        entity_pattern = f"switch.dehumidify_{device_id_underscore}"
+        # Use EntityHelpers for consistent entity name generation
+        entity_pattern = EntityHelpers.generate_entity_name_from_template(
+            "switch", "dehumidify_{device_id}", device_id=device_id_underscore
+        )
         return await self._find_entity_by_pattern(entity_pattern)
 
     async def _find_min_humidity_entity(self, device_id: str) -> str | None:
@@ -323,7 +326,12 @@ class HumidityServices:
             Entity ID or None if not found
         """
         device_id_underscore = device_id.replace(":", "_")
-        entity_pattern = f"number.relative_humidity_minimum_{device_id_underscore}"
+        # Use EntityHelpers for consistent entity name generation
+        entity_pattern = EntityHelpers.generate_entity_name_from_template(
+            "number",
+            "relative_humidity_minimum_{device_id}",
+            device_id=device_id_underscore,
+        )
         return await self._find_entity_by_pattern(entity_pattern)
 
     async def _find_max_humidity_entity(self, device_id: str) -> str | None:
@@ -336,7 +344,12 @@ class HumidityServices:
             Entity ID or None if not found
         """
         device_id_underscore = device_id.replace(":", "_")
-        entity_pattern = f"number.relative_humidity_maximum_{device_id_underscore}"
+        # Use EntityHelpers for consistent entity name generation
+        entity_pattern = EntityHelpers.generate_entity_name_from_template(
+            "number",
+            "relative_humidity_maximum_{device_id}",
+            device_id=device_id_underscore,
+        )
         return await self._find_entity_by_pattern(entity_pattern)
 
     async def _find_fan_entity(self, device_id: str) -> str | None:
@@ -373,7 +386,12 @@ class HumidityServices:
             Entity ID or None if not found
         """
         device_id_underscore = device_id.replace(":", "_")
-        entity_pattern = f"number.absolute_humidity_offset_{device_id_underscore}"
+        # Use EntityHelpers for consistent entity name generation
+        entity_pattern = EntityHelpers.generate_entity_name_from_template(
+            "number",
+            "absolute_humidity_offset_{device_id}",
+            device_id=device_id_underscore,
+        )
         return await self._find_entity_by_pattern(entity_pattern)
 
     async def _find_entity_by_pattern(self, pattern: str) -> str | None:
@@ -408,21 +426,57 @@ class HumidityServices:
         # Convert device_id to underscore format for entity lookup
         device_id_underscore = device_id.replace(":", "_")
 
-        # Map entity types to entity patterns
+        # Map entity types to entity patterns using EntityHelpers
         entity_patterns = {
-            "indoor_absolute_humidity": f"sensor.indoor_absolute_humidity_"
-            f"{device_id_underscore}",
-            "outdoor_absolute_humidity": f"sensor.outdoor_absolute_humidity_"
-            f"{device_id_underscore}",
-            "relative_humidity_minimum": f"number.relative_humidity_minimum_"
-            f"{device_id_underscore}",
-            "relative_humidity_maximum": f"number.relative_humidity_maximum_"
-            f"{device_id_underscore}",
-            "absolute_humidity_offset": f"number.absolute_humidity_offset_"
-            f"{device_id_underscore}",
-            "dehumidify": f"switch.dehumidify_{device_id_underscore}",
-            "dehumidifying_active": f"binary_sensor.dehumidifying_active_"
-            f"{device_id_underscore}",
+            "indoor_absolute_humidity": (
+                EntityHelpers.generate_entity_name_from_template(
+                    "sensor",
+                    "indoor_absolute_humidity_{device_id}",
+                    device_id=device_id_underscore,
+                )
+            ),
+            "outdoor_absolute_humidity": (
+                EntityHelpers.generate_entity_name_from_template(
+                    "sensor",
+                    "outdoor_absolute_humidity_{device_id}",
+                    device_id=device_id_underscore,
+                )
+            ),
+            "relative_humidity_minimum": (
+                EntityHelpers.generate_entity_name_from_template(
+                    "number",
+                    "relative_humidity_minimum_{device_id}",
+                    device_id=device_id_underscore,
+                )
+            ),
+            "relative_humidity_maximum": (
+                EntityHelpers.generate_entity_name_from_template(
+                    "number",
+                    "relative_humidity_maximum_{device_id}",
+                    device_id=device_id_underscore,
+                )
+            ),
+            "absolute_humidity_offset": (
+                EntityHelpers.generate_entity_name_from_template(
+                    "number",
+                    "absolute_humidity_offset_{device_id}",
+                    device_id=device_id_underscore,
+                )
+            ),
+            "dehumidify": (
+                EntityHelpers.generate_entity_name_from_template(
+                    "switch",
+                    "dehumidify_{device_id}",
+                    device_id=device_id_underscore,
+                )
+            ),
+            "dehumidifying_active": (
+                EntityHelpers.generate_entity_name_from_template(
+                    "binary_sensor",
+                    "dehumidifying_active_{device_id}",
+                    device_id=device_id_underscore,
+                )
+            ),
         }
 
         pattern = entity_patterns.get(entity_type)
