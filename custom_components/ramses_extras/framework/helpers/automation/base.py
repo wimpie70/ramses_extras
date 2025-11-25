@@ -216,7 +216,7 @@ class ExtrasBaseAutomation(ABC):
             for entity_name in entity_names:
                 # Use proper singularization for entity types
                 entity_base_type = _singularize_entity_type(entity_type)
-                patterns.append(f"{entity_base_type}.*_{entity_name}")
+                patterns.append(f"{entity_base_type}.{entity_name}_*")
 
         return patterns
 
@@ -298,7 +298,7 @@ class ExtrasBaseAutomation(ABC):
         matching_entities = [
             state
             for state in entities
-            if state.entity_id.endswith(f"_{first_entity_name}")
+            if state.entity_id.startswith(f"{entity_base_type}.{first_entity_name}_")
         ]
 
         if not matching_entities:
@@ -569,7 +569,7 @@ class ExtrasBaseAutomation(ABC):
                         f"{entity_base_type}.{entity_name}"
                     )
                     missing_entities.append(
-                        f"{entity_base_type}.{device_id}_{entity_name}"
+                        f"{entity_base_type}.{entity_name}_{device_id}"
                     )
 
         if missing_entities:
