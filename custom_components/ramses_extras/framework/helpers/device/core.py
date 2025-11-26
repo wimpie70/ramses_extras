@@ -177,55 +177,6 @@ def ensure_ramses_cc_loaded(hass: HomeAssistant) -> None:
         )
 
 
-def get_device_capabilities(device: Any) -> list[str]:
-    """Get the capabilities of a device based on its type.
-
-    Args:
-        device: The Ramses device object
-
-    Returns:
-        List of capability strings
-    """
-    device_type = get_device_type(device)
-
-    # Map device types to their capabilities
-    capability_mapping = {
-        "HvacVentilator": [
-            "fan_speed_control",
-            "humidity_monitoring",
-            "dehumidification",
-            "ventilation_levels",
-        ],
-        "HvacSystem": ["temperature_control", "zone_management", "schedule_control"],
-        "Remote": ["temperature_sensing", "humidity_sensing", "occupancy_detection"],
-    }
-
-    return capability_mapping.get(device_type, [])
-
-
-def filter_devices_by_capability(hass: HomeAssistant, capability: str) -> list[str]:
-    """Get all devices that support a specific capability.
-
-    Args:
-        hass: Home Assistant instance
-        capability: The capability to filter by
-
-    Returns:
-        List of device IDs that support the capability
-    """
-    device_ids = get_all_device_ids(hass)
-    capable_devices = []
-
-    for device_id in device_ids:
-        device = find_ramses_device(hass, device_id)
-        if device:
-            capabilities = get_device_capabilities(device)
-            if capability in capabilities:
-                capable_devices.append(device_id)
-
-    return capable_devices
-
-
 # Device type to entity mapping helpers
 def get_device_supported_entities(device_type: str) -> list[str]:
     """Get the list of entities supported by a device type.
@@ -272,8 +223,6 @@ __all__ = [
     "validate_device_for_service",
     "get_all_device_ids",
     "ensure_ramses_cc_loaded",
-    "get_device_capabilities",
-    "filter_devices_by_capability",
     "get_device_supported_entities",
     "validate_device_entity_support",
 ]
