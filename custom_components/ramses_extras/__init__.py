@@ -207,7 +207,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("WebSocket functionality moved to feature-centric architecture")
 
     # Register custom card resources via feature-centric approach
-    await _register_feature_card_resources(hass, enabled_features_dict)
+    await _register_feature_card_resources(hass, enabled_features_dict, entry)
 
     # Register services before setting up platforms
     _LOGGER.info("🔧 Registering services early...")
@@ -237,6 +237,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("🔍 Running EntityManager post-creation validation...")
     await _validate_startup_entities(hass, entry)
 
+    # Explicitly create and start feature instances for
+    #  enabled features (including default)
+    features = hass.data[DOMAIN].setdefault("features", {})
+    enabled_feature_names = list(entry.data.get("enabled_features", {}).keys())
+    # Always include default
+    if "default" not in enabled_feature_names:
+        enabled_feature_names.append("default")
+    import importlib
+
+    for feature_name in enabled_feature_names:
+        if feature_name in features:
+            continue  # Already created
+        try:
+            feature_module_name = (
+                f"custom_components.ramses_extras.features.{feature_name}"
+            )
+            feature_module = importlib.import_module(feature_module_name)
+            # Create feature instance if create function exists
+            create_func_name = f"create_{feature_name.replace('-', '_')}_feature"
+            if hasattr(feature_module, create_func_name):
+                create_feature_func = getattr(feature_module, create_func_name)
+                # Handle both sync and async create functions
+                import asyncio
+
+                if asyncio.iscoroutinefunction(create_feature_func):
+                    feature_instance = await create_feature_func(hass, entry)
+                else:
+                    feature_instance = create_feature_func(hass, entry)
+                features[feature_name] = feature_instance
+                _LOGGER.info(f"✅ Created feature instance: {feature_name}")
+        except Exception as e:
+            _LOGGER.warning(
+                f"⚠️ Failed to create feature instance '{feature_name}': {e}"
+            )
     return True
 
 
@@ -266,7 +300,7 @@ async def _setup_websocket_integration(hass: HomeAssistant) -> None:
 
 
 async def _register_feature_card_resources(
-    hass: HomeAssistant, enabled_features: dict[str, bool]
+    hass: HomeAssistant, enabled_features: dict[str, bool], entry: ConfigEntry
 ) -> None:
     """Register custom card resources using feature-centric approach.
 
@@ -304,6 +338,32 @@ async def _register_feature_card_resources(
                 )
                 continue
 
+            # Check if feature has card configurations
+            try:
+                # Try to import the feature's const module and check for card configs
+                const_module = __import__(
+                    f"custom_components.ramses_extras.features.{feature_key}.const",
+                    fromlist=["load_feature"],
+                )
+                has_card_configs = hasattr(
+                    const_module, "HVAC_FAN_CARD_CONFIGS"
+                ) or hasattr(
+                    const_module,
+                    f"{feature_key.upper().replace('-', '_')}_CARD_CONFIGS",
+                )
+                _LOGGER.info(
+                    f"🔍 Feature {feature_key} has card configs: {has_card_configs}"
+                )
+            except (ImportError, AttributeError):
+                has_card_configs = False
+                _LOGGER.debug(f"🔍 Feature {feature_key} has no card configs")
+
+            if not has_card_configs:
+                _LOGGER.debug(
+                    f"⏭️ Feature {feature_key} has no card configurations, skipping"
+                )
+                continue
+
             try:
                 _LOGGER.info(f"📦 Importing feature module: {feature_key}")
                 # Import the feature module
@@ -334,9 +394,17 @@ async def _register_feature_card_resources(
 
                     # Create feature instance
                     _LOGGER.info("🎯 Creating feature instance...")
-                    feature_instance = create_feature_func(
-                        hass, None
-                    )  # config_entry can be None for card-only features
+                    # Handle both sync and async create functions
+                    import asyncio
+
+                    if asyncio.iscoroutinefunction(create_feature_func):
+                        # For async functions, skip automation
+                        #  setup for card registration
+                        feature_instance = await create_feature_func(
+                            hass, entry, skip_automation_setup=True
+                        )
+                    else:
+                        feature_instance = create_feature_func(hass, entry)
 
                     _LOGGER.info(f"📦 Feature instance created: {feature_instance}")
 

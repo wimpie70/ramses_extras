@@ -40,7 +40,18 @@ def _get_required_entities_from_feature(feature_id: str) -> dict[str, list[str]]
 
         feature_module = importlib.import_module(feature_module_path)
 
-        # Get device mappings from the feature
+        # Try to get the feature constants first (preferred method)
+        const_key = f"{feature_id.upper()}_CONST"
+        feature_const = getattr(feature_module, const_key, None)
+
+        if feature_const and "required_entities" in feature_const:
+            _LOGGER.debug(
+                f"Found required entities in {const_key} for {feature_id}: "
+                f"{feature_const['required_entities']}"
+            )
+            return cast(dict[str, list[str]], feature_const["required_entities"])
+
+        # Fallback to device entity mapping method
         mapping_key = f"{feature_id.upper()}_DEVICE_ENTITY_MAPPING"
         device_mapping = getattr(feature_module, mapping_key, {})
 
@@ -281,13 +292,40 @@ class ExtrasBaseAutomation(ABC):
         # Get the first entity type to look for devices
         required_entities = _get_required_entities_from_feature(self.feature_id)
 
+        _LOGGER.info(f"🔍 Required entities for {self.feature_id}: {required_entities}")
+
         if not required_entities:
+            _LOGGER.warning(f"No required entities found for {self.feature_id}")
             return False
 
-        # Use the first entity type as a starting point
-        first_entity_type = list(required_entities.keys())[0]
-        first_entity_names = required_entities[first_entity_type]
-        if not first_entity_names:
+        # Check if any entity types actually have entity names
+        entity_types_with_entities = [
+            (entity_type, entity_names)
+            for entity_type, entity_names in required_entities.items()
+            if entity_names and len(entity_names) > 0
+        ]
+
+        if not entity_types_with_entities:
+            _LOGGER.warning(
+                f"No entity types have entities defined for {self.feature_id}: "
+                f"{required_entities}"
+            )
+            return False
+
+        # Use the first entity type that has entities as a starting point
+        if not entity_types_with_entities:
+            _LOGGER.warning(
+                f"No entity types with entities found for {self.feature_id}"
+            )
+            return False
+
+        first_entity_type, first_entity_names = entity_types_with_entities[0]
+
+        # More robust check for empty or None entity names
+        if not first_entity_names or len(first_entity_names) == 0:
+            _LOGGER.warning(
+                f"Entity type {first_entity_type} has no entity names defined"
+            )
             return False
 
         first_entity_name = first_entity_names[0]
@@ -301,17 +339,35 @@ class ExtrasBaseAutomation(ABC):
             if state.entity_id.startswith(f"{entity_base_type}.{first_entity_name}_")
         ]
 
+        _LOGGER.debug(
+            f"Looking for {first_entity_type}.{first_entity_name}_* entities: "
+            f"found {len(matching_entities)} matches"
+        )
+
         if not matching_entities:
+            _LOGGER.debug(
+                f"No entities found matching pattern: "
+                f"{entity_base_type}.{first_entity_name}_*"
+            )
             return False
 
         # Check each device has all required entities
         for entity_state in matching_entities:
             device_id = self._extract_device_id(entity_state.entity_id)
-            if device_id and await self._validate_device_entities(device_id):
+            if device_id:
+                validation_result = await self._validate_device_entities(device_id)
+                if validation_result:
+                    _LOGGER.info(
+                        f"Device {device_id} has all {self.feature_id} entities ready"
+                    )
+                    return True
                 _LOGGER.debug(
-                    f"Device {device_id} has all {self.feature_id} entities ready"
+                    f"Device {device_id} missing some {self.feature_id} entities"
                 )
-                return True
+            else:
+                _LOGGER.debug(
+                    f"Could not extract device_id from {entity_state.entity_id}"
+                )
 
         return False
 
@@ -330,10 +386,13 @@ class ExtrasBaseAutomation(ABC):
             old_state: Previous state (if any)
             new_state: New state
         """
-        _LOGGER.debug(
-            f"State change: {entity_id} -> {new_state.state if new_state else 'None'}"
+        _LOGGER.info(
+            f"🔥 BASE _handle_state_change: {entity_id} -> "
+            f"{new_state.state if new_state else 'None'}"
         )
-        _LOGGER.debug(f"Automation {self.__class__.__name__} handling state change")
+        _LOGGER.info(
+            f"🔥 BASE Automation {self.__class__.__name__} handling state change"
+        )
 
         # Schedule async processing in a thread-safe manner
         def _create_async_task() -> None:
@@ -359,6 +418,7 @@ class ExtrasBaseAutomation(ABC):
         if not new_state:
             _LOGGER.debug(f"No new state for {entity_id}, skipping")
             return
+        _LOGGER.debug(f"New state for {entity_id}")
 
         # Extract device_id from entity name
         device_id = self._extract_device_id(entity_id)
@@ -460,6 +520,9 @@ class ExtrasBaseAutomation(ABC):
 
     async def _register_specific_entity_listeners(self) -> None:
         """Register listeners for specific entity IDs instead of patterns."""
+        _LOGGER.info(f"🎯 Registering listeners for {self.feature_id}")
+        _LOGGER.info(f"🎯 Entity patterns: {self.entity_patterns}")
+
         new_listeners_registered = False
 
         # Find all entities that match our patterns
@@ -471,9 +534,12 @@ class ExtrasBaseAutomation(ABC):
 
                 for entity in entities:
                     if entity.entity_id.startswith(prefix):
+                        _LOGGER.info(
+                            f"🔍 Found entity matching pattern: {entity.entity_id}"
+                        )
                         if entity.entity_id not in self._specific_entity_ids:
                             _LOGGER.info(
-                                f"📡 Registering listener for {self.feature_id}: "
+                                f"🎯 Registering listener for {self.feature_id}: "
                                 f"{entity.entity_id}"
                             )
 
@@ -485,11 +551,23 @@ class ExtrasBaseAutomation(ABC):
                                 self._listeners.append(listener)
                                 self._specific_entity_ids.add(entity.entity_id)
                                 new_listeners_registered = True
+                                _LOGGER.info(
+                                    f"✅ Successfully registered listener for "
+                                    f"{entity.entity_id}"
+                                )
                             else:
                                 _LOGGER.error(
                                     f"❌ Failed to create listener for: "
                                     f"{entity.entity_id}"
                                 )
+                        else:
+                            _LOGGER.info(
+                                f"⚠️ Listener already registered for {entity.entity_id}"
+                            )
+                    # else:
+                    #     _LOGGER.debug(
+                    #         f"❌ Entity {entity.entity_id}: no match prefix {prefix}"
+                    #     )
 
         # Log summary
         if new_listeners_registered:
@@ -497,6 +575,8 @@ class ExtrasBaseAutomation(ABC):
                 f"🎯 Total {len(self._specific_entity_ids)} entity listeners for "
                 f"{self.feature_id}: {sorted(self._specific_entity_ids)}"
             )
+        else:
+            _LOGGER.warning(f"No new listeners registered for {self.feature_id}")
 
     def _entity_matches_patterns(self, entity_id: str) -> bool:
         """Check if an entity ID matches any of the automation patterns.
@@ -529,48 +609,27 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             True if all entities exist, False otherwise
         """
-        from custom_components.ramses_extras.framework.helpers.entity.core import (
-            EntityHelpers,
-        )
-
-        # For now, simplified validation without AVAILABLE_FEATURES
-        feature: dict[str, Any] = {}
-        if not feature:
-            _LOGGER.warning(f"No configuration found for feature: {self.feature_id}")
-            return False
-
-        required_entities = feature.get("required_entities", {})
+        # Get required entities from the feature's const module
+        required_entities = _get_required_entities_from_feature(self.feature_id)
         if not required_entities:
             _LOGGER.warning(
-                f"No required entities defined for feature: {self.feature_id}"
+                f"No required entities found for feature: {self.feature_id}"
             )
-            return True  # No entities required
+            return False
 
-        # Cast to proper type to satisfy mypy
-        required_entities_dict = cast(dict[str, list[str]], required_entities)
         missing_entities = []
 
-        for entity_type, entity_names in required_entities_dict.items():
+        for entity_type, entity_names in required_entities.items():
             entity_base_type = _singularize_entity_type(entity_type)
 
             for entity_name in entity_names:
-                # Generate expected entity ID
-                expected_entity_id = EntityHelpers.generate_entity_name_from_template(
-                    entity_base_type, entity_name, device_id=device_id
-                )
+                # Generate expected entity ID using the pattern
+                #  from the humidity automation
+                expected_entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
 
-                if expected_entity_id:
-                    entity_exists = self.hass.states.get(expected_entity_id)
-                    if not entity_exists:
-                        missing_entities.append(expected_entity_id)
-                else:
-                    _LOGGER.warning(
-                        f"Could not generate entity ID for "
-                        f"{entity_base_type}.{entity_name}"
-                    )
-                    missing_entities.append(
-                        f"{entity_base_type}.{entity_name}_{device_id}"
-                    )
+                entity_exists = self.hass.states.get(expected_entity_id)
+                if not entity_exists:
+                    missing_entities.append(expected_entity_id)
 
         if missing_entities:
             _LOGGER.debug(

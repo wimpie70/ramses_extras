@@ -67,23 +67,14 @@ async def create_default_sensor(
         if config.get("supported_device_types") and "HvacVentilator" in config.get(
             "supported_device_types", []
         ):
-            # Check if underlying temperature and humidity entities exist
-            # for absolute humidity sensors
-            if await _check_underlying_entities_exist(hass, device_id, sensor_type):
-                # Create sensor with calculation logic
-                sensor_entity = DefaultHumiditySensor(
-                    hass, device_id, sensor_type, config
-                )
-                sensor_list.append(sensor_entity)
-                _LOGGER.debug(
-                    f"Created default {sensor_type} sensor with calculation logic "
-                    f"for device {device_id}"
-                )
-            else:
-                _LOGGER.debug(
-                    f"Skipping {sensor_type} for device {device_id} - "
-                    "underlying temperature/humidity entities not found"
-                )
+            # Create sensor with calculation logic (always create, listeners
+            #  will be set up when entities exist)
+            sensor_entity = DefaultHumiditySensor(hass, device_id, sensor_type, config)
+            sensor_list.append(sensor_entity)
+            _LOGGER.debug(
+                f"Created default {sensor_type} sensor with calculation logic "
+                f"for device {device_id}"
+            )
 
     return sensor_list
 

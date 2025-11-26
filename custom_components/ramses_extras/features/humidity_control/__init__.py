@@ -576,6 +576,9 @@ class EnhancedHumidityControl:
             # Setup event listeners for device discovery
             await self._setup_event_listeners()
 
+            # Start the automation
+            await self.automation.start()
+
             _LOGGER.info("Enhanced Humidity Control feature setup complete")
             return True
 
@@ -830,7 +833,9 @@ __all__ = [
 ]
 
 
-def create_humidity_control_feature(hass: Any, config_entry: Any) -> dict[str, Any]:
+async def create_humidity_control_feature(
+    hass: Any, config_entry: Any, skip_automation_setup: bool = False
+) -> dict[str, Any]:
     """Factory function to create humidity control feature.
 
     Args:
@@ -844,9 +849,16 @@ def create_humidity_control_feature(hass: Any, config_entry: Any) -> dict[str, A
     # Create the core enhanced humidity control feature
     enhanced_feature = EnhancedHumidityControl(hass, config_entry)
 
+    # Setup the enhanced feature (starts the automation) unless automation
+    #  setup is skipped
+    if not skip_automation_setup:
+        await enhanced_feature.async_setup()
+
     # Also maintain compatibility with the original structure
+    automation = enhanced_feature.automation  # Use the automation from enhanced feature
+
     return {
-        "automation": HumidityAutomationManager(hass, config_entry),
+        "automation": automation,
         "entities": HumidityEntities(hass, config_entry),
         "services": HumidityServices(hass, config_entry),
         "config": HumidityConfig(hass, config_entry),

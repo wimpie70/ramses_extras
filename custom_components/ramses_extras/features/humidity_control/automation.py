@@ -64,6 +64,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._active_cycles = 0
 
         _LOGGER.info("Enhanced Humidity Control automation initialized")
+        _LOGGER.info(f"Feature enabled status: {self._is_feature_enabled()}")
 
     def _is_feature_enabled(self) -> bool:
         """Check if humidity_control feature is enabled in config."""
@@ -103,16 +104,17 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             List of entity patterns to listen for
         """
         patterns = [
-            # Primary humidity entities with device-specific naming
+            # Default feature sensors (absolute humidity)
             "sensor.indoor_absolute_humidity_*",
             "sensor.outdoor_absolute_humidity_*",
+            # Humidity control entities
             "number.relative_humidity_minimum_*",
             "number.relative_humidity_maximum_*",
             "number.absolute_humidity_offset_*",
             "switch.dehumidify_*",
             "binary_sensor.dehumidifying_active_*",
-            # Cross-device reference entities (ramses_cc entities)
-            "sensor.*_indoor_humidity",  # CC sensor references
+            # Ramses CC sensor entities
+            "sensor.*_indoor_humidity",
         ]
 
         _LOGGER.debug(f"Generated {len(patterns)} entity patterns for humidity control")
@@ -130,6 +132,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             _LOGGER.debug("Humidity control feature disabled, stopping device checks")
             return False
 
+        _LOGGER.info(f"🔍 _check_any_device_ready called for {self.feature_id}")
+        _LOGGER.info(f"📋 Entity patterns being checked: {self.entity_patterns}")
+
         # Use the humidity-specific entity patterns
         patterns = self.entity_patterns
 
@@ -143,13 +148,22 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 if "*" in pattern:
                     # Handle wildcard patterns
                     if pattern.startswith(f"{entity_type}."):
-                        # Pattern like "sensor.*_indoor_absolute_humidity"
-                        suffix = pattern.split(".*_", 1)[1]
-                        matching_entities = [
-                            state
-                            for state in entities
-                            if state.entity_id.endswith(f"_{suffix}")
-                        ]
+                        # Pattern like "sensor.*_indoor_humidity"
+                        if ".*_" in pattern:
+                            # Extract suffix after .*
+                            suffix = pattern.split(".*_", 1)[1]
+                            matching_entities = [
+                                state
+                                for state in entities
+                                if state.entity_id.endswith(f"_{suffix}")
+                            ]
+                        else:
+                            # Pattern like "sensor.indoor_absolute_humidity_*"
+                            matching_entities = [
+                                state
+                                for state in entities
+                                if state.entity_id.startswith(prefix)
+                            ]
                     else:
                         # Fallback for other wildcard patterns
                         matching_entities = [
@@ -165,17 +179,38 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     ]
 
                 if matching_entities:
+                    _LOGGER.info(
+                        f"🔍 Found {len(matching_entities)} matching entities for "
+                        f"pattern {pattern}"
+                    )
                     # Check each matching entity's device has all required entities
                     for entity_state in matching_entities:
                         device_id = self._extract_device_id(entity_state.entity_id)
-                        if device_id and await self._validate_device_entities(
-                            device_id
-                        ):
-                            _LOGGER.info(
-                                f"Enhanced Humidity Control: Device {device_id} "
-                                f"has all {self.feature_id} entities ready"
+                        _LOGGER.info(
+                            f"🔍 Checking device_id={device_id} from entity "
+                            f"{entity_state.entity_id}"
+                        )
+                        if device_id:
+                            validation_result = await self._validate_device_entities(
+                                device_id
                             )
-                            return True
+                            _LOGGER.info(
+                                f"🔍 Validation result for {device_id}: "
+                                f"{validation_result}"
+                            )
+                            if validation_result:
+                                _LOGGER.info(
+                                    f"✅ Enhanced Humidity Control: Device {device_id} "
+                                    f"has all {self.feature_id} entities ready"
+                                )
+                                return True
+                        else:
+                            _LOGGER.warning(
+                                f"⚠️ Could not extract device_id from "
+                                f"{entity_state.entity_id}"
+                            )
+                else:
+                    _LOGGER.info(f"❌ No matching entities found for pattern {pattern}")
 
         return False
 
@@ -194,11 +229,17 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         required_entities = cast(
             dict[str, list[str]], HUMIDITY_CONTROL_CONST.get("required_entities", {})
         )
+        entity_mappings = cast(
+            dict[str, str], HUMIDITY_CONTROL_CONST.get("entity_mappings", {})
+        )
         missing_entities = []
 
         # Get entity registry
         registry = entity_registry.async_get(self.hass)
 
+        _LOGGER.info(f"🔍 Validating entities for device_id={device_id}")
+
+        # Check entities from required_entities (created by humidity_control feature)
         for entity_type, entity_names in required_entities.items():
             # Convert plural to singular using the base class method
             entity_base_type = self._singularize_entity_type(entity_type)
@@ -206,11 +247,29 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             for entity_name in entity_names:
                 # Generate expected entity ID using humidity control patterns
                 expected_entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
+                _LOGGER.info(f"🔍 Checking for entity: {expected_entity_id}")
 
                 # Check entity registry instead of states
                 entity_entry = registry.async_get(expected_entity_id)
                 if not entity_entry:
+                    _LOGGER.warning(f"❌ Missing entity: {expected_entity_id}")
                     missing_entities.append(expected_entity_id)
+                else:
+                    _LOGGER.info(f"✅ Found entity: {expected_entity_id}")
+
+        # Check entities from entity_mappings (created by default feature)
+        for state_name, entity_template in entity_mappings.items():
+            # Replace {device_id} placeholder in entity template
+            expected_entity_id = entity_template.format(device_id=device_id)
+            _LOGGER.info(f"🔍 Checking for mapped entity: {expected_entity_id}")
+
+            # Check entity registry instead of states
+            entity_entry = registry.async_get(expected_entity_id)
+            if not entity_entry:
+                _LOGGER.warning(f"❌ Missing mapped entity: {expected_entity_id}")
+                missing_entities.append(expected_entity_id)
+            else:
+                _LOGGER.info(f"✅ Found mapped entity: {expected_entity_id}")
 
         if missing_entities:
             # Only log missing entities once per device to avoid log spam
@@ -284,8 +343,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
             return
 
+        _LOGGER.info("Humidity control feature is enabled, proceeding with startup")
+
         # Load configuration
         await self.config.async_load()
+
+        _LOGGER.info("Configuration loaded, starting base automation")
 
         # Start base automation
         await super().start()
@@ -323,6 +386,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             device_id: Device identifier
             entity_states: Validated entity state values (float or bool)
         """
+        _LOGGER.debug(
+            "_process_automation_logic",
+            not self._automation_active or not self._is_feature_enabled(),
+        )
         if not self._automation_active or not self._is_feature_enabled():
             return
 
@@ -563,6 +630,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             old_state: Previous state (if any)
             new_state: New state
         """
+        _LOGGER.info(
+            f"HumidityAutomationManager _async_handle_state_change called for "
+            f"entity_id={entity_id}"
+        )
+
         # Check if feature is still enabled first
         if not self._is_feature_enabled():
             _LOGGER.debug(

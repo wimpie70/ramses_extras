@@ -13,7 +13,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.ramses_extras.framework.base_classes import ExtrasBaseEntity
+from custom_components.ramses_extras.framework.base_classes.base_entity import (
+    ExtrasBaseEntity,
+)
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,19 +36,33 @@ async def async_setup_entry(
         f"devices: {devices}"
     )
 
+    if not devices:
+        _LOGGER.warning(
+            "No devices found for humidity control binary sensors "
+            "- automation will not start"
+        )
+        return
+
     binary_sensor = []
     for device_id in devices:
-        # Create humidity control binary sensor
-        device_sensor = await create_humidity_control_binary_sensor(
-            hass, device_id, config_entry
-        )
-        binary_sensor.extend(device_sensor)
-        _LOGGER.info(
-            f"Created {len(device_sensor)} binary sensor for device {device_id}"
-        )
+        try:
+            # Create humidity control binary sensor
+            device_sensor = await create_humidity_control_binary_sensor(
+                hass, device_id, config_entry
+            )
+            binary_sensor.extend(device_sensor)
+            _LOGGER.info(
+                f"Created {len(device_sensor)} binary sensor for device {device_id}"
+            )
+        except Exception as e:
+            _LOGGER.error(f"Failed to create binary sensor for device {device_id}: {e}")
 
     _LOGGER.info(f"Total binary sensor created: {len(binary_sensor)}")
-    async_add_entities(binary_sensor, True)
+    if binary_sensor:
+        async_add_entities(binary_sensor, True)
+        _LOGGER.info("Humidity control binary sensors added to Home Assistant")
+    else:
+        _LOGGER.warning("No binary sensors created - automation will not start")
 
 
 async def create_humidity_control_binary_sensor(
@@ -150,7 +166,15 @@ class HumidityControlBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
         """Subscribe to Ramses RF device updates."""
         # Call base class method first
         await super().async_added_to_hass()
+        _LOGGER.info(
+            f"HumidityControlBinarySensor async_added_to_hass called for "
+            f"{self.entity_id}"
+        )
 
+        _LOGGER.info(
+            f"Binary sensor {self._attr_name} registered with automation for device "
+            f"{self._device_id}"
+        )
         # Register this binary sensor with the automation manager
         await self._register_with_automation()
 
@@ -159,43 +183,29 @@ class HumidityControlBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
     async def _register_with_automation(self) -> None:
         """Register this binary sensor with the humidity automation manager."""
         try:
-            # First, ensure the automation storage exists (legacy compatibility)
-            ramses_data = self.hass.data.setdefault("ramses_extras", {})
-            automations = ramses_data.setdefault("automations", {})
+            # Get the automation instance from the feature manager
+            # The automation should already be created by the main feature setup
+            ramses_data = self.hass.data.get("ramses_extras", {})
+            features = ramses_data.get("features", {})
 
-            # Import automation creation functions
-            from ..automation import create_humidity_control_automation
-            from ..config import HumidityConfig
-
-            # Get or create automation for this device
-            if self._device_id not in automations:
-                # Create the automation manager
-                config_entries = self.hass.config_entries.async_entries("ramses_extras")
-                if config_entries:
-                    config_entry = config_entries[0]
-                    automation = create_humidity_control_automation(
-                        self.hass, config_entry
-                    )
-
-                    # Start the automation
-                    await automation.start()
-                    automations[self._device_id] = automation
-                    _LOGGER.info(
-                        "Created new humidity automation for device %s", self._device_id
-                    )
-                else:
-                    _LOGGER.error("Could not get config entry for automation creation")
-                    return
-
-            # Set the binary sensor reference in the automation
-            automation = automations[self._device_id]
-            automation.set_binary_sensor(self)
-
-            _LOGGER.info(
-                "Registered binary sensor %s with humidity automation for device %s",
-                self._attr_name,
-                self._device_id,
-            )
+            # Look for the humidity_control feature
+            humidity_feature = features.get("humidity_control")
+            if humidity_feature and "automation" in humidity_feature:
+                automation = humidity_feature["automation"]
+                automation.set_binary_sensor(self)
+                _LOGGER.info(
+                    "Registered binary sensor %s with existing humidity automation "
+                    "for device %s",
+                    self._attr_name,
+                    self._device_id,
+                )
+            else:
+                _LOGGER.warning(
+                    "Humidity control automation not found in feature manager "
+                    "for device %s. Binary sensor registration deferred until "
+                    "automation is available.",
+                    self._device_id,
+                )
         except Exception as e:
             _LOGGER.error(
                 "Failed to register binary sensor %s with automation: %s",
