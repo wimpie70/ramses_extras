@@ -182,64 +182,7 @@ class HumidityControlBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
             f"{self.entity_id}"
         )
 
-        _LOGGER.info(
-            f"Binary sensor {self._attr_name} attempting registration with automation "
-            f"for device {self._device_id}"
-        )
-        # Register this binary sensor with the automation manager
-        await self._register_with_automation()
-
         _LOGGER.debug("Binary sensor %s added to hass", self._attr_name)
-
-    async def _register_with_automation(self) -> None:
-        """Register this binary sensor with the humidity automation manager."""
-        try:
-            # Get the automation instance from the feature manager
-            # The automation should already be created by the main feature setup
-            ramses_data = self.hass.data.get("ramses_extras", {})
-            features = ramses_data.get("features", {})
-
-            _LOGGER.info(
-                f"Binary sensor {self._attr_name}: checking for automation in "
-                f"features: {list(features.keys())}"
-            )
-
-            # Look for the humidity_control feature
-            humidity_feature = features.get("humidity_control")
-            if humidity_feature and "automation" in humidity_feature:
-                automation = humidity_feature["automation"]
-                _LOGGER.info(
-                    f"Binary sensor {self._attr_name}: found automation, registering"
-                )
-                automation.set_binary_sensor(self)
-                _LOGGER.info(
-                    "Registered binary sensor %s with existing humidity automation "
-                    "for device %s",
-                    self._attr_name,
-                    self._device_id,
-                )
-            else:
-                _LOGGER.warning(
-                    "Humidity control automation not found in feature manager "
-                    "for device %s. Binary sensor registration deferred until "
-                    "automation is available.",
-                    self._device_id,
-                )
-                # Schedule a retry in 5 seconds
-                self.hass.loop.call_later(
-                    5, lambda: self.hass.async_create_task(self._retry_registration())
-                )
-        except Exception as e:
-            _LOGGER.error(
-                "Failed to register binary sensor %s with automation: %s",
-                self._attr_name,
-                e,
-            )
-
-    async def _retry_registration(self) -> None:
-        """Retry registration with automation after a delay."""
-        _LOGGER.info(f"Binary sensor {self._attr_name}: retrying registration")
-        await self._register_with_automation()
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""
