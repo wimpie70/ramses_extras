@@ -56,9 +56,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._last_decision_state: dict[str, Any] | None = None
         self._decision_history: list[dict[str, Any]] = []
 
-        # Binary sensor reference for direct control
-        self._binary_sensor: Any = None
-
         # Performance tracking
         self._decision_count = 0
         self._active_cycles = 0
@@ -356,15 +353,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._automation_active = True
         _LOGGER.info("Humidity control automation started")
 
-    def set_binary_sensor(self, binary_sensor: Any) -> None:
-        """Set the binary sensor instance for direct control.
-
-        Args:
-            binary_sensor: The binary sensor entity to control
-        """
-        self._binary_sensor = binary_sensor
-        _LOGGER.debug("Binary sensor reference set for automation")
-
     async def stop(self) -> None:
         """Stop the humidity control automation.
 
@@ -456,12 +444,23 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
     async def _set_indicator_off(self, device_id: str) -> None:
         """Set indicator to OFF when switch is off or automation stops."""
-        if self._binary_sensor:
-            try:
-                await self._binary_sensor.async_turn_off()
+        try:
+            entity_id = f"binary_sensor.dehumidifying_active_{device_id}"
+            binary_sensor_entity = (
+                self.hass.data.get("ramses_extras", {})
+                .get("entities", {})
+                .get(entity_id)
+            )
+
+            if binary_sensor_entity:
+                await binary_sensor_entity.async_turn_off()
                 _LOGGER.debug(f"Set indicator OFF for device {device_id}")
-            except Exception as e:
-                _LOGGER.error(f"Failed to set indicator off: {e}")
+            else:
+                _LOGGER.warning(
+                    f"Binary sensor entity {entity_id} not found for setting off"
+                )
+        except Exception as e:
+            _LOGGER.error(f"Failed to set indicator off for {device_id}: {e}")
 
     async def _evaluate_humidity_conditions(
         self,
@@ -757,20 +756,32 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             device_id: Device identifier
             decision: Decision information
         """
-        # Update binary sensor directly if available
-        if self._binary_sensor:
-            try:
-                is_active = decision["action"] == "dehumidify"
+        # Update binary sensor directly via stored entity reference
+        try:
+            is_active = decision["action"] == "dehumidify"
+            entity_id = f"binary_sensor.dehumidifying_active_{device_id}"
+
+            # Get entity from stored references
+            binary_sensor_entity = (
+                self.hass.data.get("ramses_extras", {})
+                .get("entities", {})
+                .get(entity_id)
+            )
+
+            if binary_sensor_entity:
                 if is_active:
-                    await self._binary_sensor.async_turn_on()
+                    await binary_sensor_entity.async_turn_on()
                 else:
-                    await self._binary_sensor.async_turn_off()
+                    await binary_sensor_entity.async_turn_off()
                 _LOGGER.debug(
-                    f"Updated binary sensor for {device_id}: "
-                    f"{'on' if is_active else 'off'}"
+                    f"Updated binary sensor {entity_id}: {'on' if is_active else 'off'}"
                 )
-            except Exception as e:
-                _LOGGER.error(f"Failed to update binary sensor: {e}")
+            else:
+                _LOGGER.warning(
+                    f"Binary sensor entity {entity_id} not found in stored entities"
+                )
+        except Exception as e:
+            _LOGGER.error(f"Failed to update binary sensor for {device_id}: {e}")
 
     # Public API methods
     async def async_set_min_humidity(self, device_id: str, value: float) -> bool:
