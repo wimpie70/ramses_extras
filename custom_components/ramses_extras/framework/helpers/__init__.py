@@ -21,7 +21,6 @@ from .common import (
     async_validate_entity_states,
     create_validation_context,
     validate_device_id,
-    validate_humidity_values,
 )
 
 # Device helpers
@@ -84,6 +83,5 @@ __all__ = [
     "ValidationContext",
     "create_validation_context",
     "validate_device_id",
-    "validate_humidity_values",
     "async_validate_entity_states",
 ]

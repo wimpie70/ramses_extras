@@ -279,30 +279,6 @@ def validate_device_id(func: Callable) -> Callable:
     return wrapper
 
 
-def validate_humidity_values(func: Callable) -> Callable:
-    """Decorator to validate humidity values."""
-
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        # Look for humidity-related parameters
-        humidity_params = [
-            "humidity",
-            "indoor_humidity",
-            "outdoor_humidity",
-            "min_humidity",
-            "max_humidity",
-        ]
-
-        for param_name in humidity_params:
-            if param_name in kwargs:
-                kwargs[param_name] = RamsesValidator.validate_humidity_value(
-                    kwargs[param_name]
-                )
-
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
 def async_validate_entity_states(required_entity_ids: list[str]) -> Callable:
     """Decorator to validate entity states in async functions.
 
@@ -382,6 +358,5 @@ __all__ = [
     "ValidationContext",
     "create_validation_context",
     "validate_device_id",
-    "validate_humidity_values",
     "async_validate_entity_states",
 ]
