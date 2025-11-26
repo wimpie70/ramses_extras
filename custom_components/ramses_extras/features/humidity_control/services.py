@@ -12,6 +12,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
 
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
+from custom_components.ramses_extras.framework.helpers.ramses_commands import (
+    RamsesCommands,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +35,9 @@ class HumidityServices:
         """
         self.hass = hass
         self.config_entry = config_entry
+
+        # Initialize Ramses commands for direct device control
+        self.ramses_commands = RamsesCommands(hass)
 
         # Service registry
         self._services = {
@@ -117,7 +123,7 @@ class HumidityServices:
             return False
 
     async def async_set_fan_speed(self, device_id: str, speed: str) -> bool:
-        """Set fan speed without changing switch state.
+        """Set fan speed by sending Ramses RF command.
 
         Args:
             device_id: Device identifier
@@ -129,21 +135,16 @@ class HumidityServices:
         _LOGGER.info(f"Setting fan speed to {speed} for device {device_id}")
 
         try:
-            # Just set fan speed, don't touch the switch
-            fan_entity = await self._find_fan_entity(device_id)
-            if fan_entity:
-                # Set fan to specified speed
-                await self.hass.services.async_call(
-                    "fan", "turn_on", {"entity_id": fan_entity, "speed": speed}
-                )
-                _LOGGER.info(f"Fan speed set to {speed.upper()}: {fan_entity}")
+            # Send Ramses RF command directly to the device
+            success = await self.ramses_commands.send_fan_command(device_id, speed)
+            if success:
+                _LOGGER.info(f"Fan speed set to {speed.upper()} for device {device_id}")
             else:
-                _LOGGER.debug(
-                    f"Fan entity not found for device {device_id}, "
-                    f"skipping speed setting"
+                _LOGGER.warning(
+                    f"Failed to send fan speed command {speed} to device {device_id}"
                 )
 
-            return True
+            return success
 
         except Exception as e:
             _LOGGER.error(f"Failed to set fan speed to {speed}: {e}")
@@ -352,30 +353,6 @@ class HumidityServices:
         )
         return await self._find_entity_by_pattern(entity_pattern)
 
-    async def _find_fan_entity(self, device_id: str) -> str | None:
-        """Find fan entity for a device.
-
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Entity ID or None if not found
-        """
-        device_id_underscore = device_id.replace(":", "_")
-        # Common fan entity patterns for Ramses devices
-        fan_patterns = [
-            f"fan.ramses_fan_{device_id_underscore}",
-            f"fan.ventilation_fan_{device_id_underscore}",
-            "fan.32_153289",  # Direct device pattern
-        ]
-
-        for pattern in fan_patterns:
-            entity_id = await self._find_entity_by_pattern(pattern)
-            if entity_id:
-                return entity_id
-
-        return None
-
     async def _find_offset_entity(self, device_id: str) -> str | None:
         """Find humidity offset number entity for a device.
 
@@ -503,7 +480,7 @@ class HumidityServices:
             "async_activate_dehumidification": "Activate dehumidification for a device",
             "async_deactivate_dehumidification": "Deactivate dehumidification "
             "for a device",
-            "async_set_fan_speed": "Set fan speed without changing switch state",
+            "async_set_fan_speed": "Send Ramses RF fan speed command to device",
             "async_set_min_humidity": "Set minimum humidity threshold value",
             "async_set_max_humidity": "Set maximum humidity threshold value",
             "async_set_offset": "Set humidity offset adjustment value",

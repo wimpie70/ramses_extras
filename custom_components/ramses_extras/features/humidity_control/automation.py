@@ -17,6 +17,9 @@ from custom_components.ramses_extras.framework.helpers.automation.base import (
     ExtrasBaseAutomation,
 )
 from custom_components.ramses_extras.framework.helpers.entity import EntityHelpers
+from custom_components.ramses_extras.framework.helpers.ramses_commands import (
+    RamsesCommands,
+)
 
 from .config import HumidityConfig
 from .const import HUMIDITY_CONTROL_CONST
@@ -49,6 +52,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self.config_entry = config_entry
         self.config = HumidityConfig(hass, config_entry)
         self.services = HumidityServices(hass, config_entry)
+
+        # Initialize Ramses commands for direct device control
+        self.ramses_commands = RamsesCommands(hass)
 
         # Humidity-specific state tracking
         self._dehumidify_active = False
@@ -658,10 +664,18 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return  # Already active
 
         try:
-            # Turn on dehumidify switch
-            await self.services.async_activate_dehumidification(device_id)
+            # Set fan speed to HIGH for dehumidification
+            success = await self.ramses_commands.send_fan_command(device_id, "high")
+            if success:
+                # Turn on dehumidify switch
+                await self.services.async_activate_dehumidification(device_id)
+                self._dehumidify_active = True
+            else:
+                _LOGGER.warning(
+                    f"Failed to set fan speed to high for device {device_id}"
+                    # TODO: here we should set the switch back to off
+                )
 
-            self._dehumidify_active = True
             self._active_cycles += 1
 
             # Log activation
@@ -706,8 +720,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             decision: Decision information
         """
         try:
-            # Set fan to low speed (stop dehumidification)
-            await self.services.async_set_fan_speed(device_id, "low")
+            # Set fan to auto mode (stop dehumidification)
+            success = await self.ramses_commands.send_fan_command(device_id, "low")
+            if not success:
+                _LOGGER.warning(
+                    f"Failed to set fan to auto mode for device {device_id}"
+                )
 
             # Binary sensor will be updated by _update_automation_status
             self._dehumidify_active = False
@@ -715,11 +733,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             # Log the change
             reasoning = "; ".join(decision["reasoning"])
             _LOGGER.info(
-                f"Fan set to LOW speed (dehumidification stopped): {reasoning}"
+                f"Fan set to AUTO mode (dehumidification stopped): {reasoning}"
             )
 
         except Exception as e:
-            _LOGGER.error(f"Failed to set fan low speed: {e}")
+            _LOGGER.error(f"Failed to set fan to auto mode: {e}")
 
     async def _stop_dehumidification_without_switch_change(
         self, device_id: str
@@ -736,6 +754,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             # Just stop dehumidification, don't touch the switch
             # (user manually turned switch off, so we respect that)
             await self.services.async_deactivate_dehumidification(device_id)
+
+            # Set fan to auto mode
+            success = await self.ramses_commands.send_fan_command(device_id, "auto")
+            if not success:
+                _LOGGER.warning(
+                    f"Failed to set fan to auto mode for device {device_id}"
+                )
 
             self._dehumidify_active = False
 

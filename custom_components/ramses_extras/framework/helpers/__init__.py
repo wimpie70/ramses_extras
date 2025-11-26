@@ -46,6 +46,13 @@ from .entity import (
     parse_entity_id,
 )
 
+# Ramses commands
+from .ramses_commands import (
+    FAN_COMMANDS,
+    RamsesCommands,
+    create_ramses_commands,
+)
+
 __all__ = [
     # Entity helpers
     "EntityHelpers",
@@ -67,6 +74,10 @@ __all__ = [
     "validate_device_entity_support",
     # Automation helpers
     "ExtrasBaseAutomation",
+    # Ramses commands
+    "FAN_COMMANDS",
+    "RamsesCommands",
+    "create_ramses_commands",
     # Common utilities - Validation
     "ValidationError",
     "RamsesValidator",
