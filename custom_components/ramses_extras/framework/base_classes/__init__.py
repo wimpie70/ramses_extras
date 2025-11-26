@@ -6,6 +6,7 @@ common functionality and interfaces for entities, automations, managers,
 and services.
 """
 
+from .base_automation import ExtrasBaseAutomation
 from .base_entity import ExtrasBaseEntity
 
-__all__ = ["ExtrasBaseEntity"]
+__all__ = ["ExtrasBaseEntity", "ExtrasBaseAutomation"]

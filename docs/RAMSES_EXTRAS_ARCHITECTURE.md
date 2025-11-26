@@ -1,17 +1,45 @@
-always read .kilocode/rules/kilo rules.txt
 # Ramses Extras Complete Architecture Guide
+
+## Table of Contents
+
+- [Overview](#overview)
+- [🏗️ Architecture Principles](#️-architecture-principles)
+- [📁 Directory Structure](#-directory-structure)
+- [🚀 Deployment Structure (Home Assistant)](#-deployment-structure-home-assistant)
+- [🎯 Feature Architecture](#-feature-architecture)
+- [🏛️ Framework Foundation](#️-framework-foundation)
+- [🎯 Entity Management Architecture (EntityManager)](#-entity-management-architecture-entitymanager)
+- [🚀 Enhanced Device Discovery Architecture](#-enhanced-device-discovery-architecture)
+- [🔧 Entity Naming System](#-entity-naming-system)
+- [🌐 WebSocket API Architecture](#-websocket-api-architecture)
+- [🌐 Home Assistant Integration](#-home-assistant-integration)
+- [🔄 Data Flow](#-data-flow)
+- [🌍 Translations and Localization](#-translations-and-localization)
+- [🎨 Template Systems Architecture](#-template-systems-architecture)
+- [🧪 Testing and Documentation](#-testing-and-documentation)
+- [🔧 Development Guidelines](#-development-guidelines)
+- [📋 Key Benefits](#-key-benefits)
+- [🎯 Adding New Features](#-adding-new-features)
+- [🎯 Current Features](#-current-features)
+- [Performance Characteristics](#performance-characteristics)
+- [Platform Registration Architecture](#platform-registration-architecture)
+- [JavaScript Message Listener Integration](#javascript-message-listener-integration)
+- [Documentation Organization](#documentation-organization)
+- [Framework Reorganization Plan](#framework-reorganization-plan)
 
 ## Overview
 
-Ramses Extras is a **feature-centric** Home Assistant integration built on a reusable **framework foundation**. It extends the ramses_cc integration with additional features, entities, and UI components through a clean, modular architecture.
+Ramses Extras is a **feature-centric** Home Assistant integration built on a reusable **framework foundation**.
+It extends the ramses_cc integration with additional features, entities, and UI components through a clean, modular architecture.
 
 ## 🏗️ Architecture Principles
 
 ### 1. **Feature-Centric Organization**
 
 - Each feature is **self-contained** with its own automation, services, entities, and config
-- Features are **discoverable** and **modular**
+- Features are **modular** only need a small addition to the framework root const.py to be loaded dynamically
 - Clear **separation of concerns** within each feature
+- A **default feature** is provided with common/shared functionality
 
 ### 2. **Framework Foundation**
 
@@ -32,7 +60,7 @@ custom_components/ramses_extras/
 ├── 🔑 Core Integration (HA Requirements)
 │   ├── __init__.py              # Integration entry point
 │   ├── config_flow.py           # HA config flow
-│   ├── const.py                 # Core constants
+│   ├── const.py                 # Core constants with AVAILABLE_FEATURES
 │   ├── manifest.json            # HA integration manifest
 │   └── services.yaml            # HA service definitions
 │
@@ -68,8 +96,9 @@ custom_components/ramses_extras/
 │       └── const.py
 │
 ├── 🏛️ Framework (Reusable Foundation)
-│   ├── base_classes/            # Base classes
-│   │   ├── base_entity.py       # Entity base class
+│   ├── base_classes/            # Base classes for inheritance
+│   │   ├── base_entity.py       # Entity base classes
+│   │   ├── base_automation.py   # Automation base class
 │   │   └── __init__.py
 │   │
 │   ├── helpers/                 # Reusable Python utilities
@@ -81,7 +110,7 @@ custom_components/ramses_extras/
 │   │   │   ├── core.py          # Device core functionality
 │   │   │   └── __init__.py
 │   │   ├── automation/          # Automation helpers
-│   │   │   ├── base.py          # Automation base class
+│   │   │   ├── core.py          # Automation utility functions
 │   │   │   └── __init__.py
 │   │   ├── common/              # Common utilities
 │   │   │   ├── validation.py    # Input validation
@@ -296,7 +325,7 @@ def create_humidity_control_feature(hass, config_entry):
 ### Base Classes
 
 - **ExtrasBaseEntity**: Base class for all custom entities
-- **ExtrasBaseAutomation**: Base class for automation logic
+- **ExtrasBaseAutomation**: Base class for automation logic (located in `base_classes/base_automation.py`)
 
 ### Helper Modules
 
@@ -1587,6 +1616,10 @@ This JavaScript-based 31DA message listener provides real-time HVAC state update
 
 This architecture provides significant improvements to user experience by providing immediate feedback on HVAC system changes.
 
+## Framework Reorganization Plan
+
+See [`FRAMEWORK_REORGANIZATION_PLAN.md`](FRAMEWORK_REORGANIZATION_PLAN.md) for the detailed plan to achieve architectural consistency by reorganizing the automation framework structure.
+
 ## Documentation Organization
 
 ### Primary Architecture Document
@@ -1604,6 +1637,7 @@ This document (`RAMSES_EXTRAS_ARCHITECTURE.md`) serves as the comprehensive arch
 - **Template Systems**: Multi-template architecture for frontend and backend
 - **Development Guidelines**: Best practices and patterns
 - **Performance Benefits**: Benchmark results and improvements
+- **Framework Reorganization**: Detailed plan for architectural consistency improvements
 
 ### Implementation Documentation
 

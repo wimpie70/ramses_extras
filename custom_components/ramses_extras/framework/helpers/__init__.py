@@ -11,7 +11,7 @@ all Ramses Extras features, including:
 
 # Entity helpers
 # Automation helpers
-from .automation import ExtrasBaseAutomation
+from ..base_classes import ExtrasBaseAutomation
 
 # Common utilities
 from .common import (

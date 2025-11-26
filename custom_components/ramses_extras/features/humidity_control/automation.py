@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.event import async_track_state_change_event
 
-from custom_components.ramses_extras.framework.helpers.automation.base import (
+from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
 from custom_components.ramses_extras.framework.helpers.entity import EntityHelpers
