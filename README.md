@@ -12,15 +12,14 @@
 
 ## 🎯 **What is Ramses Extras?**
 
-Ramses Extras provides a collection of (front-end) utilities for the Ramses RF (ramses_cc) integration.
+Ramses Extras provides additional features, entities, automation, and UI components for the Ramses RF (ramses_cc) integration.
 
 `note: This is a work in progress, contributions are welcome ([CONTRIBUTING.md](CONTRIBUTING.md)).`
 
-- Easy to disable/enable features to the users needs
-- Features will create (or clean-up) their own entities, cards, webhooks, servicecalls or other logic
-- when editing dashboards, the provided cards will be available as their own type
-- The framework provides a lot of the overhead needed when creating a new feature. Helpers, Entity creation (by definition),
--
+- **Modular Features**: Easy to enable/disable features based on user needs
+- **Automatic Cleanup**: Features manage their own entities, cards, and services
+- **Custom Cards**: JavaScript cards available as custom card types in dashboards
+- **Framework Foundation**: Reusable components for easy feature development
 
 ## ✨ **Current Features**
 
@@ -104,34 +103,15 @@ After enabling a feature Ramses Extras will automatically create the associated 
 - **New Services**: extra service calls, to send commands
 - **New Websocket**: For use by javascript to get info from Ramses Extras (or Ramses RF) like `get_bound_rem`
 
-## 🏗️ **Architecture Overview**
+## 🏗️ **Architecture**
 
-Ramses Extras uses a **feature-centric architecture** built on a **framework foundation**:
-
-```
-custom_components/ramses_extras/
-├── 🏛️ framework/           # Reusable foundation layer
-├── 🎯 features/            # Feature implementations
-├── 🌐 platforms/           # Home Assistant integration
-├── 🎨 www/                 # Frontend assets and cards
-└── 🌍 translations/        # Localization files
-```
-
-**Key Benefits:**
-
-- **Modularity**: Each feature is self-contained
-- **Extensibility**: Easy to add new features
-- **Maintainability**: Clear separation of concerns
-- **Testability**: Components can be tested independently
-
-For detailed architecture information, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Ramses Extras uses a **feature-centric architecture** built on a **framework foundation**. For detailed architecture information, see the [Wiki Architecture Guide](https://github.com/wimpie70/ramses_extras/wiki).
 
 ## 📚 **Documentation**
 
-- 📖 **[Architecture Guide](docs/ARCHITECTURE.md)**: Complete system architecture and design decisions
-- 🛠️ **[Development Guide](README_DEV.md)**: Setup, contribution guidelines, and development workflow
-- 🎯 **[Entity Naming Improvements](docs/entity_naming_improvements.md)**: Technical solution documentation
-- 🌐 **[JavaScript Integration](docs/JS_MESSAGE_LISTENER.md)**: Frontend implementation guide
+- 🏠 **[Wiki Home](https://github.com/wimpie70/ramses_extras/wiki)**: Complete architecture guide and troubleshooting
+- 📖 **[Architecture Guide](docs/RAMSES_EXTRAS_ARCHITECTURE.md)**: System architecture and design decisions
+- 🛠️ **[Development Guide](README_DEV.md)**: Setup and contribution guidelines
 
 ## 🔧 **Requirements**
 
@@ -144,90 +124,37 @@ For detailed architecture information, see [`docs/ARCHITECTURE.md`](docs/ARCHITE
 ### **Development Setup**
 
 ```bash
-# Clone the repository
+# Clone and setup
 git clone https://github.com/wimpie70/ramses_extras.git
 cd ramses_extras
-
-# Create the virtual environment
-python3.13 -m venv venvs/extras
-
-# Activate virtual environment
 source ~/venvs/extras/bin/activate
-
-# Install development dependencies
-pip install -r requirements_dev.txt
-
-# Install pre-commit hooks
 pre-commit install
 ```
 
-### **Running Tests**
+### **Testing & Quality**
 
 ```bash
-# All Python tests
+# Run all tests
 pytest -v
-
-# Specific test file
-pytest tests/managers/test_humidity_automation.py -v
-
-# With coverage
-pytest --cov=custom_components/ramses_extras
 
 # Quality checks
 make local-ci
+
+# Specific test
+pytest tests/managers/test_humidity_automation.py -v
 ```
 
-### **Code Quality**
-
-The code is all tested with the following tools:
-
-#### **Python Quality Tools**
-
-- **Ruff**: Fast linting and formatting (replaces Black + Flake8 + more)
-- **MyPy**: Static type checking for Python code
-- **Pytest**: Unit and integration testing with async support
-- **Pre-commit**: Automated quality checks before commits
-
-#### **Frontend Quality Tools**
-
-- **ESLint**: JavaScript code quality and style enforcement
-- **Prettier**: Code formatting for consistent style
-- **Jest**: JavaScript unit and integration testing
-- **JSDOM**: DOM simulation for component testing
-
-All tools are configured to work together following industry best practices. See [`tests/frontend/README.md`](tests/frontend/README.md) for frontend testing details.
-
-### **Architecture Development**
-
-The project follows specific patterns for adding new features:
-
-1. **Create Feature Structure**: Follow established patterns in `features/`
-2. **Implement Components**: Automation, services, entities, platforms, websockets
-3. **Add Templates**: Frontend templates for UI components
-4. **Write Tests**: Comprehensive test coverage
-5. **Update Documentation**: Keep architecture docs current
-
-For detailed development guidelines, see [`docs/ARCHITECTURE.md#adding-new-features`](docs/ARCHITECTURE.md#adding-new-features).
+See the [Architecture Guide](https://github.com/wimpie70/ramses_extras/wiki) for detailed development patterns and guidelines.
 
 ## 🤝 **Contributing**
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and the [Wiki](https://github.com/wimpie70/ramses_extras/wiki) for detailed development patterns.
 
-### **Getting Started**
+### **Quick Start**
 
-- 📖 Read the [Architecture Guide](docs/ARCHITECTURE.md)
+- 📖 Read the [Wiki Architecture Guide](https://github.com/wimpie70/ramses_extras/wiki)
 - 🛠️ Follow the [Development Guide](README_DEV.md)
 - 🧪 Write tests for new features
-- 📝 Update documentation
-
-### **Contribution Areas**
-
-- 🧠 **New Automation Features**: Smart control algorithms
-- 🎨 **UI/UX Improvements**: Better Lovelace cards
-- 🧪 **Test Coverage**: More comprehensive testing
-- 📚 **Documentation**: Guides and examples
-- 🐛 **Bug Fixes**: Issue resolution
-- ⭐ **Feature Requests**: New functionality ideas
 
 ## 📜 **License**
 
@@ -244,6 +171,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 - 🐛 **Bug Reports**: [GitHub Issues](https://github.com/wimpie70/ramses_extras/issues)
 - 💬 **Feature Requests**: [GitHub Discussions](https://github.com/wimpie70/ramses_extras/discussions)
-- 📚 **Documentation Issues**: Report via GitHub Issues
+- 📚 **Troubleshooting**: See [Wiki Troubleshooting Guide](https://github.com/wimpie70/ramses_extras/wiki)
 
 ---
