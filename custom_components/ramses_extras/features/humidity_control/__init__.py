@@ -24,11 +24,16 @@ from custom_components.ramses_extras.const import EVENT_DEVICE_READY_FOR_ENTITIE
 from .automation import HumidityAutomationManager
 from .config import HumidityConfig
 from .const import (
+    ENHANCED_HUMIDITY_BOOLEAN_CONFIGS,
+    ENHANCED_HUMIDITY_NUMBER_CONFIGS,
+    ENHANCED_HUMIDITY_SWITCH_CONFIGS,
     HUMIDITY_BOOLEAN_CONFIGS,
     HUMIDITY_CONTROL_CONST,
     HUMIDITY_DEVICE_ENTITY_MAPPING,
     HUMIDITY_NUMBER_CONFIGS,
     HUMIDITY_SWITCH_CONFIGS,
+    ORCON_DEVICE_MODELS,
+    ZEHNDER_DEVICE_MODELS,
 )
 from .entities import HumidityEntities
 
@@ -51,42 +56,7 @@ from .services import HumidityServices
 _LOGGER = logging.getLogger(__name__)
 
 
-# Feature-specific brand customizers for self-containment
-ORCON_DEVICE_MODELS = {
-    "HRV400": {
-        "max_fan_speed": 5,
-        "humidity_range": (30, 80),
-        "supported_modes": ["auto", "boost", "eco", "night"],
-        "special_entities": ["filter_timer", "boost_timer", "eco_mode"],
-    },
-    "HRV300": {
-        "max_fan_speed": 4,
-        "humidity_range": (35, 75),
-        "supported_modes": ["auto", "boost", "eco"],
-        "special_entities": ["filter_timer", "boost_timer"],
-    },
-    "HRV200": {
-        "max_fan_speed": 3,
-        "humidity_range": (40, 70),
-        "supported_modes": ["auto", "boost"],
-        "special_entities": ["filter_timer"],
-    },
-}
-
-ZEHNDER_DEVICE_MODELS = {
-    "ComfoAir Q350": {
-        "max_fan_speed": 4,
-        "humidity_range": (30, 75),
-        "supported_modes": ["auto", "boost", "eco", "night"],
-        "special_entities": ["filter_timer", "co2_sensor", "auto_mode"],
-    },
-    "ComfoAir Q450": {
-        "max_fan_speed": 5,
-        "humidity_range": (25, 80),
-        "supported_modes": ["auto", "boost", "eco", "night", "away"],
-        "special_entities": ["filter_timer", "co2_sensor", "auto_mode", "away_mode"],
-    },
-}
+# Feature-specific brand customizers are now defined in const.py
 
 
 class OrconDeviceCustomizer:
@@ -523,21 +493,7 @@ def is_zehnder_device(device: Any) -> bool:
     return any(pattern in model_lower for pattern in zehnder_patterns)
 
 
-# Enhanced entity configurations with default_enabled flags
-ENHANCED_HUMIDITY_SWITCH_CONFIGS = {
-    key: {**config, "default_enabled": True}
-    for key, config in HUMIDITY_SWITCH_CONFIGS.items()
-}
-
-ENHANCED_HUMIDITY_NUMBER_CONFIGS = {
-    key: {**config, "default_enabled": True}
-    for key, config in HUMIDITY_NUMBER_CONFIGS.items()
-}
-
-ENHANCED_HUMIDITY_BOOLEAN_CONFIGS = {
-    key: {**config, "default_enabled": True}
-    for key, config in HUMIDITY_BOOLEAN_CONFIGS.items()
-}
+# Enhanced entity configurations are now defined in const.py
 
 
 class EnhancedHumidityControl:
@@ -800,39 +756,6 @@ class EnhancedHumidityControl:
         return entity_customizations
 
 
-__all__ = [
-    # Existing feature exports
-    "HumidityAutomationManager",
-    "HumidityEntities",
-    "HumidityServices",
-    "HumidityConfig",
-    "HUMIDITY_CONTROL_CONST",
-    "HUMIDITY_SWITCH_CONFIGS",
-    "HUMIDITY_NUMBER_CONFIGS",
-    "HUMIDITY_BOOLEAN_CONFIGS",
-    "HUMIDITY_DEVICE_ENTITY_MAPPING",
-    # Platform class exports
-    "HumidityControlBinarySensor",
-    "HumidityControlSwitch",
-    "HumidityControlNumber",
-    # Platform setup exports
-    "sensor_async_setup_entry",
-    "binary_sensor_async_setup_entry",
-    "switch_async_setup_entry",
-    "number_async_setup_entry",
-    # Platform factory exports
-    "create_humidity_sensor",
-    "create_humidity_control_binary_sensor",
-    "create_humidity_switch",
-    "create_humidity_number",
-    # Enhanced feature exports
-    "EnhancedHumidityControl",
-    "ENHANCED_HUMIDITY_SWITCH_CONFIGS",
-    "ENHANCED_HUMIDITY_NUMBER_CONFIGS",
-    "ENHANCED_HUMIDITY_BOOLEAN_CONFIGS",
-]
-
-
 async def create_humidity_control_feature(
     hass: Any, config_entry: Any, skip_automation_setup: bool = False
 ) -> dict[str, Any]:
@@ -887,16 +810,37 @@ async def create_humidity_control_feature(
     }
 
 
-def create_enhanced_humidity_control_feature(
-    hass: HomeAssistant, config_entry: Any
-) -> EnhancedHumidityControl:
-    """Factory function to create enhanced humidity control feature.
-
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-
-    Returns:
-        EnhancedHumidityControl feature instance
-    """
-    return EnhancedHumidityControl(hass, config_entry)
+__all__ = [
+    # Existing feature exports
+    "HumidityAutomationManager",
+    "HumidityEntities",
+    "HumidityServices",
+    "HumidityConfig",
+    "HUMIDITY_CONTROL_CONST",
+    "HUMIDITY_SWITCH_CONFIGS",
+    "HUMIDITY_NUMBER_CONFIGS",
+    "HUMIDITY_BOOLEAN_CONFIGS",
+    "HUMIDITY_DEVICE_ENTITY_MAPPING",
+    # Platform class exports
+    "HumidityControlBinarySensor",
+    "HumidityControlSwitch",
+    "HumidityControlNumber",
+    # Platform setup exports
+    "sensor_async_setup_entry",
+    "binary_sensor_async_setup_entry",
+    "switch_async_setup_entry",
+    "number_async_setup_entry",
+    # Platform factory exports
+    "create_humidity_sensor",
+    "create_humidity_control_binary_sensor",
+    "create_humidity_switch",
+    "create_humidity_number",
+    # Enhanced feature exports
+    "EnhancedHumidityControl",
+    "ENHANCED_HUMIDITY_SWITCH_CONFIGS",
+    "ENHANCED_HUMIDITY_NUMBER_CONFIGS",
+    "ENHANCED_HUMIDITY_BOOLEAN_CONFIGS",
+    # Brand model exports
+    "ORCON_DEVICE_MODELS",
+    "ZEHNDER_DEVICE_MODELS",
+]

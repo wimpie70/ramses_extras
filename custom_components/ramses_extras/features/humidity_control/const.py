@@ -1,6 +1,45 @@
-"""Humidity control feature - feature-specific entity definitions."""
+"""Humidity control feature - feature-specific entity and configuration definitions."""
+
+from typing import Any
 
 from homeassistant.helpers.entity import EntityCategory
+
+# Feature-specific brand customizers configuration
+ORCON_DEVICE_MODELS = {
+    "HRV400": {
+        "max_fan_speed": 5,
+        "humidity_range": (30, 80),
+        "supported_modes": ["auto", "boost", "eco", "night"],
+        "special_entities": ["filter_timer", "boost_timer", "eco_mode"],
+    },
+    "HRV300": {
+        "max_fan_speed": 4,
+        "humidity_range": (35, 75),
+        "supported_modes": ["auto", "boost", "eco"],
+        "special_entities": ["filter_timer", "boost_timer"],
+    },
+    "HRV200": {
+        "max_fan_speed": 3,
+        "humidity_range": (40, 70),
+        "supported_modes": ["auto", "boost"],
+        "special_entities": ["filter_timer"],
+    },
+}
+
+ZEHNDER_DEVICE_MODELS = {
+    "ComfoAir Q350": {
+        "max_fan_speed": 4,
+        "humidity_range": (30, 75),
+        "supported_modes": ["auto", "boost", "eco", "night"],
+        "special_entities": ["filter_timer", "co2_sensor", "auto_mode"],
+    },
+    "ComfoAir Q450": {
+        "max_fan_speed": 5,
+        "humidity_range": (25, 80),
+        "supported_modes": ["auto", "boost", "eco", "night", "away"],
+        "special_entities": ["filter_timer", "co2_sensor", "auto_mode", "away_mode"],
+    },
+}
 
 # Feature-specific switch configurations
 HUMIDITY_SWITCH_CONFIGS = {
@@ -84,6 +123,22 @@ HUMIDITY_DEVICE_ENTITY_MAPPING = {
 # WebSocket commands for the humidity control feature
 HUMIDITY_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {}
 
+# Enhanced entity configurations with default_enabled flags
+ENHANCED_HUMIDITY_SWITCH_CONFIGS = {
+    key: {**config, "default_enabled": True}
+    for key, config in HUMIDITY_SWITCH_CONFIGS.items()
+}
+
+ENHANCED_HUMIDITY_NUMBER_CONFIGS = {
+    key: {**config, "default_enabled": True}
+    for key, config in HUMIDITY_NUMBER_CONFIGS.items()
+}
+
+ENHANCED_HUMIDITY_BOOLEAN_CONFIGS = {
+    key: {**config, "default_enabled": True}
+    for key, config in HUMIDITY_BOOLEAN_CONFIGS.items()
+}
+
 # Feature-specific constants for automation
 HUMIDITY_CONTROL_CONST = {
     "feature_id": "humidity_control",
@@ -135,5 +190,10 @@ __all__ = [
     "HUMIDITY_DEVICE_ENTITY_MAPPING",
     "HUMIDITY_CONTROL_WEBSOCKET_COMMANDS",
     "HUMIDITY_CONTROL_CONST",
+    "ORCON_DEVICE_MODELS",
+    "ZEHNDER_DEVICE_MODELS",
+    "ENHANCED_HUMIDITY_SWITCH_CONFIGS",
+    "ENHANCED_HUMIDITY_NUMBER_CONFIGS",
+    "ENHANCED_HUMIDITY_BOOLEAN_CONFIGS",
     "load_feature",
 ]
