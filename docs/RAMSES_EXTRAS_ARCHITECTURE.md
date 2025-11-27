@@ -2,21 +2,76 @@
 
 ## 1. Table of Contents
 
-- [1. Overview & Quick Start](#1-overview--quick-start)
-- [2. System Architecture](#2-system-architecture)
-- [3. Feature System](#3-feature-system)
-- [4. Framework Foundation](#4-framework-foundation)
-- [5. Home Assistant Integration](#5-home-assistant-integration)
-- [6. Frontend Architecture](#6-frontend-architecture)
-- [7. Development Guide](#7-development-guide)
-- [8. API Reference](#8-api-reference)
-- [9. Implementation Details](#9-implementation-details)
-- [10. Examples & Patterns](#10-examples--patterns)
-- [11. Deployment & Configuration](#11-deployment--configuration)
-- [12. Contributing](#12-contributing)
+- [1. Table of Contents](#1-table-of-contents)
+- [2. Overview \& Quick Start](#2-overview--quick-start)
+  - [2.1. What is Ramses Extras?](#21-what-is-ramses-extras)
+  - [2.2. Core Benefits](#22-core-benefits)
+  - [2.3. Key Concepts](#23-key-concepts)
+  - [2.4. Quick Start for Developers](#24-quick-start-for-developers)
+- [3. System Architecture](#3-system-architecture)
+  - [3.1. High-Level Architecture](#31-high-level-architecture)
+  - [3.2. Core Design Principles](#32-core-design-principles)
+  - [3.3. Directory Structure](#33-directory-structure)
+  - [3.4. Integration Flow](#34-integration-flow)
+  - [3.5. ramses\_cc Integration Architecture](#35-ramses_cc-integration-architecture)
+- [4. Feature System](#4-feature-system)
+  - [4.1. How Features Work](#41-how-features-work)
+  - [4.2. Feature Lifecycle](#42-feature-lifecycle)
+  - [4.3. Current Features](#43-current-features)
+  - [4.4. Feature Structure Pattern](#44-feature-structure-pattern)
+  - [4.5. Feature Components](#45-feature-components)
+  - [4.6. Adding New Features](#46-adding-new-features)
+- [5. Framework Foundation](#5-framework-foundation)
+  - [5.1. Base Classes](#51-base-classes)
+  - [5.2. Helper Modules](#52-helper-modules)
+  - [5.3. Managers](#53-managers)
+  - [5.4. Framework Services](#54-framework-services)
+- [6. Home Assistant Integration](#6-home-assistant-integration)
+  - [6.1. Platform Integration Architecture](#61-platform-integration-architecture)
+  - [6.2. Entity Management](#62-entity-management)
+  - [6.3. Configuration Flow Integration](#63-configuration-flow-integration)
+  - [6.4. Service Integration](#64-service-integration)
+- [7. Frontend Architecture](#7-frontend-architecture)
+  - [7.1. JavaScript Card System](#71-javascript-card-system)
+  - [7.2. Real-Time Message System](#72-real-time-message-system)
+  - [7.3. Translation System](#73-translation-system)
+  - [7.4. Template Systems](#74-template-systems)
+- [8. Development Guide](#8-development-guide)
+  - [8.1. Coding Standards and Conventions](#81-coding-standards-and-conventions)
+  - [8.2. Development Workflow](#82-development-workflow)
+  - [8.3. Testing Structure](#83-testing-structure)
+- [9. Debugging and Troubleshooting Guide](#9-debugging-and-troubleshooting-guide)
+  - [9.1. Common Issues and Solutions](#91-common-issues-and-solutions)
+  - [9.2. Debug Tools](#92-debug-tools)
+  - [9.3. Working Debug Tool Examples](#93-working-debug-tool-examples)
+  - [9.4. Debug Configuration](#94-debug-configuration)
+- [10. API Reference](#10-api-reference)
+  - [10.1. Entity Naming System API](#101-entity-naming-system-api)
+  - [10.2. EntityManager API](#102-entitymanager-api)
+  - [10.3. WebSocket Commands API](#103-websocket-commands-api)
+  - [10.4. Device Handler API](#104-device-handler-api)
+- [11. Implementation Details](#11-implementation-details)
+  - [11.1. Core Algorithms and Patterns](#111-core-algorithms-and-patterns)
+  - [11.2. Error Handling Strategies](#112-error-handling-strategies)
+  - [11.3. Security Considerations](#113-security-considerations)
+- [12. Examples \& Patterns](#12-examples--patterns)
+  - [12.1. Common Implementation Patterns](#121-common-implementation-patterns)
+  - [12.2. Integration Examples](#122-integration-examples)
+  - [12.3. Best Practices](#123-best-practices)
+- [13. Deployment \& Configuration](#13-deployment--configuration)
+  - [13.1. Installation and Setup](#131-installation-and-setup)
+  - [13.2. Feature-Centric Design Configuration](#132-feature-centric-design-configuration)
+  - [13.3. JavaScript Asset Deployment](#133-javascript-asset-deployment)
+- [14. Contributing](#14-contributing)
+  - [14.1. Development Workflow](#141-development-workflow)
+  - [14.2. Code Review Guidelines](#142-code-review-guidelines)
+  - [14.3. Feature Development Process](#143-feature-development-process)
+  - [14.4. Documentation Standards](#144-documentation-standards)
+  - [14.5. Release Process](#145-release-process)
+  - [14.6. Staying Current with ramses\_cc](#146-staying-current-with-ramses_cc)
+  - [14.7. Community Guidelines](#147-community-guidelines)
 
 ---
-
 ## 2. Overview & Quick Start
 
 ### 2.1. What is Ramses Extras?
@@ -221,7 +276,7 @@ else:
 3. **Device Enumeration** - Requires ramses_cc broker access for device enumeration
 4. **Event Integration** - Needs ramses_cc event system for real-time updates
 
-### 3.6. ramses_cc Integration Architecture
+### 3.5. ramses_cc Integration Architecture
 
 Ramses Extras builds upon the ramses_cc integration by providing direct hooks into the underlying communication layer:
 
@@ -650,6 +705,8 @@ HVAC Data     card                       data                       re-render
 
 You are welcome to contribute to this integration. If you are missing support for a device, or have a nice card that you like to share, please do. You can contribute to this github repo, leave a message (issue) when you have questions, an idea, or found bugs.
 
+Also read the `Contributing` section on github to see how to setup a development environment.
+
 ### 8.1. Coding Standards and Conventions
 
 #### File Responsibilities
@@ -711,47 +768,103 @@ tests/
 └── test_registry.py             # Integration tests
 ```
 
-### 8.4. Debugging and Troubleshooting
+## 9. Debugging and Troubleshooting Guide
 
-#### Common Issues and Solutions
+This comprehensive troubleshooting guide covers common issues, debugging tools, and solutions for Ramses Extras integration.
 
-1. **Feature Not Loading**
-   - Check `AVAILABLE_FEATURES` registration in main `const.py`
-   - Verify feature factory function is properly implemented
-   - Check HA logs for import or initialization errors
+### 9.1. Common Issues and Solutions
 
-2. **Entities Not Created**
-   - Verify feature is enabled in HA configuration
-   - Check EntityManager logs for entity catalog building
-   - Ensure platform files are properly implemented
-   - Check entity states in HA
+#### Feature Not Loading
 
-3. **WebSocket Commands Not Working**
-   - Verify WebSocket commands are registered during setup
-   - Check parameter validation and error handling
-   - Ensure device_id is properly passed to commands
+**Symptoms**: Feature doesn't appear in HA configuration options
 
-4. **Feature not working as expected**
-   - Check the logs: home-assistant.log, ramses.log (or the filename you entered in Ramses RF)
-   - Reload hass
-   - Clear your browsers cache...Ctr-Sh-R or similar for your system
+**Solutions**:
+1. Check `AVAILABLE_FEATURES` registration in main `const.py`
+2. Verify feature factory function is properly implemented
+3. Check HA logs for import or initialization errors
+4. Ensure feature directory structure is correct
 
-#### Debug Tools
+#### Entities Not Created
 
-- **EntityManager Debug**: Use `get_entity_summary()` for entity catalog debugging
-- **WebSocket Testing**: Use `callWebSocket()` function for WebSocket command testing
-- **Message Listener Debug**: Use `RamsesMessageBroker.instance.getListenerInfo()` for message routing
+**Symptoms**: Features enabled but no entities appear in HA
 
-#### Working Debug Tool Examples
+**Solutions**:
+1. Verify feature is enabled in HA configuration
+2. Check EntityManager logs for entity catalog building issues
+3. Ensure platform files are properly implemented
+4. Verify device discovery is working correctly
+5. Check entity states in HA
 
-**EntityManager Debug** (Python):
+#### JavaScript Cards Not Loading
+
+**Symptoms**: UI cards don't appear or show errors
+
+**Solutions**:
+1. Check that asset deployment completed successfully
+2. Verify JavaScript files exist in `config/www/ramses_extras/`
+3. Check browser console for JavaScript errors
+4. Ensure feature has `ui_card: true` in configuration
+5. Clear your browser cache (Ctrl+Shift+R or similar for your system)
+
+#### WebSocket Command Failures
+
+**Symptoms**: WebSocket commands return errors or time out
+
+**Solutions**:
+1. Verify WebSocket commands are registered during setup
+2. Check parameter validation and required fields
+3. Ensure device_id is properly formatted and exists
+4. Check HA logs for WebSocket-related errors
+5. Ensure device_id is properly passed to commands
+
+#### Feature Not Working as Expected
+
+**Symptoms**: Feature enabled but doesn't function correctly
+
+**Solutions**:
+1. Check the logs: home-assistant.log, ramses_log (or the filename you entered in Ramses RF)
+2. Reload Home Assistant
+3. Check parameter validation and error handling
+4. Verify WebSocket commands are registered during setup
+
+#### Performance Issues
+
+**Symptoms**: Slow entity creation, high memory usage, or laggy UI
+
+**Solutions**:
+1. Use EntityManager bulk operations for entity changes
+2. Enable caching for frequently accessed data
+3. Monitor device discovery performance
+4. Optimize JavaScript card update frequency
+
+### 9.2. Debug Tools
+
+#### EntityManager Debug
+- Use `get_entity_summary()` for entity catalog debugging
+- Check entity catalog state for troubleshooting entity lifecycle issues
+
+#### WebSocket Testing
+- Use `callWebSocket()` function for WebSocket command testing
+- Test WebSocket commands in browser console
+
+#### Message Listener Debug
+- Use `RamsesMessageBroker.instance.getListenerInfo()` for message routing
+- Check registered message listeners for debugging
+
+#### Device Enumeration Debug
+- Check logs for device enumeration and handler execution
+- Monitor device discovery performance
+
+### 9.3. Working Debug Tool Examples
+
+#### EntityManager Debug (Python)
 ```python
 # In config flow or debug console
 entity_summary = entity_manager.get_entity_summary()
 print(f"Entity catalog state: {entity_summary}")
 ```
 
-**WebSocket Testing** (JavaScript console):
+#### WebSocket Testing (JavaScript console)
 ```javascript
 // Test WebSocket commands in browser console
 const result = await callWebSocket(hass, {
@@ -761,18 +874,41 @@ const result = await callWebSocket(hass, {
 console.log('WebSocket result:', result);
 ```
 
-**Message Listener Debug** (JavaScript console):
+#### Message Listener Debug (JavaScript console)
 ```javascript
 // Check registered message listeners
 const listenerInfo = RamsesMessageBroker.instance.getListenerInfo();
 console.log('Active listeners:', listenerInfo);
 ```
 
+### 9.4. Debug Configuration
+
+#### Logging Configuration
+
+Enable detailed logging in HA configuration:
+
+```yaml
+# configuration.yaml
+logger:
+  default: info
+  logs:
+    custom_components.ramses_extras: debug
+    custom_components.ramses_extras.framework: debug
+    custom_components.ramses_extras.features: debug
+```
+
+#### Debug Tools Summary
+
+1. **EntityManager Debug**: Use `get_entity_summary()` to check entity catalog state
+2. **WebSocket Testing**: Use `callWebSocket()` function to test WebSocket commands
+3. **Message Listener Debug**: Use `RamsesMessageBroker.instance.getListenerInfo()` for message routing
+4. **Device Enumeration Debug**: Check logs for device enumeration and handler execution
+
 ---
 
-## 9. API Reference
+## 10. API Reference
 
-### 9.1. Entity Naming System API
+### 10.1. Entity Naming System API
 
 #### Core Functions
 
@@ -818,7 +954,7 @@ TEMPLATES_UNIVERSAL = {
 }
 ```
 
-### 9.2. EntityManager API
+### 10.2. EntityManager API
 
 #### Core Methods
 
@@ -863,7 +999,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             )
 ```
 
-### 9.3. WebSocket Commands API
+### 10.3. WebSocket Commands API
 
 #### Command Registration
 
@@ -880,6 +1016,8 @@ async def ws_get_bound_rem_default(hass, connection, msg):
 ```
 
 #### Available Commands
+
+The `default feature` is always enabled (and not listed in the config flow)
 
 **Default Feature Commands:**
 - **`ramses_extras/default/get_bound_rem`**: Get bound REM device information
@@ -902,7 +1040,7 @@ const schema = await callWebSocket(hass, {
 });
 ```
 
-### 9.4. Device Handler API
+### 10.4. Device Handler API
 
 #### Device Type Handler Mapping
 
@@ -932,6 +1070,8 @@ DEVICE_TYPE_HANDLERS = {
 
 #### Brand-Specific Customization
 
+Note: this is not tested or fully implemented yet, only prepared.
+
 ```python
 async def _on_device_ready_for_entities(self, event_data):
     """Handle device discovery with brand-specific logic."""
@@ -949,9 +1089,9 @@ async def _on_device_ready_for_entities(self, event_data):
 
 ---
 
-## 10. Implementation Details
+## 11. Implementation Details
 
-### 10.1. Core Algorithms and Patterns
+### 11.1. Core Algorithms and Patterns
 
 #### Entity Format Detection Algorithm
 
@@ -970,14 +1110,14 @@ def _detect_format_by_position(position: int, entity_name: str) -> str:
 - Device ID at **beginning** (≤30% of entity name length) → **CC Format**
 - Device ID at **end** (>30% of entity name length) → **Extras Format**
 
-#### Double Evaluation System
+#### Two-step Evaluation System
 
 The enhanced device discovery uses a two-phase evaluation system.
 
 **Phase 1 - Discovery:**
 - Discover devices that should have entities
 - Fire event for each discovered device
-- Listeners can modify EntityRegistry or set flags, or whatever is needed. For example, if we know the model of the device we can adapt the min/max values, or disable certain entities.
+- Listeners can modify EntityRegistry or set flags, or whatever is needed. For example, if we know the model of the device we can adapt the min/max values, or disable certain entities. Do we know a certain FAN has only 1 humidity sensor,  we can adapt to this.
 
 
 **Phase 2 - Creation:**
@@ -997,27 +1137,8 @@ async def build_entity_catalog(self, available_features, current_features):
         await self._scan_feature_entities(feature_id, feature_config, existing_entities)
 ```
 
-### 10.2. Performance Characteristics
 
-#### Computational Complexity
-- **Entity Parsing**: O(1) universal processing
-- **Template Generation**: O(1) unified approach
-- **Format Detection**: O(1) regex + position analysis
-- **Entity Catalog Building**: O(n×m) where n=features, m=avg entities per feature
-
-#### Benchmark Results
-- Processing 1000 mixed entities: ~8% faster than previous format-specific approach
-- Single-pass entity catalog building with unified logic
-- Efficient bulk operations with grouped entity types
-- ~50% reduction in method count vs separate format handling
-
-#### Memory Optimization
-- Single EntityManager instance per config flow operation
-- Intelligent caching for format detection results
-- Centralized data structure for optimal memory usage
-- Bulk operations grouped by entity type
-
-### 10.3. Error Handling Strategies
+### 11.2. Error Handling Strategies
 
 #### Graceful Degradation
 - Entity registry access failures return empty set (don't stop catalog building)
@@ -1041,7 +1162,7 @@ async def build_entity_catalog(self, available_features, current_features):
             continue  # Skip this feature, continue with others
 ```
 
-### 10.4. Security Considerations
+### 11.3. Security Considerations
 
 #### Input Validation
 - Voluptuous schema validation for all WebSocket parameters
@@ -1060,9 +1181,9 @@ async def build_entity_catalog(self, available_features, current_features):
 
 ---
 
-## 11. Examples & Patterns
+## 12. Examples & Patterns
 
-### 11.1. Common Implementation Patterns
+### 12.1. Common Implementation Patterns
 
 #### Feature Development Pattern
 
@@ -1211,7 +1332,7 @@ async def ws_get_bound_rem_default(hass, connection, msg):
         connection.send_error(msg["id"], "unknown_error", str(err))
 ```
 
-### 11.2. Integration Examples
+### 12.2. Integration Examples
 
 #### Adding Custom Entity Types
 
@@ -1277,7 +1398,7 @@ def _is_orcon_device(self, device) -> bool:
     return device.manufacturer == "Orcon" or "orcon" in device.model.lower()
 ```
 
-### 11.3. Best Practices
+### 12.3. Best Practices
 
 #### Performance Optimization
 1. **Use EntityManager**: Centralized entity operations for efficiency
@@ -1305,9 +1426,9 @@ def _is_orcon_device(self, device) -> bool:
 
 ---
 
-## 12. Deployment & Configuration
+## 13. Deployment & Configuration
 
-### 12.1. Installation and Setup
+### 13.1. Installation and Setup
 
 #### Prerequisites
 - Home Assistant instance (minimum version requirements in `manifest.json`)
@@ -1321,58 +1442,176 @@ def _is_orcon_device(self, device) -> bool:
 4. **Enable Features**: Select desired features during configuration
 5. **Verify Entities**: Check that entities are created for enabled features
 
-### 12.2. Feature Configuration
+### 13.2. Feature-Centric Design Configuration
 
-#### Available Features Configuration
+#### Core Feature Architecture
 
-Features are configured through the Home Assistant config flow:
+Ramses Extras follows a **feature-centric design** where each functionality is encapsulated in self-contained modules. The architecture consists of:
+
+1. **Feature Modules**: Self-contained directories under `features/`
+2. **Entity Registry**: Central registry that dynamically loads feature definitions
+3. **Factory Functions**: Standardized creation pattern for all features
+4. **Enhanced Features**: Optional advanced features with brand-specific customizations
+
+#### Feature Registration System
+
+Features are registered in the main configuration with comprehensive metadata:
 
 ```python
-# In main const.py - AVAILABLE_FEATURES registration
+# main const.py - AVAILABLE_FEATURES registration
 AVAILABLE_FEATURES = {
+    "default": {
+        "name": "Default sensor",
+        "description": "Base humidity sensor available for all devices",
+        "feature_module": "features.default",
+        "handler": "handle_hvac_ventilator",
+        "default_enabled": True,
+    },
     "humidity_control": {
         "name": "Humidity Control",
-        "description": "Advanced humidity-based ventilation control",
-        "entities": {
-            "sensor": ["indoor_absolute_humidity", "indoor_relative_humidity"],
-            "switch": ["dehumidify", "boost"],
-            "number": ["target_humidity"],
-            "binary_sensor": ["humidity_high", "humidity_low"],
-        },
-        "automation": True,
-        "services": True,
-        "websocket_commands": [],
-        "ui_card": False,
+        "description": "Automatic humidity control and dehumidification management",
+        "feature_module": "features.humidity_control",
+        "handler": "handle_hvac_ventilator",
+        "default_enabled": False,
     },
     "hvac_fan_card": {
         "name": "HVAC Fan Card",
-        "description": "Real-time HVAC system monitoring card",
-        "entities": {},
-        "automation": False,
-        "services": False,
-        "websocket_commands": [],
-        "ui_card": True,
-        "card_config": {
-            "handle_codes": ["31DA", "10D0"],
-            "callback_prefix": "handle_",
-        }
+        "description": "Advanced fan card for control and configuration",
+        "feature_module": "features.hvac_fan_card",
+        "handler": "handle_hvac_ventilator",
+        "default_enabled": False,
     },
 }
 ```
 
+#### Dynamic Entity Registry
+
+The **RamsesEntityRegistry** provides centralized feature loading and entity management:
+
+```python
+# Entity registry automatically discovers and loads feature configurations
+class RamsesEntityRegistry:
+    def load_all_features(self, enabled_features: list[str]) -> None:
+        """Load definitions from all enabled features (lazy loading)."""
+        # Always load default feature definitions first
+        if "default" not in self._loaded_features:
+            self.load_feature_definitions(
+                "default", "custom_components.ramses_extras.features.default"
+            )
+
+        # Load each enabled feature dynamically
+        for feature_name in enabled_features:
+            if feature_name not in self._loaded_features:
+                feature_module_path = (
+                    f"custom_components.ramses_extras.features.{feature_name}"
+                )
+                self.load_feature_definitions(feature_name, feature_module_path)
+```
+
+#### Feature Component Structure
+
+Each feature contains standardized components and factory functions:
+
+```python
+# features/humidity_control/__init__.py - Feature factory pattern
+def create_humidity_control_feature(hass: Any, config_entry: Any) -> dict[str, Any]:
+    """Factory function to create humidity control feature."""
+    return {
+        "automation": HumidityAutomationManager(hass, config_entry),
+        "entities": HumidityEntities(hass, config_entry),
+        "services": HumidityServices(hass, config_entry),
+        "config": HumidityConfig(hass, config_entry),
+        "enhanced": enhanced_feature,  # Enhanced functionality
+        "platforms": {
+            "sensor": {
+                "async_setup_entry": sensor_async_setup_entry,
+                "create_sensor": create_humidity_sensor,
+            },
+            "switch": {
+                "async_setup_entry": switch_async_setup_entry,
+                "create_switch": create_humidity_switch,
+                "entity_class": HumidityControlSwitch,
+            },
+            # ... other platforms
+        },
+    }
+```
+
+**Where factory functions are called:**
+- **During Integration Setup**: When Home Assistant loads the Ramses Extras integration
+- **Per Enabled Feature**: The main integration calls `create_{feature_name}_feature()` for each enabled feature
+- **Platform Registration**: Factory functions are called to register feature platforms with Home Assistant
+- **Dynamic Loading**: Features are created on-demand when devices are discovered and features are enabled
+
+#### Entity Configuration System
+
+Features define their entity configurations in `const.py` and register them through `load_feature_definitions()`:
+
+```python
+# features/humidity_control/const.py
+HUMIDITY_SWITCH_CONFIGS = {
+    "dehumidify": {
+        "name_template": "Dehumidify {device_id}",
+        "icon": "mdi:air-humidifier",
+        "entity_category": EntityCategory.CONFIG,
+        "supported_device_types": ["HvacVentilator"],
+        "entity_template": "dehumidify_{device_id}",
+    },
+}
+
+HUMIDITY_DEVICE_ENTITY_MAPPING = {
+    "HvacVentilator": {
+        "switch": ["dehumidify"],
+        "number": ["relative_humidity_minimum", "relative_humidity_maximum"],
+        "binary_sensor": ["dehumidifying_active"],
+    },
+}
+
+# Feature registration function
+def load_feature() -> None:
+    """Load humidity control feature into the registry."""
+    # Register entity configurations
+    extras_registry.register_switch_configs(HUMIDITY_SWITCH_CONFIGS)
+    extras_registry.register_device_mappings(HUMIDITY_DEVICE_ENTITY_MAPPING)
+    extras_registry.register_feature("humidity_control")
+```
+
+The `load_feature()` function is called by the EntityRegistry's `load_feature_definitions()` method to dynamically register the feature's entity configurations.
+
+#### Enhanced Features with Brand Customization
+
+Some features include **enhanced versions** with brand-specific logic:
+
+Note: this is WIP
+
+```python
+# Enhanced humidity control with brand customizations
+class EnhancedHumidityControl:
+    def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
+        self._brand_customizers: dict[str, Any] = {
+            "orcon": OrconDeviceCustomizer(hass),
+            "zehnder": ZehnderDeviceCustomizer(hass),
+        }
+
+    async def _handle_orcon_device(self, event_data: dict[str, Any]) -> None:
+        """Apply Orcon-specific humidity control customizations."""
+        orcon_customizer = self._brand_customizers["orcon"]
+        await orcon_customizer.customize_orcon_device(device, event_data)
+        await self._apply_humidity_customizations(event_data, "orcon")
+```
+
 #### Runtime Feature Management
 
-Features can be enabled/disabled through HA's Options flow:
+Features are managed through Home Assistant's Options flow with EntityManager integration:
 
 ```python
 class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_features(self, user_input=None):
-        """Manage enabled features."""
+        """Manage enabled features with entity lifecycle management."""
         if user_input is not None:
-            # Update enabled features
             enabled_features = user_input.get("enabled_features", {})
 
-            # Use EntityManager to handle entity changes
+            # Use EntityManager for comprehensive entity management
             self._entity_manager = EntityManager(self.hass)
             await self._entity_manager.build_entity_catalog(
                 AVAILABLE_FEATURES, self.config_entry.data.get("enabled_features", {})
@@ -1386,7 +1625,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             if entities_to_remove or entities_to_create:
                 return await self.async_step_confirm()
 
-            # No entity changes, update config
+            # Update configuration
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
                 data={**self.config_entry.data, "enabled_features": enabled_features}
@@ -1397,18 +1636,53 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="features",
             data_schema=vol.Schema({
-                vol.Optional("enabled_features", default=self.current_features): cv.multi_select(
-                    {fid: info["name"] for fid, info in AVAILABLE_FEATURES.items()}
-                )
+                vol.Optional("enabled_features", default=self.current_features):
+                    cv.multi_select({fid: info["name"] for fid, info in AVAILABLE_FEATURES.items()})
             })
         )
 ```
 
-### 12.3. JavaScript Asset Deployment
+#### Features with Cards
+
+Features that provide a card use a card management system:
+
+```python
+# features/hvac_fan_card/__init__.py
+def create_hvac_fan_card_feature(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[str, Any]:
+    """Factory function to create HVAC fan card feature."""
+    return {
+        "card_manager": HvacFanCardManager(hass, config_entry),
+        "feature_name": "hvac_fan_card",
+    }
+```
+
+#### WebSocket Integration
+
+Features can register WebSocket commands through the registry:
+
+```python
+# Feature registers its WebSocket commands
+register_ws_commands("humidity_control", HUMIDITY_CONTROL_WEBSOCKET_COMMANDS)
+
+# Commands are automatically discovered and registered
+discover_ws_commands() -> list[str]  # Returns ["default", "humidity_control", ...]
+```
+
+#### Key Benefits of Feature-Centric Design
+
+1. **Modularity**: Each feature is completely self-contained
+2. **Scalability**: Easy to add new features without affecting existing ones
+3. **Framework**: Faster development of new features by using the framework and helper methods
+4. **Lazy Loading**: Features are only loaded when enabled
+5. **Dynamic Discovery**: Automatic entity and capability discovery
+6. **Consistent Patterns**: All features follow the same factory pattern
+7. **Centralized Registry**: Single source of truth for all feature definitions
+
+### 13.3. JavaScript Asset Deployment
 
 #### Automatic Deployment
 
-JavaScript cards and helpers are automatically deployed when features are enabled:
+JavaScript cards and helpers are automatically deployed when it's features are enabled:
 
 ```python
 async def _deploy_assets(hass, enabled_features):
@@ -1464,99 +1738,42 @@ export const PATHS = {
 };
 ```
 
-### 12.4. Troubleshooting Common Issues
-
-#### Feature Not Loading
-
-**Symptoms**: Feature doesn't appear in HA configuration options
-
-**Solutions**:
-1. Check `AVAILABLE_FEATURES` registration in main `const.py`
-2. Verify feature factory function is properly implemented
-3. Check HA logs for import or initialization errors
-4. Ensure feature directory structure is correct
-
-#### Entities Not Created
-
-**Symptoms**: Features enabled but no entities appear in HA
-
-**Solutions**:
-1. Verify feature is enabled in HA configuration
-2. Check EntityManager logs for entity catalog building issues
-3. Ensure platform files are properly implemented
-4. Verify device discovery is working correctly
-
-#### JavaScript Cards Not Loading
-
-**Symptoms**: UI cards don't appear or show errors
-
-**Solutions**:
-1. Check that asset deployment completed successfully
-2. Verify JavaScript files exist in `config/www/ramses_extras/`
-3. Check browser console for JavaScript errors
-4. Ensure feature has `ui_card: true` in configuration
-
-#### WebSocket Command Failures
-
-**Symptoms**: WebSocket commands return errors or time out
-
-**Solutions**:
-1. Verify WebSocket commands are registered during setup
-2. Check parameter validation and required fields
-3. Ensure device_id is properly formatted and exists
-4. Check HA logs for WebSocket-related errors
-
-#### Performance Issues
-
-**Symptoms**: Slow entity creation, high memory usage, or laggy UI
-
-**Solutions**:
-1. Use EntityManager bulk operations for entity changes
-2. Enable caching for frequently accessed data
-3. Monitor device discovery performance
-4. Optimize JavaScript card update frequency
-
-### 12.5. Debug Configuration
-
-#### Logging Configuration
-
-Enable detailed logging in HA configuration:
-
-```yaml
-# configuration.yaml
-logger:
-  default: info
-  logs:
-    custom_components.ramses_extras: debug
-    custom_components.ramses_extras.framework: debug
-    custom_components.ramses_extras.features: debug
-```
-
-#### Debug Tools
-
-1. **EntityManager Debug**: Use `get_entity_summary()` to check entity catalog state
-2. **WebSocket Testing**: Use `callWebSocket()` function to test WebSocket commands
-3. **Message Listener Debug**: Use `RamsesMessageBroker.instance.getListenerInfo()` for message routing
-4. **Device Enumeration Debug**: Check logs for device enumeration and handler execution
-
 ---
 
-## 13. Contributing
+## 14. Contributing
 
-### 13.1. Development Workflow
+### 14.1. Development Workflow
 
 #### Setting Up Development Environment
 
 1. **Clone Repository**: Get the latest source code
-2. **Install Dependencies**: Set up Python virtual environment
+    ```bash
+    git clone https://github.com/wimpie70/ramses_extras.git
+    cd ramses_extras
+    ```
+2. **Create the virtual environment**
+    ```bash
+    python3.13 -m venv venvs/extras
+    ```
+3. **Install Dependencies**: Set up Python virtual environment
    ```bash
    source ~/venvs/extras/bin/activate
-   cd /home/willem/dev/ramses_extras
+   pip install -r requirements_dev.txt
+   pre-commit install
    ```
-3. **Install Pre-commit**: Set up code quality tools
 4. **Run Tests**: Verify local test suite passes
    ```bash
-   make local-ci
+    #All Python tests
+    pytest -v
+
+    #Specific test file
+    pytest tests/managers/test_humidity_automation.py -v
+
+    #With coverage
+    pytest --cov=custom_components/ramses_extras
+
+    #Quality checks
+    make local-ci
    ```
 
 #### Code Quality Standards
@@ -1582,7 +1799,7 @@ All code changes must pass:
 
 3. **Integration Tests**: Test with actual Home Assistant instances
 
-### 13.2. Code Review Guidelines
+### 14.2. Code Review Guidelines
 
 #### Review Checklist
 
@@ -1601,7 +1818,7 @@ All code changes must pass:
 4. **Error Handling**: "Add graceful degradation for error cases"
 5. **Documentation**: "Add documentation for new APIs or complex logic"
 
-### 13.3. Feature Development Process
+### 14.3. Feature Development Process
 
 #### Planning Phase
 - Design feature architecture following established patterns
@@ -1629,7 +1846,7 @@ All code changes must pass:
 - Address review feedback
 - Ensure all tests pass and quality standards are met
 
-### 13.4. Documentation Standards
+### 14.4. Documentation Standards
 
 #### Required Documentation
 
@@ -1653,7 +1870,7 @@ For framework changes:
 - **Consistent**: Follow established documentation patterns
 - **Up-to-date**: Keep documentation current with implementation
 
-### 13.5. Release Process
+### 14.5. Release Process
 
 #### Version Management
 - Follow semantic versioning (MAJOR.MINOR.PATCH)
@@ -1673,7 +1890,7 @@ For framework changes:
 - Prepare hotfixes if critical issues are discovered
 - Plan next release based on feature roadmap and community feedback
 
-### 13.6. Staying Current with ramses_cc
+### 14.6. Staying Current with ramses_cc
 
 Ramses Extras maintains close synchronization with the ramses_cc integration:
 
@@ -1695,7 +1912,10 @@ Ramses Extras maintains close synchronization with the ramses_cc integration:
 - **Community Coordination**: Work closely with ramses_cc development community
 - **Migration Planning**: Plan smooth migrations for major ramses_cc changes
 
-### 13.7. Community Guidelines
+#### Migrating functionality to and from ramses RF
+ - Some functionality would be better handled inside Ramses RF or vice verse. We can always see what's best and adapt accordingly
+
+### 14.7. Community Guidelines
 
 #### Getting Help
 - Check existing documentation before asking questions
