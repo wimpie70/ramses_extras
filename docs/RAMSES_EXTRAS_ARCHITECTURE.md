@@ -1,84 +1,29 @@
 # Ramses Extras Architecture Guide
 
 ## 1. Table of Contents
-
 - [1. Table of Contents](#1-table-of-contents)
 - [2. Overview \& Quick Start](#2-overview--quick-start)
-  - [2.1. What is Ramses Extras?](#21-what-is-ramses-extras)
-  - [2.2. Core Benefits](#22-core-benefits)
-  - [2.3. Key Concepts](#23-key-concepts)
-  - [2.4. Quick Start for Developers](#24-quick-start-for-developers)
 - [3. System Architecture](#3-system-architecture)
-  - [3.1. High-Level Architecture](#31-high-level-architecture)
-  - [3.2. Core Design Principles](#32-core-design-principles)
-  - [3.3. Directory Structure](#33-directory-structure)
-  - [3.4. Integration Flow](#34-integration-flow)
-  - [3.5. ramses\_cc Integration Architecture](#35-ramses_cc-integration-architecture)
 - [4. Feature System](#4-feature-system)
-  - [4.1. How Features Work](#41-how-features-work)
-  - [4.2. Feature Lifecycle](#42-feature-lifecycle)
-  - [4.3. Current Features](#43-current-features)
-  - [4.4. Feature Structure Pattern](#44-feature-structure-pattern)
-  - [4.5. Feature Components](#45-feature-components)
-  - [4.6. Adding New Features](#46-adding-new-features)
 - [5. Framework Foundation](#5-framework-foundation)
-  - [5.1. Base Classes](#51-base-classes)
-  - [5.2. Helper Modules](#52-helper-modules)
-  - [5.3. Managers](#53-managers)
-  - [5.4. Framework Services](#54-framework-services)
 - [6. Home Assistant Integration](#6-home-assistant-integration)
-  - [6.1. Platform Integration Architecture](#61-platform-integration-architecture)
-  - [6.2. Entity Management](#62-entity-management)
-  - [6.3. Configuration Flow Integration](#63-configuration-flow-integration)
-  - [6.4. Service Integration](#64-service-integration)
 - [7. Frontend Architecture](#7-frontend-architecture)
-  - [7.1. JavaScript Card System](#71-javascript-card-system)
-  - [7.2. Real-Time Message System](#72-real-time-message-system)
-  - [7.3. Translation System](#73-translation-system)
-  - [7.4. Template Systems](#74-template-systems)
 - [8. Development Guide](#8-development-guide)
-  - [8.1. Coding Standards and Conventions](#81-coding-standards-and-conventions)
-  - [8.2. Development Workflow](#82-development-workflow)
-  - [8.3. Testing Structure](#83-testing-structure)
 - [9. Debugging and Troubleshooting Guide](#9-debugging-and-troubleshooting-guide)
-  - [9.1. Common Issues and Solutions](#91-common-issues-and-solutions)
-  - [9.2. Debug Tools](#92-debug-tools)
-  - [9.3. Working Debug Tool Examples](#93-working-debug-tool-examples)
-  - [9.4. Debug Configuration](#94-debug-configuration)
 - [10. API Reference](#10-api-reference)
-  - [10.1. Entity Naming System API](#101-entity-naming-system-api)
-  - [10.2. EntityManager API](#102-entitymanager-api)
-  - [10.3. WebSocket Commands API](#103-websocket-commands-api)
-  - [10.4. Device Handler API](#104-device-handler-api)
 - [11. Implementation Details](#11-implementation-details)
-  - [11.1. Core Algorithms and Patterns](#111-core-algorithms-and-patterns)
-  - [11.2. Error Handling Strategies](#112-error-handling-strategies)
-  - [11.3. Security Considerations](#113-security-considerations)
 - [12. Examples \& Patterns](#12-examples--patterns)
-  - [12.1. Common Implementation Patterns](#121-common-implementation-patterns)
-  - [12.2. Integration Examples](#122-integration-examples)
-  - [12.3. Best Practices](#123-best-practices)
 - [13. Deployment \& Configuration](#13-deployment--configuration)
-  - [13.1. Installation and Setup](#131-installation-and-setup)
-  - [13.2. Feature-Centric Design Configuration](#132-feature-centric-design-configuration)
-  - [13.3. JavaScript Asset Deployment](#133-javascript-asset-deployment)
 - [14. Contributing](#14-contributing)
-  - [14.1. Development Workflow](#141-development-workflow)
-  - [14.2. Code Review Guidelines](#142-code-review-guidelines)
-  - [14.3. Feature Development Process](#143-feature-development-process)
-  - [14.4. Documentation Standards](#144-documentation-standards)
-  - [14.5. Release Process](#145-release-process)
-  - [14.6. Staying Current with ramses\_cc](#146-staying-current-with-ramses_cc)
-  - [14.7. Community Guidelines](#147-community-guidelines)
 
 ---
 ## 2. Overview & Quick Start
 
-### 2.1. What is Ramses Extras?
+### What is Ramses Extras?
 
 Ramses Extras is a **feature-centric** Home Assistant integration that extends the ramses_cc integration with additional entities, automation, and UI components. It provides a clean, modular architecture that allows for easy extension and customization.
 
-### 2.2. Core Benefits
+### Core Benefits
 
 - **Feature-Centric Design**: Each feature is self-contained with its own automation, services, entities, and UI
 - **Framework Foundation**: Reusable components that all features can use
@@ -86,14 +31,14 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 - **Modular Architecture**: Easy to add new features using established patterns
 - **Real-time Updates**: WebSocket APIs and message listeners for immediate UI updates
 
-### 2.3. Key Concepts
+### Key Concepts
 
 - **Features**: Self-contained modules that provide specific functionality
 - **Framework**: Reusable base classes, helpers, and utilities
 - **Platforms**: Home Assistant integration layer for entities and services
 - **Cards**: JavaScript-based UI components for the Lovelace interface
 
-### 2.4. Quick Start for Developers
+### Quick Start for Developers
 
 1. **Understand the Structure**: Features → Framework → HA Platforms
 2. **Enable Features**: Add features to `AVAILABLE_FEATURES` in `const.py`
@@ -105,7 +50,7 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 
 ## 3. System Architecture
 
-### 3.1. High-Level Architecture
+### High-Level Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -129,7 +74,7 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 └────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2. Core Design Principles
+### Core Design Principles
 
 #### Feature-Centric Organization
 - Each feature is **self-contained** with its own automation, services, entities, and config
@@ -169,7 +114,7 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 - **Testing Parity**: Maintain same test coverage and quality standards as ramses_cc
 - **Documentation Standards**: Follow ramses_cc documentation and commenting patterns
 
-### 3.3. Directory Structure
+### Directory Structure
 
 ```
 custom_components/ramses_extras/
@@ -244,7 +189,7 @@ custom_components/ramses_extras/
     └── nl.json                 # Dutch integration strings
 ```
 
-### 3.4. Integration Flow
+### Integration Flow
 
 **Step 1:** **HA Integration Loads** - `__init__.py` handles integration setup
 **Step 2:** **ramses_cc Readiness Check** - Integration waits for ramses_cc to be loaded
@@ -276,7 +221,7 @@ else:
 3. **Device Enumeration** - Requires ramses_cc broker access for device enumeration
 4. **Event Integration** - Needs ramses_cc event system for real-time updates
 
-### 3.5. ramses_cc Integration Architecture
+### ramses_cc Integration Architecture
 
 Ramses Extras builds upon the ramses_cc integration by providing direct hooks into the underlying communication layer:
 
@@ -347,11 +292,11 @@ else:
 
 ## 4. Feature System
 
-### 4.1. How Features Work
+### How Features Work
 
 Each feature is a self-contained module that provides specific functionality. Features follow a consistent pattern and can be enabled/disabled independently.
 
-### 4.2. Feature Lifecycle
+### Feature Lifecycle
 
 1. **Registration**: Feature added to `AVAILABLE_FEATURES` in main `const.py`
 2. **Discovery**: Config flow discovers available features
@@ -360,7 +305,7 @@ Each feature is a self-contained module that provides specific functionality. Fe
 5. **Registration**: Feature registers its platforms with Home Assistant
 6. **Operation**: Feature operates independently with its own entities and automations
 
-### 4.3. Current Features
+### Current Features
 
 #### ✅ Humidity Control
 - **Purpose**: Advanced humidity-based ventilation control
@@ -380,7 +325,7 @@ Each feature is a self-contained module that provides specific functionality. Fe
 - **Humidity Control Card**: Dedicated UI for humidity management
 - **Custom Features**: Framework supports any number of additional features
 
-### 4.4. Feature Structure Pattern
+### Feature Structure Pattern
 
 ```python
 # features/humidity_control/__init__.py
@@ -399,7 +344,7 @@ def create_humidity_control_feature(hass, config_entry):
     }
 ```
 
-### 4.5. Feature Components
+### Feature Components
 
 Each feature contains these core components. **Some components are optional** depending on the feature's functionality:
 
@@ -416,7 +361,7 @@ Each feature contains these core components. **Some components are optional** de
 - **www/**: JavaScript UI components for Lovelace cards - Optional, only if feature needs UI components
 - **websocket_commands.py**: WebSocket API commands - Optional, only if feature needs WebSocket APIs
 
-### 4.6. Adding New Features
+### Adding New Features
 
 1. **Create Feature Structure**
    ```bash
@@ -443,7 +388,7 @@ Each feature contains these core components. **Some components are optional** de
 
 ## 5. Framework Foundation
 
-### 5.1. Base Classes
+### Base Classes
 
 The framework provides reusable base classes that all features can inherit from:
 
@@ -457,7 +402,7 @@ The framework provides reusable base classes that all features can inherit from:
 - **Location**: `framework/base_classes/base_automation.py`
 - **Features**: Automation patterns, lifecycle management, event handling
 
-### 5.2. Helper Modules
+### Helper Modules
 
 #### Entity Helpers (`framework/helpers/entity/`)
 - **Core Functions**: Entity creation, validation, naming utilities
@@ -479,7 +424,7 @@ The framework provides reusable base classes that all features can inherit from:
 - **Logging**: Standardized logging patterns
 - **Error Handling**: Common error handling strategies
 
-### 5.3. Managers
+### Managers
 
 #### FeatureManager (`framework/managers/feature_manager.py`)
 - **Purpose**: Feature lifecycle management (activation/deactivation)
@@ -489,7 +434,7 @@ The framework provides reusable base classes that all features can inherit from:
 - **Purpose**: Centralized entity registration and management
 - **Features**: Entity catalog building, change detection, bulk operations
 
-### 5.4. Framework Services
+### Framework Services
 
 #### Path Management
 - **Python Paths**: `framework/helpers/paths.py` - Shared path constants
@@ -505,7 +450,7 @@ The framework provides reusable base classes that all features can inherit from:
 
 ## 6. Home Assistant Integration
 
-### 6.1. Platform Integration Architecture
+### Platform Integration Architecture
 
 Ramses Extras uses a **thin wrapper** architecture for Home Assistant platform integration:
 
@@ -535,7 +480,7 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
     # Feature-specific behavior
 ```
 
-### 6.2. Entity Management
+### Entity Management
 
 #### EntityManager System
 The EntityManager provides centralized entity lifecycle management during config flow operations:
@@ -567,7 +512,7 @@ Universal entity naming with automatic format detection:
 - **Extras Format**: Device ID at end (`sensor.indoor_absolute_humidity_32_153289`)
 - **Automatic Detection**: Format determined by device_id position within entity name
 
-### 6.3. Configuration Flow Integration
+### Configuration Flow Integration
 
 ```python
 # config_flow.py
@@ -589,7 +534,7 @@ async def async_step_features(self, user_input):
         return await self.async_step_confirm()
 ```
 
-### 6.4. Service Integration
+### Service Integration
 
 - **Integration-Level Services**: Services defined in `services.yaml`
 - **Feature-Specific Services**: Implemented in feature `services.py` files
@@ -600,7 +545,7 @@ async def async_step_features(self, user_input):
 
 ## 7. Frontend Architecture
 
-### 7.1. JavaScript Card System
+### JavaScript Card System
 
 Ramses Extras provides a sophisticated JavaScript-based frontend system for Lovelace UI integration:
 
@@ -649,7 +594,7 @@ hass/config/www/ramses_extras/
         └── translations/
 ```
 
-### 7.2. Real-Time Message System
+### Real-Time Message System
 
 #### JavaScript Message Listener Integration
 The system provides real-time HVAC state updates through ramses_cc 31DA message handling:
@@ -674,7 +619,7 @@ Real-time     Route to correct           Extract/format             Immediate UI
 HVAC Data     card                       data                       re-render
 ```
 
-### 7.3. Translation System
+### Translation System
 
 #### Two-Level Translation Architecture
 
@@ -688,7 +633,7 @@ HVAC Data     card                       data                       re-render
    - **Deployment Location**: `config/www/ramses_extras/features/{feature}/translations/` directories
    - **Purpose**: JavaScript cards, UI elements, and frontend strings
 
-### 7.4. Template Systems
+### Template Systems
 
 #### JavaScript Template System (Frontend Cards)
 - **Location**: `features/{feature}/www/{feature}/templates/` directories
@@ -707,7 +652,7 @@ You are welcome to contribute to this integration. If you are missing support fo
 
 Also read the `Contributing` section on github to see how to setup a development environment.
 
-### 8.1. Coding Standards and Conventions
+### Coding Standards and Conventions
 
 #### File Responsibilities
 - **Root Platform Files**: Only HA integration code, forward to features
@@ -733,7 +678,7 @@ from custom_components.ramses_extras.const import DOMAIN
 from homeassistant.config_entries import ConfigEntry
 ```
 
-### 8.2. Development Workflow
+### Development Workflow
 
 1. **Feature Development**
    - Create feature structure following established patterns
@@ -750,7 +695,7 @@ from homeassistant.config_entries import ConfigEntry
    - Update architecture guide for new patterns or components
    - Provide examples for common use cases
 
-### 8.3. Testing Structure
+### Testing Structure
 
 ```
 tests/
@@ -772,7 +717,7 @@ tests/
 
 This comprehensive troubleshooting guide covers common issues, debugging tools, and solutions for Ramses Extras integration.
 
-### 9.1. Common Issues and Solutions
+### Common Issues and Solutions
 
 #### Feature Not Loading
 
@@ -837,7 +782,7 @@ This comprehensive troubleshooting guide covers common issues, debugging tools, 
 3. Monitor device discovery performance
 4. Optimize JavaScript card update frequency
 
-### 9.2. Debug Tools
+### Debug Tools
 
 #### EntityManager Debug
 - Use `get_entity_summary()` for entity catalog debugging
@@ -855,7 +800,7 @@ This comprehensive troubleshooting guide covers common issues, debugging tools, 
 - Check logs for device enumeration and handler execution
 - Monitor device discovery performance
 
-### 9.3. Working Debug Tool Examples
+### Working Debug Tool Examples
 
 #### EntityManager Debug (Python)
 ```python
@@ -881,7 +826,7 @@ const listenerInfo = RamsesMessageBroker.instance.getListenerInfo();
 console.log('Active listeners:', listenerInfo);
 ```
 
-### 9.4. Debug Configuration
+### Debug Configuration
 
 #### Logging Configuration
 
@@ -908,7 +853,7 @@ logger:
 
 ## 10. API Reference
 
-### 10.1. Entity Naming System API
+### Entity Naming System API
 
 #### Core Functions
 
@@ -954,7 +899,7 @@ TEMPLATES_UNIVERSAL = {
 }
 ```
 
-### 10.2. EntityManager API
+### EntityManager API
 
 #### Core Methods
 
@@ -999,7 +944,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             )
 ```
 
-### 10.3. WebSocket Commands API
+### WebSocket Commands API
 
 #### Command Registration
 
@@ -1040,7 +985,7 @@ const schema = await callWebSocket(hass, {
 });
 ```
 
-### 10.4. Device Handler API
+### Device Handler API
 
 #### Device Type Handler Mapping
 
@@ -1091,7 +1036,7 @@ async def _on_device_ready_for_entities(self, event_data):
 
 ## 11. Implementation Details
 
-### 11.1. Core Algorithms and Patterns
+### Core Algorithms and Patterns
 
 #### Entity Format Detection Algorithm
 
@@ -1138,7 +1083,7 @@ async def build_entity_catalog(self, available_features, current_features):
 ```
 
 
-### 11.2. Error Handling Strategies
+### Error Handling Strategies
 
 #### Graceful Degradation
 - Entity registry access failures return empty set (don't stop catalog building)
@@ -1162,7 +1107,7 @@ async def build_entity_catalog(self, available_features, current_features):
             continue  # Skip this feature, continue with others
 ```
 
-### 11.3. Security Considerations
+### Security Considerations
 
 #### Input Validation
 - Voluptuous schema validation for all WebSocket parameters
@@ -1183,7 +1128,7 @@ async def build_entity_catalog(self, available_features, current_features):
 
 ## 12. Examples & Patterns
 
-### 12.1. Common Implementation Patterns
+### Common Implementation Patterns
 
 #### Feature Development Pattern
 
@@ -1332,7 +1277,7 @@ async def ws_get_bound_rem_default(hass, connection, msg):
         connection.send_error(msg["id"], "unknown_error", str(err))
 ```
 
-### 12.2. Integration Examples
+### Integration Examples
 
 #### Adding Custom Entity Types
 
@@ -1398,7 +1343,7 @@ def _is_orcon_device(self, device) -> bool:
     return device.manufacturer == "Orcon" or "orcon" in device.model.lower()
 ```
 
-### 12.3. Best Practices
+### Best Practices
 
 #### Performance Optimization
 1. **Use EntityManager**: Centralized entity operations for efficiency
@@ -1428,7 +1373,7 @@ def _is_orcon_device(self, device) -> bool:
 
 ## 13. Deployment & Configuration
 
-### 13.1. Installation and Setup
+### Installation and Setup
 
 #### Prerequisites
 - Home Assistant instance (minimum version requirements in `manifest.json`)
@@ -1442,7 +1387,7 @@ def _is_orcon_device(self, device) -> bool:
 4. **Enable Features**: Select desired features during configuration
 5. **Verify Entities**: Check that entities are created for enabled features
 
-### 13.2. Feature-Centric Design Configuration
+### Feature-Centric Design Configuration
 
 #### Core Feature Architecture
 
@@ -1678,7 +1623,7 @@ discover_ws_commands() -> list[str]  # Returns ["default", "humidity_control", .
 6. **Consistent Patterns**: All features follow the same factory pattern
 7. **Centralized Registry**: Single source of truth for all feature definitions
 
-### 13.3. JavaScript Asset Deployment
+### JavaScript Asset Deployment
 
 #### Automatic Deployment
 
@@ -1742,7 +1687,7 @@ export const PATHS = {
 
 ## 14. Contributing
 
-### 14.1. Development Workflow
+### Development Workflow
 
 #### Setting Up Development Environment
 
@@ -1799,7 +1744,7 @@ All code changes must pass:
 
 3. **Integration Tests**: Test with actual Home Assistant instances
 
-### 14.2. Code Review Guidelines
+### Code Review Guidelines
 
 #### Review Checklist
 
@@ -1818,7 +1763,7 @@ All code changes must pass:
 4. **Error Handling**: "Add graceful degradation for error cases"
 5. **Documentation**: "Add documentation for new APIs or complex logic"
 
-### 14.3. Feature Development Process
+### Feature Development Process
 
 #### Planning Phase
 - Design feature architecture following established patterns
@@ -1846,7 +1791,7 @@ All code changes must pass:
 - Address review feedback
 - Ensure all tests pass and quality standards are met
 
-### 14.4. Documentation Standards
+### Documentation Standards
 
 #### Required Documentation
 
@@ -1870,7 +1815,7 @@ For framework changes:
 - **Consistent**: Follow established documentation patterns
 - **Up-to-date**: Keep documentation current with implementation
 
-### 14.5. Release Process
+### Release Process
 
 #### Version Management
 - Follow semantic versioning (MAJOR.MINOR.PATCH)
@@ -1890,7 +1835,7 @@ For framework changes:
 - Prepare hotfixes if critical issues are discovered
 - Plan next release based on feature roadmap and community feedback
 
-### 14.6. Staying Current with ramses_cc
+### Staying Current with ramses_cc
 
 Ramses Extras maintains close synchronization with the ramses_cc integration:
 
@@ -1915,7 +1860,7 @@ Ramses Extras maintains close synchronization with the ramses_cc integration:
 #### Migrating functionality to and from ramses RF
  - Some functionality would be better handled inside Ramses RF or vice verse. We can always see what's best and adapt accordingly
 
-### 14.7. Community Guidelines
+### Community Guidelines
 
 #### Getting Help
 - Check existing documentation before asking questions
