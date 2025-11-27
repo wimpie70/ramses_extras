@@ -8,15 +8,13 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.ramses_extras.framework.base_classes.base_entity import (
-    ExtrasBaseEntity,
+from custom_components.ramses_extras.framework.base_classes.platform_entities import (
+    ExtrasBinarySensorEntity,
 )
-from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +25,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control binary sensor platform."""
-    _LOGGER.info("Setting up humidity control binary sensor")
+    from custom_components.ramses_extras.framework.base_classes import (
+        platform_entities,
+    )
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
@@ -78,7 +78,7 @@ async def async_setup_entry(
 
 async def create_humidity_control_binary_sensor(
     hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
-) -> list[BinarySensorEntity]:
+) -> list[ExtrasBinarySensorEntity]:
     """Create humidity control binary sensor for a device.
 
     Args:
@@ -107,7 +107,7 @@ async def create_humidity_control_binary_sensor(
     return binary_sensor
 
 
-class HumidityControlBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
+class HumidityControlBinarySensor(ExtrasBinarySensorEntity):
     """Binary sensor for humidity control feature.
 
     This class handles the state of dehumidifying equipment and
@@ -130,48 +130,10 @@ class HumidityControlBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
             config: Binary sensor configuration
         """
         # Initialize base entity
-        ExtrasBaseEntity.__init__(self, hass, device_id, binary_type, config)
-
-        # Set binary sensor-specific attributes
-        self._binary_type = binary_type
-        self._attr_device_class = config.get("device_class")
-
-        # Use automatic format detection with EntityHelpers
-        device_id_underscore = device_id.replace(":", "_")
-
-        # Get the template from config (e.g., "dehumidifying_active_{device_id}")
-        entity_template = config.get("entity_template", f"{binary_type}_{{device_id}}")
-
-        try:
-            # Generate entity_id using automatic format detection
-            self.entity_id = EntityHelpers.generate_entity_name_from_template(
-                "binary_sensor", entity_template, device_id=device_id_underscore
-            )
-            self._attr_unique_id = self.entity_id.replace("binary_sensor.", "")
-        except Exception as e:
-            _LOGGER.warning(
-                f"Entity name generation failed for {binary_type} device "
-                f"{device_id_underscore}: {e}. "
-                "This indicates a configuration issue that needs to be resolved."
-            )
-
-        # Set display name from template
-        name_template = config.get(
-            "name_template", f"{binary_type} {device_id_underscore}"
-        )
-        self._attr_name = name_template.format(device_id=device_id_underscore)
+        super().__init__(hass, device_id, binary_type, config)
 
         # Initialize state
-        self._is_on = False
         self._current_fan_speed = "auto"  # Track current fan speed
-
-    @property
-    def name(self) -> str:
-        """Return the name of the entity."""
-        return (
-            self._attr_name
-            or f"{self._binary_type} {self._device_id.replace(':', '_')}"
-        )
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
@@ -227,7 +189,7 @@ class HumidityControlBinarySensor(BinarySensorEntity, ExtrasBaseEntity):
         base_attrs = super().extra_state_attributes or {}
         return {
             **base_attrs,
-            "binary_type": self._binary_type,
+            "binary_type": self._entity_type,
             "controlled_by": "automation",
             "current_fan_speed": self._current_fan_speed,
         }

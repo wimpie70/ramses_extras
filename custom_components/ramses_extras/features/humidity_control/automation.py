@@ -459,7 +459,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
 
             if binary_sensor_entity:
-                await binary_sensor_entity.async_turn_off()
+                binary_sensor_entity.set_state(False)
                 _LOGGER.debug(f"Set indicator OFF for device {device_id}")
             else:
                 _LOGGER.warning(
@@ -794,10 +794,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
 
             if binary_sensor_entity:
-                if is_active:
-                    await binary_sensor_entity.async_turn_on()
-                else:
-                    await binary_sensor_entity.async_turn_off()
+                binary_sensor_entity.set_state(is_active)
                 _LOGGER.debug(
                     f"Updated binary sensor {entity_id}: {'on' if is_active else 'off'}"
                 )

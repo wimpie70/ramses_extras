@@ -7,13 +7,13 @@ for humidity control feature.
 import logging
 from typing import Any
 
-from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.ramses_extras.framework.base_classes import ExtrasBaseEntity
-from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
+from custom_components.ramses_extras.framework.base_classes.platform_entities import (
+    ExtrasNumberEntity,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,28 +24,24 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control number platform."""
-    _LOGGER.info("Setting up humidity control number entities")
-
-    # Get devices from Home Assistant data
-    devices = hass.data.get("ramses_extras", {}).get("devices", [])
-    _LOGGER.info(
-        f"Humidity control number platform: found {len(devices)} devices: {devices}"
+    from custom_components.ramses_extras.framework.base_classes import (
+        platform_entities,
     )
 
-    number = []
-    for device_id in devices:
-        # Create humidity control number
-        device_number = await create_humidity_number(hass, device_id, config_entry)
-        number.extend(device_number)
-        _LOGGER.info(f"Created {len(device_number)} number for device {device_id}")
-
-    _LOGGER.info(f"Total number created: {len(number)}")
-    async_add_entities(number, True)
+    await platform_entities.generic_platform_setup(
+        hass=hass,
+        config_entry=config_entry,
+        async_add_entities=async_add_entities,
+        feature_id="humidity_control",
+        platform_configs={},
+        entity_factory=create_humidity_number,
+        platform_type="number",
+    )
 
 
 async def create_humidity_number(
     hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
-) -> list[NumberEntity]:
+) -> list[ExtrasNumberEntity]:
     """Create humidity control number for a device.
 
     Args:
@@ -74,7 +70,7 @@ async def create_humidity_number(
     return number_list
 
 
-class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
+class HumidityControlNumber(ExtrasNumberEntity):
     """Number entity for humidity control feature.
 
     This class handles configuration parameters for humidity control,
@@ -99,42 +95,7 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
             config_entry: Configuration entry for saving values
         """
         # Initialize base entity
-        ExtrasBaseEntity.__init__(self, hass, device_id, number_type, config)
-
-        self.config_entry = config_entry
-
-        # Set number-specific attributes
-        self._number_type = number_type
-        self._attr_native_unit_of_measurement = config.get("unit", "%")
-        self._attr_device_class = config.get("device_class")
-        self._attr_native_min_value = config.get("min_value", 0.0)
-        self._attr_native_max_value = config.get("max_value", 100.0)
-        self._attr_native_step = config.get("step", 1.0)
-
-        # Use automatic format detection with EntityHelpers
-        device_id_underscore = device_id.replace(":", "_")
-
-        # Get the template from config (e.g., "relative_humidity_minimum_{device_id}")
-        entity_template = config.get("entity_template", f"{number_type}_{{device_id}}")
-
-        try:
-            # Generate entity_id using automatic format detection
-            self.entity_id = EntityHelpers.generate_entity_name_from_template(
-                "number", entity_template, device_id=device_id_underscore
-            )
-            self._attr_unique_id = self.entity_id.replace("number.", "")
-        except Exception as e:
-            _LOGGER.warning(
-                f"Entity name generation failed for {number_type} device "
-                f"{device_id_underscore}: {e}. "
-                "This indicates a configuration issue that needs to be resolved."
-            )
-
-        # Set display name from template
-        name_template = config.get(
-            "name_template", f"{number_type} {device_id_underscore}"
-        )
-        self._attr_name = name_template.format(device_id=device_id_underscore)
+        super().__init__(hass, device_id, number_type, config, config_entry)
 
         # Initialize value - load from config entry if available, else default
         self._native_value: float = self._load_value_from_config(
@@ -157,15 +118,7 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
         humidity_config = self.config_entry.options.get("humidity_control", {}).get(
             device_key, {}
         )
-        return float(humidity_config.get(self._number_type, default_value))
-
-    @property
-    def name(self) -> str:
-        """Return the name of the entity."""
-        return (
-            self._attr_name
-            or f"{self._number_type} {self._device_id.replace(':', '_')}"
-        )
+        return float(humidity_config.get(self._entity_type, default_value))
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
@@ -185,29 +138,23 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the value."""
-        self._native_value = value
-        self.async_write_ha_state()
+        # Use base class method which calls _save_value_to_config
+        await super().async_set_native_value(value)
 
-        # Save to config entry
-        if self.config_entry:
-            device_key = self._device_id.replace(":", "_")
-            options = dict(self.config_entry.options)
-            if "humidity_control" not in options:
-                options["humidity_control"] = {}
-            if device_key not in options["humidity_control"]:
-                options["humidity_control"][device_key] = {}
-            options["humidity_control"][device_key][self._number_type] = value
-            await self.hass.config_entries.async_update_entry(
-                self.config_entry, options=options
-            )
+    async def _save_value_to_config(self, value: float) -> None:
+        """Save number value to config entry with humidity_control feature key."""
+        if not self.config_entry:
+            return
 
-        _LOGGER.info(
-            "Number %s value set to %s (min: %s, max: %s, step: %s)",
-            self._attr_name,
-            value,
-            self._attr_native_min_value,
-            self._attr_native_max_value,
-            self._attr_native_step,
+        device_key = self.device_id.replace(":", "_")
+        options = dict(self.config_entry.options)
+        if "humidity_control" not in options:
+            options["humidity_control"] = {}
+        if device_key not in options["humidity_control"]:
+            options["humidity_control"][device_key] = {}
+        options["humidity_control"][device_key][self._entity_type] = value
+        await self.hass.config_entries.async_update_entry(
+            self.config_entry, options=options
         )
 
     @property
@@ -216,7 +163,7 @@ class HumidityControlNumber(NumberEntity, ExtrasBaseEntity):
         base_attrs = super().extra_state_attributes or {}
         return {
             **base_attrs,
-            "number_type": self._number_type,
+            "number_type": self._entity_type,
             "min_value": self._attr_native_min_value,
             "max_value": self._attr_native_max_value,
             "step": self._attr_native_step,

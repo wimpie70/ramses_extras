@@ -7,16 +7,13 @@ for humidity control feature.
 import logging
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change
 
-from custom_components.ramses_extras.framework.base_classes.base_entity import (
-    ExtrasBaseEntity,
+from custom_components.ramses_extras.framework.base_classes.platform_entities import (
+    ExtrasSensorEntity,
 )
-from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,28 +24,24 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control sensor platform."""
-    _LOGGER.info("Setting up humidity control sensor")
-
-    # Get devices from Home Assistant data
-    devices = hass.data.get("ramses_extras", {}).get("devices", [])
-    _LOGGER.info(
-        f"Humidity control sensor platform: found {len(devices)} devices: {devices}"
+    from custom_components.ramses_extras.framework.base_classes import (
+        platform_entities,
     )
 
-    sensor = []
-    for device_id in devices:
-        # Create humidity-specific sensor
-        device_sensor = await create_humidity_sensor(hass, device_id, config_entry)
-        sensor.extend(device_sensor)
-        _LOGGER.info(f"Created {len(device_sensor)} sensor for device {device_id}")
-
-    _LOGGER.info(f"Total sensor created: {len(sensor)}")
-    async_add_entities(sensor, True)
+    await platform_entities.generic_platform_setup(
+        hass=hass,
+        config_entry=config_entry,
+        async_add_entities=async_add_entities,
+        feature_id="humidity_control",
+        platform_configs={},
+        entity_factory=create_humidity_sensor,
+        platform_type="sensor",
+    )
 
 
 async def create_humidity_sensor(
     hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
-) -> list[SensorEntity]:
+) -> list[ExtrasSensorEntity]:
     """Create humidity sensor for a device.
 
     Args:

@@ -1,9 +1,21 @@
-"""Platform helper functions for Ramses Extras."""
+"""Enhanced platform setup framework for Ramses Extras.
+
+This module provides reusable platform setup patterns that extract common
+functionality from platform implementations across all features.
+
+Key components:
+- PlatformSetup: Generic platform setup utilities
+- Entity factory patterns for consistent entity creation
+- Device filtering and validation
+- Configuration-driven entity generation
+"""
 
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -161,3 +173,268 @@ async def async_setup_platform(
         f"Platform {platform} setup completed with {len(required_entities)} "
         f"required entity types: {required_entities}"
     )
+
+
+class PlatformSetup:
+    """Enhanced platform setup utilities for all features.
+
+    This class provides reusable platform setup patterns that extract common
+    functionality from platform implementations, reducing code duplication
+    and ensuring consistency across all features.
+    """
+
+    @staticmethod
+    async def async_setup_platform(
+        platform: str,
+        hass: "HomeAssistant",
+        config_entry: ConfigEntry,
+        async_add_entities: AddEntitiesCallback,
+        entity_configs: dict[str, Any],
+        entity_factory: Callable[
+            ["HomeAssistant", str, ConfigEntry | None], Awaitable[list[Entity]]
+        ],
+    ) -> None:
+        """Generic platform setup with entity creation.
+
+        This method extracts the common platform setup pattern used across
+        all platform files, providing a reusable foundation for new features.
+
+        Args:
+            platform: Platform type (sensor, switch, binary_sensor, number)
+            hass: Home Assistant instance
+            config_entry: Configuration entry
+            async_add_entities: Add entities callback
+            entity_configs: Dictionary of entity configurations
+            entity_factory: Factory function to create entities
+        """
+        _LOGGER.info("Setting up %s platform with generic setup", platform)
+
+        # Get devices from Home Assistant data
+        devices = hass.data.get("ramses_extras", {}).get("devices", [])
+        _LOGGER.info(
+            "%s platform: found %d devices: %s", platform, len(devices), devices
+        )
+
+        if not devices:
+            _LOGGER.warning("No devices found for %s platform", platform)
+            return
+
+        entities = []
+        for device_id in devices:
+            try:
+                # Create entities for this device using the provided factory
+                device_entities = await entity_factory(hass, device_id, config_entry)
+                entities.extend(device_entities)
+                _LOGGER.info(
+                    "Created %d %s entities for device %s",
+                    len(device_entities),
+                    platform,
+                    device_id,
+                )
+            except Exception as e:
+                _LOGGER.error(
+                    "Failed to create %s entities for device %s: %e",
+                    platform,
+                    device_id,
+                    e,
+                )
+
+        _LOGGER.info("Total %s entities created: %d", platform, len(entities))
+        if entities:
+            async_add_entities(entities, True)
+            _LOGGER.info("%s entities added to Home Assistant", platform)
+
+    @staticmethod
+    def create_entities_for_device(
+        device_id: str,
+        entity_configs: dict[str, Any],
+        entity_factory: Callable[["HomeAssistant", str, dict[str, Any]], Entity],
+        hass: Optional["HomeAssistant"] = None,
+    ) -> list[Entity]:
+        """Create entities for a specific device.
+
+        This method provides a consistent way to create multiple entities
+        for a device based on configuration.
+
+        Args:
+            device_id: Device identifier
+            entity_configs: Dictionary of entity configurations
+            entity_factory: Factory function to create individual entities
+            hass: Optional Home Assistant instance
+
+        Returns:
+            List of created entities
+        """
+        entities = []
+
+        for entity_type, config in entity_configs.items():
+            try:
+                # Check if device supports this entity type
+                if not PlatformSetup._is_entity_supported_for_device(device_id, config):
+                    _LOGGER.debug(
+                        "Entity type %s not supported for device %s",
+                        entity_type,
+                        device_id,
+                    )
+                    continue
+
+                # Create entity using the factory
+                entity = entity_factory(hass, device_id, config)
+                if entity:
+                    entities.append(entity)
+                    _LOGGER.debug(
+                        "Created %s entity for device %s", entity_type, device_id
+                    )
+            except Exception as e:
+                _LOGGER.error(
+                    "Failed to create %s entity for device %s: %e",
+                    entity_type,
+                    device_id,
+                    e,
+                )
+
+        return entities
+
+    @staticmethod
+    def _is_entity_supported_for_device(device_id: str, config: dict[str, Any]) -> bool:
+        """Check if an entity type is supported for a device.
+
+        Args:
+            device_id: Device identifier
+            config: Entity configuration
+
+        Returns:
+            True if entity is supported for the device
+        """
+        supported_device_types = config.get("supported_device_types", [])
+
+        # If no specific device types are required, entity is supported
+        if not supported_device_types:
+            return True
+
+        # Check if device matches any of the supported types
+        # This is a simple implementation - can be enhanced with actual
+        # device type detection from device metadata
+        for supported_type in supported_device_types:
+            if supported_type in device_id:
+                return True
+
+        return False
+
+    @staticmethod
+    def filter_configs_by_device(
+        entity_configs: dict[str, Any], device_id: str
+    ) -> dict[str, Any]:
+        """Filter entity configurations to only include supported entities for a device.
+
+        Args:
+            entity_configs: All entity configurations
+            device_id: Device identifier
+
+        Returns:
+            Filtered configuration dictionary
+        """
+        filtered_configs = {}
+
+        for entity_type, config in entity_configs.items():
+            if PlatformSetup._is_entity_supported_for_device(device_id, config):
+                filtered_configs[entity_type] = config
+
+        return filtered_configs
+
+    @staticmethod
+    def get_platform_key(platform: str) -> str:
+        """Convert platform name to the correct entity key in the configuration.
+
+        This method provides a consistent way to map platform names to
+        configuration keys across the framework.
+
+        Args:
+            platform: Platform name (sensor, switch, binary_sensor, number)
+
+        Returns:
+            Correct key for configuration lookup
+        """
+        # Convert platform name to plural form for configuration lookup
+        platform_to_key = {
+            "sensor": "sensor",
+            "switch": "switch",
+            "binary_sensor": "binary_sensor",
+            "number": "number",
+        }
+        return platform_to_key.get(platform, f"{platform}s")
+
+    @staticmethod
+    async def setup_feature_platforms(
+        hass: "HomeAssistant",
+        config_entry: ConfigEntry,
+        feature_id: str,
+        platform_mappings: dict[str, dict[str, Any]],
+        async_add_entities_callbacks: dict[str, AddEntitiesCallback],
+    ) -> None:
+        """Setup all platforms for a feature.
+
+        This method provides a comprehensive way to setup multiple platforms
+        for a feature with consistent error handling and logging.
+
+        Args:
+            hass: Home Assistant instance
+            config_entry: Configuration entry
+            feature_id: Feature identifier
+            platform_mappings: Mapping of platform names to entity configurations
+            async_add_entities_callbacks: Mapping of platform names to add callbacks
+        """
+        _LOGGER.info("Setting up all platforms for feature: %s", feature_id)
+
+        for platform, entity_configs in platform_mappings.items():
+            if platform not in async_add_entities_callbacks:
+                _LOGGER.warning(
+                    "No async_add_entities callback found for platform %s "
+                    "in feature %s",
+                    platform,
+                    feature_id,
+                )
+                continue
+
+            try:
+                await PlatformSetup.async_setup_platform(
+                    platform=platform,
+                    hass=hass,
+                    config_entry=config_entry,
+                    async_add_entities=async_add_entities_callbacks[platform],
+                    entity_configs=entity_configs,
+                    entity_factory=PlatformSetup._default_entity_factory,
+                )
+            except Exception as e:
+                _LOGGER.error(
+                    "Failed to setup %s platform for feature %s: %e",
+                    platform,
+                    feature_id,
+                    e,
+                )
+
+    @staticmethod
+    async def _default_entity_factory(
+        hass: "HomeAssistant", device_id: str, config_entry: ConfigEntry | None = None
+    ) -> list[Entity]:
+        """Default entity factory for basic entity creation.
+
+        This is a placeholder factory that features can override with
+        their specific entity creation logic.
+
+        Args:
+            hass: Home Assistant instance
+            device_id: Device identifier
+            config: Entity configuration
+
+        Returns:
+            Created entity or None
+        """
+        # This should be overridden by features with their specific logic
+        _LOGGER.warning(
+            "Default entity factory called - feature should provide custom factory. "
+            "Device: %s, ConfigEntry: %s",
+            device_id,
+            config_entry,
+        )
+        return []

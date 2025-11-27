@@ -7,14 +7,12 @@ for humidity control feature.
 import logging
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.ramses_extras.framework.base_classes.base_entity import (
-    ExtrasBaseEntity,
+from custom_components.ramses_extras.framework.base_classes.platform_entities import (
+    ExtrasSwitchEntity,
 )
-from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -28,28 +26,24 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up humidity control switch platform."""
-    _LOGGER.info("Setting up humidity control switch")
-
-    # Get devices from Home Assistant data
-    devices = hass.data.get("ramses_extras", {}).get("devices", [])
-    _LOGGER.info(
-        f"Humidity control switch platform: found {len(devices)} devices: {devices}"
+    from custom_components.ramses_extras.framework.base_classes import (
+        platform_entities,
     )
 
-    switch = []
-    for device_id in devices:
-        # Create humidity-specific switch
-        device_switch = await create_humidity_switch(hass, device_id, config_entry)
-        switch.extend(device_switch)
-        _LOGGER.info(f"Created {len(device_switch)} switch for device {device_id}")
-
-    _LOGGER.info(f"Total switch created: {len(switch)}")
-    async_add_entities(switch, True)
+    await platform_entities.generic_platform_setup(
+        hass=hass,
+        config_entry=config_entry,
+        async_add_entities=async_add_entities,
+        feature_id="humidity_control",
+        platform_configs={},
+        entity_factory=create_humidity_switch,
+        platform_type="switch",
+    )
 
 
 async def create_humidity_switch(
     hass: "HomeAssistant", device_id: str, config_entry: ConfigEntry | None = None
-) -> list[SwitchEntity]:
+) -> list[ExtrasSwitchEntity]:
     """Create humidity switch for a device.
 
     Args:
@@ -77,7 +71,7 @@ async def create_humidity_switch(
     return switch_list
 
 
-class HumidityControlSwitch(SwitchEntity, ExtrasBaseEntity):
+class HumidityControlSwitch(ExtrasSwitchEntity):
     """Switch to toggle dehumidify mode."""
 
     def __init__(
@@ -87,45 +81,8 @@ class HumidityControlSwitch(SwitchEntity, ExtrasBaseEntity):
         switch_type: str,
         config: dict[str, Any],
     ):
-        # Initialize base entity
-        ExtrasBaseEntity.__init__(self, hass, device_id, switch_type, config)
-
-        # Set switch-specific attributes
-        self._switch_type = switch_type
-
-        # Convert device_id to underscore format for entity generation
-        device_id_underscore = device_id.replace(":", "_")
-
-        # Use automatic format detection with EntityHelpers
-        # Get the template from config (e.g., "dehumidify_{device_id}")
-        entity_template = config.get("entity_template", f"{switch_type}_{{device_id}}")
-
-        try:
-            # Generate entity_id using automatic format detection
-            self.entity_id = EntityHelpers.generate_entity_name_from_template(
-                "switch", entity_template, device_id=device_id_underscore
-            )
-            self._attr_unique_id = self.entity_id.replace("switch.", "")
-        except Exception as e:
-            _LOGGER.warning(
-                f"Entity name generation failed for {switch_type} "
-                f"on device {device_id_underscore}: {e}. "
-                "This indicates a configuration issue that needs to be resolved."
-            )
-
-        # Set display name from template
-        name_template = (
-            config.get("name_template", "Dehumidify {device_id}")
-            or "Dehumidify {device_id}"
-        )
-        self._attr_name = name_template.format(device_id=device_id_underscore)
-
-        self._is_on = False
-
-    @property
-    def name(self) -> str:
-        """Return the name of the entity."""
-        return self._attr_name or "Dehumidify"
+        # Initialize base entity with platform type
+        super().__init__(hass, device_id, switch_type, config)
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
