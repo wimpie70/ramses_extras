@@ -25,7 +25,7 @@ Ramses Extras provides additional features, entities, automation, and UI compone
 
 note: the following are tested with an Orcon WTW FAN
 
-### **✅ Humidity Control (Partially Implemented)**
+### **✅ Humidity Control**
 
 **Intelligent humidity-based ventilation automation:**
 
@@ -39,14 +39,7 @@ note: the following are tested with an Orcon WTW FAN
 - **Bilingual Support**: English and Dutch translations
 - **Full Test Coverage**: Comprehensive test suite with validation
 
-**How it works:**
-
-1. **Monitors** absolute humidity levels inside and outside
-2. **Calculates** optimal ventilation strategy using temperature differentials
-3. **Controls** fan speeds to either bring in drier air or prevent moisture ingress
-4. **Provides** real-time status and manual override capabilities
-
-### **✅ HVAC Fan Card (Partially Implemented)**
+### **✅ HVAC Fan Card**
 
 **Advanced Lovelace card for ventilation system control:**
 
@@ -107,44 +100,11 @@ After enabling a feature Ramses Extras will automatically create the associated 
 
 Ramses Extras uses a **feature-centric architecture** built on a **framework foundation**. For detailed architecture information, see the [Wiki Architecture Guide](https://github.com/wimpie70/ramses_extras/wiki).
 
-## 📚 **Documentation**
-
-- 🏠 **[Wiki Home](https://github.com/wimpie70/ramses_extras/wiki)**: Complete architecture guide and troubleshooting
-- 📖 **[Architecture Guide](docs/RAMSES_EXTRAS_ARCHITECTURE.md)**: System architecture and design decisions
-- 🛠️ **[Development Guide](README_DEV.md)**: Setup and contribution guidelines
-
 ## 🔧 **Requirements**
 
 - **Home Assistant**: 2025.10.4 or later
 - **Ramses RF** (ramses_cc): v0.52.1 (pre-release) or later: https://github.com/ramses-rf/ramses_cc
 - **Python**: 3.13
-
-## 🧪 **Development & Testing**
-
-### **Development Setup**
-
-```bash
-# Clone and setup
-git clone https://github.com/wimpie70/ramses_extras.git
-cd ramses_extras
-source ~/venvs/extras/bin/activate
-pre-commit install
-```
-
-### **Testing & Quality**
-
-```bash
-# Run all tests
-pytest -v
-
-# Quality checks
-make local-ci
-
-# Specific test
-pytest tests/managers/test_humidity_automation.py -v
-```
-
-See the [Architecture Guide](https://github.com/wimpie70/ramses_extras/wiki) for detailed development patterns and guidelines.
 
 ## 🤝 **Contributing**
 
@@ -153,7 +113,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 ### **Quick Start**
 
 - 📖 Read the [Wiki Architecture Guide](https://github.com/wimpie70/ramses_extras/wiki)
-- 🛠️ Follow the [Development Guide](README_DEV.md)
+- 🛠️ Write your code
 - 🧪 Write tests for new features
 
 ## 📜 **License**
@@ -162,8 +122,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## 🙏 **Acknowledgments**
 
-- **Ramses RF Community**: For the excellent RF library
-- **Ramses CC**: For the Home Assistant integration foundation
+- **Ramses RF Community**: For the RF library
 - **Home Assistant**: For the fantastic automation platform
 - **Contributors**: Everyone who has contributed to this project
 
