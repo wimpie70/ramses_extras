@@ -536,9 +536,32 @@ class HumidityConfig(ExtrasConfigManager):
 #### Platform Entity Usage
 ```python
 class HumiditySwitch(ExtrasSwitchEntity):
+    """Switch entity for humidity control."""
+
     @property
-    def command_parameters(self):
-        return {"dehumidify": 1}
+    def is_on(self) -> bool:
+        """Return true if dehumidification is active."""
+        return self._is_on
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Activate dehumidification."""
+        # Call service layer for fan speed control
+        await self.hass.services.async_call(
+            "ramses_extras", "activate_dehumidification",
+            {"device_id": self.device_id}
+        )
+        self._is_on = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Deactivate dehumidification."""
+        # Call service layer for fan speed control
+        await self.hass.services.async_call(
+            "ramses_extras", "deactivate_dehumidification",
+            {"device_id": self.device_id}
+        )
+        self._is_on = False
+        self.async_write_ha_state()
 ```
 
 #### Service Framework Usage
@@ -773,25 +796,6 @@ The service framework provides comprehensive service registration, execution, an
 - Common service types (ACTION, STATUS, CONFIGURATION, etc.)
 - Performance monitoring and error handling
 
-**API**:
-```python
-class ExtrasServiceManager:
-    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
-        """Initialize service manager."""
-
-    def register_service(self, service_name: str, service_def: ServiceDefinition) -> None:
-        """Register service definition."""
-
-    async def execute_service(self, service_name: str, **kwargs) -> ServiceResult:
-        """Execute registered service."""
-
-    def get_service_info(self, service_name: str) -> ServiceInfo:
-        """Get service information."""
-
-    async def list_services(self) -> list[str]:
-        """List all registered services."""
-```
-
 #### ServiceRegistry (`framework/helpers/service/registration.py`)
 
 **Purpose**: Centralized registry for service definitions with metadata and organization
@@ -801,24 +805,6 @@ class ExtrasServiceManager:
 - Service indexing by type, scope, and tags
 - Feature-based service organization
 - Service discovery and filtering
-
-**API**```python
-class ServiceRegistry:
-    def __init__(self):
-        """Initialize service registry."""
-
-    def register_service_definition(self, service_def: ServiceDefinition) -> None:
-        """Register service definition."""
-
-    def get_services_by_type(self, service_type: ServiceType) -> list[ServiceDefinition]:
-        """Get services by type."""
-
-    def get_services_by_scope(self, scope: ServiceScope) -> list[ServiceDefinition]:
-        """Get services by scope."""
-
-    def find_services_by_tag(self, tag: str) -> list[ServiceDefinition]:
-        """Find services by tag."""
-```
 
 #### ServiceValidator (`framework/helpers/service/validation.py`)
 
@@ -831,24 +817,94 @@ class ServiceRegistry:
 - Timing constraint validation and performance monitoring
 - Caching for validation results
 
+### 🎛️ Command Framework
+
+The command framework provides centralized device command management with queuing and rate limiting.
+
+#### CommandRegistry (`framework/helpers/commands/registry.py`)
+
+**Purpose**: Centralized registry for device commands with feature ownership and conflict resolution
+
+**Key Features**:
+- Feature-based command registration
+- Device-type command organization
+- Duplicate detection with first-wins resolution
+- Developer warnings for naming conflicts
+
 **API**:
 ```python
-class ServiceValidator:
+class CommandRegistry:
+    def register_commands(self, feature_id: str, commands: dict[str, dict]) -> None:
+        """Register feature commands with conflict detection."""
+
+    def get_command(self, command_name: str) -> dict | None:
+        """Get command definition by name."""
+
+    def get_device_commands(self, device_type: str, category: str) -> dict[str, dict]:
+        """Get commands for device type and category."""
+
+    def list_commands_by_feature(self, feature_id: str) -> list[str]:
+        """List all commands registered by a feature."""
+```
+
+#### Enhanced RamsesCommands (`framework/helpers/ramses_commands.py`)
+
+**Purpose**: Device command execution with queuing, rate limiting, and async safety
+
+**Key Features**:
+- Per-device command queuing to prevent overwhelming communication layer
+- Rate limiting and priority-based scheduling
+- Async-safe design with background processing
+- Integration with command registry for feature-owned commands
+
+**API**:
+```python
+class RamsesCommands:
     def __init__(self, hass: HomeAssistant):
-        """Initialize service validator."""
+        """Initialize with command queuing and registry integration."""
 
-    async def validate_service_call(self, service_def: ServiceDefinition,
-                                   parameters: dict) -> ServiceValidationResult:
-        """Validate service call parameters."""
+    async def send_command(self, device_id: str, command_name: str,
+                          queue: bool = True, priority: str = "normal") -> CommandResult:
+        """Send command to device with optional queuing."""
 
-    async def validate_device_access(self, device_id: str) -> bool:
-        """Validate device access permissions."""
+    async def send_fan_command(self, device_id: str, command: str) -> bool:
+        """Legacy method for fan commands (uses queuing internally)."""
+```
 
-    async def validate_entity_exists(self, entity_id: str) -> bool:
-        """Validate entity existence."""
+#### Command Organization Pattern
 
-    def get_validation_cache_stats(self) -> dict:
-        """Get validation cache statistics."""
+**Default Feature Command Library:**
+```python
+# features/default/commands.py
+DEVICE_TYPE_COMMANDS = {
+    "HvacVentilator": {
+        "fan_speeds": {
+            "high": {"code": "22F1", "verb": " I", "payload": "000307"},
+            "low": {"code": "22F1", "verb": " I", "payload": "000107"},
+            "auto": {"code": "22F1", "verb": " I", "payload": "000407"},
+        },
+        "bypass": {
+            "open": {"code": "22F7", "verb": " W", "payload": "00C8EF"},
+            "close": {"code": "22F7", "verb": " W", "payload": "0000EF"},
+        }
+    }
+}
+```
+
+**Feature Command Registration:**
+```python
+# In feature factory
+def create_humidity_control_feature(hass, config_entry):
+    # Use standard HvacVentilator commands
+    fan_commands = command_registry.get_device_commands("HvacVentilator", "fan_speeds")
+
+    # Register feature-specific commands
+    custom_commands = {
+        "dehumidify_mode": {"code": "1234", "verb": " W", "payload": "DEhumidify"}
+    }
+    command_registry.register_commands("humidity_control", custom_commands)
+
+    return {"commands": {**fan_commands, **custom_commands}}
 ```
 
 ### 🏛️ Entity Management Framework
@@ -972,11 +1028,19 @@ class ExtrasSwitchEntity(ExtrasBaseEntity, SwitchEntity):
     """Generic switch entity for all features."""
 
     @property
-    def command_parameters(self) -> dict:
-        """Return command parameters for device communication."""
+    def is_on(self) -> bool:
+        """Return true if switch is on."""
+        return self._is_on
 
-    async def async_execute_command(self, **kwargs) -> None:
-        """Execute command using framework service manager."""
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn switch on."""
+        self._is_on = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn switch off."""
+        self._is_on = False
+        self.async_write_ha_state()
 
 class ExtrasNumberEntity(ExtrasBaseEntity, NumberEntity):
     """Generic number entity for all features."""
@@ -989,18 +1053,35 @@ class ExtrasNumberEntity(ExtrasBaseEntity, NumberEntity):
     def native_max_value(self) -> float:
         """Return maximum value."""
 
+    @property
+    def native_step(self) -> float:
+        """Return step value."""
+
     async def async_set_native_value(self, value: float) -> None:
-        """Set value using framework patterns."""
+        """Set the value."""
+        self._native_value = value
+        self.async_write_ha_state()
 
 class ExtrasBinarySensorEntity(ExtrasBaseEntity, BinarySensorEntity):
     """Generic binary sensor entity for all features."""
 
     @property
     def is_on(self) -> bool:
-        """Return sensor state."""
+        """Return true if binary sensor is on."""
+        return self._is_on
 
-    async def async_update(self) -> None:
-        """Update sensor state using framework patterns."""
+    def set_state(self, is_on: bool) -> None:
+        """Set the binary sensor state (used by automation)."""
+        self._is_on = is_on
+        self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the binary sensor."""
+        self.set_state(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the binary sensor."""
+        self.set_state(False)
 
 class ExtrasSensorEntity(ExtrasBaseEntity, SensorEntity):
     """Generic sensor entity for all features."""
