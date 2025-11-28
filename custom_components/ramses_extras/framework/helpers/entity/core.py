@@ -77,7 +77,7 @@ def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
 
     feature_module = importlib.import_module(feature_module_path)
 
-    # First try to get required_entities from the const data
+    # Get required_entities from the const data
     const_key = f"{feature_id.upper()}_CONST"
     if hasattr(feature_module, const_key):
         const_data = getattr(feature_module, const_key, {})
@@ -87,17 +87,8 @@ def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
         if required_entities:
             return required_entities
 
-    # Fallback to device entity mapping for backwards compatibility
-    mapping_key = f"{feature_id.upper()}_DEVICE_ENTITY_MAPPING"
-    device_mapping = getattr(feature_module, mapping_key, {})
-
-    # Convert device mapping to required entities format
-    required_entities = {}
-    for device_type, entity_names in device_mapping.items():
-        entity_type = f"{device_type.lower()}s"  # Convert to plural
-        required_entities[entity_type] = entity_names
-
-    return required_entities
+    # Return empty dict if no required_entities found
+    return {}
 
 
 def _singularize_entity_type(entity_type: str) -> str:
@@ -420,22 +411,6 @@ class EntityHelpers:
         return result
 
     @staticmethod
-    def generate_entity_name_from_config(
-        entity_type: str, entity_name: str, device_id: str
-    ) -> str:
-        """Generate entity ID using feature config format (backward compatibility).
-
-        Args:
-            entity_type: Type of entity ("sensor", "switch", "number", "binary_sensor")
-            entity_name: Name of the entity from config
-            device_id: Device identifier (e.g., "32_153289")
-
-        Returns:
-            Generated entity ID using Extras format (backward compatibility)
-        """
-        return f"{entity_type}.{entity_name}_{device_id}"
-
-    @staticmethod
     def parse_entity_id_with_validation(entity_id: str) -> tuple[str, str, str]:
         """Parse entity ID with comprehensive validation and error handling."""
         try:
@@ -749,7 +724,6 @@ def _import_entity_mappings_sync(feature_id: str, device_id: str) -> dict[str, s
 __all__ = [
     "EntityHelpers",
     "get_feature_entity_mappings",
-    "generate_entity_id",
     "generate_entity_from_template",
     "generate_entity_patterns_for_feature",
     "get_entities_for_device",
@@ -760,15 +734,6 @@ __all__ = [
 
 
 # Additional utility functions
-def generate_entity_id(entity_type: str, entity_name: str, device_id: str) -> str:
-    """Generate a consistent entity ID from type, name, and device ID.
-
-    This is a convenience wrapper around
-    EntityHelpers.generate_entity_name_from_config for backward compatibility.
-    """
-    return EntityHelpers.generate_entity_name_from_config(
-        entity_type, entity_name, device_id
-    )
 
 
 def generate_entity_from_template(

@@ -257,6 +257,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Ensure all features are present in the config (for backward compatibility)
         if len(current_features) != len(AVAILABLE_FEATURES):
+            _LOGGER.warning("backward compatible code used")
             # Initialize missing features with their default values
             for feature_key, feature_config in AVAILABLE_FEATURES.items():
                 if feature_key not in current_features:

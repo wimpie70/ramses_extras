@@ -172,39 +172,6 @@ async def ws_get_2411_schema(
         )
 
 
-# Default fallback schema parameters for HVAC devices
-DEFAULT_2411_SCHEMA_PARAMS: list[str] = [
-    "31",  # Temperature offset
-    "75",  # Comfort temperature
-    "89",  # Fan speed minimum
-    "90",  # Fan speed maximum
-]
-
-
-def _get_fallback_2411_schema() -> dict[str, Any]:
-    """Get fallback 2411 schema when device-specific schema is not available.
-
-    Returns:
-        Basic parameter schema for HVAC devices
-    """
-    schema = {}
-
-    # Create schema for common parameters
-    for param_id in DEFAULT_2411_SCHEMA_PARAMS:
-        schema[param_id] = {
-            "description": f"Parameter {param_id}",
-            "name": f"Parameter {param_id}",
-            "min_value": 0,
-            "max_value": 100,
-            "default_value": 50,
-            "precision": 1,
-            "data_type": "01",
-            "unit": "",
-        }
-
-    return schema
-
-
 def get_2411_schema_for_device_type(device_type: str) -> dict[str, Any]:
     """Get 2411 schema for a specific device type.
 
@@ -220,10 +187,8 @@ def get_2411_schema_for_device_type(device_type: str) -> dict[str, Any]:
 
         return dict(_2411_PARAMS_SCHEMA)  # Convert to dict[str, Any] explicitly
     except ImportError:
-        _LOGGER.warning(
-            "Could not import _2411_PARAMS_SCHEMA from ramses_tx, using fallback"
-        )
-        return _get_fallback_2411_schema()
+        _LOGGER.warning("Could not import _2411_PARAMS_SCHEMA from ramses_tx")
+        return {}
 
 
 def get_available_2411_parameters() -> list[str]:
@@ -238,30 +203,8 @@ def get_available_2411_parameters() -> list[str]:
 
         return list(_2411_PARAMS_SCHEMA.keys())
     except ImportError:
-        _LOGGER.warning(
-            "Could not import _2411_PARAMS_SCHEMA from ramses_tx, using fallback"
-        )
-        return DEFAULT_2411_SCHEMA_PARAMS.copy()
-
-
-def register_ws_commands(hass: HomeAssistant) -> None:
-    """Register all websocket commands for Ramses Extras default feature."""
-    # Commands are automatically registered when functions are defined with decorators
-    # This function exists for compatibility with the old architecture
-    _LOGGER.info("Default feature WebSocket commands registered (using HA decorators)")
-
-
-# For backwards compatibility with old approach
-def get_default_websocket_commands() -> dict[str, Any]:
-    """Get all WebSocket commands for the default feature.
-
-    Returns:
-        Dictionary mapping command names to handler functions
-    """
-    return {
-        "get_bound_rem": ws_get_bound_rem,
-        "get_2411_schema": ws_get_2411_schema,
-    }
+        _LOGGER.warning("Could not import _2411_PARAMS_SCHEMA from ramses_tx")
+        return []
 
 
 def get_command_info() -> dict[str, dict]:

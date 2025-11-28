@@ -3,7 +3,6 @@
 from .core import (
     EntityHelpers,
     filter_entities_by_patterns,
-    generate_entity_id,
     generate_entity_patterns_for_feature,
     get_entities_for_device,
     get_entity_device_id,
@@ -17,7 +16,6 @@ __all__ = [
     "EntityManager",
     "EntityInfo",
     "filter_entities_by_patterns",
-    "generate_entity_id",
     "generate_entity_patterns_for_feature",
     "get_entities_for_device",
     "get_entity_device_id",

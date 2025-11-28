@@ -29,7 +29,7 @@ def _get_required_entities_from_feature(feature_id: str) -> dict[str, list[str]]
 
         feature_module = importlib.import_module(feature_module_path)
 
-        # Try to get the feature constants first (preferred method)
+        # Get the feature constants
         const_key = f"{feature_id.upper()}_CONST"
         feature_const = getattr(feature_module, const_key, None)
 
@@ -39,22 +39,11 @@ def _get_required_entities_from_feature(feature_id: str) -> dict[str, list[str]]
                 f"{feature_const['required_entities']}"
             )
             return cast(dict[str, list[str]], feature_const["required_entities"])
-
-        # Fallback to device entity mapping method
-        mapping_key = f"{feature_id.upper()}_DEVICE_ENTITY_MAPPING"
-        device_mapping = getattr(feature_module, mapping_key, {})
-
-        # Convert device mapping to required entities format
-        required_entities = {}
-        for device_type, entity_names in device_mapping.items():
-            entity_type = f"{device_type.lower()}s"  # Convert to plural
-            required_entities[entity_type] = entity_names
-
-        _LOGGER.debug(f"Found required entities for {feature_id}: {required_entities}")
-        return required_entities
     except Exception as e:
         _LOGGER.debug(f"Could not get required entities for {feature_id}: {e}")
-        return {}
+
+    # Return empty dict for all failure cases
+    return {}
 
 
 def _singularize_entity_type(entity_type: str) -> str:

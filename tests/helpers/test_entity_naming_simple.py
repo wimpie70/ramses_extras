@@ -121,19 +121,6 @@ ENTITY_TYPE_CONFIGS = {
 
 
 # Now define the helper functions (copied from device.py without HA dependencies)
-def generate_entity_id(entity_type: str, entity_name: str, device_id: str) -> str:
-    """Generate a consistent entity ID from type, name, and device ID."""
-    type_to_prefix = {
-        "sensor": "sensor",
-        "switch": "switch",
-        "number": "number",
-        "binary_sensor": "binary_sensor",
-    }
-
-    prefix = type_to_prefix.get(entity_type, entity_type)
-    return f"{prefix}.{device_id}_{entity_name}"
-
-
 def get_entity_template(entity_type: str, entity_name: str) -> str | None:
     """Get the entity template for a specific entity type and name."""
     configs = ENTITY_TYPE_CONFIGS.get(entity_type, {})

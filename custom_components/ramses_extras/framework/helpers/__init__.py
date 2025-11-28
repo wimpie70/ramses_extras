@@ -36,7 +36,6 @@ from .device import (
 from .entity import (
     EntityHelpers,
     filter_entities_by_patterns,
-    generate_entity_id,
     generate_entity_patterns_for_feature,
     get_entities_for_device,
     get_entity_device_id,
@@ -53,7 +52,6 @@ from .ramses_commands import (
 __all__ = [
     # Entity helpers
     "EntityHelpers",
-    "generate_entity_id",
     "parse_entity_id",
     "get_entity_device_id",
     "get_entities_for_device",
