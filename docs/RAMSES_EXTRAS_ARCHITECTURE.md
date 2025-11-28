@@ -7,15 +7,15 @@
 - [4. Feature System](#4-feature-system)
 - [5. Framework Foundation](#5-framework-foundation)
 - [6. Framework Components Reference](#6-framework-components-reference)
-- [8. Home Assistant Integration](#8-home-assistant-integration)
-- [7. Frontend Architecture](#7-frontend-architecture)
-- [8. Development Guide](#8-development-guide)
-- [9. Debugging and Troubleshooting Guide](#9-debugging-and-troubleshooting-guide)
-- [10. API Reference](#10-api-reference)
-- [11. Implementation Details](#11-implementation-details)
-- [12. Examples \& Patterns](#12-examples--patterns)
-- [13. Deployment \& Configuration](#13-deployment--configuration)
-- [14. Contributing](#14-contributing)
+- [7. Home Assistant Integration](#7-home-assistant-integration)
+- [8. Frontend Architecture](#8-frontend-architecture)
+- [9. Development Guide](#9-development-guide)
+- [10. Debugging and Troubleshooting Guide](#10-debugging-and-troubleshooting-guide)
+- [11. API Reference](#11-api-reference)
+- [12. Implementation Details](#12-implementation-details)
+- [13. Examples \& Patterns](#13-examples--patterns)
+- [14. Deployment \& Configuration](#14-deployment--configuration)
+- [15. Contributing](#15-contributing)
 
 ---
 ## 2. Overview & Quick Start
@@ -1058,7 +1058,7 @@ def create_my_feature(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[st
 
 
 
-## 8. Home Assistant Integration
+## 7. Home Assistant Integration
 
 ### Platform Integration Architecture
 
@@ -1153,7 +1153,7 @@ async def async_step_features(self, user_input):
 
 ---
 
-## 7. Frontend Architecture
+## 8. Frontend Architecture
 
 ### JavaScript Card System
 
@@ -1256,7 +1256,7 @@ HVAC Data     card                       data                       re-render
 
 ---
 
-## 8. Development Guide
+## 9. Development Guide
 
 You are welcome to contribute to this integration. If you are missing support for a device, or have a nice card that you like to share, please do. You can contribute to this github repo, leave a message (issue) when you have questions, an idea, or found bugs.
 
@@ -1369,7 +1369,7 @@ tests/
 └── test_registry.py             # Integration tests
 ```
 
-## 9. Debugging and Troubleshooting Guide
+## 10. Debugging and Troubleshooting Guide
 
 This comprehensive troubleshooting guide covers common issues, debugging tools, and solutions for Ramses Extras integration.
 
@@ -1507,7 +1507,7 @@ logger:
 
 ---
 
-## 10. API Reference
+## 11. API Reference
 
 ### Entity Naming System API
 
@@ -1690,7 +1690,7 @@ async def _on_device_ready_for_entities(self, event_data):
 
 ---
 
-## 11. Implementation Details
+## 12. Implementation Details
 
 ### Core Algorithms and Patterns
 
@@ -1782,7 +1782,7 @@ async def build_entity_catalog(self, available_features, current_features):
 
 ---
 
-## 12. Examples & Patterns
+## 13. Examples & Patterns
 
 ### Common Implementation Patterns
 
@@ -2027,7 +2027,7 @@ def _is_orcon_device(self, device) -> bool:
 
 ---
 
-## 13. Deployment & Configuration
+## 14. Deployment & Configuration
 
 ### Installation and Setup
 
@@ -2341,7 +2341,7 @@ export const PATHS = {
 
 ---
 
-## 14. Contributing
+## 15. Contributing
 
 ### Development Workflow
 
