@@ -6,7 +6,8 @@
 - [3. System Architecture](#3-system-architecture)
 - [4. Feature System](#4-feature-system)
 - [5. Framework Foundation](#5-framework-foundation)
-- [6. Home Assistant Integration](#6-home-assistant-integration)
+- [6. Framework Components Reference](#6-framework-components-reference)
+- [8. Home Assistant Integration](#8-home-assistant-integration)
 - [7. Frontend Architecture](#7-frontend-architecture)
 - [8. Development Guide](#8-development-guide)
 - [9. Debugging and Troubleshooting Guide](#9-debugging-and-troubleshooting-guide)
@@ -153,29 +154,53 @@ custom_components/ramses_extras/
 │       ├── __init__.py
 │       └── const.py
 │
-├── 🏛️ Framework (Reusable Foundation)
+├── 🏛️ Framework (Reusable Foundation) - ✅ ENHANCED
 │   ├── base_classes/            # Base classes for inheritance
-│   │   ├── base_entity.py       # Entity base classes
-│   │   ├── base_automation.py   # Automation base class
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   ├── base_automation.py          # ✅ Existing automation base
+│   │   ├── base_entity.py              # ✅ Existing entity base
+│   │   └── platform_entities.py        # 🆕 Generic platform entities
 │   │
 │   ├── helpers/                 # Reusable Python utilities
-│   │   ├── entity/              # Entity helpers
-│   │   ├── device/              # Device helpers
-│   │   ├── automation/          # Automation helpers
-│   │   └── common/              # Common utilities
+│   │   ├── __init__.py
+│   │   ├── config/                     # 🆕 Configuration management
+│   │   │   ├── __init__.py
+│   │   │   ├── core.py                 # ExtrasConfigManager
+│   │   │   ├── validation.py           # ConfigValidator
+│   │   │   ├── schema.py               # ConfigSchema
+│   │   │   └── templates.py            # ConfigTemplates
+│   │   ├── platform.py                 # ✅ Enhanced with setup framework
+│   │   ├── brand_customization/        # 🆕 Brand customization
+│   │   │   ├── __init__.py
+│   │   │   ├── core.py                 # ExtrasBrandCustomizer
+│   │   │   ├── detection.py            # BrandPatterns
+│   │   │   ├── models.py               # ModelConfigManager
+│   │   │   └── entities.py             # EntityGenerationManager
+│   │   ├── entity/                     # ✅ Enhanced entity management
+│   │   │   ├── __init__.py
+│   │   │   ├── core.py                 # EntityHelpers
+│   │   │   ├── manager.py              # EntityManager
+│   │   │   ├── lifecycle.py            # EntityLifecycleManager
+│   │   │   └── registry.py             # EntityRegistryManager
+│   │   ├── service/                    # 🆕 Service framework
+│   │   │   ├── __init__.py
+│   │   │   ├── core.py                 # ExtrasServiceManager
+│   │   │   ├── registration.py         # ServiceRegistry
+│   │   │   └── validation.py           # ServiceValidator
+│   │   ├── automation/                 # ✅ Existing automation helpers
+│   │   ├── device/                     # ✅ Existing device helpers
+│   │   └── paths.py                    # ✅ Existing path management
 │   │
 │   ├── www/                     # Reusable JavaScript utilities
 │   │   ├── paths.js             # Environment-aware path constants
 │   │   ├── card-commands.js
 │   │   ├── card-services.js
 │   │   ├── card-translations.js
+│   │   ├── card-validation.js
 │   │   └── ramses-message-broker.js
 │   │
-│   ├── managers/                # Framework managers
-│   │   └── feature_manager.py   # Feature lifecycle management
-│   │
-│   └── entity_registry.py       # Entity registry
+│   └── managers/                # Framework managers
+│       └── feature_manager.py   # Feature lifecycle management
 │
 ├── 🌐 Platform (HA Integration)
 │   ├── sensor.py                # Root sensor platform
@@ -185,8 +210,8 @@ custom_components/ramses_extras/
 │   └── __init__.py
 │
 └── translations/                # Integration-level translations
-    ├── en.json                 # English integration strings
-    └── nl.json                 # Dutch integration strings
+    ├── en.json                  # English integration strings
+    └── nl.json                  # Dutch integration strings
 ```
 
 ### Integration Flow
@@ -388,7 +413,30 @@ Each feature contains these core components. **Some components are optional** de
 
 ## 5. Framework Foundation
 
-### Base Classes
+The Ramses Extras framework provides a comprehensive foundation for building features with reusable components, standardized patterns, and automated lifecycle management. The framework has been designed to accelerate feature development.
+
+### 🏗️ Framework Architecture Overview
+
+The framework follows a **layered architecture** approach:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                    Framework Foundation                    │
+├────────────────────────────────────────────────────────────┤
+│  📦 Base Classes      🧩 Helpers       🌐 Services         │
+│  - Entity Bases       - Config         - Platform Setup    │
+│  - Automation         - Entity         - Service Mgmt      │
+│  - Platform Entity    - Brand Custom   - Validation        │
+│                       - Service                            │
+├────────────────────────────────────────────────────────────┤
+│  🔧 Platform Layer    📋 Entity Mgmt   🎯 Brand Support    │
+│  - Setup Framework    - Lifecycle      - Detection         │
+│  - Integration        - Registry       - Customization     │
+│  - Forwarding         - Management     - Model Config      │
+└────────────────────────────────────────────────────────────┘
+```
+
+### 📚 Base Classes
 
 The framework provides reusable base classes that all features can inherit from:
 
@@ -402,39 +450,63 @@ The framework provides reusable base classes that all features can inherit from:
 - **Location**: `framework/base_classes/base_automation.py`
 - **Features**: Automation patterns, lifecycle management, event handling
 
-### Helper Modules
+#### Platform Entity Classes
+- **Purpose**: Generic platform entity base classes for all HA platforms
+- **Location**: `framework/base_classes/platform_entities.py`
+- **Classes**:
+  - `ExtrasSwitchEntity` - Generic switch entity for all features
+  - `ExtrasNumberEntity` - Generic number entity for all features
+  - `ExtrasBinarySensorEntity` - Generic binary sensor entity for all features
+  - `ExtrasSensorEntity` - Generic sensor entity for all features
 
-#### Entity Helpers (`framework/helpers/entity/`)
-- **Core Functions**: Entity creation, validation, naming utilities
-- **EntityManager**: Centralized entity lifecycle management during config flow
-- **Naming System**: Universal entity naming with automatic format detection
+### 🧩 Helper Modules
 
-#### Device Helpers (`framework/helpers/device/`)
-- **Core Functions**: Device ID parsing, discovery utilities
-- **Device Type Handlers**: Central mapping from device types to specialized handlers
-- **Enhanced Discovery**: Brand-specific customization and runtime entity management
+#### Configuration Management (`framework/helpers/config/`)
+- **Purpose**: Reusable configuration management patterns
+- **Components**:
+  - `core.py` - `ExtrasConfigManager` base class for configuration management
+  - `validation.py` - `ConfigValidator` utility class with common patterns
+  - `schema.py` - `ConfigSchema` UI schema generation utilities
+  - `templates.py` - `ConfigTemplates` with pre-built default configurations
+- **Usage**: All features can use the same configuration patterns
 
-#### Automation Helpers (`framework/helpers/automation/`)
-- **Core Functions**: Automation patterns and lifecycle management
-- **Event Integration**: Framework-level event handling for device discovery
-- **Performance Optimization**: Efficient automation execution
+#### Entity Management (`framework/helpers/entity/`)
+- **Purpose**: Comprehensive entity lifecycle and registry management
+- **Components**:
+  - `core.py` - `EntityHelpers` class with comprehensive entity utilities
+  - `manager.py` - `EntityManager` class for centralized entity management
+  - `lifecycle.py` - `EntityLifecycleManager` for lifecycle operations
+  - `registry.py` - `EntityRegistryManager` for registry integration
 
-#### Common Utilities (`framework/helpers/common/`)
-- **Validation**: Input validation and type checking
-- **Logging**: Standardized logging patterns
-- **Error Handling**: Common error handling strategies
+#### Brand Customization (`framework/helpers/brand_customization/`)
+Note: Not fully implemented
+- **Purpose**: Centralized brand detection and customization patterns
+- **Components**:
+  - `core.py` - `ExtrasBrandCustomizer` base class and `BrandCustomizerManager`
+  - `detection.py` - `BrandPatterns` for brand detection pattern management
+  - `models.py` - `ModelConfigManager` for model-specific configuration handling
+  - `entities.py` - `EntityGenerationManager` for brand-specific entity generation
+- **Usage**: Supports multiple brands (Orcon, Zehnder, etc.) through framework
 
-### Managers
+#### Service Framework (`framework/helpers/service/`)
+- **Purpose**: Comprehensive service registration, execution, and validation
+- **Components**:
+  - `core.py` - `ExtrasServiceManager` base class for service execution
+  - `registration.py` - `ServiceRegistry` for centralized service management
+  - `validation.py` - `ServiceValidator` for comprehensive service validation
+- **Benefits**: Unified service management, comprehensive validation, performance monitoring
+- **Service Types**: ACTION, STATUS, CONFIGURATION, DIAGNOSTIC, CONTROL
+- **Service Scopes**: DEVICE, FEATURE, GLOBAL
 
-#### FeatureManager (`framework/managers/feature_manager.py`)
-- **Purpose**: Feature lifecycle management (activation/deactivation)
-- **Features**: Automatic feature discovery, dependency management, cleanup
+#### Platform Setup Framework
+- **Purpose**: Reusable platform setup patterns and automation support
+- **Location**: Enhanced `framework/helpers/platform.py`
+- **Features**:
+  - `PlatformSetup` class with `async_setup_platform` method
+  - `store_entities_for_automation` parameter for entity access
+  - `_store_entities_for_automation` method for entity storage
 
-#### EntityRegistry (`framework/entity_registry.py`)
-- **Purpose**: Centralized entity registration and management
-- **Features**: Entity catalog building, change detection, bulk operations
-
-### Framework Services
+### 🛠️ Framework Services
 
 #### Path Management
 - **Python Paths**: `framework/helpers/paths.py` - Shared path constants
@@ -446,9 +518,547 @@ The framework provides reusable base classes that all features can inherit from:
 - **Message Listeners**: Real-time ramses_cc message handling
 - **Event System**: Framework-level event handling for inter-feature communication
 
----
+### 📖 Framework Usage Examples
 
-## 6. Home Assistant Integration
+#### Configuration Management Usage
+```python
+class HumidityConfig(ExtrasConfigManager):
+    DEFAULT_CONFIG = {
+        "target_humidity": 50,
+        "auto_mode": True,
+    }
+
+    def validate_custom_config(self):
+        # Custom validation only
+        pass
+```
+
+#### Platform Entity Usage
+```python
+class HumiditySwitch(ExtrasSwitchEntity):
+    @property
+    def command_parameters(self):
+        return {"dehumidify": 1}
+```
+
+#### Service Framework Usage
+```python
+class HumidityServices(ExtrasServiceManager):
+    SERVICE_DEFINITIONS = {
+        "set_target_humidity": {
+            "type": ServiceType.ACTION,
+            "parameters": {"humidity": {"type": int, "min": 30, "max": 80}},
+        }
+    }
+```
+
+## 6. Framework Components Reference
+
+This section provides detailed documentation for all framework components, their APIs, and usage patterns. The framework has been designed to accelerate feature development by providing reusable components.
+
+### 🏗️ Configuration Management Framework
+
+The configuration management framework provides reusable patterns for feature configuration, validation, and UI schema generation.
+
+#### ExtrasConfigManager (`framework/helpers/config/core.py`)
+
+**Purpose**: Base class for all feature configuration management
+
+**Key Features**:
+- Automatic configuration loading with fallback to defaults
+- Type-safe configuration access with validation
+- Integration with Home Assistant configuration flow
+- Support for custom validation rules
+
+**API**:
+```python
+class ExtrasConfigManager:
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry,
+                 feature_id: str, default_config: dict[str, Any]):
+        """Initialize configuration manager."""
+
+    async def async_load(self) -> None:
+        """Load configuration with fallback to defaults."""
+
+    def validate_config(self) -> bool:
+        """Validate current configuration."""
+
+    def get_config_schema(self) -> dict[str, Any]:
+        """Generate UI configuration schema."""
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get configuration value with type safety."""
+
+    def set(self, key: str, value: Any) -> None:
+        """Set configuration value with validation."""
+```
+
+**Usage Example**:
+```python
+# In feature config.py
+class HumidityConfig(ExtrasConfigManager):
+    DEFAULT_CONFIG = {
+        "target_humidity": 50,
+        "auto_mode": True,
+        "min_runtime": 10,
+        "max_runtime": 120,
+    }
+
+    def validate_custom_config(self) -> ValidationResult:
+        """Custom validation logic."""
+        result = ValidationResult()
+
+        humidity = self.get("target_humidity")
+        if not 30 <= humidity <= 80:
+            result.add_error("target_humidity", "Must be between 30 and 80")
+
+        return result
+```
+
+#### ConfigValidator (`framework/helpers/config/validation.py`)
+
+**Purpose**: Utility class for configuration validation with common patterns
+
+**Key Features**:
+- Common validation rules (range, type, required fields)
+- Custom validation rule support
+- Structured error reporting
+- Integration with ExtrasConfigManager
+
+**API**:
+```python
+class ConfigValidator:
+    def __init__(self, config: dict[str, Any]):
+        """Initialize validator with configuration."""
+
+    def validate_range(self, key: str, min_val: Any, max_val: Any) -> bool:
+        """Validate numeric range."""
+
+    def validate_type(self, key: str, expected_type: type) -> bool:
+        """Validate field type."""
+
+    def validate_required(self, keys: list[str]) -> bool:
+        """Validate required fields exist."""
+
+    def add_custom_rule(self, key: str, rule_func: callable) -> None:
+        """Add custom validation rule."""
+```
+
+#### ConfigSchema (`framework/helpers/config/schema.py`)
+
+**Purpose**: UI schema generation utilities for Home Assistant configuration flow
+
+**Key Features**:
+- Automatic schema generation from configuration definitions
+- Support for common UI components (sliders, toggles, selects)
+- Integration with validation rules
+- Custom component support
+
+**API**:
+```python
+class ConfigSchema:
+    def __init__(self, config_manager: ExtrasConfigManager):
+        """Initialize schema generator."""
+
+    def generate_slider_schema(self, key: str, min_val: int, max_val: int,
+                              unit: str = "", step: int = 1) -> dict:
+        """Generate slider schema for numeric values."""
+
+    def generate_toggle_schema(self, key: str, label: str = "") -> dict:
+        """Generate toggle schema for boolean values."""
+
+    def generate_select_schema(self, key: str, options: dict,
+                              label: str = "") -> dict:
+        """Generate select schema for enumeration values."""
+```
+
+### 🎯 Brand Customization Framework
+
+Note: not fully implemented yet
+
+The brand customization framework provides centralized brand detection, model configuration, and entity generation patterns.
+
+#### ExtrasBrandCustomizer (`framework/helpers/brand_customization/core.py`)
+
+**Purpose**: Base class for brand-specific device customization
+
+**Key Features**:
+- Brand detection from device model/manufacturer information
+- Model-specific configuration management
+- Brand-agnostic entity generation
+- Extensible brand pattern system
+
+**API**:
+```python
+class ExtrasBrandCustomizer:
+    def __init__(self, hass: HomeAssistant):
+        """Initialize brand customizer."""
+
+    async def detect_brand(self, device: Device) -> BrandInfo:
+        """Detect device brand from device information."""
+
+    async def get_model_config(self, device: Device, brand_info: BrandInfo) -> ModelConfig:
+        """Get model-specific configuration."""
+
+    async def generate_entities(self, device: Device, base_entities: list[dict]) -> list[dict]:
+        """Generate brand-specific entities."""
+
+    async def customize_device(self, device: Device, event_data: dict) -> None:
+        """Apply brand-specific customizations to device."""
+```
+
+#### BrandCustomizerManager (`framework/helpers/brand_customization/core.py`)
+
+**Purpose**: Centralized management of multiple brand customizers
+
+**Key Features**:
+- Registration and management of brand customizers
+- Automatic brand detection routing
+- Fallback handling for unknown brands
+- Performance optimization through caching
+
+**API**:
+```python
+class BrandCustomizerManager:
+    def __init__(self, hass: HomeAssistant):
+        """Initialize brand manager."""
+
+    def register_customizer(self, brand_name: str, customizer: ExtrasBrandCustomizer) -> None:
+        """Register brand customizer."""
+
+    async def customize_device(self, device: Device, event_data: dict) -> None:
+        """Apply brand customization using registered customizers."""
+
+    def get_supported_brands(self) -> list[str]:
+        """Get list of supported brands."""
+```
+
+#### BrandPatterns (`framework/helpers/brand_customization/detection.py`)
+
+**Purpose**: Brand detection pattern management with confidence scoring
+
+**Key Features**:
+- Configurable detection patterns
+- Confidence scoring for detection accuracy
+- Pattern matching against device properties
+- Extensible pattern registration
+
+**API**:
+```python
+class BrandPatterns:
+    def __init__(self):
+        """Initialize brand patterns."""
+
+    def add_pattern(self, brand: str, pattern: str, confidence: float = 1.0) -> None:
+        """Add detection pattern for brand."""
+
+    async def detect_brand(self, device: Device) -> BrandDetectionResult:
+        """Detect brand using registered patterns."""
+
+    def get_patterns_for_brand(self, brand: str) -> list[BrandPattern]:
+        """Get all patterns for specific brand."""
+```
+
+### ⚙️ Service Framework
+
+The service framework provides comprehensive service registration, execution, and validation patterns.
+
+#### ExtrasServiceManager (`framework/helpers/service/core.py`)
+
+**Purpose**: Base class for feature service management with unified execution patterns
+
+**Key Features**:
+- Service registration and discovery
+- Unified service execution patterns
+- Common service types (ACTION, STATUS, CONFIGURATION, etc.)
+- Performance monitoring and error handling
+
+**API**:
+```python
+class ExtrasServiceManager:
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
+        """Initialize service manager."""
+
+    def register_service(self, service_name: str, service_def: ServiceDefinition) -> None:
+        """Register service definition."""
+
+    async def execute_service(self, service_name: str, **kwargs) -> ServiceResult:
+        """Execute registered service."""
+
+    def get_service_info(self, service_name: str) -> ServiceInfo:
+        """Get service information."""
+
+    async def list_services(self) -> list[str]:
+        """List all registered services."""
+```
+
+#### ServiceRegistry (`framework/helpers/service/registration.py`)
+
+**Purpose**: Centralized registry for service definitions with metadata and organization
+
+**Key Features**:
+- Service definition with comprehensive metadata
+- Service indexing by type, scope, and tags
+- Feature-based service organization
+- Service discovery and filtering
+
+**API**```python
+class ServiceRegistry:
+    def __init__(self):
+        """Initialize service registry."""
+
+    def register_service_definition(self, service_def: ServiceDefinition) -> None:
+        """Register service definition."""
+
+    def get_services_by_type(self, service_type: ServiceType) -> list[ServiceDefinition]:
+        """Get services by type."""
+
+    def get_services_by_scope(self, scope: ServiceScope) -> list[ServiceDefinition]:
+        """Get services by scope."""
+
+    def find_services_by_tag(self, tag: str) -> list[ServiceDefinition]:
+        """Find services by tag."""
+```
+
+#### ServiceValidator (`framework/helpers/service/validation.py`)
+
+**Purpose**: Comprehensive service call validation with caching and performance monitoring
+
+**Key Features**:
+- Parameter schema validation with JSON schema support
+- Device ID pattern validation and registry checking
+- Entity existence and pattern validation
+- Timing constraint validation and performance monitoring
+- Caching for validation results
+
+**API**:
+```python
+class ServiceValidator:
+    def __init__(self, hass: HomeAssistant):
+        """Initialize service validator."""
+
+    async def validate_service_call(self, service_def: ServiceDefinition,
+                                   parameters: dict) -> ServiceValidationResult:
+        """Validate service call parameters."""
+
+    async def validate_device_access(self, device_id: str) -> bool:
+        """Validate device access permissions."""
+
+    async def validate_entity_exists(self, entity_id: str) -> bool:
+        """Validate entity existence."""
+
+    def get_validation_cache_stats(self) -> dict:
+        """Get validation cache statistics."""
+```
+
+### 🏛️ Entity Management Framework
+
+The entity management framework provides comprehensive entity lifecycle and registry management.
+
+#### EntityLifecycleManager (`framework/helpers/entity/lifecycle.py`)
+
+**Purpose**: Complete lifecycle management for entities including creation, updating, cleanup, and state tracking
+
+**Key Features**:
+- Entity creation and registration workflows
+- Update and state synchronization
+- Cleanup and removal operations
+- Health checks and availability monitoring
+- Factory registration and dependency management
+
+**API**:
+```python
+class EntityLifecycleManager:
+    def __init__(self, hass: HomeAssistant):
+        """Initialize lifecycle manager."""
+
+    async def create_entity(self, entity_config: dict, device_id: str) -> Entity:
+        """Create new entity with lifecycle management."""
+
+    async def update_entity(self, entity_id: str, updates: dict) -> bool:
+        """Update existing entity."""
+
+    async def remove_entity(self, entity_id: str) -> bool:
+        """Remove entity with cleanup."""
+
+    async def check_entity_health(self, entity_id: str) -> EntityHealthStatus:
+        """Check entity health and availability."""
+
+    async def get_lifecycle_summary(self) -> dict:
+        """Get comprehensive lifecycle statistics."""
+```
+
+#### EntityRegistryManager (`framework/helpers/entity/registry.py`)
+
+**Purpose**: Centralized registry operations with feature tracking
+
+**Key Features**:
+- Entity registration, validation, and cleanup
+- Feature entity tracking and statistics
+- Pattern-based entity lookup and health monitoring
+- Orphaned entity detection and removal
+- Registry health monitoring
+
+**API**:
+```python
+class EntityRegistryManager:
+    def __init__(self, hass: HomeAssistant):
+        """Initialize registry manager."""
+
+    async def register_entity(self, entity_config: dict) -> str:
+        """Register entity in HA registry."""
+
+    async def unregister_entity(self, entity_id: str) -> bool:
+        """Unregister entity from HA registry."""
+
+    def get_entities_by_feature(self, feature_id: str) -> list[dict]:
+        """Get all entities for specific feature."""
+
+    async def cleanup_orphaned_entities(self) -> int:
+        """Clean up orphaned entities."""
+
+    def get_registry_statistics(self) -> dict:
+        """Get comprehensive registry statistics."""
+```
+
+### 🔧 Platform Setup Framework
+
+The platform setup framework provides reusable setup patterns with automation support.
+
+#### Enhanced PlatformSetup (`framework/helpers/platform.py`)
+
+**Purpose**: Reusable platform setup patterns and automation entity access
+
+**Key Features**:
+- Standardized platform setup workflows
+- Automation entity storage and access
+- Error handling and recovery patterns
+- Integration with Home Assistant platform system
+
+**API**:
+```python
+class PlatformSetup:
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
+        """Initialize platform setup."""
+
+    async def async_setup_platform(self, platform_type: str,
+                                  async_add_entities: callable,
+                                  create_entity_func: callable,
+                                  store_entities_for_automation: bool = False) -> None:
+        """Set up platform with optional automation entity storage."""
+
+    def _store_entities_for_automation(self, entities: list[Entity]) -> None:
+        """Store entities for automation access."""
+
+    def get_automation_entities(self, device_id: str) -> list[Entity]:
+        """Get stored entities for automation."""
+```
+
+### 📚 Base Entity Classes
+
+#### Platform Entity Classes (`framework/base_classes/platform_entities.py`)
+
+**Purpose**: Generic platform entity base classes for all Home Assistant platforms
+
+**Key Features**:
+- Standardized entity patterns for all platform types
+- Common functionality and state management
+- Integration with framework services and managers
+- Reduced boilerplate code for feature entities
+
+**Classes**:
+```python
+class ExtrasSwitchEntity(ExtrasBaseEntity, SwitchEntity):
+    """Generic switch entity for all features."""
+
+    @property
+    def command_parameters(self) -> dict:
+        """Return command parameters for device communication."""
+
+    async def async_execute_command(self, **kwargs) -> None:
+        """Execute command using framework service manager."""
+
+class ExtrasNumberEntity(ExtrasBaseEntity, NumberEntity):
+    """Generic number entity for all features."""
+
+    @property
+    def native_min_value(self) -> float:
+        """Return minimum value."""
+
+    @property
+    def native_max_value(self) -> float:
+        """Return maximum value."""
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set value using framework patterns."""
+
+class ExtrasBinarySensorEntity(ExtrasBaseEntity, BinarySensorEntity):
+    """Generic binary sensor entity for all features."""
+
+    @property
+    def is_on(self) -> bool:
+        """Return sensor state."""
+
+    async def async_update(self) -> None:
+        """Update sensor state using framework patterns."""
+
+class ExtrasSensorEntity(ExtrasBaseEntity, SensorEntity):
+    """Generic sensor entity for all features."""
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the native value of the sensor."""
+
+    def set_native_value(self, value: float | None) -> None:
+        """Set the native value of the sensor."""
+```
+
+### 🎯 Framework Integration Patterns
+
+#### Feature Integration Pattern
+
+The framework provides a standardized pattern for integrating all components:
+
+```python
+# In feature __init__.py
+def create_my_feature(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[str, Any]:
+    """Create feature instance with framework integration."""
+
+    # Configuration management
+    config = MyFeatureConfig(hass, config_entry, "my_feature", MyFeatureConfig.DEFAULT_CONFIG)
+
+    # Entity management with lifecycle
+    entity_manager = EntityManager(hass)
+    lifecycle_manager = EntityLifecycleManager(hass)
+
+    # Brand customization
+    brand_manager = BrandCustomizerManager(hass)
+
+    # Service management
+    service_manager = MyFeatureServices(hass, config_entry)
+
+    # Platform setup with automation support
+    platform_setup = PlatformSetup(hass, config_entry)
+
+    return {
+        "config": config,
+        "entity_manager": entity_manager,
+        "lifecycle_manager": lifecycle_manager,
+        "brand_manager": brand_manager,
+        "service_manager": service_manager,
+        "platform_setup": platform_setup,
+        "platforms": {
+            "sensor": MyFeatureSensor,
+            "switch": MyFeatureSwitch,
+            "number": MyFeatureNumber,
+            "binary_sensor": MyFeatureBinarySensor,
+        },
+    }
+```
+
+
+
+## 8. Home Assistant Integration
 
 ### Platform Integration Architecture
 
@@ -680,20 +1290,66 @@ from homeassistant.config_entries import ConfigEntry
 
 ### Development Workflow
 
-1. **Feature Development**
-   - Create feature structure following established patterns
-   - Implement automation, services, entities, and platforms
-   - Add feature to `AVAILABLE_FEATURES` registration
+1. **Framework-First Development**
+   - **Step 1**: Start with framework components for configuration, entities, and services
+   - **Step 2**: Use platform entity base classes for HA integration
+   - **Step 3**: Leverage brand customization and service frameworks
+   - **Step 4**: Implement feature-specific business logic only
 
-2. **Testing**
+2. **Feature Development with Framework**
+   ```python
+   # Example: New feature using full framework
+   def create_my_feature(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[str, Any]:
+       """Create feature using framework patterns."""
+
+       # Configuration management (54% code reduction)
+       config = MyFeatureConfig(hass, config_entry, "my_feature", MyFeatureConfig.DEFAULT_CONFIG)
+
+       # Entity management (50% code reduction)
+       entity_manager = EntityManager(hass)
+       lifecycle_manager = EntityLifecycleManager(hass)
+
+       # Service framework (60% code reduction)
+       service_manager = MyFeatureServices(hass, config_entry)
+
+       # Brand customization framework
+       brand_manager = BrandCustomizerManager(hass)
+
+       # Platform setup framework (80% code reduction)
+       platform_setup = PlatformSetup(hass, config_entry)
+
+       return {
+           "config": config,
+           "entity_manager": entity_manager,
+           "service_manager": service_manager,
+           "brand_manager": brand_manager,
+           "platform_setup": platform_setup,
+           "platforms": {
+               "sensor": MyFeatureSensor,  # Uses ExtrasSensorEntity
+               "switch": MyFeatureSwitch,  # Uses ExtrasSwitchEntity
+               "number": MyFeatureNumber,  # Uses ExtrasNumberEntity
+           },
+       }
+   ```
+
+3. **Framework Component Integration**
+   - Use `ExtrasConfigManager` for all configuration needs
+   - Inherit from platform entity classes (`ExtrasSwitchEntity`, etc.)
+   - Register services through `ExtrasServiceManager`
+   - Apply brand customizations through `BrandCustomizerManager`
+   - Use `EntityLifecycleManager` for entity operations
+
+4. **Testing**
    - Use framework helpers for consistent testing patterns
    - Test features independently using the framework foundation
    - Follow HA testing standards and patterns
+   - Leverage framework validation and error handling
 
-3. **Documentation**
+5. **Documentation**
    - Document feature API and configuration options
    - Update architecture guide for new patterns or components
-   - Provide examples for common use cases
+   - Provide examples of framework usage
+   - Include migration notes for legacy patterns
 
 ### Testing Structure
 
