@@ -24,18 +24,17 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control sensor platform."""
-    from custom_components.ramses_extras.framework.base_classes import (
-        platform_entities,
+    from custom_components.ramses_extras.framework.helpers import (
+        platform,
     )
 
-    await platform_entities.generic_platform_setup(
+    await platform.PlatformSetup.async_setup_platform(
+        platform="sensor",
         hass=hass,
         config_entry=config_entry,
         async_add_entities=async_add_entities,
-        feature_id="humidity_control",
-        platform_configs={},
+        entity_configs={},  # Not used for sensors
         entity_factory=create_humidity_sensor,
-        platform_type="sensor",
     )
 
 

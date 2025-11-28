@@ -253,13 +253,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             feature_module_name = (
                 f"custom_components.ramses_extras.features.{feature_name}"
             )
-            feature_module = importlib.import_module(feature_module_name)
+            # Run the blocking import operation in a thread pool
+            feature_module = await asyncio.to_thread(
+                importlib.import_module, feature_module_name
+            )
             # Create feature instance if create function exists
             create_func_name = f"create_{feature_name.replace('-', '_')}_feature"
             if hasattr(feature_module, create_func_name):
                 create_feature_func = getattr(feature_module, create_func_name)
                 # Handle both sync and async create functions
-                import asyncio
 
                 if asyncio.iscoroutinefunction(create_feature_func):
                     feature_instance = await create_feature_func(hass, entry)

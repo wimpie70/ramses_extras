@@ -25,55 +25,19 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control binary sensor platform."""
-    from custom_components.ramses_extras.framework.base_classes import (
-        platform_entities,
+    from custom_components.ramses_extras.framework.helpers import (
+        platform,
     )
 
-    # Get devices from Home Assistant data
-    devices = hass.data.get("ramses_extras", {}).get("devices", [])
-    _LOGGER.info(
-        f"Humidity control binary sensor platform: found {len(devices)} "
-        f"devices: {devices}"
+    await platform.PlatformSetup.async_setup_platform(
+        platform="binary_sensor",
+        hass=hass,
+        config_entry=config_entry,
+        async_add_entities=async_add_entities,
+        entity_configs={},  # Not used for binary sensors
+        entity_factory=create_humidity_control_binary_sensor,
+        store_entities_for_automation=True,  # Store for automation access
     )
-
-    if not devices:
-        _LOGGER.warning(
-            "No devices found for humidity control binary sensors "
-            "- automation will not start"
-        )
-        return
-
-    binary_sensor = []
-    for device_id in devices:
-        try:
-            # Create humidity control binary sensor
-            device_sensor = await create_humidity_control_binary_sensor(
-                hass, device_id, config_entry
-            )
-            binary_sensor.extend(device_sensor)
-            _LOGGER.info(
-                f"Created {len(device_sensor)} binary sensor for device {device_id}"
-            )
-        except Exception as e:
-            _LOGGER.error(f"Failed to create binary sensor for device {device_id}: {e}")
-
-    _LOGGER.info(f"Total binary sensor created: {len(binary_sensor)}")
-    if binary_sensor:
-        async_add_entities(binary_sensor, True)
-        _LOGGER.info("Humidity control binary sensors added to Home Assistant")
-
-        # Store entities for automation access
-        if "ramses_extras" not in hass.data:
-            hass.data["ramses_extras"] = {}
-        if "entities" not in hass.data["ramses_extras"]:
-            hass.data["ramses_extras"]["entities"] = {}
-        for entity in binary_sensor:
-            hass.data["ramses_extras"]["entities"][entity.entity_id] = entity
-            _LOGGER.debug(
-                f"Stored binary sensor entity {entity.entity_id} for automation access"
-            )
-    else:
-        _LOGGER.warning("No binary sensors created - automation will not start")
 
 
 async def create_humidity_control_binary_sensor(

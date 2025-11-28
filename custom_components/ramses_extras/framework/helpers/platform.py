@@ -193,6 +193,7 @@ class PlatformSetup:
         entity_factory: Callable[
             ["HomeAssistant", str, ConfigEntry | None], Awaitable[list[Entity]]
         ],
+        store_entities_for_automation: bool = False,
     ) -> None:
         """Generic platform setup with entity creation.
 
@@ -206,6 +207,8 @@ class PlatformSetup:
             async_add_entities: Add entities callback
             entity_configs: Dictionary of entity configurations
             entity_factory: Factory function to create entities
+            store_entities_for_automation: Whether to store entities in hass.data
+                for automation access (default: False)
         """
         _LOGGER.info("Setting up %s platform with generic setup", platform)
 
@@ -243,6 +246,10 @@ class PlatformSetup:
         if entities:
             async_add_entities(entities, True)
             _LOGGER.info("%s entities added to Home Assistant", platform)
+
+            # Optionally store entities for automation access
+            if store_entities_for_automation:
+                PlatformSetup._store_entities_for_automation(hass, entities)
 
     @staticmethod
     def create_entities_for_device(
@@ -412,6 +419,33 @@ class PlatformSetup:
                     feature_id,
                     e,
                 )
+
+    @staticmethod
+    def _store_entities_for_automation(
+        hass: "HomeAssistant", entities: list[Entity]
+    ) -> None:
+        """Store entities in hass.data for automation access.
+
+        This method stores created entities in the hass.data structure so that
+        automation code can access them directly by entity_id.
+
+        Args:
+            hass: Home Assistant instance
+            entities: List of entities to store
+        """
+        if "ramses_extras" not in hass.data:
+            hass.data["ramses_extras"] = {}
+        if "entities" not in hass.data["ramses_extras"]:
+            hass.data["ramses_extras"]["entities"] = {}
+
+        stored_count = 0
+        for entity in entities:
+            hass.data["ramses_extras"]["entities"][entity.entity_id] = entity
+            stored_count += 1
+
+        _LOGGER.debug(
+            "Stored %d entities for automation access in hass.data", stored_count
+        )
 
     @staticmethod
     async def _default_entity_factory(
