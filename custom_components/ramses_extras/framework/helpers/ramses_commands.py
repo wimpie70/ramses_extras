@@ -1,138 +1,156 @@
-"""Ramses RF Command Definitions.
+"""Ramses RF Command Definitions and Execution.
 
-This module provides command definitions for Ramses RF devices,
-particularly ventilation/HVAC systems. Commands are organized by device type
-and functionality for easy access and extension.
+This module provides command definitions for Ramses RF devices with centralized
+command management, queuing, and rate limiting. Commands are feature-owned and
+organized by device type for easy access and extension.
 """
 
+import asyncio
 import logging
-from typing import Any
+import time
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+from .commands.registry import get_command_registry
 
 _LOGGER = logging.getLogger(__name__)
 
 
-# Fan command definitions for ventilation systems
-# Supports Orcon and other compatible systems
-FAN_COMMANDS = {
-    # Basic fan speed commands
-    "request10D0": {
-        "code": "10D0",
-        "verb": "RQ",
-        "payload": "00",  # Request 10D0
-        "description": "Request system status",
-    },
-    # Fan mode commands
-    "away": {
-        "code": "22F1",
-        "verb": " I",
-        "payload": "000007",  # Away mode
-        "description": "Set fan to away mode",
-    },
-    "low": {
-        "code": "22F1",
-        "verb": " I",
-        "payload": "000107",  # Low speed
-        "description": "Set fan to low speed",
-    },
-    "medium": {
-        "code": "22F1",
-        "verb": " I",
-        "payload": "000207",  # Medium speed
-        "description": "Set fan to medium speed",
-    },
-    "high": {
-        "code": "22F1",
-        "verb": " I",
-        "payload": "000307",  # High speed
-        "description": "Set fan to high speed",
-    },
-    "auto": {
-        "code": "22F1",
-        "verb": " I",
-        "payload": "000407",  # Auto mode
-        "description": "Set fan to auto mode",
-    },
-    "auto2": {
-        "code": "22F1",
-        "verb": " I",
-        "payload": "000507",  # Auto2 mode
-        "description": "Set fan to auto2 mode",
-    },
-    "boost": {
-        "code": "22F1",
-        "verb": " I",
-        "payload": "000607",  # Boost mode
-        "description": "Set fan to boost mode",
-    },
-    "disable": {
-        "code": "22F1",
-        "verb": " I",
-        "payload": "000707",  # Disable mode
-        "description": "Disable fan",
-    },
-    "active": {
-        "code": "22F1",
-        "verb": " I",
-        "payload": "000807",  # Active mode
-        "description": "Set fan to active mode",
-    },
-    # Maintenance commands
-    "filter_reset": {
-        "code": "10D0",
-        "verb": " W",
-        "payload": "00FF",  # Filter reset
-        "description": "Reset filter timer",
-    },
-    # Timer commands
-    "high_15": {
-        "code": "22F3",
-        "verb": " I",
-        "payload": "00120F03040404",  # 15 minutes timer
-        "description": "Set 15 minute timer",
-    },
-    "high_30": {
-        "code": "22F3",
-        "verb": " I",
-        "payload": "00121E03040404",  # 30 minutes timer
-        "description": "Set 30 minute timer",
-    },
-    "high_60": {
-        "code": "22F3",
-        "verb": " I",
-        "payload": "00123C03040404",  # 60 minutes timer
-        "description": "Set 60 minute timer",
-    },
-    # Bypass commands
-    "bypass_close": {
-        "code": "22F7",
-        "verb": " W",
-        "payload": "0000EF",  # Bypass close
-        "description": "Close bypass",
-    },
-    "bypass_open": {
-        "code": "22F7",
-        "verb": " W",
-        "payload": "00C8EF",  # Bypass open
-        "description": "Open bypass",
-    },
-    "bypass_auto": {
-        "code": "22F7",
-        "verb": " W",
-        "payload": "00FFEF",  # Bypass auto
-        "description": "Set bypass to auto mode",
-    },
-    # Status request commands
-    "request31DA": {
-        "code": "31DA",
-        "verb": "RQ",
-        "payload": "00",
-        "description": "Request 31DA status",
-    },
-}
+@dataclass
+class CommandResult:
+    """Result of a command execution."""
+
+    success: bool
+    error_message: str = ""
+    response_data: dict[str, Any] | None = None
+    queued: bool = False
+    execution_time: float = 0.0
+
+
+class DeviceCommandManager:
+    """Manages command queuing and execution per device to prevent
+    overwhelming the communication layer."""
+
+    def __init__(self, ramses_commands: "RamsesCommands"):
+        # Reference to RamsesCommands for actual command execution
+        self._ramses_commands = ramses_commands
+        # Per-device queues: {device_id: asyncio.Queue}
+        self._queues: dict[str, asyncio.Queue] = {}
+        # Background processors: {device_id: asyncio.Task}
+        self._processors: dict[str, asyncio.Task] = {}
+        # Rate limiting: last command time per device
+        self._last_command_time: dict[str, float] = {}
+        # Minimum interval between commands (seconds)
+        self._min_interval = 1.0
+
+    def _get_device_queue(self, device_id: str) -> asyncio.Queue:
+        """Get or create queue for a device."""
+        if device_id not in self._queues:
+            self._queues[device_id] = asyncio.Queue()
+        return self._queues[device_id]
+
+    async def send_command_to_device(
+        self,
+        device_id: str,
+        command_def: dict[str, Any],
+        priority: str = "normal",
+        timeout: float = 30.0,
+    ) -> CommandResult:
+        """Send command to device with queuing and rate limiting.
+
+        Args:
+            device_id: Target device identifier
+            command_def: Command definition with code, verb, payload
+            priority: Command priority ("high", "normal", "low")
+            timeout: Command timeout in seconds
+
+        Returns:
+            CommandResult with execution status
+        """
+        # Rate limiting check
+        current_time = time.time()
+        last_time = self._last_command_time.get(device_id, 0)
+        if current_time - last_time < self._min_interval:
+            # Queue the command for later execution
+            queue = self._get_device_queue(device_id)
+            await queue.put(
+                {
+                    "command_def": command_def,
+                    "priority": priority,
+                    "timeout": timeout,
+                    "queued_time": current_time,
+                }
+            )
+
+            # Start background processor if needed
+            if device_id not in self._processors:
+                self._processors[device_id] = asyncio.create_task(
+                    self._process_device_queue(device_id)
+                )
+
+            return CommandResult(success=True, queued=True)
+
+        # Execute immediately
+        return await self._execute_command(device_id, command_def, timeout)
+
+    async def _process_device_queue(self, device_id: str) -> None:
+        """Background processor for queued commands."""
+        queue = self._queues[device_id]
+
+        while True:
+            try:
+                # Wait for next command with timeout
+                command_data = await asyncio.wait_for(queue.get(), timeout=0.5)
+
+                # Execute the command
+                result = await self._execute_command(
+                    device_id, command_data["command_def"], command_data["timeout"]
+                )
+
+                # Log result
+                if not result.success:
+                    _LOGGER.warning(
+                        f"Queued command failed for device {device_id}: "
+                        f"{result.error_message}"
+                    )
+
+            except TimeoutError:
+                # No commands pending, exit processor
+                break
+            except Exception as e:
+                _LOGGER.error(f"Queue processing error for device {device_id}: {e}")
+                continue
+
+        # Clean up processor
+        if device_id in self._processors:
+            del self._processors[device_id]
+
+    async def _execute_command(
+        self, device_id: str, command_def: dict[str, Any], timeout: float
+    ) -> CommandResult:
+        """Execute a command directly (internal method)."""
+        start_time = time.time()
+
+        try:
+            # Update rate limiting
+            self._last_command_time[device_id] = start_time
+
+            # Execute command using the RamsesCommands instance
+            success = await self._ramses_commands._send_packet(device_id, command_def)
+            execution_time = time.time() - start_time
+
+            return CommandResult(success=success, execution_time=execution_time)
+
+        except Exception as e:
+            execution_time = time.time() - start_time
+            return CommandResult(
+                success=False, error_message=str(e), execution_time=execution_time
+            )
 
 
 class RamsesCommands:
-    """Ramses RF command manager for sending device commands."""
+    """Ramses RF command manager for sending device commands with
+    queuing and registry integration."""
 
     def __init__(self, hass: Any) -> None:
         """Initialize Ramses commands manager.
@@ -141,23 +159,67 @@ class RamsesCommands:
             hass: Home Assistant instance
         """
         self.hass = hass
+        self._command_registry = get_command_registry()
+        self._device_manager = DeviceCommandManager(self)
 
-    async def send_fan_command(self, device_id: str, command: str) -> bool:
+    async def send_fan_command(self, device_id: str, command: str) -> CommandResult:
         """Send a fan command to a Ramses RF device.
 
         Args:
             device_id: Device identifier (e.g., "32_153289")
-            command: Command name from FAN_COMMANDS
+            command: Command name from HvacVentilator standard commands
+                    Use prefixed names like "fan_high", "fan_low", "fan_auto", etc.
 
         Returns:
-            True if command sent successfully
+            CommandResult with execution status and error details
         """
-        if command not in FAN_COMMANDS:
-            _LOGGER.error(f"Unknown fan command: {command}")
-            return False
+        # Get command from registry (HvacVentilator standard commands)
+        cmd_def = self._command_registry.get_command(command)
+        if not cmd_def:
+            error_msg = f"Fan command '{command}' not found in registry"
+            _LOGGER.error(error_msg)
+            return CommandResult(success=False, error_message=error_msg)
 
-        cmd_def = FAN_COMMANDS[command]
-        return await self._send_packet(device_id, cmd_def)
+        # Send the packet
+        success = await self._send_packet(device_id, cmd_def)
+        if success:
+            return CommandResult(success=True)
+        error_msg = f"Failed to send fan command '{command}' to device {device_id}"
+        return CommandResult(success=False, error_message=error_msg)
+
+    async def send_command(
+        self,
+        device_id: str,
+        command_name: str,
+        queue: bool = True,
+        priority: str = "normal",
+        timeout: float = 30.0,
+    ) -> CommandResult:
+        """Send a command to a device using the command registry.
+
+        Args:
+            device_id: Target device identifier
+            command_name: Name of registered command
+            queue: Whether to queue command if rate limited
+            priority: Command priority ("high", "normal", "low")
+            timeout: Command timeout in seconds
+
+        Returns:
+            CommandResult with execution status
+        """
+        # Get command definition from registry
+        cmd_def = self._command_registry.get_command(command_name)
+        _LOGGER.debug(f"Send Command - Command definition: {cmd_def}")
+        if not cmd_def:
+            return CommandResult(
+                success=False,
+                error_message=f"Command '{command_name}' not found in registry",
+            )
+
+        # Send command with queuing
+        return await self._device_manager.send_command_to_device(
+            device_id, cmd_def, priority, timeout
+        )
 
     async def _send_packet(self, device_id: str, cmd_def: dict[str, str]) -> bool:
         """Send a packet using the ramses_cc send_packet service.
@@ -246,12 +308,12 @@ class RamsesCommands:
         return None
 
     def get_available_commands(self) -> dict[str, dict[str, str]]:
-        """Get all available fan commands.
+        """Get all available commands from the registry.
 
         Returns:
-            Dictionary of command definitions
+            Dictionary of command definitions with metadata
         """
-        return FAN_COMMANDS.copy()
+        return self._command_registry.get_registered_commands()
 
     def get_command_description(self, command: str) -> str:
         """Get description for a command.
@@ -262,7 +324,8 @@ class RamsesCommands:
         Returns:
             Command description or empty string if not found
         """
-        return FAN_COMMANDS.get(command, {}).get("description", "")
+        cmd_def = self._command_registry.get_command(command)
+        return str(cmd_def.get("description", "")) if cmd_def else ""
 
 
 # Global instance for easy access
@@ -279,7 +342,8 @@ def create_ramses_commands(hass: Any) -> RamsesCommands:
 
 
 __all__ = [
-    "FAN_COMMANDS",
     "RamsesCommands",
     "create_ramses_commands",
+    "CommandResult",
+    "DeviceCommandManager",
 ]

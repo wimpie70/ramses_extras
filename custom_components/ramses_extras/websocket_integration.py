@@ -73,43 +73,41 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
         _LOGGER.warning("No WebSocket commands registered for any features")
         return
 
-    # Import commands dynamically for each feature using registry discovery
+    # Import commands dynamically for each feature to ensure decorators are executed
     for feature_name, commands in all_commands.items():
         try:
             # Dynamic import of websocket_commands module for this feature
+            # This ensures the module is loaded and decorators are executed
             websocket_module_path = f"custom_components.ramses_extras.features.{feature_name}.websocket_commands"  # noqa: E501
+            _LOGGER.info(f"🔌 Importing WebSocket module: {websocket_module_path}")
             websocket_module = __import__(websocket_module_path, fromlist=[""])
-
-            # Register each command found in the feature's commands dictionary
-            registered_count = 0
-            for command_name in commands.keys():
-                # Get the handler function from the module
-                handler_func = getattr(websocket_module, f"ws_{command_name}", None)
-
-                if handler_func and callable(handler_func):
-                    websocket_api.async_register_command(hass, handler_func)
-                    registered_count += 1
-                    _LOGGER.debug(
-                        f"Registered WebSocket command: {command_name} for feature: "
-                        f"{feature_name}"
-                    )
-                else:
-                    _LOGGER.warning(
-                        f"Handler function ws_{command_name} not found in "
-                        f"{websocket_module_path} for feature: {feature_name}"
-                    )
-
             _LOGGER.info(
-                f"Successfully registered {registered_count} WebSocket commands "
-                f"for feature: {feature_name}"
+                f"✅ Successfully imported WebSocket module: {websocket_module}"
             )
+
+            # Check if the expected handler functions exist and register them
+            expected_handlers = [f"ws_{cmd_name}" for cmd_name in commands.keys()]
+            for handler_name in expected_handlers:
+                handler_func = getattr(websocket_module, handler_name, None)
+                if handler_func:
+                    _LOGGER.info(f"✅ Found handler function: {handler_name}")
+                    # Register the handler with Home Assistant's WebSocket API
+                    try:
+                        websocket_api.async_register_command(hass, handler_func)
+                        _LOGGER.info(f"🔗 Registered WebSocket command: {handler_name}")
+                    except Exception as register_error:
+                        _LOGGER.error(
+                            f"❌ Failed to register {handler_name}: {register_error}"
+                        )
+                else:
+                    _LOGGER.warning(f"❌ Missing handler function: {handler_name}")
 
         except ImportError as error:
             # Check if this is a missing websocket_commands.py file
             if "websocket_commands" in str(error):
                 _LOGGER.info(
                     f"Feature '{feature_name}' does not have a websocket_commands.py "
-                    f"file - commands are likely registered via decorators"
+                    f"file - commands are registered via decorators in other modules"
                 )
             else:
                 _LOGGER.warning(
@@ -119,15 +117,23 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
                 )
         except Exception as error:
             _LOGGER.error(
-                f"Error registering commands for feature '{feature_name}': {error}"
+                f"Error importing commands for feature '{feature_name}': {error}"
             )
+
+    # Register the websocket_info function defined in this module
+    try:
+        websocket_api.async_register_command(hass, websocket_info)
+        _LOGGER.info("🔗 Registered websocket_info command")
+    except Exception as error:
+        _LOGGER.error(f"❌ Failed to register websocket_info: {error}")
 
     # Log summary
     total_commands = sum(len(commands) for commands in all_commands.values())
     _LOGGER.info(
-        f"Registered {total_commands} WebSocket commands for "
+        f"Imported WebSocket command modules for "
         f"{len(features_with_commands)} features: "
-        f"{', '.join(features_with_commands)}"
+        f"{', '.join(features_with_commands)} "
+        f"({total_commands} commands available)"
     )
 
 

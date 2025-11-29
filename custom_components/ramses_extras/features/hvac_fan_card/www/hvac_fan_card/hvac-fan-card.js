@@ -28,17 +28,10 @@ import './hvac-fan-card-editor.js';
 
 // Import reusable helpers using environment-aware path constants
 import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
-import { FAN_COMMANDS } from '/local/ramses_extras/helpers/card-commands.js';
 import { getRamsesMessageBroker } from '/local/ramses_extras/helpers/ramses-message-broker.js';
 import { HvacFanCardHandlers } from './message-handlers.js';
 import {
-  sendPacket,
-  getBoundRemDevice,
-  // callService,
-  // entityExists,
-  // getEntityState,
   callWebSocket,
-  setFanParameter,
 } from '/local/ramses_extras/helpers/card-services.js';
 import {
   // validateCoreEntities,
@@ -46,8 +39,6 @@ import {
   getEntityValidationReport,
 } from '/local/ramses_extras/helpers/card-validation.js';
 
-// Make FAN_COMMANDS globally available
-window.FAN_COMMANDS = FAN_COMMANDS;
 
 class HvacFanCard extends HTMLElement {
   constructor() {
@@ -97,10 +88,6 @@ class HvacFanCard extends HTMLElement {
     return this.translator.getCurrentLanguage();
   }
 
-  // Use commands from the shared helper
-  static get FAN_COMMANDS() {
-    return FAN_COMMANDS;
-  }
 
   static get properties() {
     return {
@@ -515,16 +502,30 @@ class HvacFanCard extends HTMLElement {
     }
 
     try {
-      // console.log(`📡 Calling ramses_cc.set_fan_param service for ${paramKey}...`);
+      // console.log(`📡 Calling WebSocket set_fan_parameter for ${paramKey}...`);
       // Extract the parameter ID from the entity name (e.g., "param_31" -> "31")
       const paramId = paramKey.startsWith('param_') ? paramKey.replace('param_', '') : paramKey;
-      await setFanParameter(this._hass, this.config.device_id, paramId, newValue);
-      // console.log(`✅ Parameter ${paramKey} update sent successfully (fire and forget)`);
-      // Don't wait for confirmation - service handles it asynchronously
-      if (paramItem) {
-        paramItem.classList.remove('loading');
-        paramItem.classList.add('success');
-        setTimeout(() => paramItem.classList.remove('success'), 2000);
+
+      const result = await callWebSocket(this._hass, {
+        type: 'ramses_extras/default/set_fan_parameter',
+        device_id: this.config.device_id,
+        param_id: paramId,
+        value: newValue.toString(),
+      });
+
+      if (result.success) {
+        // console.log(`✅ Parameter ${paramKey} update sent successfully via WebSocket`);
+        if (paramItem) {
+          paramItem.classList.remove('loading');
+          paramItem.classList.add('success');
+          setTimeout(() => paramItem.classList.remove('success'), 2000);
+        }
+      } else {
+        console.error(`❌ Failed to update parameter ${paramKey}:`, result.error_message);
+        if (paramItem) {
+          paramItem.classList.remove('loading');
+          paramItem.classList.add('error');
+        }
       }
     } catch (error) {
       console.error(`❌ Failed to update parameter ${paramKey}:`, error);
@@ -594,8 +595,9 @@ class HvacFanCard extends HTMLElement {
 
     try {
       const tempButton = this;
-      window.send_command('request31DA', this._config.device_id, tempButton);
-      window.send_command('request10D0', this._config.device_id, tempButton);
+      window.send_command('fan_request31DA', this._config.device_id, tempButton);
+
+      window.send_command('fan_request10D0', this._config.device_id, tempButton);
     } catch (error) {
       console.error('❌ Failed to request initial data:', error);
     }
@@ -738,12 +740,6 @@ class HvacFanCard extends HTMLElement {
       });
       // console.log(`✅ ${deviceParamButtons.length} device parameter update button listeners attached`);
     }
-
-    // // Count humidity control buttons separately for info
-    // const humidityControlButtons = this.shadowRoot?.querySelectorAll('.param-update-btn:not([data-param])');
-    // if (humidityControlButtons && humidityControlButtons.length > 0) {
-    //   console.log(`🔧 ${humidityControlButtons.length} humidity control buttons found (using onclick handlers)`);
-    // }
   }
 }
 
@@ -791,7 +787,7 @@ window.updateHumidityControl = function (entityId, newValue, buttonElement) {
         value: parseFloat(newValue),
       })
       .then(() => {
-        console.log(`✅ Humidity control updated: ${entityId} = ${newValue}`);
+        // console.log(`✅ Humidity control updated: ${entityId} = ${newValue}`);
         // Clear previous states to force update detection
         element._prevStates = null;
         // Trigger re-render
@@ -852,17 +848,9 @@ window.toggleDehumidify = function (entityId, buttonElement) {
   }
 };
 
-// Note: window.send_command is defined below
 
 window.send_command = function (commandKey, deviceId, buttonElement) {
   // console.log(`window.send_command called with: ${commandKey}, deviceId: ${deviceId}, buttonElement:`, buttonElement);
-
-  // Get the command definition
-  const command = window.FAN_COMMANDS[commandKey];
-  if (!command) {
-    console.error(`No command defined for: ${commandKey}`);
-    return;
-  }
 
   // Use the button element to find the host element
   let element = buttonElement;
@@ -873,59 +861,40 @@ window.send_command = function (commandKey, deviceId, buttonElement) {
   if (element && element._hass) {
     //    console.log('Found HASS instance in host element, using proper from_id');
 
-    // Use the imported helper functions directly with the element's hass instance
     (async () => {
       try {
-        // Get the bound REM device first for proper from_id
-        let remId;
-        try {
-          remId = await getBoundRemDevice(element._hass, deviceId);
-          if (!remId) {
-            console.warn(
-              'No bound REM found, add a "bound" REM device to Ramses RF Known Devices Config.'
-            );
-          }
-        } catch (error) {
-          console.warn(`WebSocket error getting bound REM: ${error.message}.`);
-          remId = deviceId;
-        }
-
-        // Send the packet with proper from_id
-        await sendPacket(
-          element._hass,
-          deviceId,
-          remId,
-          command.verb,
-          command.code,
-          command.payload
-        );
+        await callWebSocket(element._hass, {
+          type: 'ramses_extras/default/send_fan_command',
+          device_id: deviceId,
+          command: commandKey,
+        });
         // console.log(`Successfully sent ${commandKey} command`);
 
         // After sending command, wait a bit then request status update and refresh entity states
-        setTimeout(async () => {
-          try {
-            if (command.code != '31DA') {
-              await sendPacket(element._hass, deviceId, remId, 'RQ', '31DA', '00');
-            }
-            setTimeout(async () => {}, 200); // add a little wait between commands
-            if (command.code != '10D0') {
-              await sendPacket(element._hass, deviceId, remId, 'RQ', '10D0', '00');
-            }
+        if (! (commandKey in ['fan_request31DA', 'fan_request10D0'])) {
+          await callWebSocket(element._hass, {
+            type: 'ramses_extras/default/send_fan_command',
+            device_id: deviceId,
+            command: 'fan_request31DA',
+          });
 
-            // Wait a bit more for the status responses, then refresh UI
-            setTimeout(() => {
-              // console.log(`🔄 Refreshing entity states after ${commandKey} command...`);
-              if (element && element._hass) {
-                // Clear previous states to force update detection
-                element._prevStates = null;
-                // Trigger hass setter to re-render if states changed
-                element.hass = element._hass;
-              }
-            }, 800); // Additional 1 second delay for status responses
-          } catch (error) {
-            console.warn('Error requesting status update:', error);
+          await callWebSocket(element._hass, {
+            type: 'ramses_extras/default/send_fan_command',
+            device_id: deviceId,
+            command: 'fan_request10D0',
+          });
+        }
+
+        // Wait a bit more for the status responses, then refresh UI
+        setTimeout(() => {
+          // console.log(`🔄 Refreshing entity states after ${commandKey} command...`);
+          if (element && element._hass) {
+            // Clear previous states to force update detection
+            element._prevStates = null;
+            // Trigger hass setter to re-render if states changed
+            element.hass = element._hass;
           }
-        }, 800); // 1 second delay to allow device to respond
+        }, 2500); // 2.5 second delay for queue handling
       } catch (error) {
         console.error('Error sending command:', error);
       }
@@ -936,6 +905,9 @@ window.send_command = function (commandKey, deviceId, buttonElement) {
     console.log('Element _hass:', element?._hass);
   }
 };
+
+
+
 
 // Register it with HA for automatic discovery
 window.customCards = window.customCards || [];

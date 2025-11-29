@@ -1,8 +1,8 @@
 """WebSocket Commands for Default Feature.
 
-This module contains WebSocket commands that are used by multiple features
-or provide fundamental device management functionality.
-Uses the exact same pattern as the old working implementation.
+This module provides WebSocket commands for device control that are available
+to all features. These commands use the new command framework with queuing
+and rate limiting.
 """
 
 import logging
@@ -12,7 +12,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 
-from .const import WS_CMD_GET_2411_SCHEMA, WS_CMD_GET_BOUND_REM
+from ...framework.helpers.ramses_commands import CommandResult, RamsesCommands
 
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
@@ -22,7 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 
 @websocket_api.websocket_command(  # type: ignore[misc]
     {
-        vol.Required("type"): WS_CMD_GET_BOUND_REM,
+        vol.Required("type"): "ramses_extras/get_bound_rem",
         vol.Required("device_id"): str,
     }
 )
@@ -30,73 +30,43 @@ _LOGGER = logging.getLogger(__name__)
 async def ws_get_bound_rem(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
-    """Return bound REM info for a Ramses device (Default feature)."""
+    """Get bound REM device information for a device.
+
+    This command retrieves information about the bound REM device
+    that is needed for proper communication with FAN devices.
+    """
     device_id = msg["device_id"]
 
-    _LOGGER.debug(f"Executing get_bound_rem for device {device_id}")
+    _LOGGER.debug(f"Getting bound REM device for {device_id}")
 
-    # Get Ramses data from hass.data
-    ramses_data = hass.data.get("ramses_cc")
-    if not ramses_data:
-        connection.send_error(
-            msg["id"], "ramses_cc_not_found", "Ramses CC integration not loaded"
-        )
-        return
-
-    result = None
     try:
-        # Find device and get bound REM (same logic as old implementation)
-        for _entry_id, data in ramses_data.items():
-            # Handle both direct broker storage and dict storage
-            if hasattr(data, "__class__") and "Broker" in data.__class__.__name__:
-                broker = data
-            elif isinstance(data, dict) and "broker" in data:
-                broker = data["broker"]
-            else:
-                continue
-            if not broker:
-                continue
-            # Each broker has devices as a list (_devices)
-            devices = getattr(broker, "_devices", None)
-            if devices is None:
-                devices = getattr(broker, "devices", [])
-            if not devices:
-                continue
+        # Get RamsesCommands instance
+        ramses_commands = RamsesCommands(hass)
 
-            # Find device by ID
-            for device in devices:
-                device_id_attr = getattr(device, "id", str(device))
-                if device_id_attr == device_id:
-                    if hasattr(device, "get_bound_rem"):
-                        bound = device.get_bound_rem()
-                        result = bound.id if bound else None
-                    else:
-                        result = None
-                    break
-            if result is not None:
-                break
+        # Get bound REM device
+        bound_rem = await ramses_commands._get_bound_rem_device(device_id)
 
-        if result is None:
-            response_data = {"device_id": device_id, "bound_rem": None}
-            _LOGGER.debug(f"No bound REM found for device {device_id}")
-        else:
-            response_data = {"device_id": device_id, "bound_rem": result}
-            _LOGGER.debug(f"Found bound REM {result} for device {device_id}")
-
-        connection.send_result(msg["id"], response_data)
+        connection.send_result(
+            msg["id"],
+            {
+                "bound_rem": bound_rem,
+                "device_id": device_id,
+            },
+        )
+        _LOGGER.debug(f"Bound REM device for {device_id}: {bound_rem}")
 
     except Exception as error:
-        _LOGGER.error(f"Error getting bound REM for device {device_id}: {error}")
+        _LOGGER.error(f"Error getting bound REM device for {device_id}: {error}")
         connection.send_error(
             msg["id"],
-            "get_bound_rem_failed",
-            f"Failed to get bound REM for device {device_id}: {str(error)}",
+            "bound_rem_error",
+            f"Failed to get bound REM device: {str(error)}",
         )
 
 
 @websocket_api.websocket_command(  # type: ignore[misc]
     {
-        vol.Required("type"): WS_CMD_GET_2411_SCHEMA,
+        vol.Required("type"): "ramses_extras/get_2411_schema",
         vol.Required("device_id"): str,
     }
 )
@@ -104,107 +74,188 @@ async def ws_get_bound_rem(
 async def ws_get_2411_schema(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
-    """Return 2411 parameter schema for a Ramses device (Default feature)."""
+    """Get 2411 parameter schema for a device.
+
+    This command retrieves the parameter schema information for device
+    configuration and parameter editing.
+    """
     device_id = msg["device_id"]
 
-    _LOGGER.debug(f"Executing get_2411_schema for device {device_id}")
-
-    # Get Ramses data from hass.data
-    ramses_data = hass.data.get("ramses_cc")
-    if not ramses_data:
-        connection.send_error(
-            msg["id"], "ramses_cc_not_found", "Ramses CC integration not loaded"
-        )
-        return
+    _LOGGER.debug(f"Getting 2411 schema for device {device_id}")
 
     try:
-        # Find device
-        device = None
-        for _entry_id, data in ramses_data.items():
-            # Handle both direct broker storage and dict storage
-            if hasattr(data, "__class__") and "Broker" in data.__class__.__name__:
-                broker = data
-            elif isinstance(data, dict) and "broker" in data:
-                broker = data["broker"]
-            else:
-                continue
-            if not broker:
-                continue
-            # Each broker has devices as a list (_devices)
-            devices = getattr(broker, "_devices", None)
-            if devices is None:
-                devices = getattr(broker, "devices", [])
-            if not devices:
-                continue
+        # Get the actual 2411 parameter schema from ramses_rf
+        from ramses_tx.ramses import _2411_PARAMS_SCHEMA
 
-            # Find device by ID
-            for dev in devices:
-                device_id_attr = getattr(dev, "id", str(dev))
-                if device_id_attr == device_id:
-                    device = dev
-                    break
-            if device:
-                break
+        # Convert ramses_rf schema format to our UI format
+        schema = {}
+        for param_id, param_info in _2411_PARAMS_SCHEMA.items():
+            # Convert parameter ID to string for JSON compatibility
+            param_key = str(param_id)
 
-        if not device:
-            connection.send_error(
-                msg["id"], "device_not_found", f"Device {device_id} not found"
-            )
-            return
+            # Map ramses_rf schema to our UI schema format
+            schema[param_key] = {
+                "name": param_info.get("name", f"Parameter {param_id}"),
+                "description": param_info.get(
+                    "description", param_info.get("name", f"Parameter {param_id}")
+                ),
+                "unit": param_info.get("unit", ""),
+                "min_value": param_info.get("min_value", param_info.get("min", 0)),
+                "max_value": param_info.get("max_value", param_info.get("max", 100)),
+                "default_value": param_info.get(
+                    "default_value", param_info.get("default", 0)
+                ),
+                "data_type": param_info.get("data_type", "01"),
+                "precision": param_info.get("precision", param_info.get("step", 1)),
+            }
 
-        # Get 2411 schema from device
-        if hasattr(device, "get_2411_schema"):
-            schema = await device.get_2411_schema()
-        else:
-            # Fallback to device-type specific schema
-            device_type = getattr(device, "type", "HvacVentilator")
-            schema = get_2411_schema_for_device_type(device_type)
-
-        connection.send_result(msg["id"], schema)
-        _LOGGER.debug(f"Returned 2411 schema for device {device_id}")
+        connection.send_result(
+            msg["id"],
+            {
+                "schema": schema,
+                "device_id": device_id,
+            },
+        )
+        _LOGGER.debug(f"2411 schema retrieved for device {device_id}")
 
     except Exception as error:
         _LOGGER.error(f"Error getting 2411 schema for device {device_id}: {error}")
         connection.send_error(
             msg["id"],
-            "get_2411_schema_failed",
-            f"Failed to get 2411 schema for device {device_id}: {str(error)}",
+            "schema_error",
+            f"Failed to get parameter schema: {str(error)}",
         )
 
 
-def get_2411_schema_for_device_type(device_type: str) -> dict[str, Any]:
-    """Get 2411 schema for a specific device type.
+@websocket_api.websocket_command(  # type: ignore[misc]
+    {
+        vol.Required("type"): "ramses_extras/default/send_fan_command",
+        vol.Required("device_id"): str,
+        vol.Required("command"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[misc]
+async def ws_send_fan_command(
+    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Send a fan command using the new command framework with queuing.
 
-    Args:
-        device_type: Type of device (e.g., "HvacVentilator")
-
-    Returns:
-        Device type specific parameter schema from ramses_tx
+    This WebSocket command uses the registry-based command system with
+    per-device queuing to prevent overwhelming the communication layer.
+    Available for all features that need fan control.
     """
+    device_id = msg["device_id"]
+    command = msg["command"]
+
+    _LOGGER.info(
+        f"🔌 WebSocket command received: send_fan_command '{command}' "
+        f"to device {device_id}"
+    )
+
     try:
-        # Import the comprehensive schema from ramses_tx
-        from ramses_tx.ramses import _2411_PARAMS_SCHEMA
+        # Get RamsesCommands instance with registry support
+        ramses_commands = RamsesCommands(hass)
 
-        return dict(_2411_PARAMS_SCHEMA)  # Convert to dict[str, Any] explicitly
-    except ImportError:
-        _LOGGER.warning("Could not import _2411_PARAMS_SCHEMA from ramses_tx")
-        return {}
+        # Use the command name directly (JavaScript now sends correct names)
+        registry_command = command
+
+        # Check if this is a hardcoded fan command or a registry command
+        available_commands = ramses_commands.get_available_commands()
+        if registry_command in available_commands:
+            # Use the direct fan command method for hardcoded commands
+            result = await ramses_commands.send_fan_command(device_id, registry_command)
+        else:
+            # Use the registry-based command method
+            result = await ramses_commands.send_command(device_id, registry_command)
+
+        if result.success:
+            connection.send_result(
+                msg["id"],
+                {
+                    "success": True,
+                    "command": command,
+                    "registry_command": registry_command,
+                    "device_id": device_id,
+                    "queued": result.queued,
+                },
+            )
+            _LOGGER.debug(f"Fan command '{command}' queued for device {device_id}")
+        else:
+            connection.send_error(
+                msg["id"],
+                "command_failed",
+                f"Failed to send command '{command}' to device {device_id}: "
+                f"{result.error_message}",
+            )
+
+    except Exception as error:
+        _LOGGER.error(
+            f"Error sending fan command '{command}' to device {device_id}: {error}"
+        )
+        connection.send_error(
+            msg["id"],
+            "command_error",
+            f"Failed to send fan command '{command}': {str(error)}",
+        )
 
 
-def get_available_2411_parameters() -> list[str]:
-    """Get list of available 2411 parameters.
+@websocket_api.websocket_command(  # type: ignore[misc]
+    {
+        vol.Required("type"): "ramses_extras/default/set_fan_parameter",
+        vol.Required("device_id"): str,
+        vol.Required("param_id"): str,
+        vol.Required("value"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[misc]
+async def ws_set_fan_parameter(
+    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Set a fan parameter using the command framework.
 
-    Returns:
-        List of parameter IDs that are available in the schema
+    This provides a queued alternative to direct ramses_cc.set_fan_param calls.
+    Available for all features that need parameter control.
     """
-    try:
-        # Import the comprehensive schema from ramses_tx
-        from ramses_tx.ramses import _2411_PARAMS_SCHEMA
+    device_id = msg["device_id"]
+    param_id = msg["param_id"]
+    value = msg["value"]
 
-        return list(_2411_PARAMS_SCHEMA.keys())
-    except ImportError:
-        _LOGGER.warning("Could not import _2411_PARAMS_SCHEMA from ramses_tx")
-        return []
+    _LOGGER.debug(f"Setting fan parameter {param_id}={value} for device {device_id}")
+
+    try:
+        # For now, use direct service call since parameter setting
+        #  is different from commands
+        # TODO: Consider if parameter setting should also use the command framework
+        await hass.services.async_call(
+            "ramses_cc",
+            "set_fan_param",
+            {
+                "device_id": device_id,
+                "param_id": param_id,
+                "value": value,
+            },
+        )
+
+        connection.send_result(
+            msg["id"],
+            {
+                "success": True,
+                "device_id": device_id,
+                "param_id": param_id,
+                "value": value,
+            },
+        )
+        _LOGGER.debug(f"Fan parameter {param_id} set to {value} for device {device_id}")
+
+    except Exception as error:
+        _LOGGER.error(
+            f"Error setting fan parameter {param_id} for device {device_id}: {error}"
+        )
+        connection.send_error(
+            msg["id"],
+            "parameter_error",
+            f"Failed to set parameter {param_id}: {str(error)}",
+        )
 
 
 def get_command_info() -> dict[str, dict]:
@@ -216,14 +267,42 @@ def get_command_info() -> dict[str, dict]:
     return {
         "get_bound_rem": {
             "name": "get_bound_rem",
-            "type": WS_CMD_GET_BOUND_REM,
-            "description": "Get bound REM device for a device",
+            "type": "ramses_extras/get_bound_rem",
+            "description": "Get bound REM device for proper FAN communication",
             "feature": "default",
+            "parameters": {
+                "device_id": "Device ID (e.g., '32:153289')",
+            },
         },
         "get_2411_schema": {
             "name": "get_2411_schema",
-            "type": WS_CMD_GET_2411_SCHEMA,
-            "description": "Get 2411 parameter schema for a device",
+            "type": "ramses_extras/get_2411_schema",
+            "description": "Get parameter schema for device configuration",
             "feature": "default",
+            "parameters": {
+                "device_id": "Device ID (e.g., '32:153289')",
+            },
+        },
+        "send_fan_command": {
+            "name": "send_fan_command",
+            "type": "ramses_extras/default/send_fan_command",
+            "description": "Send a fan command using the queued command framework",
+            "feature": "default",
+            "parameters": {
+                "device_id": "Device ID (e.g., '32:153289')",
+                "command": "Command name (fan_high, fan_low, fan_auto, bypass_open, "
+                "request31DA, etc.)",
+            },
+        },
+        "set_fan_parameter": {
+            "name": "set_fan_parameter",
+            "type": "ramses_extras/default/set_fan_parameter",
+            "description": "Set a fan parameter value",
+            "feature": "default",
+            "parameters": {
+                "device_id": "Device ID (e.g., '32:153289')",
+                "param_id": "Parameter ID",
+                "value": "Parameter value",
+            },
         },
     }

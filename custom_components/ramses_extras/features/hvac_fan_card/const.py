@@ -32,6 +32,7 @@ FEATURE_CARD_CONFIG = {
 }
 
 # WebSocket commands for the HVAC fan card feature
+# Note: Fan commands are now provided by the default feature for all cards to use
 HVAC_FAN_CARD_WEBSOCKET_COMMANDS: dict[str, str] = {}
 
 # HVAC Fan Card is a dashboard card feature

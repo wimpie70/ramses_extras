@@ -142,9 +142,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Load default feature's WebSocket commands and other feature components
     _LOGGER.info("🔧 Loading default feature...")
+    from .features.default.commands import register_default_commands
     from .features.default.const import load_feature
 
+    # Import WebSocket commands to ensure decorators are executed
+    _LOGGER.info("🔌 Importing WebSocket commands module for decorator execution...")
+    from .features.default import websocket_commands  # noqa: F401
+
+    _LOGGER.info("✅ WebSocket commands module imported successfully")
+
     load_feature()
+
+    # Register default device type commands
+    _LOGGER.info("🔧 Registering default device type commands...")
+    register_default_commands()
 
     # Load enabled feature definitions
     enabled_features_dict = entry.data.get("enabled_features", {})

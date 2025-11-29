@@ -46,11 +46,15 @@ DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
 # WebSocket command constants for the default feature
 WS_CMD_GET_BOUND_REM = "ramses_extras/get_bound_rem"
 WS_CMD_GET_2411_SCHEMA = "ramses_extras/get_2411_schema"
+WS_CMD_SEND_FAN_COMMAND = "ramses_extras/default/send_fan_command"
+WS_CMD_SET_FAN_PARAMETER = "ramses_extras/default/set_fan_parameter"
 
 # WebSocket commands for the default feature
 DEFAULT_WEBSOCKET_COMMANDS = {
     "get_bound_rem": WS_CMD_GET_BOUND_REM,
     "get_2411_schema": WS_CMD_GET_2411_SCHEMA,
+    "send_fan_command": WS_CMD_SEND_FAN_COMMAND,
+    "set_fan_parameter": WS_CMD_SET_FAN_PARAMETER,
 }
 
 
@@ -81,6 +85,8 @@ __all__ = [
     "DEFAULT_DEVICE_ENTITY_MAPPING",
     "WS_CMD_GET_BOUND_REM",
     "WS_CMD_GET_2411_SCHEMA",
+    "WS_CMD_SEND_FAN_COMMAND",
+    "WS_CMD_SET_FAN_PARAMETER",
     "DEFAULT_WEBSOCKET_COMMANDS",
     "load_feature",
 ]

@@ -9,11 +9,11 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
     <div class="controls-container">
       <!-- Row 1: Fan Modes -->
       <div class="control-row">
-        <div class="control-button" onclick="send_command('away', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_away', '${config.device_id}', this)">
           <div class="control-icon">🏠</div>
           <div class="control-label">Away</div>
         </div>
-        <div class="control-button" onclick="send_command('auto', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_auto', '${config.device_id}', this)">
           <div class="control-icon">🌀</div>
           <div class="control-label">Auto</div>
         </div>
@@ -27,15 +27,15 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
 
       <!-- Row 2: Fan Speeds -->
       <div class="control-row">
-        <div class="control-button" onclick="send_command('low', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_low', '${config.device_id}', this)">
           <div class="control-icon">🌀</div>
           <div class="control-label">Low</div>
         </div>
-        <div class="control-button" onclick="send_command('medium', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_medium', '${config.device_id}', this)">
           <div class="control-icon">🌀</div>
           <div class="control-label">Medium</div>
         </div>
-        <div class="control-button" onclick="send_command('high', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_high', '${config.device_id}', this)">
           <div class="control-icon">🌀</div>
           <div class="control-label">High</div>
         </div>
@@ -43,15 +43,15 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
 
       <!-- Row 3: Timer -->
       <div class="control-row">
-        <div class="control-button" onclick="send_command('high_15', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_timer_15min', '${config.device_id}', this)">
           <div class="control-icon">⏱️</div>
           <div class="control-label">15m</div>
         </div>
-        <div class="control-button" onclick="send_command('high_30', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_timer_30min', '${config.device_id}', this)">
           <div class="control-icon">⏰</div>
           <div class="control-label">30m</div>
         </div>
-        <div class="control-button" onclick="send_command('high_60', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_timer_60min', '${config.device_id}', this)">
           <div class="control-icon">⏳</div>
           <div class="control-label">60m</div>
         </div>
@@ -59,15 +59,15 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
 
       <!-- Row 4: Bypass -->
       <div class="control-row">
-        <div class="control-button" onclick="send_command('bypass_auto', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_bypass_auto', '${config.device_id}', this)">
           <div class="control-icon">🔄</div>
           <div class="control-label">Bypass Auto</div>
         </div>
-        <div class="control-button" onclick="send_command('bypass_close', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_bypass_close', '${config.device_id}', this)">
           <div class="control-icon">⊞</div>
           <div class="control-label">Bypass Close</div>
         </div>
-        <div class="control-button" onclick="send_command('bypass_open', '${config.device_id}', this)">
+        <div class="control-button" onclick="send_command('fan_bypass_open', '${config.device_id}', this)">
           <div class="control-icon">⊟</div>
           <div class="control-label">Bypass Open</div>
         </div>

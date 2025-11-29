@@ -44,7 +44,6 @@ from .entity import (
 
 # Ramses commands
 from .ramses_commands import (
-    FAN_COMMANDS,
     RamsesCommands,
     create_ramses_commands,
 )
@@ -68,7 +67,6 @@ __all__ = [
     # Automation helpers
     "ExtrasBaseAutomation",
     # Ramses commands
-    "FAN_COMMANDS",
     "RamsesCommands",
     "create_ramses_commands",
     # Common utilities - Validation

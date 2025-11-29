@@ -488,7 +488,7 @@ class ExtrasServiceManager:
         """
         try:
             # Use Ramses commands framework
-            success = await self.ramses_commands.send_command(device_id, command)  # type: ignore[attr-defined]
+            success = await self.ramses_commands.send_command(device_id, command)
             if success:
                 _LOGGER.info(f"Command '{command}' sent to device {device_id}")
             else:

@@ -164,8 +164,5 @@ export class HvacFanCardHandlers {
     }
 }
 
-// Auto-register handlers when the file is loaded
-console.log('📁 HvacFanCardHandlers loaded and ready for message handling');
-
 // Make handlers globally available for debugging
 window.HvacFanCardHandlers = HvacFanCardHandlers;

@@ -665,7 +665,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         try:
             # Set fan speed to HIGH for dehumidification
-            success = await self.ramses_commands.send_fan_command(device_id, "high")
+            result = await self.ramses_commands.send_command(device_id, "fan_high")
+            success = result.success
             if success:
                 # Turn on dehumidify switch
                 await self.services.async_activate_dehumidification(device_id)
@@ -720,8 +721,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             decision: Decision information
         """
         try:
-            # Set fan to auto mode (stop dehumidification)
-            success = await self.ramses_commands.send_fan_command(device_id, "low")
+            # Set fan to low mode (stop dehumidification)
+            result = await self.ramses_commands.send_command(device_id, "fan_low")
+            success = result.success
             if not success:
                 _LOGGER.warning(
                     f"Failed to set fan to auto mode for device {device_id}"
@@ -756,7 +758,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             await self.services.async_deactivate_dehumidification(device_id)
 
             # Set fan to auto mode
-            success = await self.ramses_commands.send_fan_command(device_id, "auto")
+            result = await self.ramses_commands.send_command(device_id, "fan_auto")
+            success = result.success
             if not success:
                 _LOGGER.warning(
                     f"Failed to set fan to auto mode for device {device_id}"

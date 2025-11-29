@@ -135,8 +135,9 @@ class HumidityServices:
         _LOGGER.info(f"Setting fan speed to {speed} for device {device_id}")
 
         try:
-            # Send Ramses RF command directly to the device
-            success = await self.ramses_commands.send_fan_command(device_id, speed)
+            # Send command using registry
+            result = await self.ramses_commands.send_command(device_id, speed)
+            success: bool = result.success
             if success:
                 _LOGGER.info(f"Fan speed set to {speed.upper()} for device {device_id}")
             else:
