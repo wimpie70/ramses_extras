@@ -31,6 +31,9 @@ CONF_ENABLED_FEATURES = "enabled_features"
 CONF_ENABLED_WEB_SOCKETS = "enabled_web_sockets"
 CONF_MESSAGE_EVENTS = "message_events"
 
+# Command framework constants
+COMMAND_MIN_INTERVAL = 0.5  # Minimum interval between commands (seconds)
+
 # UI/Frontend constants
 CARD_FOLDER = "www"
 CARD_HELPERS_FOLDER = "framework/www"

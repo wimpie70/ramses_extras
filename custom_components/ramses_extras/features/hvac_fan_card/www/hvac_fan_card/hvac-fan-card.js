@@ -868,33 +868,10 @@ window.send_command = function (commandKey, deviceId, buttonElement) {
           device_id: deviceId,
           command: commandKey,
         });
-        // console.log(`Successfully sent ${commandKey} command`);
 
-        // After sending command, wait a bit then request status update and refresh entity states
-        if (! (commandKey in ['fan_request31DA', 'fan_request10D0'])) {
-          await callWebSocket(element._hass, {
-            type: 'ramses_extras/default/send_fan_command',
-            device_id: deviceId,
-            command: 'fan_request31DA',
-          });
-
-          await callWebSocket(element._hass, {
-            type: 'ramses_extras/default/send_fan_command',
-            device_id: deviceId,
-            command: 'fan_request10D0',
-          });
-        }
-
-        // Wait a bit more for the status responses, then refresh UI
-        setTimeout(() => {
-          // console.log(`🔄 Refreshing entity states after ${commandKey} command...`);
-          if (element && element._hass) {
-            // Clear previous states to force update detection
-            element._prevStates = null;
-            // Trigger hass setter to re-render if states changed
-            element.hass = element._hass;
-          }
-        }, 2500); // 2.5 second delay for queue handling
+        // Command sent successfully - Python queue handles all timing and processing
+        // UI will update automatically when device state changes via WebSocket messages
+        // console.log(`✅ Command '${commandKey}' queued for device ${deviceId}`);
       } catch (error) {
         console.error('Error sending command:', error);
       }

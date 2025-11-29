@@ -819,23 +819,37 @@ The service framework provides comprehensive service registration, execution, an
 
 ### 🎛️ Command Framework
 
-The command framework provides centralized device command management with queuing and rate limiting.
+The command framework provides centralized device command management with queuing, rate limiting, and feature ownership. It ensures reliable device communication while preventing the communication layer from being overwhelmed.
 
 #### CommandRegistry (`framework/helpers/commands/registry.py`)
 
 **Purpose**: Centralized registry for device commands with feature ownership and conflict resolution
 
 **Key Features**:
-- Feature-based command registration
-- Device-type command organization
-- Duplicate detection with first-wins resolution
-- Developer warnings for naming conflicts
+- **Feature-based Registration**: Commands registered by specific features with ownership tracking
+- **Device-type Organization**: Commands organized by device type and category for easy access
+- **Conflict Resolution**: First-registration-wins policy with developer warnings for duplicates
+- **Registry Methods**: Comprehensive API for command registration, retrieval, and management
+
+**Command Definition Format**:
+```python
+{
+    "code": "22F1",      # Ramses RF code
+    "verb": " I",        # Command verb (I, W, RQ, etc.)
+    "payload": "000307", # Command payload
+    "description": "Set fan to high speed"  # Optional description
+}
+```
 
 **API**:
 ```python
 class CommandRegistry:
     def register_commands(self, feature_id: str, commands: dict[str, dict]) -> None:
         """Register feature commands with conflict detection."""
+
+    def register_device_commands(self, device_type: str, category: str,
+                                commands: dict[str, dict]) -> None:
+        """Register device-type specific commands organized by category."""
 
     def get_command(self, command_name: str) -> dict | None:
         """Get command definition by name."""
@@ -845,17 +859,26 @@ class CommandRegistry:
 
     def list_commands_by_feature(self, feature_id: str) -> list[str]:
         """List all commands registered by a feature."""
+
+    def get_available_commands(self) -> dict[str, dict]:
+        """Get all registered commands with metadata."""
+
+    def clear_feature_commands(self, feature_id: str) -> int:
+        """Remove all commands registered by a feature."""
 ```
 
-#### Enhanced RamsesCommands (`framework/helpers/ramses_commands.py`)
+#### RamsesCommands (`framework/helpers/ramses_commands.py`)
 
-**Purpose**: Device command execution with queuing, rate limiting, and async safety
+**Purpose**: Advanced device command execution with per-device queuing, rate limiting, and comprehensive monitoring
 
 **Key Features**:
-- Per-device command queuing to prevent overwhelming communication layer
-- Rate limiting and priority-based scheduling
-- Async-safe design with background processing
-- Integration with command registry for feature-owned commands
+- **Per-device Queuing**: Separate command queues per device to prevent overwhelming communication
+- **Rate Limiting**: Configurable minimum intervals between commands (default: 1 second)
+- **Priority-based Scheduling**: High, normal, and low priority command handling
+- **Background Processing**: Async command processing with queue monitoring
+- **Command Statistics**: Comprehensive metrics for success rates, execution times, and queue depths
+- **Registry Integration**: Full integration with CommandRegistry for feature-owned commands
+- **Queue Monitoring**: Real-time queue depth tracking and performance statistics
 
 **API**:
 ```python
@@ -864,48 +887,180 @@ class RamsesCommands:
         """Initialize with command queuing and registry integration."""
 
     async def send_command(self, device_id: str, command_name: str,
-                          queue: bool = True, priority: str = "normal") -> CommandResult:
-        """Send command to device with optional queuing."""
+                          queue: bool = True, priority: str = "normal",
+                          timeout: float = 30.0) -> CommandResult:
+        """Send command to device with optional queuing and rate limiting."""
 
-    async def send_fan_command(self, device_id: str, command: str) -> bool:
-        """Legacy method for fan commands (uses queuing internally)."""
+    async def send_fan_command(self, device_id: str, command: str) -> CommandResult:
+        """Send fan command using registry with queuing support."""
+
+    def get_available_commands(self) -> dict[str, dict]:
+        """Get all available commands from the registry."""
+
+    def get_command_description(self, command: str) -> str:
+        """Get description for a command."""
+
+    def get_queue_statistics(self) -> dict[str, Any]:
+        """Get comprehensive queue statistics for monitoring."""
 ```
 
-#### Command Organization Pattern
+#### Default Command Library (`features/default/commands.py`)
 
-**Default Feature Command Library:**
+**Purpose**: Standard device commands available to all features, providing common functionality
+
+**HvacVentilator Commands**:
 ```python
-# features/default/commands.py
-DEVICE_TYPE_COMMANDS = {
-    "HvacVentilator": {
-        "fan_speeds": {
-            "high": {"code": "22F1", "verb": " I", "payload": "000307"},
-            "low": {"code": "22F1", "verb": " I", "payload": "000107"},
-            "auto": {"code": "22F1", "verb": " I", "payload": "000407"},
-        },
-        "bypass": {
-            "open": {"code": "22F7", "verb": " W", "payload": "00C8EF"},
-            "close": {"code": "22F7", "verb": " W", "payload": "0000EF"},
-        }
+HVAC_VENTILATOR_COMMANDS = {
+    # Fan speed commands
+    "fan_high": {
+        "code": "22F1", "verb": " I", "payload": "000307",
+        "description": "Set fan to high speed"
+    },
+    "fan_medium": {
+        "code": "22F1", "verb": " I", "payload": "000207",
+        "description": "Set fan to medium speed"
+    },
+    "fan_low": {
+        "code": "22F1", "verb": " I", "payload": "000107",
+        "description": "Set fan to low speed"
+    },
+    "fan_auto": {
+        "code": "22F1", "verb": " I", "payload": "000407",
+        "description": "Set fan to auto mode"
+    },
+    "fan_boost": {
+        "code": "22F1", "verb": " I", "payload": "000607",
+        "description": "Set fan to boost mode"
+    },
+    "fan_away": {
+        "code": "22F1", "verb": " I", "payload": "000007",
+        "description": "Set fan to away mode"
+    },
+
+    # Bypass commands
+    "fan_bypass_open": {
+        "code": "22F7", "verb": " W", "payload": "00C8EF",
+        "description": "Open bypass"
+    },
+    "fan_bypass_close": {
+        "code": "22F7", "verb": " W", "payload": "0000EF",
+        "description": "Close bypass"
+    },
+    "fan_bypass_auto": {
+        "code": "22F7", "verb": " W", "payload": "00FFEF",
+        "description": "Set bypass to auto mode"
+    },
+
+    # Status request commands
+    "fan_request10D0": {
+        "code": "10D0", "verb": "RQ", "payload": "00",
+        "description": "Request system status"
+    },
+    "fan_request31DA": {
+        "code": "31DA", "verb": "RQ", "payload": "00",
+        "description": "Request 31DA status"
     }
 }
 ```
 
-**Feature Command Registration:**
+#### WebSocket Commands (`features/default/websocket_commands.py`)
+
+**Purpose**: JavaScript-accessible commands for real-time device control and monitoring
+
+**Available WebSocket Commands**:
+
+1. **`ramses_extras/get_bound_rem`**: Get bound REM device for proper FAN communication
+2. **`ramses_extras/get_2411_schema`**: Get parameter schema for device configuration
+3. **`ramses_extras/default/send_fan_command`**: Send fan command using queued framework
+4. **`ramses_extras/default/set_fan_parameter`**: Set fan parameter with queuing
+5. **`ramses_extras/default/get_queue_statistics`**: Get command queue statistics for monitoring
+
+**JavaScript Usage Example**:
+```javascript
+// Send a fan command using the command framework
+const result = await callWebSocket(hass, {
+    type: 'ramses_extras/default/send_fan_command',
+    device_id: '32:153289',
+    command: 'fan_high'
+});
+
+// Response includes execution details
+console.log('Command sent:', result);
+// {
+//     success: true,
+//     command: 'fan_high',
+//     queued: false,
+//     execution_time: 0.123,
+//     message: "Command 'fan_high' sent successfully"
+// }
+
+// Get queue statistics for monitoring
+const stats = await callWebSocket(hass, {
+    type: 'ramses_extras/default/get_queue_statistics'
+});
+
+console.log('Queue stats:', stats);
+// {
+//     command_statistics: {
+//         total_commands: 45,
+//         successful_commands: 43,
+//         failed_commands: 2,
+//         success_rate_percent: 95.56
+//     },
+//     queue_status: {
+//         active_queues: 2,
+//         device_queue_depths: {"32:153289": 0, "32:153290": 1}
+//     }
+// }
+```
+
+#### Command Framework Integration
+
+**Feature Registration Pattern**:
 ```python
 # In feature factory
 def create_humidity_control_feature(hass, config_entry):
+    registry = get_command_registry()
+
     # Use standard HvacVentilator commands
-    fan_commands = command_registry.get_device_commands("HvacVentilator", "fan_speeds")
+    fan_commands = registry.get_device_commands("HvacVentilator", "standard")
 
     # Register feature-specific commands
     custom_commands = {
-        "dehumidify_mode": {"code": "1234", "verb": " W", "payload": "DEhumidify"}
+        "dehumidify_mode": {
+            "code": "22F8", "verb": " W", "payload": "DEhumidify",
+            "description": "Enable dehumidification mode"
+        }
     }
-    command_registry.register_commands("humidity_control", custom_commands)
+    registry.register_commands("humidity_control", custom_commands)
 
-    return {"commands": {**fan_commands, **custom_commands}}
+    # Create commands manager
+    commands_manager = RamsesCommands(hass)
+
+    return {
+        "commands_manager": commands_manager,
+        "available_commands": {**fan_commands, **custom_commands}
+    }
 ```
+
+#### Queue Management Features
+
+**Per-Device Queue Processing**:
+- Each device has its own command queue
+- Commands are processed in order with rate limiting
+- Background processors handle queued commands automatically
+- Queue depth monitoring prevents memory issues
+
+**Rate Limiting**:
+- Configurable minimum interval between commands (main const.py)
+- Prevents communication layer overwhelming
+- Automatic command scheduling based on rate limits
+
+**Performance Monitoring**:
+- Command success/failure rates
+- Average execution times
+- Queue depth tracking
+- Device-specific statistics
 
 ### 🏛️ Entity Management Framework
 

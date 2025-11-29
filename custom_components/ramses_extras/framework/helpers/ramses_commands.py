@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from .commands.registry import get_command_registry
 
@@ -42,11 +42,22 @@ class DeviceCommandManager:
         self._last_command_time: dict[str, float] = {}
         # Minimum interval between commands (seconds)
         self._min_interval = 1.0
+        # Command metrics for monitoring
+        self._command_stats = {
+            "total_commands": 0,
+            "successful_commands": 0,
+            "failed_commands": 0,
+            "queued_commands": 0,
+            "total_execution_time": 0.0,
+        }
+        # Queue depth tracking: {device_id: current_depth}
+        self._queue_depths: dict[str, int] = {}
 
     def _get_device_queue(self, device_id: str) -> asyncio.Queue:
         """Get or create queue for a device."""
         if device_id not in self._queues:
             self._queues[device_id] = asyncio.Queue()
+            self._queue_depths[device_id] = 0
         return self._queues[device_id]
 
     async def send_command_to_device(
@@ -67,6 +78,9 @@ class DeviceCommandManager:
         Returns:
             CommandResult with execution status
         """
+        # Update command statistics
+        self._command_stats["total_commands"] += 1
+
         # Rate limiting check
         current_time = time.time()
         last_time = self._last_command_time.get(device_id, 0)
@@ -81,6 +95,11 @@ class DeviceCommandManager:
                     "queued_time": current_time,
                 }
             )
+            # Update queue depth
+            self._queue_depths[device_id] = queue.qsize()
+
+            # Update statistics
+            self._command_stats["queued_commands"] += 1
 
             # Start background processor if needed
             if device_id not in self._processors:
@@ -91,7 +110,17 @@ class DeviceCommandManager:
             return CommandResult(success=True, queued=True)
 
         # Execute immediately
-        return await self._execute_command(device_id, command_def, timeout)
+        result = await self._execute_command(device_id, command_def, timeout)
+
+        # Update statistics based on result
+        if result.success:
+            self._command_stats["successful_commands"] += 1
+        else:
+            self._command_stats["failed_commands"] += 1
+
+        self._command_stats["total_execution_time"] += result.execution_time
+
+        return result
 
     async def _process_device_queue(self, device_id: str) -> None:
         """Background processor for queued commands."""
@@ -107,6 +136,17 @@ class DeviceCommandManager:
                     device_id, command_data["command_def"], command_data["timeout"]
                 )
 
+                # Update queue depth
+                self._queue_depths[device_id] = queue.qsize()
+
+                # Update statistics
+                if result.success:
+                    self._command_stats["successful_commands"] += 1
+                else:
+                    self._command_stats["failed_commands"] += 1
+
+                self._command_stats["total_execution_time"] += result.execution_time
+
                 # Log result
                 if not result.success:
                     _LOGGER.warning(
@@ -119,11 +159,16 @@ class DeviceCommandManager:
                 break
             except Exception as e:
                 _LOGGER.error(f"Queue processing error for device {device_id}: {e}")
+                self._command_stats["failed_commands"] += 1
                 continue
 
         # Clean up processor
         if device_id in self._processors:
             del self._processors[device_id]
+
+        # Clean up queue depth tracking
+        if device_id in self._queue_depths:
+            del self._queue_depths[device_id]
 
     async def _execute_command(
         self, device_id: str, command_def: dict[str, Any], timeout: float
@@ -146,6 +191,44 @@ class DeviceCommandManager:
             return CommandResult(
                 success=False, error_message=str(e), execution_time=execution_time
             )
+
+    def get_queue_statistics(self) -> dict[str, Any]:
+        """Get comprehensive queue statistics for monitoring.
+
+        Returns:
+            Dictionary containing queue statistics and metrics
+        """
+        total_commands = self._command_stats["total_commands"]
+        success_rate = (
+            (self._command_stats["successful_commands"] / total_commands * 100)
+            if total_commands > 0
+            else 0
+        )
+        avg_execution_time = (
+            self._command_stats["total_execution_time"] / total_commands
+            if total_commands > 0
+            else 0
+        )
+
+        return {
+            "command_statistics": {
+                "total_commands": total_commands,
+                "successful_commands": self._command_stats["successful_commands"],
+                "failed_commands": self._command_stats["failed_commands"],
+                "queued_commands": self._command_stats["queued_commands"],
+                "success_rate_percent": round(success_rate, 2),
+                "average_execution_time": round(avg_execution_time, 3),
+            },
+            "queue_status": {
+                "active_queues": len(self._queues),
+                "active_processors": len(self._processors),
+                "device_queue_depths": dict(self._queue_depths),
+            },
+            "configuration": {
+                "rate_limit_interval": self._min_interval,
+                "total_devices": len(self._last_command_time),
+            },
+        }
 
 
 class RamsesCommands:
@@ -326,6 +409,14 @@ class RamsesCommands:
         """
         cmd_def = self._command_registry.get_command(command)
         return str(cmd_def.get("description", "")) if cmd_def else ""
+
+    def get_queue_statistics(self) -> dict[str, Any]:
+        """Get comprehensive queue statistics for monitoring.
+
+        Returns:
+            Dictionary containing queue statistics and metrics
+        """
+        return self._device_manager.get_queue_statistics()
 
 
 # Global instance for easy access

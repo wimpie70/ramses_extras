@@ -6,6 +6,7 @@ and rate limiting.
 """
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -169,6 +170,13 @@ async def ws_send_fan_command(
             result = await ramses_commands.send_command(device_id, registry_command)
 
         if result.success:
+            # Provide detailed feedback about command processing
+            feedback_message = (
+                f"Command '{command}' sent successfully"
+                if not result.queued
+                else f"Command '{command}' queued for device {device_id}"
+            )
+
             connection.send_result(
                 msg["id"],
                 {
@@ -177,9 +185,11 @@ async def ws_send_fan_command(
                     "registry_command": registry_command,
                     "device_id": device_id,
                     "queued": result.queued,
+                    "message": feedback_message,
+                    "execution_time": result.execution_time,
                 },
             )
-            _LOGGER.debug(f"Fan command '{command}' queued for device {device_id}")
+            _LOGGER.info(f"✅ {feedback_message}")
         else:
             connection.send_error(
                 msg["id"],
@@ -258,6 +268,47 @@ async def ws_set_fan_parameter(
         )
 
 
+@websocket_api.websocket_command(  # type: ignore[misc]
+    {
+        vol.Required("type"): "ramses_extras/default/get_queue_statistics",
+    }
+)
+@websocket_api.async_response  # type: ignore[misc]
+async def ws_get_queue_statistics(
+    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Get command queue statistics for monitoring and debugging.
+
+    This provides real-time statistics about command queue performance,
+    success rates, and current queue depths for all devices.
+    """
+    _LOGGER.debug("Getting command queue statistics")
+
+    try:
+        # Get RamsesCommands instance
+        ramses_commands = RamsesCommands(hass)
+
+        # Get queue statistics
+        stats = ramses_commands.get_queue_statistics()
+
+        connection.send_result(
+            msg["id"],
+            {
+                "statistics": stats,
+                "timestamp": time.time(),
+            },
+        )
+        _LOGGER.debug("Queue statistics retrieved successfully")
+
+    except Exception as error:
+        _LOGGER.error(f"Error getting queue statistics: {error}")
+        connection.send_error(
+            msg["id"],
+            "statistics_error",
+            f"Failed to get queue statistics: {str(error)}",
+        )
+
+
 def get_command_info() -> dict[str, dict]:
     """Get information about available commands for this feature.
 
@@ -304,5 +355,12 @@ def get_command_info() -> dict[str, dict]:
                 "param_id": "Parameter ID",
                 "value": "Parameter value",
             },
+        },
+        "get_queue_statistics": {
+            "name": "get_queue_statistics",
+            "type": "ramses_extras/default/get_queue_statistics",
+            "description": "Get command queue statistics for monitoring",
+            "feature": "default",
+            "parameters": {},
         },
     }
