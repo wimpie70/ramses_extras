@@ -23,7 +23,7 @@
     ruff == 0.14.4                               # latest: 0.14.4 See also: pre-commit-config.yaml
 
 # used for development (typing)
-    mypy >= 1.15.0                               # latest: 1.18.2
+    mypy == 1.19.0                               # pinned to match CI
     types-PyYAML >= 6.0.12                       # latest: 6.0.12 (for yaml type stubs)
     types-requests >= 2.31.0                     # latest: 2.32.0 (for requests type stubs)
     voluptuous >= 0.15.2                         # latest: 0.15.2 =HA

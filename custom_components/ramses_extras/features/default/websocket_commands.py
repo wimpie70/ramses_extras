@@ -21,13 +21,13 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-@websocket_api.websocket_command(  # type: ignore[misc]
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
         vol.Required("type"): "ramses_extras/get_bound_rem",
         vol.Required("device_id"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[misc]
+@websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_bound_rem(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
@@ -65,13 +65,13 @@ async def ws_get_bound_rem(
         )
 
 
-@websocket_api.websocket_command(  # type: ignore[misc]
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
         vol.Required("type"): "ramses_extras/get_2411_schema",
         vol.Required("device_id"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[misc]
+@websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_2411_schema(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
@@ -128,14 +128,14 @@ async def ws_get_2411_schema(
         )
 
 
-@websocket_api.websocket_command(  # type: ignore[misc]
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
         vol.Required("type"): "ramses_extras/default/send_fan_command",
         vol.Required("device_id"): str,
         vol.Required("command"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[misc]
+@websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_send_fan_command(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
@@ -209,7 +209,7 @@ async def ws_send_fan_command(
         )
 
 
-@websocket_api.websocket_command(  # type: ignore[misc]
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
         vol.Required("type"): "ramses_extras/default/set_fan_parameter",
         vol.Required("device_id"): str,
@@ -217,7 +217,7 @@ async def ws_send_fan_command(
         vol.Required("value"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[misc]
+@websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_set_fan_parameter(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
@@ -268,12 +268,12 @@ async def ws_set_fan_parameter(
         )
 
 
-@websocket_api.websocket_command(  # type: ignore[misc]
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
         vol.Required("type"): "ramses_extras/default/get_queue_statistics",
     }
 )
-@websocket_api.async_response  # type: ignore[misc]
+@websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_queue_statistics(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-@websocket_api.websocket_command({vol.Required("type"): str})  # type: ignore[misc]
+@websocket_api.websocket_command({vol.Required("type"): str})  # type: ignore[untyped-decorator]
 async def websocket_info(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:

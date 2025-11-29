@@ -9,7 +9,7 @@ repos:
 
   # MyPy type checker (allowed to fail due to HA version conflicts)
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
+    rev: v1.19.0
     hooks:
       - id: mypy
         exclude: ^(setup\.py|tests/)
