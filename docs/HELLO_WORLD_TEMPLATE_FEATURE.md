@@ -491,3 +491,16 @@ compact_view: false
 *Note: These advanced features represent future enhancement opportunities. A separate architectural planning session should evaluate which features to prioritize and how they integrate with the core template.*
 
 This template feature provides a complete, working example that new developers can use as a starting point for their own features while demonstrating all key Ramses Extras architectural patterns and best practices. The modular design allows for easy extension with additional capabilities as needed.
+
+## Guidelines
+
+- all projects (ramses_extras, -_cc, -rf) have their own venv, eg: ~/venvs/_cc
+- usage: source ~/venvs/extras/bin/activate
+- tests should pass local (make local-ci) and also on github
+- log files: /home/willem/docker_files/hass/config/home-assistant.log /home/willem/docker_files/hass/config/ramses_log
+- run tests like: cd /home/willem/dev/ramses_extras && bash -c "source ~/venvs/extras/bin/activate && python3 tests/managers/test_humidity_automation.py"
+- Python: don't import/use old Dict, List, Optional, etc... just use dict, list, optional, etc..
+- Python: make sure the lines are not exceeding the linelenghts (ruff/mypy)
+- Backward compatible: we don't need that for now.
+
+- ramses_extras: always read RAMSES_EXTRAS_ARCHITECTURE.md
