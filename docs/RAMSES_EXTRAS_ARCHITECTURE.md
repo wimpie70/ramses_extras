@@ -1516,13 +1516,17 @@ Also read the `Contributing` section on github to see how to setup a development
 ```python
 # Feature imports (relative)
 from ...automation import HumidityAutomationManager
-from ...framework.helpers.automation import ExtrasBaseAutomation
-from ...framework.helpers.entity import EntityHelpers
+
+# Framework imports (absolute - due to module resolution)
+from custom_components.ramses_extras.framework.helpers.automation import ExtrasBaseAutomation
+from custom_components.ramses_extras.framework.helpers.entity import EntityHelpers
 
 # Root imports (absolute)
 from custom_components.ramses_extras.const import DOMAIN
 from homeassistant.config_entries import ConfigEntry
 ```
+
+**Note**: Framework components should use absolute imports from features to avoid module resolution issues. Relative imports like `from ...framework.helpers.automation` may resolve incorrectly in some Python environments.
 
 ### Development Workflow
 

@@ -217,6 +217,83 @@ def validate_device_entity_support(device_type: str, entity_name: str) -> bool:
     return entity_name in supported_entities
 
 
+async def _get_broker_for_entry(hass: HomeAssistant) -> Any | None:
+    """Get the ramses_cc broker instance for device communication.
+
+    This function implements multiple fallback methods to access the broker,
+    following the same pattern used in the main integration setup.
+
+    Args:
+        hass: Home Assistant instance
+
+    Returns:
+        The ramses_cc broker instance or None if not found
+    """
+    # Check if ramses_cc is loaded
+    ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
+    if not ramses_cc_entries:
+        _LOGGER.warning("No ramses_cc entries found")
+        return None
+
+    # Use the first ramses_cc entry
+    entry = ramses_cc_entries[0]
+
+    try:
+        # Method 1: Try to get broker from hass.data (most reliable)
+        broker = None
+        if "ramses_cc" in hass.data and entry.entry_id in hass.data["ramses_cc"]:
+            broker_data = hass.data["ramses_cc"][entry.entry_id]
+            # The broker is stored directly, not nested under a "broker" key
+            if (
+                hasattr(broker_data, "__class__")
+                and "Broker" in broker_data.__class__.__name__
+            ):
+                broker = broker_data
+            elif isinstance(broker_data, dict) and "broker" in broker_data:
+                broker = broker_data["broker"]
+            elif hasattr(broker_data, "broker"):
+                broker = broker_data.broker
+            else:
+                # Direct assignment if broker is stored directly
+                broker = broker_data
+
+        # Method 2: If not found, try getting broker from the entry
+        if broker is None and hasattr(entry, "broker"):
+            broker = entry.broker
+
+        # Method 3: Try to access through the integration registry
+        if broker is None:
+            # Look for ramses_cc integration instance in integration registry
+            for integration in hass.data.get("integrations", {}).values():
+                if hasattr(integration, "broker") and integration.broker:
+                    broker = integration.broker
+                    break
+
+        # Method 4: Direct import and access (fallback)
+        if broker is None:
+            try:
+                from ramses_cc.gateway import Gateway
+
+                # Try to find gateway through Home Assistant's component registry
+                gateway_entries = [
+                    e for e in ramses_cc_entries if hasattr(e, "gateway")
+                ]
+                if gateway_entries:
+                    broker = gateway_entries[0].gateway
+            except ImportError:
+                _LOGGER.debug("ramses_cc module not available for direct access")
+
+        if broker is None:
+            _LOGGER.warning("Could not find ramses_cc broker via any method")
+            return None
+
+        return broker
+
+    except Exception as e:
+        _LOGGER.error(f"Error accessing ramses_cc broker: {e}")
+        return None
+
+
 __all__ = [
     "find_ramses_device",
     "get_device_type",
@@ -225,4 +302,5 @@ __all__ = [
     "ensure_ramses_cc_loaded",
     "get_device_supported_entities",
     "validate_device_entity_support",
+    "_get_broker_for_entry",
 ]

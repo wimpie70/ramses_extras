@@ -1,0 +1,18 @@
+{
+  "ui": {
+    "card": {
+      "hello_world": {
+        "switch": "Hello World Switch",
+        "status": "Status",
+        "on": "ON",
+        "off": "OFF"
+      }
+    },
+    "editor": {
+      "device": "Device",
+      "name": "Card Name",
+      "show_status": "Show Status",
+      "compact_view": "Compact View"
+    }
+  }
+}

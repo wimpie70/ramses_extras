@@ -137,3 +137,45 @@ export async function setFanParameter(hass, deviceId, paramId, value) {
     value: value,
   });
 }
+
+// Cache for available devices to prevent duplicate requests
+let _devicesCache = null;
+let _devicesCacheTimestamp = 0;
+const CACHE_DURATION = 30000; // 30 seconds cache
+
+/**
+ * Clear all caches (useful for debugging or hard refresh)
+ */
+export function clearAllCaches() {
+  console.log('🧹 Clearing all card services caches');
+  _devicesCache = null;
+  _devicesCacheTimestamp = 0;
+}
+
+/**
+ * Get available Ramses RF devices for card editors (with caching)
+ *
+ * @param {Object} hass - Home Assistant instance
+ * @returns {Promise<Array>} List of available devices with device_id, device_type, model, and capabilities
+ */
+export async function getAvailableDevices(hass) {
+  const now = Date.now();
+
+  // Return cached data if still valid
+  if (_devicesCache && (now - _devicesCacheTimestamp) < CACHE_DURATION) {
+    console.log('📦 Returning cached devices list');
+    return _devicesCache;
+  }
+
+  console.log('🔄 Fetching fresh devices list from WebSocket');
+  const response = await callWebSocket(hass, {
+    type: 'ramses_extras/get_available_devices',
+  });
+
+  // Cache the result
+  _devicesCache = response.devices || [];
+  _devicesCacheTimestamp = now;
+
+  console.log(`✅ Cached ${_devicesCache.length} devices for ${CACHE_DURATION}ms`);
+  return _devicesCache;
+}

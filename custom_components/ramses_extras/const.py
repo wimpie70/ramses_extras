@@ -49,6 +49,7 @@ HELPERS_DEPLOYMENT_PATH = "www/ramses_extras/helpers"
 FEATURE_ID_DEFAULT = "default"
 FEATURE_ID_HVAC_FAN_CARD = "hvac_fan_card"
 FEATURE_ID_HUMIDITY_CONTROL = "humidity_control"
+FEATURE_ID_HELLO_WORLD_CARD = "hello_world_card"
 
 # Event system constants
 EVENT_DEVICE_READY_FOR_ENTITIES = "ramses_device_ready_for_entities"
@@ -154,6 +155,15 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "name": "HVAC Fan Card",
         "description": "Advanced fan card for control and configuration",
         "feature_module": "features.hvac_fan_card",
+        "handler": "handle_hvac_ventilator",
+        "default_enabled": False,
+    },
+    "hello_world_card": {
+        "name": "Hello World Switch Card",
+        "description": (
+            "Template feature demonstrating complete Ramses Extras architecture"
+        ),
+        "feature_module": "features.hello_world_card",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
     },

@@ -6,6 +6,11 @@ automation, services, entities, and configuration.
 """
 
 # Import from the correct feature-centric structure
+from .hello_world_card import (
+    HelloWorldCardManager,
+    HelloWorldEntities,
+    create_hello_world_card_feature,
+)
 from .humidity_control import (
     HUMIDITY_CONTROL_CONST,
     HumidityAutomationManager,
@@ -13,6 +18,10 @@ from .humidity_control import (
     HumidityEntities,
     HumidityServices,
     create_humidity_control_feature,
+)
+from .hvac_fan_card import (
+    HvacFanCardManager,
+    create_hvac_fan_card_feature,
 )
 
 # Add more below for future features
@@ -26,5 +35,12 @@ __all__ = [
     "HumidityConfig",
     "HUMIDITY_CONTROL_CONST",
     "create_humidity_control_feature",
+    # Hello World Card Feature
+    "HelloWorldCardManager",
+    "HelloWorldEntities",
+    "create_hello_world_card_feature",
+    # HVAC Fan Card Feature
+    "HvacFanCardManager",
+    "create_hvac_fan_card_feature",
     # Add more below for future features
 ]

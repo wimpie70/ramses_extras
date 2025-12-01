@@ -199,6 +199,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
                             # Import in executor to avoid blocking event loop
                             await _import_module_in_executor(module_path)
+
+                # Import WebSocket commands to ensure decorators are executed
+                try:
+                    websocket_module_path = (
+                        f"custom_components.ramses_extras.features.{feature_name}"
+                        ".websocket_commands"
+                    )
+                    await _import_module_in_executor(websocket_module_path)
+                    _LOGGER.info(f"✅ Imported WebSocket commands for {feature_name}")
+                except ImportError:
+                    _LOGGER.debug(
+                        f"No WebSocket commands module found for {feature_name}"
+                    )
+
             except ImportError:
                 pass
 
@@ -323,158 +337,60 @@ async def _register_feature_card_resources(
     """
     try:
         _LOGGER.info("🔧 Starting feature-centric card resource registration")
-        _LOGGER.info(f"📋 Enabled features: {enabled_features}")
-        _LOGGER.info(f"📋 Available features: {list(AVAILABLE_FEATURES.keys())}")
 
         # Initialize card resources storage
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN].setdefault("card_resources", {})
 
-        # Create feature instances and delegate card registration
-        feature_card_registrations: dict[str, dict[str, Any]] = {}
+        # Collect all registered cards from features
+        all_registered_cards: dict[str, dict[str, Any]] = {}
 
-        # Import card-capable features dynamically
-        for feature_key, feature_config in AVAILABLE_FEATURES.items():
-            _LOGGER.info(f"🔍 Processing feature: {feature_key}")
-
-            # Skip default feature (it's not a card feature)
-            if feature_key == "default":
-                _LOGGER.info("⏭️ Skipping default feature")
-                continue
-
-            # Only process features that are enabled
-            is_enabled = enabled_features.get(feature_key, False)
-            _LOGGER.info(f"🔧 Feature {feature_key} enabled: {is_enabled}")
+        # Delegate card registration to each enabled feature
+        for feature_name, is_enabled in enabled_features.items():
             if not is_enabled:
-                _LOGGER.debug(
-                    f"Feature {feature_key} not enabled, skipping card registration"
-                )
+                _LOGGER.debug(f"⏭️ Feature {feature_name} not enabled, skipping")
                 continue
 
-            # Check if feature has card configurations
-            try:
-                # Try to import the feature's const module and check for card configs
-                const_module = __import__(
-                    f"custom_components.ramses_extras.features.{feature_key}.const",
-                    fromlist=["load_feature"],
-                )
-                has_card_configs = hasattr(
-                    const_module, "HVAC_FAN_CARD_CONFIGS"
-                ) or hasattr(
-                    const_module,
-                    f"{feature_key.upper().replace('-', '_')}_CARD_CONFIGS",
-                )
-                _LOGGER.info(
-                    f"🔍 Feature {feature_key} has card configs: {has_card_configs}"
-                )
-            except (ImportError, AttributeError):
-                has_card_configs = False
-                _LOGGER.debug(f"🔍 Feature {feature_key} has no card configs")
-
-            if not has_card_configs:
-                _LOGGER.debug(
-                    f"⏭️ Feature {feature_key} has no card configurations, skipping"
-                )
+            if feature_name == "default":
+                _LOGGER.debug("⏭️ Skipping default feature (no cards)")
                 continue
 
             try:
-                _LOGGER.info(f"📦 Importing feature module: {feature_key}")
-                # Import the feature module
-                feature_module_name = (
-                    f"custom_components.ramses_extras.features.{feature_key}"
-                )
-                feature_module = __import__(
-                    feature_module_name, fromlist=["load_feature"]
-                )
-
-                # Check if feature has card management capability
-                create_func_name = f"create_{feature_key.replace('-', '_')}_feature"
-                _LOGGER.info(f"🔍 Looking for create function: {create_func_name}")
                 _LOGGER.info(
-                    f"🔍 Has create function: "
-                    f"{hasattr(feature_module, create_func_name)}"
+                    f"🔍 Delegating card registration to feature: {feature_name}"
                 )
 
-                if hasattr(
-                    feature_module,
-                    create_func_name,
-                ):
-                    # Create feature instance for card management
-                    create_feature_func = getattr(
-                        feature_module,
-                        create_func_name,
+                # Delegate to feature's card registration method
+                feature_cards = await _delegate_card_registration_to_feature(
+                    hass, entry, feature_name
+                )
+
+                if feature_cards:
+                    all_registered_cards.update(feature_cards)
+                    _LOGGER.info(
+                        f"✅ Feature {feature_name} registered "
+                        f"{len(feature_cards)} cards"
                     )
+                else:
+                    _LOGGER.debug(f"⚠️ Feature {feature_name} has no cards to register")
 
-                    # Create feature instance
-                    _LOGGER.info("🎯 Creating feature instance...")
-                    # Handle both sync and async create functions
-                    import asyncio
-
-                    if asyncio.iscoroutinefunction(create_feature_func):
-                        # For async functions, skip automation
-                        #  setup for card registration
-                        feature_instance = await create_feature_func(
-                            hass, entry, skip_automation_setup=True
-                        )
-                    else:
-                        feature_instance = create_feature_func(hass, entry)
-
-                    _LOGGER.info(f"📦 Feature instance created: {feature_instance}")
-
-                    # Get card manager if available
-                    card_manager = feature_instance.get("card_manager")
-                    _LOGGER.info(f"🎯 Card manager: {card_manager}")
-
-                    if card_manager:
-                        _LOGGER.info("📝 Registering cards via card manager...")
-                        # Delegate card registration to the feature
-                        registered_cards = await card_manager.async_register_cards()
-                        _LOGGER.info(f"📋 Registered cards result: {registered_cards}")
-
-                        if registered_cards:
-                            feature_card_registrations[feature_key] = registered_cards
-                            _LOGGER.info(
-                                f"✅ Feature {feature_key} registered "
-                                f"{len(registered_cards)} cards"
-                            )
-                        else:
-                            _LOGGER.debug(
-                                f"⚠️ Feature {feature_key} has no cards to register"
-                            )
-                    else:
-                        _LOGGER.debug(
-                            f"⚠️ No card manager found for feature {feature_key}"
-                        )
-
-            except ImportError as e:
-                _LOGGER.error(f"❌ Could not import feature {feature_key}: {e}")
             except Exception as e:
                 _LOGGER.error(
-                    f"❌ Error processing feature {feature_key} for cards: {e}"
+                    f"❌ Feature {feature_name} failed to register cards: {e}"
                 )
-                import traceback
-
-                _LOGGER.error(f"Full traceback: {traceback.format_exc()}")
-
-        # Consolidate all card registrations
-        _LOGGER.info("🔗 Consolidating card registrations...")
-        all_registered_cards = {}
-        for feature_key, feature_cards in feature_card_registrations.items():
-            all_registered_cards.update(feature_cards)
-
-        _LOGGER.info(f"📊 Final consolidated cards: {all_registered_cards}")
+                # Continue with other features - don't let one failure stop the process
 
         # Store consolidated registrations
         hass.data[DOMAIN]["card_resources"] = all_registered_cards
 
         # Register cards with Home Assistant's Lovelace system
-        await _register_lovelace_cards(hass, all_registered_cards)
+        if all_registered_cards:
+            await _register_lovelace_cards(hass, all_registered_cards)
 
         registered_cards = list(all_registered_cards.keys())
         _LOGGER.info(
             f"✅ Feature-centric card registration complete. "
-            f"Total cards registered: {len(all_registered_cards)} from "
-            f"{len(feature_card_registrations)} features. "
+            f"Total cards registered: {len(all_registered_cards)}. "
             f"Cards: {registered_cards}"
         )
 
@@ -483,6 +399,57 @@ async def _register_feature_card_resources(
         import traceback
 
         _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+
+
+async def _delegate_card_registration_to_feature(
+    hass: HomeAssistant, entry: ConfigEntry, feature_name: str
+) -> dict[str, dict[str, Any]]:
+    """Delegate card registration to a specific feature.
+
+    Args:
+        hass: Home Assistant instance
+        entry: Configuration entry
+        feature_name: Name of the feature to delegate to
+
+    Returns:
+        Dictionary of registered cards from the feature
+    """
+    try:
+        # Import the feature module
+        feature_module_name = f"custom_components.ramses_extras.features.{feature_name}"
+        feature_module = await _import_module_in_executor(feature_module_name)
+
+        # Get the feature's factory function
+        create_func_name = f"create_{feature_name.replace('-', '_')}_feature"
+        if not hasattr(feature_module, create_func_name):
+            _LOGGER.debug(
+                f"Feature {feature_name} has no factory function: {create_func_name}"
+            )
+            return {}
+
+        create_feature_func = getattr(feature_module, create_func_name)
+
+        # Create feature instance
+        if asyncio.iscoroutinefunction(create_feature_func):
+            feature_instance = await create_feature_func(hass, entry)
+        else:
+            feature_instance = create_feature_func(hass, entry)
+
+        # Get card manager and register cards
+        card_manager = feature_instance.get("card_manager")
+        if not card_manager:
+            _LOGGER.debug(f"Feature {feature_name} has no card_manager")
+            return {}
+
+        # Delegate card registration to the feature
+        registered_cards = await card_manager.async_register_cards()
+        return registered_cards or {}
+
+    except Exception as e:
+        _LOGGER.error(
+            f"Failed to delegate card registration to feature {feature_name}: {e}"
+        )
+        return {}
 
 
 async def _copy_helper_files(hass: HomeAssistant) -> None:
@@ -708,7 +675,7 @@ async def _register_lovelace_resources_storage(
         resources_to_add = []
         for card_id, card_info in registered_cards.items():
             try:
-                # Construct the URL for the card using the correct deployment path
+                # Construct the URL for the main card using the correct deployment path
                 feature_name = card_info.get("feature", "unknown")
                 js_filename = card_info["js_path"].split("/")[-1]  # Just the filename
                 card_url = f"/local/ramses_extras/features/{feature_name}/{js_filename}"
@@ -716,17 +683,44 @@ async def _register_lovelace_resources_storage(
                 # Check if this card is already registered
                 if card_url in existing_card_urls:
                     _LOGGER.info(f"⏭️ Card {card_id} already registered at {card_url}")
-                    continue
+                else:
+                    # Create resource entry for main card with required id field
+                    resource_entry = {
+                        "id": card_id,
+                        "url": card_url,
+                        "type": "module",
+                    }
 
-                # Create resource entry with required id field
-                resource_entry = {
-                    "id": card_id,
-                    "url": card_url,
-                    "type": "module",
-                }
+                    resources_to_add.append(resource_entry)
+                    _LOGGER.info(
+                        f"📝 Added resource entry for main card {card_id}: {card_url}"
+                    )
 
-                resources_to_add.append(resource_entry)
-                _LOGGER.info(f"📝 Added resource entry for {card_id}: {card_url}")
+                # Also register the editor file if it exists
+                editor_js = card_info.get("editor_js") or card_info.get("editor_card")
+                if editor_js:
+                    editor_filename = editor_js.split("/")[-1]  # Just the filename
+                    editor_url = f"/local/ramses_extras/features/{feature_name}/"
+                    f"{editor_filename}"
+
+                    # Check if editor is already registered
+                    if editor_url in existing_card_urls:
+                        _LOGGER.info(
+                            f"⏭️ Editor for {card_id} already registered at {editor_url}"
+                        )
+                    else:
+                        # Create resource entry for editor with required id field
+                        editor_resource_entry = {
+                            "id": f"{card_id}_editor",
+                            "url": editor_url,
+                            "type": "module",
+                        }
+
+                        resources_to_add.append(editor_resource_entry)
+                        _LOGGER.info(
+                            f"📝 Added resource entry for editor "
+                            f"{card_id}: {editor_url}"
+                        )
 
             except Exception as e:
                 _LOGGER.error(f"❌ Failed to create resource entry for {card_id}: {e}")
@@ -749,7 +743,7 @@ async def _register_lovelace_resources_storage(
 
                 # Notify user about successful registration
                 try:
-                    await hass.services.async_create(
+                    await hass.services.async_call(
                         "persistent_notification",
                         "create",
                         {

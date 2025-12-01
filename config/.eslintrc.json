@@ -5,24 +5,41 @@
     "es2022": true,
     "node": true
   },
-  "globals": {
-    "HTMLElement": "readonly",
-    "setTimeout": "readonly",
-    "clearTimeout": "readonly",
-    "CustomEvent": "readonly",
-    "customElements": "readonly",
-    "navigator": "readonly"
+  "languageOptions": {
+    "globals": {
+      "HTMLElement": "readonly",
+      "setTimeout": "readonly",
+      "clearTimeout": "readonly",
+      "CustomEvent": "readonly",
+      "customElements": "readonly",
+      "navigator": "readonly",
+      "window": "readonly",
+      "document": "readonly"
+    },
+    "parser": "@babel/eslint-parser",
+    "parserOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module",
+      "requireConfigFile": false,
+      "babelOptions": {
+        "plugins": [
+          [
+            "@babel/plugin-proposal-decorators",
+            {
+              "version": "2023-05"
+            }
+          ]
+        ]
+      }
+    }
   },
   "extends": ["eslint:recommended"],
-  "parserOptions": {
-    "ecmaVersion": "latest",
-    "sourceType": "module"
-  },
   "rules": {
     "no-console": "off",
     "no-unused-vars": "error",
     "no-var": "error",
-    "prefer-const": "error"
+    "prefer-const": "error",
+    "no-undef": "off"
   },
   "ignorePatterns": [
     "node_modules/",

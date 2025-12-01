@@ -44,17 +44,21 @@ DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
 }
 
 # WebSocket command constants for the default feature
+WS_CMD_GET_AVAILABLE_DEVICES = "ramses_extras/get_available_devices"
 WS_CMD_GET_BOUND_REM = "ramses_extras/get_bound_rem"
 WS_CMD_GET_2411_SCHEMA = "ramses_extras/get_2411_schema"
 WS_CMD_SEND_FAN_COMMAND = "ramses_extras/default/send_fan_command"
 WS_CMD_SET_FAN_PARAMETER = "ramses_extras/default/set_fan_parameter"
+WS_CMD_GET_QUEUE_STATISTICS = "ramses_extras/default/get_queue_statistics"
 
 # WebSocket commands for the default feature
 DEFAULT_WEBSOCKET_COMMANDS = {
+    "get_available_devices": WS_CMD_GET_AVAILABLE_DEVICES,
     "get_bound_rem": WS_CMD_GET_BOUND_REM,
     "get_2411_schema": WS_CMD_GET_2411_SCHEMA,
     "send_fan_command": WS_CMD_SEND_FAN_COMMAND,
     "set_fan_parameter": WS_CMD_SET_FAN_PARAMETER,
+    "get_queue_statistics": WS_CMD_GET_QUEUE_STATISTICS,
 }
 
 
@@ -83,10 +87,12 @@ __all__ = [
     "DEFAULT_NUMBER_CONFIGS",
     "DEFAULT_BOOLEAN_CONFIGS",
     "DEFAULT_DEVICE_ENTITY_MAPPING",
+    "WS_CMD_GET_AVAILABLE_DEVICES",
     "WS_CMD_GET_BOUND_REM",
     "WS_CMD_GET_2411_SCHEMA",
     "WS_CMD_SEND_FAN_COMMAND",
     "WS_CMD_SET_FAN_PARAMETER",
+    "WS_CMD_GET_QUEUE_STATISTICS",
     "DEFAULT_WEBSOCKET_COMMANDS",
     "load_feature",
 ]

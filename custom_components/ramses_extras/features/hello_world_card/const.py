@@ -1,0 +1,119 @@
+# Part of the Ramses Extra integration
+# See https://github.com/wimpie70/ramses_extras for more information
+#
+"""Constants for Hello World Switch Card feature."""
+
+from typing import Any
+
+DOMAIN = "hello_world_card"
+
+# Feature configuration
+FEATURE_NAME = "Hello World Switch Card"
+FEATURE_DESCRIPTION = (
+    "Template feature demonstrating complete Ramses Extras architecture"
+)
+
+# Entity configurations
+HELLO_WORLD_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {
+    "hello_world_switch": {
+        "name_template": "Hello World Switch {device_id}",
+        "entity_template": "hello_world_switch_{device_id}",
+        "icon": "mdi:lightbulb",
+        "device_types": ["HvacVentilator"],
+        "default_enabled": True,
+    }
+}
+
+HELLO_WORLD_BINARY_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
+    "hello_world_status": {
+        "name_template": "Hello World Status {device_id}",
+        "entity_template": "hello_world_status_{device_id}",
+        "device_class": "connectivity",
+        "device_types": ["HvacVentilator"],
+        "default_enabled": True,
+    }
+}
+
+HELLO_WORLD_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
+    # Placeholder for sensor platform
+}
+
+HELLO_WORLD_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {
+    # Placeholder for number platform
+}
+
+# Device entity mapping
+HELLO_WORLD_DEVICE_ENTITY_MAPPING = {
+    "HvacVentilator": {
+        "switch": ["hello_world_switch"],
+        "binary_sensor": ["hello_world_status"],
+        "sensor": [],  # Placeholder
+        "number": [],  # Placeholder
+    },
+}
+
+# WebSocket commands
+HELLO_WORLD_WEBSOCKET_COMMANDS = {
+    "toggle_switch": "ramses_extras/hello_world/toggle_switch",
+    "get_switch_state": "ramses_extras/hello_world/get_switch_state",
+}
+
+# Card configurations
+HELLO_WORLD_CARD_CONFIGS = [
+    {
+        "card_id": "hello-world-card",
+        "card_name": "Hello World Card",
+        "description": (
+            "A simple demonstration card for Ramses Extras Hello World feature"
+        ),
+        "main_card": "hello-world-card.js",
+        "editor_card": "hello-world-card-editor.js",
+        "has_templates": True,
+        "templates_path": "templates/",
+        "translations_path": "translations/",
+        "main_js": "hello-world-card.js",
+        "editor_js": "hello-world-card-editor.js",
+        "preview": True,
+        "documentation_url": "https://github.com/wimpie70/ramses_extras",
+    }
+]
+
+# Default configuration
+DEFAULT_CONFIG = {
+    "enabled": True,
+    "default_name": "Hello World",
+    "icon": "mdi:lightbulb",
+    "auto_discovery": True,
+}
+
+
+def load_feature() -> None:
+    """Load hello world card feature into the registry."""
+    from custom_components.ramses_extras.const import register_ws_commands
+    from custom_components.ramses_extras.extras_registry import extras_registry
+
+    # Register entity configurations
+    extras_registry.register_switch_configs(HELLO_WORLD_SWITCH_CONFIGS)
+    extras_registry.register_boolean_configs(HELLO_WORLD_BINARY_SENSOR_CONFIGS)
+    extras_registry.register_device_mappings(HELLO_WORLD_DEVICE_ENTITY_MAPPING)
+
+    # Register WebSocket commands
+    register_ws_commands("hello_world_card", HELLO_WORLD_WEBSOCKET_COMMANDS)
+
+    extras_registry.register_feature("hello_world_card")
+
+
+__all__ = [
+    "DOMAIN",
+    "FEATURE_NAME",
+    "FEATURE_DESCRIPTION",
+    "HELLO_WORLD_SWITCH_CONFIGS",
+    "HELLO_WORLD_BINARY_SENSOR_CONFIGS",
+    "HELLO_WORLD_SENSOR_CONFIGS",
+    "HELLO_WORLD_NUMBER_CONFIGS",
+    "HELLO_WORLD_DEVICE_ENTITY_MAPPING",
+    "HELLO_WORLD_WEBSOCKET_COMMANDS",
+    "HELLO_WORLD_CARD_CONFIGS",
+    "DEFAULT_CONFIG",
+    "load_feature",
+]

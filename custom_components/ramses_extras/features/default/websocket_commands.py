@@ -21,6 +21,35 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_device_capabilities(device: Any) -> list[str]:
+    """Get device capabilities for UI display."""
+    capabilities = []
+
+    # Check for common device capabilities
+    if hasattr(device, "fan_speed") or hasattr(device, "set_fan_speed"):
+        capabilities.append("fan_control")
+
+    if hasattr(device, "temperature") or hasattr(device, "indoor_temperature"):
+        capabilities.append("temperature_sensor")
+
+    if hasattr(device, "humidity") or hasattr(device, "indoor_humidity"):
+        capabilities.append("humidity_sensor")
+
+    if hasattr(device, "bypass") or hasattr(device, "set_bypass"):
+        capabilities.append("bypass_control")
+
+    # Add device type as capability
+    device_type = device.__class__.__name__
+    if device_type == "HvacVentilator":
+        capabilities.extend(["ventilation", "hvac"])
+    elif device_type == "HvacController":
+        capabilities.extend(["climate_control", "hvac"])
+    elif device_type == "Thermostat":
+        capabilities.append("thermostat")
+
+    return capabilities
+
+
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
         vol.Required("type"): "ramses_extras/get_bound_rem",
@@ -270,6 +299,75 @@ async def ws_set_fan_parameter(
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
+        vol.Required("type"): "ramses_extras/get_available_devices",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_available_devices(
+    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Get list of all discovered Ramses RF devices for card editors.
+
+    This centralized command provides device discovery for all card editors,
+    ensuring consistent device listing across the UI.
+    """
+    _LOGGER.debug("Getting available Ramses RF devices")
+
+    try:
+        # Get ramses_cc broker
+        from ...framework.helpers.device.core import _get_broker_for_entry
+
+        broker = await _get_broker_for_entry(hass)
+
+        if broker is None:
+            connection.send_error(
+                msg["id"], "broker_unavailable", "Ramses CC broker not available"
+            )
+            return
+
+        devices = []
+
+        # Get devices from broker (try _devices first, then devices for compatibility)
+        broker_devices = getattr(broker, "_devices", None)
+        if broker_devices is None:
+            broker_devices = getattr(broker, "devices", {})
+
+        # Handle both list and dictionary formats
+        if isinstance(broker_devices, list):
+            # _devices is a list
+            device_list: list[Any] = broker_devices
+        else:
+            # _devices is a dictionary, get values
+            device_list = (
+                list(broker_devices.values())
+                if hasattr(broker_devices, "values")
+                else []
+            )
+
+        for device in device_list:
+            devices.append(
+                {
+                    "device_id": device.id,
+                    "device_type": device.__class__.__name__,
+                    "model": getattr(device, "model", "Unknown"),
+                    "capabilities": _get_device_capabilities(device),
+                }
+            )
+
+        connection.send_result(msg["id"], {"devices": devices})
+        _LOGGER.debug(f"Retrieved {len(devices)} devices for card editors")
+
+    except Exception as error:
+        _LOGGER.error(f"Error getting available devices: {error}")
+        connection.send_error(
+            msg["id"],
+            "device_discovery_error",
+            f"Failed to get available devices: {str(error)}",
+        )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
         vol.Required("type"): "ramses_extras/default/get_queue_statistics",
     }
 )
@@ -316,6 +414,15 @@ def get_command_info() -> dict[str, dict]:
         Dictionary containing command information
     """
     return {
+        "get_available_devices": {
+            "name": "get_available_devices",
+            "type": "ramses_extras/get_available_devices",
+            "description": (
+                "Get list of all discovered Ramses RF devices for card editors"
+            ),
+            "feature": "default",
+            "parameters": {},
+        },
         "get_bound_rem": {
             "name": "get_bound_rem",
             "type": "ramses_extras/get_bound_rem",

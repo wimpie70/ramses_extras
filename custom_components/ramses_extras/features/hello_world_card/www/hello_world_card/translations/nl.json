@@ -1,0 +1,18 @@
+{
+  "ui": {
+    "card": {
+      "hello_world": {
+        "switch": "Hallo Wereld Schakelaar",
+        "status": "Status",
+        "on": "AAN",
+        "off": "UIT"
+      }
+    },
+    "editor": {
+      "device": "Apparaat",
+      "name": "Kaart Naam",
+      "show_status": "Toon Status",
+      "compact_view": "Compacte Weergave"
+    }
+  }
+}
