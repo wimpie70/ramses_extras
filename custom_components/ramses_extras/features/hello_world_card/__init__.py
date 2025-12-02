@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 import logging
 
 from ...framework.helpers.platform import PlatformSetup
+from .automation import create_hello_world_automation
 from .const import DOMAIN as HELLO_WORLD_DOMAIN
 from .entities import HelloWorldEntities
 from .platforms.binary_sensor import (
@@ -174,8 +175,27 @@ def create_hello_world_card_feature(
     Returns:
         Hello World card feature with card management capabilities
     """
+    # Create entities manager once and store it globally for WebSocket access
+    entities_manager = HelloWorldEntities(hass, config_entry)
+
+    # Create automation manager
+    automation_manager = create_hello_world_automation(hass, config_entry)
+
+    # Store in Home Assistant data for access by WebSocket commands
+    if not hasattr(hass, "data"):
+        hass.data = {}
+    if "ramses_extras" not in hass.data:
+        hass.data["ramses_extras"] = {}
+    hass.data["ramses_extras"]["hello_world_entities"] = entities_manager
+    hass.data["ramses_extras"]["hello_world_automation"] = automation_manager
+
+    _LOGGER.info(
+        "✅ Hello World feature created with global entities manager and automation"
+    )
+
     return {
-        "entities": HelloWorldEntities(hass, config_entry),
+        "entities": entities_manager,
+        "automation": automation_manager,
         "card_manager": HelloWorldCardManager(hass, config_entry),
         "platforms": {
             "switch": switch_async_setup_entry,

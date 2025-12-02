@@ -6,7 +6,7 @@
 /* eslint-disable no-undef */
 
 // Import reusable helpers using environment-aware path constants
-import { callWebSocket, getAvailableDevices } from '/local/ramses_extras/helpers/card-services.js';
+import { getAvailableDevices } from '/local/ramses_extras/helpers/card-services.js';
 
 /**
  * Hello World Card Editor using HTMLElement pattern (like hvac_fan_card)

@@ -77,16 +77,42 @@ class HelloWorldSwitch(ExtrasSwitchEntity):
         """Initialize Hello World switch entity."""
         super().__init__(hass, device_id, switch_type, config)
 
-        # Initialize with state from entities manager
-        entities_manager = HelloWorldEntities(hass, None)
-        self._is_on = bool(
-            entities_manager.get_entity_state(device_id, "switch", switch_type)
-        )
+        # Initialize state - will be updated when entities manager becomes available
+        self._is_on = False
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
         await super().async_added_to_hass()
         _LOGGER.info("Hello World switch %s added to hass", self._attr_name)
+
+        # Store reference to this entity for WebSocket access
+        try:
+            if not hasattr(self.hass, "data"):
+                self.hass.data = {}
+            if "ramses_extras" not in self.hass.data:
+                self.hass.data["ramses_extras"] = {}
+            if "entities" not in self.hass.data["ramses_extras"]:
+                self.hass.data["ramses_extras"]["entities"] = {}
+
+            entity_id = f"switch.hello_world_switch_{self.device_id.replace(':', '_')}"
+            self.hass.data["ramses_extras"]["entities"][entity_id] = self
+            _LOGGER.info(f"Switch stored for WebSocket access at {entity_id}")
+        except Exception as e:
+            _LOGGER.error(f"Switch failed to store reference: {e}")
+
+        # Register for entities manager state change notifications
+        try:
+            entities_manager = self._get_entities_manager(self.hass)
+            if entities_manager:
+                switch_entity_key = f"{self.device_id}_switch_hello_world_switch"
+                entities_manager.register_state_change_callback(
+                    switch_entity_key, self._on_entity_state_change
+                )
+                _LOGGER.info(f"Switch registered callback for {switch_entity_key}")
+        except Exception as e:
+            _LOGGER.warning(
+                "Could not register switch for state change notifications: %s", e
+            )
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""
@@ -98,14 +124,32 @@ class HelloWorldSwitch(ExtrasSwitchEntity):
     @property
     def is_on(self) -> bool:
         """Return true if Hello World switch is active."""
-        return self._is_on
+        # Try to get current state from entities manager
+        try:
+            entities_manager = self._get_entities_manager(self.hass)
+            current_state = entities_manager.get_entity_state(
+                self.device_id, "switch", "hello_world_switch"
+            )
+            _LOGGER.debug(
+                f"Switch {self._attr_name} is_on property: {bool(current_state)}"
+            )
+            return bool(current_state)
+        except Exception as e:
+            # Fallback to cached state
+            _LOGGER.debug(
+                f"Switch {self._attr_name} is_on property fallback: "
+                f"{self._is_on} (error: {e})"
+            )
+            return self._is_on
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Activate Hello World switch."""
         _LOGGER.info("Activating Hello World switch for %s", self._attr_name)
 
+        # Get entities manager (lazy load)
+        entities_manager = self._get_entities_manager(self.hass)
+
         # Update state in entities manager
-        entities_manager = HelloWorldEntities(self.hass, None)
         entities_manager.set_entity_state(
             self.device_id, "switch", "hello_world_switch", True
         )
@@ -117,14 +161,95 @@ class HelloWorldSwitch(ExtrasSwitchEntity):
         """Deactivate Hello World switch."""
         _LOGGER.info("Deactivating Hello World switch for %s", self._attr_name)
 
+        # Get entities manager (lazy load)
+        entities_manager = self._get_entities_manager(self.hass)
+
         # Update state in entities manager
-        entities_manager = HelloWorldEntities(self.hass, None)
         entities_manager.set_entity_state(
             self.device_id, "switch", "hello_world_switch", False
         )
 
         self._is_on = False
         self.async_write_ha_state()
+
+    def _get_entities_manager(self, hass: "HomeAssistant") -> HelloWorldEntities:
+        """Get the shared entities manager instance."""
+        # Try to get the global entities manager from hass.data
+        if hasattr(hass, "data") and "ramses_extras" in hass.data:
+            registry = hass.data["ramses_extras"]
+            if "hello_world_entities" in registry:
+                _LOGGER.debug("Switch got entities manager from hass.data")
+                return registry["hello_world_entities"]  # type: ignore[no-any-return]
+
+        # Fallback: create a new instance (should not happen in normal operation)
+        _LOGGER.warning("Using fallback entities manager - state may not sync properly")
+        return HelloWorldEntities(hass, None)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Clean up when entity is removed."""
+        await super().async_will_remove_from_hass()
+
+        # Clean up stored reference
+        try:
+            entity_id = f"switch.hello_world_switch_{self.device_id.replace(':', '_')}"
+            if (
+                hasattr(self.hass, "data")
+                and "ramses_extras" in self.hass.data
+                and "entities" in self.hass.data["ramses_extras"]
+                and entity_id in self.hass.data["ramses_extras"]["entities"]
+            ):
+                del self.hass.data["ramses_extras"]["entities"][entity_id]
+                _LOGGER.debug(
+                    f"Removed switch {self._attr_name} from stored references"
+                )
+        except Exception as e:
+            _LOGGER.debug("Could not clean up switch reference: %s", e)
+
+        # Unregister state change callback
+        try:
+            entities_manager = self._get_entities_manager(self.hass)
+            if entities_manager:
+                switch_entity_key = f"{self.device_id}_switch_hello_world_switch"
+                entities_manager.unregister_state_change_callback(
+                    switch_entity_key, self._on_entity_state_change
+                )
+                _LOGGER.debug(
+                    "Switch unregistered from entities manager "
+                    "state change notifications"
+                )
+        except Exception as e:
+            _LOGGER.debug("Could not unregister switch callback: %s", e)
+
+    def _on_entity_state_change(
+        self,
+        device_id: str,
+        entity_type: str,
+        entity_key: str,
+        old_state: Any,
+        new_state: Any,
+    ) -> None:
+        """Handle entities manager state change notifications.
+
+        Args:
+            device_id: Device identifier
+            entity_type: Type of entity that changed
+            entity_key: Specific entity key
+            old_state: Previous state
+            new_state: New state
+        """
+        if (
+            entity_type == "switch"
+            and entity_key == "hello_world_switch"
+            and device_id == self.device_id
+        ):
+            _LOGGER.info(
+                f"Switch {self._attr_name} received state change: "
+                f"{old_state} -> {new_state}"
+            )
+            self._is_on = bool(new_state)
+            # Write state to Home Assistant to trigger UI updates
+            self.async_write_ha_state()
+            _LOGGER.info(f"Switch {self._attr_name} state updated to {new_state}")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

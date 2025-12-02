@@ -22,10 +22,12 @@ class HelloWorldCard extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this._hass = null;
     this._config = null;
-    this._switchState = false;
-    this._binarySensorState = false;
     this._initialStateLoaded = false;
     this._pendingRequests = new Map(); // Track pending WebSocket requests
+    this._previousSwitchState = null;
+    this._previousSensorState = null;
+    this._rendered = false;
+    // No event subscriptions needed - HA handles re-rendering automatically
   }
 
   static get properties() {
@@ -38,6 +40,11 @@ class HelloWorldCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._checkAndLoadInitialState();
+
+    // Re-render when hass changes (HA handles entity state updates automatically)
+    if (this._config) {
+      this.render();
+    }
   }
 
   setConfig(config) {
@@ -45,7 +52,13 @@ class HelloWorldCard extends HTMLElement {
       throw new Error('Device ID is required');
     }
     this._config = config;
+    this._rendered = false; // Force re-render when config changes
     this._checkAndLoadInitialState();
+
+    // Re-render when config changes
+    if (this._hass) {
+      this.render();
+    }
   }
 
   _checkAndLoadInitialState() {
@@ -115,11 +128,14 @@ class HelloWorldCard extends HTMLElement {
 
   disconnectedCallback() {
     console.log('🧹 HelloWorldCard: Cleaning up component');
+
     // Clean up pending requests
     this._pendingRequests.clear();
     // Reset state for next connection
     this._initialStateLoaded = false;
+    this._rendered = false;
   }
+
 
   async _loadInitialState() {
     if (!this._hass || !this._config?.device_id) return;
@@ -155,30 +171,24 @@ class HelloWorldCard extends HTMLElement {
         device_id: deviceId
       });
 
-      this._switchState = result.switch_state;
-      this._binarySensorState = result.binary_sensor_state;
-      console.log('✅ HelloWorldCard: Initial state loaded:', { switch: this._switchState, sensor: this._binarySensorState });
-      this.render();
+      console.log('✅ HelloWorldCard: Initial state loaded:', { switch: result.switch_state, sensor: result.binary_sensor_state });
+      // HA will automatically re-render when entity states are updated by the backend
     } catch (error) {
       console.warn('⚠️ HelloWorldCard: Failed to load initial state:', error);
-      // Set default state on error
-      this._switchState = false;
-      this._binarySensorState = false;
-      this.render();
     }
   }
 
   _handleSwitchChange(event) {
     const newState = event.target.checked;
-    console.log('HelloWorldCard: Switch toggled to:', newState);
-    this._switchState = newState;
-    this._binarySensorState = newState; // Binary sensor mirrors switch
+    console.log('HelloWorldCard: Switch toggled to:', newState, 'event:', event);
     this._sendSwitchCommand(newState);
   }
 
   async _sendSwitchCommand(state) {
     try {
-      console.log('HelloWorldCard: Sending switch command:', { device_id: this._config.device_id, state });
+      console.log('HelloWorldCard: Sending WebSocket command for state:', state);
+      console.log('HelloWorldCard: Device ID:', this._config.device_id);
+      console.log('HelloWorldCard: hass available:', !!this._hass);
 
       const result = await callWebSocket(this._hass, {
         type: 'ramses_extras/hello_world/toggle_switch',
@@ -186,20 +196,16 @@ class HelloWorldCard extends HTMLElement {
         state: state
       });
 
+      console.log('HelloWorldCard: WebSocket command result:', result);
+
       if (result.success) {
-        this._switchState = result.state;
-        this._binarySensorState = result.state; // Binary sensor mirrors switch
-        console.log('HelloWorldCard: Switch command successful:', result);
-        this.render();
+        console.log('HelloWorldCard: Command successful, switch should update');
       } else {
-        console.error('HelloWorldCard: Switch command failed:', result);
+        console.error('HelloWorldCard: Command failed:', result);
       }
     } catch (error) {
-      console.error('Failed to toggle switch:', error);
-      // Revert state on error
-      this._switchState = !state;
-      this._binarySensorState = !state;
-      this.render();
+      console.error('HelloWorldCard: WebSocket command error:', error);
+      console.error('HelloWorldCard: Error details:', error.message, error.stack);
     }
   }
 
@@ -220,12 +226,31 @@ class HelloWorldCard extends HTMLElement {
   }
 
   render() {
-    if (!this._config) {
-      this.shadowRoot.innerHTML = `
-        <ha-card>Card not configured</ha-card>
-      `;
+    if (!this._config || !this._hass) {
+      if (!this._rendered) {
+        this.shadowRoot.innerHTML = `
+          <ha-card>Card not configured</ha-card>
+        `;
+        this._rendered = true;
+      }
       return;
     }
+
+    const deviceId = this._config.device_id;
+    const switchEntityId = `switch.hello_world_switch_${deviceId.replace(':', '_')}`;
+    const sensorEntityId = `binary_sensor.hello_world_status_${deviceId.replace(':', '_')}`;
+
+    // Get current states from HA
+    const switchState = this._hass.states[switchEntityId]?.state === 'on';
+    const sensorState = this._hass.states[sensorEntityId]?.state === 'on';
+
+    // Only re-render if states have changed or first render
+    if (switchState === this._previousSwitchState && sensorState === this._previousSensorState && this._rendered) {
+      return;
+    }
+
+    this._previousSwitchState = switchState;
+    this._previousSensorState = sensorState;
 
     const deviceDisplay = this._getDeviceDisplayName();
 
@@ -237,18 +262,18 @@ class HelloWorldCard extends HTMLElement {
         <div class="card-content">
           <div class="switch-container">
             <ha-switch
-              .checked=${this._switchState}
-              @change=${this._handleSwitchChange}>
+              .checked=${switchState}
+              data-entity-id="${switchEntityId}">
             </ha-switch>
             ${this._config.show_status ? `
               <div class="status">
-                Status: ${this._switchState ? 'ON' : 'OFF'}
+                Status: ${switchState ? 'ON' : 'OFF'}
               </div>
             ` : ''}
           </div>
           ${this._config.show_status ? `
             <div class="binary-sensor-status">
-              Binary Sensor: ${this._binarySensorState ? 'ON' : 'OFF'}
+              Binary Sensor: ${sensorState ? 'ON' : 'OFF'}
             </div>
           ` : ''}
         </div>
@@ -292,6 +317,27 @@ class HelloWorldCard extends HTMLElement {
         </style>
       </ha-card>
     `;
+
+    this._rendered = true;
+
+    // Attach event listeners after DOM update (like hvac_fan_card)
+    this._attachEventListeners();
+  }
+
+  _attachEventListeners() {
+    console.log('HelloWorldCard: Attaching event listeners');
+
+    // Find the ha-switch element
+    const switchElement = this.shadowRoot?.querySelector('ha-switch');
+    if (switchElement) {
+      console.log('HelloWorldCard: Found ha-switch element, attaching listener');
+      switchElement.addEventListener('change', (event) => {
+        console.log('HelloWorldCard: Switch change event fired', event);
+        this._handleSwitchChange(event);
+      });
+    } else {
+      console.error('HelloWorldCard: Could not find ha-switch element');
+    }
   }
 }
 
