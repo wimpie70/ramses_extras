@@ -6,6 +6,7 @@ continuous validation of entity state consistency across the entire system.
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -169,6 +170,47 @@ class StateReconciliationSystem:
         self._active_inconsistencies: dict[str, StateInconsistency] = {}
         self._reconciliation_stats: dict[str, Any] = {}
         self._running = False
+
+    def _is_ramses_cc_entity(self, entity_id: str, ha_entity: Any) -> bool:
+        """Check if an entity is a ramses_cc entity that should be excluded
+         from cleanup.
+
+        Args:
+            entity_id: Entity identifier to check
+            ha_entity: Home Assistant entity object
+
+        Returns:
+            True if the entity is a ramses_cc entity, False otherwise
+        """
+        try:
+            # Check if entity platform is ramses_cc
+            if ha_entity.platform == "ramses_cc":
+                return True
+
+            # Check if entity follows ramses_cc format (device_id at beginning)
+            # Use the entity parsing logic to detect format
+            from .core import EntityHelpers
+
+            parsed = EntityHelpers.detect_and_parse(entity_id)
+            if parsed and parsed.get("format") == "cc":
+                return True
+
+            # Additional check: ramses_cc entities typically have device_id at
+            #  the beginning
+            # Pattern: entity_type.device_id_identifier
+            #  (e.g., "number.32_153289_param_4e")
+            entity_parts = entity_id.split(".", 1)
+            if len(entity_parts) == 2:
+                entity_name = entity_parts[1]
+                # Check if entity name starts with a device_id pattern
+                #  (digits_underscore_digits)
+                if re.match(r"^\d+_\d+", entity_name):
+                    return True
+
+        except Exception as e:
+            _LOGGER.debug(f"Error checking if entity {entity_id} is ramses_cc: {e}")
+
+        return False
 
     async def start_continuous_reconciliation(self) -> None:
         """Start the continuous reconciliation process.
@@ -339,6 +381,16 @@ class StateReconciliationSystem:
         for entity_id in orphaned_entities:
             try:
                 ha_entity = self._entity_registry.entities[entity_id]
+
+                # Skip ramses_cc entities - they should not be cleaned up
+                #  by ramses_extras
+                if self._is_ramses_cc_entity(entity_id, ha_entity):
+                    _LOGGER.debug(
+                        f"Skipping ramses_cc entity (not managed by ramses_extras): "
+                        f"{entity_id}"
+                    )
+                    continue
+
                 inconsistency = StateInconsistency(
                     inconsistency_type="orphaned_entity",
                     entity_id=entity_id,
