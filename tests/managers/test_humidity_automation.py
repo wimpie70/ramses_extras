@@ -232,10 +232,9 @@ class TestHumidityAutomationEntityNaming:
                     offset=test_case["offset"],  # noqa: B023
                 )
 
-            # Run the async function with proper event loop handling
-            # Use asyncio.run() which handles event loop creation automatically
-            # This is the recommended approach for Python 3.7+
-            decision = asyncio.run(evaluate_decision())
+            # Run the async function with event loop handling
+            loop = asyncio.get_event_loop_policy().get_event_loop()
+            decision = loop.run_until_complete(evaluate_decision())
 
             # Check the action
             assert decision["action"] == test_case["expected_action"], (

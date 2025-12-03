@@ -16,10 +16,6 @@ from ...framework.helpers.platform import PlatformSetup
 from .automation import create_hello_world_automation
 from .const import DOMAIN as HELLO_WORLD_DOMAIN
 from .entities import HelloWorldEntities
-from .entity_factory import (
-    create_hello_world_entities_for_device,
-    hello_world_card_creation_callback,
-)
 from .platforms.binary_sensor import (
     async_setup_entry as binary_sensor_async_setup_entry,
 )
@@ -184,22 +180,6 @@ def create_hello_world_card_feature(
 
     # Create automation manager
     automation_manager = create_hello_world_automation(hass, config_entry)
-
-    # Register with Lazy Entity Creation Manager if available
-    if "lazy_entity_manager" in hass.data:
-        lazy_entity_manager = hass.data["lazy_entity_manager"]
-        import asyncio
-
-        asyncio.create_task(
-            lazy_entity_manager.register_feature_factory(
-                "hello_world_card",
-                create_hello_world_entities_for_device,
-                hello_world_card_creation_callback,
-            )
-        )
-        _LOGGER.info("📦 Registered Hello World Card with lazy entity manager")
-    else:
-        _LOGGER.debug("🗃️ Lazy entity manager not available, using legacy pattern")
 
     # Store in Home Assistant data for access by WebSocket commands
     if not hasattr(hass, "data"):

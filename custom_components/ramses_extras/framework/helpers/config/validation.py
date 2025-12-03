@@ -5,7 +5,7 @@ all features, including numeric ranges, boolean checks, and dependency validatio
 """
 
 import logging
-from typing import Any, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -19,7 +19,6 @@ from .core import (
     generate_entity_patterns_for_feature,
     get_feature_entity_mappings,
 )
-from .creation_registry import EntityCreationRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,8 +52,6 @@ class EntityManager:
         self.all_possible_entities: dict[str, EntityInfo] = {}
         self.current_features: dict[str, bool] = {}
         self.target_features: dict[str, bool] = {}
-        self._feature_device_selections: dict[str, list[str]] = {}
-        self._creation_registry: EntityCreationRegistry | None = None
 
     async def build_entity_catalog(
         self,
@@ -166,8 +163,8 @@ class EntityManager:
         # Only discover entities for features that are enabled
         feature_is_enabled = target_enabled or current_enabled
 
-        _LOGGER.info(
-            f"🔍 Scanning feature {feature_id}: current={current_enabled}, "
+        _LOGGER.debug(
+            f"Scanning feature {feature_id}: current={current_enabled}, "
             f"target={target_enabled}, enabled_for_discovery={feature_is_enabled}"
         )
 
@@ -177,7 +174,6 @@ class EntityManager:
 
         # Use target features for enabled_by_feature status
         enabled_by_feature = target_enabled
-        print(f"🎛️ Feature {feature_id} enabled: {enabled_by_feature}")
 
         # Check if feature has card configurations - add card entities if found
         has_cards = await self._feature_has_cards(feature_id)
@@ -240,45 +236,9 @@ class EntityManager:
             f"(enabled={enabled})"
         )
 
-        # Check if this feature has specific device selections
-        feature_device_selections = getattr(self, "_feature_device_selections", {}).get(
-            feature_id, []
-        )
-
-        print(f"🎯 Device selections for {feature_id}: {feature_device_selections}")
-
         # For each device, add its required entities (not all mapped entities)
         for device in devices:
             device_id = self._extract_device_id(device)
-            _LOGGER.debug(
-                f"Extracted device_id: {device_id} (type: {type(device_id)}) from "
-                f"device: {device}"
-            )
-
-            # For default feature, check if any other feature selected this device
-            # If so, skip this device for default feature to avoid conflicts
-            if feature_id == "default":
-                all_device_selections = getattr(self, "_feature_device_selections", {})
-                # Check if any other feature has selected this device
-                for other_feature_id, other_selections in all_device_selections.items():
-                    if other_feature_id != "default" and device_id in other_selections:
-                        print(
-                            f"🚫 Skipping device {device_id} for default feature - "
-                            f"selected by {other_feature_id}"
-                        )
-                        continue
-
-            # If device selections exist for this feature, only process selected devices
-            if feature_device_selections and device_id not in feature_device_selections:
-                _LOGGER.info(
-                    f"🚫 SKIPPING device {device_id} for feature {feature_id} - "
-                    f"not in selected devices: {feature_device_selections}"
-                )
-                continue
-            _LOGGER.info(
-                f"✅ PROCESSING device {device_id} for feature {feature_id} - "
-                f"in selected devices: {feature_device_selections}"
-            )
 
             # Get required entities from the feature's required_entities config
             required_entities = await self._get_required_entities_for_feature(
@@ -296,9 +256,9 @@ class EntityManager:
 
                 for entity_name in entity_names:
                     # Generate entity ID using the standard pattern
-                    # Use extracted device_id string, not device object
-                    clean_device_id = str(device_id).replace(":", "_")
-                    entity_id = f"{singular_type}.{entity_name}_{clean_device_id}"
+                    entity_id = (
+                        f"{singular_type}.{entity_name}_{device_id.replace(':', '_')}"
+                    )
 
                     # Check if entity already exists from another feature
                     existing_entities = await self._get_all_existing_entities()
@@ -309,31 +269,14 @@ class EntityManager:
                     if entity_id in self.all_possible_entities:
                         # Entity already tracked - just update enabled status if needed
                         existing_info = self.all_possible_entities[entity_id]
-                        print(
-                            f"🔄 Entity {entity_id} already tracked by feature "
-                            f"'{existing_info['feature_id']}', current: '{feature_id}'"
+                        _LOGGER.debug(
+                            f"Entity {entity_id} already tracked by feature "
+                            f"'{existing_info['feature_id']}', not overwriting with "
+                            f"'{feature_id}'"
                         )
-
-                        # Special: if current feature has device selections
-                        # and this device
-                        # is selected, and existing is 'default', override
-                        #  default entity
-                        if (
-                            feature_device_selections
-                            and device_id in feature_device_selections
-                            and existing_info["feature_id"] == "default"
-                        ):
-                            print(
-                                f"🎯 Overriding default entity {entity_id} with "
-                                f"feature-specific entity "
-                                f"from {feature_id}"
-                            )
-                            existing_info["feature_id"] = feature_id
-                            existing_info["enabled_by_feature"] = enabled
-                        else:
-                            # Update enabled status if this feature enables it
-                            if enabled:
-                                existing_info["enabled_by_feature"] = True
+                        # Update enabled status if this feature enables it
+                        if enabled:
+                            existing_info["enabled_by_feature"] = True
                     else:
                         # New entity - add it
                         self.all_possible_entities[entity_id] = {
@@ -350,15 +293,6 @@ class EntityManager:
                             f"enabled={enabled}, feature={feature_id})"
                         )
 
-                        # Log entity creation in creation registry
-                        await self._log_entity_creation_in_registry(
-                            entity_id,
-                            feature_id,
-                            device_id,
-                            singular_type,
-                            feature_config,
-                        )
-
         _LOGGER.debug(f"Added {len(devices)} device entities for feature {feature_id}")
 
     def _extract_device_id(self, device: Any) -> str:
@@ -373,10 +307,6 @@ class EntityManager:
         # Handle device ID strings directly
         if isinstance(device, str):
             return device
-
-        # Handle dictionary devices with device_id key
-        if isinstance(device, dict) and "device_id" in device:
-            return str(device["device_id"])
 
         # Try multiple ways to get device ID from object
         if hasattr(device, "id"):
@@ -466,31 +396,6 @@ class EntityManager:
             Device type as string
         """
         try:
-            # Use _SLUG attribute for device type identification (ramses_cc pattern)
-            # Fallback to other methods if _SLUG is not available
-            if hasattr(device, "_SLUG"):
-                slug_value = device._SLUG
-                # Convert to string if it's not already
-                if not isinstance(slug_value, str):
-                    slug_value = str(slug_value)
-
-                # Map ramses_cc SLUG values to device types
-                if slug_value == "FAN":
-                    return "HvacVentilator"
-                if slug_value == "CO2":
-                    return "HvacCarbonDioxideSensor"
-                if slug_value == "TEMP":
-                    return "HvacTemperatureSensor"
-                if slug_value == "HUM":
-                    return "HvacHumiditySensor"
-                # For test devices, map SLUG to class name for backward compatibility
-                if slug_value.startswith("DEV"):
-                    # Extract number and map to DeviceX format
-                    dev_num = slug_value[3:]  # Remove "DEV" prefix
-                    return f"Device{dev_num}"
-                # Add more SLUG mappings as needed
-                return f"UnknownDevice_{slug_value}"
-
             if hasattr(device, "__class__"):
                 class_name = device.__class__.__name__
                 return str(class_name) if class_name else "UnknownDevice"
@@ -1042,34 +947,7 @@ class EntityManager:
 
             for entity_id in entity_ids:
                 try:
-                    # Mark entity for cleanup in creation registry before removal
-                    if self._creation_registry:
-                        cleanup_success = self._creation_registry.mark_for_cleanup(
-                            entity_id, "feature_disabled"
-                        )
-                        if cleanup_success:
-                            _LOGGER.info(
-                                f"Marked entity {entity_id} for cleanup in creation "
-                                f"registry"
-                            )
-
                     entity_registry_instance.async_remove(entity_id)
-
-                    # Verify cleanup completion in creation registry
-                    if self._creation_registry:
-                        verification_success = (
-                            self._creation_registry.verify_cleanup_completion(entity_id)
-                        )
-                        if verification_success:
-                            _LOGGER.info(
-                                f"Verified cleanup completion for entity {entity_id}"
-                            )
-                        else:
-                            _LOGGER.warning(
-                                f"Failed to verify cleanup completion for entity "
-                                f"{entity_id}"
-                            )
-
                     removed_count += 1
                 except Exception as e:
                     _LOGGER.warning(f"Could not remove entity {entity_id}: {e}")
@@ -1078,45 +956,6 @@ class EntityManager:
 
         except Exception as e:
             _LOGGER.error(f"Failed to remove {entity_type} entities: {e}")
-
-    async def _log_entity_creation_in_registry(
-        self,
-        entity_id: str,
-        feature_id: str,
-        device_id: str,
-        entity_type: str,
-        feature_config: dict[str, Any],
-    ) -> None:
-        """Log entity creation in the creation registry.
-
-        Args:
-            entity_id: The entity identifier
-            feature_id: The feature identifier
-            device_id: The device identifier
-            entity_type: The entity type
-            feature_config: The feature configuration
-        """
-        if self._creation_registry is None:
-            # Initialize creation registry if not already done
-            self._creation_registry = EntityCreationRegistry(self.hass)
-
-        # Create context for the creation
-        context = {
-            "creation_method": "device_entity_creation",
-            "feature_config": feature_config,
-            "device_info": {"device_id": device_id},
-        }
-
-        # Log the entity creation
-        self._creation_registry.log_entity_creation(
-            entity_id=entity_id,
-            feature_id=feature_id,
-            device_id=device_id,
-            entity_type=entity_type,
-            context=context,
-        )
-
-        _LOGGER.info(f"Logged creation of entity {entity_id} in creation registry")
 
 
 # Export EntityManager and EntityInfo

@@ -22,15 +22,6 @@
   },
   "options": {
     "step": {
-      "init": {
-        "menu_options": {
-          "features_management": "🔧 Features Management",
-          "humidity_control": "💧 Humidity Control",
-          "hvac_fan_card": "🌡️ HVAC Fan Card",
-          "hello_world_card": "👋 Hello World Card",
-          "general_settings": "⚙️ General Settings"
-        }
-      },
       "features": {
         "title": "Ramses Extras Options",
         "description": "{info}",

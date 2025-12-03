@@ -7,14 +7,13 @@ patterns from existing entity implementations.
 
 import logging
 from collections.abc import MutableMapping
-from typing import Any, Callable, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 
 from .core import EntityHelpers
-from .creation_registry import EntityCreationRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +41,6 @@ class EntityLifecycleManager:
         self._entity_factories: dict[str, Callable] = {}
         self._entity_states: dict[str, dict[str, Any]] = {}
         self._entity_configs: dict[str, dict[str, Any]] = {}
-        self._creation_registry: EntityCreationRegistry | None = None
 
     def register_feature(self, feature_id: str) -> None:
         """Register a feature with the lifecycle manager.
@@ -104,10 +102,9 @@ class EntityLifecycleManager:
                 )
                 entities.extend(created_entities)
 
-                # Track entity lifecycle state and log creation
+                # Track entity lifecycle state
                 for entity in created_entities:
                     self._track_entity_lifecycle(entity)
-                    await self._log_entity_creation(entity, device_id, configs)
 
             except Exception as e:
                 _LOGGER.error(
@@ -235,42 +232,6 @@ class EntityLifecycleManager:
 
         _LOGGER.debug(f"Tracking lifecycle for entity: {entity_id}")
 
-    async def _log_entity_creation(
-        self, entity: Entity, device_id: str, configs: dict[str, Any]
-    ) -> None:
-        """Log entity creation in the creation registry.
-
-        Args:
-            entity: The created entity
-            device_id: Device identifier
-            configs: Entity configurations
-        """
-        if self._creation_registry is None:
-            # Initialize creation registry if not already done
-            self._creation_registry = EntityCreationRegistry(self.hass)
-
-        # Get feature-specific context
-        context = {
-            "creation_method": "lazy_creation_factory",
-            "factory_function": "create_feature_entities",
-            "device_selection": [device_id],
-            "entity_configs": configs,
-            "feature_id": self.feature_id,
-        }
-
-        # Log the entity creation
-        self._creation_registry.log_entity_creation(
-            entity_id=entity.entity_id,
-            feature_id=self.feature_id,
-            device_id=device_id,
-            entity_type=entity.domain,
-            context=context,
-        )
-
-        _LOGGER.info(
-            f"Logged creation of entity {entity.entity_id} in creation registry"
-        )
-
     def update_entity_state(self, entity_id: str, state: Any) -> None:
         """Update entity state and track lifecycle.
 
@@ -339,18 +300,6 @@ class EntityLifecycleManager:
             entity_id: Entity identifier to clean up
         """
         try:
-            # Mark entity for cleanup in creation registry
-            if self._creation_registry:
-                cleanup_success = self._creation_registry.mark_for_cleanup(
-                    entity_id, "feature_disabled"
-                )
-                if cleanup_success:
-                    _LOGGER.info(
-                        f"Marked entity {entity_id} for cleanup in creation registry"
-                    )
-                else:
-                    _LOGGER.warning(f"Failed to mark entity {entity_id} for cleanup")
-
             # Remove from Home Assistant entity registry if needed
             try:
                 from homeassistant.helpers import entity_registry
@@ -359,21 +308,6 @@ class EntityLifecycleManager:
                 if entity_id in entity_registry.entities:
                     entity_registry.async_remove(entity_id)
                     _LOGGER.debug(f"Removed entity from registry: {entity_id}")
-
-                    # Verify cleanup completion in creation registry
-                    if self._creation_registry:
-                        verification_success = (
-                            self._creation_registry.verify_cleanup_completion(entity_id)
-                        )
-                        if verification_success:
-                            _LOGGER.info(
-                                f"Verified cleanup completion for entity {entity_id}"
-                            )
-                        else:
-                            _LOGGER.warning(
-                                f"Failed to verify cleanup completion for entity "
-                                f"{entity_id}"
-                            )
             except Exception as e:
                 _LOGGER.debug(f"Could not remove from registry: {e}")
 
@@ -505,7 +439,6 @@ async def create_entities_for_device(
     device_type: str,
     entity_configs: dict[str, Any],
     entity_factories: dict[str, Callable],
-    creation_registry: EntityCreationRegistry | None = None,
 ) -> list[Entity]:
     """Create entities for a device using lifecycle patterns.
 
@@ -516,17 +449,12 @@ async def create_entities_for_device(
         device_type: Type of device
         entity_configs: Configuration for entities
         entity_factories: Entity factories by type
-        creation_registry: Optional creation registry to use
 
     Returns:
         List of created entities
     """
     lifecycle_manager = EntityLifecycleManager(hass)
     lifecycle_manager.register_feature(feature_id)
-
-    # Set creation registry if provided
-    if creation_registry:
-        lifecycle_manager._creation_registry = creation_registry
 
     # Register entity factories
     for entity_type, factory in entity_factories.items():

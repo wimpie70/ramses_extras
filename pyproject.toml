@@ -5,7 +5,7 @@ description = "Extra features for Ramses CC integration"
 authors = ["Willem (wimpie70)"]
 
 [tool.poetry.dependencies]
-python = ">=3.13.2,<4.0"
+python = "^3.13"
 homeassistant = "2025.10.4"
 
 [tool.poetry.group.dev.dependencies]

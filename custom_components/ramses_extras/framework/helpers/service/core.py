@@ -6,7 +6,7 @@ to enable reuse across features and future service types.
 """
 
 import logging
-from typing import Any, Callable, cast
+from typing import Any, Callable, Dict, List, Optional, Union, cast
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import SERVICE_TURN_OFF, SERVICE_TURN_ON
