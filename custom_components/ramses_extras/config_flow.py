@@ -144,7 +144,7 @@ async def _remove_card_config_flow(hass: "HomeAssistant", card_path: Path) -> No
 @config_entries.HANDLERS.register(DOMAIN)
 class RamsesExtrasConfigFlow(config_entries.ConfigFlow):
     async def async_step_user(
-        self, user_input: dict[str, list[str]] | None = None
+        self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle the initial step."""
         # Check if we already have an entry for this domain
@@ -196,15 +196,80 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self._entities_to_create: list[str] = []
         self._selected_feature: str | None = None
         self._all_devices: list[Any] | None = None
+        self._features_for_device_config: list[str] | None = None
 
     async def async_step_init(
         self, user_input: dict[str, list[str]] | None = None
     ) -> config_entries.FlowResult:
-        """Handle options initialization - redirect to features step."""
-        return await self.async_step_features()
+        """Handle options initialization - redirect to main menu."""
+        return await self.async_step_main_menu()
+
+    async def async_step_main_menu(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle the main configuration menu."""
+        if user_input is not None:
+            # User selected a menu option
+            menu_choice = user_input.get("menu_option")
+
+            if menu_choice == "enable_features":
+                return await self.async_step_features()
+            if menu_choice == "configure_devices":
+                return await self.async_step_device_menu()
+            if menu_choice == "view_configuration":
+                return await self.async_step_view_configuration()
+            if menu_choice == "advanced_settings":
+                return await self.async_step_advanced_settings()
+            # Unknown option, go back to main menu
+            return await self.async_step_main_menu()
+
+        # Build main menu options
+        menu_options = [
+            selector.SelectOptionDict(
+                value="enable_features", label="🔧 Enable/Disable Features"
+            ),
+            selector.SelectOptionDict(
+                value="configure_devices", label="📱 Configure Devices for Features"
+            ),
+            selector.SelectOptionDict(
+                value="view_configuration", label="📋 View Current Configuration"
+            ),
+            selector.SelectOptionDict(
+                value="advanced_settings", label="⚙️ Advanced Settings"
+            ),
+        ]
+
+        schema = vol.Schema(
+            {
+                vol.Required("menu_option"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=menu_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+
+        # Get current configuration summary
+        current_features = self._config_entry.data.get("enabled_features", {})
+        enabled_count = sum(
+            1
+            for enabled in current_features.values()
+            if enabled and not isinstance(enabled, str)
+        )
+
+        info_text = "🎛️ **Ramses Extras Configuration**\n\n"
+        info_text += f"Currently have {enabled_count} features enabled.\n"
+        info_text += "Choose what you want to configure:\n\n"
+
+        return self.async_show_form(
+            step_id="main_menu",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
 
     async def async_step_features(
-        self, user_input: dict[str, list[str]] | None = None
+        self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle the feature selection step for options."""
         if user_input is not None:
@@ -253,7 +318,22 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 # Show confirmation with entity changes
                 return await self.async_step_confirm()
 
-            # No feature changes detected, save config
+            # No feature changes detected, check if any features
+            #  need device configuration
+            features_needing_device_config = []
+            for feature_key, feature_config in AVAILABLE_FEATURES.items():
+                if feature_key in selected_features and feature_config.get(
+                    "has_device_config", False
+                ):
+                    features_needing_device_config.append(feature_key)
+
+            if features_needing_device_config:
+                # Store the selected features and show device configuration menu
+                self._pending_data = user_input
+                self._features_for_device_config = features_needing_device_config
+                return await self.async_step_device_menu()
+
+            # No feature changes and no device config needed, save config
             return await self._save_config(user_input)
 
         # Get current enabled features for default values
@@ -381,7 +461,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_feature_config(
-        self, user_input: dict[str, list[str]] | None = None
+        self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle individual feature configuration step."""
         if user_input is not None:
@@ -427,7 +507,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_device_selection(
-        self, user_input: dict[str, list[str]] | None = None
+        self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle device selection for a specific feature."""
         if user_input is not None:
@@ -440,18 +520,18 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 # After device selection, show confirmation or go to next feature
                 return await self._navigate_to_next_feature_or_main()
 
-            return await self.async_step_features()
+            return await self.async_step_device_menu()
 
         # Get the feature to configure
         feature_id = self._selected_feature
         if not feature_id:
-            return await self.async_step_features()
+            return await self.async_step_device_menu()
 
         # Get devices for this feature
         devices = await self._get_devices_for_feature_config(feature_id)
         if not devices:
             _LOGGER.warning(f"No devices found for feature {feature_id}")
-            return await self.async_step_features()
+            return await self.async_step_device_menu()
 
         # Initialize config flow helper if not already done
         if self._config_flow_helper is None:
@@ -473,7 +553,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_confirm(
-        self, user_input: dict[str, bool] | None = None
+        self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle confirmation step for feature changes using EntityManager."""
         if user_input is not None:
@@ -606,10 +686,22 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         Returns:
             Flow result for next step
         """
-        # For now, just go back to main features menu
-        # In a more complete implementation, this would track which features
-        # have been configured and navigate accordingly
-        return await self.async_step_features()
+        # Check if there are more features to configure
+        if (
+            self._features_for_device_config
+            and len(self._features_for_device_config) > 1
+        ):
+            # Remove the current feature from the list
+            current_feature = self._selected_feature
+            if current_feature in self._features_for_device_config:
+                self._features_for_device_config.remove(current_feature)
+
+            # If there are still features left to configure, go back to device menu
+            if self._features_for_device_config:
+                return await self.async_step_device_menu()
+
+        # No more features to configure, go back to main device menu
+        return await self.async_step_device_menu()
 
     async def _save_config(
         self, user_input: dict[str, list[str]]
@@ -655,7 +747,6 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self.hass.config_entries.async_update_entry(self._config_entry, data=new_data)
 
         # Install/remove cards based on new feature settings
-        await _manage_cards_config_flow(self.hass, enabled_features)
 
         # Reload the integration to apply entity changes
         # This triggers platform setup which creates/removes entities
@@ -663,6 +754,171 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         await self.hass.config_entries.async_reload(self._config_entry.entry_id)
 
         return self.async_create_entry(title="", data={})
+
+    async def async_step_view_configuration(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle the view configuration step."""
+        if user_input is not None:
+            # User wants to go back to main menu
+            return await self.async_step_main_menu()
+
+        # Initialize config flow helper if not already done
+        if self._config_flow_helper is None:
+            self._config_flow_helper = ConfigFlowHelper(self.hass, self._config_entry)
+
+        # Get current configuration details
+        current_features = self._config_entry.data.get("enabled_features", {})
+        matrix_state = self._config_flow_helper.get_feature_device_matrix_state()
+
+        # Build configuration summary
+        config_summary = []
+
+        # Feature enablement summary
+        enabled_features = [
+            k for k, v in current_features.items() if v and k != "default"
+        ]
+        config_summary.append(
+            f"**Enabled Features**: {', '.join(enabled_features) if enabled_features else 'None'}"  # noqa: E501
+        )
+
+        # Device/feature matrix summary
+        if matrix_state:
+            device_feature_count = sum(
+                len(devices) for devices in matrix_state.values()
+            )
+            config_summary.append(
+                f"**Device/Feature Configurations**: {device_feature_count} "
+                f"device/feature combinations"
+            )
+        else:
+            config_summary.append(
+                "**Device/Feature Configurations**: No custom device configurations"
+            )
+
+        # Build detailed feature info
+        feature_details = []
+        for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            if feature_key == "default":
+                continue
+
+            feature_name = feature_config.get("name", feature_key)
+            is_enabled = current_features.get(feature_key, False)
+
+            feature_info = (
+                f"• **{feature_name}**: {'✅ Enabled' if is_enabled else '❌ Disabled'}"
+            )
+
+            # Add device configuration info
+            if is_enabled and matrix_state and feature_key in matrix_state:
+                devices_for_feature = matrix_state[feature_key]
+                device_count = len(devices_for_feature)
+                feature_info += f" ({device_count} devices configured)"
+
+            feature_details.append(feature_info)
+
+        config_summary.extend(feature_details)
+
+        info_text = "**Current Ramses Extras Configuration**\n\n"
+        info_text += "\n".join(config_summary)
+        info_text += "\n\n📝 *This shows your current feature enablement "
+        info_text += "and device configurations.*"
+
+        schema = vol.Schema(
+            {
+                vol.Required("back_to_menu", default=True): bool,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="view_configuration",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    async def async_step_advanced_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle the advanced settings step."""
+        if user_input is not None:
+            # User wants to go back to main menu
+            return await self.async_step_main_menu()
+
+        info_text = "⚙️ **Advanced Settings**\n\n"
+        info_text += "Advanced configuration options will be available "
+        info_text += "here in future versions.\n\n"
+        info_text += "📝 *Currently, all advanced settings are handled automatically.*"
+
+        schema = vol.Schema(
+            {
+                vol.Required("back_to_menu", default=True): bool,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="advanced_settings",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    async def async_step_device_menu(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle the device configuration menu step."""
+        if user_input is not None:
+            # User selected a feature to configure devices for
+            selected_feature = user_input.get("feature_to_configure")
+            if selected_feature:
+                self._selected_feature = selected_feature
+                return await self.async_step_device_selection()
+
+            # If no specific feature selected, save the configuration
+            return await self._save_config(
+                self._pending_data if self._pending_data else {}
+            )
+
+        # Initialize config flow helper if not already done
+        if self._config_flow_helper is None:
+            self._config_flow_helper = ConfigFlowHelper(self.hass, self._config_entry)
+
+        # Build device configuration menu options
+        device_config_options = []
+        for feature_key in self._features_for_device_config or []:
+            feature_config = AVAILABLE_FEATURES.get(feature_key, {})
+            feature_name = feature_config.get("name", feature_key)
+            device_config_options.append(
+                selector.SelectOptionDict(
+                    value=feature_key, label=f"Configure {feature_name} devices"
+                )
+            )
+
+        # Add option to skip device configuration
+        device_config_options.append(
+            selector.SelectOptionDict(
+                value="skip", label="Skip device configuration (use defaults)"
+            )
+        )
+
+        schema = vol.Schema(
+            {
+                vol.Required("feature_to_configure"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=device_config_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+
+        info_text = "Configure devices for enabled features.\n\n"
+        info_text += "Select which feature you want to configure devices for, "
+        info_text += "or skip to use default device assignments."
+
+        return self.async_show_form(
+            step_id="device_menu",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
 
     async def _apply_targeted_changes(self) -> None:
         """Apply targeted changes using EntityManager."""
