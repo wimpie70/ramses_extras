@@ -2,11 +2,12 @@
 pytest_homeassistant_custom_component."""
 
 import asyncio
+from typing import Any, Generator
 
 import pytest
 
 
-def pytest_configure(config):
+def pytest_configure(config: Any) -> None:
     """Configure pytest to disable the problematic enable_event_loop_debug fixture."""
     # Disable the enable_event_loop_debug fixture that's causing issues
     # This fixture is from pytest_homeassistant_custom_component and tries to
@@ -17,8 +18,8 @@ def pytest_configure(config):
     )
 
 
-@pytest.fixture(scope="session", autouse=True)
-def fix_event_loop_debug_issue():
+@pytest.fixture(scope="session", autouse=True)  # type: ignore[untyped-decorator]
+def fix_event_loop_debug_issue() -> Generator[None]:
     """Fix the event loop debug issue by ensuring an event loop exists.
 
     This fixture ensures that an event loop is created before any tests run,
@@ -43,8 +44,8 @@ def fix_event_loop_debug_issue():
 
 
 # Override the problematic fixtures from pytest_homeassistant_custom_component
-@pytest.fixture
-def enable_event_loop_debug():
+@pytest.fixture  # type: ignore[untyped-decorator]
+def enable_event_loop_debug() -> None:
     """Override the problematic enable_event_loop_debug fixture with a safe version."""
     try:
         loop = asyncio.get_event_loop()
@@ -57,8 +58,8 @@ def enable_event_loop_debug():
         pass
 
 
-@pytest.fixture
-def verify_cleanup():
+@pytest.fixture  # type: ignore[untyped-decorator]
+def verify_cleanup() -> asyncio.AbstractEventLoop | None:
     """Override the problematic verify_cleanup fixture with a safe version."""
     try:
         loop = asyncio.get_event_loop()
