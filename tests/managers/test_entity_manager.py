@@ -458,12 +458,15 @@ class TestEntityManager:
         feature_id = "test_feature"
         supported_devices = ["Device1", "Device2"]
 
-        # Mock device data
+        # Mock device data with _SLUG attributes (new ramses_cc pattern)
         mock_device1 = Mock()
+        mock_device1._SLUG = "DEV1"  # Will map to Device1
         mock_device1.__class__.__name__ = "Device1"
         mock_device2 = Mock()
+        mock_device2._SLUG = "DEV2"  # Will map to Device2
         mock_device2.__class__.__name__ = "Device2"
         mock_device3 = Mock()
+        mock_device3._SLUG = "DEV3"  # Will map to Device3 (not supported)
         mock_device3.__class__.__name__ = "Device3"  # Not supported
 
         self.mock_hass.data["ramses_extras"]["devices"] = [

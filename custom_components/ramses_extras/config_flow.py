@@ -1,7 +1,7 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -17,6 +17,7 @@ from .const import (
     GITHUB_WIKI_URL,
     INTEGRATION_DIR,
 )
+from .framework.helpers.config.feature_config_flow import FeatureConfigFlowBase
 from .framework.helpers.entity.manager import EntityManager
 from .framework.helpers.platform import (
     calculate_required_entities,
@@ -180,7 +181,7 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow):
 
 
 class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for Ramses Extras."""
+    """Handle options flow for Ramses Extras with menu-based navigation."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
@@ -196,13 +197,30 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, list[str]] | None = None
     ) -> config_entries.FlowResult:
-        """Handle options initialization - redirect to features step."""
-        return await self.async_step_features()
+        """Handle options initialization with dynamic feature loading menu."""
+        _LOGGER.info("🏠 Initializing Ramses Extras options menu")
 
-    async def async_step_features(
+        # Generate menu options dynamically from AVAILABLE_FEATURES
+        menu_options = ["features_management"]  # Always include features management
+
+        # Add features that have menu_visible=True
+        for feature_key, feature_config in AVAILABLE_FEATURES.items():
+            if feature_config.get("menu_visible", False):
+                menu_options.append(feature_key)
+                _LOGGER.info(f"📋 Added menu option for feature: {feature_key}")
+
+        menu_options.append("general_settings")  # Always include general settings
+
+        _LOGGER.info(f"🎯 Final menu options: {menu_options}")
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=menu_options,
+        )
+
+    async def async_step_features_management(
         self, user_input: dict[str, list[str]] | None = None
     ) -> config_entries.FlowResult:
-        """Handle the feature selection step for options."""
+        """Handle features management - enable/disable features (ramses_cc pattern)."""
         if user_input is not None:
             # Get current features and determine feature changes
             current_features = self._config_entry.data.get("enabled_features", {})
@@ -232,6 +250,45 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             if feature_changes:
                 # Initialize EntityManager once and build catalog with target features
                 self._entity_manager = EntityManager(self.hass)
+
+                # Check for existing device selections in feature configurations
+                # and create entities only for selected devices, not all compatible ones
+                feature_configs = self._config_entry.options.get("features", {})
+                _LOGGER.info(f"Existing feature configs: {feature_configs}")
+
+                # For each feature being enabled, check if it has device selections
+                for feature_key, will_be_enabled in enabled_features.items():
+                    if will_be_enabled and feature_key != "default":
+                        # Check if this feature has existing device selections
+                        existing_feature_config = feature_configs.get(feature_key, {})
+                        selected_devices = existing_feature_config.get(
+                            "selected_devices", []
+                        )
+
+                        if selected_devices:
+                            _LOGGER.info(
+                                f"Feature {feature_key} has existing selections: "
+                                f"{selected_devices}"
+                            )
+                            # Store the selected devices for this feature to use
+                            #  during entity creation
+                            # This will be used by the EntityManager to only
+                            #  create entities for
+                            # selected devices
+                            if not hasattr(
+                                self._entity_manager, "_feature_device_selections"
+                            ):
+                                self._entity_manager._feature_device_selections = {}
+
+                            self._entity_manager._feature_device_selections[
+                                feature_key
+                            ] = selected_devices
+                        else:
+                            _LOGGER.info(
+                                f"Feature {feature_key} has no existing selections - "
+                                f"will use all compatible devices"
+                            )
+
                 await self._entity_manager.build_entity_catalog(
                     AVAILABLE_FEATURES, current_features, enabled_features
                 )
@@ -282,7 +339,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             k for k, v in current_features.items() if v and k != "default"
         ]
 
-        # Build options for multi-select
+        # Build options for multi-select (ramses_cc pattern)
         feature_options = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
             # Skip default feature from user configuration (it's always enabled)
@@ -303,78 +360,594 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 selector.SelectOptionDict(value=feature_key, label=label)
             )
 
-        # Build detailed summary for description area
-        feature_summaries = []
-        for feature_key, feature_config in AVAILABLE_FEATURES.items():
-            # Skip default feature from user display (it's always enabled)
-            if feature_key == "default":
-                continue
+        # Build clean info text
+        info_text = (
+            "**Features Management**\n\n"
+            "Enable or disable Ramses Extras features:\n\n"
+            f"📖 Documentation: {GITHUB_WIKI_URL}\n\n"
+            "Select the features you want to enable:"
+        )
 
-            name = str(feature_config.get("name", feature_key))
-            description = str(feature_config.get("description", ""))
+        schema_dict = {
+            vol.Optional("features", default=current_selected): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=feature_options,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
+        }
 
-            detail_parts = [f"**{name}**"]
-            if description:
-                detail_parts.append(description)
+        schema = vol.Schema(schema_dict)
 
-            # Get feature details from the feature module
-            feature_details = _get_feature_details_from_module(feature_key)
+        return self.async_show_form(
+            step_id="features_management",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+            last_step=True,  # This is the final step for this menu option
+        )
 
-            if feature_details:
-                # Add supported device types
-                supported_devices = feature_details.get("supported_device_types", [])
-                if isinstance(supported_devices, list) and supported_devices:
-                    detail_parts.append(
-                        f"Device Types: {', '.join(str(d) for d in supported_devices)}"
+    async def async_step_humidity_control(
+        self, user_input: dict[str, list[str]] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle Humidity Control configuration with device selection."""
+        feature_key = "humidity_control"
+
+        if feature_key not in AVAILABLE_FEATURES:
+            return self.async_abort(reason="invalid_feature")
+
+        feature_config = AVAILABLE_FEATURES[feature_key]
+
+        # Check if feature is enabled
+        current_features = self._config_entry.data.get("enabled_features", {})
+        if not current_features.get(feature_key, False):
+            info_text = (
+                "**Humidity Control is not enabled**\n\n"
+                "Please enable Humidity Control in Features Management first."
+            )
+            return self.async_show_form(
+                step_id="humidity_control",
+                data_schema=vol.Schema({}),
+                description_placeholders={"info": info_text},
+                last_step=True,
+            )
+
+        # Handle device selection directly in this step
+        return await self._handle_device_selection_for_feature(
+            feature_key, feature_config, user_input
+        )
+
+    async def async_step_hvac_fan_card(
+        self, user_input: dict[str, list[str]] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle HVAC Fan Card configuration - card settings (ramses_cc pattern)."""
+        feature_key = "hvac_fan_card"
+
+        if feature_key not in AVAILABLE_FEATURES:
+            return self.async_abort(reason="invalid_feature")
+
+        feature_config = AVAILABLE_FEATURES[feature_key]
+
+        # Check if feature is enabled
+        current_features = self._config_entry.data.get("enabled_features", {})
+        if not current_features.get(feature_key, False):
+            info_text = (
+                "**HVAC Fan Card is not enabled**\n\n"
+                "Please enable the HVAC Fan Card feature in Features Management first."
+            )
+            return self.async_show_form(
+                step_id="hvac_fan_card",
+                data_schema=vol.Schema({}),
+                description_placeholders={"info": info_text},
+                last_step=True,
+            )
+
+        # HVAC Fan Card doesn't require device selection - it's card-only
+        info_text = (
+            f"**{feature_config.get('name', 'HVAC Fan Card')} Configuration**\n\n"
+            f"{
+                feature_config.get(
+                    'description', 'Card-only feature - no extra config needed.'
+                )
+            }\n\n"
+            f"✅ **Status:** Ready\n\n"
+            f"This is a card-only feature. Entities are created automatically "
+            f"for all compatible devices."
+        )
+
+        schema = vol.Schema({})
+
+        return self.async_show_form(
+            step_id="hvac_fan_card",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+            last_step=True,
+        )
+
+    async def async_step_hello_world_card(
+        self, user_input: dict[str, list[str]] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle Hello World Card configuration with optional device selection."""
+        feature_key = "hello_world_card"
+
+        _LOGGER.info("🚀 Hello World Card config flow started")
+
+        if feature_key not in AVAILABLE_FEATURES:
+            _LOGGER.error("❌ Hello World Card feature not found in AVAILABLE_FEATURES")
+            return self.async_abort(reason="invalid_feature")
+
+        feature_config = AVAILABLE_FEATURES[feature_key]
+        _LOGGER.info(f"📋 Hello World Card feature config: {feature_config}")
+
+        # Check if feature is enabled
+        current_features = self._config_entry.data.get("enabled_features", {})
+        _LOGGER.info(f"🔍 Current features: {current_features}")
+        if not current_features.get(feature_key, False):
+            _LOGGER.warning("⚠️ Hello World Card feature is not enabled")
+            info_text = (
+                "**Hello World Card is not enabled**\n\n"
+                "Please enable Hello World Card in Features Management first."
+            )
+            return self.async_show_form(
+                step_id="hello_world_card",
+                data_schema=vol.Schema({}),
+                description_placeholders={"info": info_text},
+                last_step=True,
+            )
+
+        _LOGGER.info(
+            "✅ Hello World Card feature is enabled, proceeding with device selection"
+        )
+        # Handle optional device selection directly in this step
+        return await self._handle_device_selection_for_feature(
+            feature_key, feature_config, user_input, optional=True
+        )
+
+    async def async_step_general_settings(
+        self, user_input: dict[str, list[str]] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle general integration settings (ramses_cc pattern)."""
+        # General settings - for now, just return info about integration
+        info_text = (
+            "**General Integration Settings**\n\n"
+            "General Ramses Extras integration settings:\n\n"
+            "✅ **Integration Status:** Active\n"
+            f"✅ **Available Features:** {len(AVAILABLE_FEATURES) - 1} "
+            f"optional features\n"
+            "✅ **Card Registration:** Automatic\n"
+            "✅ **Entity Management:** Lazy creation enabled\n\n"
+            "Visit the GitHub wiki for detailed documentation:\n"
+            f"📖 {GITHUB_WIKI_URL}"
+        )
+
+        schema = vol.Schema({})
+
+        return self.async_show_form(
+            step_id="general_settings",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+            last_step=True,
+        )
+
+    async def _handle_device_selection_for_feature(
+        self,
+        feature_key: str,
+        feature_config: dict[str, Any],
+        user_input: dict[str, Any] | None = None,
+        optional: bool = False,
+    ) -> config_entries.FlowResult:
+        """Handle device selection directly in a single step for a feature.
+
+        Args:
+            feature_key: Feature identifier
+            feature_config: Feature configuration
+            user_input: User input from device selection
+            optional: Whether device selection is optional
+
+        Returns:
+            Flow result with device selection form or confirmation
+        """
+        try:
+            # Get current device selection
+            current_selection = []
+            if "features" in self._config_entry.options:
+                feature_options = self._config_entry.options.get("features", {})
+                if feature_key in feature_options:
+                    current_selection = feature_options[feature_key].get(
+                        "selected_devices", []
                     )
 
-                # Add entity requirements
-                required_entities = feature_details.get("required_entities", {})
-                if isinstance(required_entities, dict):
-                    required_sensor = required_entities.get("sensor", [])
-                    required_switch = required_entities.get("switch", [])
-                    required_booleans = required_entities.get("booleans", [])
+            # Handle user input - direct save
+            if user_input is not None:
+                selected_devices = user_input.get("selected_devices", [])
 
-                    if isinstance(required_sensor, list) and required_sensor:
-                        detail_parts.append(
-                            f"• sensor: {', '.join(str(s) for s in required_sensor)}"
+                # Apply entity changes based on device selection
+                await self._apply_device_selection_entity_changes(
+                    feature_key, current_selection, selected_devices
+                )
+
+                # Store the feature configuration in options
+                new_options = self._config_entry.options.copy()
+                if "features" not in new_options:
+                    new_options["features"] = {}
+                new_options["features"][feature_key] = {
+                    "selected_devices": selected_devices,
+                    "feature_id": feature_key,
+                }
+
+                self.hass.config_entries.async_update_entry(
+                    self._config_entry, options=new_options
+                )
+
+                _LOGGER.info(
+                    f"💾 Stored feature config for {feature_key}: selected devices = "
+                    f"{selected_devices}"
+                )
+
+                # Return to main menu
+                return await self.async_step_init()
+
+            # Discover devices for selection
+            from .framework.helpers.device_selection import (
+                create_device_selection_manager,
+            )
+
+            _LOGGER.info(f"🔍 Starting device discovery for feature: {feature_key}")
+            device_selection_manager = await create_device_selection_manager(
+                self.hass, feature_key
+            )
+
+            # Determine device types based on feature
+            if feature_key == "humidity_control":
+                # For humidity control, we only want FAN devices
+                device_types = ["HvacVentilator"]
+                discovered_devices = (
+                    await device_selection_manager.discover_compatible_devices(
+                        device_types
+                    )
+                )
+
+                # Filter to only FAN devices for humidity control
+                fan_devices = []
+                for device in discovered_devices:
+                    # Check if this is a FAN device (not just any HvacVentilator)
+                    if self._is_fan_device(device):
+                        fan_devices.append(device)
+
+                discovered_devices = fan_devices
+            else:
+                # For other features like hello_world_card, show all device types
+                # Get supported device types from feature configuration
+                supported_device_types = feature_config.get(
+                    "supported_device_types", []
+                )
+
+                # Special handling for hello_world_card - show ALL ramses_cc devices
+                if feature_key == "hello_world_card":
+                    _LOGGER.info(
+                        "🌍 Hello World Card - using wildcard device discovery for ALL "
+                        "ramses_cc devices"
+                    )
+                    # Use the new wildcard method to get ALL ramses_cc devices
+                    discovered_devices = (
+                        await device_selection_manager.discover_all_ramses_cc_devices()
+                    )
+                    _LOGGER.info(
+                        f"🌍 Found {len(discovered_devices)} ramses_cc devices for "
+                        f"hello_world_card"
+                    )
+                else:
+                    # For other features, use the filtered device discovery
+                    if not supported_device_types:
+                        # Default to common device types if not specified
+                        supported_device_types = [
+                            "HvacVentilator",
+                            "HvacCarbonDioxideSensor",
+                            "HvacTemperatureSensor",
+                            "HvacHumiditySensor",
+                            "HvacController",
+                            "Climate",
+                            "Fan",
+                            "Sensor",
+                            "Switch",
+                            "Number",
+                            "BinarySensor",
+                        ]
+
+                    _LOGGER.info(
+                        f"🔍 Discovering devices for {feature_key} with types: "
+                        f"{supported_device_types}"
+                    )
+                    discovered_devices = (
+                        await device_selection_manager.discover_compatible_devices(
+                            supported_device_types
                         )
-                    if isinstance(required_switch, list) and required_switch:
-                        detail_parts.append(
-                            f"• switch: {', '.join(str(s) for s in required_switch)}"
-                        )
-                    if isinstance(required_booleans, list) and required_booleans:
-                        detail_parts.append(
-                            f"• Booleans: {', '.join(str(b) for b in required_booleans)}"  # noqa: E501
-                        )
+                    )
+                    _LOGGER.info(
+                        f"🔍 Found {len(discovered_devices)} devices for {feature_key}"
+                    )
 
-            feature_summaries.append("• " + "\n  ".join(detail_parts))
+            if not discovered_devices:
+                # No devices found - show error message
+                # Determine which device types to show in the error message
+                error_device_types = (
+                    device_types
+                    if feature_key == "humidity_control"
+                    else supported_device_types
+                )
+                info_text = (
+                    f"**No Compatible Devices Found**\n\n"
+                    f"No devices of types {', '.join(error_device_types)} were found.\n"
+                    f"This feature requires compatible devices to function.\n\n"
+                    f"Make sure your Ramses system has the required devices configured."
+                )
+                _LOGGER.warning(
+                    f"No compatible devices found for {feature_key}: "
+                    f"{error_device_types}"
+                )
+                return self.async_show_form(
+                    step_id=feature_key,
+                    data_schema=vol.Schema({}),
+                    description_placeholders={"info": info_text},
+                    last_step=True,
+                )
 
-        features_info = "\n\n".join(feature_summaries)
+            # Build device selection options
+            device_options = []
+            for device in discovered_devices:
+                # Format device label with proper naming
+                device_name = device.get("name", device["device_id"])
+                device_type = device.get("device_type", "Unknown")
 
-        # Build the info text
-        info_text = "Configure which Ramses Extras features are enabled."
-        info_text += "\n📖 For detailed documentation, visit: " + GITHUB_WIKI_URL
-        info_text += f"\n\n**Available Features:**\n{features_info}"
+                # For wildcard discovery, devices might have better names from broker
+                # Use device name if meaningful, otherwise use device_id
+                if device_name == device["device_id"] or not device_name:
+                    # Device name is just the ID, try to make it more readable
+                    if device_type == "HvacVentilator":
+                        device_label = f"FAN {device['device_id']}"
+                    elif device_type == "HvacCarbonDioxideSensor":
+                        device_label = f"CO2 {device['device_id']}"
+                    elif device_type == "HvacTemperatureSensor":
+                        device_label = f"TEMP {device['device_id']}"
+                    elif device_type == "HvacHumiditySensor":
+                        device_label = f"HUM {device['device_id']}"
+                    else:
+                        device_label = f"{device_type} {device['device_id']}"
+                else:
+                    # Device has a proper name, use it
+                    device_label = (
+                        f"{device_name} ({device['device_id']}) - {device_type}"
+                    )
 
-        schema = vol.Schema(
-            {
+                device_options.append(
+                    selector.SelectOptionDict(
+                        value=device["device_id"],
+                        label=device_label,
+                    )
+                )
+
+            # Build info text with device list
+            feature_name = feature_config.get("name", feature_key)
+            info_text = (
+                f"**{feature_name} Device Selection**\n\n"
+                f"Select devices to enable {feature_name} entities:\n\n"
+            )
+
+            for device in discovered_devices:
+                # Use the same naming logic as device labels for consistency
+                device_name = device.get("name", device["device_id"])
+                device_type = device.get("device_type", "Unknown")
+
+                if device_name == device["device_id"] or not device_name:
+                    # Device name is just the ID, use type prefix
+                    if device_type == "HvacVentilator":
+                        display_name = f"FAN {device['device_id']}"
+                    elif device_type == "HvacCarbonDioxideSensor":
+                        display_name = f"CO2 {device['device_id']}"
+                    elif device_type == "HvacTemperatureSensor":
+                        display_name = f"TEMP {device['device_id']}"
+                    elif device_type == "HvacHumiditySensor":
+                        display_name = f"HUM {device['device_id']}"
+                    else:
+                        display_name = f"{device_type} {device['device_id']}"
+                else:
+                    display_name = device_name
+
+                device_info = f"• {display_name} ({device_type})"
+                if device.get("zone"):
+                    device_info += f" (Zone: {device['zone']})"
+                info_text += f"{device_info}\n"
+
+            if optional:
+                info_text += (
+                    "\n\n**Note:** Device selection is optional for this feature. "
+                    "You can proceed without selecting devices."
+                )
+            else:
+                info_text += (
+                    "\n\n**Note:** Entities will be created only for selected devices."
+                )
+
+            # Build schema
+            schema_dict = {
                 vol.Optional(
-                    "features", default=current_selected
+                    "selected_devices", default=current_selection
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=feature_options,
+                        options=device_options,
                         multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
             }
-        )
 
-        return self.async_show_form(
-            step_id="features",
-            data_schema=schema,
-            description_placeholders={"info": info_text},
-        )
+            schema = vol.Schema(schema_dict)
+
+            return self.async_show_form(
+                step_id=feature_key,
+                data_schema=schema,
+                description_placeholders={"info": info_text},
+                last_step=True,  # Direct save, no confirmation step
+            )
+
+        except Exception as e:
+            _LOGGER.error(
+                f"❌ Failed to handle device selection for {feature_key}: {e}"
+            )
+            return self.async_abort(reason="feature_config_failed")
+
+    async def _apply_device_selection_entity_changes(
+        self,
+        feature_key: str,
+        old_devices: list[str],
+        new_devices: list[str],
+    ) -> None:
+        """Apply entity changes based on device selection changes for a feature.
+
+        Args:
+            feature_key: The feature whose device selection changed
+            old_devices: Previously selected device IDs
+            new_devices: Newly selected device IDs
+        """
+        try:
+            _LOGGER.info(
+                f"Applying device selection changes for {feature_key}: "
+                f"{old_devices} -> {new_devices}"
+            )
+
+            # Calculate device changes
+            old_device_set = set(old_devices)
+            new_device_set = set(new_devices)
+            devices_to_add = new_device_set - old_device_set
+            devices_to_remove = old_device_set - new_device_set
+
+            if not devices_to_add and not devices_to_remove:
+                _LOGGER.debug(f"No device changes for {feature_key}")
+                return
+
+            # Get feature configuration
+            feature_config = AVAILABLE_FEATURES.get(feature_key, {})
+            if not feature_config:
+                _LOGGER.error(f"Feature config not found for {feature_key}")
+                return
+
+            # Get required entities for this feature
+            required_entities = await self._get_required_entities_for_feature(
+                feature_key
+            )
+
+            # Calculate entity changes
+            entities_to_create = []
+            entities_to_remove = []
+
+            # Entities to create for newly selected devices
+            for device_id in devices_to_add:
+                for entity_type, entity_names in required_entities.items():
+                    for entity_name in entity_names:
+                        entity_id = (
+                            f"{entity_type}.{entity_name}_{device_id.replace(':', '_')}"
+                        )
+                        entities_to_create.append(entity_id)
+
+            # Entities to remove for deselected devices
+            for device_id in devices_to_remove:
+                for entity_type, entity_names in required_entities.items():
+                    for entity_name in entity_names:
+                        entity_id = (
+                            f"{entity_type}.{entity_name}_{device_id.replace(':', '_')}"
+                        )
+                        entities_to_remove.append(entity_id)
+
+            _LOGGER.info(
+                f"Entity changes for {feature_key}: "
+                f"create {len(entities_to_create)}, remove {len(entities_to_remove)}"
+            )
+
+            # Apply entity changes
+            if entities_to_remove:
+                await self._remove_entities_for_device_selection(entities_to_remove)
+
+            if entities_to_create:
+                # For creation, we trigger integration reload to create entities
+                # This is the same approach used in the main config flow
+                _LOGGER.info("Triggering integration reload to create new entities")
+                await self.hass.config_entries.async_reload(self._config_entry.entry_id)
+
+        except Exception as e:
+            _LOGGER.error(
+                f"Failed to apply device selection entity changes for {feature_key}: "
+                f"{e}"
+            )
+
+    async def _get_required_entities_for_feature(
+        self, feature_key: str
+    ) -> dict[str, list[str]]:
+        """Get required entities for a feature.
+
+        Args:
+            feature_key: Feature identifier
+
+        Returns:
+            Dictionary mapping entity_type to list of entity names
+        """
+        try:
+            # Import the feature's const module
+            import importlib
+
+            feature_module_path = (
+                f"custom_components.ramses_extras.features.{feature_key}.const"
+            )
+            feature_module = importlib.import_module(feature_module_path)
+
+            # Get the FEATURE_CONST for this feature
+            const_key = f"{feature_key.upper()}_CONST"
+            if hasattr(feature_module, const_key):
+                const_data = getattr(feature_module, const_key, {})
+                return cast(
+                    dict[str, list[str]], const_data.get("required_entities", {})
+                )
+
+            return {}
+        except Exception as e:
+            _LOGGER.debug(f"Could not get required entities for {feature_key}: {e}")
+            return {}
+
+    async def _remove_entities_for_device_selection(
+        self, entity_ids: list[str]
+    ) -> None:
+        """Remove entities for device selection changes.
+
+        Args:
+            entity_ids: List of entity IDs to remove
+        """
+        try:
+            from homeassistant.helpers import entity_registry
+
+            entity_registry_instance = entity_registry.async_get(self.hass)
+
+            removed_count = 0
+            for entity_id in entity_ids:
+                try:
+                    entity_registry_instance.async_remove(entity_id)
+                    removed_count += 1
+                    _LOGGER.debug(f"Removed entity: {entity_id}")
+                except Exception as e:
+                    _LOGGER.warning(f"Could not remove entity {entity_id}: {e}")
+
+            _LOGGER.info(
+                f"Removed {removed_count} entities for device selection change"
+            )
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to remove entities for device selection: {e}")
+
+    # Legacy method kept for backward compatibility - redirects to new menu
+    async def async_step_features(
+        self, user_input: dict[str, list[str]] | None = None
+    ) -> config_entries.FlowResult:
+        """Legacy method - redirects to new menu-based features management."""
+        # Redirect to new menu-based approach
+        return await self.async_step_init()
 
     async def async_step_confirm(
         self, user_input: dict[str, bool] | None = None
@@ -447,6 +1020,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         schema = vol.Schema(
             {
                 vol.Required("confirm", default=False): bool,
+                vol.Optional("cancel", default=False): bool,
             }
         )
 
@@ -509,10 +1083,20 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_create_entry(title="", data={})
 
-    async def _apply_targeted_changes(self) -> None:
-        """Apply targeted changes using EntityManager."""
-        if self._entity_manager:
-            await self._entity_manager.apply_entity_changes()
-        else:
-            # EntityManager is required for entity changes - should not reach here
-            _LOGGER.error("EntityManager not available for targeted changes")
+    def _is_fan_device(self, device: dict[str, Any]) -> bool:
+        """Check if a device is a FAN device (not just any HVAC device).
+
+        Args:
+            device: Device information dictionary with device_id, device_type, etc.
+
+        Returns:
+            True if the device is a FAN device, False otherwise
+        """
+        # For device info dictionaries, check if it's a FAN device
+        # The device_type should be "HvacVentilator" for FAN devices
+        device_type = device.get("device_type", "")
+
+        # Device is considered a FAN device if it's an HvacVentilator type
+        # This is the primary indicator for FAN devices in the device selection
+        # framework
+        return cast(str, device_type) == "HvacVentilator"

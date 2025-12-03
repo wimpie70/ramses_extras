@@ -9,7 +9,7 @@ reference helpers or construct feature-specific paths for deployment.
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 class PathConstants:

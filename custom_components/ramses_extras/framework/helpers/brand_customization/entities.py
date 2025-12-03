@@ -6,7 +6,7 @@ consistent entity generation across different brands and features.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from .models import ModelConfigManager
 

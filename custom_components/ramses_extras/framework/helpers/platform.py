@@ -8,6 +8,7 @@ Key components:
 - Entity factory patterns for consistent entity creation
 - Device filtering and validation
 - Configuration-driven entity generation
+- Lazy entity creation support for selective device configuration
 """
 
 import logging
@@ -252,6 +253,135 @@ class PlatformSetup:
                 PlatformSetup._store_entities_for_automation(hass, entities)
 
     @staticmethod
+    async def async_setup_platform_lazy(
+        platform: str,
+        hass: "HomeAssistant",
+        config_entry: ConfigEntry,
+        async_add_entities: AddEntitiesCallback,
+        feature_id: str,
+        entity_factory: Callable[
+            ["HomeAssistant", ConfigEntry, str, str], Awaitable[list[Entity]]
+        ],
+    ) -> None:
+        """Lazy platform setup with device selection support.
+
+        This method provides selective entity creation based on device selection
+        from feature config flows, supporting the lazy entity creation pattern.
+
+        Args:
+            platform: Platform type (sensor, switch, binary_sensor, number)
+            hass: Home Assistant instance
+            config_entry: Configuration entry
+            async_add_entities: Add entities callback
+            feature_id: Feature identifier for device selection lookup
+            entity_factory: Factory function to create entities for specific device
+        """
+        _LOGGER.info(
+            "Setting up %s platform with lazy creation for feature: %s",
+            platform,
+            feature_id,
+        )
+
+        # Get selected devices for this feature from config flow
+        selected_devices = await PlatformSetup._get_selected_devices_for_feature(
+            hass, config_entry, feature_id
+        )
+
+        if not selected_devices:
+            _LOGGER.info(
+                "No devices selected for feature %s, skipping %s platform setup",
+                feature_id,
+                platform,
+            )
+            return
+
+        _LOGGER.info(
+            "Creating %s entities for selected devices: %s",
+            platform,
+            selected_devices,
+        )
+
+        entities = []
+        for device_id in selected_devices:
+            try:
+                # Create entities for this selected device
+                device_entities = await entity_factory(
+                    hass, config_entry, feature_id, device_id
+                )
+                entities.extend(device_entities)
+                _LOGGER.info(
+                    "Created %d %s entities for selected device %s",
+                    len(device_entities),
+                    platform,
+                    device_id,
+                )
+            except Exception as e:
+                _LOGGER.error(
+                    "Failed to create %s entities for selected device %s: %e",
+                    platform,
+                    device_id,
+                    e,
+                )
+
+        _LOGGER.info(
+            "Total %s entities created for lazy setup: %d", platform, len(entities)
+        )
+        if entities:
+            async_add_entities(entities, True)
+            _LOGGER.info("%s entities added to Home Assistant", platform)
+
+    @staticmethod
+    async def _get_selected_devices_for_feature(
+        hass: "HomeAssistant", config_entry: ConfigEntry, feature_id: str
+    ) -> list[str]:
+        """Get selected devices for a specific feature from config flow.
+
+        Args:
+            hass: Home Assistant instance
+            config_entry: Configuration entry
+            feature_id: Feature identifier
+
+        Returns:
+            List of selected device IDs
+        """
+        try:
+            # Check in lazy entity manager first (new pattern)
+            if "lazy_entity_manager" in hass.data:
+                lazy_entity_manager = hass.data["lazy_entity_manager"]
+                feature_config = await lazy_entity_manager.get_pending_configuration()
+                if feature_id in feature_config:
+                    devices = feature_config[feature_id].get("selected_devices", [])
+                    _LOGGER.debug(
+                        "Found selected devices from lazy entity manager: %s", devices
+                    )
+                    return devices if isinstance(devices, list) else []
+
+            # Fallback to checking feature configs from main integration
+            if "feature_configs" in hass.data:
+                feature_configs = hass.data["feature_configs"]
+                if feature_id in feature_configs:
+                    devices = feature_configs[feature_id].get("selected_devices", [])
+                    _LOGGER.debug(
+                        "Found selected devices from feature configs: %s", devices
+                    )
+                    return devices if isinstance(devices, list) else []
+
+            # Fallback to checking config entry options
+            options = config_entry.options or {}
+            feature_key = f"feature_{feature_id}"
+            if feature_key in options:
+                devices = options[feature_key].get("selected_devices", [])
+                _LOGGER.debug("Found selected devices from config entry: %s", devices)
+                return devices if isinstance(devices, list) else []
+
+            _LOGGER.debug("No selected devices found for feature: %s", feature_id)
+            return []
+
+        except Exception as e:
+            _LOGGER.error("Failed to get selected devices for %s: %e", feature_id, e)
+            return []
+
+    @staticmethod
     def create_entities_for_device(
         device_id: str,
         entity_configs: dict[str, Any],
@@ -421,6 +551,55 @@ class PlatformSetup:
                 )
 
     @staticmethod
+    async def setup_feature_platforms_lazy(
+        hass: "HomeAssistant",
+        config_entry: ConfigEntry,
+        feature_id: str,
+        entity_factories: dict[str, Callable],
+        async_add_entities_callbacks: dict[str, AddEntitiesCallback],
+    ) -> None:
+        """Setup all platforms for a feature with lazy entity creation.
+
+        This method provides lazy platform setup where entities are created
+        only for devices selected through the feature config flow.
+
+        Args:
+            hass: Home Assistant instance
+            config_entry: Configuration entry
+            feature_id: Feature identifier
+            entity_factories: Mapping of platform names to entity factory functions
+            async_add_entities_callbacks: Mapping of platform names to add callbacks
+        """
+        _LOGGER.info("Setting up lazy platforms for feature: %s", feature_id)
+
+        for platform, entity_factory in entity_factories.items():
+            if platform not in async_add_entities_callbacks:
+                _LOGGER.warning(
+                    "No async_add_entities callback found for platform %s "
+                    "in feature %s",
+                    platform,
+                    feature_id,
+                )
+                continue
+
+            try:
+                await PlatformSetup.async_setup_platform_lazy(
+                    platform=platform,
+                    hass=hass,
+                    config_entry=config_entry,
+                    async_add_entities=async_add_entities_callbacks[platform],
+                    feature_id=feature_id,
+                    entity_factory=entity_factory,
+                )
+            except Exception as e:
+                _LOGGER.error(
+                    "Failed to setup lazy %s platform for feature %s: %e",
+                    platform,
+                    feature_id,
+                    e,
+                )
+
+    @staticmethod
     def _store_entities_for_automation(
         hass: "HomeAssistant", entities: list[Entity]
     ) -> None:
@@ -472,3 +651,139 @@ class PlatformSetup:
             config_entry,
         )
         return []
+
+    @staticmethod
+    async def cleanup_unselected_entities(
+        hass: "HomeAssistant",
+        feature_id: str,
+        selected_devices: list[str],
+        platform: str,
+    ) -> int:
+        """Clean up entities for devices that are no longer selected.
+
+        This method removes entities for devices that were previously selected
+        but are no longer in the selected devices list.
+
+        Args:
+            hass: Home Assistant instance
+            feature_id: Feature identifier
+            selected_devices: Currently selected device IDs
+            platform: Platform name for logging
+
+        Returns:
+            Number of entities cleaned up
+        """
+        _LOGGER.info(
+            "Cleaning up unselected %s entities for feature: %s", platform, feature_id
+        )
+
+        try:
+            if "lazy_entity_manager" not in hass.data:
+                _LOGGER.warning("Lazy entity manager not available for cleanup")
+                return 0
+
+            lazy_entity_manager = hass.data["lazy_entity_manager"]
+
+            # Get currently existing entities for this feature
+            existing_entities = []
+            entity_registry = hass.data.get("entity_registry")
+            if entity_registry:
+                for entity_entry in entity_registry.entities.values():
+                    if PlatformSetup._is_feature_entity(
+                        entity_entry, feature_id, platform
+                    ):
+                        device_id = PlatformSetup._extract_device_id_from_entity(
+                            entity_entry.entity_id, feature_id
+                        )
+                        if device_id and device_id not in selected_devices:
+                            existing_entities.append(device_id)
+
+            # Remove entities for unselected devices
+            if existing_entities:
+                removed_count = cast(
+                    int,
+                    await lazy_entity_manager.remove_entities_for_unselected(
+                        feature_id, existing_entities
+                    ),
+                )
+                _LOGGER.info(
+                    "Cleaned up %d %s entities for unselected devices",
+                    removed_count,
+                    platform,
+                )
+                return removed_count
+
+            return 0
+
+        except Exception as e:
+            _LOGGER.error("Failed to cleanup unselected entities: %e", e)
+            return 0
+
+    @staticmethod
+    def _is_feature_entity(entity_entry: Any, feature_id: str, platform: str) -> bool:
+        """Check if an entity belongs to a specific feature and platform.
+
+        Args:
+            entity_entry: Entity registry entry
+            feature_id: Feature identifier
+            platform: Platform name
+
+        Returns:
+            True if entity belongs to the feature and platform
+        """
+        entity_id = entity_entry.entity_id.lower()
+
+        # Check for feature identifier in entity ID
+        if feature_id.replace("_", "") not in entity_id.replace("_", ""):
+            return False
+
+        # Check for platform-specific patterns
+        platform_patterns = {
+            "switch": "switch",
+            "binary_sensor": "binary_sensor",
+            "number": "number",
+            "sensor": "sensor",
+        }
+
+        platform_key = platform_patterns.get(platform, platform)
+        return platform_key in entity_id
+
+    @staticmethod
+    def _extract_device_id_from_entity(entity_id: str, feature_id: str) -> str:
+        """Extract device ID from entity ID for a specific feature.
+
+        Args:
+            entity_id: Entity ID to parse
+            feature_id: Feature identifier
+
+        Returns:
+            Device ID or None if not found
+        """
+        try:
+            parts = entity_id.split(".")
+            if len(parts) >= 2:
+                name_parts = parts[1].split("_")
+
+                # Look for device ID pattern - typically comes after feature name
+                feature_index = -1
+                for i, part in enumerate(name_parts):
+                    if feature_id.replace("_", "") in part.replace("_", ""):
+                        feature_index = i
+                        break
+
+                if feature_index >= 0 and feature_index + 1 < len(name_parts):
+                    # Device ID typically follows the feature name
+                    device_candidate = name_parts[feature_index + 1]
+
+                    # Clean up common suffixes
+                    for suffix in ["sensor", "switch", "number", "binary_sensor"]:
+                        if device_candidate.endswith(suffix):
+                            device_candidate = device_candidate[: -len(suffix)]
+                            break
+
+                    return device_candidate
+
+        except Exception:
+            pass
+
+        return ""

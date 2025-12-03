@@ -38,5 +38,5 @@ setup(
             "typing-extensions>=4.15.0",
         ],
     },
-    python_requires=">=3.13",
+    python_requires=">=3.13.2,<4.0",
 )

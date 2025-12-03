@@ -143,6 +143,9 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.default",
         "handler": "handle_hvac_ventilator",
         "default_enabled": True,
+        "supports_device_selection": False,
+        "requires_device_config": False,
+        "menu_visible": False,  # Default feature not shown in menu
     },
     "humidity_control": {
         "name": "Humidity Control",
@@ -150,6 +153,10 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.humidity_control",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
+        "supports_device_selection": True,
+        "requires_device_config": True,
+        "supported_device_types": ["HvacVentilator"],
+        "menu_visible": True,  # Show in main menu for device selection
     },
     "hvac_fan_card": {
         "name": "HVAC Fan Card",
@@ -157,6 +164,9 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.hvac_fan_card",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
+        "supports_device_selection": False,
+        "requires_device_config": False,
+        "menu_visible": True,  # Show in main menu for card settings
     },
     "hello_world_card": {
         "name": "Hello World Switch Card",
@@ -166,5 +176,9 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.hello_world_card",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
+        "supports_device_selection": True,
+        "requires_device_config": False,
+        "supported_device_types": ["HvacVentilator"],
+        "menu_visible": True,  # Show in main menu for optional device selection
     },
 }

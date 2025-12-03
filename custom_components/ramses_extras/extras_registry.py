@@ -19,6 +19,9 @@ class RamsesEntityRegistry:
         self._boolean_configs: dict[str, dict[str, Any]] = {}
         self._device_mappings: dict[str, dict[str, Any]] = {}
         self._card_configs: dict[str, dict[str, Any]] = {}
+        self._feature_configs: dict[
+            str, dict[str, Any]
+        ] = {}  # Enhanced feature metadata
         self._lock = threading.Lock()
         self._loaded_features: set[str] = set()
 
@@ -250,6 +253,54 @@ class RamsesEntityRegistry:
         _LOGGER.info(f"✅ Completed loading all features in {total_time:.2f}s")
         _LOGGER.info(f"📊 Loaded features: {list(self._loaded_features)}")
 
+    def register_feature_with_config(
+        self, feature_id: str, feature_config: dict[str, Any]
+    ) -> None:
+        """Register feature with enhanced config flow support."""
+        with self._lock:
+            enhanced_config = {
+                **feature_config,
+                "has_config_flow": feature_config.get("has_config_flow", False),
+                "config_flow_class": feature_config.get("config_flow_class"),
+                "supports_device_selection": feature_config.get(
+                    "supports_device_selection", False
+                ),
+                "requires_device_config": feature_config.get(
+                    "requires_device_config", False
+                ),
+            }
+            self._feature_configs[feature_id] = enhanced_config
+
+    def get_feature_config(self, feature_id: str) -> dict[str, Any] | None:
+        """Get enhanced feature configuration."""
+        with self._lock:
+            return self._feature_configs.get(feature_id)
+
+    def get_all_feature_configs(self) -> dict[str, dict[str, Any]]:
+        """Get all enhanced feature configurations."""
+        with self._lock:
+            return self._feature_configs.copy()
+
+    def feature_needs_config_flow(self, feature_id: str) -> bool:
+        """Check if feature requires config flow for device selection."""
+        with self._lock:
+            feature_config = self._feature_configs.get(feature_id)
+            return (
+                feature_config.get("has_config_flow", False)
+                if feature_config
+                else False
+            )
+
+    def feature_requires_device_config(self, feature_id: str) -> bool:
+        """Check if feature requires explicit device configuration."""
+        with self._lock:
+            feature_config = self._feature_configs.get(feature_id)
+            return (
+                feature_config.get("requires_device_config", False)
+                if feature_config
+                else False
+            )
+
     def clear(self) -> None:
         """Clear all loaded definitions and reset state."""
         with self._lock:
@@ -260,6 +311,7 @@ class RamsesEntityRegistry:
             self._boolean_configs.clear()
             self._device_mappings.clear()
             self._card_configs.clear()
+            self._feature_configs.clear()
             self._loaded_features.clear()
             _LOGGER.info("✅ EntityRegistry state cleared")
 
@@ -312,6 +364,7 @@ class RamsesEntityRegistry:
             self._boolean_configs.clear()
             self._device_mappings.clear()
             self._card_configs.clear()
+            self._feature_configs.clear()
             self._loaded_features.clear()
 
 

@@ -6,7 +6,7 @@ model detection and configuration handling.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from .detection import detect_brand_from_model
 

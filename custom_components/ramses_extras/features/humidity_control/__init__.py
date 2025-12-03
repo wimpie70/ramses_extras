@@ -36,6 +36,10 @@ from .const import (
     ZEHNDER_DEVICE_MODELS,
 )
 from .entities import HumidityEntities
+from .entity_factory import (
+    create_humidity_entities_for_device,
+    humidity_control_creation_callback,
+)
 
 # Import platform classes for HA integration
 from .platforms import (
@@ -764,6 +768,7 @@ async def create_humidity_control_feature(
     Args:
         hass: Home Assistant instance
         config_entry: Configuration entry
+        skip_automation_setup: Whether to skip automation setup
 
     Returns:
         Humidity control feature instance with automation,
@@ -771,6 +776,18 @@ async def create_humidity_control_feature(
     """
     # Create the core enhanced humidity control feature
     enhanced_feature = EnhancedHumidityControl(hass, config_entry)
+
+    # Register with Lazy Entity Creation Manager if available
+    if "lazy_entity_manager" in hass.data:
+        lazy_entity_manager = hass.data["lazy_entity_manager"]
+        await lazy_entity_manager.register_feature_factory(
+            "humidity_control",
+            create_humidity_entities_for_device,
+            humidity_control_creation_callback,
+        )
+        _LOGGER.info("📦 Registered humidity control with lazy entity manager")
+    else:
+        _LOGGER.debug("🗃️ Lazy entity manager not available, using legacy pattern")
 
     # Setup the enhanced feature (starts the automation) unless automation
     #  setup is skipped
@@ -843,4 +860,7 @@ __all__ = [
     # Brand model exports
     "ORCON_DEVICE_MODELS",
     "ZEHNDER_DEVICE_MODELS",
+    # Lazy entity creation exports
+    "create_humidity_entities_for_device",
+    "humidity_control_creation_callback",
 ]

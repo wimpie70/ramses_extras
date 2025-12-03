@@ -119,6 +119,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info(f"📋 Enabled features: {entry.data.get('enabled_features', {})}")
 
+    # Initialize the new foolproof entity system components
+    _LOGGER.info("🚀 Initializing foolproof entity system components...")
+    await _initialize_entity_system(hass, entry)
+
     # Load entity definitions from default feature and all enabled features
     _LOGGER.info("📊 Loading entity definitions from features...")
     from .extras_registry import extras_registry
@@ -1085,6 +1089,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("🚫 Unloading Ramses Extras integration...")
 
+    # Shutdown the foolproof entity system components
+    _LOGGER.info("🛑 Shutting down foolproof entity system components...")
+    await _shutdown_entity_system(hass)
+
     # Forward the unload to our platforms
     unload_ok = await hass.config_entries.async_unload_platforms(
         entry,
@@ -1101,3 +1109,91 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return bool(unload_ok)
+
+
+async def _initialize_entity_system(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Initialize the foolproof entity system components.
+
+    This method sets up the three core components:
+    1. EntityCreationRegistry - Immutable entity tracking
+    2. AtomicCleanupEngine - Guaranteed cleanup operations
+    3. StateReconciliationSystem - Continuous validation
+
+    Args:
+        hass: Home Assistant instance
+        entry: Configuration entry
+    """
+    try:
+        _LOGGER.info("🔧 Setting up foolproof entity system...")
+
+        # Import the three core components
+        from .framework.helpers.entity.atomic_cleanup import AtomicCleanupEngine
+        from .framework.helpers.entity.creation_registry import EntityCreationRegistry
+        from .framework.helpers.entity.state_reconciliation import (
+            StateReconciliationSystem,
+        )
+
+        # 1. Initialize EntityCreationRegistry
+        _LOGGER.info("📝 Initializing EntityCreationRegistry...")
+        entity_creation_registry = EntityCreationRegistry(hass)
+
+        # 2. Initialize AtomicCleanupEngine
+        _LOGGER.info("🧹 Initializing AtomicCleanupEngine...")
+        atomic_cleanup_engine = AtomicCleanupEngine(hass, entity_creation_registry)
+
+        # 3. Initialize StateReconciliationSystem
+        _LOGGER.info("🔄 Initializing StateReconciliationSystem...")
+        state_reconciliation_system = StateReconciliationSystem(
+            hass, entity_creation_registry, atomic_cleanup_engine
+        )
+
+        # Store the system components in hass.data for global access
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN]["entity_system"] = {
+            "registry": entity_creation_registry,
+            "cleanup": atomic_cleanup_engine,
+            "reconciliation": state_reconciliation_system,
+        }
+
+        # Start continuous reconciliation
+        _LOGGER.info("🔄 Starting continuous state reconciliation...")
+        await state_reconciliation_system.start_continuous_reconciliation()
+
+        _LOGGER.info("✅ Foolproof entity system initialized successfully")
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Failed to initialize foolproof entity system: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+        # Don't fail the entire integration if entity system initialization fails
+
+
+async def _shutdown_entity_system(hass: HomeAssistant) -> None:
+    """Shutdown the foolproof entity system components.
+
+    Args:
+        hass: Home Assistant instance
+    """
+    try:
+        _LOGGER.info("🛑 Shutting down foolproof entity system...")
+
+        # Check if entity system is initialized
+        entity_system = hass.data.get(DOMAIN, {}).get("entity_system")
+        if not entity_system:
+            _LOGGER.warning("Entity system not initialized, nothing to shutdown")
+            return
+
+        # Stop continuous reconciliation
+        reconciliation_system = entity_system.get("reconciliation")
+        if reconciliation_system:
+            _LOGGER.info("🔄 Stopping continuous state reconciliation...")
+            await reconciliation_system.stop_continuous_reconciliation()
+
+        _LOGGER.info("✅ Foolproof entity system shutdown complete")
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Error shutting down foolproof entity system: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
