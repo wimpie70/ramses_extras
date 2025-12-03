@@ -17,6 +17,7 @@ from .const import (
     GITHUB_WIKI_URL,
     INTEGRATION_DIR,
 )
+from .framework.helpers.config_flow import ConfigFlowHelper
 from .framework.helpers.entity.manager import EntityManager
 from .framework.helpers.platform import (
     calculate_required_entities,
@@ -189,9 +190,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self._entity_manager: EntityManager | None = (
             None  # Will be initialized when needed
         )
+        self._config_flow_helper: ConfigFlowHelper | None = None
         self._feature_changes_detected = False
         self._entities_to_remove: list[str] = []
         self._entities_to_create: list[str] = []
+        self._selected_feature: str | None = None
+        self._all_devices: list[Any] | None = None
 
     async def async_step_init(
         self, user_input: dict[str, list[str]] | None = None
@@ -376,6 +380,98 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             description_placeholders={"info": info_text},
         )
 
+    async def async_step_feature_config(
+        self, user_input: dict[str, list[str]] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle individual feature configuration step."""
+        if user_input is not None:
+            # Store the selected devices for this feature
+            feature_id = self._selected_feature
+            if feature_id:
+                enabled_devices = user_input.get("enabled_devices", [])
+                self._store_feature_device_config(feature_id, enabled_devices)
+
+                # After configuring one feature, go to the next one or back to main menu
+                return await self._navigate_to_next_feature_or_main()
+
+            return await self.async_step_features()
+
+        # Initialize config flow helper if not already done
+        if self._config_flow_helper is None:
+            self._config_flow_helper = ConfigFlowHelper(self.hass, self._config_entry)
+
+        # Get the feature to configure
+        feature_id = self._selected_feature
+        if not feature_id:
+            return await self.async_step_features()
+
+        # Get devices for this feature
+        devices = await self._get_devices_for_feature_config(feature_id)
+        if not devices:
+            _LOGGER.warning(f"No devices found for feature {feature_id}")
+            return await self.async_step_features()
+
+        # Generate schema for this feature
+        schema = self._config_flow_helper.get_feature_config_schema(feature_id, devices)
+
+        # Build info text
+        feature_info = self._config_flow_helper.get_feature_info(feature_id)
+        info_text = f"Configure devices for **{feature_info['name']}**\n\n"
+        info_text += f"{feature_info['description']}\n\n"
+        info_text += "Select which devices should have this feature enabled."
+
+        return self.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    async def async_step_device_selection(
+        self, user_input: dict[str, list[str]] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle device selection for a specific feature."""
+        if user_input is not None:
+            # Process device selection
+            feature_id = self._selected_feature
+            if feature_id:
+                selected_devices = user_input.get("enabled_devices", [])
+                self._store_feature_device_config(feature_id, selected_devices)
+
+                # After device selection, show confirmation or go to next feature
+                return await self._navigate_to_next_feature_or_main()
+
+            return await self.async_step_features()
+
+        # Get the feature to configure
+        feature_id = self._selected_feature
+        if not feature_id:
+            return await self.async_step_features()
+
+        # Get devices for this feature
+        devices = await self._get_devices_for_feature_config(feature_id)
+        if not devices:
+            _LOGGER.warning(f"No devices found for feature {feature_id}")
+            return await self.async_step_features()
+
+        # Initialize config flow helper if not already done
+        if self._config_flow_helper is None:
+            self._config_flow_helper = ConfigFlowHelper(self.hass, self._config_entry)
+
+        # Generate schema for device selection
+        schema = self._config_flow_helper.get_feature_config_schema(feature_id, devices)
+
+        # Build info text
+        feature_info = self._config_flow_helper.get_feature_info(feature_id)
+        info_text = f"Select devices for **{feature_info['name']}**\n\n"
+        info_text += f"{feature_info['description']}\n\n"
+        info_text += "Choose which devices should have this feature enabled."
+
+        return self.async_show_form(
+            step_id="device_selection",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
     async def async_step_confirm(
         self, user_input: dict[str, bool] | None = None
     ) -> config_entries.FlowResult:
@@ -455,6 +551,65 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=schema,
             description_placeholders={"info": confirmation_text},
         )
+
+    async def _get_devices_for_feature_config(self, feature_id: str) -> list[Any]:
+        """Get devices that are compatible with a feature for configuration.
+
+        Args:
+            feature_id: Feature identifier
+
+        Returns:
+            List of devices compatible with the feature
+        """
+        # If we already have devices cached, return them
+        if self._all_devices is not None:
+            return self._all_devices
+
+        # Get all devices from ramses_extras data
+        devices_data = self.hass.data.get("ramses_extras", {}).get("devices", [])
+
+        # Cache the devices for future use
+        self._all_devices = devices_data
+        return devices_data  # type: ignore[no-any-return]
+
+    def _get_current_enabled_devices(self, feature_id: str) -> list[str]:
+        """Get currently enabled devices for a feature.
+
+        Args:
+            feature_id: Feature identifier
+
+        Returns:
+            List of currently enabled device IDs
+        """
+        if self._config_flow_helper is None:
+            return []
+
+        return self._config_flow_helper.get_enabled_devices_for_feature(feature_id)
+
+    def _store_feature_device_config(
+        self, feature_id: str, device_ids: list[str]
+    ) -> None:
+        """Store feature/device configuration.
+
+        Args:
+            feature_id: Feature identifier
+            device_ids: List of device IDs to enable for this feature
+        """
+        if self._config_flow_helper is None:
+            self._config_flow_helper = ConfigFlowHelper(self.hass, self._config_entry)
+
+        self._config_flow_helper.set_enabled_devices_for_feature(feature_id, device_ids)
+
+    async def _navigate_to_next_feature_or_main(self) -> config_entries.FlowResult:
+        """Navigate to next feature configuration or back to main menu.
+
+        Returns:
+            Flow result for next step
+        """
+        # For now, just go back to main features menu
+        # In a more complete implementation, this would track which features
+        # have been configured and navigate accordingly
+        return await self.async_step_features()
 
     async def _save_config(
         self, user_input: dict[str, list[str]]

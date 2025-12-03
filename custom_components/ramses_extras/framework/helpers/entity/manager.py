@@ -19,6 +19,7 @@ from .core import (
     generate_entity_patterns_for_feature,
     get_feature_entity_mappings,
 )
+from .device_mapping import DeviceFeatureMatrix
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class EntityManager:
         self.all_possible_entities: dict[str, EntityInfo] = {}
         self.current_features: dict[str, bool] = {}
         self.target_features: dict[str, bool] = {}
+        self.device_feature_matrix = DeviceFeatureMatrix()
 
     async def build_entity_catalog(
         self,
@@ -730,7 +732,7 @@ class EntityManager:
             _LOGGER.debug(f"Failed to normalize devices: {e}")
             return []
 
-    async def _discover_devices_from_entity_registry(self) -> list[str]:
+    async def _discover_devices_from_entity_registry(self) -> list[Any]:
         """Fallback method to discover devices from entity registry.
 
         Returns:
@@ -738,7 +740,7 @@ class EntityManager:
         """
         try:
             entity_registry = entity_registry.async_get(self.hass)  # noqa: F823
-            device_ids = []
+            device_ids: list[str] = []
 
             # Look for ramses_cc entities across multiple domains
             relevant_domains = [
@@ -956,6 +958,74 @@ class EntityManager:
 
         except Exception as e:
             _LOGGER.error(f"Failed to remove {entity_type} entities: {e}")
+
+    def get_device_feature_matrix(self) -> DeviceFeatureMatrix:
+        """Get the device feature matrix for per-device tracking.
+
+        Returns:
+            DeviceFeatureMatrix instance
+        """
+        return self.device_feature_matrix
+
+    def enable_feature_for_device(self, device_id: str, feature_id: str) -> None:
+        """Enable a feature for a specific device.
+
+        Args:
+            device_id: Device identifier
+            feature_id: Feature identifier
+        """
+        self.device_feature_matrix.enable_feature_for_device(device_id, feature_id)
+
+    def get_enabled_devices_for_feature(self, feature_id: str) -> list[str]:
+        """Get devices that have a specific feature enabled.
+
+        Args:
+            feature_id: Feature identifier
+
+        Returns:
+            List of device IDs with the feature enabled
+        """
+        return self.device_feature_matrix.get_enabled_devices_for_feature(feature_id)
+
+    def is_device_enabled_for_feature(self, device_id: str, feature_id: str) -> bool:
+        """Check if a device has a specific feature enabled.
+
+        Args:
+            device_id: Device identifier
+            feature_id: Feature identifier
+
+        Returns:
+            True if device has feature enabled, False otherwise
+        """
+        return self.device_feature_matrix.is_device_enabled_for_feature(
+            device_id, feature_id
+        )
+
+    def get_all_feature_device_combinations(self) -> list[tuple[str, str]]:
+        """Get all enabled feature/device combinations.
+
+        Returns:
+            List of (feature_id, device_id) tuples
+        """
+        return self.device_feature_matrix.get_all_enabled_combinations()
+
+    def get_device_feature_matrix_state(self) -> dict[str, dict[str, bool]]:
+        """Get the current device/feature matrix state.
+
+        Returns:
+            Dictionary representing the current matrix state
+        """
+        return self.device_feature_matrix.get_matrix_state()
+
+    def restore_device_feature_matrix_state(
+        self, state: dict[str, dict[str, bool]]
+    ) -> None:
+        """Restore device/feature matrix from saved state.
+
+        Args:
+            state: Matrix state to restore
+        """
+        self.device_feature_matrix.matrix = state.copy()
 
 
 # Export EntityManager and EntityInfo
