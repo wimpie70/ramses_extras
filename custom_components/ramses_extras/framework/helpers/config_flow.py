@@ -337,3 +337,58 @@ class ConfigFlowHelper:
             summary_parts.append(f"**{feature_name}**: {len(devices)} devices")
 
         return "Feature/Device Configuration:\n• " + "\n• ".join(summary_parts)
+
+    def discover_feature_config_flows(self) -> dict[str, Any]:
+        """Discover feature-specific config flow implementations
+         (only for features that need them).
+
+        Returns:
+            Dictionary mapping feature_id to config flow class
+        """
+        import importlib
+        import inspect
+        from typing import Any
+
+        feature_config_flows = {}
+
+        for feature_id, feature_config in AVAILABLE_FEATURES.items():
+            # Skip features that don't need config flow
+            if not feature_config.get("has_device_config", False):
+                continue
+
+            # Skip default feature
+            if feature_id == "default":
+                continue
+
+            # Try to import the feature's config flow module
+            try:
+                module_path = (
+                    f"custom_components.ramses_extras.features.{feature_id}.config_flow"
+                )
+                module = importlib.import_module(module_path)
+
+                # Look for the config flow class
+                config_flow_class = None
+                for name, obj in inspect.getmembers(module):
+                    if (
+                        inspect.isclass(obj)
+                        and hasattr(obj, "get_feature_config_schema")
+                        and hasattr(obj, "get_feature_info")
+                    ):
+                        config_flow_class = obj
+                        break
+
+                if config_flow_class:
+                    feature_config_flows[feature_id] = config_flow_class
+                    _LOGGER.info(f"Discovered config flow for feature: {feature_id}")
+                else:
+                    _LOGGER.debug(
+                        f"No valid config flow class found for feature: {feature_id}"
+                    )
+
+            except ImportError:
+                _LOGGER.debug(f"No config flow found for feature: {feature_id}")
+            except Exception as e:
+                _LOGGER.error(f"Error loading config flow for {feature_id}: {e}")
+
+        return feature_config_flows
