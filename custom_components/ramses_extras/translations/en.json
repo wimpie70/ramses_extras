@@ -35,7 +35,63 @@
         "data": {
           "confirm": "I understand and want to proceed"
         }
+      },
+      "main_menu": {
+        "title": "Ramses Extras Configuration",
+        "description": "{info}",
+        "menu_options": {
+          "features": "Enable/Disable Features",
+          "configure_devices": "Configure Devices for Features",
+          "view_configuration": "View Current Configuration",
+          "advanced_settings": "Advanced Settings",
+          "feature_default": "Feature: Default",
+          "feature_humidity_control": "Feature: Humidity Control",
+          "feature_hvac_fan_card": "Feature: Hvac Fan Card",
+          "feature_hello_world_card": "Feature: Hello World"
+        }
+      },
+      "enable_features": {
+        "title": "Enable/Disable Features",
+        "description": "{info}"
+      },
+      "configure_devices": {
+        "title": "Configure Devices for Features",
+        "description": "{info}"
+      },
+      "view_configuration": {
+        "title": "View Current Configuration",
+        "description": "{info}"
+      },
+      "advanced_settings": {
+        "title": "Advanced Settings",
+        "description": "{info}"
+      },
+      "feature_config": {
+        "title": "Feature Configuration",
+        "description": "{info}",
+        "data": {
+          "enabled_devices": "Devices to Enable"
+        }
+      },
+      "device_selection": {
+        "title": "Device Selection",
+        "description": "{info}",
+        "data": {
+          "enabled_devices": "Devices to Enable"
+        }
       }
+    },
+    "feature_humidity_control": {
+      "title": "Humidity Control Configuration",
+      "description": "Configure automatic humidity control and dehumidification settings"
+    },
+    "feature_hvac_fan_card": {
+      "title": "HVAC Fan Card Configuration",
+      "description": "Configure advanced fan card settings and controls"
+    },
+    "feature_hello_world_card": {
+      "title": "Hello World Card Configuration",
+      "description": "Configure the template feature for demonstration purposes"
     }
   }
 }

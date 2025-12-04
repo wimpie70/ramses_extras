@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "feature_humidity_control": {
+        "title": "Vochtigheid Regeling Configuratie",
+        "description": "Configureer automatische vochtigheidsregeling en ontvochtigingsinstellingen"
+      }
+    }
+  }
+}

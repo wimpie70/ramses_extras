@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -209,65 +210,224 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> config_entries.FlowResult:
         """Handle the main configuration menu with ramses_cc style
         link/button navigation."""
-        if user_input is not None:
-            # User selected a menu option
-            menu_choice = user_input.get("menu_option")
-
-            if menu_choice == "enable_features":
-                return await self.async_step_features()
-            if menu_choice == "configure_devices":
-                return await self.async_step_device_menu()
-            if menu_choice == "view_configuration":
-                return await self.async_step_view_configuration()
-            if menu_choice == "advanced_settings":
-                return await self.async_step_advanced_settings()
-            # Unknown option, go back to main menu
-            return await self.async_step_main_menu()
+        # DEBUG: Log all available features
+        _LOGGER.info(
+            f"DEBUG: All available features: {list(AVAILABLE_FEATURES.keys())}"
+        )
 
         # Build main menu options with ramses_cc style (links/buttons, not dropdowns)
-        menu_options = [
-            selector.SelectOptionDict(
-                value="enable_features", label="1.1 Enable/Disable Features"
-            ),
-            selector.SelectOptionDict(
-                value="configure_devices", label="1.2 Configure Devices for Features"
-            ),
-            selector.SelectOptionDict(
-                value="view_configuration", label="1.3 View Current Configuration"
-            ),
-            selector.SelectOptionDict(
-                value="advanced_settings", label="1.4 Advanced Settings"
-            ),
-        ]
+        # Menu options must be a list of step IDs; labels are provided via translations
+        menu_options: list[str] = []
 
-        # Add dynamic feature options for features with config flows (ramses_cc style)
+        # Add static menu options; step IDs must match async_step_* method names
+        static_menu_items = {
+            "features": "Enable/Disable Features",
+            "configure_devices": "Configure Devices for Features",
+            "view_configuration": "View Current Configuration",
+            "advanced_settings": "Advanced Settings",
+        }
+
+        for static_item, static_label in static_menu_items.items():
+            menu_options.append(static_item)
+            _LOGGER.info(
+                f"DEBUG: Added static menu item: {static_item} -> {static_label}"
+            )
+
+        # Add dynamic feature options for features with config flows
+        # Only list features that are actually enabled in the config entry
+        dynamic_features_found = []
+        current_features = self._config_entry.data.get("enabled_features", {})
         for feature_id, feature_config in AVAILABLE_FEATURES.items():
-            # Skip default feature from menu (it's always enabled)
-            if feature_id == "default":
-                continue
+            # Don't Skip default feature from menu (we may have settings for it)
+            # if feature_id == "default":
+            #     _LOGGER.info("DEBUG: Skipping default feature from menu")
+            #     continue
 
             # Only add features that have device configuration (has_device_config: True)
             if feature_config.get("has_device_config", False):
-                feature_name = feature_config.get("name", feature_id)
-                menu_options.append(
-                    selector.SelectOptionDict(
-                        value=f"feature_{feature_id}",
-                        label=f"1.{len(menu_options) + 1} {feature_name} Settings",
+                # Skip features that are not enabled
+                if not current_features.get(feature_id):
+                    _LOGGER.info(
+                        "DEBUG: Feature %s is not enabled, skipping", feature_id
                     )
+                    continue
+
+                # Use feature-specific step IDs that map to
+                # async_step_feature_* handlers
+                step_id = f"feature_{feature_id}"
+                menu_options.append(step_id)
+                dynamic_features_found.append(feature_id)
+                _LOGGER.info(
+                    f"DEBUG: Added dynamic menu item: {step_id} -> "
+                    f"{feature_config.get('name', feature_id)}"
+                )
+            else:
+                _LOGGER.info(
+                    f"DEBUG: Feature {feature_id} does not have "
+                    f"has_device_config=True, skipping"
                 )
 
-        schema = vol.Schema(
-            {
-                vol.Required("menu_option"): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=menu_options,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                        # Using dropdown for now, but UI will show as links
-                    )
-                ),
-            }
+        # DEBUG: Log final menu options
+        _LOGGER.info(f"DEBUG: Final menu items: {menu_options}")
+        _LOGGER.info(f"DEBUG: Dynamic features found: {dynamic_features_found}")
+
+        # Get current configuration summary
+        enabled_count = sum(
+            1
+            for enabled in current_features.values()
+            if enabled and not isinstance(enabled, str)
         )
 
+        info_text = "🎛️ **Ramses Extras Configuration**\n\n"
+
+        info_text += f"Currently have {enabled_count} features enabled.\n"
+        info_text += "Choose what you want to configure:\n\n"
+
+        # Add feature-centric details using per-feature translations when available
+        feature_lines: list[str] = []
+        for feature_id in dynamic_features_found:
+            feature_title = await self._get_feature_title_from_translations(feature_id)
+            feature_lines.append(f"- Feature: {feature_title}")
+
+        if feature_lines:
+            info_text += "\nAvailable feature configurations:\n" + "\n".join(
+                feature_lines
+            )
+
+        # DEBUG: Log translation availability
+        _LOGGER.info(f"DEBUG: Current language: {self.hass.config.language}")
+        _LOGGER.info(f"DEBUG: Translation domain: {DOMAIN}")
+
+        # DEBUG: Check if translation files are available
+        try:
+            from homeassistant.helpers.translation import async_get_translations
+
+            translations = await async_get_translations(
+                self.hass,
+                self.hass.config.language,
+                "options",
+                integrations=[DOMAIN],
+            )
+            _LOGGER.info(f"DEBUG: Available translations: {translations}")
+        except Exception as e:
+            _LOGGER.error(f"DEBUG: Error checking translations: {e}")
+
+        # DEBUG: Check if feature translations exist in options category
+        try:
+            feature_translations = await async_get_translations(
+                self.hass,
+                self.hass.config.language,
+                "options",
+                integrations=[DOMAIN],
+            )
+            _LOGGER.info(f"DEBUG: Feature item translation: {feature_translations}")
+        except Exception as e:
+            _LOGGER.error(f"DEBUG: Error checking feature_item translation: {e}")
+
+        # DEBUG: Check if translations are loaded at all
+        try:
+            # Try to get the integration translations directly
+            integration_translations = self.hass.data.get("translations", {}).get(
+                DOMAIN, {}
+            )
+            _LOGGER.info(
+                f"DEBUG: Integration translations loaded: "
+                f"{bool(integration_translations)}"
+            )
+            if integration_translations:
+                _LOGGER.info(
+                    f"DEBUG: Integration translations content: "
+                    f"{integration_translations}"
+                )
+        except Exception as e:
+            _LOGGER.error(f"DEBUG: Error checking integration translations: {e}")
+
+        # DEBUG: Check translation file paths (run blocking I/O in executor)
+        try:
+            import os
+
+            translations_dir = os.path.join(os.path.dirname(__file__), "translations")
+            _LOGGER.info(f"DEBUG: Translations directory: {translations_dir}")
+
+            def _path_info(path: str) -> tuple[bool, list[str]]:
+                exists = os.path.exists(path)
+                files: list[str] = []
+                if exists:
+                    files = os.listdir(path)
+                return exists, files
+
+            exists, files = await self.hass.async_add_executor_job(
+                _path_info, translations_dir
+            )
+            _LOGGER.info(f"DEBUG: Translations directory exists: {exists}")
+            if exists:
+                _LOGGER.info(f"DEBUG: Files in translations directory: {files}")
+        except Exception as e:
+            _LOGGER.error(f"DEBUG: Error checking translation files: {e}")
+
+        return self.async_show_menu(
+            step_id="main_menu",
+            menu_options=menu_options,
+            description_placeholders={"info": info_text},
+        )
+
+    async def async_step_features(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle enable/disable features step."""
+        # Get current enabled features
+        current_features = self._config_entry.data.get("enabled_features", {})
+        enabled_features = {k: v for k, v in current_features.items() if k != "default"}
+
+        # Get config flow helper
+        helper = self._get_config_flow_helper()
+
+        if user_input is not None:
+            # User submitted feature selection
+            selected_features = user_input.get("features", [])
+
+            # Update enabled features
+            for feature_id in AVAILABLE_FEATURES.keys():
+                if feature_id == "default":
+                    continue  # Skip default feature
+                enabled_features[feature_id] = feature_id in selected_features
+
+            # Store changes
+            self._config_entry.data["enabled_features"] = {
+                "default": True,
+                **enabled_features,
+            }
+
+            # Update config entry
+            self.hass.config_entries.async_update_entry(
+                self._config_entry, data=self._config_entry.data
+            )
+
+            # Return to main menu
+            return await self.async_step_main_menu()
+
+        # Build feature selection schema
+        schema = helper.get_feature_selection_schema(enabled_features)
+
+        # Build info text
+        info_text = helper.build_feature_info_text()
+
+        return self.async_show_form(
+            step_id="features",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    async def async_step_configure_devices(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle configure devices step."""
+        return await self.async_step_device_menu()
+
+    async def async_step_view_configuration(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle view configuration step."""
         # Get current configuration summary
         current_features = self._config_entry.data.get("enabled_features", {})
         enabled_count = sum(
@@ -276,12 +436,288 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             if enabled and not isinstance(enabled, str)
         )
 
-        info_text = "🎛️ **Ramses Extras Configuration**\n\n"
-        info_text += f"Currently have {enabled_count} features enabled.\n"
-        info_text += "Choose what you want to configure:\n\n"
+        info_text = "📋 **Current Configuration**\n\n"
+        info_text += f"Enabled features: {enabled_count}\n\n"
+
+        # List enabled features
+        for feature_id, enabled in current_features.items():
+            if enabled and not isinstance(enabled, str):
+                feature_name = AVAILABLE_FEATURES.get(feature_id, {}).get(
+                    "name", feature_id
+                )
+                info_text += f"- {feature_name} ({feature_id})\n"
 
         return self.async_show_form(
-            step_id="main_menu",
+            step_id="view_configuration",
+            description_placeholders={"info": info_text},
+            data_schema=vol.Schema({}),
+        )
+
+    async def async_step_advanced_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle advanced settings step."""
+        if user_input is not None:
+            # Handle advanced settings form submission
+            pass
+
+        # Show advanced settings form
+        data_schema = vol.Schema(
+            {
+                vol.Optional("debug_mode", default=False): selector.BooleanSelector(),
+                vol.Optional("log_level", default="info"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value="debug", label="Debug"),
+                            selector.SelectOptionDict(value="info", label="Info"),
+                            selector.SelectOptionDict(value="warning", label="Warning"),
+                            selector.SelectOptionDict(value="error", label="Error"),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="advanced_settings",
+            data_schema=data_schema,
+            description_placeholders={"info": "Configure advanced settings"},
+        )
+
+    # Add missing methods for backward compatibility
+    async def async_step_feature_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle feature configuration step."""
+        if not hasattr(self, "_selected_feature") or not self._selected_feature:
+            return await self.async_step_device_menu()
+
+        feature_id = self._selected_feature
+        feature_config = AVAILABLE_FEATURES.get(feature_id, {})
+
+        # Get devices for this feature
+        devices = self._get_all_devices()
+        filtered_devices = (
+            self._get_config_flow_helper().get_devices_for_feature_selection(
+                feature_config, devices
+            )
+        )
+
+        # Get current enabled devices for this feature
+        current_enabled = (
+            self._get_config_flow_helper().get_enabled_devices_for_feature(feature_id)
+        )
+
+        # Build device options
+        device_options = [
+            selector.SelectOptionDict(
+                value=device_id, label=self._get_device_label(device)
+            )
+            for device in filtered_devices
+            if (device_id := self._extract_device_id(device))
+        ]
+
+        # Create schema for device selection
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    "enabled_devices", default=current_enabled
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=device_options,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+
+        feature_name = feature_config.get("name", feature_id)
+        info_text = f"🎛️ **{feature_name} Configuration**\n\n"
+        info_text += f"Select devices to enable {feature_name} for:\n"
+
+        return self.async_show_form(
+            step_id="feature_config",
             data_schema=schema,
             description_placeholders={"info": info_text},
         )
+
+    async def async_step_device_selection(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle device selection step."""
+        if not hasattr(self, "_selected_feature") or not self._selected_feature:
+            return await self.async_step_device_menu()
+
+        feature_id = self._selected_feature
+        feature_config = AVAILABLE_FEATURES.get(feature_id, {})
+
+        # Get devices for this feature
+        devices = self._get_all_devices()
+        filtered_devices = (
+            self._get_config_flow_helper().get_devices_for_feature_selection(
+                feature_config, devices
+            )
+        )
+
+        # Get current enabled devices for this feature
+        current_enabled = (
+            self._get_config_flow_helper().get_enabled_devices_for_feature(feature_id)
+        )
+
+        # Build device options
+        device_options = [
+            selector.SelectOptionDict(
+                value=device_id, label=self._get_device_label(device)
+            )
+            for device in filtered_devices
+            if (device_id := self._extract_device_id(device))
+        ]
+
+        # Create schema for device selection
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    "enabled_devices", default=current_enabled
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=device_options,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+
+        feature_name = feature_config.get("name", feature_id)
+        info_text = f"🎛️ **{feature_name} Device Selection**\n\n"
+        info_text += f"Select devices to enable {feature_name} for:\n"
+
+        return self.async_show_form(
+            step_id="device_selection",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    def _store_feature_device_config(
+        self, feature_id: str, device_ids: list[str]
+    ) -> None:
+        """Store feature/device configuration."""
+        helper = self._get_config_flow_helper()
+        helper.set_enabled_devices_for_feature(feature_id, device_ids)
+
+    def _get_all_devices(self) -> list[Any]:
+        """Get all available devices."""
+        if hasattr(self.hass, "data") and "ramses_extras" in self.hass.data:
+            devices = self.hass.data["ramses_extras"].get("devices", [])
+            return devices if isinstance(devices, list) else []
+        return []
+
+    def _extract_device_id(self, device: Any) -> str | None:
+        """Extract device ID from device object."""
+        if isinstance(device, str):
+            return device
+
+        if hasattr(device, "id"):
+            return str(device.id)
+        if hasattr(device, "device_id"):
+            return str(device.device_id)
+        if hasattr(device, "_id"):
+            return str(device._id)
+        if hasattr(device, "name"):
+            return str(device.name)
+
+        return None
+
+    def _get_device_label(self, device: Any) -> str:
+        """Get display label for a device."""
+        if isinstance(device, str):
+            return device
+
+        if hasattr(device, "name"):
+            return str(device.name)
+        if hasattr(device, "device_id"):
+            return str(device.device_id)
+        if hasattr(device, "id"):
+            return str(device.id)
+
+        return "Unknown Device"
+
+    def _get_config_flow_helper(self) -> ConfigFlowHelper:
+        """Get or create config flow helper."""
+        if self._config_flow_helper is None:
+            self._config_flow_helper = ConfigFlowHelper(self.hass, self._config_entry)
+        return self._config_flow_helper
+
+    async def _get_feature_title_from_translations(self, feature_id: str) -> str:
+        """Get feature title from feature-specific translations if available.
+
+        Falls back to the feature name from AVAILABLE_FEATURES when no
+        feature-specific translation file is present.
+        """
+        feature_config = AVAILABLE_FEATURES.get(feature_id, {})
+        default_title = str(feature_config.get("name", feature_id))
+
+        language = getattr(self.hass.config, "language", "en") or "en"
+
+        base_path = Path(__file__).parent / "features" / feature_id / "translations"
+        translations_path = base_path / f"{language}.json"
+        if not translations_path.exists():
+            translations_path = base_path / "en.json"
+            if not translations_path.exists():
+                return default_title
+
+        def _load_title(path: Path, fallback: str) -> str:
+            try:
+                with path.open(encoding="utf-8") as file:
+                    data: dict[str, Any] = json.load(file)
+                title = (
+                    data.get("config", {})
+                    .get("step", {})
+                    .get(f"feature_{feature_id}", {})
+                    .get("title", fallback)
+                )
+                return str(title) if title else fallback
+            except Exception:
+                return fallback
+
+        result: str = await self.hass.async_add_executor_job(
+            _load_title, translations_path, default_title
+        )
+        return result
+
+    # Add handler for dynamic feature menu items
+    async def async_step_feature_default(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle default configuration via feature-specific helper.
+
+        This method stays as the Home Assistant entrypoint but delegates the
+        actual form building to the feature's own config_flow helper so that
+        the default feature can serve as an example for other features.
+        """
+        from .features.default import config_flow as default_config_flow
+
+        return await default_config_flow.async_step_default_config(self, user_input)
+
+    async def async_step_feature_humidity_control(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle humidity control feature configuration."""
+        self._selected_feature = "humidity_control"
+        return await self.async_step_feature_config(user_input)
+
+    async def async_step_feature_hvac_fan_card(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle HVAC fan card feature configuration."""
+        self._selected_feature = "hvac_fan_card"
+        return await self.async_step_feature_config(user_input)
+
+    async def async_step_feature_hello_world_card(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle hello world card feature configuration."""
+        self._selected_feature = "hello_world_card"
+        return await self.async_step_feature_config(user_input)

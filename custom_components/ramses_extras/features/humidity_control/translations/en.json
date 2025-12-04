@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "feature_humidity_control": {
+        "title": "Humidity Control Configuration",
+        "description": "Configure automatic humidity control and dehumidification settings"
+      }
+    }
+  }
+}

@@ -138,20 +138,20 @@ def discover_ws_commands() -> list[str]:
 # Available features registry - dynamically populated by feature discovery
 AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
     "default": {
-        "name": "Default sensor",
+        "name": "Default",
         "description": "Base humidity sensor available for all devices",
         "feature_module": "features.default",
         "handler": "handle_hvac_ventilator",
         "default_enabled": True,
         "allowed_device_slugs": ["*"],  # Works with all device types
-        "has_device_config": False,  # No device-specific configuration
+        "has_device_config": True,  # No device-specific configuration
     },
     "humidity_control": {
         "name": "Humidity Control",
         "description": "Automatic humidity control and dehumidification management",
         "feature_module": "features.humidity_control",
         "handler": "handle_hvac_ventilator",
-        "default_enabled": False,
+        "default_enabled": True,
         "allowed_device_slugs": ["FAN"],  # Only works with FAN devices
         "has_device_config": True,  # Has device-specific configuration
     },

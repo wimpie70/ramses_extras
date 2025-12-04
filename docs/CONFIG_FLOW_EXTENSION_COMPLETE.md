@@ -5,7 +5,9 @@
 ### What's Already Implemented ✅
 
 1. **Centralized Config Flow System** (`config_flow.py`):
-   - Main menu structure with 4 options (enable features, configure devices, view config, advanced settings)
+   - Main menu structure with proper feature texts (fixed from generic "feature_*" strings)
+   - 4 main menu options: Enable/Disable Features, Configure Devices, View Configuration, Advanced Settings
+   - Dynamic feature menu items with proper feature names (e.g., "Humidity Control Settings")
    - Feature enablement/disablement system
    - Device configuration for features with `has_device_config: True`
    - EntityManager integration for entity lifecycle management
@@ -73,8 +75,9 @@
 2. [x] ✅ Update main menu structure to match `1 main menu.md` specification
 3. [x] ✅ Add feature-specific config flow discovery system
 4. [x] ✅ Implement ramses_cc style link/button navigation instead of dropdowns
-5. [x] ✅ Run pre-commit and tests after each change - ALL PASSING
-6. [x] ✅ Update this document with implementation progress
+5. [x] ✅ Fix main menu to show proper feature texts (was showing generic "feature_*" strings)
+6. [x] ✅ Run pre-commit and tests after each change - ALL PASSING
+7. [x] ✅ Update this document with implementation progress
 
 **Next Steps**:
 1. [ ] Implement Phase 3: Entity Management (CRITICAL)
@@ -82,6 +85,8 @@
 3. [ ] Ensure entities only created for enabled features AND devices
 4. [ ] Test with: `python3 tests/test_entity_creation_logic.py`
 5. [ ] Commit with proper test coverage
+6. [ ] Add feature-centric translations system
+7. [ ] Implement comprehensive error handling
 **Current Status**: ✅ Documentation complete, ready for implementation
 
 **Next Steps**:
@@ -584,250 +589,210 @@ pre-commit run -a  # Passes
 4. **Comprehensive testing** - Good coverage with simplified approach
 5. **Clear implementation** - 4-phase roadmap with frequent commits
 
-## 7. Feature-Specific Config Flow Implementation Guide
+## 7. Feature-specific config flow implementation guide
 
-### Current Architecture Analysis
+### Implemented pattern: feature-centric helpers with central entrypoints
 
-The current system uses a **centralized config flow** approach where:
-- All config flow logic is in `config_flow.py`
-- `ConfigFlowHelper` provides utilities for device filtering and feature management
-- Features are configured through a centralized menu system
-- Device/feature relationships are managed by `DeviceFeatureMatrix`
+The final design keeps Home Assistant's options flow entrypoints
+centralized in `config_flow.py`, while allowing individual features to
+own their configuration logic and translations in their own folders.
 
-### Feature-Specific Config Flow Vision
+Key ideas:
 
-To allow each feature to have its own config flow file **only when needed**, we leverage the existing `has_config_flow` boolean flag in the feature configuration:
+- `config_flow.py` still exposes `async_step_*` methods that Home
+  Assistant calls.
+- Feature-specific helpers live under
+  `custom_components/ramses_extras/features/<feature_id>/config_flow.py`.
+- The central step delegates to the feature helper, passing the
+  `OptionsFlow` instance so helpers can access existing utilities
+  (`_get_all_devices`, `_get_config_flow_helper`, etc.).
+- Menus and translations remain driven by the standard HA translation
+  system, with additional feature-level translation files where needed.
 
-```python
-# From const.py - Example feature configuration
-"humidity_control": {
-    "name": "Humidity Control",
-    "description": "Automatic humidity control and dehumidification management",
-    "feature_module": "features.humidity_control",
-    "handler": "handle_hvac_ventilator",
-    "default_enabled": False,
-    "allowed_device_slugs": ["FAN"],  # Only works with FAN devices
-    "has_config_flow": True,  # ← This flag determines if feature needs config flow
-},
-"default": {
-    "name": "Default sensor",
-    "description": "Base humidity sensor available for all devices",
-    "feature_module": "features.default",
-    "handler": "handle_hvac_ventilator",
-    "default_enabled": True,
-    "allowed_device_slugs": ["*"],
-    "has_config_flow": False,  # ← No config flow needed
-},
-```
+### Default feature as working example
 
-### Key Principle: Config Flow Only When Needed
+We implemented the **default** feature as the first concrete example of
+this pattern:
 
-**Features only need config flow files when `has_config_flow: True`**
+1. **Feature config helper**
 
-1. **Features with `has_config_flow: False`**: Use default centralized configuration
-2. **Features with `has_config_flow: True`**: Can implement their own config flow
-3. **No requirement**: Features are not forced to have config flow files
+   - File:
+     `custom_components/ramses_extras/features/default/config_flow.py`.
+   - Exposes a coroutine
+     `async_step_default_config(flow, user_input)` that:
+     - Uses `flow._get_all_devices()` + `ConfigFlowHelper` to obtain and
+       filter devices based on `allowed_device_slugs`.
+     - Builds a `SelectSelector` schema with
+       `multiple=True, mode=LIST` so the UI shows a checkbox-style
+       list of devices.
+     - Builds an info text of the form:
+       `🎛️ Default Configuration` and
+       `Select devices to enable Default for:`.
+     - Returns `flow.async_show_form(...)` with step ID
+       `feature_config` so it reuses the existing translations for that
+       step.
 
-### Step-by-Step Implementation Plan
+2. **Central entrypoint**
 
-#### Step 1: Create Feature Config Flow Interface
+   In `config_flow.py` we added a thin entrypoint that delegates to the
+   feature helper:
 
-```python
-# framework/helpers/config_flow.py - Add interface
-class FeatureConfigFlowInterface:
-    """Interface that feature config flows can implement (only when needed)."""
+   ```python
+   async def async_step_feature_default(self, user_input: dict[str, Any] | None = None
+   ) -> config_entries.FlowResult:
+       """Handle default configuration via feature-specific helper."""
+       from .features.default import config_flow as default_config_flow
 
-    def get_feature_config_schema(self, devices: list[Any]) -> vol.Schema:
-        """Generate configuration schema for this feature."""
-        raise NotImplementedError
+       return await default_config_flow.async_step_default_config(self, user_input)
+   ```
 
-    def get_feature_info(self) -> dict[str, Any]:
-        """Get information about this feature."""
-        raise NotImplementedError
+   Home Assistant still calls `async_step_feature_default`, but the
+   actual logic lives in `features/default/config_flow.py`.
 
-    def get_enabled_devices_for_feature(self) -> list[str]:
-        """Get currently enabled devices for this feature."""
-        raise NotImplementedError
+3. **Feature-level translations**
 
-    def set_enabled_devices_for_feature(self, device_ids: list[str]) -> None:
-        """Set devices enabled for this feature."""
-        raise NotImplementedError
-```
+   - Root translations (`translations/en.json`) define the main menu
+     labels, including a generic label for dynamic feature items:
 
-#### Step 2: Create Base Feature Config Flow Class
+     ```json
+     "options": {
+       "step": {
+         "main_menu": {
+           "menu_options": {
+             "feature_default": "Feature:",
+             "feature_humidity_control": "Feature:",
+             "feature_hvac_fan_card": "Feature:",
+             "feature_hello_world_card": "Feature:"
+           }
+         }
+       }
+     }
+     ```
 
-```python
-# framework/helpers/config_flow.py - Add base class
-class BaseFeatureConfigFlow(FeatureConfigFlowInterface):
-    """Base class for feature-specific config flows (optional - only when needed)."""
+   - Feature translations live under each feature folder, for example
+     `features/default/translations/en.json`:
 
-    def __init__(self, hass: Any, config_entry: config_entries.ConfigEntry):
-        self.hass = hass
-        self.config_entry = config_entry
-        self.device_filter = DeviceFilter()
-        self.device_feature_matrix = DeviceFeatureMatrix()
+     ```json
+     {
+       "config": {
+         "step": {
+           "feature_default": {
+             "title": "Default Configuration",
+             "description": "Configure Default feature settings"
+           }
+         }
+       }
+     }
+     ```
 
-    def get_feature_info(self) -> dict[str, Any]:
-        """Get information about this feature."""
-        feature_config = AVAILABLE_FEATURES[self.get_feature_id()]
-        return {
-            "name": feature_config.get("name", self.get_feature_id()),
-            "description": feature_config.get("description", ""),
-            "allowed_device_slugs": feature_config.get("allowed_device_slugs", ["*"]),
-            "has_config_flow": feature_config.get("has_config_flow", False),
-        }
+   - The main menu info text uses a helper that reads these feature
+     translations (with per-language fallback to English) so the list of
+     available feature configurations shows the feature-specific titles.
 
-    def get_feature_id(self) -> str:
-        """Get the feature ID for this config flow."""
-        raise NotImplementedError
+4. **Dynamic menu and enablement**
 
-    def get_feature_config_schema(self, devices: list[Any]) -> vol.Schema:
-        """Generate configuration schema for this feature."""
-        feature_config = AVAILABLE_FEATURES[self.get_feature_id()]
+   - Dynamic menu items are generated from `AVAILABLE_FEATURES` but only
+     include features that:
+     - Have `has_device_config: True`, and
+     - Are enabled in the config entry's `enabled_features` mapping.
+   - For each such feature, we add a step ID
+     `feature_<feature_id>` to `menu_options`. The frontend uses the
+     translation key
+     `component.ramses_extras.options.step.main_menu.menu_options.feature_<feature_id>`
+     to label the menu item.
 
-        # Filter devices for this feature
-        filtered_devices = self.device_filter.filter_devices_for_feature(
-            feature_config, devices
-        )
+This design matches the original goal: a flat main menu with dynamic
+feature items, but with feature-centric ownership of the actual
+configuration logic and texts.
 
-        # Create device selection options
-        device_options = [
-            selector.SelectOptionDict(
-                value=device_id, label=self._get_device_label(device)
-            )
-            for device in filtered_devices
-            if (device_id := self._extract_device_id(device))
-        ]
+### Recipe: adding a new feature config flow
 
-        return vol.Schema({
-            vol.Required("enabled_devices", default=[]): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=device_options,
-                    multiple=True,
-                )
-            ),
-        })
-```
+To add a feature-specific config step for a new feature (for example
+`hello_world_card`):
 
-#### Step 3: Create Feature Config Flow Discovery System
+1. **Update `AVAILABLE_FEATURES` in `const.py`**
 
-```python
-# framework/helpers/config_flow.py - Add discovery
-def discover_feature_config_flows() -> dict[str, FeatureConfigFlowInterface]:
-    """Discover feature-specific config flow implementations (only for features that need them)."""
-    feature_config_flows = {}
+   ```python
+   "hello_world_card": {
+       "name": "Hello World Switch Card",
+       "description": "Template feature demonstrating complete architecture",
+       "feature_module": "features.hello_world_card",
+       "handler": "handle_hvac_ventilator",
+       "default_enabled": False,
+       "allowed_device_slugs": ["*"],
+       "has_device_config": True,
+   },
+   ```
 
-    for feature_id, feature_config in AVAILABLE_FEATURES.items():
-        # Skip features that don't need config flow
-        if not feature_config.get("has_config_flow", False):
-            continue
+2. **Add a central entrypoint in `config_flow.py`**
 
-        # Skip default feature
-        if feature_id == "default":
-            continue
+   ```python
+   async def async_step_feature_hello_world_card(
+       self, user_input: dict[str, Any] | None = None
+   ) -> config_entries.FlowResult:
+       from .features.hello_world_card import config_flow as hw_config_flow
 
-        # Try to import the feature's config flow module
-        try:
-            module_path = f"features.{feature_id}.config_flow"
-            module = importlib.import_module(module_path)
+       return await hw_config_flow.async_step_hello_world_config(self, user_input)
+   ```
 
-            # Look for the config flow class
-            config_flow_class = None
-            for name, obj in inspect.getmembers(module):
-                if (inspect.isclass(obj) and
-                    issubclass(obj, FeatureConfigFlowInterface) and
-                    obj != FeatureConfigFlowInterface):
-                    config_flow_class = obj
-                    break
+3. **Create the feature helper module**
 
-            if config_flow_class:
-                feature_config_flows[feature_id] = config_flow_class
-                _LOGGER.info(f"Discovered config flow for feature: {feature_id}")
+   - File:
+     `custom_components/ramses_extras/features/hello_world_card/config_flow.py`.
+   - Implement a coroutine similar to `async_step_default_config` that:
+     - Uses `flow._get_all_devices()` and
+       `flow._get_config_flow_helper()` to obtain and filter devices.
+     - Builds a `SelectSelector` schema with `multiple=True` and
+       `mode=LIST` (or another mode, depending on the desired UX).
+     - Builds feature-specific info text.
+     - Calls `flow.async_show_form(...)` with step ID `feature_config`
+       (or another dedicated step ID with matching translations).
 
-        except ImportError:
-            _LOGGER.debug(f"No config flow found for feature: {feature_id}")
-        except Exception as e:
-            _LOGGER.error(f"Error loading config flow for {feature_id}: {e}")
+4. **Configure translations**
 
-    return feature_config_flows
-```
+   - Root translations (`translations/en.json`):
 
-#### Step 4: Update Main Config Flow to Use Feature Config Flows (When Available)
+     ```json
+     "options": {
+       "step": {
+         "main_menu": {
+           "menu_options": {
+             "feature_hello_world_card": "Feature:"
+           }
+         }
+       }
+     }
+     ```
 
-```python
-# config_flow.py - Update to use feature config flows when available
-class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self._config_entry = config_entry
-        self._feature_config_flows = {}  # Will be populated when needed
-        # ... other initialization
+   - Feature translations (`features/hello_world_card/translations/en.json`):
 
-    async def async_step_feature_config(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
-        """Handle individual feature configuration step using feature config flows when available."""
-        if user_input is not None:
-            # Get the feature config flow for this feature (if it exists)
-            feature_id = self._selected_feature
-            if feature_id and feature_id in self._feature_config_flows:
-                feature_config_flow = self._feature_config_flows[feature_id]
-                enabled_devices = user_input.get("enabled_devices", [])
-                feature_config_flow.set_enabled_devices_for_feature(enabled_devices)
+     ```json
+     {
+       "config": {
+         "step": {
+           "feature_hello_world_card": {
+             "title": "Hello World Card Configuration",
+             "description": "Configure the template feature for demonstration purposes"
+           }
+         }
+       }
+     }
+     ```
 
-                # After configuring one feature, go to the next one or back to main menu
-                return await self._navigate_to_next_feature_or_main()
+5. **Enable the feature**
 
-            # Use centralized approach for features without custom config flow
-            return await self._handle_centralized_feature_config(user_input)
+   - Ensure `has_device_config` is `True` so the feature is considered
+     for device configuration.
+   - Enable the feature via the "Enable/Disable Features" options step
+     (or set `default_enabled: True` during development) so it appears
+     as a dynamic entry in the main menu.
 
-        # Discover feature config flows if not already done
-        if not self._feature_config_flows:
-            self._feature_config_flows = discover_feature_config_flows()
+With these pieces in place, a new feature has:
 
-        # Get the feature to configure
-        feature_id = self._selected_feature
-        if not feature_id:
-            return await self.async_step_features()
-
-        # Check if feature has custom config flow
-        if feature_id in self._feature_config_flows:
-            return await self._handle_feature_specific_config_flow()
-        else:
-            return await self._handle_centralized_feature_config(None)
-
-    async def _handle_feature_specific_config_flow(self) -> config_entries.FlowResult:
-        """Handle configuration for features with custom config flow."""
-        feature_id = self._selected_feature
-        feature_config_flow = self._feature_config_flows[feature_id]
-
-        # Get devices for this feature
-        devices = await self._get_devices_for_feature_config(feature_id)
-        if not devices:
-            _LOGGER.warning(f"No devices found for feature {feature_id}")
-            return await self.async_step_features()
-
-        # Generate schema using the feature config flow
-        schema = feature_config_flow.get_feature_config_schema(devices)
-
-        # Build info text using feature config flow
-        feature_info = feature_config_flow.get_feature_info()
-        info_text = f"Configure devices for **{feature_info['name']}**\n\n"
-        info_text += f"{feature_info['description']}\n\n"
-        info_text += "Select which devices should have this feature enabled."
-
-        return self.async_show_form(
-            step_id="feature_config",
-            data_schema=schema,
-            description_placeholders={"info": info_text},
-        )
-
-    async def _handle_centralized_feature_config(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
-        """Handle configuration for features using centralized approach."""
-        # This is the existing centralized logic for features without custom config flow
-        feature_id = self._selected_feature
+- A dedicated config flow helper in its own folder.
+- A central options flow entrypoint.
+- Dynamic main-menu visibility and per-device configuration using the
+  shared infrastructure (device filtering, DeviceFeatureMatrix, etc.).
 
         # Use ConfigFlowHelper for centralized configuration
         if self._config_flow_helper is None:
@@ -1287,3 +1252,92 @@ pre-commit run -a  # Must pass before proceeding
 3. Add implementation notes and lessons learned
 4. Keep progress tracking up-to-date
 5. Document any deviations from original plan
+
+## Summary of Recent Fixes
+
+### Main Menu Text Issue - RESOLVED ✅
+
+**Problem**: The main config flow menu was showing generic strings like "feature_humidity_control" instead of proper feature names.
+
+**Root Cause**: The menu system in Home Assistant's `async_show_menu()` uses translation keys to generate display text. The feature menu items needed proper translation entries in the `main_menu.menu_options` section.
+
+**Solution**: Added proper translation entries for feature menu items in both English and Dutch translation files:
+
+**Files Updated**:
+1. `translations/en.json` - Added feature menu translations
+2. `translations/nl.json` - Added Dutch feature menu translations
+
+**Translation Entries Added**:
+```json
+"menu_options": {
+  "feature_humidity_control": "Humidity Control Settings",
+  "feature_hvac_fan_card": "HVAC Fan Card Settings",
+  "feature_hello_world_card": "Hello World Card Settings"
+}
+```
+
+**Result**: Main menu now shows proper feature texts:
+- English: "Humidity Control Settings", "HVAC Fan Card Settings", "Hello World Card Settings"
+- Dutch: "Vochtigheid Regeling Instellingen", "HVAC Ventilator Kaart Instellingen", "Hello World Kaart Instellingen"
+
+### Implementation Status
+
+**✅ COMPLETED**:
+- Main menu structure with proper feature texts
+- Translation support for all menu items
+- Dynamic feature menu generation
+- Feature enablement/disablement system
+- Device configuration for features with `has_device_config: True`
+
+**📋 CURRENT STATUS**:
+- All main menu items show proper descriptive texts
+- Feature-specific menu items display correct feature names
+- Multi-language support (English and Dutch)
+- Menu structure matches `1 main menu.md` specification
+
+**🚀 NEXT PHASES**:
+- Phase 3: Entity Management implementation
+- Comprehensive entity creation validation
+- Feature-centric translations system
+- Error handling improvements
+
+## Troubleshooting Guide
+
+### If Feature Menu Items Are Not Visible
+
+**Common Issues and Solutions**:
+
+1. **Features not appearing in menu**:
+   - Verify that features have `"has_device_config": True` in `const.py`
+   - Check that `AVAILABLE_FEATURES` contains the expected features
+   - Ensure no conditional logic is filtering out features
+
+2. **Debugging Steps**:
+   ```python
+   # Add this debug code to verify menu generation:
+   _LOGGER.info(f"Available features: {list(AVAILABLE_FEATURES.keys())}")
+   _LOGGER.info(f"Features with device config: {[f for f, config in AVAILABLE_FEATURES.items() if config.get('has_device_config', False)]}")
+   ```
+
+3. **Expected Menu Structure**:
+   ```
+   1. Enable/Disable Features
+   2. Configure Devices
+   3. View Configuration
+   4. Advanced Settings
+   5. Humidity Control Settings (feature_humidity_control)
+   6. HVAC Fan Card Settings (feature_hvac_fan_card)
+   7. Hello World Card Settings (feature_hello_world_card)
+   ```
+
+4. **Translation Verification**:
+   - Check that `translations/en.json` and `translations/nl.json` contain the feature menu translations
+   - Verify that the translation files are properly loaded by Home Assistant
+
+### Verification Checklist
+
+- [ ] Features have `"has_device_config": True` in `const.py`
+- [ ] Menu generation loop is executing (check logs for debug messages)
+- [ ] Translation files contain feature menu entries
+- [ ] No runtime errors in menu generation
+- [ ] Home Assistant has restarted to load new translations

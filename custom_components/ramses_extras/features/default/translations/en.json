@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "feature_default": {
+        "title": "Default Configuration",
+        "description": "Configure Default feature settings"
+      }
+    }
+  }
+}

@@ -180,29 +180,45 @@ async def test_config_flow_navigation(mock_hass, mock_config_entry):
     # Set up mock config_entry with data attribute
     mock_config_entry.data = {"enabled_features": {}}
 
-    # Mock the async_show_form method
+    # Mock the async_show_menu method (new ramses_cc style navigation)
     with patch.object(
-        RamsesExtrasOptionsFlowHandler, "async_show_form", new_callable=AsyncMock
-    ) as mock_show_form:
+        RamsesExtrasOptionsFlowHandler, "async_show_menu", new_callable=AsyncMock
+    ) as mock_show_menu:
         # Set the return value to be awaitable
-        mock_show_form.return_value = {"type": "form", "step_id": "features"}
+        mock_show_menu.return_value = {"type": "menu", "step_id": "main_menu"}
 
         handler = RamsesExtrasOptionsFlowHandler(mock_config_entry)
         handler.hass = mock_hass  # Set the hass attribute
 
-        # Test initial step redirects to features
+        # Test initial step redirects to main menu
         await handler.async_step_init()
-        mock_show_form.assert_called_once()
+        mock_show_menu.assert_called_once()
+
+        # Verify the call was made with correct parameters
+        call_args = mock_show_menu.call_args
+        if call_args and len(call_args[0]) > 0:
+            assert call_args[0][0] == "main_menu"
+            assert "menu_options" in call_args[1]
+            assert "description_placeholders" in call_args[1]
+
+    # Test features step (should still work with async_show_form)
+    with patch.object(
+        RamsesExtrasOptionsFlowHandler, "async_show_form", new_callable=AsyncMock
+    ) as mock_show_form:
+        # Set the return value to be awaitable
+        mock_show_form.return_value = {"type": "form", "step_id": "enable_features"}
+
+        handler = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+        handler.hass = mock_hass  # Set the hass attribute
 
         # Test features step
-        mock_show_form.reset_mock()
         await handler.async_step_features()
         mock_show_form.assert_called_once()
 
         # Verify the call was made with correct parameters
         call_args = mock_show_form.call_args
         if call_args and len(call_args[0]) > 0:
-            assert call_args[0][0] == "features"
+            assert call_args[0][0] == "enable_features"
             assert "data_schema" in call_args[1]
             assert "description_placeholders" in call_args[1]
 

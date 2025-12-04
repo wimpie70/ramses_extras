@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "feature_hello_world_card": {
+        "title": "Hello World Card Configuration",
+        "description": "Configure Hello World Card settings"
+      }
+    }
+  }
+}
