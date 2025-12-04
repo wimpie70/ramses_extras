@@ -5,21 +5,21 @@
 - [1. Table of Contents](#1-table-of-contents)
 - [2. Overview \& Quick Start](#2-overview--quick-start)
 - [3. System Architecture](#3-system-architecture)
-- [4.5 Feature-Specific Configuration](#45-feature-specific-configuration)
-- [This architecture update provides the foundation for the enhanced config flow system while maintaining compatibility with existing installations.](#this-architecture-update-provides-the-foundation-for-the-enhanced-config-flow-system-while-maintaining-compatibility-with-existing-installations)
-- [4. Feature System](#4-feature-system)
-- [4.5 Feature-Specific Configuration](#45-feature-specific-configuration-1)
-- [5. Framework Foundation](#5-framework-foundation)
-- [6. Framework Components Reference](#6-framework-components-reference)
-- [7. Home Assistant Integration](#7-home-assistant-integration)
-- [8. Frontend Architecture](#8-frontend-architecture)
-- [9. Development Guide](#9-development-guide)
-- [10. Debugging and Troubleshooting Guide](#10-debugging-and-troubleshooting-guide)
-- [11. API Reference](#11-api-reference)
-- [12. Implementation Details](#12-implementation-details)
-- [13. Examples \& Patterns](#13-examples--patterns)
-- [14. Deployment \& Configuration](#14-deployment--configuration)
-- [15. Contributing](#15-contributing)
+- [4. Feature-Specific Configuration](#4-feature-specific-configuration)
+- [This clean architecture ensures that only features that explicitly need configuration flows implement them, with no centralized fallback or backward compatibility requirements.](#this-clean-architecture-ensures-that-only-features-that-explicitly-need-configuration-flows-implement-them-with-no-centralized-fallback-or-backward-compatibility-requirements)
+- [5. Feature System](#5-feature-system)
+- [6. Enhanced Entity Management with Device Tracking](#6-enhanced-entity-management-with-device-tracking)
+- [7. Framework Foundation](#7-framework-foundation)
+- [8. Framework Components Reference](#8-framework-components-reference)
+- [9. Home Assistant Integration](#9-home-assistant-integration)
+- [10. Frontend Architecture](#10-frontend-architecture)
+- [11. Development Guide](#11-development-guide)
+- [12. Debugging and Troubleshooting Guide](#12-debugging-and-troubleshooting-guide)
+- [13. API Reference](#13-api-reference)
+- [14. Implementation Details](#14-implementation-details)
+- [15. Examples \& Patterns](#15-examples--patterns)
+- [16. Deployment \& Configuration](#16-deployment--configuration)
+- [17. Contributing](#17-contributing)
 
 ---
 
@@ -112,14 +112,6 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 - Type-safe entity implementations
 - Full compatibility with HA ecosystem
 
-#### ramses_cc Code Compatibility
-- **Same Code Standards**: Follow identical code quality requirements as ramses_cc
-- **Synchronized Updates**: Maintain compatibility with ramses_cc updates and changes
-- **API Consistency**: Use same patterns, conventions, and architectural approaches
-- **Dependency Alignment**: Stay current with ramses_cc development and deprecations
-- **Testing Parity**: Maintain same test coverage and quality standards as ramses_cc
-- **Documentation Standards**: Follow ramses_cc documentation and commenting patterns
-
 ### Directory Structure
 
 ```
@@ -137,6 +129,7 @@ custom_components/ramses_extras/
 │   │   ├── services.py          # Feature services
 │   │   ├── entities.py          # Entity management
 │   │   ├── config.py            # Feature configuration
+│   │   ├── config_flow.py       # 🆕 Feature-specific config flow
 │   │   ├── const.py             # Feature constants
 │   │   ├── __init__.py          # Feature factory
 │   │   └── platforms/           # HA platform implementations
@@ -146,6 +139,7 @@ custom_components/ramses_extras/
 │   │       └── binary_sensor.py # Feature binary sensor entities
 │   │
 │   ├── hvac_fan_card/           # HVAC fan card feature
+│   │   ├── config_flow.py       # 🆕 Feature-specific config flow
 │   │   ├── __init__.py
 │   │   ├── const.py
 │   │   └── www/                 # Feature-specific web assets
@@ -155,6 +149,30 @@ custom_components/ramses_extras/
 │   │           ├── message-handlers.js
 │   │           └── translations/
 │   │
+│   │   ├── hello_world_card/         # Hello World template feature
+│   │   │   ├── __init__.py
+│   │   │   ├── automation.py
+│   │   │   ├── config.py
+│   │   │   ├── const.py
+│   │   │   ├── entities.py
+│   │   │   ├── services.py
+│   │   │   ├── websocket_commands.py
+│   │   │   ├── platforms/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── binary_sensor.py
+│   │   │   │   ├── number.py
+│   │   │   │   ├── sensor.py
+│   │   │   │   └── switch.py
+│   │   │   └── www/
+│   │   │       └── hello_world_card/
+│   │   │           ├── card-styles.js
+│   │   │           ├── hello-world-card-editor.js
+│   │   │           ├── hello-world-card.js
+│   │   │           ├── templates/
+│   │   │           └── translations/
+│   │   │               ├── en.json
+│   │   │               └── nl.json
+│   │   │
 │   └── default/                 # Default feature scaffold
 │       ├── __init__.py
 │       └── const.py
@@ -174,6 +192,7 @@ custom_components/ramses_extras/
 │   │   │   ├── validation.py           # ConfigValidator
 │   │   │   ├── schema.py               # ConfigSchema
 │   │   │   └── templates.py            # ConfigTemplates
+│   │   ├── config_flow.py              # 🆕 Config flow extension helpers
 │   │   ├── platform.py                 # ✅ Enhanced with setup framework
 │   │   ├── brand_customization/        # 🆕 Brand customization
 │   │   │   ├── __init__.py
@@ -186,14 +205,18 @@ custom_components/ramses_extras/
 │   │   │   ├── core.py                 # EntityHelpers
 │   │   │   ├── manager.py              # EntityManager
 │   │   │   ├── lifecycle.py            # EntityLifecycleManager
-│   │   │   └── registry.py             # EntityRegistryManager
+│   │   │   ├── registry.py             # EntityRegistryManager
+│   │   │   └── device_mapping.py      # 🆕 Device-feature mapping
 │   │   ├── service/                    # 🆕 Service framework
 │   │   │   ├── __init__.py
 │   │   │   ├── core.py                 # ExtrasServiceManager
 │   │   │   ├── registration.py         # ServiceRegistry
 │   │   │   └── validation.py           # ServiceValidator
 │   │   ├── automation/                 # ✅ Existing automation helpers
-│   │   ├── device/                     # ✅ Existing device helpers
+│   │   ├── device/                     # ✅ Enhanced device helpers
+│   │   │   ├── __init__.py
+│   │   │   ├── core.py                 # Device helpers
+│   │   │   └── filter.py              # 🆕 Device filtering for config flow
 │   │   └── paths.py                    # ✅ Existing path management
 │   │
 │   ├── www/                     # Reusable JavaScript utilities
@@ -318,7 +341,7 @@ else:
 5. **Error Handling**: Coordinated error handling between ramses_cc and features
 6. **Initialization Coordination**: Waiting for ramses_cc readiness before feature startup
 
-## 4.5 Feature-Specific Configuration
+## 4. Feature-Specific Configuration
 
 Ramses Extras now supports feature-specific configuration steps that allow users to enable features for specific devices only.
 
@@ -412,10 +435,109 @@ The configuration flow now supports multiple steps:
 
 The enhanced config flow integrates seamlessly with the existing architecture:
 
-- **DeviceFilter**: Filters devices based on feature requirements
-- **DeviceFeatureMatrix**: Tracks feature/device combinations
+- **Feature Config Flow Files** (`features/*/config_flow.py`): Feature-specific config flow handlers
+- **ConfigFlowHelper** (`framework/helpers/config_flow.py`): Framework utilities for config flow
+- **DeviceFilter** (`framework/helpers/device/filter.py`): Filters devices based on feature requirements
+- **DeviceFeatureMatrix** (`framework/helpers/entity/device_mapping.py`): Tracks feature/device combinations
 - **EntityManager**: Creates entities based on the matrix
 - **Backward Compatibility**: Maintains compatibility with existing installations
+
+### Clean Feature-Centric Config Flow Architecture
+
+The config flow follows a **clean feature-centric design** with **no backward compatibility** - only features with `has_config_flow: True` are configurable:
+
+```mermaid
+classDiagram
+    class FeatureConfigFlow {
+        +get_feature_config_schema()
+        +get_feature_info()
+        +get_enabled_devices_for_feature()
+        +set_enabled_devices_for_feature()
+    }
+
+    class DeviceFilter {
+        +filter_devices_for_feature()
+        +get_device_slugs()
+    }
+
+    class DeviceFeatureMatrix {
+        +enable_feature_for_device()
+        +get_enabled_devices_for_feature()
+        +get_all_enabled_combinations()
+    }
+
+    class MainConfigFlow {
+        +async_step_main_menu()
+        +_handle_feature_config_flow()
+        +_save_config()
+    }
+
+    FeatureConfigFlow --> DeviceFilter : Uses
+    FeatureConfigFlow --> DeviceFeatureMatrix : Uses
+    MainConfigFlow --> FeatureConfigFlow : Uses (only when has_config_flow=True)
+    MainConfigFlow --> EntityManager : Uses
+```
+
+### Clean Config Flow Implementation Pattern
+
+Each feature implements its own config flow handler **only when needed** (when `has_config_flow: True`):
+
+```python
+# features/my_feature/config_flow.py - Only needed when has_config_flow=True
+class MyFeatureConfigFlow:
+    """Feature-specific config flow handler (only for features that need config flow)."""
+
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
+        self.hass = hass
+        self.config_entry = config_entry
+        self.device_filter = DeviceFilter()
+        self.device_feature_matrix = DeviceFeatureMatrix()
+
+    def get_feature_config_schema(self, devices: list[Any]) -> vol.Schema:
+        """Generate configuration schema for this feature."""
+        # Filter devices for this feature
+        filtered_devices = self.device_filter.filter_devices_for_feature(
+            AVAILABLE_FEATURES["my_feature"], devices
+        )
+
+        # Create device selection options
+        device_options = [
+            selector.SelectOptionDict(
+                value=device_id, label=self._get_device_label(device)
+            )
+            for device in filtered_devices
+            if (device_id := self._extract_device_id(device))
+        ]
+
+        return vol.Schema({
+            vol.Required("enabled_devices", default=[]): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=device_options,
+                    multiple=True,
+                )
+            ),
+        })
+
+    def get_feature_info(self) -> dict[str, Any]:
+        """Get information about this feature."""
+        feature_config = AVAILABLE_FEATURES["my_feature"]
+        return {
+            "name": feature_config.get("name", "My Feature"),
+            "description": feature_config.get("description", ""),
+            "allowed_device_slugs": feature_config.get("allowed_device_slugs", ["*"]),
+            "has_device_config": feature_config.get("has_device_config", False),
+        }
+```
+
+### Benefits of Clean Feature-Centric Config Flow
+
+1. **True Feature-Centric**: Only features with config flows are configurable
+2. **No Backward Compatibility**: Clean implementation without fallbacks
+3. **Error Tracking**: Proper logging when config flows not found
+4. **Simple Architecture**: Direct feature-to-config-flow mapping
+5. **Easy Maintenance**: Features are self-contained with their own config flows
+
+This clean architecture ensures that only features that explicitly need configuration flows implement them, with no centralized fallback or backward compatibility requirements.
 
 ### Migration Strategy
 
@@ -433,18 +555,18 @@ The system includes optimizations for handling many devices and features:
 - **Bulk Operations**: Groups entity operations for efficiency
 - **Error Handling**: Comprehensive error recovery strategies
 
-### Benefits
+### Clean Architecture Benefits
 
-- **Granular Control**: Users can enable features per-device
-- **Device Filtering**: Features specify supported device types
-- **Clean Architecture**: Modular design with clear interfaces
-- **Backward Compatibility**: Smooth migration path
-- **Performance**: Optimized for many devices and features
+- **True Feature-Centric**: Only features with config flows are configurable
+- **No Backward Compatibility**: Clean implementation without fallbacks
+- **Error Tracking**: Proper logging when config flows not found
+- **Simple Architecture**: Direct feature-to-config-flow mapping
+- **Easy Maintenance**: Features are self-contained with their own config flows
 
-This architecture update provides the foundation for the enhanced config flow system while maintaining compatibility with existing installations.
+This clean architecture ensures that only features that explicitly need configuration flows implement them, with no centralized fallback or backward compatibility requirements.
 ---
 
-## 4. Feature System
+## 5. Feature System
 
 ### How Features Work
 
@@ -478,6 +600,12 @@ Each feature is a self-contained module that provides specific functionality. Fe
 #### 📋 Planned Features
 - **Humidity Control Card**: Dedicated UI for humidity management
 - **Custom Features**: Framework supports any number of additional features
+
+#### 🆕 Hello World Template Feature
+- **Purpose**: Serves as a comprehensive template for creating new features
+- **Components**: Includes all standard feature components (automation, config, entities, services, platforms, www)
+- **Usage**: Can be copied and modified to create new features following established patterns
+- **Location**: `features/hello_world_card/`
 
 ### Feature Structure Pattern
 
@@ -540,7 +668,7 @@ Each feature contains these core components. **Some components are optional** de
 
 ---
 
-## 4.5 Feature-Specific Configuration
+## 6. Enhanced Entity Management with Device Tracking
 
 Ramses Extras now supports feature-specific configuration steps that allow users to enable features for specific devices only.
 
@@ -678,64 +806,22 @@ flowchart TD
     I --> J[Updated System State]
 ```
 
-### Migration Strategy
+### Clean Migration Strategy (No Backward Compatibility)
 
-#### From Global to Per-Device Configuration
+The clean approach has **no migration system** since there's no backward compatibility:
 
-```python
-async def migrate_global_to_per_device(old_config):
-    """Migrate from global feature enablement to per-device."""
-    new_config = {}
+- **No Automatic Migration**: Features without config flows are not configurable
+- **No Backward Compatibility Layer**: Clean implementation without fallbacks
+- **Error Tracking**: Log errors when feature config flows not found
+- **Clean Architecture**: Direct feature-specific implementation only
 
-    # For each globally enabled feature
-    for feature_id, enabled in old_config.get("enabled_features", {}).items():
-        if not enabled or feature_id == "default":
-            continue
+### Clean Implementation Benefits
 
-        # Find all devices that support this feature
-        feature_config = AVAILABLE_FEATURES.get(feature_id, {})
-        devices = await find_devices_for_feature(feature_id)
-
-        # Enable feature for all supported devices
-        for device in devices:
-            device_id = device.id
-            if device_id not in new_config:
-                new_config[device_id] = {}
-            new_config[device_id][feature_id] = True
-
-    return new_config
-```
-
-### Backward Compatibility Layer
-
-```python
-class BackwardCompatibility:
-    """Handle backward compatibility during transition."""
-
-    def __init__(self, config):
-        self.config = config
-        self.version = config.get("version", 1)
-
-    def get_enabled_features(self):
-        """Get enabled features in appropriate format."""
-        if self.version == 1:
-            # Old global format
-            return self.config.get("enabled_features", {})
-        else:
-            # New per-device format
-            return self._convert_to_global_format()
-
-    def _convert_to_global_format(self):
-        """Convert per-device format to global for compatibility."""
-        global_features = {"default": True}
-
-        for device_features in self.config.get("device_feature_matrix", {}).values():
-            for feature_id, enabled in device_features.items():
-                if enabled:
-                    global_features[feature_id] = True
-
-        return global_features
-```
+1. **True Feature-Centric**: Only features with config flows are configurable
+2. **No Backward Compatibility**: Clean implementation without fallbacks
+3. **Error Tracking**: Proper logging when config flows not found
+4. **Simple Architecture**: Direct feature-to-config-flow mapping
+5. **Easy Maintenance**: Features are self-contained with their own config flows
 
 ### Performance Considerations
 
@@ -814,7 +900,7 @@ class ConfigFlowErrorHandler:
 
 ---
 
-## 5. Framework Foundation
+## 7. Framework Foundation
 
 The Ramses Extras framework provides a comprehensive foundation for building features with reusable components, standardized patterns, and automated lifecycle management. The framework has been designed to accelerate feature development.
 
@@ -978,7 +1064,7 @@ class HumidityServices(ExtrasServiceManager):
     }
 ```
 
-## 6. Framework Components Reference
+## 8. Framework Components Reference
 
 This section provides detailed documentation for all framework components, their APIs, and usage patterns. The framework has been designed to accelerate feature development by providing reusable components.
 
@@ -1420,7 +1506,7 @@ def create_my_feature(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[st
 
 
 
-## 7. Home Assistant Integration
+## 9. Home Assistant Integration
 
 ### Platform Integration Architecture
 
@@ -1515,7 +1601,7 @@ async def async_step_features(self, user_input):
 
 ---
 
-## 8. Frontend Architecture
+## 10. Frontend Architecture
 
 ### JavaScript Card System
 
@@ -1593,17 +1679,46 @@ HVAC Data     card                       data                       re-render
 
 ### Translation System
 
-#### Two-Level Translation Architecture
+#### Feature-Centric Translation Architecture
+
+The translation system follows a **feature-centric design** where translations can be located within feature folders for better isolation and organization:
 
 1. **Integration-Level Translations**
    - **Location**: `custom_components/ramses_extras/translations/` directory
    - **Purpose**: Home Assistant config flow, options, and integration strings
    - **Format**: JSON files per language (en.json, nl.json)
 
-2. **Frontend-Level Translations**
-   - **Integration Location**: `features/{feature}/www/{feature}/translations/` directories
+2. **Feature-Level Translations** (Preferred Approach)
+   - **Location**: `features/{feature}/www/{feature}/translations/` directories
    - **Deployment Location**: `config/www/ramses_extras/features/{feature}/translations/` directories
-   - **Purpose**: JavaScript cards, UI elements, and frontend strings
+   - **Purpose**: JavaScript cards, UI elements, and frontend strings for specific features
+   - **Benefits**: Better isolation, easier maintenance, feature-specific organization
+   - **Example**: The hello_world_card feature shows this pattern with translations within the feature folder
+
+3. **Framework-Level Translations** (Shared Components)
+   - **Location**: `framework/www/translations/` directory
+   - **Purpose**: Shared utilities and framework components
+   - **Format**: JSON files per language for reusable components
+
+#### Translation Loading System
+
+The system provides dynamic translation loading for both integration and frontend:
+
+```python
+# Translation loading pattern
+def load_feature_translations(feature_name, language="en"):
+    """Load translations for a specific feature."""
+    try:
+        # Try feature-level translations first
+        feature_translations = load_from_feature_folder(feature_name, language)
+        if feature_translations:
+            return feature_translations
+
+        # Fallback to integration-level translations
+        return load_from_integration_folder(language)
+    except TranslationNotFoundError:
+        return DEFAULT_TRANSLATIONS
+```
 
 ### Template Systems
 
@@ -1615,10 +1730,20 @@ HVAC Data     card                       data                       re-render
 #### Translation Templates
 - **Purpose**: UI localization with dynamic translation loading
 - **Location**: `features/{feature}/www/{feature}/translations/` directories for both integration and frontend
+- **Benefits**: Feature-specific translations provide better isolation and easier maintenance
+- **Pattern**: Follows the same feature-centric approach as other components
+
+#### Translation System Benefits
+
+1. **Feature Isolation**: Each feature maintains its own translations
+2. **Easy Maintenance**: Translations are co-located with feature code
+3. **Consistent Structure**: Follows the same pattern as other feature components
+4. **Dynamic Loading**: System automatically loads appropriate translations
+5. **Fallback Support**: Graceful fallback to integration-level translations
 
 ---
 
-## 9. Development Guide
+## 11. Development Guide
 
 You are welcome to contribute to this integration. If you are missing support for a device, or have a nice card that you like to share, please do. You can contribute to this github repo, leave a message (issue) when you have questions, an idea, or found bugs.
 
@@ -1735,7 +1860,7 @@ tests/
 └── test_registry.py             # Integration tests
 ```
 
-## 10. Debugging and Troubleshooting Guide
+## 12. Debugging and Troubleshooting Guide
 
 This comprehensive troubleshooting guide covers common issues, debugging tools, and solutions for Ramses Extras integration.
 
@@ -1873,7 +1998,7 @@ logger:
 
 ---
 
-## 11. API Reference
+## 13. API Reference
 
 ### Entity Naming System API
 
@@ -2056,7 +2181,7 @@ async def _on_device_ready_for_entities(self, event_data):
 
 ---
 
-## 12. Implementation Details
+## 14. Implementation Details
 
 ### Core Algorithms and Patterns
 
@@ -2148,7 +2273,7 @@ async def build_entity_catalog(self, available_features, current_features):
 
 ---
 
-## 13. Examples & Patterns
+## 15. Examples & Patterns
 
 ### Common Implementation Patterns
 
@@ -2393,7 +2518,7 @@ def _is_orcon_device(self, device) -> bool:
 
 ---
 
-## 14. Deployment & Configuration
+## 16. Deployment & Configuration
 
 ### Installation and Setup
 
@@ -2707,7 +2832,7 @@ export const PATHS = {
 
 ---
 
-## 15. Contributing
+## 17. Contributing
 
 ### Development Workflow
 
