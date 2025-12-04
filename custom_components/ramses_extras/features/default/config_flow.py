@@ -65,6 +65,16 @@ async def async_step_default_config(
     # Get current enabled devices for this feature
     current_enabled = helper.get_enabled_devices_for_feature(feature_id)
 
+    if user_input is not None:
+        # User submitted the form - process the device selections
+        selected_device_ids = user_input.get("enabled_devices", [])
+
+        # Store the new device configuration for this feature
+        helper.set_enabled_devices_for_feature(feature_id, selected_device_ids)
+
+        # Return to main menu after saving
+        return flow.async_step_main_menu()
+
     # Build device options (value = device_id, label = human readable name)
     device_options = [
         selector.SelectOptionDict(

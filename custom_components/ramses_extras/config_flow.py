@@ -392,15 +392,16 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     continue  # Skip default feature
                 enabled_features[feature_id] = feature_id in selected_features
 
-            # Store changes
-            self._config_entry.data["enabled_features"] = {
+            # Store changes - create new data dict since config_entry.data is read-only
+            new_data = dict(self._config_entry.data)
+            new_data["enabled_features"] = {
                 "default": True,
                 **enabled_features,
             }
 
-            # Update config entry
+            # Update config entry with new data
             self.hass.config_entries.async_update_entry(
-                self._config_entry, data=self._config_entry.data
+                self._config_entry, data=new_data
             )
 
             # Return to main menu
@@ -422,7 +423,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle configure devices step."""
-        return await self.async_step_device_menu()
+        return await self.async_step_main_menu()
 
     async def async_step_view_configuration(
         self, user_input: dict[str, Any] | None = None
@@ -491,7 +492,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> config_entries.FlowResult:
         """Handle feature configuration step."""
         if not hasattr(self, "_selected_feature") or not self._selected_feature:
-            return await self.async_step_device_menu()
+            return await self.async_step_main_menu()
 
         feature_id = self._selected_feature
         feature_config = AVAILABLE_FEATURES.get(feature_id, {})
