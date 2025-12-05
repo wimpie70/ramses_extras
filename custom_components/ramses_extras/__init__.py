@@ -839,15 +839,23 @@ async def _validate_startup_entities(hass: HomeAssistant, entry: ConfigEntry) ->
 
 
 async def _discover_and_store_devices(hass: HomeAssistant) -> None:
-    """Discover devices and store them in hass.data for platform access."""
-    device_ids = await _discover_ramses_devices(hass)
+    """Discover devices and store them in hass.data for platform access.
+
+    We store full device objects so that config flows can use DeviceFilter
+    and other helpers that rely on device attributes such as slugs or types.
+    """
+    devices = await _discover_ramses_devices(hass)
 
     # Store devices in a location that platforms can access
-    hass.data.setdefault(DOMAIN, {})["devices"] = device_ids
-    hass.data.setdefault(DOMAIN, {})["device_discovery_complete"] = True
+    data = hass.data.setdefault(DOMAIN, {})
+    data["devices"] = devices
+    data["device_discovery_complete"] = True
 
+    device_ids = [getattr(device, "id", str(device)) for device in devices]
     _LOGGER.info(
-        f"💾 Stored {len(device_ids)} devices for platform access: {device_ids}"
+        "💾 Stored %d devices for platform access: %s",
+        len(devices),
+        device_ids,
     )
 
 
@@ -878,19 +886,21 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
                 _LOGGER.info(
                     "✅ Device discovery already completed, using cached results"
                 )
-                device_ids = device_data["devices"]
-                _LOGGER.info(f"📋 Using cached device IDs: {device_ids}")
+                devices = device_data["devices"]
+                device_ids = [getattr(device, "id", str(device)) for device in devices]
+                _LOGGER.info("📋 Using cached device IDs: %s", device_ids)
             else:
                 # Re-discover devices and update storage
-                device_ids = await _discover_ramses_devices(hass)
-                device_data["devices"] = device_ids
+                devices = await _discover_ramses_devices(hass)
+                device_ids = [getattr(device, "id", str(device)) for device in devices]
+                device_data["devices"] = devices
                 device_data["device_discovery_complete"] = True
-                _LOGGER.info(f"📋 Fresh discovery device IDs: {device_ids}")
+                _LOGGER.info("📋 Fresh discovery device IDs: %s", device_ids)
 
-            if device_ids:
+            if devices:
                 _LOGGER.info(
                     "✅ Platform setup: Found %d Ramses devices: %s",
-                    len(device_ids),
+                    len(devices),
                     device_ids,
                 )
             else:
@@ -917,7 +927,7 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
         _setup_in_progress = False
 
 
-async def _discover_ramses_devices(hass: HomeAssistant) -> list[str]:
+async def _discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
     """Discover Ramses devices from ramses_cc integration with improved reliability.
 
     This function leverages ramses_cc to discover devices by looking for
@@ -998,39 +1008,24 @@ async def _discover_ramses_devices(hass: HomeAssistant) -> list[str]:
             _LOGGER.debug("No devices found in broker, using entity registry fallback")
             return await _discover_devices_from_entity_registry(hass)
 
-        _LOGGER.debug(f"Found {len(devices)} total devices in broker")
+        # Normalize to a plain list of device objects
+        if isinstance(devices, dict):
+            devices_list = list(devices.values())
+        elif isinstance(devices, (list, set, tuple)):
+            devices_list = list(devices)
+        else:
+            devices_list = [devices]
 
-        # Filter for different device types based on feature requirements
-        discovered_devices = []
+        # Log summary of discovered devices by ID for debugging
+        device_ids = [getattr(device, "id", str(device)) for device in devices_list]
+        _LOGGER.info(
+            "Found %d devices from broker for config flows: %s",
+            len(devices_list),
+            device_ids,
+        )
 
-        # Fan devices (HvacVentilator) for ventilation features
-        fan_devices = [
-            device
-            for device in devices
-            if hasattr(device, "__class__")
-            and "HvacVentilator" in device.__class__.__name__
-        ]
-        discovered_devices.extend(fan_devices)
-
-        # Sensor devices for sensor features
-        sensor_devices = [
-            device
-            for device in devices
-            if hasattr(device, "__class__")
-            and (
-                "HvacController" in device.__class__.__name__
-                or "Climate" in device.__class__.__name__
-            )
-        ]
-        discovered_devices.extend(sensor_devices)
-
-        # Get device IDs
-        device_ids = [
-            getattr(device, "id", str(device)) for device in discovered_devices
-        ]
-        _LOGGER.info(f"Found {len(discovered_devices)} relevant devices: {device_ids}")
-
-        return device_ids
+        # Return full device objects so downstream code can filter by slugs/types
+        return devices_list
 
     except Exception as e:
         _LOGGER.error(f"Error accessing ramses_cc broker: {e}")

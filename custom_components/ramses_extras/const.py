@@ -139,12 +139,14 @@ def discover_ws_commands() -> list[str]:
 AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
     "default": {
         "name": "Default",
-        "description": "Base humidity sensor available for all devices",
+        "description": "Base humidity sensor available for fan devices",
         "feature_module": "features.default",
         "handler": "handle_hvac_ventilator",
         "default_enabled": True,
-        "allowed_device_slugs": ["*"],  # Works with all device types
-        "has_device_config": True,  # No device-specific configuration
+        # Use FAN slug to match ventilation devices, in line with the
+        # main menu specification.
+        "allowed_device_slugs": ["FAN"],
+        "has_device_config": True,
     },
     "humidity_control": {
         "name": "Humidity Control",

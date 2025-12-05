@@ -72,8 +72,8 @@ async def async_step_default_config(
         # Store the new device configuration for this feature
         helper.set_enabled_devices_for_feature(feature_id, selected_device_ids)
 
-        # Return to main menu after saving
-        return flow.async_step_main_menu()
+        # Route through the central confirm step so changes are summarized
+        return flow.async_step_confirm()
 
     # Build device options (value = device_id, label = human readable name)
     device_options = [

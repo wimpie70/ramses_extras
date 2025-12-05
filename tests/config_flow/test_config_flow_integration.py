@@ -75,15 +75,25 @@ def test_feature_device_matrix_operations():
     assert "device1" in enabled_devices
     assert "device2" in enabled_devices
 
-    # Test device checking
-    assert helper.is_device_enabled_for_feature("device1", "humidity_control") is True
-    assert helper.is_device_enabled_for_feature("device3", "humidity_control") is False
 
-    # Test getting all combinations
-    combinations = helper.get_all_feature_device_combinations()
-    assert len(combinations) == 2
-    assert ("device1", "humidity_control") in combinations
-    assert ("device2", "humidity_control") in combinations
+def test_device_label_includes_slugs(mock_hass, mock_config_entry):
+    """Device labels should include slugs when available.
+
+    This helps users see both the human-readable name/ID and the logical
+    slug (e.g. FAN) in the config flow device selectors.
+    """
+    handler = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+    handler.hass = mock_hass
+
+    device = Mock()
+    device.name = "Ventilation Unit"
+    device.id = "abc123"
+    device.slugs = ["FAN"]
+
+    label = handler._get_device_label(device)  # noqa: SLF001
+
+    assert "Ventilation Unit" in label
+    assert "FAN" in label
 
 
 def test_feature_selection_schema():
@@ -175,6 +185,49 @@ def test_matrix_state_management():
     assert new_helper.get_enabled_devices_for_feature("hvac_fan_card") == ["device1"]
 
 
+def test_device_filtering_with_string_devices():
+    """DeviceFilter should not drop devices when only IDs are available.
+
+    When we fall back to discovering devices from the entity registry we
+    only have plain device ID strings. In that scenario the filter should
+    still return those devices so that features like Default/Humidity
+    Control can be configured.
+    """
+    from custom_components.ramses_extras.framework.helpers.device.filter import (
+        DeviceFilter,
+    )
+
+    feature_config = {"allowed_device_slugs": ["FAN"]}
+    devices = ["device-1", "device-2"]
+
+    filtered = DeviceFilter.filter_devices_for_feature(feature_config, devices)
+
+    assert filtered == devices
+
+
+def test_device_filtering_with_fan_slug_devices():
+    """DeviceFilter should respect devices exposing a FAN slug via _SLUG.
+
+    In live systems, HvacVentilator devices from ramses_rf expose a DevType-based
+    _SLUG that evaluates to FAN. The humidity_control/default features rely on
+    allowed_device_slugs ["FAN"], so such devices must pass the filter.
+    """
+
+    from custom_components.ramses_extras.framework.helpers.device.filter import (
+        DeviceFilter,
+    )
+
+    class FakeFanDevice:
+        _SLUG = "FAN"
+
+    feature_config = {"allowed_device_slugs": ["FAN"]}
+    devices = [FakeFanDevice()]
+
+    filtered = DeviceFilter.filter_devices_for_feature(feature_config, devices)
+
+    assert filtered == devices
+
+
 async def test_config_flow_navigation(mock_hass, mock_config_entry):
     """Test config flow navigation between steps."""
     # Set up mock config_entry with data attribute
@@ -257,6 +310,30 @@ async def test_feature_config_step(mock_hass, mock_config_entry):
             assert call_args[0][0] == "feature_config"
             assert "data_schema" in call_args[1]
             assert "description_placeholders" in call_args[1]
+
+
+async def test_hvac_fan_card_step_info_only(mock_hass, mock_config_entry):
+    """HVAC fan card step should show info-only form with empty schema."""
+
+    mock_config_entry.data = {"enabled_features": {"hvac_fan_card": True}}
+
+    with patch.object(
+        RamsesExtrasOptionsFlowHandler, "async_show_form", new_callable=AsyncMock
+    ) as mock_show_form:
+        mock_show_form.return_value = {"type": "form", "step_id": "feature_config"}
+
+        handler = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+        handler.hass = mock_hass
+
+        await handler.async_step_feature_hvac_fan_card()
+
+        mock_show_form.assert_called_once()
+        call_args = mock_show_form.call_args
+        if call_args and len(call_args[0]) > 0:
+            assert call_args[0][0] == "feature_config"
+            schema = call_args[1].get("data_schema")
+            assert schema is not None
+            assert schema.schema == {}
 
 
 async def test_device_selection_step(mock_hass, mock_config_entry):

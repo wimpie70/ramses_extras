@@ -19,6 +19,7 @@ from .const import (
     INTEGRATION_DIR,
 )
 from .framework.helpers.config_flow import ConfigFlowHelper
+from .framework.helpers.device.filter import DeviceFilter
 from .framework.helpers.entity.manager import EntityManager
 from .framework.helpers.platform import (
     calculate_required_entities,
@@ -187,7 +188,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
-        self._pending_data: dict[str, list[str]] | None = None
+        self._pending_data: dict[str, Any] | None = None
         self._entity_manager: EntityManager | None = (
             None  # Will be initialized when needed
         )
@@ -383,29 +384,25 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         helper = self._get_config_flow_helper()
 
         if user_input is not None:
-            # User submitted feature selection
+            # User submitted feature selection - stage changes for confirmation
             selected_features = user_input.get("features", [])
 
-            # Update enabled features
+            # Build new enabled_features mapping including default
+            staged_enabled_features: dict[str, bool] = {"default": True}
             for feature_id in AVAILABLE_FEATURES.keys():
                 if feature_id == "default":
-                    continue  # Skip default feature
-                enabled_features[feature_id] = feature_id in selected_features
+                    continue  # Skip default feature in selector
+                staged_enabled_features[feature_id] = feature_id in selected_features
 
-            # Store changes - create new data dict since config_entry.data is read-only
-            new_data = dict(self._config_entry.data)
-            new_data["enabled_features"] = {
-                "default": True,
-                **enabled_features,
-            }
+            # Store staged changes in pending data for confirm step
+            if self._pending_data is None:
+                self._pending_data = {}
 
-            # Update config entry with new data
-            self.hass.config_entries.async_update_entry(
-                self._config_entry, data=new_data
-            )
+            self._pending_data["enabled_features_old"] = current_features
+            self._pending_data["enabled_features_new"] = staged_enabled_features
+            self._feature_changes_detected = staged_enabled_features != current_features
 
-            # Return to main menu
-            return await self.async_step_main_menu()
+            return await self.async_step_confirm()
 
         # Build feature selection schema
         schema = helper.get_feature_selection_schema(enabled_features)
@@ -486,6 +483,69 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             description_placeholders={"info": "Configure advanced settings"},
         )
 
+    async def async_step_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Confirmation step after feature or device configuration.
+
+        This step summarizes pending changes and applies them once confirmed,
+        before returning to the main menu.
+        """
+        helper = self._get_config_flow_helper()
+
+        current_features = self._config_entry.data.get("enabled_features", {})
+        pending = self._pending_data or {}
+
+        staged_enabled_features = pending.get("enabled_features_new", current_features)
+
+        if user_input is not None:
+            # Apply staged feature changes, if any
+            if staged_enabled_features != current_features:
+                new_data = dict(self._config_entry.data)
+                new_data["enabled_features"] = staged_enabled_features
+                self.hass.config_entries.async_update_entry(
+                    self._config_entry,
+                    data=new_data,
+                )
+
+                # Update cards based on new feature set
+                await _manage_cards_config_flow(self.hass, staged_enabled_features)
+
+            # Reset pending state and return to main menu
+            self._pending_data = None
+            self._feature_changes_detected = False
+
+            return await self.async_step_main_menu()
+
+        # Build summary of feature changes
+        feature_change_lines: list[str] = []
+        if staged_enabled_features != current_features:
+            for feature_id, old_value in current_features.items():
+                new_value = bool(staged_enabled_features.get(feature_id, False))
+                if bool(old_value) != new_value:
+                    feature_name = AVAILABLE_FEATURES.get(feature_id, {}).get(
+                        "name", feature_id
+                    )
+                    state = "ENABLED" if new_value else "DISABLED"
+                    feature_change_lines.append(
+                        f"- {feature_name} ({feature_id}): {state}"
+                    )
+
+        # Add high-level feature/device summary from helper
+        feature_device_summary = helper.get_feature_device_summary()
+
+        info_text = "✅ **Confirm configuration changes**\n\n"
+        if feature_change_lines:
+            info_text += "Feature changes:\n" + "\n".join(feature_change_lines) + "\n\n"
+
+        info_text += feature_device_summary
+
+        return self.async_show_form(
+            step_id="confirm",
+            data_schema=vol.Schema({}),
+            description_placeholders={"info": info_text},
+        )
+
     # Add missing methods for backward compatibility
     async def async_step_feature_config(
         self, user_input: dict[str, Any] | None = None
@@ -510,6 +570,22 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             self._get_config_flow_helper().get_enabled_devices_for_feature(feature_id)
         )
 
+        if user_input is not None:
+            # User submitted device selection for this feature - stage it and confirm
+            selected_device_ids = user_input.get("enabled_devices", [])
+            self._store_feature_device_config(feature_id, selected_device_ids)
+
+            if self._pending_data is None:
+                self._pending_data = {}
+
+            feature_devices: dict[str, Any] = self._pending_data.get(
+                "feature_devices", {}
+            )
+            feature_devices[feature_id] = selected_device_ids
+            self._pending_data["feature_devices"] = feature_devices
+
+            return await self.async_step_confirm()
+
         # Build device options
         device_options = [
             selector.SelectOptionDict(
@@ -519,7 +595,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             if (device_id := self._extract_device_id(device))
         ]
 
-        # Create schema for device selection
+        # Create schema for device selection, using LIST mode for checkboxes
         schema = vol.Schema(
             {
                 vol.Required(
@@ -528,7 +604,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     selector.SelectSelectorConfig(
                         options=device_options,
                         multiple=True,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
             }
@@ -549,7 +625,8 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> config_entries.FlowResult:
         """Handle device selection step."""
         if not hasattr(self, "_selected_feature") or not self._selected_feature:
-            return await self.async_step_device_menu()
+            # Fallback to main menu if no feature is selected
+            return await self.async_step_main_menu()
 
         feature_id = self._selected_feature
         feature_config = AVAILABLE_FEATURES.get(feature_id, {})
@@ -634,16 +711,30 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     def _get_device_label(self, device: Any) -> str:
         """Get display label for a device."""
         if isinstance(device, str):
-            return device
+            base_label = device
+        elif hasattr(device, "name"):
+            base_label = str(device.name)
+        elif hasattr(device, "device_id"):
+            base_label = str(device.device_id)
+        elif hasattr(device, "id"):
+            base_label = str(device.id)
+        else:
+            base_label = "Unknown Device"
 
-        if hasattr(device, "name"):
-            return str(device.name)
-        if hasattr(device, "device_id"):
-            return str(device.device_id)
-        if hasattr(device, "id"):
-            return str(device.id)
+        # Try to enrich the label with device slugs when available so users
+        # can see both the ID and the logical slug (e.g. FAN).
+        try:
+            slugs = DeviceFilter._get_device_slugs(device)
+            if slugs:
+                # Remove duplicates and avoid repeating the base label as slug
+                unique_slugs = sorted({str(slug) for slug in slugs if str(slug)})
+                slugs_label = ", ".join(unique_slugs)
+                if slugs_label and slugs_label != base_label:
+                    return f"{base_label} [{slugs_label}]"
+        except Exception:  # pragma: no cover - defensive, should not happen
+            pass
 
-        return "Unknown Device"
+        return base_label
 
     def _get_config_flow_helper(self) -> ConfigFlowHelper:
         """Get or create config flow helper."""
@@ -712,9 +803,30 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_feature_hvac_fan_card(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
-        """Handle HVAC fan card feature configuration."""
-        self._selected_feature = "hvac_fan_card"
-        return await self.async_step_feature_config(user_input)
+        """Handle HVAC fan card feature configuration.
+
+        The HVAC fan card does not require per-device configuration. This
+        step therefore only shows an informational message and no form
+        fields, so the user can see that the card is enabled without
+        having to select devices.
+        """
+        feature_id = "hvac_fan_card"
+        feature_config = AVAILABLE_FEATURES.get(feature_id, {})
+        feature_name = feature_config.get("name", feature_id)
+
+        info_text = "🎴 **" + str(feature_name) + "**\n\n"
+        info_text += (
+            "This feature only installs and registers the HVAC fan card. "
+            "No additional configuration is required."
+        )
+
+        # Reuse the generic feature_config step translations by using the
+        # existing step_id but with an empty schema.
+        return self.async_show_form(
+            step_id="feature_config",
+            data_schema=vol.Schema({}),
+            description_placeholders={"info": info_text},
+        )
 
     async def async_step_feature_hello_world_card(
         self, user_input: dict[str, Any] | None = None

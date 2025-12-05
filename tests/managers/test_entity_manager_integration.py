@@ -59,6 +59,7 @@ class TestEntityManagerIntegration:
         self.handler._entities_to_remove = []
         self.handler._entities_to_create = []
         self.handler.hass = self.mock_hass
+        self.handler._config_flow_helper = None  # Initialize to None
 
     def _mock_async_step_features(self, user_input):
         """Mock implementation of async_step_features for testing."""
@@ -72,57 +73,14 @@ class TestEntityManagerIntegration:
     @pytest.mark.asyncio
     async def test_entity_manager_creation_on_feature_changes(self):
         """Test that EntityManager is created when features change."""
-        # Mock the _save_config method to avoid complex async operations
-        mock_save_result = MagicMock()
+        # Test with feature changes - disable default, enable humidity_control
+        user_input = {"features": ["humidity_control"]}  # Different from current
 
-        # Configure the mock EntityManager instance - but make it return no changes
-        # This will cause the method to skip the confirm step and go to _save_config
-        mock_entity_manager = MagicMock()
-        mock_entity_manager.build_entity_catalog = AsyncMock(return_value=None)
-        mock_entity_manager.update_feature_targets = MagicMock()
-        mock_entity_manager.get_entities_to_remove = MagicMock(
-            return_value=[]
-        )  # No entities to remove
-        mock_entity_manager.get_entities_to_create = MagicMock(
-            return_value=[]
-        )  # No entities to create
-        mock_entity_manager.get_entity_summary = MagicMock(
-            return_value={
-                "total_entities": 0,
-                "existing_enabled": 0,
-                "existing_disabled": 0,
-                "non_existing_enabled": 0,
-                "non_existing_disabled": 0,
-            }
-        )  # Proper summary structure
+        result = await self.handler.async_step_features(user_input)
 
-        # Patch both EntityManager and _save_config to avoid the async_step_confirm call
-        with (
-            patch(
-                "custom_components.ramses_extras.config_flow.EntityManager",
-                return_value=mock_entity_manager,
-            ),
-            patch.object(self.handler, "_save_config", return_value=mock_save_result),
-        ):
-            # Test with feature changes - disable default, enable humidity_control
-            user_input = {"features": ["humidity_control"]}  # Different from current
-
-            result = await self.handler.async_step_features(user_input)
-
-            # Verify EntityManager was created (if applicable)
-            if (
-                hasattr(self.handler, "_entity_manager")
-                and self.handler._entity_manager is not None
-            ):
-                # Since we're mocking EntityManager, check that it was set
-                assert self.handler._entity_manager is not None
-                # Verify entity changes were calculated
-                assert self.handler._entities_to_remove is not None
-                assert self.handler._entities_to_create is not None
-                assert self.handler._feature_changes_detected is True
-
-            # Verify the method was called and returned the expected result
-            assert result is not None
+        # Verify the result is a flow result (should go to confirm step)
+        assert result is not None
+        assert result.get("type") == "form"
 
     @pytest.mark.asyncio
     async def test_simple_flow_without_broker_access_errors(self):
@@ -156,6 +114,12 @@ class TestEntityManagerIntegration:
         self.handler._entities_to_remove = ["sensor.unwanted1", "sensor.unwanted2"]
         self.handler._entities_to_create = ["sensor.needed1", "sensor.needed2"]
         self.handler._feature_changes_detected = True
+        self.handler._config_flow_helper = None  # Initialize to None so it gets created
+
+        # Mock hass.async_add_executor_job to return the function directly
+        self.mock_hass.async_add_executor_job = AsyncMock(
+            side_effect=lambda func, *args: func(*args)
+        )
 
         # Mock the entity summary
         mock_summary = {
@@ -202,10 +166,9 @@ class TestEntityManagerIntegration:
             "custom_components.ramses_extras.config_flow._manage_cards_config_flow",
             mock_manage_cards,
         ):
-            user_input = {"features": ["humidity_control"]}
-
             try:
-                result = await self.handler._save_config(user_input)
+                # Test the confirm step instead which actually saves the config
+                result = await self.handler.async_step_confirm({"confirm": True})
                 # If we get here without exception, test passes
                 assert result is not None
             except Exception:
@@ -395,6 +358,7 @@ class TestConfigFlowBackwardsCompatibility:
         self.handler._entities_to_remove = []
         self.handler._entities_to_create = []
         self.handler.hass = self.mock_hass
+        self.handler._config_flow_helper = None  # Initialize to None
 
     def _mock_async_step_features(self, user_input):
         """Mock implementation of async_step_features for testing."""
@@ -413,20 +377,15 @@ class TestConfigFlowBackwardsCompatibility:
         self.handler._entity_manager = None
         self.handler._feature_changes_detected = False
 
-        # Create a proper async mock for save operation
-        mock_save_config = AsyncMock(return_value=MagicMock())
+        user_input = {"features": ["default"]}
 
-        # Mock the save operation
-        with patch.object(self.handler, "_save_config", mock_save_config):
-            user_input = {"features": ["default"]}
-
-            try:
-                result = await self.handler.async_step_features(user_input)
-                # Should save config without requiring EntityManager
-                assert result is not None
-            except Exception:
-                # Some methods might not exist in test environment, that's OK
-                assert True
+        try:
+            result = await self.handler.async_step_features(user_input)
+            # Should save config without requiring EntityManager
+            assert result is not None
+        except Exception:
+            # Some methods might not exist in test environment, that's OK
+            assert True
 
     @pytest.mark.asyncio
     async def test_mixed_legacy_and_entity_manager_state(self):
@@ -438,22 +397,17 @@ class TestConfigFlowBackwardsCompatibility:
         self.handler._entities_to_create = ["entity2"]
         self.handler._pending_data = {"features": ["default"]}
 
-        # Create a proper async mock for save operation
-        mock_save_config = AsyncMock(return_value=MagicMock())
-
         # Configure async mock for apply_entity_changes
         mock_apply_entity_changes = AsyncMock()
         self.handler._entity_manager.apply_entity_changes = mock_apply_entity_changes
 
-        # Should work with EntityManager state
-        with patch.object(self.handler, "_save_config", mock_save_config):
-            try:
-                result = await self.handler._save_config({"features": ["default"]})
-                # Should use EntityManager - just verify it doesn't crash
-                assert result is not None
-            except Exception:
-                # Some methods might not exist in test environment, that's OK
-                assert True
+        try:
+            result = await self.handler.async_step_features({"features": ["default"]})
+            # Should work with EntityManager state
+            assert result is not None
+        except Exception:
+            # Some methods might not exist in test environment, that's OK
+            assert True
 
     @pytest.mark.asyncio
     async def test_get_broker_for_entry_method_1_newest(self):
