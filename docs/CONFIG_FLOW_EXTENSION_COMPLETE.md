@@ -1202,23 +1202,23 @@ cd /home/willem/dev/ramses_extras && bash -c "source ~/venvs/extras/bin/activate
 # Current Implementation Status
 
 ## Phase 1: Foundation
-- [ ] Device filtering implementation
-- [ ] DeviceFilter class with slug filtering
-- [ ] Basic device discovery utilities
-- [ ] EntityManager device filtering support
-- [ ] Tests for device filtering
+- [ x] Device filtering implementation
+- [ x] DeviceFilter class with slug filtering
+- [ x] Basic device discovery utilities
+- [ x] EntityManager device filtering support
+- [ x] Tests for device filtering
 
 ## Phase 2: Config Flow Extension
-- [ ] Main menu structure implementation
-- [ ] ramses_cc style link/button navigation
-- [ ] Feature config flow discovery system
-- [ ] Config flow navigation tests - create and run tests to make sure we actually have a good flow
+- [ x] Main menu structure implementation
+- [ x] ramses_cc style link/button navigation
+- [ x] Feature config flow discovery system
+- [ x] Config flow navigation tests - create and run tests to make sure we actually have a good flow
 
 ## Phase 3: Entity Management
-- [ ] DeviceFeatureMatrix implementation
-- [ ] Entity creation validation logic
-- [ ] Entity lifecycle management
-- [ ] Comprehensive entity tests
+- [ x] DeviceFeatureMatrix implementation
+- [ x] Entity creation validation logic
+- [ x] Entity lifecycle management
+- [ x] Comprehensive entity tests
 
 ## Phase 4: Integration
 - [ ] Default feature device selection
