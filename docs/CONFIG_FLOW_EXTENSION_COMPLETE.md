@@ -1212,7 +1212,7 @@ cd /home/willem/dev/ramses_extras && bash -c "source ~/venvs/extras/bin/activate
 - [ ] Main menu structure implementation
 - [ ] ramses_cc style link/button navigation
 - [ ] Feature config flow discovery system
-- [ ] Config flow navigation tests
+- [ ] Config flow navigation tests - create and run tests to make sure we actually have a good flow
 
 ## Phase 3: Entity Management
 - [ ] DeviceFeatureMatrix implementation
@@ -1328,6 +1328,7 @@ pre-commit run -a  # Must pass before proceeding
    5. Humidity Control Settings (feature_humidity_control)
    6. HVAC Fan Card Settings (feature_hvac_fan_card)
    7. Hello World Card Settings (feature_hello_world_card)
+   8. Default feature Settings
    ```
 
 4. **Translation Verification**:

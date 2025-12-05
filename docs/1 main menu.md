@@ -1,3 +1,4 @@
+the numbers indicate the menu level. The devices should be listed with selectboxes, not dropdown lists
 1 main menu
 -- 1.1 enable/disable features                      >
 -- 1.2 advanced settings                            >
@@ -22,4 +23,11 @@ submit button -> 2.
 -- select boxes with all available ramses_cc devices (slug *)
 submit button -> 2.
 
-2 submit: -> confirm (list all changes) -> create/remove entities and other assets (cards, automations...)
+1.5 hvac fan card settings
+-- only a description: 'No configs needed'
+
+1.6 default feature
+-- select boxes with available FAN devices (slug FAN)
+submit button -> 2.
+
+2 confirm (list all changes) -> create/remove entities and other assets (cards, automations...)
