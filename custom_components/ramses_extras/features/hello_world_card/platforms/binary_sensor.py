@@ -30,7 +30,7 @@ async def async_setup_entry(
     """Set up Hello World binary sensor platform."""
     from custom_components.ramses_extras.framework.helpers import platform
 
-    await platform.PlatformSetup.async_setup_platform(
+    await platform.PlatformSetup.async_create_and_add_platform_entities(
         platform="binary_sensor",
         hass=hass,
         config_entry=config_entry,

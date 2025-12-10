@@ -28,7 +28,7 @@ async def async_setup_entry(
         platform,
     )
 
-    await platform.PlatformSetup.async_setup_platform(
+    await platform.PlatformSetup.async_create_and_add_platform_entities(
         platform="sensor",
         hass=hass,
         config_entry=config_entry,

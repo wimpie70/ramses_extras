@@ -134,52 +134,6 @@ def calculate_required_entities(
     return required_entities
 
 
-async def async_setup_platform(
-    platform: str,
-    hass: "HomeAssistant",
-    config_entry: ConfigEntry,
-    async_add_entities: Any,
-) -> None:
-    """Generic platform setup function.
-
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-        platform: Platform type (sensor, switch, etc.)
-        async_add_entities: Async add entities callback
-    """
-    _LOGGER.info(f"Setting up {platform} platform")
-
-    if not config_entry:
-        _LOGGER.warning(f"Config entry not available, skipping {platform} setup")
-        return
-
-    devices = hass.data.get("ramses_extras", {}).get("devices", [])
-    if not devices:
-        _LOGGER.warning(f"No devices available for {platform}")
-        return
-
-    # Get enabled features
-    enabled_features = get_enabled_features(hass, config_entry)
-    _LOGGER.info(f"Enabled features for {platform}: {enabled_features}")
-
-    # Calculate required entities for this platform
-    required_entities = calculate_required_entities(
-        platform, enabled_features, devices, hass
-    )
-
-    if not required_entities:
-        _LOGGER.info(f"No required {platform} entities, skipping setup")
-        return
-
-    # This is a generic function - specific platforms should override
-    # The actual entity creation is handled by the specific platform files
-    _LOGGER.info(
-        f"Platform {platform} setup completed with {len(required_entities)} "
-        f"required entity types: {required_entities}"
-    )
-
-
 class PlatformSetup:
     """Enhanced platform setup utilities for all features.
 
@@ -189,7 +143,7 @@ class PlatformSetup:
     """
 
     @staticmethod
-    async def async_setup_platform(
+    async def async_create_and_add_platform_entities(
         platform: str,
         hass: "HomeAssistant",
         config_entry: ConfigEntry,
@@ -200,10 +154,11 @@ class PlatformSetup:
         ],
         store_entities_for_automation: bool = False,
     ) -> None:
-        """Generic platform setup with entity creation.
+        """Create and add entities for a platform.
 
         This method extracts the common platform setup pattern used across
         all platform files, providing a reusable foundation for new features.
+        It creates entities using the provided factory and adds them to Home Assistant.
 
         Args:
             platform: Platform type (sensor, switch, binary_sensor, number)
@@ -409,7 +364,7 @@ class PlatformSetup:
                 continue
 
             try:
-                await PlatformSetup.async_setup_platform(
+                await PlatformSetup.async_create_and_add_platform_entities(
                     platform=platform,
                     hass=hass,
                     config_entry=config_entry,
