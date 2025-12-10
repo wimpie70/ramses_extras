@@ -24,6 +24,7 @@ All files listed below have been **successfully removed** from the codebase:
 - ✅ `managers/device_monitor.py` → Replaced by `framework/managers/device_manager.py` [REMOVED]
 - ✅ `managers/entity_manager.py` → Replaced by `framework/managers/entity_manager.py` [REMOVED]
 - ✅ `managers/platform_reloader.py` → Replaced by platform consolidation [REMOVED]
+- ✅ `managers/direct_platform_setup.py` → Removed unused file with feature-specific code [REMOVED]
 
 ### 🔴 Legacy Service Files (Migrated to Features)
 - ✅ `services/fan_services.py` → Replaced by `features/fan_control/services.py` [REMOVED]

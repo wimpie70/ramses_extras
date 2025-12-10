@@ -24,7 +24,6 @@ from .framework.helpers.device.filter import DeviceFilter
 from .framework.helpers.entity.simple_entity_manager import (
     SimpleEntityManager,
 )
-from .managers.direct_platform_setup import setup_platforms_directly
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant

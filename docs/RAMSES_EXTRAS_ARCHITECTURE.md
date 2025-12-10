@@ -1847,8 +1847,7 @@ from homeassistant.config_entries import ConfigEntry
 ```
 tests/
 ├── managers/                    # Feature management tests
-│   ├── test_humidity_automation.py
-│   └── test_platform_reloader.py
+│   └── test_humidity_automation.py
 ├── helpers/                     # Framework helper tests
 │   ├── test_entity_naming_simple.py
 │   ├── test_device.py
