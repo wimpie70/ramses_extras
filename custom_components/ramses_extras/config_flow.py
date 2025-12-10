@@ -2,6 +2,7 @@ import json
 import logging
 import shutil
 import traceback
+from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -546,6 +547,10 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             description_placeholders={"info": info_text},
         )
 
+    """ Generic Step Feature Config
+    If a Feature does not have it's own config_flow.py and step implemented,
+    then we use this"""
+
     async def generic_step_feature_config(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
@@ -558,6 +563,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         if not feature_id:
             return self.async_abort(reason="invalid_feature")
         feature_config = AVAILABLE_FEATURES.get(feature_id, {})
+
+        # Get devices for this feature using the central helpers
+        devices = self._get_all_devices()  # noqa: SLF001
         helper = self._get_config_flow_helper()
 
         _LOGGER.info(f"Using generic config flow for {feature_id}")
@@ -569,38 +577,54 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         else:
             _LOGGER.info("No matrix state found, starting with empty matrix")
 
+        _LOGGER.debug(f"matrix state: {matrix_state}")
+        # Save the matrix state to be used for comparison to the flow
+        # Use deepcopy, or helper.set_enabled_devices_for_feature will modify flow
+        self._old_matrix_state = deepcopy(matrix_state)
+
         # Get devices for this feature
         devices = self._get_all_devices()
         filtered_devices = helper.get_devices_for_feature_selection(
             feature_config, devices
         )
         current_enabled = helper.get_enabled_devices_for_feature(feature_id)
+        _LOGGER.debug(
+            f"Devices: filtered: {filtered_devices} Current enabled: {current_enabled}"
+        )
 
-        if user_input is not None:
+        if user_input is not None:  # POST processing
+            _LOGGER.debug("User submitted the form (post)")
             # User submitted the form - process device selections
             selected_device_ids = user_input.get("enabled_devices", [])
 
-            # Store the new device configuration
+            # Store the new device configuration for this feature
             helper.set_enabled_devices_for_feature(feature_id, selected_device_ids)
 
-            # Store the temporary matrix state for confirmation
+            # Save the rest of the states to the flow
             temp_matrix_state = helper.get_feature_device_matrix_state()
             if not temp_matrix_state:
                 temp_matrix_state = {
-                    device_id: {feature_id: True} for device_id in selected_device_ids
+                    # device_id: {feature_id: True} for device_id in selected_device_ids
                 }
-
+            self._selected_feature = feature_id
             self._temp_matrix_state = temp_matrix_state
 
-            _LOGGER.info(
-                f"Using SimpleEntityManager for {feature_id} - "
-                f"entities handled internally"
-            )
+            # Log the matrix state for debugging
+            _LOGGER.debug(f"self.temp matrix state: {self._temp_matrix_state}")
+            _LOGGER.debug(f"self.old_matrix_state: {self._old_matrix_state}")
 
-            # Show the confirmation step with entity changes
+            # Log entity tracking attributes, check if they exist first
+            entities_to_create = getattr(self, "_matrix_entities_to_create", [])
+            entities_to_remove = getattr(self, "_matrix_entities_to_remove", [])
+            _LOGGER.debug(f"📝 Entities to create: {len(entities_to_create)}")
+            _LOGGER.debug(f"🗑️ Entities to remove: {len(entities_to_remove)}")
+
+            # Route through the matrix-based confirm step so changes are summarized
             return await self._show_matrix_based_confirmation()
 
-        # Build device options
+        # PRE processing (show options)
+        _LOGGER.debug("Build device options (pre)")
+        # Build device options (value = device_id, label = human readable name)
         device_options = [
             selector.SelectOptionDict(
                 value=dev_id,
@@ -611,6 +635,8 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         ]
 
         # Create schema for device selection
+        # Use LIST mode so the UI renders as a list of checkboxes instead of
+        # a dropdown with multi-select chips.
         schema = vol.Schema(
             {
                 vol.Required(
@@ -629,13 +655,21 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         info_text = f"🎛️ **{feature_name} Configuration**\n\n"
         info_text += f"Select devices to enable {feature_name} for:\n"
 
+        # Reuse the generic "feature_config" step translations from the
+        # root translations file; the detailed text comes from info_text.
         return self.async_show_form(
             step_id="feature_config",
             data_schema=schema,
             description_placeholders={"info": info_text},
         )
 
-    # Check if the feature has implemented this or use a generic handler
+    """ Check if the feature has implemented this or use a generic handler
+    Routes to one of these:
+        - custom_components.ramses_extras.features.{feature_id}.config_flow.
+            async_step_{feature_id}_config()
+        - self.generic_step_feature_config()
+    """
+
     async def async_step_feature_config(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:

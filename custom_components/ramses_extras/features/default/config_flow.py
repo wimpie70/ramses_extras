@@ -68,8 +68,6 @@ async def async_step_default_config(
     feature_id = "default"
     feature_config = AVAILABLE_FEATURES.get(feature_id, {})
 
-    # Get devices for this feature using the central helpers
-    devices = flow._get_all_devices()  # noqa: SLF001
     helper = flow._get_config_flow_helper()  # noqa: SLF001
 
     _LOGGER.debug(f"Using step config flow for {feature_id}")
@@ -89,6 +87,8 @@ async def async_step_default_config(
     # Use deepcopy, or helper.set_enabled_devices_for_feature will modify flow
     flow._old_matrix_state = deepcopy(matrix_state)
 
+    # Get devices for this feature using the central helpers
+    devices = flow._get_all_devices()  # noqa: SLF001
     filtered_devices = helper.get_devices_for_feature_selection(feature_config, devices)
     current_enabled = helper.get_enabled_devices_for_feature(feature_id)
     _LOGGER.debug(
@@ -123,7 +123,7 @@ async def async_step_default_config(
         # Route through the matrix-based confirm step so changes are summarized
         return await flow._show_matrix_based_confirmation()
 
-    # PRE processing
+    # PRE processing (show options)
     _LOGGER.debug("Build device options (pre)")
     # Build device options (value = device_id, label = human readable name)
     device_options = [
