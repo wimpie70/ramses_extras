@@ -114,8 +114,11 @@ async def async_step_default_config(
         _LOGGER.debug(f"flow.temp matrix state: {flow._temp_matrix_state}")
         _LOGGER.debug(f"flow.old_matrix_state: {flow._old_matrix_state}")
 
-        _LOGGER.info(f"📝 Entities to create: {len(flow._matrix_entities_to_create)}")
-        _LOGGER.info(f"🗑️ Entities to remove: {len(flow._matrix_entities_to_remove)}")
+        # Check if entity tracking attributes exist before accessing them
+        entities_to_create = getattr(flow, "_matrix_entities_to_create", [])
+        entities_to_remove = getattr(flow, "_matrix_entities_to_remove", [])
+        _LOGGER.info(f"📝 Entities to create: {len(entities_to_create)}")
+        _LOGGER.info(f"🗑️ Entities to remove: {len(entities_to_remove)}")
 
         # Route through the matrix-based confirm step so changes are summarized
         return await flow._show_matrix_based_confirmation()
