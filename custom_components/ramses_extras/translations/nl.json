@@ -79,6 +79,10 @@
         "data": {
           "enabled_devices": "Apparaten om in te schakelen"
         }
+      },
+      "matrix_confirm": {
+        "title": "Entiteit Wijzigingen Bevestigen",
+        "description": "{info}"
       }
     },
     "feature_humidity_control": {

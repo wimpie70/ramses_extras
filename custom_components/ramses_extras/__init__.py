@@ -258,9 +258,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("🔍 Starting async_setup_platforms...")
     await async_setup_platforms(hass)
 
-    # STEP: Post-creation validation with EntityManager
-    _LOGGER.info("🔍 Running EntityManager post-creation validation...")
-    await _validate_startup_entities(hass, entry)
+    # STEP: Post-creation validation with SimpleEntityManager
+    _LOGGER.info("🔍 Running SimpleEntityManager post-creation validation...")
+    await _validate_startup_entities_simple(hass, entry)
 
     # Explicitly create and start feature instances for
     #  enabled features (including default)
@@ -774,11 +774,13 @@ async def _register_lovelace_resources_storage(
         _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
 
 
-async def _validate_startup_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Validate startup entity creation and fix discrepancies using EntityManager.
+async def _validate_startup_entities_simple(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Validate startup entity creation and fix discrepancies using SimpleEntityManager.
 
     This function runs after all platforms have been set up to ensure that
-    the actual entities match the expected configuration. It uses EntityManager
+    the actual entities match the expected configuration. It uses SimpleEntityManager
     to detect and fix any discrepancies.
 
     Args:
@@ -786,52 +788,26 @@ async def _validate_startup_entities(hass: HomeAssistant, entry: ConfigEntry) ->
         entry: Configuration entry
     """
     try:
-        from .framework.helpers.entity.manager import EntityManager
-
-        # Create EntityManager for validation
-        entity_manager = EntityManager(hass)
-
-        # Import AVAILABLE_FEATURES for validation
-        from .const import AVAILABLE_FEATURES
-
-        # Build catalog of what SHOULD exist vs what DOES exist
-        await entity_manager.build_entity_catalog(
-            AVAILABLE_FEATURES, entry.data.get("enabled_features", {})
+        from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+            SimpleEntityManager,
         )
 
-        # Update targets to establish what the final state should be
-        # This ensures default features (which are always enabled) are properly marked
-        target_features = entry.data.get("enabled_features", {}).copy()
+        # Create SimpleEntityManager for validation
+        entity_manager = SimpleEntityManager(hass)
 
-        # Ensure default feature is always enabled in targets
-        # The default feature provides base entities that should always be created
-        target_features["default"] = True
+        # Restore matrix state from config entry if available
+        matrix_state = entry.data.get("device_feature_matrix", {})
+        if matrix_state:
+            entity_manager.restore_device_feature_matrix_state(matrix_state)
+            _LOGGER.info(f"Restored matrix state with {len(matrix_state)} devices")
 
-        entity_manager.update_feature_targets(target_features)
+        # Validate entities on startup
+        await entity_manager.validate_entities_on_startup()
 
-        # Get any discrepancies
-        entities_to_remove = entity_manager.get_entities_to_remove()
-        entities_to_create = entity_manager.get_entities_to_create()
-
-        if entities_to_remove or entities_to_create:
-            _LOGGER.warning(
-                f"Startup validation found discrepancies: "
-                f"remove {len(entities_to_remove)}, create {len(entities_to_create)}"
-            )
-            if entities_to_remove:
-                _LOGGER.warning(f"Entities to remove: {entities_to_remove}")
-            if entities_to_create:
-                _LOGGER.warning(f"Entities to create: {entities_to_create}")
-
-            # Apply cleanup/creation as needed
-            await entity_manager.apply_entity_changes()
-        else:
-            _LOGGER.info(
-                "✅ Startup validation: all entities match expected configuration"
-            )
+        _LOGGER.info("✅ SimpleEntityManager startup validation completed")
 
     except Exception as e:
-        _LOGGER.error(f"EntityManager startup validation failed: {e}")
+        _LOGGER.error(f"SimpleEntityManager startup validation failed: {e}")
         # Don't fail startup if validation fails - log error and continue
         import traceback
 

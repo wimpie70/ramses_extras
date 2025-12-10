@@ -2,7 +2,7 @@
 
 import pytest
 
-from custom_components.ramses_extras.framework.helpers.entity.device_mapping import (
+from custom_components.ramses_extras.framework.helpers.entity.device_feature_matrix import (  # noqa: E501
     DeviceFeatureMatrix,
 )
 

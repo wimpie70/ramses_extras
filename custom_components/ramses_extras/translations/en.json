@@ -79,6 +79,10 @@
         "data": {
           "enabled_devices": "Devices to Enable"
         }
+      },
+      "matrix_confirm": {
+        "title": "Confirm Entity Changes",
+        "description": "{info}"
       }
     },
     "feature_humidity_control": {

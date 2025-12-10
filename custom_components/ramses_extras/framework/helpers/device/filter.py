@@ -85,7 +85,7 @@ class DeviceFilter:
         # Most core Ramses devices expose a class-level _SLUG attribute.
         slug_attr = getattr(device, "_SLUG", None)
         if slug_attr and not str(slug_attr).startswith("<Mock"):
-            _LOGGER.debug("Device %s has _SLUG attribute", device)
+            # _LOGGER.debug("Device %s has _SLUG attribute", device)
             if isinstance(slug_attr, str):
                 slugs.append(slug_attr)
             else:

@@ -86,6 +86,17 @@ DEFAULT_CONFIG = {
     "auto_discovery": True,
 }
 
+# Entity structure for SimpleEntityManager
+HELLO_WORLD_CARD_CONST = {
+    "required_entities": {
+        "switch": ["hello_world_switch"],
+        "binary_sensor": ["hello_world_status"],
+    }
+}
+
+# Also provide alternative naming for compatibility
+HELLO_WORLD_CONST = HELLO_WORLD_CARD_CONST
+
 
 def load_feature() -> None:
     """Load hello world card feature into the registry."""

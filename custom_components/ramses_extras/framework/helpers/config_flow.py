@@ -9,7 +9,7 @@ from homeassistant.helpers import selector
 
 from custom_components.ramses_extras.const import AVAILABLE_FEATURES
 from custom_components.ramses_extras.framework.helpers.device.filter import DeviceFilter
-from custom_components.ramses_extras.framework.helpers.entity.device_mapping import (
+from custom_components.ramses_extras.framework.helpers.entity.device_feature_matrix import (  # noqa: E501
     DeviceFeatureMatrix,
 )
 

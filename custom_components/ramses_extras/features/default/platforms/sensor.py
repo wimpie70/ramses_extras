@@ -17,6 +17,33 @@ from custom_components.ramses_extras.framework.helpers.entity.core import Entity
 _LOGGER = logging.getLogger(__name__)
 
 
+def _extract_device_id_as_string(device_id: str | Any) -> str:
+    """Extract device ID from device object or string with robust error handling.
+
+    Args:
+        device_id: Device object or device ID string
+
+    Returns:
+        Device ID as string
+    """
+    # Handle device ID strings directly
+    if isinstance(device_id, str):
+        return device_id
+
+    # Try multiple ways to get device ID from object (most specific first)
+    if hasattr(device_id, "device_id"):
+        return str(device_id.device_id)
+    if hasattr(device_id, "id"):
+        return str(device_id.id)
+    if hasattr(device_id, "_id"):
+        return str(device_id._id)
+    if hasattr(device_id, "name"):
+        return str(device_id.name)
+    if hasattr(device_id, "__str__"):
+        return str(device_id)
+    return f"device_{id(device_id)}"  # Fallback to object id
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -31,8 +58,35 @@ async def async_setup_entry(
         f"Default feature sensor platform: found {len(devices)} devices: {devices}"
     )
 
+    # Get entity manager to check device_feature_matrix
+    entity_manager = hass.data.get("ramses_extras", {}).get("entity_manager")
+    if entity_manager is None:
+        # Create a temporary entity manager for device enablement checking
+        # This ensures we respect the device_feature_matrix even during startup
+        from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+            SimpleEntityManager,
+        )
+
+        entity_manager = SimpleEntityManager(hass)
+
+        # Restore matrix state from config entry if available
+        matrix_state = config_entry.data.get("device_feature_matrix", {})
+        if matrix_state:
+            entity_manager.restore_device_feature_matrix_state(matrix_state)
+            _LOGGER.debug(f"Restored matrix state with {len(matrix_state)} devices")
+
     sensor: list[SensorEntity] = []
     for device_id in devices:
+        # Check if device is enabled for the default feature
+        device_id_str = _extract_device_id_as_string(device_id)
+        if not entity_manager.device_feature_matrix.is_device_enabled_for_feature(
+            device_id_str, "default"
+        ):
+            _LOGGER.debug(
+                f"Skipping disabled device for default feature: {device_id_str}"
+            )
+            continue
+
         # Create default sensor for this device
         device_sensor = await create_default_sensor(hass, device_id, config_entry)
         sensor.extend(device_sensor)
@@ -60,6 +114,9 @@ async def create_default_sensor(
     # Import default sensor configurations
     from ..const import DEFAULT_SENSOR_CONFIGS
 
+    # Ensure device_id is a string (convert from device object if needed)
+    device_id_str = _extract_device_id_as_string(device_id)
+
     sensor_list: list[SensorEntity] = []
 
     # Create sensor for each configured sensor type
@@ -69,11 +126,13 @@ async def create_default_sensor(
         ):
             # Create sensor with calculation logic (always create, listeners
             #  will be set up when entities exist)
-            sensor_entity = DefaultHumiditySensor(hass, device_id, sensor_type, config)
+            sensor_entity = DefaultHumiditySensor(
+                hass, device_id_str, sensor_type, config
+            )
             sensor_list.append(sensor_entity)
             _LOGGER.debug(
                 f"Created default {sensor_type} sensor with calculation logic "
-                f"for device {device_id}"
+                f"for device {device_id_str}"
             )
 
     return sensor_list
@@ -154,13 +213,16 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         # Initialize base entity
         ExtrasBaseEntity.__init__(self, hass, device_id, sensor_type, config)
 
+        # Ensure device_id is a string (convert from device object if needed)
+        device_id_str = _extract_device_id_as_string(device_id)
+
         # Set sensor-specific attributes
         self._sensor_type = sensor_type
         self._attr_native_unit_of_measurement = config.get("unit", "g/m³")
         self._attr_device_class = config.get("device_class")
 
         # Set unique_id and name
-        device_id_underscore = device_id.replace(":", "_")
+        device_id_underscore = device_id_str.replace(":", "_")
         self._attr_unique_id = f"{sensor_type}_{device_id_underscore}"
 
         name_template = config.get(
@@ -174,10 +236,9 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
     @property
     def name(self) -> str:
         """Return the name of the entity."""
-        return (
-            self._attr_name
-            or f"{self._sensor_type} {self._device_id.replace(':', '_')}"
-        )
+        device_id_str = _extract_device_id_as_string(self._device_id)
+        device_id_underscore = device_id_str.replace(":", "_")
+        return self._attr_name or f"{self._sensor_type} {device_id_underscore}"
 
     async def async_added_to_hass(self) -> None:
         """Called when entity is added to hass."""
@@ -208,7 +269,8 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         temp_type, humidity_type = entity_patterns[self._sensor_type]
 
         # ramses_cc entities use CC format (device_id prefix): {device_id}_{identifier}
-        device_id_underscore = self._device_id.replace(":", "_")
+        device_id_str = _extract_device_id_as_string(self._device_id)
+        device_id_underscore = device_id_str.replace(":", "_")
 
         # Generate entity IDs using CC format for ramses_cc entities
         temp_entity = EntityHelpers.generate_entity_name_from_template(
@@ -281,7 +343,8 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         temp_type, humidity_type = entity_patterns[self._sensor_type]
 
         # ramses_cc entities use CC format (device_id prefix): {device_id}_{identifier}
-        device_id_underscore = self._device_id.replace(":", "_")
+        device_id_str = _extract_device_id_as_string(self._device_id)
+        device_id_underscore = device_id_str.replace(":", "_")
 
         # Generate entity IDs using CC format for ramses_cc entities
         temp_entity = EntityHelpers.generate_entity_name_from_template(

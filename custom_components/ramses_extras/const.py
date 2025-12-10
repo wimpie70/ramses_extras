@@ -8,16 +8,6 @@ from typing import Any, Callable
 
 DOMAIN = "ramses_extras"
 
-# Import shared path constants
-try:
-    from .framework.helpers.paths import DEPLOYMENT_PATHS, HELPER_PATHS
-    from .framework.helpers.paths import PATHS as WEB_PATHS
-except ImportError:
-    # Fallback constants if paths module is not available
-    WEB_PATHS = None  # type: ignore[assignment]
-    HELPER_PATHS = None  # type: ignore[assignment]
-    DEPLOYMENT_PATHS = None  # type: ignore[assignment]
-
 # Get the integration directory
 INTEGRATION_DIR = Path(__file__).parent
 
@@ -31,10 +21,7 @@ CONF_ENABLED_FEATURES = "enabled_features"
 CONF_ENABLED_WEB_SOCKETS = "enabled_web_sockets"
 CONF_MESSAGE_EVENTS = "message_events"
 
-# Command framework constants
-COMMAND_MIN_INTERVAL = 0.5  # Minimum interval between commands (seconds)
-
-# UI/Frontend constants
+# UI/Frontend constants (still needed for backward compatibility)
 CARD_FOLDER = "www"
 CARD_HELPERS_FOLDER = "framework/www"
 FEATURE_FOLDER = "features"
@@ -54,22 +41,11 @@ FEATURE_ID_HELLO_WORLD_CARD = "hello_world_card"
 # Event system constants
 EVENT_DEVICE_READY_FOR_ENTITIES = "ramses_device_ready_for_entities"
 
-# Device Type Handler Mapping - Central registry for device type handlers
-DEVICE_TYPE_HANDLERS: dict[str, Callable] = {}
-
-
-def register_device_handler(device_type: str) -> Callable[[Callable], Callable]:
-    """Decorator to register device type handlers."""
-
-    def decorator(handler: Callable) -> Callable:
-        DEVICE_TYPE_HANDLERS[device_type] = handler
-        return handler
-
-    return decorator
-
-
 # Platform registry for dynamic feature platform discovery
 PLATFORM_REGISTRY: dict[str, dict[str, Callable]] = {}
+
+# WebSocket command registry for feature-centric organization
+WS_COMMAND_REGISTRY: dict[str, dict[str, str]] = {}
 
 
 def register_feature_platform(
@@ -90,9 +66,6 @@ def get_feature_platform_setups(platform: str) -> list[Callable]:
 DESCRIPTION_PLACEHOLDER_INFO = (
     "Ramses Extras provides additional functionality on top of Ramses RF."
 )
-
-# WebSocket command registry for feature-centric organization
-WS_COMMAND_REGISTRY: dict[str, dict[str, str]] = {}
 
 
 def register_ws_commands(feature_name: str, command_configs: dict[str, str]) -> None:
@@ -135,7 +108,7 @@ def discover_ws_commands() -> list[str]:
     return list(WS_COMMAND_REGISTRY.keys())
 
 
-# Available features registry - dynamically populated by feature discovery
+# Available features registry - simplified for new architecture
 AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
     "default": {
         "name": "Default",
@@ -154,8 +127,8 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.humidity_control",
         "handler": "handle_hvac_ventilator",
         "default_enabled": True,
-        "allowed_device_slugs": ["FAN"],  # Only works with FAN devices
-        "has_device_config": True,  # Has device-specific configuration
+        "allowed_device_slugs": ["FAN"],
+        "has_device_config": True,
     },
     "hvac_fan_card": {
         "name": "HVAC Fan Card",
@@ -163,8 +136,8 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.hvac_fan_card",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
-        "allowed_device_slugs": ["FAN"],  # Only works with FAN devices
-        "has_device_config": True,  # Has device-specific configuration
+        "allowed_device_slugs": ["FAN"],
+        "has_device_config": True,
     },
     "hello_world_card": {
         "name": "Hello World Switch Card",
@@ -174,7 +147,7 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "feature_module": "features.hello_world_card",
         "handler": "handle_hvac_ventilator",
         "default_enabled": False,
-        "allowed_device_slugs": ["*"],  # Works with all device types for testing
-        "has_device_config": True,  # Has device-specific configuration
+        "allowed_device_slugs": ["*"],
+        "has_device_config": True,
     },
 }

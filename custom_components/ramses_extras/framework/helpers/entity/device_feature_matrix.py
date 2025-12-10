@@ -69,6 +69,20 @@ class DeviceFeatureMatrix:
             device_id: features.copy() for device_id, features in self.matrix.items()
         }
 
+    def restore_device_feature_matrix_state(
+        self, state: dict[str, dict[str, bool]]
+    ) -> None:
+        """Restore device/feature matrix from saved state.
+
+        Args:
+            state: Matrix state to restore
+        """
+        self.matrix = state.copy()
+
+    def restore_matrix_state(self, state: dict[str, dict[str, bool]]) -> None:
+        """Restore matrix state (alias for restore_device_feature_matrix_state)."""
+        self.restore_device_feature_matrix_state(state)
+
     def __str__(self) -> str:
         """String representation of the matrix."""
         return (

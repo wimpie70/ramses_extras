@@ -43,6 +43,13 @@ DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
     },
 }
 
+# Default feature constant configuration for EntityManager
+DEFAULT_CONST = {
+    "required_entities": {
+        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"]
+    }
+}
+
 # WebSocket command constants for the default feature
 WS_CMD_GET_AVAILABLE_DEVICES = "ramses_extras/get_available_devices"
 WS_CMD_GET_BOUND_REM = "ramses_extras/get_bound_rem"
@@ -82,6 +89,7 @@ def load_feature() -> None:
 
 __all__ = [
     "FEATURE_ID_DEFAULT",
+    "DEFAULT_CONST",
     "DEFAULT_SENSOR_CONFIGS",
     "DEFAULT_SWITCH_CONFIGS",
     "DEFAULT_NUMBER_CONFIGS",

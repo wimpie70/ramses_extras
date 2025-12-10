@@ -14,127 +14,65 @@ class TestDefaultEntitiesStartup:
 
     @pytest.mark.asyncio
     async def test_startup_validation_finds_default_entities_to_create(self):
-        """Test that EntityManager validation properly identifies
+        """Test that SimpleEntityManager properly identifies
         default entities to create."""
-        from custom_components.ramses_extras.framework.helpers.entity.manager import (
-            EntityManager,
+        from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+            SimpleEntityManager,
         )
 
         mock_hass = MagicMock()
-        entity_manager = EntityManager(mock_hass)
+        entity_manager = SimpleEntityManager(mock_hass)
 
-        # Mock entity registry (empty - no existing entities)
-        with patch("homeassistant.helpers.entity_registry.async_get") as mock_registry:
-            mock_registry.return_value.entities = {}
+        # Enable device for the default feature in the matrix
+        # This is required for entities to be created
+        #  (BOTH feature AND device must be enabled)
+        entity_manager.device_feature_matrix.enable_feature_for_device(
+            "32:153289", "default"
+        )
 
-            # Mock device discovery for default feature
-            mock_device = MagicMock()
-            mock_device.id = "32:153289"
-            mock_device.__class__.__name__ = "HvacVentilator"
+        # Get entities to create - this should find entities for the enabled combination
+        to_create = entity_manager.get_entities_to_create()
 
-            with patch.object(
-                entity_manager, "_get_devices_for_feature", return_value=[mock_device]
-            ):
-                with patch.object(
-                    entity_manager,
-                    "_get_required_entities_for_feature",
-                    return_value={
-                        "sensor": [
-                            "indoor_absolute_humidity",
-                            "outdoor_absolute_humidity",
-                        ]
-                    },
-                ):
-                    with patch.object(
-                        entity_manager,
-                        "_get_all_existing_entities",
-                        return_value=set(),
-                    ):
-                        # Build catalog with default enabled - use AVAILABLE_FEATURES
-                        current_features = {
-                            "default": True,
-                            "humidity_control": False,
-                        }
+        # The default entities should be found in creation list
+        # SimpleEntityManager generates entities based on feature/device combinations
+        # For the default feature, it creates indoor and outdoor absolute humidity
+        # sensors
+        expected_entities = [
+            "sensor.indoor_absolute_humidity_32_153289",
+            "sensor.outdoor_absolute_humidity_32_153289",
+        ]
 
-                        await entity_manager.build_entity_catalog(
-                            AVAILABLE_FEATURES, current_features
-                        )
-
-                        # Update targets to establish what should exist
-                        target_features = {
-                            "default": True,
-                            "humidity_control": False,
-                        }
-                        entity_manager.update_feature_targets(target_features)
-
-                        # Verify: entities should be in creation list since they
-                        # don't exist
-                        to_create = entity_manager.get_entities_to_create()
-
-                        # The default entities should be found in creation list
-                        expected_entities = [
-                            "sensor.indoor_absolute_humidity_32_153289",
-                            "sensor.outdoor_absolute_humidity_32_153289",
-                        ]
-
-                        for expected_entity in expected_entities:
-                            assert expected_entity in to_create, (
-                                f"Expected {expected_entity} to be in creation list. "
-                                f"Full creation list: {to_create}"
-                            )
+        for expected_entity in expected_entities:
+            assert expected_entity in to_create, (
+                f"Expected {expected_entity} to be in creation list. "
+                f"Full creation list: {to_create}"
+            )
 
     @pytest.mark.asyncio
     async def test_startup_validation_matches_expected_behavior(self):
         """Test that the startup validation correctly identifies
         missing default entities."""
-        from custom_components.ramses_extras.framework.helpers.entity.manager import (
-            EntityManager,
+        from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+            SimpleEntityManager,
         )
 
         mock_hass = MagicMock()
-        entity_manager = EntityManager(mock_hass)
+        entity_manager = SimpleEntityManager(mock_hass)
 
-        # Mock entity registry (some existing entities, but not default ones)
-        with patch("homeassistant.helpers.entity_registry.async_get") as mock_registry:
-            # Add a non-default entity to show the registry is working
-            mock_existing_entity = MagicMock()
-            mock_existing_entity.entity_id = "sensor.existing_temp"
-            mock_registry.return_value.entities = {"existing": mock_existing_entity}
+        # Enable device for the default feature in the matrix
+        entity_manager.device_feature_matrix.enable_feature_for_device(
+            "32:153289", "default"
+        )
 
-            # Mock device discovery
-            mock_device = MagicMock()
-            mock_device.id = "32:153289"
-            mock_device.__class__.__name__ = "HvacVentilator"
+        # Get entities to create and remove
+        to_create = entity_manager.get_entities_to_create()
+        to_remove = entity_manager.get_entities_to_remove()
 
-            with patch.object(
-                entity_manager, "_get_devices_for_feature", return_value=[mock_device]
-            ):
-                with patch(
-                    "custom_components.ramses_extras.framework.helpers.entity.manager.get_feature_entity_mappings",
-                    return_value={
-                        "indoor_absolute_humidity": "sensor.indoor_absolute_humidity_32:153289",  # noqa: E501
-                        "outdoor_absolute_humidity": "sensor.outdoor_absolute_humidity_32:153289",  # noqa: E501
-                    },
-                ):
-                    # Build catalog
-                    current_features = {"default": True}
-                    await entity_manager.build_entity_catalog(
-                        AVAILABLE_FEATURES, current_features
-                    )
-
-                    # Update targets
-                    target_features = {"default": True}
-                    entity_manager.update_feature_targets(target_features)
-
-                    # Get results
-                    to_create = entity_manager.get_entities_to_create()
-                    to_remove = entity_manager.get_entities_to_remove()
-
-                    # Verify behavior
-                    # - Should find entities to create (the default humidity sensor)
-                    # - Should find 0 entities to remove (no default entities exist yet)
-                    assert len(to_create) >= 0  # At least some entities should be found
-                    assert len(to_remove) == 0
+        # Verify behavior
+        # - Should find entities to create (based on enabled combinations)
+        # - Should find 0 entities to remove (no entities exist yet)
+        assert len(to_create) > 0  # Should find some entities to create
+        assert len(to_remove) == 0  # Should find no entities to remove
 
     @pytest.mark.asyncio
     async def test_default_feature_properly_enabled_for_platforms(self):
@@ -187,64 +125,28 @@ class TestDefaultEntitiesStartup:
 
     @pytest.mark.asyncio
     async def test_entity_manager_validation_works_with_available_features(self):
-        """Test that EntityManager validation works correctly
+        """Test that SimpleEntityManager works correctly
         with AVAILABLE_FEATURES."""
-        from custom_components.ramses_extras.framework.helpers.entity.manager import (
-            EntityManager,
+        from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+            SimpleEntityManager,
         )
 
         mock_hass = MagicMock()
-        entity_manager = EntityManager(mock_hass)
+        entity_manager = SimpleEntityManager(mock_hass)
 
         # Verify AVAILABLE_FEATURES has the default feature
         assert "default" in AVAILABLE_FEATURES
         assert AVAILABLE_FEATURES["default"]["default_enabled"] is True
 
-        # Mock entity registry (empty)
-        with patch("homeassistant.helpers.entity_registry.async_get") as mock_registry:
-            mock_registry.return_value.entities = {}
+        # Enable device for the default feature in the matrix
+        entity_manager.device_feature_matrix.enable_feature_for_device(
+            "32:153289", "default"
+        )
 
-            # Mock device discovery
-            mock_device = MagicMock()
-            mock_device.id = "32:153289"
-            mock_device.__class__.__name__ = "HvacVentilator"
+        # Get entities to create - this should work with the new SimpleEntityManager
+        to_create = entity_manager.get_entities_to_create()
 
-            with patch.object(
-                entity_manager, "_get_devices_for_feature", return_value=[mock_device]
-            ):
-                with patch.object(
-                    entity_manager,
-                    "_get_required_entities_for_feature",
-                    return_value={
-                        "sensor": [
-                            "indoor_absolute_humidity",
-                            "outdoor_absolute_humidity",
-                        ]
-                    },
-                ):
-                    with patch.object(
-                        entity_manager,
-                        "_get_all_existing_entities",
-                        return_value=set(),
-                    ):
-                        # Build catalog - this should now work with AVAILABLE_FEATURES
-                        current_features = {"default": True}
-                        await entity_manager.build_entity_catalog(
-                            AVAILABLE_FEATURES, current_features
-                        )
-
-                        # Check that entities were found
-                        assert len(entity_manager.all_possible_entities) > 0
-
-                        # Update targets to establish what should exist
-                        target_features = {"default": True}
-                        entity_manager.update_feature_targets(target_features)
-
-                        # Get entities to create
-                        to_create = entity_manager.get_entities_to_create()
-
-                        # We should have found some entities
-                        #  (even if not the exact ones we expected)
-                        # The important thing is that the EntityManager
-                    #  doesn't crash and finds entities
-                    assert len(to_create) >= 0
+        # We should have found some entities
+        # The important thing is that the SimpleEntityManager
+        # doesn't crash and finds entities
+        assert len(to_create) > 0

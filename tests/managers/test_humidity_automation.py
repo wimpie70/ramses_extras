@@ -17,22 +17,6 @@ from custom_components.ramses_extras.features.humidity_control.automation import
 class TestHumidityAutomationEntityNaming:
     """Test class for humidity automation entity naming fixes."""
 
-    @pytest.mark.skip(
-        "Testing deprecated API methods that don't exist in new architecture"
-    )
-    def test_entity_name_transformation(self):
-        """Test that entity names pass through unchanged in new system."""
-        pytest.skip(
-            "Test disabled - _get_entity_name_from_const method no longer exists"
-        )
-
-    @pytest.mark.skip(
-        "Testing deprecated API methods that don't exist in new architecture"
-    )
-    def test_state_mappings_generation(self):
-        """Test state mappings generation for device 32_153289."""
-        pytest.skip("Test disabled - _get_state_mappings method no longer exists")
-
     def test_entity_validation(self):
         """Test entity validation using dynamic approach."""
         # Mock HomeAssistant state
@@ -258,10 +242,6 @@ class TestHumidityAutomationEntityNaming:
     @pytest.mark.skip(
         "Testing deprecated API methods that don't exist in new architecture"
     )
-    def test_solution_verification(self):
-        """Test that the solution correctly generates entity names."""
-        pytest.skip("Test disabled - _get_state_mappings method no longer exists")
-
     def test_problem_reproduction_before_fix(self):
         """Test to reproduce the original problem before the fix."""
         # This test demonstrates what the old automation was looking for

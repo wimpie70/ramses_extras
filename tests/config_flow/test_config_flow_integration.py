@@ -374,7 +374,11 @@ async def test_device_selection_step(mock_hass, mock_config_entry):
 
 def test_feature_device_config_storage(mock_hass, mock_config_entry):
     """Test feature/device configuration storage."""
+    # Add data attribute to mock config entry
+    mock_config_entry.data = {"enabled_features": {}}
+
     handler = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+    handler.hass = mock_hass  # Set the hass attribute
 
     # Test storing device configuration
     handler._store_feature_device_config("humidity_control", ["device1", "device2"])
@@ -390,15 +394,15 @@ def test_feature_device_config_storage(mock_hass, mock_config_entry):
 
 
 def test_entity_manager_per_device_tracking(mock_hass):
-    """Test EntityManager per-device tracking capabilities."""
-    from custom_components.ramses_extras.framework.helpers.entity.manager import (
-        EntityManager,
+    """Test SimpleEntityManager per-device tracking capabilities."""
+    from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+        SimpleEntityManager,
     )
 
-    manager = EntityManager(mock_hass)
+    manager = SimpleEntityManager(mock_hass)
 
     # Test device feature matrix access
-    matrix = manager.get_device_feature_matrix()
+    matrix = manager.device_feature_matrix
     assert matrix is not None
 
     # Test enabling features for devices
@@ -417,7 +421,7 @@ def test_entity_manager_per_device_tracking(mock_hass):
     assert manager.is_device_enabled_for_feature("device2", "hvac_fan_card") is False
 
     # Test getting all combinations
-    combinations = manager.get_all_feature_device_combinations()
+    combinations = manager.get_all_enabled_combinations()
     assert len(combinations) == 3
     assert ("device1", "humidity_control") in combinations
     assert ("device2", "humidity_control") in combinations
@@ -426,11 +430,11 @@ def test_entity_manager_per_device_tracking(mock_hass):
 
 def test_matrix_state_serialization(mock_hass):
     """Test matrix state serialization and deserialization."""
-    from custom_components.ramses_extras.framework.helpers.entity.manager import (
-        EntityManager,
+    from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+        SimpleEntityManager,
     )
 
-    manager = EntityManager(mock_hass)
+    manager = SimpleEntityManager(mock_hass)
 
     # Set up some data
     manager.enable_feature_for_device("device1", "humidity_control")
@@ -445,7 +449,7 @@ def test_matrix_state_serialization(mock_hass):
     }
 
     # Create new manager and restore state
-    new_manager = EntityManager(mock_hass)
+    new_manager = SimpleEntityManager(mock_hass)
     new_manager.restore_device_feature_matrix_state(state)
 
     # Verify state was restored

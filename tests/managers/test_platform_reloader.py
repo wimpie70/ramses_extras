@@ -9,8 +9,10 @@ import pytest
 sys.path.insert(0, "custom_components")
 
 try:
-    from ramses_extras.const import DOMAIN
-    from ramses_extras.managers.platform_reloader import PlatformReloader
+    from custom_components.ramses_extras.const import DOMAIN
+    from custom_components.ramses_extras.managers.platform_reloader import (
+        PlatformReloader,
+    )
 except ImportError:
     pytest.skip(
         "Integration not properly installed for testing",
@@ -38,7 +40,7 @@ class TestPlatformReloader:
 
     def test_init(self, mock_hass: Mock, mock_config_entry: Mock) -> None:
         """Test PlatformReloader initialization."""
-        with patch("ramses_extras.managers.platform_reloader.async_dispatcher_connect"):
+        with patch("homeassistant.helpers.dispatcher.async_dispatcher_connect"):
             reloader = PlatformReloader(mock_hass, mock_config_entry)
 
             assert reloader.hass == mock_hass
@@ -48,7 +50,7 @@ class TestPlatformReloader:
         self, mock_hass: Mock, mock_config_entry: Mock
     ) -> None:
         """Test handling new devices added."""
-        with patch("ramses_extras.managers.platform_reloader.async_dispatcher_connect"):
+        with patch("homeassistant.helpers.dispatcher.async_dispatcher_connect"):
             reloader = PlatformReloader(mock_hass, mock_config_entry)
 
             # Set up initial device list
@@ -67,7 +69,7 @@ class TestPlatformReloader:
         self, mock_hass: Mock, mock_config_entry: Mock
     ) -> None:
         """Test handling devices removed."""
-        with patch("ramses_extras.managers.platform_reloader.async_dispatcher_connect"):
+        with patch("homeassistant.helpers.dispatcher.async_dispatcher_connect"):
             reloader = PlatformReloader(mock_hass, mock_config_entry)
 
             # Set up initial device list
@@ -89,7 +91,7 @@ class TestPlatformReloader:
         self, mock_hass: Mock, mock_config_entry: Mock
     ) -> None:
         """Test platform reloading."""
-        with patch("ramses_extras.managers.platform_reloader.async_dispatcher_connect"):
+        with patch("homeassistant.helpers.dispatcher.async_dispatcher_connect"):
             reloader = PlatformReloader(mock_hass, mock_config_entry)
 
             # Mock the config entry reload
@@ -112,7 +114,7 @@ class TestPlatformReloader:
     ) -> None:
         """Test that event listeners are set up correctly."""
         with patch(
-            "ramses_extras.managers.platform_reloader.async_dispatcher_connect"
+            "homeassistant.helpers.dispatcher.async_dispatcher_connect"
         ) as mock_connect:
             PlatformReloader(mock_hass, mock_config_entry)
 
@@ -135,7 +137,7 @@ class TestPlatformReloader:
         self, mock_hass: Mock, mock_config_entry: Mock
     ) -> None:
         """Test handling empty device lists."""
-        with patch("ramses_extras.managers.platform_reloader.async_dispatcher_connect"):
+        with patch("homeassistant.helpers.dispatcher.async_dispatcher_connect"):
             reloader = PlatformReloader(mock_hass, mock_config_entry)
 
             # Mock the reload method
@@ -151,7 +153,7 @@ class TestPlatformReloader:
         self, mock_hass: Mock, mock_config_entry: Mock
     ) -> None:
         """Test handling initial device discovery."""
-        with patch("ramses_extras.managers.platform_reloader.async_dispatcher_connect"):
+        with patch("homeassistant.helpers.dispatcher.async_dispatcher_connect"):
             reloader = PlatformReloader(mock_hass, mock_config_entry)
 
             # Call the handler
