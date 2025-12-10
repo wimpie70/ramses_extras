@@ -61,6 +61,8 @@ async def async_step_default_config(
     This function is called from the central options flow entrypoint
     (generic_step_feature_config) and uses the central flow instance
     to access helpers and show the form.
+
+    HA uses a pre- and post- run (config / submitted for these steps)
     """
 
     feature_id = "default"
@@ -70,43 +72,41 @@ async def async_step_default_config(
     devices = flow._get_all_devices()  # noqa: SLF001
     helper = flow._get_config_flow_helper()  # noqa: SLF001
 
-    _LOGGER.info(f"Using step config flow for {feature_id}")
-    # CRITICAL FIX: Restore matrix state so we can see which devices
-    #  are currently enabled
+    _LOGGER.debug(f"Using step config flow for {feature_id}")
+    # Restore matrix state so we can see which devices are currently enabled
     matrix_state = flow._config_entry.data.get("device_feature_matrix", {})
     if matrix_state:
         helper.restore_matrix_state(matrix_state)
-        _LOGGER.info(
+        _LOGGER.debug(
             f"Restored matrix state in config flow with {len(matrix_state)} devices"
         )
     else:
-        _LOGGER.info(
+        _LOGGER.debug(
             "No matrix state found in config entry, starting with empty matrix"
         )
-    _LOGGER.info(f"matrix state: {matrix_state}")
-    # save the matrix state to be used for comparison. Essential !!!
-    # use deepcopy, or helper.set_enabled_devices_for_feature will modify flow
+    _LOGGER.debug(f"matrix state: {matrix_state}")
+    # Save the matrix state to be used for comparison to the flow
+    # Use deepcopy, or helper.set_enabled_devices_for_feature will modify flow
     flow._old_matrix_state = deepcopy(matrix_state)
 
     filtered_devices = helper.get_devices_for_feature_selection(feature_config, devices)
-    _LOGGER.debug(f"Filtered devices: {filtered_devices}")
     current_enabled = helper.get_enabled_devices_for_feature(feature_id)
-    _LOGGER.debug(f"Current enabled devices: {current_enabled}")
+    _LOGGER.debug(
+        f"Devices: filtered: {filtered_devices} Current enabled: {current_enabled}"
+    )
 
-    if user_input is not None:
-        _LOGGER.debug("User submitted the form - process the device selections")
+    if user_input is not None:  # POST processing
+        _LOGGER.debug("User submitted the form (post)")
         # User submitted the form - process the device selections
         selected_device_ids = user_input.get("enabled_devices", [])
 
         # Store the new device configuration for this feature
         helper.set_enabled_devices_for_feature(feature_id, selected_device_ids)
 
+        # Save the rest of the states to the flow
         temp_matrix_state = helper.get_feature_device_matrix_state()
         if not temp_matrix_state:
             temp_matrix_state = {}
-
-        # Store the matrix state from the config entry as the old state
-        # flow._old_matrix_state = matrix_state  # This is the line we need to add
         flow._temp_matrix_state = temp_matrix_state
         flow._selected_feature = feature_id
 
@@ -114,16 +114,17 @@ async def async_step_default_config(
         _LOGGER.debug(f"flow.temp matrix state: {flow._temp_matrix_state}")
         _LOGGER.debug(f"flow.old_matrix_state: {flow._old_matrix_state}")
 
-        # Check if entity tracking attributes exist before accessing them
+        # Log entity tracking attributes, check if they exist first
         entities_to_create = getattr(flow, "_matrix_entities_to_create", [])
         entities_to_remove = getattr(flow, "_matrix_entities_to_remove", [])
-        _LOGGER.info(f"📝 Entities to create: {len(entities_to_create)}")
-        _LOGGER.info(f"🗑️ Entities to remove: {len(entities_to_remove)}")
+        _LOGGER.debug(f"📝 Entities to create: {len(entities_to_create)}")
+        _LOGGER.debug(f"🗑️ Entities to remove: {len(entities_to_remove)}")
 
         # Route through the matrix-based confirm step so changes are summarized
         return await flow._show_matrix_based_confirmation()
 
-    _LOGGER.debug("build device options, we get here when there is no user input")
+    # PRE processing
+    _LOGGER.debug("Build device options (pre)")
     # Build device options (value = device_id, label = human readable name)
     device_options = [
         selector.SelectOptionDict(
