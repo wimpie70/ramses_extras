@@ -374,7 +374,7 @@ class TestStartupFlow:
         mock_entity_manager = MagicMock()
         mock_entity_manager.build_entity_catalog = AsyncMock()
         mock_entity_manager.get_entities_to_remove = Mock(return_value=[])
-        mock_entity_manager.get_entities_to_create = Mock(return_value=[])
+        mock_entity_manager.sync_get_entities_to_create = Mock(return_value=[])
         mock_entity_manager.apply_entity_changes = AsyncMock()
 
         with (

@@ -31,7 +31,7 @@ class TestDefaultEntitiesStartup:
         )
 
         # Get entities to create - this should find entities for the enabled combination
-        to_create = entity_manager.get_entities_to_create()
+        to_create = await entity_manager.get_entities_to_create()
 
         # The default entities should be found in creation list
         # SimpleEntityManager generates entities based on feature/device combinations
@@ -65,7 +65,7 @@ class TestDefaultEntitiesStartup:
         )
 
         # Get entities to create and remove
-        to_create = entity_manager.get_entities_to_create()
+        to_create = await entity_manager.get_entities_to_create()
         to_remove = entity_manager.get_entities_to_remove()
 
         # Verify behavior
@@ -144,7 +144,7 @@ class TestDefaultEntitiesStartup:
         )
 
         # Get entities to create - this should work with the new SimpleEntityManager
-        to_create = entity_manager.get_entities_to_create()
+        to_create = await entity_manager.get_entities_to_create()
 
         # We should have found some entities
         # The important thing is that the SimpleEntityManager

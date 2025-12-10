@@ -7,6 +7,20 @@ from typing import Any, Generator
 import pytest
 
 
+def sync_generate_entity_ids(
+    entity_manager: Any, feature_id: str, device_id: str
+) -> list[str]:
+    """Sync wrapper for testing - calls async version."""
+    return asyncio.run(
+        entity_manager._generate_entity_ids_for_combination(feature_id, device_id)
+    )
+
+
+def sync_get_entities_to_create(entity_manager: Any) -> list[str]:
+    """Sync wrapper for testing - calls async version."""
+    return asyncio.run(entity_manager.get_entities_to_create())
+
+
 def pytest_configure(config: Any) -> None:
     """Configure pytest to disable the problematic enable_event_loop_debug fixture."""
     # Disable the enable_event_loop_debug fixture that's causing issues

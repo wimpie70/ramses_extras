@@ -226,7 +226,7 @@ class SimpleEntityManager:
 
         return required_entities
 
-    def get_entities_to_create(self) -> list[str]:
+    async def get_entities_to_create(self) -> list[str]:
         """Get entities that should be created based on current matrix state.
 
         Returns:
@@ -238,7 +238,7 @@ class SimpleEntityManager:
 
         for device_id, feature_id in combinations:
             # Generate entity IDs for this feature/device combination
-            entity_ids = self._generate_entity_ids_for_combination_sync(
+            entity_ids = await self._generate_entity_ids_for_combination(
                 feature_id, device_id
             )
             required_entities.extend(entity_ids)
@@ -369,56 +369,6 @@ class SimpleEntityManager:
         # This prevents accidentally removing entities we don't manage
 
         return False
-
-    def _generate_entity_ids_for_combination_sync(
-        self, feature_id: str, device_id: str
-    ) -> list[str]:
-        """Synchronous version of _generate_entity_ids_for_combination
-         for pattern checking.
-
-        Args:
-            feature_id: Feature identifier
-            device_id: Device identifier
-
-        Returns:
-            List of entity IDs for this combination
-        """
-        entity_ids = []
-
-        # Generate entity IDs based on feature configuration
-        if feature_id == "default":
-            # Default feature creates absolute humidity sensors for all devices
-            entity_ids = [
-                f"sensor.indoor_absolute_humidity_{device_id.replace(':', '_')}",
-                f"sensor.outdoor_absolute_humidity_{device_id.replace(':', '_')}",
-            ]
-        else:
-            # For other features, try to get entity configurations
-            try:
-                feature_module = (
-                    f"custom_components.ramses_extras.features.{feature_id}.const"
-                )
-                feature_const = __import__(feature_module, fromlist=[""])
-
-                # Get required entities from feature configuration
-                required_entities = getattr(
-                    feature_const, f"{feature_id.upper()}_CONST", {}
-                ).get("required_entities", {})
-
-                for entity_type, entity_names in required_entities.items():
-                    for entity_name in entity_names:
-                        # Generate entity ID using standard pattern
-                        entity_id = (
-                            f"{entity_type}.{entity_name}_{device_id.replace(':', '_')}"
-                        )
-                        entity_ids.append(entity_id)
-
-            except Exception as e:
-                _LOGGER.debug(
-                    f"Could not get required entities for feature {feature_id}: {e}"
-                )
-
-        return entity_ids
 
     async def _remove_feature_entities(
         self, feature_id: str, device_id: str

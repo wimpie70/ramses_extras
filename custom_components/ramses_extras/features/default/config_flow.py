@@ -53,57 +53,6 @@ from ...const import AVAILABLE_FEATURES
 _LOGGER = logging.getLogger(__name__)
 
 
-async def _generate_entity_ids_for_combination(
-    feature_id: str, device_id: str, hass: Any
-) -> list[str]:
-    """Generate entity IDs for a specific feature/device combination.
-
-    Args:
-        feature_id: Feature identifier
-        device_id: Device identifier
-        hass: Home Assistant instance
-
-    Returns:
-        List of entity IDs for this combination
-    """
-    entity_ids = []
-
-    # Generate entity IDs based on feature configuration
-    if feature_id == "default":
-        # Default feature creates absolute humidity sensors for all devices
-        entity_ids = [
-            f"sensor.indoor_absolute_humidity_{device_id.replace(':', '_')}",
-            f"sensor.outdoor_absolute_humidity_{device_id.replace(':', '_')}",
-        ]
-    else:
-        # For other features, try to get entity configurations
-        try:
-            feature_module = (
-                f"custom_components.ramses_extras.features.{feature_id}.const"
-            )
-            feature_const = __import__(feature_module, fromlist=[""])
-
-            # Get required entities from feature configuration
-            required_entities = getattr(
-                feature_const, f"{feature_id.upper()}_CONST", {}
-            ).get("required_entities", {})
-
-            for entity_type, entity_names in required_entities.items():
-                for entity_name in entity_names:
-                    # Generate entity ID using standard pattern
-                    entity_id = (
-                        f"{entity_type}.{entity_name}_{device_id.replace(':', '_')}"
-                    )
-                    entity_ids.append(entity_id)
-
-        except Exception as e:
-            _LOGGER.debug(
-                f"Could not get required entities for feature {feature_id}: {e}"
-            )
-
-    return entity_ids
-
-
 async def async_step_default_config(
     flow: Any, user_input: dict[str, Any] | None
 ) -> Any:
@@ -164,20 +113,6 @@ async def async_step_default_config(
         # Log the matrix state for debugging
         _LOGGER.debug(f"flow.temp matrix state: {flow._temp_matrix_state}")
         _LOGGER.debug(f"flow.old_matrix_state: {flow._old_matrix_state}")
-
-        # # Calculate entity changes using SimpleEntityManager
-        # entity_manager = SimpleEntityManager(flow.hass)
-
-        # # Calculate entities to create/remove based on matrix state changes
-        # old_matrix_state = flow._old_matrix_state
-        # new_matrix_state = temp_matrix_state
-
-        # (
-        #     flow._matrix_entities_to_create,
-        #     flow._matrix_entities_to_remove,
-        # ) = await entity_manager.calculate_entity_changes(
-        #     old_matrix_state, new_matrix_state
-        # )
 
         _LOGGER.info(f"📝 Entities to create: {len(flow._matrix_entities_to_create)}")
         _LOGGER.info(f"🗑️ Entities to remove: {len(flow._matrix_entities_to_remove)}")

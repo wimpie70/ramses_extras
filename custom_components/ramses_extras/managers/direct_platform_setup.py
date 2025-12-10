@@ -201,7 +201,7 @@ async def _setup_humidity_control_switches(
 
             # Get the entities that would be created by the
             #  humidity control switch platform
-            entities_to_create = entity_manager.get_entities_to_create()
+            entities_to_create = await entity_manager.get_entities_to_create()
 
             _LOGGER.info(
                 f"Direct platform setup: Found {len(entities_to_create)} "
