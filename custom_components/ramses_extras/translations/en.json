@@ -83,19 +83,19 @@
       "matrix_confirm": {
         "title": "Confirm Entity Changes",
         "description": "{info}"
+      },
+      "feature_humidity_control": {
+        "title": "Humidity Control Configuration",
+        "description": "Configure automatic humidity control and dehumidification settings"
+      },
+      "feature_hvac_fan_card": {
+        "title": "HVAC Fan Card Configuration",
+        "description": "Configure advanced fan card settings and controls"
+      },
+      "feature_hello_world_card": {
+        "title": "Hello World Card Configuration",
+        "description": "Configure the template feature for demonstration purposes"
       }
-    },
-    "feature_humidity_control": {
-      "title": "Humidity Control Configuration",
-      "description": "Configure automatic humidity control and dehumidification settings"
-    },
-    "feature_hvac_fan_card": {
-      "title": "HVAC Fan Card Configuration",
-      "description": "Configure advanced fan card settings and controls"
-    },
-    "feature_hello_world_card": {
-      "title": "Hello World Card Configuration",
-      "description": "Configure the template feature for demonstration purposes"
     }
   }
 }

@@ -13,6 +13,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
@@ -25,6 +26,10 @@ from .const import (
     register_feature_platform,
 )
 from .framework.helpers.paths import DEPLOYMENT_PATHS
+
+# Since this integration can only be set up from config entries,
+# use the config_entry_only_config_schema to avoid the warning
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _LOGGER = logging.getLogger(__name__)
 
