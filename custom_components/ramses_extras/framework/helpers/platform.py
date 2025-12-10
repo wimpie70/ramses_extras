@@ -10,12 +10,17 @@ Key components:
 - Configuration-driven entity generation
 """
 
+import importlib
 import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from custom_components.ramses_extras.framework.helpers.device.core import (
+    extract_device_id_as_string,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -472,3 +477,59 @@ class PlatformSetup:
             config_entry,
         )
         return []
+
+    @staticmethod
+    def get_filtered_devices_for_feature(
+        hass: "HomeAssistant",
+        feature_id: str,
+        config_entry: ConfigEntry,
+    ) -> list[str]:
+        """Get devices filtered by feature enablement.
+
+        Args:
+            hass: Home Assistant instance
+            feature_id: Feature identifier for filtering
+            config_entry: Configuration entry for matrix state
+
+        Returns:
+            List of device IDs enabled for the specified feature
+        """
+        # Get all devices
+        devices = hass.data.get("ramses_extras", {}).get("devices", [])
+
+        # Get entity manager for device filtering
+        entity_manager = hass.data.get("ramses_extras", {}).get("entity_manager")
+        if entity_manager is None:
+            # Create a temporary entity manager for device enablement checking
+            from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+                SimpleEntityManager,
+            )
+
+            entity_manager = SimpleEntityManager(hass)
+
+            # Restore matrix state from config entry if available
+            matrix_state = config_entry.data.get("device_feature_matrix", {})
+            if matrix_state:
+                entity_manager.restore_device_feature_matrix_state(matrix_state)
+                _LOGGER.debug(f"Restored matrix state with {len(matrix_state)} devices")
+
+        # Filter devices to only include those enabled for this feature
+        filtered_devices = []
+        for device_id in devices:
+            device_id_str = extract_device_id_as_string(device_id)
+            if entity_manager.is_device_enabled_for_feature(device_id_str, feature_id):
+                filtered_devices.append(device_id_str)
+            else:
+                _LOGGER.debug(
+                    f"Skipping disabled device for {feature_id} feature: "
+                    f"{device_id_str}"
+                )
+
+        _LOGGER.info(
+            "Filtered %d devices to %d enabled devices for feature %s",
+            len(devices),
+            len(filtered_devices),
+            feature_id,
+        )
+
+        return filtered_devices

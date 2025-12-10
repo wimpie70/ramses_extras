@@ -25,19 +25,51 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control binary sensor platform."""
-    from custom_components.ramses_extras.framework.helpers import (
-        platform,
+    from custom_components.ramses_extras.framework.helpers import platform
+
+    # Use the framework's device filtering helper
+    filtered_devices = platform.PlatformSetup.get_filtered_devices_for_feature(
+        hass, "humidity_control", config_entry
     )
 
-    await platform.PlatformSetup.async_setup_platform(
-        platform="binary_sensor",
-        hass=hass,
-        config_entry=config_entry,
-        async_add_entities=async_add_entities,
-        entity_configs={},  # Not used for binary sensors
-        entity_factory=create_humidity_control_binary_sensor,
-        store_entities_for_automation=True,  # Store for automation access
+    if not filtered_devices:
+        _LOGGER.info("No enabled devices for humidity control binary sensor platform")
+        return
+
+    entities = []
+    for device_id in filtered_devices:
+        # Create humidity control binary sensor entities for this device
+        try:
+            device_entities = await create_humidity_control_binary_sensor(
+                hass, device_id, config_entry
+            )
+            entities.extend(device_entities)
+            _LOGGER.info(
+                "Created %d humidity control binary sensor entities for device %s",
+                len(device_entities),
+                device_id,
+            )
+        except Exception as e:
+            _LOGGER.error(
+                "Failed to create humidity control binary sensor entities "
+                "for device %s: %e",
+                device_id,
+                e,
+            )
+
+    _LOGGER.info(
+        "Total humidity control binary sensor entities created: %d", len(entities)
     )
+    if entities:
+        async_add_entities(entities, True)
+        _LOGGER.info("Humidity control binary sensor entities added to Home Assistant")
+
+        # Store entities for automation access
+        from custom_components.ramses_extras.framework.helpers.platform import (
+            PlatformSetup,
+        )
+
+        PlatformSetup._store_entities_for_automation(hass, entities)
 
 
 async def create_humidity_control_binary_sensor(

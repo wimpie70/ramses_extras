@@ -6,6 +6,7 @@ all features, including device finding, validation, and type detection.
 
 from .core import (
     ensure_ramses_cc_loaded,
+    extract_device_id_as_string,
     find_ramses_device,
     get_all_device_ids,
     get_device_supported_entities,
@@ -15,6 +16,7 @@ from .core import (
 )
 
 __all__ = [
+    "extract_device_id_as_string",
     "find_ramses_device",
     "get_device_type",
     "validate_device_for_service",

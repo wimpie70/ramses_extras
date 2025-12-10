@@ -16,6 +16,33 @@ from homeassistant.exceptions import HomeAssistantError
 _LOGGER = logging.getLogger(__name__)
 
 
+def extract_device_id_as_string(device_id: str | Any) -> str:
+    """Extract device ID from device object or string with robust error handling.
+
+    Args:
+        device_id: Device object or device ID string
+
+    Returns:
+        Device ID as string
+    """
+    # Handle device ID strings directly
+    if isinstance(device_id, str):
+        return device_id
+
+    # Try multiple ways to get device ID from object (most specific first)
+    if hasattr(device_id, "device_id"):
+        return str(device_id.device_id)
+    if hasattr(device_id, "id"):
+        return str(device_id.id)
+    if hasattr(device_id, "_id"):
+        return str(device_id._id)
+    if hasattr(device_id, "name"):
+        return str(device_id.name)
+    if hasattr(device_id, "__str__"):
+        return str(device_id)
+    return f"device_{id(device_id)}"  # Fallback to object id
+
+
 def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     """Find a Ramses device by ID.
 

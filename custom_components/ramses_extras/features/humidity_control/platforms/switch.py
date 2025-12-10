@@ -26,18 +26,41 @@ async def async_setup_entry(
     async_add_entities: "AddEntitiesCallback",
 ) -> None:
     """Set up humidity control switch platform."""
-    from custom_components.ramses_extras.framework.helpers import (
-        platform,
+    from custom_components.ramses_extras.framework.helpers import platform
+
+    # Use the framework's device filtering helper
+    filtered_devices = platform.PlatformSetup.get_filtered_devices_for_feature(
+        hass, "humidity_control", config_entry
     )
 
-    await platform.PlatformSetup.async_setup_platform(
-        platform="switch",
-        hass=hass,
-        config_entry=config_entry,
-        async_add_entities=async_add_entities,
-        entity_configs={},  # Not used for switches
-        entity_factory=create_humidity_switch,
-    )
+    if not filtered_devices:
+        _LOGGER.info("No enabled devices for humidity control switch platform")
+        return
+
+    entities = []
+    for device_id in filtered_devices:
+        # Create humidity switch entities for this device
+        try:
+            device_entities = await create_humidity_switch(
+                hass, device_id, config_entry
+            )
+            entities.extend(device_entities)
+            _LOGGER.info(
+                "Created %d humidity switch entities for device %s",
+                len(device_entities),
+                device_id,
+            )
+        except Exception as e:
+            _LOGGER.error(
+                "Failed to create humidity switch entities for device %s: %e",
+                device_id,
+                e,
+            )
+
+    _LOGGER.info("Total humidity switch entities created: %d", len(entities))
+    if entities:
+        async_add_entities(entities, True)
+        _LOGGER.info("Humidity switch entities added to Home Assistant")
 
 
 async def create_humidity_switch(
