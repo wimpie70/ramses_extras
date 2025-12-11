@@ -153,6 +153,7 @@ class PlatformSetup:
             ["HomeAssistant", str, ConfigEntry | None], Awaitable[list[Entity]]
         ],
         store_entities_for_automation: bool = False,
+        feature_id: str | None = None,
     ) -> None:
         """Create and add entities for a platform.
 
@@ -169,6 +170,7 @@ class PlatformSetup:
             entity_factory: Factory function to create entities
             store_entities_for_automation: Whether to store entities in hass.data
                 for automation access (default: False)
+            feature_id: Feature identifier for device filtering (optional)
         """
         _LOGGER.info("Setting up %s platform with generic setup", platform)
 
@@ -181,6 +183,50 @@ class PlatformSetup:
         if not devices:
             _LOGGER.warning("No devices found for %s platform", platform)
             return
+
+        # Filter devices by feature enablement if feature_id is provided
+        if feature_id:
+            # Get entity manager to check device_feature_matrix
+            _LOGGER.debug(f"unfiltered devices: {devices}")
+            entity_manager = hass.data.get("ramses_extras", {}).get("entity_manager")
+            if entity_manager is None:
+                # Create a temporary entity manager for device enablement checking
+                from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+                    SimpleEntityManager,
+                )
+
+                entity_manager = SimpleEntityManager(hass)
+
+                # Restore matrix state from config entry if available
+                matrix_state = config_entry.data.get("device_feature_matrix", {})
+                if matrix_state:
+                    entity_manager.restore_device_feature_matrix_state(matrix_state)
+                    _LOGGER.debug(
+                        f"Restored matrix state with {len(matrix_state)} devices"
+                    )
+
+            # Filter devices to only include those enabled for this feature
+            filtered_devices = []
+            from custom_components.ramses_extras.framework.helpers.device.core import (
+                extract_device_id_as_string,
+            )
+
+            for device_id in devices:
+                device_id_str = extract_device_id_as_string(device_id)
+                if entity_manager.is_device_enabled_for_feature(
+                    device_id_str, feature_id
+                ):
+                    filtered_devices.append(device_id_str)
+                else:
+                    _LOGGER.debug(
+                        f"Skipping disabled device for {feature_id} feature: "
+                        f"{device_id_str}"
+                    )
+
+            devices = filtered_devices
+            _LOGGER.debug(
+                "Filtered to %d enabled devices for feature %s", devices, feature_id
+            )
 
         entities = []
         for device_id in devices:

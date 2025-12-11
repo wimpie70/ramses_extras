@@ -37,6 +37,7 @@ async def async_setup_entry(
         async_add_entities=async_add_entities,
         entity_configs=HELLO_WORLD_SWITCH_CONFIGS,
         entity_factory=create_hello_world_switch,
+        feature_id="hello_world_card",
     )
 
 

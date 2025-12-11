@@ -37,6 +37,7 @@ async def async_setup_entry(
         async_add_entities=async_add_entities,
         entity_configs=HELLO_WORLD_BINARY_SENSOR_CONFIGS,
         entity_factory=create_hello_world_binary_sensor,
+        feature_id="hello_world_card",
     )
 
 
