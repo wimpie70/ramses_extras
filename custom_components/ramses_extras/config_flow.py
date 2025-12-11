@@ -931,6 +931,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         step therefore only shows an informational message and no form
         fields, so the user can see that the card is enabled without
         having to select devices.
+        We could have created a config_flow.py file in the features folder.
         """
         feature_id = "hvac_fan_card"
         feature_config = AVAILABLE_FEATURES.get(feature_id, {})
