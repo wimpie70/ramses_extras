@@ -30,3 +30,8 @@
 
 # used for development (Home Assistant validation)
     homeassistant[hassfest]                      # for local hassfest validation
+
+# Python 3.13 compatibility constraints
+# Fixes aiodns/pycares compatibility issue in Python 3.13
+aiodns==3.5.0
+pycares==4.11.0
