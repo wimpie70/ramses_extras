@@ -264,7 +264,9 @@ async def ws_set_fan_parameter(
     try:
         # For now, use direct service call since parameter setting
         #  is different from commands
-        # TODO: Consider if parameter setting should also use the command framework
+        # Note: Parameter setting could benefit from command framework queuing,
+        #  but would require extending RamsesCommands to handle parameter commands
+        #  in addition to device commands. Current approach is sufficient for now.
         await hass.services.async_call(
             "ramses_cc",
             "set_fan_param",

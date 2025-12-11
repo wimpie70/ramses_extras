@@ -5,7 +5,7 @@ by features to provide generic configuration management functionality.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (

@@ -12,13 +12,6 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_feature_platform_setups(platform: str) -> list[Any]:
-    """Get registered feature platform setup functions."""
-    from .const import get_feature_platform_setups
-
-    return get_feature_platform_setups(platform)
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,

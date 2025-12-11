@@ -213,10 +213,6 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> config_entries.FlowResult:
         """Handle the main configuration menu with ramses_cc style
         link/button navigation."""
-        # DEBUG: Log all available features
-        _LOGGER.info(
-            f"DEBUG: All available features: {list(AVAILABLE_FEATURES.keys())}"
-        )
 
         # Build main menu options with ramses_cc style (links/buttons, not dropdowns)
         # Menu options must be a list of step IDs; labels are provided via translations
@@ -264,14 +260,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 #     f"{feature_config.get('name', feature_id)}"
                 # )
             else:
-                _LOGGER.info(
-                    f"DEBUG: Feature {feature_id} does not have "
+                _LOGGER.debug(
+                    f"Feature {feature_id} does not have "
                     f"has_device_config=True, skipping"
                 )
 
-        # DEBUG: Log final menu options
-        _LOGGER.info(f"DEBUG: Final menu items: {menu_options}")
-        _LOGGER.info(f"DEBUG: Dynamic features found: {dynamic_features_found}")
+        _LOGGER.debug(f"Dynamic features found: {dynamic_features_found}")
 
         # Get current configuration summary
         enabled_count = sum(

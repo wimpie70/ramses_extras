@@ -674,8 +674,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             else:
                 _LOGGER.warning(
                     f"Failed to set fan speed to high for device {device_id}"
-                    # TODO: here we should set the switch back to off
                 )
+                # Ensure switch is off if fan command failed
+                await self.services.async_deactivate_dehumidification(device_id)
+                self._dehumidify_active = False
 
             self._active_cycles += 1
 

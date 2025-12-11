@@ -12,7 +12,7 @@ Key components:
 
 import importlib
 import logging
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import Entity
@@ -262,7 +262,7 @@ class PlatformSetup:
         device_id: str,
         entity_configs: dict[str, Any],
         entity_factory: Callable[["HomeAssistant", str, dict[str, Any]], Entity],
-        hass: Optional["HomeAssistant"] = None,
+        hass: "HomeAssistant | None" = None,
     ) -> list[Entity]:
         """Create entities for a specific device.
 
