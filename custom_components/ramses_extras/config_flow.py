@@ -1272,27 +1272,52 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     helper.restore_matrix_state(temp_matrix_state)
                     _LOGGER.info("Updated helper with new matrix state")
 
-                    # Create missing entities
+                    # Store information about entities to be created for platform setup
+                    entities_created = []
+
+                    # Create missing entities FIRST
                     for entity_id in entities_to_create:
                         try:
                             await entity_manager.create_entity(entity_id)
+                            entities_created.append(entity_id)
                             _LOGGER.info(f"Created entity: {entity_id}")
                         except Exception as e:
                             _LOGGER.warning(f"Failed to create entity {entity_id}: {e}")
 
-                    # Reload the config entry to trigger platform setup for new entities
-                    await self.hass.config_entries.async_reload(
-                        self._config_entry.entry_id
-                    )
-                    _LOGGER.info("Reloaded config entry to trigger platform setup")
-
-                    # Remove extra entities
+                    # Remove extra entities SECOND (before platform reload)
                     for entity_id in entities_to_remove:
                         try:
                             await entity_manager.remove_entity(entity_id)
                             _LOGGER.info(f"Removed entity: {entity_id}")
                         except Exception as e:
                             _LOGGER.warning(f"Failed to remove entity {entity_id}: {e}")
+
+                    # Store the created entities in hass.data for platform setup to find
+                    if entities_created:
+                        if "ramses_extras" not in self.hass.data:
+                            self.hass.data["ramses_extras"] = {}
+                        if (
+                            "pending_entity_creation"
+                            not in self.hass.data["ramses_extras"]
+                        ):
+                            self.hass.data["ramses_extras"][
+                                "pending_entity_creation"
+                            ] = []
+                        self.hass.data["ramses_extras"][
+                            "pending_entity_creation"
+                        ].extend(entities_created)
+                        _LOGGER.info(
+                            f"Stored {len(entities_created)} pending entities "
+                            f"for platform setup"
+                        )
+
+                    # Reload the config entry to trigger platform setup for new entities
+                    # This must happen AFTER entity creation so platforms
+                    #  can register them properly
+                    await self.hass.config_entries.async_reload(
+                        self._config_entry.entry_id
+                    )
+                    _LOGGER.info("Reloaded config entry to trigger platform setup")
 
                 # Clear temporary data
                 self._matrix_entities_to_create: list = []
