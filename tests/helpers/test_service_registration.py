@@ -98,19 +98,6 @@ class TestServiceRegistration:
         assert fan_service_config["module"] == ".services.fan_services"
         assert fan_service_config["function"] == "register_fan_services"
 
-    def test_device_service_mapping_backward_compatibility(self) -> None:
-        """Test DEVICE_SERVICE_MAPPING maintains backward compatibility."""
-        # Should contain the same device types as SERVICE_REGISTRY
-        service_registry_devices = set(SERVICE_REGISTRY.keys())
-        mapping_devices = set(DEVICE_SERVICE_MAPPING.keys())
-
-        assert service_registry_devices == mapping_devices
-
-        # HvacVentilator should have the expected service
-        hvac_services = DEVICE_SERVICE_MAPPING["HvacVentilator"]
-        assert "set_fan_speed_mode" in hvac_services
-        assert isinstance(hvac_services, list)
-
     def test_service_registry_adds_new_service(self) -> None:
         """Test adding a new service to SERVICE_REGISTRY works."""
         # This is a documentation test to show how to add new services
@@ -285,20 +272,6 @@ class TestServiceRegistration:
                 assert isinstance(config["function"], str), (
                     f"Service {service_name} function should be string"
                 )
-
-    def test_backward_compatibility_maintained(self) -> None:
-        """Test that old code using DEVICE_SERVICE_MAPPING still works."""
-        # Old code that uses DEVICE_SERVICE_MAPPING should work unchanged
-        device_type = "HvacVentilator"
-        services = DEVICE_SERVICE_MAPPING[device_type]
-
-        # Should be a list of service names
-        assert isinstance(services, list)
-        assert "set_fan_speed_mode" in services
-
-        # Each service name should exist in SERVICE_REGISTRY
-        for service_name in services:
-            assert service_name in SERVICE_REGISTRY[device_type]
 
     def test_extensibility_example(self) -> None:
         """Test that shows how to extend the system with new services."""

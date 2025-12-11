@@ -608,8 +608,6 @@ class EntityHelpers:
 
         except Exception as e:
             _LOGGER.debug(f"Could not get entity IDs from registry: {e}")
-            # Fallback: return empty list if registry is not available
-            # This maintains backward compatibility while avoiding hardcoded values
 
         return entity_ids
 
