@@ -165,6 +165,25 @@ HUMIDITY_CONTROL_CONST = {
     },
 }
 
+# Default configuration template for humidity control feature
+# This provides the baseline configuration that gets merged with user settings
+HUMIDITY_CONTROL_DEFAULTS = {
+    # Core settings
+    "enabled": True,
+    "automation_enabled": False,  # Only enable when user explicitly toggles
+    "default_min_humidity": 40.0,
+    "default_max_humidity": 60.0,
+    # Essential thresholds
+    "activation_threshold": 1.0,
+    "deactivation_threshold": -1.0,
+    # Sensor configuration
+    "indoor_sensor_entity": None,
+    "outdoor_sensor_entity": None,
+    # Basic safety
+    "max_runtime_minutes": 120,
+    "cooldown_period_minutes": 15,
+}
+
 
 def load_feature() -> None:
     """Load humidity control feature into the registry."""
@@ -190,6 +209,7 @@ __all__ = [
     "HUMIDITY_DEVICE_ENTITY_MAPPING",
     "HUMIDITY_CONTROL_WEBSOCKET_COMMANDS",
     "HUMIDITY_CONTROL_CONST",
+    "HUMIDITY_CONTROL_DEFAULTS",
     "ORCON_DEVICE_MODELS",
     "ZEHNDER_DEVICE_MODELS",
     "ENHANCED_HUMIDITY_SWITCH_CONFIGS",

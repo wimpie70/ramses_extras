@@ -14,10 +14,11 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras.framework.helpers.config import (
     ConfigSchema,
-    ConfigTemplates,
     ConfigValidator,
     ExtrasConfigManager,
 )
+
+from .const import HUMIDITY_CONTROL_DEFAULTS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,8 +37,8 @@ class HumidityConfig(ExtrasConfigManager):
             hass: Home Assistant instance
             config_entry: Configuration entry
         """
-        # Use the framework's template for humidity control
-        default_config = ConfigTemplates.get_humidity_control_template()
+        # Use the feature-specific template for humidity control
+        default_config = HUMIDITY_CONTROL_DEFAULTS
 
         super().__init__(
             hass=hass,
@@ -102,7 +103,7 @@ class HumidityConfig(ExtrasConfigManager):
                     "type": "boolean",
                     "title": "Enable Automation",
                     "description": "Enable automatic humidity control",
-                    "default": True,
+                    "default": False,
                 },
                 "default_min_humidity": {
                     "type": "numeric",
@@ -149,22 +150,8 @@ class HumidityConfig(ExtrasConfigManager):
         return {
             "min_humidity": self.get("default_min_humidity", 40.0),
             "max_humidity": self.get("default_max_humidity", 60.0),
-            "offset": self.get("default_offset", 0.4),
             "activation": self.get("activation_threshold", 1.0),
             "deactivation": self.get("deactivation_threshold", -1.0),
-            "high_confidence": self.get("high_confidence_threshold", 2.0),
-        }
-
-    def get_performance_settings(self) -> dict[str, Any]:
-        """Get performance-related settings.
-
-        Returns:
-            Dictionary of performance settings
-        """
-        return {
-            "max_decision_history": self.get("max_decision_history", 100),
-            "enable_logging": self.get("enable_performance_logging", True),
-            "entity_update_interval": self.get("entity_update_interval", 5),
         }
 
     def get_safety_settings(self) -> dict[str, Any]:
@@ -176,7 +163,6 @@ class HumidityConfig(ExtrasConfigManager):
         return {
             "max_runtime_minutes": self.get("max_runtime_minutes", 120),
             "cooldown_period_minutes": self.get("cooldown_period_minutes", 15),
-            "emergency_stop_enabled": self.get("emergency_stop_enabled", True),
         }
 
 
