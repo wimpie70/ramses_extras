@@ -91,8 +91,6 @@ HELLO_WORLD_CARD_CONFIGS = [
 # Default configuration
 DEFAULT_CONFIG = {
     "enabled": True,
-    "default_name": "Hello World",
-    "icon": "mdi:lightbulb",
     "auto_discovery": True,
 }
 

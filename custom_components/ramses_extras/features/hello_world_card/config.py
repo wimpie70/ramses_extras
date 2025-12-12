@@ -3,15 +3,17 @@
 #
 """Configuration management for Hello World Switch Card feature.
 
-This module provides configuration management for the Hello World feature,
-including schema definitions, validation, and configuration handling.
+This module provides configuration management for the Hello World feature.
+
+Since entities are defined in const.py, this config class focuses solely on
+runtime configuration management without overriding entity definitions.
 
 :platform: Home Assistant
 :feature: Hello World Configuration
-:components: Schema Validation, Configuration Management, Options Handling
-:formats: JSON, YAML, UI Configuration
+:components: Configuration Management, Validation
 """
 
+import logging
 from typing import Any
 
 import voluptuous as vol
@@ -19,163 +21,136 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
+from custom_components.ramses_extras.framework.helpers.config import ExtrasConfigManager
+
 from .const import DEFAULT_CONFIG, DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 # Configuration schema for the feature
 FEATURE_CONFIG_SCHEMA = vol.Schema(
     {
-        vol.Optional("enabled", default=True): cv.boolean,
-        vol.Optional("default_name", default="Hello World"): cv.string,
-        vol.Optional("icon", default="mdi:lightbulb"): cv.string,
-        vol.Optional("auto_discovery", default=True): cv.boolean,
+        vol.Optional("enabled", default=DEFAULT_CONFIG["enabled"]): cv.boolean,
+        vol.Optional(
+            "auto_discovery", default=DEFAULT_CONFIG["auto_discovery"]
+        ): cv.boolean,
     }
 )
 
 # Options schema for the config entry
 OPTIONS_SCHEMA = vol.Schema(
     {
-        vol.Optional("enabled", default=True): cv.boolean,
-        vol.Optional("default_name", default="Hello World"): cv.string,
-        vol.Optional("icon", default="mdi:lightbulb"): cv.string,
-        vol.Optional("auto_discovery", default=True): cv.boolean,
+        vol.Optional("enabled", default=DEFAULT_CONFIG["enabled"]): cv.boolean,
+        vol.Optional(
+            "auto_discovery", default=DEFAULT_CONFIG["auto_discovery"]
+        ): cv.boolean,
     }
 )
 
 
-class HelloWorldConfig:
+class HelloWorldConfig(ExtrasConfigManager):
     """Manages configuration for Hello World feature.
 
-    This class provides centralized configuration management for the Hello World
-    feature, including loading, validating, and providing access to feature
-    configuration settings.
+    This class extends ExtrasConfigManager to provide Hello World specific
+    configuration management. Unlike some other features, this config class
+    does NOT override entity definitions - those are managed entirely in const.py.
 
-    The configuration includes settings such as:
+    The configuration includes runtime settings such as:
     - Feature enable/disable status
-    - Default entity names and icons
     - Auto discovery settings
 
-    The class also provides methods for validating configuration data and
-    generating entity-specific configurations.
+    Entity definitions (icons, templates, etc.) are managed in const.py and
+    should not be overridden here.
 
     Attributes:
         hass (HomeAssistant): Home Assistant instance
         config_entry (ConfigEntry): Configuration entry for the integration
-        _feature_config (dict): Loaded and merged feature configuration
     """
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-        """Initialize configuration manager."""
-        self.hass = hass
-        self.config_entry = config_entry
-        self._feature_config = self._load_feature_config()
+        """Initialize configuration manager.
 
-    def _load_feature_config(self) -> dict[str, Any]:
-        """Load feature configuration from config entry options."""
-        options = self.config_entry.options if self.config_entry.options else {}
-        return {**DEFAULT_CONFIG, **options}
+        :param hass: Home Assistant instance
+        :type hass: HomeAssistant
+        :param config_entry: Configuration entry for the integration
+        :type config_entry: ConfigEntry
+        """
+        super().__init__(
+            hass=hass,
+            config_entry=config_entry,
+            feature_id=DOMAIN,
+            default_config=DEFAULT_CONFIG,
+        )
 
-    def get_feature_config(self) -> dict[str, Any]:
-        """Get feature configuration."""
-        return self._feature_config.copy()
+        _LOGGER.info(f"Initialized {DOMAIN} configuration manager")
 
-    def is_enabled(self) -> bool:
-        """Check if feature is enabled."""
-        return bool(self._feature_config.get("enabled", True))
+    def validate_config(self) -> bool:
+        """Validate Hello World feature configuration.
 
-    def get_default_name(self) -> str:
-        """Get default name for entities."""
-        return str(self._feature_config.get("default_name", "Hello World"))
+        :return: True if configuration is valid
+        :rtype: bool
+        """
+        try:
+            # Validate against schema
+            FEATURE_CONFIG_SCHEMA(self.get_all())
 
-    def get_icon(self) -> str:
-        """Get default icon for entities."""
-        return str(self._feature_config.get("icon", "mdi:lightbulb"))
+            # Call parent validation for basic checks
+            return super().validate_config()
 
-    def is_auto_discovery_enabled(self) -> bool:
-        """Check if auto discovery is enabled."""
-        return bool(self._feature_config.get("auto_discovery", True))
+        except vol.Invalid as err:
+            _LOGGER.error(f"Hello World configuration validation error: {err}")
+            return False
+        except Exception as e:
+            _LOGGER.error(f"Hello World configuration validation failed: {e}")
+            return False
 
-    def update_config(self, new_config: dict[str, Any]) -> None:
-        """Update feature configuration."""
-        # Validate the new configuration
-        validated_config = FEATURE_CONFIG_SCHEMA(new_config)
-        self._feature_config.update(validated_config)
+    def get_config_schema(self) -> dict[str, Any]:
+        """Get Hello World configuration schema for UI.
 
-    @staticmethod
-    def get_config_flow_schema() -> dict[str, Any]:
-        """Get configuration flow schema for UI setup."""
+        Note: This schema is for runtime configuration only. Entity definitions
+        (icons, templates, etc.) are managed in const.py and not exposed here.
+
+        :return: Configuration schema dictionary
+        :rtype: dict[str, Any]
+        """
         return {
             "type": "object",
             "properties": {
                 "enabled": {
                     "type": "boolean",
                     "title": "Enable Hello World Feature",
-                    "default": True,
-                },
-                "default_name": {
-                    "type": "string",
-                    "title": "Default Entity Name",
-                    "default": "Hello World",
-                },
-                "icon": {
-                    "type": "string",
-                    "title": "Default Icon",
-                    "default": "mdi:lightbulb",
+                    "description": "Enable or disable the Hello World feature",
+                    "default": DEFAULT_CONFIG["enabled"],
                 },
                 "auto_discovery": {
                     "type": "boolean",
                     "title": "Enable Auto Discovery",
-                    "default": True,
+                    "description": "Enable automatic discovery of Hello World entities",
+                    "default": DEFAULT_CONFIG["auto_discovery"],
                 },
             },
             "required": ["enabled"],
         }
 
-    @staticmethod
-    def validate_config(config: dict[str, Any]) -> tuple[bool, str]:
-        """Validate feature configuration.
+    def is_auto_discovery_enabled(self) -> bool:
+        """Check if auto discovery is enabled in configuration.
 
-        Args:
-            config: Configuration dictionary to validate
-
-        Returns:
-            Tuple of (is_valid, error_message)
+        :return: True if auto discovery is enabled, False otherwise
+        :rtype: bool
         """
-        try:
-            # Validate against schema
-            FEATURE_CONFIG_SCHEMA(config)
-            return True, ""
-        except vol.Invalid as err:
-            return False, f"Invalid configuration: {err}"
+        return bool(self.get("auto_discovery", DEFAULT_CONFIG["auto_discovery"]))
 
-    def get_entity_config(self, entity_type: str, entity_key: str) -> dict[str, Any]:
-        """Get configuration for a specific entity.
 
-        Args:
-            entity_type: Type of entity (switch, binary_sensor, etc.)
-            entity_key: Key identifying the specific entity
-
-        Returns:
-            Entity configuration dictionary
-        """
-        base_config = self._feature_config.copy()
-
-        # Add entity-specific defaults
-        if entity_type == "switch":
-            base_config.update(
-                {
-                    "icon": self.get_icon(),
-                    "name_prefix": self.get_default_name(),
-                }
-            )
-        elif entity_type == "binary_sensor":
-            base_config.update(
-                {
-                    "device_class": "connectivity",
-                    "name_prefix": f"{self.get_default_name()} Status",
-                }
-            )
-
-        return base_config
+# Inherited methods from ExtrasConfigManager (most commonly used):
+# - async_load() - Load configuration from config entry and defaults
+# - async_save() - Save current configuration
+# - get(key, default) - Get configuration value
+# - set(key, value) - Set configuration value
+# - get_all() - Get all configuration values
+# - update(updates) - Update multiple configuration values
+# - is_enabled() - Check if feature is enabled
+# - reset_to_defaults() - Reset configuration to default values
+# - validate_config() - Validate current configuration
 
 
 def create_hello_world_config(
@@ -183,12 +158,12 @@ def create_hello_world_config(
 ) -> HelloWorldConfig:
     """Factory function to create Hello World configuration manager.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-
-    Returns:
-        Hello World configuration manager instance
+    :param hass: Home Assistant instance
+    :type hass: HomeAssistant
+    :param config_entry: Configuration entry
+    :type config_entry: ConfigEntry
+    :return: Hello World configuration manager instance
+    :rtype: HelloWorldConfig
     """
     return HelloWorldConfig(hass, config_entry)
 
