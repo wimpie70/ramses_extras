@@ -1,7 +1,16 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more information
 #
-"""Hello World Card automation - demonstrates automation-driven entity control."""
+"""Hello World Card automation - demonstrates automation-driven entity control.
+
+This module provides the automation manager for the Hello World feature, showcasing
+how to implement automation-driven entity control patterns in Ramses Extras.
+
+:platform: Home Assistant
+:feature: Hello World Automation
+:pattern: Event-Driven Architecture
+:components: Automation Manager, State Monitoring, Entity Coordination
+"""
 
 import logging
 from typing import Any, cast
@@ -42,7 +51,19 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         _LOGGER.info("Hello World Card automation initialized")
 
     def _is_feature_enabled(self) -> bool:
-        """Check if hello_world_card feature is enabled in config."""
+        """Check if hello_world_card feature is enabled in config.
+
+        This method checks the configuration entry to determine if the Hello World
+        feature is enabled. It looks for the feature in the 'enabled_features'
+        dictionary within the config entry data.
+
+        Returns:
+            bool: True if the feature is enabled, False otherwise.
+
+        Note:
+            If there are any errors accessing the configuration data, the method
+            returns False as a safe default and logs a warning.
+        """
         try:
             enabled_features = self.config_entry.data.get("enabled_features", {})
             result: bool = enabled_features.get("hello_world_card", False)

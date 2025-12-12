@@ -1,7 +1,16 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more information
 #
-"""WebSocket command handlers for Hello World Switch Card feature."""
+"""WebSocket command handlers for Hello World Switch Card feature.
+
+This module provides WebSocket command handlers for the Hello World feature,
+including toggle switch and get switch state commands for frontend integration.
+
+:platform: Home Assistant
+:feature: Hello World WebSocket Commands
+:components: WebSocket Handlers, Frontend Integration, Real-time Communication
+:command_types: Toggle Switch, Get State, Error Handling
+"""
 
 import logging
 from typing import TYPE_CHECKING, Any
@@ -24,11 +33,22 @@ _LOGGER = logging.getLogger(__name__)
 def _get_entities_manager(hass: HomeAssistant) -> Any:
     """Get the shared entities manager from the Hello World feature.
 
+    This function retrieves the SimpleEntityManager instance that is shared across
+    the Hello World feature. The manager is used for entity coordination and state
+    management.
+
+    The function first tries to retrieve the manager from the Home Assistant data
+    registry. If not found, it creates a new instance as a fallback.
+
     Args:
         hass: Home Assistant instance
 
     Returns:
         SimpleEntityManager instance or None if not available
+
+    Note:
+        This is an internal helper function used by WebSocket command handlers
+        to access the shared entity management system.
     """
     try:
         # Try to get the global registry from Home Assistant data

@@ -1,7 +1,16 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more information
 #
-"""Service definitions and handlers for Hello World Switch Card feature."""
+"""Service definitions and handlers for Hello World Switch Card feature.
+
+This module provides service definitions, handlers, and validation for the Hello World
+feature, including toggle switch, get switch state, and bulk toggle services.
+
+:platform: Home Assistant
+:feature: Hello World Services
+:components: Service Registration, Service Handlers, Validation
+:service_types: Toggle Switch, Get State, Bulk Operations
+"""
 
 import logging
 from typing import TYPE_CHECKING, Any
@@ -40,7 +49,22 @@ SERVICE_SCHEMA_BULK_TOGGLE = {
 
 
 async def async_setup_services(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-    """Set up Hello World services."""
+    """Set up Hello World services.
+
+    This function registers all Hello World feature services with Home Assistant.
+    It creates service handlers for toggle switch, get switch state, and bulk toggle
+    operations.
+
+    Services are only registered if they don't already exist to avoid conflicts.
+
+    Args:
+        hass: Home Assistant instance
+        config_entry: Configuration entry for the integration
+
+    Note:
+        This function should be called during feature initialization to make
+        the services available to users and automations.
+    """
     _LOGGER.info("Setting up Hello World services")
 
     # Register toggle switch service

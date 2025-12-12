@@ -1,7 +1,16 @@
 # Part of the Ramses Extra integration
-# See https://github.com/wimpie70/ramses_extras for more information
+# See https://github.com/wimpie70/ramses_extras for more debugrmation
 #
-"""Hello World Switch Card feature factory."""
+"""Hello World Switch Card feature factory.
+
+This module provides the main factory function and manager for the
+ Hello World Switch Card feature,
+which demonstrates the complete Ramses Extras architecture pattern.
+
+:platform: Home Assistant
+:feature: Hello World Switch Card
+:architecture: Ramses Extras Framework
+"""
 
 from typing import TYPE_CHECKING, Any
 
@@ -36,37 +45,50 @@ class HelloWorldCardManager:
         self._registered_cards: dict[str, dict[str, Any]] = {}
 
     async def async_register_cards(self) -> dict[str, dict[str, Any]]:
-        """Register available Hello World cards."""
+        """Register available Hello World cards.
+
+        This method registers all Hello World cards defined in the configuration.
+        It checks for card files, validates their existence, and creates registration
+        debugrmation for each card.
+
+        Returns:
+            Dictionary of registered card debugrmation,
+            where keys are card IDs and values
+            are card registration details.
+
+        Raises:
+            Exception: If there are errors during card registration.
+        """
         try:
-            _LOGGER.info("🎴 Starting Hello World card registration")
+            _LOGGER.debug("🎴 Starting Hello World card registration")
 
             # Get card configurations from const.py
             from .const import HELLO_WORLD_CARD_CONFIGS
 
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"📋 Card configurations found: {len(HELLO_WORLD_CARD_CONFIGS)}"
             )
-            _LOGGER.info(f"📄 Card configs: {HELLO_WORLD_CARD_CONFIGS}")
+            _LOGGER.debug(f"📄 Card configs: {HELLO_WORLD_CARD_CONFIGS}")
 
             # Register each card
             for card_config in HELLO_WORLD_CARD_CONFIGS:
-                _LOGGER.info(f"🔄 Registering card config: {card_config}")
-                card_info = await self._register_single_card(card_config)
+                _LOGGER.debug(f"🔄 Registering card config: {card_config}")
+                card_debug = await self._register_single_card(card_config)
 
-                if card_info:
+                if card_debug:
                     card_id_str = str(
                         card_config["card_id"]
                     )  # Explicit string conversion
-                    self._registered_cards[card_id_str] = card_info
-                    _LOGGER.info(
+                    self._registered_cards[card_id_str] = card_debug
+                    _LOGGER.debug(
                         f"✅ Hello World Card registered successfully: "
-                        f"{card_info['name']}"
+                        f"{card_debug['name']}"
                     )
-                    _LOGGER.info(f"📦 Card info: {card_info}")
+                    _LOGGER.debug(f"📦 Card debug: {card_debug}")
                 else:
                     _LOGGER.warning(f"⚠️ Failed to register card: {card_config}")
 
-            _LOGGER.info(f"🎯 Final registered cards: {self._registered_cards}")
+            _LOGGER.debug(f"🎯 Final registered cards: {self._registered_cards}")
             return self._registered_cards
 
         except Exception as e:
@@ -85,15 +107,15 @@ class HelloWorldCardManager:
             card_config: Card configuration from const.py
 
         Returns:
-            Card registration information or None if failed
+            Card registration debugrmation or None if failed
         """
         try:
             card_id = card_config["card_id"]
             card_name = card_config["card_name"]
             card_location = card_config.get("location", card_id)
 
-            _LOGGER.info(f"🔍 Registering single card: {card_id} ({card_name})")
-            _LOGGER.info(f"📍 Card location: {card_location}")
+            _LOGGER.debug(f"🔍 Registering single card: {card_id} ({card_name})")
+            _LOGGER.debug(f"📍 Card location: {card_location}")
 
             # Check if card files exist
             from pathlib import Path
@@ -107,10 +129,10 @@ class HelloWorldCardManager:
             )
             card_js_path = card_path / f"{card_id}.js"
 
-            _LOGGER.info(f"📁 Card directory path: {card_path}")
-            _LOGGER.info(f"📄 Card JS path: {card_js_path}")
-            _LOGGER.info(f"📂 Card directory exists: {card_path.exists()}")
-            _LOGGER.info(f"📄 Card JS file exists: {card_js_path.exists()}")
+            _LOGGER.debug(f"📁 Card directory path: {card_path}")
+            _LOGGER.debug(f"📄 Card JS path: {card_js_path}")
+            _LOGGER.debug(f"📂 Card directory exists: {card_path.exists()}")
+            _LOGGER.debug(f"📄 Card JS file exists: {card_js_path.exists()}")
 
             if not card_path.exists():
                 _LOGGER.error(f"❌ Card directory not found at {card_path}")
@@ -120,8 +142,8 @@ class HelloWorldCardManager:
                 _LOGGER.error(f"❌ Card JavaScript file not found at {card_js_path}")
                 return None
 
-            # Create card registration info
-            registration_info = {
+            # Create card registration debug
+            registration_debug = {
                 "type": card_id,
                 "name": card_name,
                 "description": card_config.get("description", ""),
@@ -135,9 +157,9 @@ class HelloWorldCardManager:
                 "feature": "hello_world_card",
             }
 
-            _LOGGER.info(f"✅ Card registration info created for {card_id}")
-            _LOGGER.info(f"📦 Registration info: {registration_info}")
-            return registration_info
+            _LOGGER.debug(f"✅ Card registration debug created for {card_id}")
+            _LOGGER.debug(f"📦 Registration debug: {registration_debug}")
+            return registration_debug
 
         except Exception as e:
             _LOGGER.error(
@@ -150,15 +172,23 @@ class HelloWorldCardManager:
             return None
 
     async def async_cleanup(self) -> None:
-        """Cleanup card resources."""
-        _LOGGER.info("Cleaning up Hello World card manager")
+        """Cleanup card resources.
+
+        Clears all registered cards and performs cleanup operations.
+        This method should be called when the feature is being unloaded.
+        """
+        _LOGGER.debug("Cleaning up Hello World card manager")
         self._registered_cards.clear()
 
     def get_registered_cards(self) -> dict[str, dict[str, Any]]:
         """Get all registered cards.
 
+        Returns a copy of the registered cards dictionary to prevent external
+         modifications to the internal state.
+
         Returns:
-            Dictionary of registered card information
+            Dictionary of registered card debugrmation,
+             where keys are card IDs and values are card registration details.
         """
         return self._registered_cards.copy()
 
@@ -189,7 +219,7 @@ def create_hello_world_card_feature(
     hass.data["ramses_extras"]["hello_world_entities"] = entities_manager
     hass.data["ramses_extras"]["hello_world_automation"] = automation_manager
 
-    _LOGGER.info(
+    _LOGGER.debug(
         "✅ Hello World feature created with framework entities manager and automation"
     )
 

@@ -1,7 +1,17 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more debugrmation
 #
-"""Switch platform for Hello World Switch Card feature."""
+"""Switch platform for Hello World Switch Card feature.
+
+This module provides the switch platform implementation for the Hello World feature,
+demonstrating basic switch entities that can be controlled and monitored.
+
+:platform: Home Assistant
+:feature: Hello World Switch Platform
+:components: Switch Entity, State Management, Entity Coordination
+:entity_type: Switch
+:capabilities: ON/OFF Control, State Monitoring
+"""
 
 import logging
 from typing import TYPE_CHECKING, Any
@@ -71,7 +81,21 @@ async def create_hello_world_switch(
 
 
 class HelloWorldSwitch(ExtrasSwitchEntity):
-    """Hello World Switch entity for demonstration purposes."""
+    """Hello World Switch entity for demonstration purposes.
+
+    This switch entity demonstrates the basic functionality of the Ramses Extras
+    framework. It provides a simple ON/OFF switch that can be controlled and
+    monitored through Home Assistant.
+
+    The switch integrates with the SimpleEntityManager for automatic state
+    coordination, eliminating the need for manual entity synchronization.
+
+    Attributes:
+        _is_on (bool): Current state of the switch (True for ON, False for OFF).
+
+    Inherits from:
+        ExtrasSwitchEntity: Base class providing common switch functionality.
+    """
 
     def __init__(
         self,
@@ -96,7 +120,14 @@ class HelloWorldSwitch(ExtrasSwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return true if Hello World switch is active."""
+        """Return true if Hello World switch is active.
+
+        Returns the current state of the switch. The state is managed locally and
+        automatically coordinated with other entities through the SimpleEntityManager.
+
+        Returns:
+            bool: True if the switch is ON, False if the switch is OFF.
+        """
         # Use local state - SimpleEntityManager handles coordination automatically
         return self._is_on
 

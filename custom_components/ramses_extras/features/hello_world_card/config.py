@@ -1,7 +1,16 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more information
 #
-"""Configuration management for Hello World Switch Card feature."""
+"""Configuration management for Hello World Switch Card feature.
+
+This module provides configuration management for the Hello World feature,
+including schema definitions, validation, and configuration handling.
+
+:platform: Home Assistant
+:feature: Hello World Configuration
+:components: Schema Validation, Configuration Management, Options Handling
+:formats: JSON, YAML, UI Configuration
+"""
 
 from typing import Any
 
@@ -34,7 +43,25 @@ OPTIONS_SCHEMA = vol.Schema(
 
 
 class HelloWorldConfig:
-    """Manages configuration for Hello World feature."""
+    """Manages configuration for Hello World feature.
+
+    This class provides centralized configuration management for the Hello World
+    feature, including loading, validating, and providing access to feature
+    configuration settings.
+
+    The configuration includes settings such as:
+    - Feature enable/disable status
+    - Default entity names and icons
+    - Auto discovery settings
+
+    The class also provides methods for validating configuration data and
+    generating entity-specific configurations.
+
+    Attributes:
+        hass (HomeAssistant): Home Assistant instance
+        config_entry (ConfigEntry): Configuration entry for the integration
+        _feature_config (dict): Loaded and merged feature configuration
+    """
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Initialize configuration manager."""

@@ -1,7 +1,17 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more information
 #
-"""Constants for Hello World Switch Card feature."""
+"""Constants for Hello World Switch Card feature.
+
+This module defines all constants, configurations, and entity mappings for the
+Hello World Switch Card feature, including entity configurations, device mappings,
+and WebSocket command definitions.
+
+:platform: Home Assistant
+:feature: Hello World Constants
+:components: Entity Configurations, Device Mappings, WebSocket Commands
+:data_types: Dictionaries, Lists, Strings
+"""
 
 from typing import Any
 
@@ -99,7 +109,22 @@ HELLO_WORLD_CONST = HELLO_WORLD_CARD_CONST
 
 
 def load_feature() -> None:
-    """Load hello world card feature into the registry."""
+    """Load hello world card feature into the registry.
+
+    This function registers all components of the Hello World feature with the
+    Ramses Extras framework, including entity configurations, device mappings,
+    WebSocket commands, and the feature itself.
+
+    The registration process includes:
+    - Switch entity configurations
+    - Binary sensor entity configurations
+    - Device to entity mappings
+    - WebSocket command handlers
+    - Feature registration with the global registry
+
+    This function should be called during integration setup to make the feature
+    available to the Ramses Extras framework.
+    """
     from custom_components.ramses_extras.const import register_ws_commands
     from custom_components.ramses_extras.extras_registry import extras_registry
 

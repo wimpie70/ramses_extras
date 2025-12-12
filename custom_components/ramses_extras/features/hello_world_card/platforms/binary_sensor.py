@@ -1,7 +1,18 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more information
 #
-"""Binary sensor platform for Hello World Switch Card feature."""
+"""Binary sensor platform for Hello World Switch Card feature.
+
+This module provides the binary sensor platform implementation for the
+ Hello World feature,
+demonstrating automation-driven binary sensor entities that respond to switch changes.
+
+:platform: Home Assistant
+:feature: Hello World Binary Sensor
+:components: Binary Sensor Entity, Automation Integration, State Management
+:entity_type: Binary Sensor
+:pattern: Switch → Automation → Binary Sensor
+"""
 
 import logging
 from typing import TYPE_CHECKING, Any
@@ -69,7 +80,25 @@ class HelloWorldBinarySensor(ExtrasBinarySensorEntity):
     """Hello World Binary Sensor entity controlled by automation.
 
     This binary sensor is triggered by automation, not direct switch mirroring.
-    It demonstrates the automation-driven architecture pattern.
+    It demonstrates the automation-driven architecture pattern where the binary
+    sensor state is controlled by the HelloWorldAutomationManager rather than
+    directly mirroring the switch state.
+
+    The binary sensor responds to switch changes through the automation system,
+    showcasing how complex logic can be implemented in the automation layer
+    while keeping entities simple and focused.
+
+    Attributes:
+        _is_on (bool): Current state of the binary sensor (True for ON, False for OFF).
+
+    Inherits from:
+        ExtrasBinarySensorEntity: Base class providing common binary sensor
+         functionality.
+
+    Note:
+        This entity is designed to work with the HelloWorldAutomationManager which
+        calls the set_state() method to update the sensor state based on automation
+         logic.
     """
 
     def __init__(
