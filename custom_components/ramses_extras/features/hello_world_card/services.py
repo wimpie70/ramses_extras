@@ -103,12 +103,6 @@ async def async_toggle_switch_service(hass: HomeAssistant, call: Any) -> None:
     )
 
     try:
-        # Import entities manager here to avoid circular imports
-        from .entities import HelloWorldEntities
-
-        # Create entities manager instance
-        entities_manager = HelloWorldEntities(hass, None)
-
         # If entity_id provided, extract device_id from it
         if entity_id and not device_id:
             # Parse entity_id to get device_id
@@ -123,31 +117,27 @@ async def async_toggle_switch_service(hass: HomeAssistant, call: Any) -> None:
             _LOGGER.error("No device_id provided or found")
             return
 
-        # If state not specified, toggle current state
-        if state is None:
-            current_state = entities_manager.get_entity_state(
-                device_id, "switch", "hello_world_switch"
-            )
-            state = not current_state
+        # Generate entity ID using the correct format
+        switch_entity_id = f"switch.hello_world_switch_{device_id.replace(':', '_')}"
 
-        # Update entity state
-        entities_manager.set_entity_state(
-            device_id, "switch", "hello_world_switch", state
-        )
+        # If state not specified, get current state from entity
+        if state is None:
+            switch_entity = hass.states.get(switch_entity_id)
+            state = switch_entity.state == "on" if switch_entity else False
+            state = not state
+
+        # Toggle the switch entity
+        if state:
+            await hass.services.async_call(
+                "switch", "turn_on", {"entity_id": switch_entity_id}
+            )
+        else:
+            await hass.services.async_call(
+                "switch", "turn_off", {"entity_id": switch_entity_id}
+            )
 
         _LOGGER.info(
             f"Switch {device_id} set to {'ON' if state else 'OFF'} via service"
-        )
-
-        # Fire state change event for real-time updates
-        hass.bus.async_fire(
-            "hello_world_switch_state_changed",
-            {
-                "device_id": device_id,
-                "state": state,
-                "entity_id": f"switch.hello_world_switch_{device_id.replace(':', '_')}",
-                "source": "service",
-            },
         )
 
     except Exception as err:
@@ -165,12 +155,6 @@ async def async_get_switch_state_service(hass: HomeAssistant, call: Any) -> None
     )
 
     try:
-        # Import entities manager here to avoid circular imports
-        from .entities import HelloWorldEntities
-
-        # Create entities manager instance
-        entities_manager = HelloWorldEntities(hass, None)
-
         # If entity_id provided, extract device_id from it
         if entity_id and not device_id:
             if "hello_world_switch_" in entity_id:
@@ -182,17 +166,23 @@ async def async_get_switch_state_service(hass: HomeAssistant, call: Any) -> None
             _LOGGER.error("No device_id provided or found")
             return
 
-        # Get current states
-        switch_state = entities_manager.get_entity_state(
-            device_id, "switch", "hello_world_switch"
+        # Generate entity IDs using the correct format
+        switch_entity_id = f"switch.hello_world_switch_{device_id.replace(':', '_')}"
+        binary_sensor_entity_id = (
+            f"binary_sensor.hello_world_status_{device_id.replace(':', '_')}"
         )
-        binary_sensor_state = entities_manager.get_entity_state(
-            device_id, "binary_sensor", "hello_world_status"
+
+        switch_state = hass.states.get(switch_entity_id)
+        binary_sensor_state = hass.states.get(binary_sensor_entity_id)
+
+        switch_is_on = switch_state.state == "on" if switch_state else False
+        binary_sensor_is_on = (
+            binary_sensor_state.state == "on" if binary_sensor_state else False
         )
 
         _LOGGER.info(
             f"Switch states for {device_id} - "
-            f"switch: {switch_state}, binary_sensor: {binary_sensor_state}"
+            f"switch: {switch_is_on}, binary_sensor: {binary_sensor_is_on}"
         )
 
     except Exception as err:
@@ -213,39 +203,23 @@ async def async_bulk_toggle_service(hass: HomeAssistant, call: Any) -> None:
         return
 
     try:
-        # Import entities manager here to avoid circular imports
-        from .entities import HelloWorldEntities
-
-        # Create entities manager instance
-        entities_manager = HelloWorldEntities(hass, None)
-
-        # Process each entity_id
+        # Process each entity_id using framework's entity services
         success_count = 0
         error_count = 0
 
         for entity_id in entity_ids:
             try:
-                # Extract device_id from entity_id
+                # Validate entity_id format
                 if "hello_world_switch_" in entity_id:
-                    device_id = entity_id.replace(
-                        "switch.hello_world_switch_", ""
-                    ).replace("_", ":")
-
-                    # Update entity state
-                    entities_manager.set_entity_state(
-                        device_id, "switch", "hello_world_switch", state
-                    )
-
-                    # Fire state change event
-                    hass.bus.async_fire(
-                        "hello_world_switch_state_changed",
-                        {
-                            "device_id": device_id,
-                            "state": state,
-                            "entity_id": entity_id,
-                            "source": "bulk_service",
-                        },
-                    )
+                    # Use Home Assistant's switch service directly
+                    if state:
+                        await hass.services.async_call(
+                            "switch", "turn_on", {"entity_id": entity_id}
+                        )
+                    else:
+                        await hass.services.async_call(
+                            "switch", "turn_off", {"entity_id": entity_id}
+                        )
 
                     success_count += 1
                     _LOGGER.debug(f"Successfully toggled {entity_id}")

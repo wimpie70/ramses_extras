@@ -10,6 +10,10 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 
+from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
+    SimpleEntityManager,
+)
+
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
     from homeassistant.core import HomeAssistant
@@ -24,7 +28,7 @@ def _get_entities_manager(hass: HomeAssistant) -> Any:
         hass: Home Assistant instance
 
     Returns:
-        HelloWorldEntities instance or None if not available
+        SimpleEntityManager instance or None if not available
     """
     try:
         # Try to get the global registry from Home Assistant data
@@ -33,12 +37,8 @@ def _get_entities_manager(hass: HomeAssistant) -> Any:
             if "hello_world_entities" in registry:
                 return registry["hello_world_entities"]
 
-        # If not found, this is an error - the feature should have been initialized
-        _LOGGER.error(
-            "Shared entities manager not found - feature may not be properly "
-            "initialized"
-        )
-        return None
+        # If not found, create a new SimpleEntityManager instance
+        return SimpleEntityManager(hass)
 
     except Exception as err:
         _LOGGER.error(f"Could not get shared entities manager: {err}")
@@ -64,47 +64,26 @@ async def ws_toggle_switch(
     _LOGGER.info(f"Processing toggle_switch for device {device_id} with state {state}")
 
     try:
-        # Import the global entities manager class
-        from .entities import HelloWorldEntities
-
-        # Get the global entities manager from the feature
-        entities_manager = _get_entities_manager(hass)
-
-        if not entities_manager:
-            raise Exception(
-                "Hello World entities manager not available - feature not properly "
-                "initialized"
-            )
-
-        # If state is not specified, toggle current state
-        if state is None:
-            current_state = entities_manager.get_entity_state(
-                device_id, "switch", "hello_world_switch"
-            )
-            state = not current_state
-            _LOGGER.info(f"Toggling from current state {current_state} to {state}")
-
-        # Update entity state (this will trigger all necessary events and callbacks)
-        _LOGGER.info(f"Setting entity state for {device_id} switch to {state}")
-        entities_manager.set_entity_state(
-            device_id, "switch", "hello_world_switch", state
-        )
-
-        # Also update the switch entity's HA state
+        # Generate entity ID using the correct format
         switch_entity_id = f"switch.hello_world_switch_{device_id.replace(':', '_')}"
-        switch_entity = (
-            hass.data.get("ramses_extras", {}).get("entities", {}).get(switch_entity_id)
-        )
-        if switch_entity:
-            if state:
-                await switch_entity.async_turn_on()
-            else:
-                await switch_entity.async_turn_off()
-            _LOGGER.info(f"Updated switch entity HA state to {state}")
-        else:
-            _LOGGER.warning(
-                f"Switch entity {switch_entity_id} not found for HA state update"
+
+        # If state is not specified, get current state and toggle it
+        if state is None:
+            switch_state = hass.states.get(switch_entity_id)
+            state = switch_state.state != "on" if switch_state else True
+            _LOGGER.info(f"Toggling from current state to {state}")
+
+        # Use Home Assistant's switch service to control the entity
+        if state:
+            await hass.services.async_call(
+                "switch", "turn_on", {"entity_id": switch_entity_id}
             )
+        else:
+            await hass.services.async_call(
+                "switch", "turn_off", {"entity_id": switch_entity_id}
+            )
+
+        _LOGGER.info(f"Set switch entity {switch_entity_id} to {state}")
 
         # Send success response
         connection.send_result(
@@ -113,15 +92,18 @@ async def ws_toggle_switch(
                 "success": True,
                 "device_id": device_id,
                 "state": state,
+                "entity_id": switch_entity_id,
                 "message": f"Hello World switch {'ON' if state else 'OFF'} "
-                f"(automation will update binary sensor)",
-                "automation_pattern": "switch -> automation -> binary_sensor",
+                f"(framework handles coordination)",
+                "framework_pattern": (
+                    "switch -> SimpleEntityManager -> framework coordination"
+                ),
             },
         )
 
         _LOGGER.info(
             f"Successfully toggled switch for device {device_id} to {state}. "
-            f"Automation will handle binary sensor update."
+            f"Framework handles entity coordination."
         )
 
     except Exception as err:
@@ -148,24 +130,19 @@ async def ws_get_switch_state(
     device_id = msg["device_id"]
 
     try:
-        # Import the global entities manager class
-        from .entities import HelloWorldEntities
-
-        # Get the global entities manager from the feature
-        entities_manager = _get_entities_manager(hass)
-
-        if not entities_manager:
-            raise Exception(
-                "Hello World entities manager not available - feature not properly "
-                "initialized"
-            )
-
-        # Get current state
-        switch_state = entities_manager.get_entity_state(
-            device_id, "switch", "hello_world_switch"
+        # Generate entity IDs using the correct format
+        switch_entity_id = f"switch.hello_world_switch_{device_id.replace(':', '_')}"
+        binary_sensor_entity_id = (
+            f"binary_sensor.hello_world_status_{device_id.replace(':', '_')}"
         )
-        binary_sensor_state = entities_manager.get_entity_state(
-            device_id, "binary_sensor", "hello_world_status"
+
+        # Get current states directly from Home Assistant
+        switch_state = hass.states.get(switch_entity_id)
+        binary_sensor_state = hass.states.get(binary_sensor_entity_id)
+
+        switch_is_on = switch_state.state == "on" if switch_state else False
+        binary_sensor_is_on = (
+            binary_sensor_state.state == "on" if binary_sensor_state else False
         )
 
         # Send response
@@ -173,14 +150,13 @@ async def ws_get_switch_state(
             msg["id"],
             {
                 "device_id": device_id,
-                "switch_state": switch_state,
-                "binary_sensor_state": binary_sensor_state,
+                "switch_state": switch_is_on,
+                "binary_sensor_state": binary_sensor_is_on,
                 "entity_ids": {
-                    "switch": f"switch.hello_world_switch_"
-                    f"{device_id.replace(':', '_')}",
-                    "binary_sensor": f"binary_sensor.hello_world_status_"
-                    f"{device_id.replace(':', '_')}",
+                    "switch": switch_entity_id,
+                    "binary_sensor": binary_sensor_entity_id,
                 },
+                "framework_managed": True,
             },
         )
 

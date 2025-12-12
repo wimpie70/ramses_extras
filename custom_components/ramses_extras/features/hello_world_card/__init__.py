@@ -12,10 +12,10 @@ if TYPE_CHECKING:
 
 import logging
 
+from ...framework.helpers.entity.simple_entity_manager import SimpleEntityManager
 from ...framework.helpers.platform import PlatformSetup
 from .automation import create_hello_world_automation
 from .const import DOMAIN as HELLO_WORLD_DOMAIN
-from .entities import HelloWorldEntities
 from .platforms.binary_sensor import (
     async_setup_entry as binary_sensor_async_setup_entry,
 )
@@ -175,8 +175,8 @@ def create_hello_world_card_feature(
     Returns:
         Hello World card feature with card management capabilities
     """
-    # Create entities manager once and store it globally for WebSocket access
-    entities_manager = HelloWorldEntities(hass, config_entry)
+    # Use framework's SimpleEntityManager instead of custom HelloWorldEntities
+    entities_manager = SimpleEntityManager(hass)
 
     # Create automation manager
     automation_manager = create_hello_world_automation(hass, config_entry)
@@ -190,7 +190,7 @@ def create_hello_world_card_feature(
     hass.data["ramses_extras"]["hello_world_automation"] = automation_manager
 
     _LOGGER.info(
-        "✅ Hello World feature created with global entities manager and automation"
+        "✅ Hello World feature created with framework entities manager and automation"
     )
 
     return {
