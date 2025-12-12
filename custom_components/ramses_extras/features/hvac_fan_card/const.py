@@ -2,6 +2,8 @@
 
 from typing import Any
 
+DOMAIN = "hvac_fan_card"
+
 # HVAC Fan Card inherits shared sensor from default feature
 # No additional entity configurations needed - uses shared sensor
 HVAC_FAN_CARD_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {}
