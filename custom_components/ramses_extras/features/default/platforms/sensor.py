@@ -1,4 +1,11 @@
-"""Default feature sensor platform - creates base humidity sensor for all devices."""
+"""Default feature sensor platform.
+
+This module provides the sensor platform implementation for the default feature,
+creating base humidity sensors for all devices with automatic calculation logic.
+
+The sensors support both direct humidity readings and calculated absolute humidity
+values based on temperature and relative humidity measurements.
+"""
 
 import logging
 from typing import Any
@@ -17,6 +24,9 @@ from custom_components.ramses_extras.framework.helpers.device.core import (
 )
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
+# Import entity patterns for absolute humidity sensors
+from ..const import ENTITY_PATTERNS
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -25,12 +35,28 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up default feature sensor platform."""
-    _LOGGER.info("Setting up default feature sensor")
+    """Set up default feature sensor platform.
+
+    This function is called by Home Assistant when the sensor platform
+    is initialized. It creates sensor entities for all devices that have
+    the default feature enabled.
+
+    :param hass: Home Assistant instance
+    :type hass: HomeAssistant
+    :param config_entry: Configuration entry containing device settings
+    :type config_entry: ConfigEntry
+    :param async_add_entities: Callback to add entities to Home Assistant
+    :type async_add_entities: AddEntitiesCallback
+
+    .. note::
+        This function respects the device_feature_matrix to only create
+        sensors for devices that have the default feature enabled.
+    """
+    _LOGGER.debug("Setting up default feature sensor")
 
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
-    _LOGGER.info(
+    _LOGGER.debug(
         f"Default feature sensor platform: found {len(devices)} devices: {devices}"
     )
 
@@ -66,11 +92,11 @@ async def async_setup_entry(
         # Create default sensor for this device
         device_sensor = await create_default_sensor(hass, device_id, config_entry)
         sensor.extend(device_sensor)
-        _LOGGER.info(
+        _LOGGER.debug(
             f"Created {len(device_sensor)} default sensor for device {device_id}"
         )
 
-    _LOGGER.info(f"Total default sensor created: {len(sensor)}")
+    _LOGGER.debug(f"Total default sensor created: {len(sensor)}")
     async_add_entities(sensor, True)
 
 
@@ -79,13 +105,24 @@ async def create_default_sensor(
 ) -> list[SensorEntity]:
     """Create default sensor for a device.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config_entry: Configuration entry
+    This function creates humidity sensors for a specific device based on
+    the DEFAULT_SENSOR_CONFIGS configuration. Currently supports HvacVentilator
+    devices with absolute humidity calculation capabilities.
 
-    Returns:
-        List of sensor entities
+    :param hass: Home Assistant instance
+    :type hass: HomeAssistant
+    :param device_id: Device identifier for which to create sensors
+    :type device_id: str
+    :param config_entry: Optional configuration entry for additional settings
+    :type config_entry: ConfigEntry | None
+
+    :return: List of created sensor entities
+    :rtype: list[SensorEntity]
+
+    .. note::
+        For absolute humidity sensors, calculation logic is created immediately,
+        but listeners for underlying temperature/humidity entities are set up
+        when the entity is added to Home Assistant.
     """
     # Import default sensor configurations
     from ..const import DEFAULT_SENSOR_CONFIGS
@@ -119,25 +156,31 @@ async def _check_underlying_entities_exist(
 ) -> bool:
     """Check if the underlying ramses_cc entities exist for a humidity sensor.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        sensor_type: Type of humidity sensor
+    This function verifies that the required temperature and humidity entities
+    exist in the entity registry before attempting to create listeners for
+    absolute humidity calculation.
 
-    Returns:
-        True if underlying entities exist, False otherwise
+    :param hass: Home Assistant instance
+    :type hass: HomeAssistant
+    :param device_id: Device identifier
+    :type device_id: str
+    :param sensor_type: Type of humidity sensor
+     ("indoor_absolute_humidity" or "outdoor_absolute_humidity")
+    :type sensor_type: str
+
+    :return: True if underlying entities exist, False otherwise
+    :rtype: bool
+
+    .. note::
+        Non-absolute humidity sensors don't require underlying entities and
+        will always return True.
     """
     from homeassistant.helpers import entity_registry
 
-    entity_patterns = {
-        "indoor_absolute_humidity": ("indoor_temp", "indoor_humidity"),
-        "outdoor_absolute_humidity": ("outdoor_temp", "outdoor_humidity"),
-    }
-
-    if sensor_type not in entity_patterns:
+    if sensor_type not in ENTITY_PATTERNS:
         return True  # Non-absolute humidity sensors don't need underlying entities
 
-    temp_type, humidity_type = entity_patterns[sensor_type]
+    temp_type, humidity_type = ENTITY_PATTERNS[sensor_type]
     device_id_underscore = device_id.replace(":", "_")
 
     # ramses_cc entities use CC format (device_id prefix): {device_id}_{identifier}
@@ -168,7 +211,14 @@ async def _check_underlying_entities_exist(
 class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
     """Default humidity sensor for the default feature.
 
-    This creates base absolute humidity sensor for all devices with calculation logic.
+    This sensor creates base absolute humidity sensors for all devices with
+    automatic calculation logic. It supports both direct humidity readings
+    and calculated absolute humidity values based on temperature and
+    relative humidity measurements.
+
+    The sensor automatically sets up listeners for underlying temperature
+    and humidity entities when they become available, enabling real-time
+    calculation of absolute humidity values.
     """
 
     def __init__(
@@ -180,11 +230,20 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
     ) -> None:
         """Initialize default humidity sensor.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            sensor_type: Type of humidity sensor
-            config: Sensor configuration
+        :param hass: Home Assistant instance
+        :type hass: HomeAssistant
+        :param device_id: Device identifier for this sensor
+        :type device_id: str
+        :param sensor_type: Type of humidity sensor (e.g., "indoor_absolute_humidity")
+        :type sensor_type: str
+        :param config: Sensor configuration dictionary
+         containing unit, device_class, etc.
+        :type config: dict[str, Any]
+
+        .. note::
+            The sensor is created with calculation logic immediately, but listeners
+            for underlying temperature/humidity entities are set up asynchronously
+            when the entity is added to Home Assistant.
         """
         # Initialize base entity
         ExtrasBaseEntity.__init__(self, hass, device_id, sensor_type, config)
@@ -211,13 +270,25 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
 
     @property
     def name(self) -> str:
-        """Return the name of the entity."""
+        """Return the name of the entity.
+
+        :return: Formatted sensor name with device ID
+        :rtype: str
+        """
         device_id_str = extract_device_id_as_string(self._device_id)
         device_id_underscore = device_id_str.replace(":", "_")
         return self._attr_name or f"{self._sensor_type} {device_id_underscore}"
 
     async def async_added_to_hass(self) -> None:
-        """Called when entity is added to hass."""
+        """Called when entity is added to hass.
+
+        This method sets up the necessary listeners for absolute humidity
+        calculation and triggers an initial calculation after setup is complete.
+
+        For absolute humidity sensors (indoor/outdoor), it sets up listeners
+        for the underlying temperature and humidity entities and performs
+        an initial calculation.
+        """
         await super().async_added_to_hass()
         # Set up listeners for underlying temperature and humidity sensor
         # for absolute humidity sensors
@@ -230,19 +301,29 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             await self._recalculate_and_update()
 
     async def _setup_listeners(self) -> None:
-        """Set up listeners for temperature and humidity sensor changes."""
+        """Set up listeners for temperature and humidity sensor changes.
+
+        This method creates state change listeners for the underlying temperature
+        and humidity entities required for absolute humidity calculation.
+
+        For absolute humidity sensors, it listens to:
+        - Temperature sensor (e.g., device_indoor_temp)
+        - Humidity sensor (e.g., device_indoor_humidity)
+
+        The listeners trigger automatic recalculation when either underlying
+        entity changes state.
+
+        .. note::
+            This method is idempotent - calling it multiple times will not
+            create duplicate listeners.
+        """
         if self._listeners_set_up:
             return
 
-        entity_patterns = {
-            "indoor_absolute_humidity": ("indoor_temp", "indoor_humidity"),
-            "outdoor_absolute_humidity": ("outdoor_temp", "outdoor_humidity"),
-        }
-
-        if self._sensor_type not in entity_patterns:
+        if self._sensor_type not in ENTITY_PATTERNS:
             return
 
-        temp_type, humidity_type = entity_patterns[self._sensor_type]
+        temp_type, humidity_type = ENTITY_PATTERNS[self._sensor_type]
 
         # ramses_cc entities use CC format (device_id prefix): {device_id}_{identifier}
         device_id_str = extract_device_id_as_string(self._device_id)
@@ -258,7 +339,12 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
 
         # Track state changes on both temperature and humidity sensor
         async def state_changed_listener(*args: Any) -> None:
-            """Handle state changes on temperature or humidity sensor."""
+            """Handle state changes on temperature or humidity sensor.
+
+            This callback is triggered when either the temperature or humidity
+            entity changes state. It recalculates the absolute humidity value
+            and updates the sensor state.
+            """
             await self._recalculate_and_update()
 
         # Listen for state changes on both sensor
@@ -275,7 +361,19 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         )
 
     async def _recalculate_and_update(self) -> None:
-        """Recalculate absolute humidity and update sensor state."""
+        """Recalculate absolute humidity and update sensor state.
+
+        This method retrieves the current temperature and humidity values,
+        calculates the absolute humidity, and updates the sensor state
+        if the calculation is successful.
+
+        The calculation uses the Magnus formula for accurate absolute
+        humidity determination based on temperature and relative humidity.
+
+        .. note::
+            If either temperature or humidity data is unavailable, or if
+            the calculation fails, the sensor state is not updated.
+        """
         try:
             temp, rh = self._get_temp_and_humidity()
             result = self._calculate_abs_humidity(temp, rh)
@@ -297,26 +395,30 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
     def _get_temp_and_humidity(self) -> tuple[float | None, float | None]:
         """Get temperature and humidity data from ramses_cc entities.
 
-        Returns:
-            tuple: (temperature, humidity) or (None, None) if sensor are missing/failed
+        This method retrieves the current temperature and relative humidity
+        values from the underlying ramses_cc entities required for absolute
+        humidity calculation.
+
+        :return: tuple: (temperature, humidity) in Celsius and percentage respectively,
+                  or (None, None) if sensors are missing/failed
+        :rtype: tuple[float | None, float | None]
+
+        .. note::
+            The method validates that humidity values are within the valid
+            range (0-100%) and handles unavailable/unknown states gracefully.
         """
         # Import humidity calculation helper
         from custom_components.ramses_extras.framework.helpers.entities import (
             calculate_absolute_humidity,
         )
 
-        entity_patterns = {
-            "indoor_absolute_humidity": ("indoor_temp", "indoor_humidity"),
-            "outdoor_absolute_humidity": ("outdoor_temp", "outdoor_humidity"),
-        }
-
-        if self._sensor_type not in entity_patterns:
+        if self._sensor_type not in ENTITY_PATTERNS:
             _LOGGER.error(
                 "Unknown sensor type for humidity calculation: %s", self._sensor_type
             )
             return None, None
 
-        temp_type, humidity_type = entity_patterns[self._sensor_type]
+        temp_type, humidity_type = ENTITY_PATTERNS[self._sensor_type]
 
         # ramses_cc entities use CC format (device_id prefix): {device_id}_{identifier}
         device_id_str = extract_device_id_as_string(self._device_id)
@@ -383,7 +485,27 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
     def _calculate_abs_humidity(
         self, temp: float | None, rh: float | None
     ) -> float | None:
-        """Calculate absolute humidity using proper formula."""
+        """Calculate absolute humidity using proper formula.
+
+        This method uses the Magnus formula to calculate absolute humidity
+        (water vapor density) from temperature and relative humidity.
+
+        The Magnus formula provides accurate results across typical
+        indoor temperature ranges and is the standard method for
+        converting relative humidity to absolute humidity.
+
+        :param temp: Temperature in Celsius
+        :type temp: float | None
+        :param rh: Relative humidity as percentage (0-100)
+        :type rh: float | None
+
+        :return: Absolute humidity in g/m³, or None if calculation fails
+        :rtype: float | None
+
+        .. note::
+            The calculation requires both temperature and humidity values.
+            If either is None, the calculation cannot be performed.
+        """
         if temp is None or rh is None:
             return None
 
@@ -397,7 +519,12 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
+        """Return extra state attributes.
+
+        :return: Dictionary containing additional sensor attributes
+         including sensor_type
+        :rtype: dict[str, Any]
+        """
         base_attrs = super().extra_state_attributes or {}
         return {**base_attrs, "sensor_type": self._sensor_type}
 

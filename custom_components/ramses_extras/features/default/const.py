@@ -50,6 +50,13 @@ DEFAULT_CONST = {
     }
 }
 
+# Entity patterns for absolute humidity sensors
+# Maps sensor types to their required underlying temperature and humidity entities
+ENTITY_PATTERNS = {
+    "indoor_absolute_humidity": ("indoor_temp", "indoor_humidity"),
+    "outdoor_absolute_humidity": ("outdoor_temp", "outdoor_humidity"),
+}
+
 # WebSocket command constants for the default feature
 WS_CMD_GET_AVAILABLE_DEVICES = "ramses_extras/get_available_devices"
 WS_CMD_GET_BOUND_REM = "ramses_extras/get_bound_rem"
@@ -95,6 +102,7 @@ __all__ = [
     "DEFAULT_NUMBER_CONFIGS",
     "DEFAULT_BOOLEAN_CONFIGS",
     "DEFAULT_DEVICE_ENTITY_MAPPING",
+    "ENTITY_PATTERNS",
     "WS_CMD_GET_AVAILABLE_DEVICES",
     "WS_CMD_GET_BOUND_REM",
     "WS_CMD_GET_2411_SCHEMA",
