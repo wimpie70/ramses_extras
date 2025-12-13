@@ -107,6 +107,7 @@ class HelloWorldConfig(ExtrasConfigManager):
     def get_config_schema(self) -> dict[str, Any]:
         """Get Hello World configuration schema for UI.
 
+        TODO: This is not fully implemented yet
         Note: This schema is for runtime configuration only. Entity definitions
         (icons, templates, etc.) are managed in const.py and not exposed here.
 
@@ -116,10 +117,10 @@ class HelloWorldConfig(ExtrasConfigManager):
         return {
             "type": "object",
             "properties": {
-                "enabled": {
+                "default on/off": {
                     "type": "boolean",
-                    "title": "Enable Hello World Feature",
-                    "description": "Enable or disable the Hello World feature",
+                    "title": "Default state for the Switch",
+                    "description": "Example how to use configs in the submenu",
                     "default": DEFAULT_CONFIG["enabled"],
                 },
                 "auto_discovery": {
