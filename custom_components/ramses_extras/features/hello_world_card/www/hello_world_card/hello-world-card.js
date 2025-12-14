@@ -16,6 +16,10 @@ import { getFeatureTranslationPath } from '/local/ramses_extras/helpers/paths.js
 // Import translation helper
 import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
 
+// Import card styles and templates following hvac_fan_card pattern
+import { CARD_STYLE } from './card-styles.js';
+import { createCardContent } from './templates/card-templates.js';
+
 /**
  * Hello World Card using HTMLElement pattern (like hvac_fan_card)
  * to avoid external dependencies like 'lit'
@@ -175,7 +179,6 @@ class HelloWorldCard extends HTMLElement {
     this._initialStateLoaded = false;
     this._rendered = false;
   }
-
 
   async _loadInitialState() {
     if (!this._hass || !this._config?.device_id) return;
@@ -338,93 +341,27 @@ class HelloWorldCard extends HTMLElement {
 
     const deviceDisplay = this._getDeviceDisplayName();
 
+    // Use template following hvac_fan_card pattern
+    const templateData = {
+      deviceDisplay,
+      switchState,
+      sensorState,
+      showStatus: this._config.show_status,
+      translator: this
+    };
+
+    const cardHtml = createCardContent(templateData);
+
     this.shadowRoot.innerHTML = `
-      <ha-card>
-        <div class="card-header">
-          <div class="device-info">${deviceDisplay}</div>
-        </div>
-        <div class="card-content">
-          <div class="button-instruction">
-            ${this.t('ui.card.hello_world.click_button_activate_automation')}
-          </div>
-          <div class="button-container">
-            <ha-button
-              id="helloWorldButton"
-              class="toggle-button ${switchState ? 'on' : 'off'}">
-              ${switchState ? 'TURN OFF' : 'TURN ON'}
-            </ha-button>
-            ${this._config.show_status ? `
-              <div class="status">
-                Status: ${switchState ? 'ON' : 'OFF'}
-              </div>
-            ` : ''}
-          </div>
-          ${this._config.show_status ? `
-            <div class="binary-sensor-status">
-              ${this.t('ui.card.hello_world.binary_sensor_changed_by_automation')} ${sensorState ? 'ON' : 'OFF'}
-            </div>
-          ` : ''}
-        </div>
-        <style>
-          ha-card {
-            padding: 16px;
-          }
-
-          .card-header {
-            margin-bottom: 16px;
-            font-weight: 500;
-          }
-
-          .device-info {
-            font-size: 1.1em;
-            color: var(--primary-text-color);
-          }
-
-          .button-instruction {
-            font-size: 0.9em;
-            color: var(--secondary-text-color);
-            margin-bottom: 12px;
-            text-align: left;
-          }
-
-          .button-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 8px;
-          }
-
-          .toggle-button {
-            --mdc-theme-primary: var(--primary-color);
-            --mdc-theme-on-primary: white;
-            min-width: 120px;
-            height: 40px;
-            font-weight: 500;
-          }
-
-          .toggle-button.on {
-            background-color: var(--primary-color);
-            color: white;
-          }
-
-          .toggle-button.off {
-            background-color: var(--secondary-background-color);
-            color: var(--primary-text-color);
-          }
-
-          .status {
-            font-size: 0.9em;
-            color: var(--secondary-text-color);
-          }
-
-          .binary-sensor-status {
-            font-size: 0.8em;
-            color: var(--secondary-text-color);
-            margin-top: 8px;
-          }
-        </style>
-      </ha-card>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>${CARD_STYLE}</style>
+      </head>
+      <body>
+        ${cardHtml}
+      </body>
+      </html>
     `;
 
     this._rendered = true;
