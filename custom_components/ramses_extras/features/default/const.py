@@ -64,6 +64,8 @@ WS_CMD_GET_2411_SCHEMA = "ramses_extras/get_2411_schema"
 WS_CMD_SEND_FAN_COMMAND = "ramses_extras/default/send_fan_command"
 WS_CMD_SET_FAN_PARAMETER = "ramses_extras/default/set_fan_parameter"
 WS_CMD_GET_QUEUE_STATISTICS = "ramses_extras/default/get_queue_statistics"
+WS_CMD_GET_ENTITY_MAPPINGS = "ramses_extras/get_entity_mappings"
+WS_CMD_GET_ALL_FEATURE_ENTITIES = "ramses_extras/get_all_feature_entities"
 
 # WebSocket commands for the default feature
 DEFAULT_WEBSOCKET_COMMANDS = {
@@ -73,6 +75,8 @@ DEFAULT_WEBSOCKET_COMMANDS = {
     "send_fan_command": WS_CMD_SEND_FAN_COMMAND,
     "set_fan_parameter": WS_CMD_SET_FAN_PARAMETER,
     "get_queue_statistics": WS_CMD_GET_QUEUE_STATISTICS,
+    "get_entity_mappings": WS_CMD_GET_ENTITY_MAPPINGS,
+    "get_all_feature_entities": WS_CMD_GET_ALL_FEATURE_ENTITIES,
 }
 
 
@@ -90,6 +94,9 @@ def load_feature() -> None:
 
     # Register WebSocket commands
     register_ws_commands("default", DEFAULT_WEBSOCKET_COMMANDS)
+
+    # Also register the websocket_commands module for auto-discovery
+    from custom_components.ramses_extras.features.default import websocket_commands
 
     extras_registry.register_feature("default")
 
@@ -109,6 +116,8 @@ __all__ = [
     "WS_CMD_SEND_FAN_COMMAND",
     "WS_CMD_SET_FAN_PARAMETER",
     "WS_CMD_GET_QUEUE_STATISTICS",
+    "WS_CMD_GET_ENTITY_MAPPINGS",
+    "WS_CMD_GET_ALL_FEATURE_ENTITIES",
     "DEFAULT_WEBSOCKET_COMMANDS",
     "load_feature",
 ]

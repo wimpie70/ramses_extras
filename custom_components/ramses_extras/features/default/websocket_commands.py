@@ -1,475 +1,181 @@
-"""WebSocket Commands for Default Feature.
+"""WebSocket commands for the default feature.
 
-This module provides WebSocket commands for device control that are available
-to all features. These commands use the new command framework with queuing
-and rate limiting.
+This module contains WebSocket command handlers for the default feature,
+including utility commands that can be used by any feature.
 """
 
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant
 
-from ...framework.helpers.ramses_commands import CommandResult, RamsesCommands
+from ...const import (
+    AVAILABLE_FEATURES,
+    DOMAIN,
+    discover_ws_commands,
+    get_all_ws_commands,
+)
+from ...framework.helpers.websocket_base import GetEntityMappingsCommand
 
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
+    from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_device_capabilities(device: Any) -> list[str]:
-    """Get device capabilities for UI display."""
-    capabilities = []
-
-    # Check for common device capabilities
-    if hasattr(device, "fan_speed") or hasattr(device, "set_fan_speed"):
-        capabilities.append("fan_control")
-
-    if hasattr(device, "temperature") or hasattr(device, "indoor_temperature"):
-        capabilities.append("temperature_sensor")
-
-    if hasattr(device, "humidity") or hasattr(device, "indoor_humidity"):
-        capabilities.append("humidity_sensor")
-
-    if hasattr(device, "bypass") or hasattr(device, "set_bypass"):
-        capabilities.append("bypass_control")
-
-    # Add device type as capability
-    device_type = device.__class__.__name__
-    if device_type == "HvacVentilator":
-        capabilities.extend(["ventilation", "hvac"])
-    elif device_type == "HvacController":
-        capabilities.extend(["climate_control", "hvac"])
-    elif device_type == "Thermostat":
-        capabilities.append("thermostat")
-
-    return capabilities
-
-
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
-        vol.Required("type"): "ramses_extras/get_bound_rem",
-        vol.Required("device_id"): str,
+        vol.Required("type"): "ramses_extras/websocket_info",
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_get_bound_rem(
-    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
+async def ws_websocket_info(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
-    """Get bound REM device information for a device.
+    """Return information about available WebSocket commands.
 
-    This command retrieves information about the bound REM device
-    that is needed for proper communication with FAN devices.
+    This utility command provides discovery functionality for all available
+    WebSocket commands across all features. Moved to default feature for
+    architectural consistency.
     """
-    device_id = msg["device_id"]
+    # Get all registered WebSocket commands
+    all_commands = get_all_ws_commands()
+    features_with_commands = discover_ws_commands()
 
-    _LOGGER.debug(f"Getting bound REM device for {device_id}")
-
-    try:
-        # Get RamsesCommands instance
-        ramses_commands = RamsesCommands(hass)
-
-        # Get bound REM device
-        bound_rem = await ramses_commands._get_bound_rem_device(device_id)
-
-        connection.send_result(
-            msg["id"],
-            {
-                "bound_rem": bound_rem,
-                "device_id": device_id,
-            },
-        )
-        _LOGGER.debug(f"Bound REM device for {device_id}: {bound_rem}")
-
-    except Exception as error:
-        _LOGGER.error(f"Error getting bound REM device for {device_id}: {error}")
-        connection.send_error(
-            msg["id"],
-            "bound_rem_error",
-            f"Failed to get bound REM device: {str(error)}",
+    # Build commands info dynamically from registry
+    commands_info = []
+    for feature_name, commands in all_commands.items():
+        feature_config = AVAILABLE_FEATURES.get(feature_name, {})
+        feature_description = feature_config.get(
+            "description", f"Feature: {feature_name}"
         )
 
-
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
-    {
-        vol.Required("type"): "ramses_extras/get_2411_schema",
-        vol.Required("device_id"): str,
-    }
-)
-@websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_get_2411_schema(
-    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
-) -> None:
-    """Get 2411 parameter schema for a device.
-
-    This command retrieves the parameter schema information for device
-    configuration and parameter editing.
-    """
-    device_id = msg["device_id"]
-
-    _LOGGER.debug(f"Getting 2411 schema for device {device_id}")
-
-    try:
-        # Get the actual 2411 parameter schema from ramses_rf
-        from ramses_tx.ramses import _2411_PARAMS_SCHEMA
-
-        # Convert ramses_rf schema format to our UI format
-        schema = {}
-        for param_id, param_info in _2411_PARAMS_SCHEMA.items():
-            # Convert parameter ID to string for JSON compatibility
-            param_key = str(param_id)
-
-            # Map ramses_rf schema to our UI schema format
-            schema[param_key] = {
-                "name": param_info.get("name", f"Parameter {param_id}"),
-                "description": param_info.get(
-                    "description", param_info.get("name", f"Parameter {param_id}")
-                ),
-                "unit": param_info.get("unit", ""),
-                "min_value": param_info.get("min_value", param_info.get("min", 0)),
-                "max_value": param_info.get("max_value", param_info.get("max", 100)),
-                "default_value": param_info.get(
-                    "default_value", param_info.get("default", 0)
-                ),
-                "data_type": param_info.get("data_type", "01"),
-                "precision": param_info.get("precision", param_info.get("step", 1)),
-            }
-
-        connection.send_result(
-            msg["id"],
-            {
-                "schema": schema,
-                "device_id": device_id,
-            },
-        )
-        _LOGGER.debug(f"2411 schema retrieved for device {device_id}")
-
-    except Exception as error:
-        _LOGGER.error(f"Error getting 2411 schema for device {device_id}: {error}")
-        connection.send_error(
-            msg["id"],
-            "schema_error",
-            f"Failed to get parameter schema: {str(error)}",
-        )
-
-
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
-    {
-        vol.Required("type"): "ramses_extras/default/send_fan_command",
-        vol.Required("device_id"): str,
-        vol.Required("command"): str,
-    }
-)
-@websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_send_fan_command(
-    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
-) -> None:
-    """Send a fan command using the new command framework with queuing.
-
-    This WebSocket command uses the registry-based command system with
-    per-device queuing to prevent overwhelming the communication layer.
-    Available for all features that need fan control.
-    """
-    device_id = msg["device_id"]
-    command = msg["command"]
-
-    _LOGGER.info(
-        f"🔌 WebSocket command received: send_fan_command '{command}' "
-        f"to device {device_id}"
-    )
-
-    try:
-        # Get RamsesCommands instance with registry support
-        ramses_commands = RamsesCommands(hass)
-
-        # Use the command name directly (JavaScript now sends correct names)
-        registry_command = command
-
-        # Check if this is a hardcoded fan command or a registry command
-        available_commands = ramses_commands.get_available_commands()
-        if registry_command in available_commands:
-            # Use the direct fan command method for hardcoded commands
-            result = await ramses_commands.send_fan_command(device_id, registry_command)
-        else:
-            # Use the registry-based command method
-            result = await ramses_commands.send_command(device_id, registry_command)
-
-        if result.success:
-            # Provide detailed feedback about command processing
-            feedback_message = (
-                f"Command '{command}' sent successfully"
-                if not result.queued
-                else f"Command '{command}' queued for device {device_id}"
-            )
-
-            connection.send_result(
-                msg["id"],
+        for command_name, command_type in commands.items():
+            commands_info.append(
                 {
-                    "success": True,
-                    "command": command,
-                    "registry_command": registry_command,
-                    "device_id": device_id,
-                    "queued": result.queued,
-                    "message": feedback_message,
-                    "execution_time": result.execution_time,
-                },
-            )
-            _LOGGER.info(f"✅ {feedback_message}")
-        else:
-            connection.send_error(
-                msg["id"],
-                "command_failed",
-                f"Failed to send command '{command}' to device {device_id}: "
-                f"{result.error_message}",
-            )
-
-    except Exception as error:
-        _LOGGER.error(
-            f"Error sending fan command '{command}' to device {device_id}: {error}"
-        )
-        connection.send_error(
-            msg["id"],
-            "command_error",
-            f"Failed to send fan command '{command}': {str(error)}",
-        )
-
-
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
-    {
-        vol.Required("type"): "ramses_extras/default/set_fan_parameter",
-        vol.Required("device_id"): str,
-        vol.Required("param_id"): str,
-        vol.Required("value"): str,
-    }
-)
-@websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_set_fan_parameter(
-    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
-) -> None:
-    """Set a fan parameter using the command framework.
-
-    This provides a queued alternative to direct ramses_cc.set_fan_param calls.
-    Available for all features that need parameter control.
-    """
-    device_id = msg["device_id"]
-    param_id = msg["param_id"]
-    value = msg["value"]
-
-    _LOGGER.debug(f"Setting fan parameter {param_id}={value} for device {device_id}")
-
-    try:
-        # For now, use direct service call since parameter setting
-        #  is different from commands
-        # Note: Parameter setting could benefit from command framework queuing,
-        #  but would require extending RamsesCommands to handle parameter commands
-        #  in addition to device commands. Current approach is sufficient for now.
-        await hass.services.async_call(
-            "ramses_cc",
-            "set_fan_param",
-            {
-                "device_id": device_id,
-                "param_id": param_id,
-                "value": value,
-            },
-        )
-
-        connection.send_result(
-            msg["id"],
-            {
-                "success": True,
-                "device_id": device_id,
-                "param_id": param_id,
-                "value": value,
-            },
-        )
-        _LOGGER.debug(f"Fan parameter {param_id} set to {value} for device {device_id}")
-
-    except Exception as error:
-        _LOGGER.error(
-            f"Error setting fan parameter {param_id} for device {device_id}: {error}"
-        )
-        connection.send_error(
-            msg["id"],
-            "parameter_error",
-            f"Failed to set parameter {param_id}: {str(error)}",
-        )
-
-
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
-    {
-        vol.Required("type"): "ramses_extras/get_available_devices",
-    }
-)
-@websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_get_available_devices(
-    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
-) -> None:
-    """Get list of all discovered Ramses RF devices for card editors.
-
-    This centralized command provides device discovery for all card editors,
-    ensuring consistent device listing across the UI.
-    """
-    _LOGGER.debug("Getting available Ramses RF devices")
-
-    try:
-        # Get ramses_cc broker
-        from ...framework.helpers.device.core import _get_broker_for_entry
-
-        broker = await _get_broker_for_entry(hass)
-
-        if broker is None:
-            connection.send_error(
-                msg["id"], "broker_unavailable", "Ramses CC broker not available"
-            )
-            return
-
-        devices = []
-
-        # Get devices from broker (try _devices first, then devices for compatibility)
-        broker_devices = getattr(broker, "_devices", None)
-        if broker_devices is None:
-            broker_devices = getattr(broker, "devices", {})
-
-        # Handle both list and dictionary formats
-        if isinstance(broker_devices, list):
-            # _devices is a list
-            device_list: list[Any] = broker_devices
-        else:
-            # _devices is a dictionary, get values
-            device_list = (
-                list(broker_devices.values())
-                if hasattr(broker_devices, "values")
-                else []
-            )
-
-        for device in device_list:
-            devices.append(
-                {
-                    "device_id": device.id,
-                    "device_type": device.__class__.__name__,
-                    "model": getattr(device, "model", "Unknown"),
-                    "capabilities": _get_device_capabilities(device),
+                    "type": command_type,
+                    "description": f"{command_name.replace('_', ' ').title()} - "
+                    f"{feature_description}",
+                    "feature": feature_name,
                 }
             )
 
-        connection.send_result(msg["id"], {"devices": devices})
-        _LOGGER.debug(f"Retrieved {len(devices)} devices for card editors")
-
-    except Exception as error:
-        _LOGGER.error(f"Error getting available devices: {error}")
-        connection.send_error(
-            msg["id"],
-            "device_discovery_error",
-            f"Failed to get available devices: {str(error)}",
-        )
+    connection.send_result(
+        msg["id"],
+        {
+            "commands": commands_info,
+            "domain": DOMAIN,
+            "total_commands": len(commands_info),
+            "features": features_with_commands,
+        },
+    )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
-        vol.Required("type"): "ramses_extras/default/get_queue_statistics",
+        vol.Required("type"): "ramses_extras/get_entity_mappings",
+        vol.Optional("feature_id"): str,  # Feature identifier
+        vol.Optional("const_module"): str,  # Full const module path
+        vol.Optional("device_id"): str,  # Device ID for template parsing
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_get_queue_statistics(
-    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
+async def ws_get_entity_mappings(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
-    """Get command queue statistics for monitoring and debugging.
+    """Default feature WebSocket command to get entity mappings.
 
-    This provides real-time statistics about command queue performance,
-    success rates, and current queue depths for all devices.
+    This command is available through the default feature and can be used
+    by any other feature to retrieve entity mappings. It supports both
+    feature_id and const_module parameters for flexibility.
     """
-    _LOGGER.debug("Getting command queue statistics")
+    feature_id = msg.get("feature_id")
+    const_module = msg.get("const_module")
 
     try:
-        # Get RamsesCommands instance
-        ramses_commands = RamsesCommands(hass)
+        # Determine feature identifier
+        if const_module:
+            feature_identifier = const_module
+        elif feature_id:
+            feature_identifier = feature_id
+        else:
+            connection.send_error(
+                msg["id"],
+                "missing_feature_identifier",
+                "Either feature_id or const_module must be provided",
+            )
+            return
 
-        # Get queue statistics
-        stats = ramses_commands.get_queue_statistics()
+        # Create and execute the command
+        cmd = GetEntityMappingsCommand(hass, feature_identifier)
+        await cmd.execute(connection, msg)
 
-        connection.send_result(
-            msg["id"],
-            {
-                "statistics": stats,
-                "timestamp": time.time(),
-            },
-        )
-        _LOGGER.debug("Queue statistics retrieved successfully")
-
-    except Exception as error:
-        _LOGGER.error(f"Error getting queue statistics: {error}")
-        connection.send_error(
-            msg["id"],
-            "statistics_error",
-            f"Failed to get queue statistics: {str(error)}",
-        )
+    except Exception as err:
+        _LOGGER.error(f"Failed to get entity mappings: {err}")
+        connection.send_error(msg["id"], "get_entity_mappings_failed", str(err))
 
 
-def get_command_info() -> dict[str, dict]:
-    """Get information about available commands for this feature.
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_all_feature_entities",
+        vol.Required("feature_id"): str,  # Feature identifier
+        vol.Required("device_id"): str,  # Device ID for template parsing
+        vol.Optional("const_module"): str,  # Full const module path (alternative)
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_all_feature_entities(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """WebSocket command to retrieve all entities from a feature with device_id support.
+
+    This command retrieves all entity configurations from a feature and returns them
+    as parsed entity mappings that can be used from anywhere in the frontend.
+    It keeps the frontend and feature clean by providing a centralized way to
+    access entity information.
+
+    Part of the default feature, so it's always available to all other features.
+    """
+    from custom_components.ramses_extras.framework.helpers.websocket_base import (
+        GetAllFeatureEntitiesCommand,
+    )
+
+    feature_id = msg.get("feature_id")
+    const_module = msg.get("const_module")
+
+    try:
+        # Determine feature identifier
+        if const_module:
+            feature_identifier = const_module
+        elif feature_id:
+            feature_identifier = feature_id
+        else:
+            connection.send_error(
+                msg["id"],
+                "missing_feature_identifier",
+                "Either feature_id or const_module must be provided",
+            )
+            return
+
+        # Create and execute the command
+        cmd = GetAllFeatureEntitiesCommand(hass, feature_identifier)
+        await cmd.execute(connection, msg)
+
+    except Exception as err:
+        _LOGGER.error(f"Failed to get all feature entities: {err}")
+        connection.send_error(msg["id"], "get_all_feature_entities_failed", str(err))
+
+
+def register_default_websocket_commands() -> dict[str, str]:
+    """Register WebSocket commands for the default feature.
 
     Returns:
-        Dictionary containing command information
+        Dictionary mapping command names to their WebSocket command types
     """
     return {
-        "get_available_devices": {
-            "name": "get_available_devices",
-            "type": "ramses_extras/get_available_devices",
-            "description": (
-                "Get list of all discovered Ramses RF devices for card editors"
-            ),
-            "feature": "default",
-            "parameters": {},
-        },
-        "get_bound_rem": {
-            "name": "get_bound_rem",
-            "type": "ramses_extras/get_bound_rem",
-            "description": "Get bound REM device for proper FAN communication",
-            "feature": "default",
-            "parameters": {
-                "device_id": "Device ID (e.g., '32:153289')",
-            },
-        },
-        "get_2411_schema": {
-            "name": "get_2411_schema",
-            "type": "ramses_extras/get_2411_schema",
-            "description": "Get parameter schema for device configuration",
-            "feature": "default",
-            "parameters": {
-                "device_id": "Device ID (e.g., '32:153289')",
-            },
-        },
-        "send_fan_command": {
-            "name": "send_fan_command",
-            "type": "ramses_extras/default/send_fan_command",
-            "description": "Send a fan command using the queued command framework",
-            "feature": "default",
-            "parameters": {
-                "device_id": "Device ID (e.g., '32:153289')",
-                "command": "Command name (fan_high, fan_low, fan_auto, bypass_open, "
-                "request31DA, etc.)",
-            },
-        },
-        "set_fan_parameter": {
-            "name": "set_fan_parameter",
-            "type": "ramses_extras/default/set_fan_parameter",
-            "description": "Set a fan parameter value",
-            "feature": "default",
-            "parameters": {
-                "device_id": "Device ID (e.g., '32:153289')",
-                "param_id": "Parameter ID",
-                "value": "Parameter value",
-            },
-        },
-        "get_queue_statistics": {
-            "name": "get_queue_statistics",
-            "type": "ramses_extras/default/get_queue_statistics",
-            "description": "Get command queue statistics for monitoring",
-            "feature": "default",
-            "parameters": {},
-        },
+        "websocket_info": "ramses_extras/websocket_info",  # Utility for cmd discovery
+        "get_entity_mappings": "ramses_extras/get_entity_mappings",
+        "get_all_feature_entities": "ramses_extras/get_all_feature_entities",
     }

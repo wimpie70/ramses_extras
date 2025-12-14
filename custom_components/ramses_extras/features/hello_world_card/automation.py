@@ -296,7 +296,8 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             new_state = "on" if should_be_on else "off"
 
             # Use async_set_state to update the binary sensor
-            await self.hass.states.async_set(
+            # async_set is synchronous, so no await needed
+            self.hass.states.async_set(
                 entity_id, new_state, {"source": "hello_world_automation"}
             )
 

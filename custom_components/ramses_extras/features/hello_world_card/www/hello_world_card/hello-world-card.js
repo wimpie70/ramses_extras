@@ -20,10 +20,7 @@ import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translat
 import { CARD_STYLE } from './card-styles.js';
 import { createCardContent } from './templates/card-templates.js';
 
-/**
- * Hello World Card using HTMLElement pattern (like hvac_fan_card)
- * to avoid external dependencies like 'lit'
- */
+ // Use HTMLElement pattern to avoid external dependencies like 'lit'
 class HelloWorldCard extends HTMLElement {
   constructor() {
     super();
@@ -95,7 +92,16 @@ class HelloWorldCard extends HTMLElement {
     if (!config.device_id) {
       throw new Error('Device ID is required');
     }
-    this._config = config;
+
+    // Normalize device ID to colon format for consistency
+    const deviceId = config.device_id.replace(/_/g, ':');
+
+    this._config = {
+      device_id: deviceId,
+      // Entity mappings will be loaded via WebSocket from backend
+      ...config,
+    };
+
     this._rendered = false; // Force re-render when config changes
     this._checkAndLoadInitialState();
 
@@ -110,6 +116,7 @@ class HelloWorldCard extends HTMLElement {
     if (this._hass && this._config && !this._initialStateLoaded) {
       console.log('🔄 HelloWorldCard: Both hass and config ready, loading initial state');
       this._loadInitialState();
+      this._loadEntityMappings(); // Load entity mappings from backend
       this._initialStateLoaded = true;
     }
   }
@@ -206,6 +213,31 @@ class HelloWorldCard extends HTMLElement {
     }
   }
 
+  async _loadEntityMappings() {
+    if (!this._hass || !this._config?.device_id) return;
+
+    try {
+      console.log('🔄 HelloWorldCard: Loading entity mappings for device:', this._config.device_id);
+
+      // Get entity mappings from backend using feature-centric command
+      const result = await callWebSocket(this._hass, {
+        type: 'ramses_extras/get_entity_mappings',
+        device_id: this._config.device_id,
+        feature_id: 'hello_world_card'  // Use feature-centric design
+      });
+
+      if (result.mappings) {
+        console.log('✅ HelloWorldCard: Entity mappings loaded:', result.mappings);
+
+        // Update config with retrieved entity mappings dictionary
+        this._config.switchEntityId = result.mappings.switch_state;
+        this._config.sensorEntityId = result.mappings.sensor_state;
+      }
+    } catch (error) {
+      console.warn('⚠️ HelloWorldCard: Failed to load entity mappings:', error);
+    }
+  }
+
   async _performInitialStateLoad(deviceId) {
     try {
       // Get initial state from WebSocket using framework helper
@@ -229,9 +261,8 @@ class HelloWorldCard extends HTMLElement {
       return;
     }
 
-    // Get current state and toggle it
-    const deviceId = this._config.device_id;
-    const switchEntityId = `switch.hello_world_switch_${deviceId.replace(':', '_')}`;
+    // Get current state and toggle it using mapped entity ID
+    const switchEntityId = this._config.switchEntityId;
     const currentState = this._hass.states[switchEntityId]?.state === 'on';
     const newState = !currentState; // Toggle the current state
 
@@ -276,9 +307,8 @@ class HelloWorldCard extends HTMLElement {
   }
 
   _revertSwitchToActualState() {
-    // Get the current actual state from Home Assistant
-    const deviceId = this._config.device_id;
-    const switchEntityId = `switch.hello_world_switch_${deviceId.replace(':', '_')}`;
+    // Get the current actual state from Home Assistant using mapped entity ID
+    const switchEntityId = this._config.switchEntityId;
 
     // Get the actual state from HA
     const actualState = this._hass.states[switchEntityId]?.state === 'on';
@@ -323,9 +353,9 @@ class HelloWorldCard extends HTMLElement {
       return;
     }
 
-    const deviceId = this._config.device_id;
-    const switchEntityId = `switch.hello_world_switch_${deviceId.replace(':', '_')}`;
-    const sensorEntityId = `binary_sensor.hello_world_status_${deviceId.replace(':', '_')}`;
+    // Use pre-mapped entity IDs from config
+    const switchEntityId = this._config.switchEntityId;
+    const sensorEntityId = this._config.sensorEntityId;
 
     // Get current states from HA
     const switchState = this._hass.states[switchEntityId]?.state === 'on';

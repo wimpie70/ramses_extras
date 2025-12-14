@@ -19,44 +19,6 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-@websocket_api.websocket_command({vol.Required("type"): str})  # type: ignore[untyped-decorator]
-async def websocket_info(
-    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
-) -> None:
-    """Return information about available WebSocket commands."""
-    # Get all registered WebSocket commands
-    all_commands = get_all_ws_commands()
-    features_with_commands = discover_ws_commands()
-
-    # Build commands info dynamically from registry
-    commands_info = []
-    for feature_name, commands in all_commands.items():
-        feature_config = AVAILABLE_FEATURES.get(feature_name, {})
-        feature_description = feature_config.get(
-            "description", f"Feature: {feature_name}"
-        )
-
-        for command_name, command_type in commands.items():
-            commands_info.append(
-                {
-                    "type": command_type,
-                    "description": f"{command_name.replace('_', ' ').title()} - "
-                    f"{feature_description}",
-                    "feature": feature_name,
-                }
-            )
-
-    connection.send_result(
-        msg["id"],
-        {
-            "commands": commands_info,
-            "domain": DOMAIN,
-            "total_commands": len(commands_info),
-            "features": features_with_commands,
-        },
-    )
-
-
 async def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register all WebSocket commands for Ramses Extras.
 
@@ -119,13 +81,6 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
             _LOGGER.error(
                 f"Error importing commands for feature '{feature_name}': {error}"
             )
-
-    # Register the websocket_info function defined in this module
-    try:
-        websocket_api.async_register_command(hass, websocket_info)
-        _LOGGER.info("🔗 Registered websocket_info command")
-    except Exception as error:
-        _LOGGER.error(f"❌ Failed to register websocket_info: {error}")
 
     # Log summary
     total_commands = sum(len(commands) for commands in all_commands.values())

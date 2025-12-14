@@ -66,6 +66,7 @@ HELLO_WORLD_DEVICE_ENTITY_MAPPING = {
 HELLO_WORLD_WEBSOCKET_COMMANDS = {
     "toggle_switch": "ramses_extras/hello_world/toggle_switch",
     "get_switch_state": "ramses_extras/hello_world/get_switch_state",
+    # Note: get_entity_mappings is provided by the default feature for all features
 }
 
 # Card configurations
@@ -99,7 +100,7 @@ HELLO_WORLD_CARD_CONST = {
     "required_entities": {
         "switch": ["hello_world_switch"],
         "binary_sensor": ["hello_world_status"],
-    }
+    },
 }
 
 # Also provide alternative naming for compatibility
