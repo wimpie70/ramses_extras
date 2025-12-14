@@ -276,36 +276,39 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
     async def _trigger_binary_sensor_update(
         self, device_id: str, should_be_on: bool
     ) -> None:
-        """Trigger binary sensor update via automation.
+        """Trigger binary sensor update via automation using
+         Home Assistant state machine.
+
+        This directly updates the binary sensor state since binary sensors don't have
+        turn_on/turn_off services like switches do.
 
         Args:
             device_id: Device identifier
             should_be_on: Whether binary sensor should be on
         """
         try:
-            # Get binary sensor entity from stored references
+            # Generate the binary sensor entity ID
             entity_id = f"binary_sensor.hello_world_status_{device_id}"
-            binary_sensor_entity = (
-                self.hass.data.get("ramses_extras", {})
-                .get("entities", {})
-                .get(entity_id)
+
+            # Set the binary sensor state directly using Home Assistant's state machine
+            # Binary sensors don't have turn_on/turn_off services,
+            #  so we set the state directly
+            new_state = "on" if should_be_on else "off"
+
+            # Use async_set_state to update the binary sensor
+            await self.hass.states.async_set(
+                entity_id, new_state, {"source": "hello_world_automation"}
             )
 
-            if binary_sensor_entity:
-                # Use the automation-triggered state update method
-                binary_sensor_entity.set_state(should_be_on)
-                _LOGGER.info(
-                    f"Automation triggered binary sensor {entity_id}: "
-                    f"{'on' if should_be_on else 'off'}"
-                )
-            else:
-                _LOGGER.warning(
-                    f"Binary sensor entity {entity_id} not found in stored entities"
-                )
+            _LOGGER.info(f"Automation set binary sensor {entity_id} to {new_state}")
+
         except Exception as e:
             _LOGGER.error(
                 f"Failed to trigger binary sensor update for {device_id}: {e}"
             )
+            import traceback
+
+            _LOGGER.debug(f"Traceback: {traceback.format_exc()}")
 
     # Public API methods for external control
     async def async_trigger_binary_sensor(self, device_id: str, state: bool) -> bool:

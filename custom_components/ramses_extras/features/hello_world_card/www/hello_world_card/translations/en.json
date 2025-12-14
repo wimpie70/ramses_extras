@@ -5,7 +5,9 @@
         "switch": "Hello World Switch",
         "status": "Status",
         "on": "ON",
-        "off": "OFF"
+        "off": "OFF",
+        "binary_sensor_changed_by_automation": "Binary Sensor changed by automation to:",
+        "click_button_activate_automation": "Click the button to activate the automation"
       }
     },
     "editor": {

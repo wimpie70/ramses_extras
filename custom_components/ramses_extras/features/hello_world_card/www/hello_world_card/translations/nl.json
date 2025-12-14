@@ -5,7 +5,9 @@
         "switch": "Hallo Wereld Schakelaar",
         "status": "Status",
         "on": "AAN",
-        "off": "UIT"
+        "off": "UIT",
+        "binary_sensor_changed_by_automation": "Binaire Sensor gewijzigd door automatisering naar:",
+        "click_button_activate_automation": "Klik op de knop om de automatisering te activeren"
       }
     },
     "editor": {

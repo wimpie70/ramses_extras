@@ -19,7 +19,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .const import DOMAIN
+from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
+
+from .const import DOMAIN, HELLO_WORLD_BINARY_SENSOR_CONFIGS, HELLO_WORLD_SWITCH_CONFIGS
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -127,28 +129,27 @@ async def async_toggle_switch_service(hass: HomeAssistant, call: Any) -> None:
     )
 
     try:
-        # If entity_id provided, extract device_id from it
+        # If entity_id provided, extract device_id from it using EntityHelpers
         if entity_id and not device_id:
-            # Parse entity_id to get device_id
-            # Format: switch.hello_world_switch_device_id
-            #  (colons replaced with underscores)
-            if "hello_world_switch_" in entity_id:
-                device_id = entity_id.replace("switch.hello_world_switch_", "").replace(
-                    "_", ":"
-                )
+            parsed = EntityHelpers.parse_entity_id(entity_id)
+            if parsed:
+                device_id = parsed[2]  # device_id is the third element in the tuple
 
         if not device_id:
             _LOGGER.error("No device_id provided or found")
             return
 
-        # Generate entity ID using the correct format
-        switch_entity_id = f"switch.hello_world_switch_{device_id.replace(':', '_')}"
+        # Generate entity ID using the template from const
+        switch_entity_id = EntityHelpers.generate_entity_name_from_template(
+            "switch",
+            HELLO_WORLD_SWITCH_CONFIGS["hello_world_switch"]["entity_template"],
+            device_id=device_id.replace(":", "_"),
+        )
 
-        # If state not specified, get current state from entity
+        # State must be explicitly provided to avoid synchronization issues
         if state is None:
-            switch_entity = hass.states.get(switch_entity_id)
-            state = switch_entity.state == "on" if switch_entity else False
-            state = not state
+            _LOGGER.error("State parameter is required for toggle_switch service")
+            return
 
         # Toggle the switch entity
         if state:
@@ -179,21 +180,26 @@ async def async_get_switch_state_service(hass: HomeAssistant, call: Any) -> None
     )
 
     try:
-        # If entity_id provided, extract device_id from it
+        # If entity_id provided, extract device_id from it using EntityHelpers
         if entity_id and not device_id:
-            if "hello_world_switch_" in entity_id:
-                device_id = entity_id.replace("switch.hello_world_switch_", "").replace(
-                    "_", ":"
-                )
+            parsed = EntityHelpers.parse_entity_id(entity_id)
+            if parsed:
+                device_id = parsed[2]  # device_id is the third element in the tuple
 
         if not device_id:
             _LOGGER.error("No device_id provided or found")
             return
 
-        # Generate entity IDs using the correct format
-        switch_entity_id = f"switch.hello_world_switch_{device_id.replace(':', '_')}"
-        binary_sensor_entity_id = (
-            f"binary_sensor.hello_world_status_{device_id.replace(':', '_')}"
+        # Generate entity IDs using the templates from const
+        switch_entity_id = EntityHelpers.generate_entity_name_from_template(
+            "switch",
+            HELLO_WORLD_SWITCH_CONFIGS["hello_world_switch"]["entity_template"],
+            device_id=device_id.replace(":", "_"),
+        )
+        binary_sensor_entity_id = EntityHelpers.generate_entity_name_from_template(
+            "binary_sensor",
+            HELLO_WORLD_BINARY_SENSOR_CONFIGS["hello_world_status"]["entity_template"],
+            device_id=device_id.replace(":", "_"),
         )
 
         switch_state = hass.states.get(switch_entity_id)
@@ -233,8 +239,9 @@ async def async_bulk_toggle_service(hass: HomeAssistant, call: Any) -> None:
 
         for entity_id in entity_ids:
             try:
-                # Validate entity_id format
-                if "hello_world_switch_" in entity_id:
+                # Validate entity_id format using EntityHelpers
+                parsed = EntityHelpers.parse_entity_id(entity_id)
+                if parsed and "hello_world_switch" in parsed[1]:
                     # Use Home Assistant's switch service directly
                     if state:
                         await hass.services.async_call(
@@ -277,8 +284,7 @@ def get_service_info() -> dict[str, dict]:
             "domain": DOMAIN,
             "parameters": {
                 "device_id": "Ramses RF device ID (e.g., '32:153289')",
-                "state": "True for ON, False for OFF (optional, "
-                "toggles if not provided)",
+                "state": "True for ON, False for OFF (required)",
                 "entity_id": "Switch entity ID (alternative to device_id)",
             },
         },
@@ -332,6 +338,10 @@ def validate_service_call(service_name: str, data: dict[str, Any]) -> tuple[bool
         Tuple of (is_valid, error_message)
     """
     if service_name == SERVICE_TOGGLE_SWITCH:
+        # Check that state is provided (required to avoid sync issues)
+        if "state" not in data:
+            return False, "State parameter is required"
+
         # Check that either device_id or entity_id is provided
         if not data.get("device_id") and not data.get("entity_id"):
             return False, "Either device_id or entity_id must be provided"

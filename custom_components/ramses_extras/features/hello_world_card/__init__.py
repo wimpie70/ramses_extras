@@ -77,6 +77,9 @@ def create_hello_world_card_feature(
     # Create automation manager
     automation_manager = create_hello_world_automation(hass, config_entry)
 
+    # Start the automation manager to register state change listeners
+    hass.async_create_task(automation_manager.start())
+
     # Store in Home Assistant data for access by WebSocket commands
     if not hasattr(hass, "data"):
         hass.data = {}

@@ -18,10 +18,14 @@ from typing import TYPE_CHECKING, Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry
 
+from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
     SimpleEntityManager,
 )
+
+from .const import HELLO_WORLD_BINARY_SENSOR_CONFIGS, HELLO_WORLD_SWITCH_CONFIGS
 
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
@@ -69,7 +73,7 @@ def _get_entities_manager(hass: HomeAssistant) -> Any:
     {
         vol.Required("type"): "ramses_extras/hello_world/toggle_switch",
         vol.Required("device_id"): str,
-        vol.Optional("state"): vol.In([True, False]),
+        vol.Required("state"): vol.In([True, False]),
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -84,16 +88,25 @@ async def ws_toggle_switch(
     _LOGGER.info(f"Processing toggle_switch for device {device_id} with state {state}")
 
     try:
-        # Generate entity ID using the correct format
-        switch_entity_id = f"switch.hello_world_switch_{device_id.replace(':', '_')}"
+        # Generate entity ID using the template from const
+        switch_entity_id = EntityHelpers.generate_entity_name_from_template(
+            "switch",
+            HELLO_WORLD_SWITCH_CONFIGS["hello_world_switch"]["entity_template"],
+            device_id=device_id.replace(":", "_"),
+        )
 
-        # If state is not specified, get current state and toggle it
+        # State must be explicitly provided to avoid synchronization issues
         if state is None:
-            switch_state = hass.states.get(switch_entity_id)
-            state = switch_state.state != "on" if switch_state else True
-            _LOGGER.info(f"Toggling from current state to {state}")
+            _LOGGER.error(
+                "State parameter is required for toggle_switch WebSocket command"
+            )
+            connection.send_error(
+                msg["id"], "state_required", "State parameter is required"
+            )
+            return
 
         # Use Home Assistant's switch service to control the entity
+        # This will trigger the automation to handle binary sensor coordination
         if state:
             await hass.services.async_call(
                 "switch", "turn_on", {"entity_id": switch_entity_id}
@@ -104,6 +117,9 @@ async def ws_toggle_switch(
             )
 
         _LOGGER.info(f"Set switch entity {switch_entity_id} to {state}")
+        _LOGGER.info(
+            f"Automation will handle binary sensor coordination for device {device_id}"
+        )
 
         # Send success response
         connection.send_result(
@@ -114,16 +130,16 @@ async def ws_toggle_switch(
                 "state": state,
                 "entity_id": switch_entity_id,
                 "message": f"Hello World switch {'ON' if state else 'OFF'} "
-                f"(framework handles coordination)",
+                f"(automation handles coordination)",
                 "framework_pattern": (
-                    "switch -> SimpleEntityManager -> framework coordination"
+                    "switch -> HA Service -> Automation -> binary_sensor"
                 ),
             },
         )
 
         _LOGGER.info(
-            f"Successfully toggled switch for device {device_id} to {state}. "
-            f"Framework handles entity coordination."
+            f"Successfully sent switch command for device {device_id} to {state}. "
+            f"Automation will handle binary sensor coordination."
         )
 
     except Exception as err:
@@ -150,10 +166,16 @@ async def ws_get_switch_state(
     device_id = msg["device_id"]
 
     try:
-        # Generate entity IDs using the correct format
-        switch_entity_id = f"switch.hello_world_switch_{device_id.replace(':', '_')}"
-        binary_sensor_entity_id = (
-            f"binary_sensor.hello_world_status_{device_id.replace(':', '_')}"
+        # Generate entity IDs using the templates from const
+        switch_entity_id = EntityHelpers.generate_entity_name_from_template(
+            "switch",
+            HELLO_WORLD_SWITCH_CONFIGS["hello_world_switch"]["entity_template"],
+            device_id=device_id.replace(":", "_"),
+        )
+        binary_sensor_entity_id = EntityHelpers.generate_entity_name_from_template(
+            "binary_sensor",
+            HELLO_WORLD_BINARY_SENSOR_CONFIGS["hello_world_status"]["entity_template"],
+            device_id=device_id.replace(":", "_"),
         )
 
         # Get current states directly from Home Assistant
