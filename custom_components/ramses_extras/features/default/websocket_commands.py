@@ -93,6 +93,12 @@ async def ws_get_entity_mappings(
     """
     feature_id = msg.get("feature_id")
     const_module = msg.get("const_module")
+    device_id = msg.get("device_id")
+
+    _LOGGER.info(
+        f"ws_get_entity_mappings called with: feature_id={feature_id}, "
+        f"const_module={const_module}, device_id={device_id}"
+    )
 
     try:
         # Determine feature identifier
@@ -108,12 +114,15 @@ async def ws_get_entity_mappings(
             )
             return
 
+        _LOGGER.info(f"Using feature_identifier: {feature_identifier}")
+
         # Create and execute the command
         cmd = GetEntityMappingsCommand(hass, feature_identifier)
         await cmd.execute(connection, msg)
 
     except Exception as err:
         _LOGGER.error(f"Failed to get entity mappings: {err}")
+        _LOGGER.error(f"Exception details: {repr(err)}")
         connection.send_error(msg["id"], "get_entity_mappings_failed", str(err))
 
 

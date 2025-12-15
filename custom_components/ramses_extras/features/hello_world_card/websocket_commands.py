@@ -105,6 +105,23 @@ async def ws_toggle_switch(
             )
             return
 
+        # Check if entity exists before calling service
+        entity_state = hass.states.get(switch_entity_id)
+        if not entity_state:
+            _LOGGER.error(
+                f"Switch entity {switch_entity_id} does not exist in Home Assistant!"
+            )
+            connection.send_error(
+                msg["id"],
+                "entity_not_found",
+                f"Switch entity {switch_entity_id} not found",
+            )
+            return
+
+        _LOGGER.info(
+            f"Entity {switch_entity_id} exists, calling service to set state to {state}"
+        )
+
         # Use Home Assistant's switch service to control the entity
         # This will trigger the automation to handle binary sensor coordination
         if state:

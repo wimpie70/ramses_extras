@@ -297,6 +297,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     feature_instance = await create_feature_func(hass, entry)
                 else:
                     feature_instance = create_feature_func(hass, entry)
+
+                # Start the automation manager if it exists in the feature instance
+                if feature_instance and "automation" in feature_instance:
+                    automation_manager = feature_instance["automation"]
+                    if (
+                        automation_manager
+                        and not automation_manager.is_automation_active()
+                    ):
+                        hass.async_create_task(automation_manager.start())
+
                 features[feature_name] = feature_instance
                 _LOGGER.info(f"✅ Created feature instance: {feature_name}")
         except Exception as e:
@@ -434,11 +444,18 @@ async def _delegate_card_registration_to_feature(
 
         create_feature_func = getattr(feature_module, create_func_name)
 
-        # Create feature instance
+        # Create feature instance with skip_automation_setup=True to avoid
+        # duplicate automation
+        # This prevents the automation from being started during card registration
+        # The automation will be started later during main feature setup
         if asyncio.iscoroutinefunction(create_feature_func):
-            feature_instance = await create_feature_func(hass, entry)
+            feature_instance = await create_feature_func(
+                hass, entry, skip_automation_setup=True
+            )
         else:
-            feature_instance = create_feature_func(hass, entry)
+            feature_instance = create_feature_func(
+                hass, entry, skip_automation_setup=True
+            )
 
         # Get card manager and register cards
         card_manager = feature_instance.get("card_manager")

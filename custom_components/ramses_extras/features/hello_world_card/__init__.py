@@ -60,7 +60,9 @@ class HelloWorldCardManager(BaseCardManager):
 
 
 def create_hello_world_card_feature(
-    hass: "HomeAssistant", config_entry: ConfigEntry
+    hass: "HomeAssistant",
+    config_entry: ConfigEntry,
+    skip_automation_setup: bool = False,
 ) -> dict[str, Any]:
     """Factory function to create Hello World card feature.
 
@@ -68,6 +70,8 @@ def create_hello_world_card_feature(
     :type hass: HomeAssistant
     :param config_entry: Configuration entry containing integration configuration
     :type config_entry: ConfigEntry
+    :param skip_automation_setup: If True, don't start the automation manager
+    :type skip_automation_setup: bool
     :return: Hello World card feature with card management capabilities
     :rtype: dict[str, Any]
     """
@@ -77,8 +81,9 @@ def create_hello_world_card_feature(
     # Create automation manager
     automation_manager = create_hello_world_automation(hass, config_entry)
 
-    # Start the automation manager to register state change listeners
-    hass.async_create_task(automation_manager.start())
+    # Start the automation manager if not skipped
+    if not skip_automation_setup:
+        hass.async_create_task(automation_manager.start())
 
     # Store in Home Assistant data for access by WebSocket commands
     if not hasattr(hass, "data"):

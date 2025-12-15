@@ -276,11 +276,9 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
     async def _trigger_binary_sensor_update(
         self, device_id: str, should_be_on: bool
     ) -> None:
-        """Trigger binary sensor update via automation using
-         Home Assistant state machine.
+        """Trigger binary sensor update via automation.
 
-        This directly updates the binary sensor state since binary sensors don't have
-        turn_on/turn_off services like switches do.
+        This updates the binary sensor state using the framework's helper method.
 
         Args:
             device_id: Device identifier
@@ -290,18 +288,11 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             # Generate the binary sensor entity ID
             entity_id = f"binary_sensor.hello_world_status_{device_id}"
 
-            # Set the binary sensor state directly using Home Assistant's state machine
-            # Binary sensors don't have turn_on/turn_off services,
-            #  so we set the state directly
-            new_state = "on" if should_be_on else "off"
+            # Use framework base class helper to set binary sensor state
+            success = await self.set_binary_sensor_state(entity_id, should_be_on)
 
-            # Use async_set_state to update the binary sensor
-            # async_set is synchronous, so no await needed
-            self.hass.states.async_set(
-                entity_id, new_state, {"source": "hello_world_automation"}
-            )
-
-            _LOGGER.info(f"Automation set binary sensor {entity_id} to {new_state}")
+            if not success:
+                _LOGGER.warning(f"Failed to update binary sensor {entity_id}")
 
         except Exception as e:
             _LOGGER.error(

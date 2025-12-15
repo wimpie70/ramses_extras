@@ -46,13 +46,15 @@ class HvacFanCardManager(BaseCardManager):
 
 
 def create_hvac_fan_card_feature(
-    hass: HomeAssistant, config_entry: ConfigEntry
+    hass: HomeAssistant, config_entry: ConfigEntry, skip_automation_setup: bool = False
 ) -> dict[str, Any]:
     """Factory function to create HVAC fan card feature.
 
     Args:
         hass: Home Assistant instance
         config_entry: Configuration entry
+        skip_automation_setup: If True, don't start the automation manager
+            (parameter included for consistency with other features)
 
     Returns:
         HVAC fan card feature with card management capabilities

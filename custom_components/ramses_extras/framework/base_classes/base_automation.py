@@ -89,7 +89,10 @@ class ExtrasBaseAutomation(ABC):
         in the background and activating when ready.
         """
         if self._active:
-            _LOGGER.warning(f"Automation {self.feature_id} already started")
+            _LOGGER.warning(
+                f"Automation {self.feature_id} already started, "
+                f"skipping duplicate start"
+            )
             return
 
         _LOGGER.info(f"🚀 Starting {self.feature_id} automation (non-blocking startup)")
@@ -678,6 +681,84 @@ class ExtrasBaseAutomation(ABC):
             except (ValueError, TypeError):
                 # If numeric conversion fails, treat as boolean
                 return state_value.lower() in ["on", "true", "1", "yes"]
+
+    # ==================== BINARY SENSOR HELPERS ====================
+
+    async def set_binary_sensor_state(self, entity_id: str, is_on: bool) -> bool:
+        """Set binary sensor state using framework-compliant pattern.
+
+        This helper method provides the correct way to update binary sensor state
+        by calling the entity's set_state() method. Binary sensors don't have
+        turn_on/turn_off services like switches, so they must be updated via
+        their entity object.
+
+        Args:
+            entity_id: Binary sensor entity ID
+             (e.g., "binary_sensor.hello_world_status_37_168270")
+            is_on: Desired state (True for ON, False for OFF)
+
+        Returns:
+            True if state was updated successfully, False otherwise
+
+        Example:
+            await self.set_binary_sensor_state(
+                "binary_sensor.hello_world_status_37_168270",
+                True
+            )
+        """
+        try:
+            # Get the binary sensor entity from hass.data where it was stored
+            # during platform setup (store_entities_for_automation=True)
+            stored_entities = self.hass.data.get("ramses_extras", {}).get(
+                "entities", {}
+            )
+            entity = stored_entities.get(entity_id)
+
+            if entity and hasattr(entity, "set_state"):
+                # Call the entity's set_state method to update the binary sensor
+                entity.set_state(is_on)
+                _LOGGER.info(
+                    f"Updated binary sensor {entity_id} to {is_on} via set_state()"
+                )
+                return True
+            _LOGGER.warning(
+                f"Binary sensor entity {entity_id} not found or doesn't have "
+                f"set_state method"
+            )
+            return False
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to update binary sensor {entity_id}: {e}")
+            return False
+
+    async def toggle_binary_sensor_state(self, entity_id: str) -> bool:
+        """Toggle binary sensor state using framework-compliant pattern.
+
+        This helper method toggles the binary sensor state by first reading
+        the current state and then setting the opposite state.
+
+        Args:
+            entity_id: Binary sensor entity ID
+
+        Returns:
+            True if state was toggled successfully, False otherwise
+        """
+        try:
+            # Get current state
+            state = self.hass.states.get(entity_id)
+            if not state:
+                _LOGGER.warning(f"Binary sensor {entity_id} not found")
+                return False
+
+            # Determine current state as boolean
+            current_is_on = state.state.lower() in ["on", "true", "1"]
+
+            # Toggle and set new state
+            return await self.set_binary_sensor_state(entity_id, not current_is_on)
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to toggle binary sensor {entity_id}: {e}")
+            return False
 
     # ==================== ABSTRACT METHODS ====================
 
