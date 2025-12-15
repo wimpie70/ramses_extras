@@ -184,9 +184,8 @@ class HvacFanCard extends HTMLElement {
       ...config,
     };
 
-    // Set the config property for Home Assistant's card framework
-    // This ensures this.config is available and matches this._config
-    this.config = this._config;
+    // Config is now available via this._config
+    // No need to set this.config explicitly
   }
 
   render() {
