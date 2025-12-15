@@ -12,6 +12,7 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
+from datetime import timedelta
 
 # Avoid circular imports by importing when needed in methods
 from typing import Any
@@ -67,6 +68,7 @@ class ExtrasBaseAutomation(ABC):
         self._change_timers: dict[str, Any] = {}  # device_id -> timer for debouncing
         self._active = False
         self._specific_entity_ids: set[str] = set()
+        self._periodic_check_handle: Any = None  # Handle for periodic entity checks
 
         # Cache for entity patterns
         self._entity_patterns: list[str] | None = None
@@ -83,10 +85,10 @@ class ExtrasBaseAutomation(ABC):
     # ==================== LIFECYCLE MANAGEMENT ====================
 
     async def start(self) -> None:
-        """Start the automation with entity verification.
+        """Start the automation using HA events for reliable startup.
 
-        Starts the automation in non-blocking mode, verifying entities
-        in the background and activating when ready.
+        Uses Home Assistant's startup events instead of complex validation
+        cycles to prevent extensive reloading.
         """
         if self._active:
             _LOGGER.warning(
@@ -95,20 +97,34 @@ class ExtrasBaseAutomation(ABC):
             )
             return
 
-        _LOGGER.info(f"🚀 Starting {self.feature_id} automation (non-blocking startup)")
+        _LOGGER.info(
+            f"🚀 Starting {self.feature_id} automation (HA event-based startup)"
+        )
         _LOGGER.info(f"📋 Entity patterns: {self.entity_patterns}")
-        _LOGGER.info("🔧 Registering automation infrastructure")
 
         # Mark as active immediately
         self._active = True
 
-        # Schedule entity verification in background
-        self.hass.async_create_task(self._verify_entities_and_register_listeners())
-
-        _LOGGER.info(f"✅ {self.feature_id} automation started successfully")
-        _LOGGER.info(
-            f"🎯 Will activate automatically when {self.feature_id} entities are ready"
+        # Listen for HA startup event instead of complex validation
+        self.hass.bus.async_listen_once(
+            "homeassistant_started", self._on_homeassistant_started
         )
+
+        _LOGGER.info(f"✅ {self.feature_id} automation registered for HA startup")
+        _LOGGER.info("🎯 Will initialize when Home Assistant is ready")
+
+    async def _on_homeassistant_started(self, event: Any) -> None:
+        """Handle Home Assistant startup event."""
+        _LOGGER.info(
+            f"🏠 Home Assistant started, initializing {self.feature_id} automation"
+        )
+
+        try:
+            # Register entity listeners after HA is ready
+            await self._register_entity_listeners()
+            _LOGGER.info(f"✅ {self.feature_id} automation initialized successfully")
+        except Exception as e:
+            _LOGGER.error(f"❌ Failed to initialize {self.feature_id} automation: {e}")
 
     async def stop(self) -> None:
         """Stop the automation and clean up all resources."""
@@ -116,6 +132,11 @@ class ExtrasBaseAutomation(ABC):
             return
 
         _LOGGER.info(f"Stopping {self.feature_id} automation")
+
+        # Cancel periodic entity check if running
+        if self._periodic_check_handle:
+            self._periodic_check_handle()
+            self._periodic_check_handle = None
 
         # Remove all state listeners
         for listener in self._listeners:
@@ -178,132 +199,52 @@ class ExtrasBaseAutomation(ABC):
 
     # ==================== ENTITY VERIFICATION ====================
 
-    async def _wait_for_entities(self, timeout: int = 90) -> bool:
-        """Wait for entities to be created before starting automation.
+    async def _register_entity_listeners(self) -> None:
+        """Register entity listeners after Home Assistant startup.
 
-        Args:
-            timeout: Maximum time to wait in seconds
-
-        Returns:
-            True if entities are ready, False if timeout occurred
+        Simple approach: register listeners for entity patterns and let HA
+        handle entity availability. No complex validation cycles.
         """
-        _LOGGER.info(f"Waiting for {self.feature_id} entities (timeout: {timeout}s)")
-        start_time = time.time()
-        attempt = 0
+        _LOGGER.info(f"🎯 Registering listeners for {self.feature_id}")
+        _LOGGER.info(f"🎯 Entity patterns: {self.entity_patterns}")
 
-        while time.time() - start_time < timeout:
-            attempt += 1
+        listeners_registered = 0
 
-            if await self._check_any_device_ready():
-                _LOGGER.info(
-                    f"{self.feature_id} automation: "
-                    f"Entities ready after {attempt} attempts"
-                )
-                return True
+        # Register listeners for each entity pattern
+        for pattern in self.entity_patterns:
+            if pattern.endswith("*"):
+                prefix = pattern[:-1]  # Remove the *
+                entity_type = prefix.split(".")[0]
+                entities = self.hass.states.async_all(entity_type)
 
-            # Log progress every 10 attempts
-            if attempt % 10 == 0:
-                elapsed = time.time() - start_time
-                _LOGGER.debug(
-                    f"Still waiting for {self.feature_id} entities... "
-                    f"({elapsed:.1f}s elapsed, {attempt} attempts)"
-                )
+                for entity in entities:
+                    if entity.entity_id.startswith(prefix):
+                        _LOGGER.debug(f"🔍 Found entity: {entity.entity_id}")
+                        if entity.entity_id not in self._specific_entity_ids:
+                            listener = async_track_state_change(
+                                self.hass, entity.entity_id, self._handle_state_change
+                            )
 
-            await asyncio.sleep(1)
+                            if listener:
+                                self._listeners.append(listener)
+                                self._specific_entity_ids.add(entity.entity_id)
+                                listeners_registered += 1
+                                _LOGGER.debug(
+                                    f"✅ Registered listener: {entity.entity_id}"
+                                )
 
-        _LOGGER.warning(
-            f"{self.feature_id} automation: "
-            f"Timeout waiting for entities, proceeding anyway"
-        )
-        return False
-
-    async def _check_any_device_ready(self) -> bool:
-        """Check if any device has all required entities ready.
-
-        Returns:
-            True if at least one device is ready
-        """
-        # Get the first entity type to look for devices
-        required_entities = _get_required_entities_from_feature(self.feature_id)
-
-        _LOGGER.info(f"🔍 Required entities for {self.feature_id}: {required_entities}")
-
-        if not required_entities:
-            _LOGGER.warning(f"No required entities found for {self.feature_id}")
-            return False
-
-        # Check if any entity types actually have entity names
-        entity_types_with_entities = [
-            (entity_type, entity_names)
-            for entity_type, entity_names in required_entities.items()
-            if entity_names and len(entity_names) > 0
-        ]
-
-        if not entity_types_with_entities:
-            _LOGGER.warning(
-                f"No entity types have entities defined for {self.feature_id}: "
-                f"{required_entities}"
-            )
-            return False
-
-        # Use the first entity type that has entities as a starting point
-        if not entity_types_with_entities:
-            _LOGGER.warning(
-                f"No entity types with entities found for {self.feature_id}"
-            )
-            return False
-
-        first_entity_type, first_entity_names = entity_types_with_entities[0]
-
-        # More robust check for empty or None entity names
-        if not first_entity_names or len(first_entity_names) == 0:
-            _LOGGER.warning(
-                f"Entity type {first_entity_type} has no entity names defined"
-            )
-            return False
-
-        first_entity_name = first_entity_names[0]
-        entity_base_type = _singularize_entity_type(first_entity_type)
-
-        # Look for entities of this type
-        entities = self.hass.states.async_all(entity_base_type)
-        matching_entities = [
-            state
-            for state in entities
-            if state.entity_id.startswith(f"{entity_base_type}.{first_entity_name}_")
-        ]
-
-        _LOGGER.debug(
-            f"Looking for {first_entity_type}.{first_entity_name}_* entities: "
-            f"found {len(matching_entities)} matches"
+        _LOGGER.info(
+            f"✅ Registered {listeners_registered} entity listeners for "
+            f"{self.feature_id}"
         )
 
-        if not matching_entities:
-            _LOGGER.debug(
-                f"No entities found matching pattern: "
-                f"{entity_base_type}.{first_entity_name}_*"
+        # If no entities found, set up a periodic check for entities
+        if listeners_registered == 0:
+            _LOGGER.info(
+                f"No entities found yet for {self.feature_id}, "
+                f"setting up periodic check"
             )
-            return False
-
-        # Check each device has all required entities
-        for entity_state in matching_entities:
-            device_id = self._extract_device_id(entity_state.entity_id)
-            if device_id:
-                validation_result = await self._validate_device_entities(device_id)
-                if validation_result:
-                    _LOGGER.info(
-                        f"Device {device_id} has all {self.feature_id} entities ready"
-                    )
-                    return True
-                _LOGGER.debug(
-                    f"Device {device_id} missing some {self.feature_id} entities"
-                )
-            else:
-                _LOGGER.debug(
-                    f"Could not extract device_id from {entity_state.entity_id}"
-                )
-
-        return False
+            self._setup_periodic_entity_check()
 
     # ==================== STATE CHANGE HANDLING ====================
 
@@ -320,12 +261,8 @@ class ExtrasBaseAutomation(ABC):
             old_state: Previous state (if any)
             new_state: New state
         """
-        _LOGGER.info(
-            f"🔥 BASE _handle_state_change: {entity_id} -> "
-            f"{new_state.state if new_state else 'None'}"
-        )
-        _LOGGER.info(
-            f"🔥 BASE Automation {self.__class__.__name__} handling state change"
+        _LOGGER.debug(
+            f"State change: {entity_id} -> {new_state.state if new_state else 'None'}"
         )
 
         # Schedule async processing in a thread-safe manner
@@ -429,88 +366,32 @@ class ExtrasBaseAutomation(ABC):
 
     # ==================== ENTITY MANAGEMENT ====================
 
-    async def _verify_entities_and_register_listeners(self) -> None:
-        """Verify entities and register specific listeners in background."""
-        _LOGGER.debug(
-            f"Starting {self.feature_id} entity verification and listener registration"
+    def _setup_periodic_entity_check(self) -> None:
+        """Set up periodic check for entities when none are found initially."""
+        _LOGGER.info(f"Setting up periodic entity check for {self.feature_id}")
+
+        # Use HA's async_track_time_interval for periodic checks
+        self._periodic_check_handle = self.hass.helpers.event.async_track_time_interval(
+            self._check_for_entities_periodically,
+            timedelta(seconds=30),  # Check every 30 seconds
         )
-        try:
-            # Wait for entities to be ready
-            entities_ready = await self._wait_for_entities()
-            if entities_ready:
-                _LOGGER.info(
-                    f"{self.feature_id} automation: Entities verified and ready"
-                )
-                await self._register_specific_entity_listeners()
-            else:
-                _LOGGER.debug(
-                    f"{self.feature_id} automation: Entities not yet available - "
-                    "will activate when ready"
-                )
-        except Exception as e:
-            _LOGGER.debug(
-                f"{self.feature_id} automation: Entity verification failed: {e}"
-            )
 
-    async def _register_specific_entity_listeners(self) -> None:
-        """Register listeners for specific entity IDs instead of patterns."""
-        _LOGGER.info(f"🎯 Registering listeners for {self.feature_id}")
-        _LOGGER.info(f"🎯 Entity patterns: {self.entity_patterns}")
+    async def _check_for_entities_periodically(self, now: Any) -> None:
+        """Periodic check for entities."""
+        _LOGGER.debug(f"Periodic check for {self.feature_id} entities")
 
-        new_listeners_registered = False
+        # Try to register listeners again
+        listeners_before = len(self._specific_entity_ids)
+        await self._register_entity_listeners()
+        listeners_after = len(self._specific_entity_ids)
 
-        # Find all entities that match our patterns
-        for pattern in self.entity_patterns:
-            if pattern.endswith("*"):
-                prefix = pattern[:-1]  # Remove the *
-                entity_type = prefix.split(".")[0]
-                entities = self.hass.states.async_all(entity_type)
-
-                for entity in entities:
-                    if entity.entity_id.startswith(prefix):
-                        _LOGGER.info(
-                            f"🔍 Found entity matching pattern: {entity.entity_id}"
-                        )
-                        if entity.entity_id not in self._specific_entity_ids:
-                            _LOGGER.info(
-                                f"🎯 Registering listener for {self.feature_id}: "
-                                f"{entity.entity_id}"
-                            )
-
-                            listener = async_track_state_change(
-                                self.hass, entity.entity_id, self._handle_state_change
-                            )
-
-                            if listener:
-                                self._listeners.append(listener)
-                                self._specific_entity_ids.add(entity.entity_id)
-                                new_listeners_registered = True
-                                _LOGGER.info(
-                                    f"✅ Successfully registered listener for "
-                                    f"{entity.entity_id}"
-                                )
-                            else:
-                                _LOGGER.error(
-                                    f"❌ Failed to create listener for: "
-                                    f"{entity.entity_id}"
-                                )
-                        else:
-                            _LOGGER.info(
-                                f"⚠️ Listener already registered for {entity.entity_id}"
-                            )
-                    # else:
-                    #     _LOGGER.debug(
-                    #         f"❌ Entity {entity.entity_id}: no match prefix {prefix}"
-                    #     )
-
-        # Log summary
-        if new_listeners_registered:
+        # Stop periodic checks once we have listeners
+        if listeners_after > listeners_before and self._periodic_check_handle:
             _LOGGER.info(
-                f"🎯 Total {len(self._specific_entity_ids)} entity listeners for "
-                f"{self.feature_id}: {sorted(self._specific_entity_ids)}"
+                f"Found entities for {self.feature_id}, stopping periodic check"
             )
-        else:
-            _LOGGER.warning(f"No new listeners registered for {self.feature_id}")
+            self._periodic_check_handle()
+            self._periodic_check_handle = None
 
     def _entity_matches_patterns(self, entity_id: str) -> bool:
         """Check if an entity ID matches any of the automation patterns.

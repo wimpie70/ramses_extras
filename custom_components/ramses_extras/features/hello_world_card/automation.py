@@ -81,96 +81,12 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         patterns = [
             # Hello World switch entities
             "switch.hello_world_switch_*",
-            # Optional: also listen to binary sensor for verification
-            "binary_sensor.hello_world_status_*",
         ]
 
         _LOGGER.debug(
             f"Generated {len(patterns)} entity patterns for Hello World automation"
         )
-        _LOGGER.debug(f"Entity patterns: {patterns}")
         return patterns
-
-    async def _check_any_device_ready(self) -> bool:
-        """Check if any device has Hello World entities ready.
-
-        Returns:
-            True if at least one device is ready
-        """
-        # Check if feature is still enabled first
-        if not self._is_feature_enabled():
-            _LOGGER.debug("Hello World feature disabled, stopping device checks")
-            return False
-
-        _LOGGER.info(f"🔍 _check_any_device_ready called for {self.feature_id}")
-
-        # Look for Hello World switch entities
-        switch_entities = self.hass.states.async_all("switch")
-
-        for switch_state in switch_entities:
-            if switch_state.entity_id.startswith("switch.hello_world_switch_"):
-                device_id = self._extract_device_id(switch_state.entity_id)
-                if device_id:
-                    _LOGGER.info(
-                        f"🔍 Found Hello World switch for device "
-                        f"{device_id}: {switch_state.entity_id}"
-                    )
-                    return True
-
-        _LOGGER.debug("No Hello World switch entities found")
-        return False
-
-    async def _validate_device_entities(self, device_id: str) -> bool:
-        """Validate Hello World entities exist for a device.
-
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            True if required entities exist, False otherwise
-        """
-        # Check for Hello World entities
-        switch_entity_id = f"switch.hello_world_switch_{device_id}"
-        binary_sensor_entity_id = f"binary_sensor.hello_world_status_{device_id}"
-
-        switch_exists = bool(self.hass.states.get(switch_entity_id))
-        binary_sensor_exists = bool(self.hass.states.get(binary_sensor_entity_id))
-
-        _LOGGER.debug(
-            f"Device {device_id}: switch={switch_exists}, "
-            f"binary_sensor={binary_sensor_exists}"
-        )
-
-        return switch_exists and binary_sensor_exists
-
-    async def _get_device_entity_states(self, device_id: str) -> dict[str, Any]:
-        """Get Hello World entity states for a device.
-
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Dictionary with entity state values
-        """
-        states = {}
-
-        # Get switch state
-        switch_entity_id = f"switch.hello_world_switch_{device_id}"
-        switch_state = self.hass.states.get(switch_entity_id)
-
-        if switch_state:
-            states["switch"] = switch_state.state == "on"
-        else:
-            raise ValueError(f"Switch entity {switch_entity_id} not found")
-
-        # Get binary sensor state (for verification)
-        binary_sensor_entity_id = f"binary_sensor.hello_world_status_{device_id}"
-        binary_sensor_state = self.hass.states.get(binary_sensor_entity_id)
-
-        if binary_sensor_state:
-            states["binary_sensor"] = binary_sensor_state.state == "on"
-
-        return states
 
     async def start(self) -> None:
         """Start the Hello World automation.
@@ -226,10 +142,9 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             switch_state = entity_states.get("switch", False)
 
             # Simple automation logic: binary sensor follows switch state
-            # In a real feature, this could be more complex logic
             binary_sensor_should_be_on = switch_state
 
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Hello World automation processing for device {device_id}: "
                 f"switch={switch_state} → binary_sensor={binary_sensor_should_be_on}"
             )
@@ -252,16 +167,11 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             old_state: Previous state (if any)
             new_state: New state
         """
-        _LOGGER.info(
-            f"HelloWorldAutomationManager _async_handle_state_change called for "
-            f"entity_id={entity_id}"
-        )
-
         # Check if feature is still enabled first
         if not self._is_feature_enabled():
             _LOGGER.debug(
-                f"Feature {self.feature_id} "
-                f"disabled, ignoring state change for {entity_id}"
+                f"Feature {self.feature_id} disabled, ignoring "
+                f"state change for {entity_id}"
             )
             return
 
