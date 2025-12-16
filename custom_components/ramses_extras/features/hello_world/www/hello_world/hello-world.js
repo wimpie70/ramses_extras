@@ -66,8 +66,36 @@ class HelloWorld extends RamsesBaseCard {
       return;
     }
 
+    // Check if the hello_world feature is enabled
+    // If not enabled, show a disabled message instead of loading entities
+    if (!this.isFeatureEnabled()) {
+      if (!this._rendered) {
+        this.shadowRoot.innerHTML = `
+          <ha-card>
+            <div style="padding: 16px; text-align: center; color: #666;">
+              <ha-icon icon="mdi:information-outline"></ha-icon>
+              <div style="margin-top: 8px;">
+                Hello World feature is disabled
+              </div>
+              <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
+                Enable the feature in Ramses Extras configuration to use this card
+              </div>
+            </div>
+          </ha-card>
+        `;
+        this._rendered = true;
+      }
+      return;
+    }
+
     // Don't render until translations are loaded
     if (!this.hasTranslations()) {
+      return;
+    }
+
+    // Use base class validation check
+    if (!this.hasValidConfig()) {
+      this.renderConfigError();
       return;
     }
 
@@ -155,21 +183,19 @@ class HelloWorld extends RamsesBaseCard {
   // ========== OVERRIDE OPTIONAL METHODS ==========
 
   /**
-   * Validate card-specific configuration
-   * @param {Object} config - Configuration object
-   * @returns {Object} Validation result
+   * Check if the card has a valid configuration for rendering
+   * @returns {boolean} True if card has valid configuration
    */
-  validateConfig(config) {
-    const errors = [];
+  hasValidConfig() {
+    return this._config && this._config.device_id;
+  }
 
-    if (!config.device_id) {
-      errors.push('Device ID is required');
-    }
-
-    return {
-      valid: errors.length === 0,
-      errors
-    };
+  /**
+   * Get configuration error message for display
+   * @returns {string} Error message to display when configuration is invalid
+   */
+  getConfigErrorMessage() {
+    return 'Device ID is required. Please configure the card with a device_id to use this card.';
   }
 
   /**
@@ -232,6 +258,20 @@ class HelloWorld extends RamsesBaseCard {
    */
   getFeatureName() {
     return 'hello_world';
+  }
+
+  /**
+   * Get card info for HA registration with proper display name
+   * @returns {Object} Card registration info
+   */
+  static getCardInfo() {
+    return {
+      type: this.getTagName(),
+      name: 'Hello World Card',
+      description: 'A simple demonstration card for Ramses Extras Hello World feature',
+      preview: true,
+      documentationURL: 'https://github.com/wimpie70/ramses_extras',
+    };
   }
 
   /**
@@ -433,62 +473,3 @@ HelloWorld.register();
 
 // Export for testing purposes
 export { HelloWorld };
-console.log('Current customCards:', window.customCards);
-// Force refresh of custom cards registry
-if (window.customCards) {
-  console.log('🔄 Forcing custom cards registry refresh');
-  // Trigger a custom event that HA might listen for
-  // eslint-disable-next-line no-undef
-  window.dispatchEvent(new CustomEvent('custom-cards-changed'));
-}
-
-// Check if card is properly registered after a delay
-// eslint-disable-next-line no-undef
-setTimeout(() => {
-  const helloWorldCard = window.customCards?.find(card => card.type === 'hello-world');
-  if (helloWorldCard) {
-    console.log('✅ hello-world card found in registry:', helloWorldCard);
-  } else {
-    console.error('❌ hello-world card NOT found in registry!');
-    console.log('Available cards:', window.customCards?.map(c => c.type));
-  }
-}, 1000);
-
-// Alternative registration method - register immediately when module loads
-(function() {
-  'use strict';
-
-  // Register card type with HA immediately
-  if (typeof window !== 'undefined' && window.customCards) {
-    const cardType = 'hello-world';
-    const existingCard = window.customCards.find(card => card.type === cardType);
-
-    if (!existingCard) {
-      window.customCards.push({
-        type: cardType,
-        name: 'Hello World Card',
-        description: 'A simple demonstration card for Ramses Extras Hello World feature',
-        preview: true,
-        documentationURL: 'https://github.com/wimpie70/ramses_extras'
-      });
-      console.log('🚀 hello-world card registered immediately on module load');
-    }
-  }
-})();
-
-// Try to register card synchronously on script load
-window.addEventListener('load', () => {
-  console.log('Page loaded, checking hello-world card registration...');
-  const helloWorldCard = window.customCards?.find(card => card.type === 'hello-world');
-  if (!helloWorldCard) {
-    console.log('Registering hello-world card on page load');
-    if (!window.customCards) window.customCards = [];
-    window.customCards.push({
-      type: 'hello-world',
-      name: 'Hello World Card',
-      description: 'A simple demonstration card for Ramses Extras Hello World feature',
-      preview: true,
-      documentationURL: 'https://github.com/wimpie70/ramses_extras'
-    });
-  }
-});

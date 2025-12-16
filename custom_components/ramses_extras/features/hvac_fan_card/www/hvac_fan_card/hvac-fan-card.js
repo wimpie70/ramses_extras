@@ -1,15 +1,17 @@
 /* eslint-disable no-console */
 /* global customElements */
-/* global HTMLElement */
 /* global setTimeout */
 /* global clearTimeout */
 /* global clearInterval */
 
+// Import the base card class
+import { RamsesBaseCard } from '/local/ramses_extras/helpers/ramses-base-card.js';
+
 // Import shared path constants (using new JS_FEATURE_REORGANIZATION pattern)
-import {
-  // PATHS, HELPER_PATHS,
-  getFeatureTranslationPath
-} from '/local/ramses_extras/helpers/paths.js';
+// import {
+//   // PATHS, HELPER_PATHS,
+//   getFeatureTranslationPath
+// } from '/local/ramses_extras/helpers/paths.js';
 
 // Translation path configuration - using shared constants
 // const TRANSLATION_BASE_PATH = getFeatureTranslationPath('hvac_fan_card', 'en').replace('/translations/en.json', '');
@@ -27,7 +29,7 @@ import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
 
 // Import reusable helpers using environment-aware path constants
-import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
+// import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
 import { getRamsesMessageBroker } from '/local/ramses_extras/helpers/ramses-message-broker.js';
 import { HvacFanCardHandlers } from './message-handlers.js';
 import {
@@ -40,154 +42,50 @@ import {
 } from '/local/ramses_extras/helpers/card-validation.js';
 
 
-class HvacFanCard extends HTMLElement {
+class HvacFanCard extends RamsesBaseCard {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+
+    // HVAC-specific state
     this.parameterEditMode = false;
     this.parameterSchema = null;
     this.availableParams = {};
-    this.translator = null;
     this._eventCheckTimer = null; // Timer for event checks
     this._stateCheckInterval = null; // Interval for state monitoring
     this._pollInterval = null; // Interval for polling
-
-    // Initialize translations
-    this.initTranslations();
   }
 
-  // Initialize translations for this card
-  async initTranslations() {
-    this.translator = new SimpleCardTranslator('hvac-fan-card');
-    // Use environment-aware path resolution
-    const translationPath = getFeatureTranslationPath('hvac_fan_card', 'en');
-    await this.translator.init(translationPath.replace('/translations/en.json', ''));
+  // ========== IMPLEMENT REQUIRED ABSTRACT METHODS ==========
+
+  /**
+   * Get card size for Home Assistant layout
+   * @returns {number} Card size
+   */
+  getCardSize() {
+    return 4;
   }
 
-  // Helper method to get translated strings
-  t(key, params = {}) {
-    if (!this.translator) {
-      return key; // Fallback if translator not ready
-    }
-    return this.translator.t(key, params);
-  }
-
-  // Helper method to check if translation exists
-  hasTranslation(key) {
-    if (!this.translator) {
-      return false;
-    }
-    return this.translator.has(key);
-  }
-
-  // Get current language
-  getCurrentLanguage() {
-    if (!this.translator) {
-      return 'en';
-    }
-    return this.translator.getCurrentLanguage();
-  }
-
-
-  static get properties() {
-    return {
-      config: {},
-      _hass: {},
-    };
-  }
-
-  set hass(hass) {
-    this._hass = hass;
-
-    if (this.config && this.shouldUpdate()) {
-      this.render();
+  /**
+   * Get configuration element for HA editor
+   * @returns {HTMLElement|null} Configuration element
+   */
+  getConfigElement() {
+    try {
+      // Ensure the editor is available before creating it
+      if (typeof window.HvacFanCardEditor === 'undefined') {
+        console.error('HvacFanCardEditor is not defined on window');
+        return null;
+      }
+      return document.createElement('hvac-fan-card-editor');
+    } catch (error) {
+      console.error('Error creating config element:', error);
+      return null;
     }
   }
 
-  shouldUpdate() {
-    if (!this._hass || !this.config) return false;
-
-    // Check if any of our monitored entities have changed
-    // Only monitor entities that are NOT provided by 31DA messages
-    const entities = [
-      // ramses_extras provided sensor (not from 31DA)
-      this.config.indoor_abs_humid_entity,
-      this.config.outdoor_abs_humid_entity,
-      // Other sensor not provided by 31DA
-      this.config.co2_entity,
-      this.config.dehum_mode_entity,
-      this.config.dehum_active_entity,
-      this.config.comfort_temp_entity,
-    ].filter(Boolean);
-
-    return entities.some((entity) => {
-      const oldState = this._prevStates ? this._prevStates[entity] : null;
-      const newState = this._hass.states[entity];
-      this._prevStates = this._prevStates || {};
-      this._prevStates[entity] = newState;
-      return oldState !== newState;
-    });
-  }
-
-  setConfig(config) {
-    if (!config.fan_entity && !config.device_id) {
-      console.error('Missing required config: need fan_entity or device_id');
-      throw new Error('You need to define either fan_entity or device_id');
-    }
-
-    if (!config.device_id) {
-      console.warn('No device_id provided, will extract from fan_entity');
-      throw new Error('You need to define device_id');
-    }
-
-    // Normalize device ID to colon format for consistency
-    let deviceId = config.device_id;
-    deviceId = deviceId.replace(/_/g, ':');
-
-    // Store the processed config for internal use
-    this._config = {
-      device_id: deviceId,
-      // Auto-generate absolute humidity sensor entities (created by integration)
-      indoor_abs_humid_entity: 'sensor.indoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
-      outdoor_abs_humid_entity: 'sensor.outdoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
-      // Fallback to calculated humidity if absolute humidity sensor don't exist
-      indoor_temp_entity:
-        config.indoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
-      outdoor_temp_entity:
-        config.outdoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_temp',
-      indoor_humidity_entity:
-        config.indoor_humidity_entity ||
-        'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_humidity',
-      outdoor_humidity_entity:
-        config.outdoor_humidity_entity ||
-        'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
-      supply_temp_entity:
-        config.supply_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
-      exhaust_temp_entity:
-        config.exhaust_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
-      fan_speed_entity:
-        config.fan_speed_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_rate',
-      fan_mode_entity:
-        config.fan_mode_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
-      co2_entity: config.co2_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_co2_level',
-      flow_entity: config.flow_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
-      bypass_entity:
-        config.bypass_entity || 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
-      // Use configured entities if provided, otherwise auto-generate
-      dehum_mode_entity:
-        config.dehum_mode_entity || 'switch.dehumidify_' + deviceId.replace(/:/g, '_'),
-      dehum_active_entity:
-        config.dehum_active_entity ||
-        'binary_sensor.dehumidifying_active_' + deviceId.replace(/:/g, '_'),
-      comfort_temp_entity:
-        config.comfort_temp_entity || 'number.' + deviceId.replace(/:/g, '_') + '_param_75',
-      ...config,
-    };
-
-    // Config is now available via this._config
-    // No need to set this.config explicitly
-  }
-
+  /**
+   * Main rendering method
+   */
   render() {
     if (!this._hass || !this.config) {
       console.error('❌ Missing hass or config:', {
@@ -195,6 +93,25 @@ class HvacFanCard extends HTMLElement {
         _config: !!this._config,
         config: !!this.config,
       });
+      return;
+    }
+
+    // Check for required device_id at render time (not during initial creation)
+    if (!this._config.device_id) {
+      console.error('❌ Missing required device_id for HVAC fan card');
+      this.shadowRoot.innerHTML = `
+        <ha-card>
+          <div style="padding: 16px; text-align: center; color: #666;">
+            <ha-icon icon="mdi:alert-outline"></ha-icon>
+            <div style="margin-top: 8px;">
+              Device ID is required
+            </div>
+            <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
+              Please configure the card with a device_id to use this card
+            </div>
+          </div>
+        </ha-card>
+      `;
       return;
     }
 
@@ -207,6 +124,129 @@ class HvacFanCard extends HTMLElement {
     // Normal card rendering
     this.renderNormalMode();
   }
+
+  // ========== OVERRIDE OPTIONAL METHODS ==========
+
+  /**
+   * Get default configuration
+   * @returns {Object} Default configuration
+   */
+  getDefaultConfig() {
+    return {
+      name: 'HVAC Fan Card',
+      show_device_id_only: false,
+      show_name_only: false,
+      show_both: true,
+      show_status: true,
+      compact_view: false
+    };
+  }
+
+  /**
+   * Get required entity configuration
+   * @returns {Object} Required entities mapping
+   */
+  getRequiredEntities() {
+    if (!this._config?.device_id) {
+      return {};
+    }
+
+    return {
+      indoor_abs_humidity: this._config.indoor_abs_humid_entity,
+      outdoor_abs_humidity: this._config.outdoor_abs_humid_entity,
+      co2: this._config.co2_entity,
+      dehum_mode: this._config.dehum_mode_entity,
+      dehum_active: this._config.dehum_active_entity,
+      comfort_temp: this._config.comfort_temp_entity,
+    };
+  }
+
+  /**
+   * Get message codes this card should listen for
+   * @returns {Array<string>} Array of message codes
+   */
+  getMessageCodes() {
+    return ['31DA', '10D0'];
+  }
+
+  /**
+   * Get feature name for translation path resolution
+   * @returns {string} Feature name
+   */
+  getFeatureName() {
+    return 'hvac_fan_card';
+  }
+
+  /**
+   * Get card info for HA registration
+   * @returns {Object} Card registration info
+   */
+  static getCardInfo() {
+    return {
+      type: this.getTagName(),
+      name: 'Hvac Fan Control Card',
+      description: 'Advanced control card for Orcon or other ventilation systems with multi-language support',
+      preview: true,
+      documentationURL: 'https://github.com/wimpie70/ramses_extras',
+    };
+  }
+
+  /**
+   * Set card configuration with additional entity building
+   * @param {Object} config - Card configuration
+   */
+  setConfig(config) {
+    // Call parent setConfig for validation and basic processing
+    super.setConfig(config);
+
+    // If config is empty, return early
+    if (!config || Object.keys(config).length === 0) {
+      return;
+    }
+
+    // Additional processing: build entity IDs based on device_id
+    const deviceId = this._config.device_id;
+
+    // Add auto-generated entity IDs to config
+    this._config = {
+      ...this._config,
+      // Auto-generate absolute humidity sensor entities (created by integration)
+      indoor_abs_humid_entity: 'sensor.indoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
+      outdoor_abs_humid_entity: 'sensor.outdoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
+      // Fallback to calculated humidity if absolute humidity sensor don't exist
+      indoor_temp_entity:
+        this._config.indoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
+      outdoor_temp_entity:
+        this._config.outdoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_temp',
+      indoor_humidity_entity:
+        this._config.indoor_humidity_entity ||
+        'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_humidity',
+      outdoor_humidity_entity:
+        this._config.outdoor_humidity_entity ||
+        'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
+      supply_temp_entity:
+        this._config.supply_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
+      exhaust_temp_entity:
+        this._config.exhaust_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
+      fan_speed_entity:
+        this._config.fan_speed_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_rate',
+      fan_mode_entity:
+        this._config.fan_mode_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
+      co2_entity: this._config.co2_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_co2_level',
+      flow_entity: this._config.flow_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
+      bypass_entity:
+        this._config.bypass_entity || 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
+      // Use configured entities if provided, otherwise auto-generate
+      dehum_mode_entity:
+        this._config.dehum_mode_entity || 'switch.dehumidify_' + deviceId.replace(/:/g, '_'),
+      dehum_active_entity:
+        this._config.dehum_active_entity ||
+        'binary_sensor.dehumidifying_active_' + deviceId.replace(/:/g, '_'),
+      comfort_temp_entity:
+        this._config.comfort_temp_entity || 'number.' + deviceId.replace(/:/g, '_') + '_param_75',
+    };
+  }
+
 
   async renderParameterEditMode() {
     // Save scroll position before re-rendering
@@ -356,25 +396,6 @@ class HvacFanCard extends HTMLElement {
     this.attachNormalModeListeners();
   }
 
-  // Configuration schema for visual editor
-  static getConfigElement() {
-    try {
-      // Ensure the editor is available before creating it
-      if (typeof window.HvacFanCardEditor === 'undefined') {
-        console.error('HvacFanCardEditor is not defined on window');
-        return null;
-      }
-      return document.createElement('hvac-fan-card-editor');
-    } catch (error) {
-      console.error('Error creating config element:', error);
-      return null;
-    }
-  }
-
-  // Card size for Home Assistant
-  getCardSize() {
-    return 4;
-  }
 
   // Validate all required entities are available
   validateEntities() {

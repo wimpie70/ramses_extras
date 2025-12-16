@@ -94,7 +94,8 @@ export class RamsesBaseCard extends HTMLElement {
 
   /**
    * Main rendering method
-   * Override this method for simple cards, or implement renderNormalMode/renderEditMode for complex cards
+   * Override this method for simple cards, or implement
+   *  renderNormalMode/renderEditMode for complex cards
    */
   render() {
     // This method must be implemented by subclasses
@@ -105,12 +106,23 @@ export class RamsesBaseCard extends HTMLElement {
 
   /**
    * Validate card-specific configuration
+   * Default implementation checks for required device_id
+   * Subclasses can override for additional validation
    * @param {Object} config - Configuration object
    * @returns {Object} Validation result {valid: boolean, errors: string[]}
    */
-  // eslint-disable-next-line no-unused-vars
   validateConfig(config) {
-    return { valid: true, errors: [] };
+    const errors = [];
+
+    // Check for required device_id
+    if (!config.device_id) {
+      errors.push('Device ID is required');
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors
+    };
   }
 
   /**
@@ -193,6 +205,15 @@ export class RamsesBaseCard extends HTMLElement {
   }
 
   /**
+   * Check if the feature associated with this card is enabled
+   * @returns {boolean} True if feature is enabled
+   */
+  isFeatureEnabled() {
+    const featureName = this.getFeatureName();
+    return window.ramsesExtras?.features?.[featureName] === true;
+  }
+
+  /**
    * Get translated string
    * @param {string} key - Translation key
    * @param {Object} params - Parameters for string interpolation
@@ -225,10 +246,20 @@ export class RamsesBaseCard extends HTMLElement {
    */
   setConfig(config) {
     try {
-      // Validate configuration
-      const validation = this.validateConfig(config);
-      if (!validation.valid) {
-        throw new Error(`Configuration validation failed: ${validation.errors.join(', ')}`);
+      // Flexible validation: only validate if config is not empty (during actual configuration)
+      // This allows the card to be created without configuration first
+      if (config && Object.keys(config).length > 0) {
+        // Validate configuration using subclass validation
+        const validation = this.validateConfig(config);
+        if (!validation.valid) {
+          throw new Error(`Configuration validation failed: ${validation.errors.join(', ')}`);
+        }
+      }
+
+      // If no config or empty config, just store it and return early
+      if (!config || Object.keys(config).length === 0) {
+        this._config = {};
+        return;
       }
 
       // Normalize device ID to colon format for consistency
@@ -655,13 +686,20 @@ export class RamsesBaseCard extends HTMLElement {
     window.customCards = window.customCards || [];
 
     const cardInfo = this.getCardInfo();
-    const existingCard = window.customCards.find(card => card.type === cardInfo.type);
+
+    // Register with custom: prefix for dashboard compatibility
+    const customCardInfo = {
+      ...cardInfo,
+      type: `custom:${cardInfo.type}`
+    };
+
+    const existingCard = window.customCards.find(card => card.type === customCardInfo.type);
 
     if (!existingCard) {
-      window.customCards.push(cardInfo);
-      console.log(`✅ ${this.name}: Registered with HA custom cards:`, cardInfo.type);
+      window.customCards.push(customCardInfo);
+      console.log(`✅ ${this.name}: Registered with HA custom cards:`, customCardInfo.type);
     } else {
-      console.log(`⚠️ ${this.name}: Custom card '${cardInfo.type}' already registered`);
+      console.log(`⚠️ ${this.name}: Custom card '${customCardInfo.type}' already registered`);
     }
   }
 
@@ -695,6 +733,35 @@ export class RamsesBaseCard extends HTMLElement {
   static register() {
     this.registerElement();
     this.registerCustomCard();
+
+    // Ensure the card is properly registered with additional verification
+    this.ensureRegistration();
+  }
+
+  /**
+   * Ensure card registration with additional verification (no duplicate registration)
+   */
+  static ensureRegistration() {
+    try {
+      // Get card info
+      const cardInfo = this.getCardInfo();
+
+      // Ensure customCards array exists
+      if (!window.customCards) {
+        window.customCards = [];
+      }
+
+      // Final verification - only check, don't register again
+      const verifiedCard = window.customCards.find(card => card.type === cardInfo.type);
+      if (verifiedCard) {
+        console.log(`✅ ${this.name}: Registration verified successfully for type: ${cardInfo.type}`);
+      } else {
+        console.error(`❌ ${this.name}: Failed to verify registration for type: ${cardInfo.type}`);
+      }
+
+    } catch (error) {
+      console.error(`❌ ${this.name}: Error during registration verification:`, error);
+    }
   }
 
   // ========== CONVENIENCE METHODS ==========
@@ -737,5 +804,45 @@ export class RamsesBaseCard extends HTMLElement {
     const deviceName = this._config?.name || this.constructor.name;
 
     return `${deviceName} (${deviceId})`;
+  }
+
+  /**
+   * Check if the card has a valid configuration for rendering
+   * This method can be called in render() to check if the card is ready to be displayed
+   * @returns {boolean} True if card has valid configuration
+   */
+  hasValidConfig() {
+    // Check for required device_id - cards that need device_id should override this method
+    // to add their specific validation logic
+    return true;
+  }
+
+  /**
+   * Get configuration error message for display
+   * Override this method in subclasses to provide specific error messages
+   * @returns {string} Error message to display when configuration is invalid
+   */
+  getConfigErrorMessage() {
+    return 'Configuration is required. Please configure this card to use it.';
+  }
+
+  /**
+   * Render configuration error message
+   * This method can be called in render() when hasValidConfig() returns false
+   */
+  renderConfigError() {
+    this.shadowRoot.innerHTML = `
+      <ha-card>
+        <div style="padding: 16px; text-align: center; color: #666;">
+          <ha-icon icon="mdi:alert-outline"></ha-icon>
+          <div style="margin-top: 8px;">
+            Configuration Required
+          </div>
+          <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
+            ${this.getConfigErrorMessage()}
+          </div>
+        </div>
+      </ha-card>
+    `;
   }
 }
