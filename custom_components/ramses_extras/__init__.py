@@ -25,7 +25,7 @@ from .const import (
     PLATFORM_REGISTRY,
     register_feature_platform,
 )
-from .framework.helpers.paths import DEPLOYMENT_PATHS
+from .framework.helpers.paths import DEPLOYMENT_PATHS, PathConstants
 
 # Since this integration can only be set up from config entries,
 # use the config_entry_only_config_schema to avoid the warning
@@ -35,6 +35,16 @@ _LOGGER = logging.getLogger(__name__)
 
 INTEGRATION_DIR = Path(__file__).parent
 _setup_in_progress = False
+
+# All card resources that should be registered at startup
+# regardless of feature enablement status
+CARD_RESOURCES = [
+    PathConstants.get_helper_path("ramses-extras-features.js"),
+    PathConstants.get_feature_card_path("hello_world", "hello_world/hello-world.js"),
+    PathConstants.get_feature_card_path(
+        "hvac_fan_card", "hvac_fan_card/hvac-fan-card.js"
+    ),
+]
 
 
 async def _import_module_in_executor(module_path: str) -> Any:
@@ -236,7 +246,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info("WebSocket functionality moved to feature-centric architecture")
 
-    # Register custom card resources via feature-centric approach
+    # ALWAYS register all card resources at startup (regardless of feature status)
+    await _register_all_card_resources(hass, entry)
+
+    # Also register custom card resources via feature-centric approach
+    #  for enabled features
     await _register_feature_card_resources(hass, enabled_features_dict, entry)
 
     # Register services before setting up platforms
@@ -472,6 +486,213 @@ async def _delegate_card_registration_to_feature(
             f"Failed to delegate card registration to feature {feature_name}: {e}"
         )
         return {}
+
+
+async def _register_all_card_resources(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register all card resources at startup regardless of feature status.
+
+    This ensures Lovelace knows about all card resources early, preventing
+    'Unknown type encountered' errors when dashboards load.
+
+    Feature toggles control behavior, not resource availability.
+    """
+    try:
+        _LOGGER.info("🔧 Starting unconditional card resource registration")
+
+        # Always copy helper files
+        await _copy_helper_files(hass)
+
+        # Always copy all card files regardless of feature status
+        await _copy_all_card_files(hass)
+
+        # Expose feature configuration to frontend for card feature toggles
+        await _expose_feature_config_to_frontend(hass, entry)
+
+        # Register all card resources in Lovelace resources storage
+        await _register_all_lovelace_resources(hass)
+
+        _LOGGER.info("✅ Unconditional card resource registration complete")
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Failed to register all card resources: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+
+
+async def _expose_feature_config_to_frontend(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Expose feature configuration to frontend JavaScript for card feature toggles."""
+    try:
+        _LOGGER.info("🔧 Exposing feature configuration to frontend...")
+
+        # Get enabled features from the entry
+        enabled_features = entry.data.get("enabled_features", {})
+
+        # Use json.dumps to properly convert Python values to JavaScript
+        import json
+
+        js_enabled_features = json.dumps(enabled_features, indent=2)
+
+        js_content = f"""// Ramses Extras Feature Configuration
+// Auto-generated during integration setup
+window.ramsesExtras = window.ramsesExtras || {{}};
+window.ramsesExtras.features = {js_enabled_features};
+
+// Log feature configuration for debugging
+console.log('🔧 Ramses Extras features loaded:', window.ramsesExtras.features);
+"""
+
+        # Write the JavaScript file to the helpers directory
+        destination_helpers_dir = DEPLOYMENT_PATHS.get_destination_helpers_path(
+            hass.config.config_dir
+        )
+        feature_config_file = destination_helpers_dir / "ramses-extras-features.js"
+
+        # Write the file
+        await asyncio.to_thread(feature_config_file.write_text, js_content)
+
+        _LOGGER.info(
+            f"✅ Feature configuration exposed to frontend: {feature_config_file}"
+        )
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Failed to expose feature configuration to frontend: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+
+
+async def _copy_all_card_files(hass: HomeAssistant) -> None:
+    """Copy all card files to Home Assistant's www directory regardless
+    of feature status."""
+    try:
+        _LOGGER.info("📦 Starting unconditional card files copy process...")
+
+        # Card files to copy (regardless of feature status)
+        card_files_to_copy = [
+            {
+                "source": INTEGRATION_DIR
+                / "features"
+                / "hello_world"
+                / "www"
+                / "hello_world",
+                "destination": DEPLOYMENT_PATHS.get_destination_features_path(
+                    hass.config.config_dir, "hello_world"
+                ),
+                "feature_name": "hello_world",
+            },
+            {
+                "source": INTEGRATION_DIR
+                / "features"
+                / "hvac_fan_card"
+                / "www"
+                / "hvac_fan_card",
+                "destination": DEPLOYMENT_PATHS.get_destination_features_path(
+                    hass.config.config_dir, "hvac_fan_card"
+                ),
+                "feature_name": "hvac_fan_card",
+            },
+        ]
+
+        for card_file in card_files_to_copy:
+            source_dir = Path(card_file["source"])  # type: ignore[arg-type]
+            destination_dir = Path(card_file["destination"])  # type: ignore[arg-type]
+            feature_name = card_file["feature_name"]
+
+            if source_dir.exists():
+                destination_dir.mkdir(parents=True, exist_ok=True)
+
+                await asyncio.to_thread(
+                    shutil.copytree,
+                    source_dir,
+                    destination_dir,
+                    dirs_exist_ok=True,
+                )
+                _LOGGER.info(
+                    f"✅ Copied {feature_name} card files to {destination_dir}"
+                )
+            else:
+                _LOGGER.warning(f"⚠️ Card source directory not found: {source_dir}")
+
+        _LOGGER.info("✅ All card files copy process complete")
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Failed to copy card files: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+
+
+async def _register_all_lovelace_resources(hass: HomeAssistant) -> None:
+    """Register all card resources in Lovelace resources storage.
+
+    This registers resources for all cards regardless of feature status.
+    Feature toggles control behavior, not resource availability.
+    """
+    try:
+        _LOGGER.info("🔧 Starting unconditional Lovelace resources registration...")
+
+        # Import Store for proper Home Assistant storage access
+        from homeassistant.helpers.storage import Store
+
+        # Get the resources storage using the proper Store API
+        store = Store(hass, 1, "lovelace_resources")
+        data = await store.async_load() or {"items": []}
+
+        _LOGGER.info(
+            f"📋 Current resources storage loaded: {len(data.get('items', []))} items"
+        )
+
+        # Get existing resources
+        existing_resources = data.get("items", [])
+        existing_card_urls = {
+            resource["url"]
+            for resource in existing_resources
+            if resource.get("type") == "module"
+        }
+
+        _LOGGER.info(f"📄 Existing card URLs: {existing_card_urls}")
+
+        # Add all card resources
+        resources_to_add = []
+        for card_url in CARD_RESOURCES:
+            if card_url not in existing_card_urls:
+                # Create resource entry with proper ID generation
+                # Extract filename without extension and clean it up
+                filename = card_url.split("/")[-1]
+                resource_id = (
+                    filename.replace(".js", "").replace("-", "_").replace(".", "_")
+                )
+
+                resource_entry = {
+                    "id": resource_id,
+                    "url": card_url,
+                    "type": "module",
+                }
+
+                resources_to_add.append(resource_entry)
+                _LOGGER.info(f"📝 Added resource entry: {card_url} (ID: {resource_id})")
+
+        # Update the storage if we have new resources
+        if resources_to_add:
+            updated_resources = existing_resources + resources_to_add
+            data["items"] = updated_resources
+
+            # Save the updated storage using the Store API
+            await store.async_save(data)
+
+            _LOGGER.info(f"✅ Registered {len(resources_to_add)} new card resources")
+            _LOGGER.info(f"📋 Updated resources count: {len(updated_resources)}")
+        else:
+            _LOGGER.info("ℹ️ All card resources already registered")
+
+    except Exception as e:
+        _LOGGER.error(f"❌ Failed to register unconditional Lovelace resources: {e}")
+        import traceback
+
+        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
 
 
 async def _copy_helper_files(hass: HomeAssistant) -> None:

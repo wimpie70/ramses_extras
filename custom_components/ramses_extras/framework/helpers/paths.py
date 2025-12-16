@@ -69,6 +69,10 @@ class PathConstants:
         Returns:
             Full path to the feature card
         """
+        # Remove feature_name directory from card_file_name if present
+        # to avoid double directory structure
+        if card_file_name.startswith(f"{feature_name}/"):
+            card_file_name = card_file_name[len(feature_name) + 1 :]
         return PathConstants.get_feature_path(feature_name, card_file_name)
 
     @staticmethod

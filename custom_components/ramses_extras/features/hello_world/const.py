@@ -81,7 +81,7 @@ FEATURE_WEB_CONFIGS = {
 }
 
 # Feature deployment configuration
-HELLO_WORLD_CARD_CONFIG = {
+HELLO_WORLD_CONFIG = {
     "hello_world": {
         "card_path": "features/hello_world",
         "main_js": "hello-world.js",
@@ -174,6 +174,6 @@ __all__ = [
     "HELLO_WORLD_CONFIGS",
     "DEFAULT_CONFIG",
     "FEATURE_WEB_CONFIGS",
-    "HELLO_WORLD_CARD_CONFIG",
+    "HELLO_WORLD_CONFIG",
     "load_feature",
 ]
