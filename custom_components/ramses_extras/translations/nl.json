@@ -47,7 +47,7 @@
           "feature_default": "Feature: Default",
           "feature_humidity_control": "Feature: Humidity Control",
           "feature_hvac_fan_card": "Feature: Hvac Fan Card",
-          "feature_hello_world_card": "Feature: Hello World"
+          "feature_hello_world": "Feature: Hello World"
         }
       },
       "enable_features": {
@@ -93,7 +93,7 @@
       "title": "HVAC Ventilator Kaart Configuratie",
       "description": "Configureer geavanceerde ventilatorkaart instellingen en bediening"
     },
-    "feature_hello_world_card": {
+    "feature_hello_world": {
       "title": "Hello World Kaart Configuratie",
       "description": "Configureer de template functie voor demonstratiedoeleinden"
     }

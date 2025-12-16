@@ -693,14 +693,17 @@ def _import_entity_mappings_sync(feature_id: str, device_id: str) -> dict[str, s
             mappings[state_key] = entity_id
 
     # Check for feature-specific entity templates in various config types
+    # Try both with and without "_CARD" suffix for backwards compatibility
     config_types = [
         "SENSOR_CONFIGS",
         "SWITCH_CONFIGS",
         "NUMBER_CONFIGS",
+        "BINARY_SENSOR_CONFIGS",  # Also try without "BOOLEAN" alias
         "BOOLEAN_CONFIGS",
     ]
 
     for config_type in config_types:
+        # Try with "_CARD" suffix first (for hello_world -> hello_world_SWITCH_CONFIGS)
         config_key = f"{feature_id.upper()}_{config_type}"
         if hasattr(feature_module, config_key):
             configs = getattr(feature_module, config_key, {})
@@ -714,6 +717,24 @@ def _import_entity_mappings_sync(feature_id: str, device_id: str) -> dict[str, s
                     )
                     # Use the entity_name as the state key
                     mappings[entity_name] = entity_id
+
+        # Also try without "_CARD" suffix
+        # (for hello_world -> HELLO_WORLD_SWITCH_CONFIGS)
+        if "_CARD" in feature_id:
+            base_feature_id = feature_id.replace("_CARD", "")
+            config_key = f"{base_feature_id.upper()}_{config_type}"
+            if hasattr(feature_module, config_key):
+                configs = getattr(feature_module, config_key, {})
+
+                for entity_name, config in configs.items():
+                    entity_template = config.get("entity_template", "")
+                    if entity_template:
+                        # Replace {device_id} placeholder with the actual device_id
+                        entity_id = entity_template.replace(
+                            "{device_id}", device_id_underscore
+                        )
+                        # Use the entity_name as the state key
+                        mappings[entity_name] = entity_id
 
     return mappings
 

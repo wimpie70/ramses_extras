@@ -15,7 +15,7 @@ and WebSocket command definitions.
 
 from typing import Any
 
-DOMAIN = "hello_world_card"
+DOMAIN = "hello_world"
 
 # Feature configuration
 FEATURE_NAME = "Hello World Switch Card"
@@ -69,21 +69,43 @@ HELLO_WORLD_WEBSOCKET_COMMANDS = {
     # Note: get_entity_mappings is provided by the default feature for all features
 }
 
+# Feature web assets configuration for this feature
+FEATURE_WEB_CONFIGS = {
+    "hello_world": {
+        "web_folder": "hello_world",
+        "main_card": "hello-world.js",
+        "editor_card": "hello-world-editor.js",
+        "has_templates": True,
+        "has_translations": True,
+    },
+}
+
+# Feature deployment configuration
+HELLO_WORLD_CARD_CONFIG = {
+    "hello_world": {
+        "card_path": "features/hello_world",
+        "main_js": "hello-world.js",
+        "editor_js": "hello-world-editor.js",
+        "templates_path": "templates/",
+        "translations_path": "translations/",
+    }
+}
+
 # Card configurations
-HELLO_WORLD_CARD_CONFIGS = [
+HELLO_WORLD_CONFIGS = [
     {
-        "card_id": "hello-world-card",
+        "card_id": "hello-world",
         "card_name": "Hello World Card",
         "description": (
             "A simple demonstration card for Ramses Extras Hello World feature"
         ),
-        "main_card": "hello-world-card.js",
-        "editor_card": "hello-world-card-editor.js",
+        "main_card": "hello-world.js",
+        "editor_card": "hello-world-editor.js",
         "has_templates": True,
         "templates_path": "templates/",
         "translations_path": "translations/",
-        "main_js": "hello-world-card.js",
-        "editor_js": "hello-world-card-editor.js",
+        "main_js": "hello-world.js",
+        "editor_js": "hello-world-editor.js",
         "preview": True,
         "documentation_url": "https://github.com/wimpie70/ramses_extras",
     }
@@ -96,15 +118,12 @@ DEFAULT_CONFIG = {
 }
 
 # Entity structure for SimpleEntityManager
-HELLO_WORLD_CARD_CONST = {
+HELLO_WORLD_CONST = {
     "required_entities": {
         "switch": ["hello_world_switch"],
         "binary_sensor": ["hello_world_status"],
     },
 }
-
-# Also provide alternative naming for compatibility
-HELLO_WORLD_CONST = HELLO_WORLD_CARD_CONST
 
 
 def load_feature() -> None:
@@ -133,9 +152,13 @@ def load_feature() -> None:
     extras_registry.register_device_mappings(HELLO_WORLD_DEVICE_ENTITY_MAPPING)
 
     # Register WebSocket commands
-    register_ws_commands("hello_world_card", HELLO_WORLD_WEBSOCKET_COMMANDS)
+    register_ws_commands("hello_world", HELLO_WORLD_WEBSOCKET_COMMANDS)
 
-    extras_registry.register_feature("hello_world_card")
+    # Register each card configuration for feature-centric card management
+    for card_config in HELLO_WORLD_CONFIGS:
+        extras_registry.register_card_config("hello_world", card_config)
+
+    extras_registry.register_feature("hello_world")
 
 
 __all__ = [
@@ -148,7 +171,9 @@ __all__ = [
     "HELLO_WORLD_NUMBER_CONFIGS",
     "HELLO_WORLD_DEVICE_ENTITY_MAPPING",
     "HELLO_WORLD_WEBSOCKET_COMMANDS",
-    "HELLO_WORLD_CARD_CONFIGS",
+    "HELLO_WORLD_CONFIGS",
     "DEFAULT_CONFIG",
+    "FEATURE_WEB_CONFIGS",
+    "HELLO_WORLD_CARD_CONFIG",
     "load_feature",
 ]

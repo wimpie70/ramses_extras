@@ -12,7 +12,7 @@ import { getAvailableDevices } from '/local/ramses_extras/helpers/card-services.
  * Hello World Card Editor using HTMLElement pattern (like hvac_fan_card)
  * to avoid external dependencies like 'lit'
  */
-class HelloWorldCardEditor extends HTMLElement {
+class HelloworldEditor extends HTMLElement {
   constructor() {
     super();
     this._config = {};
@@ -20,27 +20,27 @@ class HelloWorldCardEditor extends HTMLElement {
     this._initialized = false;
     this._devicesFetched = false; // Track if we've already fetched devices
 
-    console.log('HelloWorldCardEditor: Constructor called');
+    console.log('HelloworldEditor: Constructor called');
   }
 
   connectedCallback() {
     this._initialized = true;
-    console.log('HelloWorldCardEditor connected');
+    console.log('HelloworldEditor connected');
   }
 
   disconnectedCallback() {
-    console.log('🧹 HelloWorldCardEditor: Cleaning up editor component');
+    console.log('🧹 HelloworldEditor: Cleaning up editor component');
     this._devicesFetched = false; // Reset for next connection
   }
 
   setConfig(config) {
-    console.log('HelloWorldCardEditor setConfig called with:', config);
+    console.log('HelloworldEditor setConfig called with:', config);
     this._config = config ? JSON.parse(JSON.stringify(config)) : {};
     this._updateContent();
   }
 
   set hass(hass) {
-    console.log('HelloWorldCardEditor hass set');
+    console.log('HelloworldEditor hass set');
     this._hass = hass;
     if (this._config && this._initialized) {
       this._updateContent();
@@ -48,7 +48,7 @@ class HelloWorldCardEditor extends HTMLElement {
   }
 
   _updateContent() {
-    console.log('=== HelloWorldCardEditor _updateContent Debug ===');
+    console.log('=== HelloworldEditor _updateContent Debug ===');
     console.log('HASS available:', !!this._hass);
     console.log('Config available:', !!this._config);
 
@@ -62,7 +62,7 @@ class HelloWorldCardEditor extends HTMLElement {
 
     // Only fetch devices once per component instance
     if (!this._devicesFetched) {
-      console.log('🔄 HelloWorldCardEditor: Fetching devices for first time');
+      console.log('🔄 HelloworldEditor: Fetching devices for first time');
       this._devicesFetched = true;
 
       // Get available Ramses RF devices using WebSocket command
@@ -77,7 +77,7 @@ class HelloWorldCardEditor extends HTMLElement {
         this._renderEditor([]);
       });
     } else {
-      console.log('📦 HelloWorldCardEditor: Using cached devices (no new fetch needed)');
+      console.log('📦 HelloworldEditor: Using cached devices (no new fetch needed)');
       // If devices were already fetched, re-render with the same devices
       // The cached devices will be reused from the card-services.js cache
       this._getRamsesDevices().then(ramsesDevices => {
@@ -307,20 +307,20 @@ class HelloWorldCardEditor extends HTMLElement {
 }
 
 // Register the editor immediately
-console.log('HelloWorldCardEditor: Starting registration process');
+console.log('HelloworldEditor: Starting registration process');
 
 try {
-  customElements.define('hello-world-card-editor', HelloWorldCardEditor);
-  console.log('HelloWorldCardEditor: ✅ Custom element registered successfully');
+  customElements.define('hello-world-editor', HelloworldEditor);
+  console.log('HelloworldEditor: ✅ Custom element registered successfully');
 } catch (error) {
-  console.error('HelloWorldCardEditor: ❌ Failed to register custom element:', error);
+  console.error('HelloworldEditor: ❌ Failed to register custom element:', error);
 }
 
 // Make editor globally available for Home Assistant
-window.HelloWorldCardEditor = HelloWorldCardEditor;
-console.log('HelloWorldCardEditor: Made globally available');
+window.HelloworldEditor = HelloworldEditor;
+console.log('HelloworldEditor: Made globally available');
 
 // Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = HelloWorldCardEditor;
+  module.exports = HelloworldEditor;
 }

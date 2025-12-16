@@ -47,7 +47,7 @@
           "feature_default": "Feature: Default",
           "feature_humidity_control": "Feature: Humidity Control",
           "feature_hvac_fan_card": "Feature: Hvac Fan Card",
-          "feature_hello_world_card": "Feature: Hello World"
+          "feature_hello_world": "Feature: Hello World"
         }
       },
       "enable_features": {
@@ -92,7 +92,7 @@
         "title": "HVAC Fan Card Configuration",
         "description": "Configure advanced fan card settings and controls"
       },
-      "feature_hello_world_card": {
+      "feature_hello_world": {
         "title": "Hello World Card Configuration",
         "description": "Configure the template feature for demonstration purposes"
       }

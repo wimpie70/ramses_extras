@@ -8,16 +8,19 @@ export function createCardContent(data) {
     deviceDisplay,
     switchState,
     sensorState,
+    switchAvailable,
+    sensorAvailable,
     showStatus,
     translator,
     instructionKey = 'ui.card.hello_world.click_button_activate_automation',
     sensorKey = 'ui.card.hello_world.binary_sensor_changed_by_automation'
   } = data;
 
-  const buttonText = switchState ? 'TURN OFF' : 'TURN ON';
-  const buttonClass = switchState ? 'on' : 'off';
-  const statusText = switchState ? 'ON' : 'OFF';
-  const sensorText = sensorState ? 'ON' : 'OFF';
+  // Handle unavailable states
+  const buttonText = switchAvailable ? (switchState ? 'TURN OFF' : 'TURN ON') : 'UNAVAILABLE';
+  const buttonClass = switchAvailable ? (switchState ? 'on' : 'off') : 'unavailable';
+  const statusText = switchAvailable ? (switchState ? 'ON' : 'OFF') : 'UNAVAILABLE';
+  const sensorText = sensorAvailable ? (sensorState ? 'ON' : 'OFF') : 'UNAVAILABLE';
 
   return `
     <ha-card>

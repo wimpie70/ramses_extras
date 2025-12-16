@@ -144,7 +144,7 @@ custom_components/ramses_extras/
 │   │           ├── message-handlers.js
 │   │           └── translations/
 │   │
-│   ├── hello_world_card/         # Hello World template feature
+│   ├── hello_world/         # Hello World template feature
 │   │   ├── __init__.py
 │   │   ├── automation.py
 │   │   ├── config.py
@@ -159,10 +159,10 @@ custom_components/ramses_extras/
 │   │   │   ├── sensor.py
 │   │   │   └── switch.py
 │   │   └── www/
-│   │       └── hello_world_card/
+│   │       └── hello_world/
 │   │           ├── card-styles.js
-│   │           ├── hello-world-card-editor.js
-│   │           ├── hello-world-card.js
+│   │           ├── hello-world-editor.js
+│   │           ├── hello-world.js
 │   │           ├── templates/
 │   │           └── translations/
 │   │               ├── en.json
@@ -652,7 +652,7 @@ AVAILABLE_FEATURES = {
         "allowed_device_slugs": ["FAN"],  # Only works with FAN devices
         # ... other config
     },
-    "hello_world_card": {
+    "hello_world": {
         "allowed_device_slugs": ["*"],   # Works with any device
         # ... other config
     }
@@ -963,7 +963,7 @@ The translation system follows a **feature-centric design** where translations c
    - **Deployment Location**: `config/www/ramses_extras/features/{feature}/translations/` directories
    - **Purpose**: JavaScript cards, UI elements, and frontend strings for specific features
    - **Benefits**: Better isolation, easier maintenance, feature-specific organization
-   - **Example**: The hello_world_card feature shows this pattern with translations within the feature folder
+   - **Example**: The hello_world feature shows this pattern with translations within the feature folder
 
 3. **Framework-Level Translations** (Shared Components)
    - **Location**: `framework/www/translations/` directory

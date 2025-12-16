@@ -951,11 +951,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             description_placeholders={"info": info_text},
         )
 
-    async def async_step_feature_hello_world_card(
+    async def async_step_feature_hello_world(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle hello world card feature configuration."""
-        self._selected_feature = "hello_world_card"
+        self._selected_feature = "hello_world"
         return await self.async_step_feature_config(user_input)
 
     # Matrix State Persistence Methods

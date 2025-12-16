@@ -174,8 +174,8 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
 
         Args:
             hass: Home Assistant instance
-            feature_identifier: Either feature_id (e.g., "hello_world_card")
-                               or const module path (e.g., "hello_world_card.const")
+            feature_identifier: Either feature_id (e.g., "hello_world")
+                               or const module path (e.g., "hello_world.const")
         """
         super().__init__(hass, feature_identifier)
         self.feature_identifier = feature_identifier

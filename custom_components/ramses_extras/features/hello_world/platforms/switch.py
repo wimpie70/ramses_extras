@@ -52,7 +52,7 @@ async def async_setup_entry(
         async_add_entities=async_add_entities,
         entity_configs=HELLO_WORLD_SWITCH_CONFIGS,
         entity_factory=create_hello_world_switch,
-        feature_id="hello_world_card",
+        feature_id="hello_world",
         store_entities_for_automation=True,
     )
 
@@ -171,7 +171,7 @@ from custom_components.ramses_extras.const import (  # noqa: E402
     register_feature_platform,  # noqa: E402
 )
 
-register_feature_platform("switch", "hello_world_card", async_setup_entry)
+register_feature_platform("switch", "hello_world", async_setup_entry)
 
 __all__ = [
     "HelloWorldSwitch",

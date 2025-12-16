@@ -23,7 +23,7 @@ FEATURE_WEB_CONFIGS = {
 }
 
 # Feature deployment configuration
-FEATURE_CARD_CONFIG = {
+HVAC_FAN_CARD_CARD_CONFIG = {
     "hvac_fan_card": {
         "card_path": "features/hvac_fan_card",  # Updated path
         "main_js": "hvac-fan-card.js",
@@ -114,6 +114,6 @@ __all__ = [
     "HVAC_FAN_CARD_CONFIGS",
     "HVAC_FAN_CARD_CONST",
     "FEATURE_WEB_CONFIGS",
-    "FEATURE_CARD_CONFIG",
+    "HVAC_FAN_CARD_CARD_CONFIG",
     "load_feature",
 ]

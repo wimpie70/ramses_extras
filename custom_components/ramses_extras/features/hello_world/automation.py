@@ -40,7 +40,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         """
         super().__init__(
             hass=hass,
-            feature_id="hello_world_card",
+            feature_id="hello_world",
             binary_sensor=None,  # Will be set when entities are available
             debounce_seconds=0,  # No debouncing needed - event-driven approach
         )
@@ -51,7 +51,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         _LOGGER.info("Hello World Card automation initialized")
 
     def _is_feature_enabled(self) -> bool:
-        """Check if hello_world_card feature is enabled in config.
+        """Check if hello_world feature is enabled in config.
 
         This method checks the configuration entry to determine if the Hello World
         feature is enabled. It looks for the feature in the 'enabled_features'
@@ -66,7 +66,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         """
         try:
             enabled_features = self.config_entry.data.get("enabled_features", {})
-            result: bool = enabled_features.get("hello_world_card", False)
+            result: bool = enabled_features.get("hello_world", False)
             return result
         except Exception as e:
             _LOGGER.warning(f"Could not check feature status: {e}")
@@ -95,14 +95,14 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         """
         _LOGGER.info("Starting Hello World automation")
 
-        # Check if hello_world_card feature is enabled
+        # Check if hello_world feature is enabled
         if not self._is_feature_enabled():
             _LOGGER.info(
-                "Hello World Card feature is not enabled, skipping automation start"
+                "Hello World feature is not enabled, skipping automation start"
             )
             return
 
-        _LOGGER.info("Hello World Card feature is enabled, proceeding with startup")
+        _LOGGER.info("Hello World feature is enabled, proceeding with startup")
 
         # Start base automation
         await super().start()

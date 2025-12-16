@@ -26,7 +26,7 @@ from ...framework.helpers.entity.simple_entity_manager import SimpleEntityManage
 from ...framework.helpers.platform import PlatformSetup
 from .automation import create_hello_world_automation
 from .const import DOMAIN as HELLO_WORLD_DOMAIN
-from .const import HELLO_WORLD_CARD_CONFIGS
+from .const import HELLO_WORLD_CONFIGS
 from .platforms.binary_sensor import (
     async_setup_entry as binary_sensor_async_setup_entry,
 )
@@ -37,7 +37,7 @@ from .platforms.switch import async_setup_entry as switch_async_setup_entry
 _LOGGER = logging.getLogger(__name__)
 
 
-class HelloWorldCardManager(BaseCardManager):
+class HelloworldManager(BaseCardManager):
     """Manages Hello World cards within the feature."""
 
     def __init__(self, hass: "HomeAssistant", config_entry: ConfigEntry):
@@ -56,10 +56,10 @@ class HelloWorldCardManager(BaseCardManager):
         :return: List of card configuration dictionaries
         :rtype: list[dict[str, Any]]
         """
-        return HELLO_WORLD_CARD_CONFIGS
+        return HELLO_WORLD_CONFIGS
 
 
-def create_hello_world_card_feature(
+def create_hello_world_feature(
     hass: "HomeAssistant",
     config_entry: ConfigEntry,
     skip_automation_setup: bool = False,
@@ -100,7 +100,7 @@ def create_hello_world_card_feature(
     return {
         "entities": entities_manager,
         "automation": automation_manager,
-        "card_manager": HelloWorldCardManager(hass, config_entry),
+        "card_manager": HelloworldManager(hass, config_entry),
         "platforms": {
             "switch": switch_async_setup_entry,
             "binary_sensor": binary_sensor_async_setup_entry,
@@ -112,6 +112,6 @@ def create_hello_world_card_feature(
 
 
 __all__ = [
-    "HelloWorldCardManager",
-    "create_hello_world_card_feature",
+    "HelloworldManager",
+    "create_hello_world_feature",
 ]

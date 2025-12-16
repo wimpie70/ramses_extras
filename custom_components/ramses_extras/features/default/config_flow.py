@@ -5,7 +5,7 @@ an example for other features that want to own their config flow logic
 while still integrating with the central options flow.
 
 To add a feature-specific config step for another feature (for example
-``hello_world_card``), use this file as a template and:
+``hello_world``), use this file as a template and:
 
 1. Add or update the feature entry in :mod:`const.AVAILABLE_FEATURES`:
    - Set ``feature_module`` to ``"features.<feature_id>"``.

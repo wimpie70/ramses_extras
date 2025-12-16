@@ -6,9 +6,9 @@ automation, services, entities, and configuration.
 """
 
 # Import from the correct feature-centric structure
-from .hello_world_card import (
-    HelloWorldCardManager,
-    create_hello_world_card_feature,
+from .hello_world import (
+    HelloworldManager,
+    create_hello_world_feature,
 )
 from .humidity_control import (
     HUMIDITY_CONTROL_CONST,
@@ -35,8 +35,8 @@ __all__ = [
     "HUMIDITY_CONTROL_CONST",
     "create_humidity_control_feature",
     # Hello World Card Feature
-    "HelloWorldCardManager",
-    "create_hello_world_card_feature",
+    "HelloworldManager",
+    "create_hello_world_feature",
     # HVAC Fan Card Feature
     "HvacFanCardManager",
     "create_hvac_fan_card_feature",
