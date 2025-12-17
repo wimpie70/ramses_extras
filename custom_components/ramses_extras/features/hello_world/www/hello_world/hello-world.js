@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
-/* global customElements */
 
-// Import the base card class
+// Import the base card class (matching working hvac_fan_card pattern)
 import { RamsesBaseCard } from '/local/ramses_extras/helpers/ramses-base-card.js';
 
 // Import the editor component
@@ -48,8 +47,17 @@ class HelloWorld extends RamsesBaseCard {
    * @returns {HTMLElement|null} Configuration element
    */
   getConfigElement() {
-    const EditorClass = customElements.get('hello-world-editor');
-    return EditorClass ? new EditorClass() : null;
+    try {
+      // Ensure the editor is available before creating it (similar to hvac_fan_card)
+      if (typeof window.HelloworldEditor === 'undefined') {
+        console.error('HelloworldEditor is not defined on window');
+        return null;
+      }
+      return document.createElement('hello-world-editor');
+    } catch (error) {
+      console.error('Error creating config element:', error);
+      return null;
+    }
   }
 
   /**
@@ -68,7 +76,14 @@ class HelloWorld extends RamsesBaseCard {
 
     // Check if the hello_world feature is enabled
     // If not enabled, show a disabled message instead of loading entities
-    if (!this.isFeatureEnabled()) {
+    const featureEnabled = this.isFeatureEnabled();
+
+    // Feature state may be loading (null) while the base card fetches flags via WebSocket
+    if (featureEnabled === null) {
+      return;
+    }
+
+    if (featureEnabled === false) {
       if (!this._rendered) {
         this.shadowRoot.innerHTML = `
           <ha-card>
@@ -469,6 +484,7 @@ class HelloWorld extends RamsesBaseCard {
 }
 
 // Register the card using the base class registration
+console.log('🔄 HelloWorld: Starting registration...');
 HelloWorld.register();
 
 // Export for testing purposes

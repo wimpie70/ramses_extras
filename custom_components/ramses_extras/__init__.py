@@ -125,6 +125,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         PLATFORM_REGISTRY  # Make registry available to platforms
     )
 
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
     _LOGGER.info(f"📋 Enabled features: {entry.data.get('enabled_features', {})}")
 
     # Load entity definitions from default feature and all enabled features
@@ -360,7 +362,11 @@ async def _expose_feature_config_to_frontend(
         _LOGGER.info("🔧 Exposing feature configuration to frontend...")
 
         # Get enabled features from the entry
-        enabled_features = entry.data.get("enabled_features", {})
+        enabled_features = (
+            entry.data.get("enabled_features")
+            or entry.options.get("enabled_features")
+            or {}
+        )
 
         # Use json.dumps to properly convert Python values to JavaScript
         import json
@@ -394,6 +400,18 @@ console.log('🔧 Ramses Extras features loaded:', window.ramsesExtras.features)
         import traceback
 
         _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    try:
+        hass.data[DOMAIN]["enabled_features"] = (
+            entry.data.get("enabled_features")
+            or entry.options.get("enabled_features")
+            or {}
+        )
+        await _expose_feature_config_to_frontend(hass, entry)
+    except Exception as e:
+        _LOGGER.warning("⚠️ Failed to update frontend feature configuration: %s", e)
 
 
 async def _copy_all_card_files(hass: HomeAssistant) -> None:

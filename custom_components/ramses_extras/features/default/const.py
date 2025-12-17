@@ -64,6 +64,7 @@ WS_CMD_GET_2411_SCHEMA = "ramses_extras/get_2411_schema"
 WS_CMD_SEND_FAN_COMMAND = "ramses_extras/default/send_fan_command"
 WS_CMD_SET_FAN_PARAMETER = "ramses_extras/default/set_fan_parameter"
 WS_CMD_GET_QUEUE_STATISTICS = "ramses_extras/default/get_queue_statistics"
+WS_CMD_GET_ENABLED_FEATURES = "ramses_extras/default/get_enabled_features"
 WS_CMD_GET_ENTITY_MAPPINGS = "ramses_extras/get_entity_mappings"
 WS_CMD_GET_ALL_FEATURE_ENTITIES = "ramses_extras/get_all_feature_entities"
 
@@ -72,6 +73,7 @@ DEFAULT_WEBSOCKET_COMMANDS = {
     "get_available_devices": WS_CMD_GET_AVAILABLE_DEVICES,
     "get_bound_rem": WS_CMD_GET_BOUND_REM,
     "get_2411_schema": WS_CMD_GET_2411_SCHEMA,
+    "get_enabled_features": WS_CMD_GET_ENABLED_FEATURES,
     "send_fan_command": WS_CMD_SEND_FAN_COMMAND,
     "set_fan_parameter": WS_CMD_SET_FAN_PARAMETER,
     "get_queue_statistics": WS_CMD_GET_QUEUE_STATISTICS,
@@ -116,6 +118,7 @@ __all__ = [
     "WS_CMD_SEND_FAN_COMMAND",
     "WS_CMD_SET_FAN_PARAMETER",
     "WS_CMD_GET_QUEUE_STATISTICS",
+    "WS_CMD_GET_ENABLED_FEATURES",
     "WS_CMD_GET_ENTITY_MAPPINGS",
     "WS_CMD_GET_ALL_FEATURE_ENTITIES",
     "DEFAULT_WEBSOCKET_COMMANDS",

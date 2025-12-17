@@ -68,6 +68,8 @@ export class RamsesBaseCard extends HTMLElement {
     this._hassLoadTimeout = null; // Timeout for HASS load detection (2 minute fallback)
     this._hassReadyListener = null; // Listener for HASS ready event
 
+    this._featureConfigLoadAttached = false;
+
     // Initialize translations
     this.initTranslations();
   }
@@ -210,7 +212,55 @@ export class RamsesBaseCard extends HTMLElement {
    */
   isFeatureEnabled() {
     const featureName = this.getFeatureName();
-    return window.ramsesExtras?.features?.[featureName] === true;
+
+    if (!window.ramsesExtras?.features) {
+      this._ensureFeatureConfigLoaded();
+      console.log(`Feature ${featureName} is enabled: unknown (loading)`);
+      return null;
+    }
+
+    const isEnabled = window.ramsesExtras.features[featureName] === true;
+    console.log(`Feature ${featureName} is enabled: ${isEnabled}`);
+    return isEnabled;
+  }
+
+  _ensureFeatureConfigLoaded() {
+    window.ramsesExtras = window.ramsesExtras || {};
+
+    if (window.ramsesExtras.features) {
+      return Promise.resolve();
+    }
+
+    if (!window.ramsesExtras._featuresLoadPromise) {
+      if (!this._hass) {
+        window.ramsesExtras._featuresLoadPromise = Promise.resolve();
+      } else {
+        window.ramsesExtras._featuresLoadPromise = callWebSocket(this._hass, {
+          type: 'ramses_extras/default/get_enabled_features',
+        })
+          .then((result) => {
+            window.ramsesExtras.features = result?.enabled_features || {};
+          })
+          .catch((error) => {
+            console.warn('⚠️ Failed to load Ramses Extras feature configuration via WebSocket:', error);
+          });
+      }
+    }
+
+    if (!this._featureConfigLoadAttached) {
+      this._featureConfigLoadAttached = true;
+      window.ramsesExtras._featuresLoadPromise.then(() => {
+        try {
+          if (this._hass && this._config) {
+            this.render();
+          }
+        } catch (error) {
+          console.warn('⚠️ Failed to re-render after feature config load:', error);
+        }
+      });
+    }
+
+    return window.ramsesExtras._featuresLoadPromise;
   }
 
   /**
@@ -691,7 +741,7 @@ export class RamsesBaseCard extends HTMLElement {
     // The custom: prefix is only used in Lovelace YAML configuration
     const customCardInfo = {
       ...cardInfo,
-      type: cardInfo.type  // Remove custom: prefix - only for YAML usage
+      type: cardInfo.type  // No custom: prefix here - HA adds it in YAML usage
     };
 
     const existingCard = window.customCards.find(card => card.type === customCardInfo.type);
@@ -782,9 +832,9 @@ export class RamsesBaseCard extends HTMLElement {
    */
   static getStubConfig() {
     return {
-      type: this.getTagName(),
+      type: `custom:${this.getTagName()}`,
       device_id: '',
-      name: this.name,
+      name: this.name.replace('Card', '')
     };
   }
 

@@ -34,7 +34,7 @@ class LovelaceCard:
 
     Attributes:
         type: Card type identifier (e.g., "hello-world")
-        resource_path: Resource path for HA (/local/ramses_extras/...)
+        resource_path: Resource path for HA (/config/www/ramses_extras/...)
         name: Human readable card name
         description: Card description
         preview: Whether card should show preview in editor
@@ -98,35 +98,64 @@ class CardRegistry:
         try:
             # Load existing resources
             data = await self._store.async_load() or {"items": []}
+
+            # Migrate existing resources that might not have an 'id' field
+            needs_save = False
+            for item in data["items"]:
+                if "url" in item and isinstance(item["url"], str):
+                    # Migrate invalid legacy filesystem URLs to browser URLs
+                    # (HA serves /config/www as /local)
+                    if item["url"].startswith("/config/www/"):
+                        item["url"] = item["url"].replace("/config/www", "/local", 1)
+                        item["id"] = item["url"].replace("/", "_").strip("_")
+                        needs_save = True
+                        _LOGGER.info(
+                            "🔧 Migrated legacy resource URL to: %s", item["url"]
+                        )
+
+                if "id" not in item:
+                    # Generate a unique ID for the resource from its URL
+                    item["id"] = item["url"].replace("/", "_").strip("_")
+                    needs_save = True
+                    _LOGGER.info("🔧 Migrated resource: %s", item["url"])
+
             existing_resources = {item["url"] for item in data["items"]}
 
             # Add new resources
             new_resources_added = 0
             for card in cards_list:
                 if card.resource_path not in existing_resources:
+                    # Generate a unique ID for the resource
+                    # Use the URL as the ID since it should be unique
+                    resource_id = card.resource_path.replace("/", "_").strip("_")
                     resource_entry = {
+                        "id": resource_id,
                         "url": card.resource_path,
                         "type": "module",
                     }
                     data["items"].append(resource_entry)
                     existing_resources.add(card.resource_path)
                     new_resources_added += 1
+                    needs_save = True
                     _LOGGER.info(
                         "📝 Added resource: %s -> %s", card.type, card.resource_path
                     )
                 else:
                     _LOGGER.debug("Resource already exists: %s", card.resource_path)
 
-            # Save if new resources were added
-            if new_resources_added > 0:
+            # Save if new resources were added or migrations were needed
+            if new_resources_added > 0 or needs_save:
                 await self._store.async_save(data)
-                _LOGGER.info(
-                    "✅ CardRegistry: Added %d new resources (total: %d)",
-                    new_resources_added,
-                    len(data["items"]),
-                )
+                if new_resources_added > 0:
+                    _LOGGER.info(
+                        "✅ CardRegistry: Added %d new resources (total: %d)",
+                        new_resources_added,
+                        len(data["items"]),
+                    )
+                else:
+                    _LOGGER.debug("CardRegistry: Migrated existing resources")
             else:
-                _LOGGER.debug("CardRegistry: No new resources to add")
+                _LOGGER.debug("CardRegistry: No changes needed")
 
         except Exception as e:
             _LOGGER.error("❌ CardRegistry registration failed: %s", str(e))

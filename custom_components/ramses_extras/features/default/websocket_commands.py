@@ -27,6 +27,41 @@ _LOGGER = logging.getLogger(__name__)
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
+        vol.Required("type"): "ramses_extras/default/get_enabled_features",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_enabled_features(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return enabled_features for the Ramses Extras config entry.
+
+    This command is part of the default feature (always enabled), so cards can
+    always query feature flags via WebSocket without depending on a generated
+    JS file.
+    """
+    try:
+        enabled_features = hass.data.get(DOMAIN, {}).get("enabled_features")
+        if enabled_features is None:
+            config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+            if config_entry is not None:
+                enabled_features = (
+                    config_entry.data.get("enabled_features")
+                    or config_entry.options.get("enabled_features")
+                    or {}
+                )
+            else:
+                enabled_features = {}
+
+        connection.send_result(msg["id"], {"enabled_features": enabled_features})
+
+    except Exception as err:
+        _LOGGER.error("Failed to get enabled features: %s", err)
+        connection.send_error(msg["id"], "get_enabled_features_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
         vol.Required("type"): "ramses_extras/websocket_info",
     }
 )
