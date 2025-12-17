@@ -687,10 +687,11 @@ export class RamsesBaseCard extends HTMLElement {
 
     const cardInfo = this.getCardInfo();
 
-    // Register with custom: prefix for dashboard compatibility
+    // Register with clean type name (no custom: prefix for internal registration)
+    // The custom: prefix is only used in Lovelace YAML configuration
     const customCardInfo = {
       ...cardInfo,
-      type: `custom:${cardInfo.type}`
+      type: cardInfo.type  // Remove custom: prefix - only for YAML usage
     };
 
     const existingCard = window.customCards.find(card => card.type === customCardInfo.type);

@@ -21,12 +21,12 @@ if TYPE_CHECKING:
 
 import logging
 
-from ...framework.base_classes.base_card_manager import BaseCardManager
 from ...framework.helpers.entity.simple_entity_manager import SimpleEntityManager
 from ...framework.helpers.platform import PlatformSetup
 from .automation import create_hello_world_automation
 from .const import DOMAIN as HELLO_WORLD_DOMAIN
-from .const import HELLO_WORLD_CONFIGS
+
+# HELLO_WORLD_CONFIGS removed - now handled by CardRegistry
 from .platforms.binary_sensor import (
     async_setup_entry as binary_sensor_async_setup_entry,
 )
@@ -37,28 +37,7 @@ from .platforms.switch import async_setup_entry as switch_async_setup_entry
 _LOGGER = logging.getLogger(__name__)
 
 
-class HelloworldManager(BaseCardManager):
-    """Manages Hello World cards within the feature."""
-
-    def __init__(self, hass: "HomeAssistant", config_entry: ConfigEntry):
-        """Initialize the Hello World card manager.
-
-        :param hass: Home Assistant instance
-        :type hass: HomeAssistant
-        :param config_entry: Configuration entry containing integration configuration
-        :type config_entry: ConfigEntry
-        """
-        super().__init__(hass, config_entry, HELLO_WORLD_DOMAIN)
-
-    def _get_card_configurations(self) -> list[dict[str, Any]]:
-        """Get card configurations from the feature's const module.
-
-        :return: List of card configuration dictionaries
-        :rtype: list[dict[str, Any]]
-        """
-        return HELLO_WORLD_CONFIGS
-
-
+# Card manager removed - CardRegistry handles all card registration
 def create_hello_world_feature(
     hass: "HomeAssistant",
     config_entry: ConfigEntry,
@@ -100,7 +79,7 @@ def create_hello_world_feature(
     return {
         "entities": entities_manager,
         "automation": automation_manager,
-        "card_manager": HelloworldManager(hass, config_entry),
+        # Card manager removed - CardRegistry handles card registration
         "platforms": {
             "switch": switch_async_setup_entry,
             "binary_sensor": binary_sensor_async_setup_entry,
@@ -112,6 +91,5 @@ def create_hello_world_feature(
 
 
 __all__ = [
-    "HelloworldManager",
     "create_hello_world_feature",
 ]

@@ -15,6 +15,11 @@ and WebSocket command definitions.
 
 from typing import Any
 
+# Import CardRegistry for proper card registration
+from custom_components.ramses_extras.framework.helpers.card_registry import (
+    HELLO_WORLD_CARD,
+)
+
 DOMAIN = "hello_world"
 
 # Feature configuration
@@ -91,25 +96,7 @@ HELLO_WORLD_CONFIG = {
     }
 }
 
-# Card configurations
-HELLO_WORLD_CONFIGS = [
-    {
-        "card_id": "hello-world",
-        "card_name": "Hello World Card",
-        "description": (
-            "A simple demonstration card for Ramses Extras Hello World feature"
-        ),
-        "main_card": "hello-world.js",
-        "editor_card": "hello-world-editor.js",
-        "has_templates": True,
-        "templates_path": "templates/",
-        "translations_path": "translations/",
-        "main_js": "hello-world.js",
-        "editor_js": "hello-world-editor.js",
-        "preview": True,
-        "documentation_url": "https://github.com/wimpie70/ramses_extras",
-    }
-]
+# Legacy card configurations removed - now handled by CardRegistry
 
 # Default configuration
 DEFAULT_CONFIG = {
@@ -154,9 +141,7 @@ def load_feature() -> None:
     # Register WebSocket commands
     register_ws_commands("hello_world", HELLO_WORLD_WEBSOCKET_COMMANDS)
 
-    # Register each card configuration for feature-centric card management
-    for card_config in HELLO_WORLD_CONFIGS:
-        extras_registry.register_card_config("hello_world", card_config)
+    # Card registration now handled by CardRegistry - no legacy configs needed
 
     extras_registry.register_feature("hello_world")
 
@@ -171,7 +156,6 @@ __all__ = [
     "HELLO_WORLD_NUMBER_CONFIGS",
     "HELLO_WORLD_DEVICE_ENTITY_MAPPING",
     "HELLO_WORLD_WEBSOCKET_COMMANDS",
-    "HELLO_WORLD_CONFIGS",
     "DEFAULT_CONFIG",
     "FEATURE_WEB_CONFIGS",
     "HELLO_WORLD_CONFIG",

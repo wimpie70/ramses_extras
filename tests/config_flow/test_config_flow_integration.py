@@ -104,7 +104,7 @@ def test_feature_selection_schema():
         "default": True,
         "humidity_control": True,
         "hvac_fan_card": False,
-        "hello_world_card": False,
+        "hello_world": False,
     }
 
     schema = helper.get_feature_selection_schema(current_features)
