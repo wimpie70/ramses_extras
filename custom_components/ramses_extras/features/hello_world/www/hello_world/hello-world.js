@@ -42,6 +42,26 @@ class HelloWorld extends RamsesBaseCard {
     return this._config?.compact_view ? 1 : 2;
   }
 
+  static getConfigElement() {
+    try {
+      if (typeof window.HelloworldEditor === 'undefined') {
+        console.error('HelloworldEditor is not defined on window');
+        return null;
+      }
+      return document.createElement('hello-world-editor');
+    } catch (error) {
+      console.error('Error creating config element:', error);
+      return null;
+    }
+  }
+
+  static getStubConfig() {
+    return {
+      type: `custom:${this.getTagName()}`,
+      ...this.prototype.getDefaultConfig(),
+    };
+  }
+
   /**
    * Get configuration element for HA editor
    * @returns {HTMLElement|null} Configuration element
@@ -203,6 +223,13 @@ class HelloWorld extends RamsesBaseCard {
    */
   hasValidConfig() {
     return this._config && this._config.device_id;
+  }
+
+  validateConfig(config) {
+    return {
+      valid: true,
+      errors: [],
+    };
   }
 
   /**
