@@ -202,6 +202,18 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self._all_devices: list[Any] | None = None
         self._features_for_device_config: list[str] | None = None
 
+    def _refresh_config_entry(self) -> None:
+        entry_id = getattr(self._config_entry, "entry_id", None)
+        config_entries = getattr(self.hass, "config_entries", None)
+        if not entry_id or config_entries is None:
+            return
+
+        latest = config_entries.async_get_entry(entry_id)
+        if latest is not None and latest is not self._config_entry:
+            self._config_entry = latest
+        if self._config_flow_helper is not None:
+            self._config_flow_helper.config_entry = self._config_entry
+
     async def async_step_init(
         self, user_input: dict[str, list[str]] | None = None
     ) -> config_entries.FlowResult:
@@ -213,6 +225,8 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> config_entries.FlowResult:
         """Handle the main configuration menu with ramses_cc style
         link/button navigation."""
+
+        self._refresh_config_entry()
 
         # Build main menu options with ramses_cc style (links/buttons, not dropdowns)
         # Menu options must be a list of step IDs; labels are provided via translations
@@ -371,6 +385,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle enable/disable features step."""
+        self._refresh_config_entry()
         # Get current enabled features
         current_features = self._config_entry.data.get("enabled_features", {})
         enabled_features = {k: v for k, v in current_features.items() if k != "default"}
@@ -549,6 +564,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle configuration for a feature using the generic flow."""
+        self._refresh_config_entry()
         if not hasattr(self, "_selected_feature"):
             # This should not happen if called from the menu
             return self.async_abort(reason="invalid_feature")
@@ -668,6 +684,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle feature configuration step."""
+        self._refresh_config_entry()
         _LOGGER.info(
             "🎯 async_step_feature_config called - FEATURE CONFIG STEP STARTED"
         )
@@ -714,6 +731,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         """Handle device selection step."""
+        self._refresh_config_entry()
         if not hasattr(self, "_selected_feature") or not self._selected_feature:
             # Fallback to main menu if no feature is selected
             return await self.async_step_main_menu()
@@ -961,14 +979,17 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     # Matrix State Persistence Methods
     def _save_matrix_state(self) -> None:
         """Save current matrix state to config entry data."""
+        self._refresh_config_entry()
         matrix_state = self._get_config_flow_helper().get_feature_device_matrix_state()
         new_data = dict(self._config_entry.data)
         new_data["device_feature_matrix"] = matrix_state
         self.hass.config_entries.async_update_entry(self._config_entry, data=new_data)
+        self._refresh_config_entry()
         _LOGGER.info(f"Saved matrix state with {len(matrix_state)} devices")
 
     def _restore_matrix_state(self) -> None:
         """Restore matrix state from config entry."""
+        self._refresh_config_entry()
         matrix_state = self._config_entry.data.get("device_feature_matrix", {})
         if matrix_state:
             self._get_config_flow_helper().restore_matrix_state(matrix_state)
@@ -1191,6 +1212,8 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         _LOGGER.info("🎯 async_step_matrix_confirm called - MATRIX CONFIRMATION STEP")
         _LOGGER.info(f"📋 User input: {user_input}")
 
+        self._refresh_config_entry()
+
         if user_input is not None:
             # User confirmed the changes - apply them and complete the options flow
             _LOGGER.info(
@@ -1226,6 +1249,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     self.hass.config_entries.async_update_entry(
                         self._config_entry, data=new_data
                     )
+                    self._refresh_config_entry()
                     _LOGGER.info(
                         f"✅ Saved new matrix state with "
                         f"{len(temp_matrix_state)} devices"
@@ -1257,6 +1281,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     self.hass.config_entries.async_update_entry(
                         self._config_entry, data=new_data
                     )
+                    self._refresh_config_entry()
                     _LOGGER.info(
                         f"Updated config entry with new matrix state "
                         f"{temp_matrix_state}"
