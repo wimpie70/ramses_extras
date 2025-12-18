@@ -16,6 +16,7 @@ from ...const import (
     discover_ws_commands,
     get_all_ws_commands,
 )
+from ...framework.helpers.ramses_commands import RamsesCommands
 from ...framework.helpers.websocket_base import GetEntityMappingsCommand
 
 if TYPE_CHECKING:
@@ -210,6 +211,117 @@ async def ws_get_all_feature_entities(
     except Exception as err:
         _LOGGER.error(f"Failed to get all feature entities: {err}")
         connection.send_error(msg["id"], "get_all_feature_entities_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_available_devices",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_available_devices(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return available Ramses devices for card editors.
+
+    This uses the device objects discovered and stored during integration setup.
+    """
+
+    def _extract_device_id(device: Any) -> str | None:
+        if isinstance(device, str):
+            return device
+        for attr in ("id", "device_id", "_id", "name"):
+            if hasattr(device, attr):
+                value = getattr(device, attr)
+                if value is not None:
+                    return str(value)
+        return None
+
+    def _extract_device_type(device: Any) -> str | None:
+        for attr in ("type", "_SLUG", "model", "__class__"):
+            if attr == "__class__":
+                if hasattr(device, "__class__"):
+                    return str(device.__class__.__name__)
+                continue
+            if hasattr(device, attr):
+                value = getattr(device, attr)
+                if value is not None:
+                    return str(value)
+        return None
+
+    devices = hass.data.get(DOMAIN, {}).get("devices", [])
+    results: list[dict[str, Any]] = []
+    if isinstance(devices, list):
+        for device in devices:
+            device_id = _extract_device_id(device)
+            if not device_id:
+                continue
+            results.append(
+                {
+                    "device_id": device_id,
+                    "device_type": _extract_device_type(device) or "Unknown",
+                }
+            )
+
+    connection.send_result(msg["id"], {"devices": results})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_bound_rem",
+        vol.Required("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_bound_rem(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return the bound REM/DIS device for a FAN device, if any."""
+
+    device_id = str(msg["device_id"])
+    commands = RamsesCommands(hass)
+    bound = await commands._get_bound_rem_device(device_id)
+    connection.send_result(msg["id"], {"device_id": device_id, "bound_rem": bound})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_2411_schema",
+        vol.Required("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_2411_schema(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return a lightweight 2411 parameter schema for a device.
+
+    ramses_extras does not own the authoritative schema; ramses_cc does.
+    For the frontend parameter editor we provide a pragmatic schema derived from
+    existing HA number entities for the device (param_* entities).
+    """
+
+    device_id = str(msg["device_id"]).replace(":", "_").lower()
+    prefix = f"number.{device_id}_param_"
+    schema: dict[str, Any] = {}
+
+    for st in hass.states.async_all():
+        entity_id = st.entity_id
+        if not entity_id.startswith(prefix):
+            continue
+        param_id = entity_id.removeprefix(prefix).upper()
+        attrs = dict(st.attributes)
+        schema[param_id] = {
+            "name": attrs.get("friendly_name") or f"Parameter {param_id}",
+            "description": attrs.get("friendly_name") or f"Parameter {param_id}",
+            "min_value": attrs.get("min"),
+            "max_value": attrs.get("max"),
+            "precision": attrs.get("step"),
+            "unit": attrs.get("unit_of_measurement"),
+            "data_unit": attrs.get("unit_of_measurement"),
+        }
+
+    connection.send_result(msg["id"], schema)
 
 
 def register_default_websocket_commands() -> dict[str, str]:

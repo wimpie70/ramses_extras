@@ -327,7 +327,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _register_services(hass: HomeAssistant) -> None:
     """Register custom services."""
-    _LOGGER.info("Service registration delegated to feature managers")
+    _LOGGER.info("Registering Ramses Extras services")
+
+    from .features.default.services import async_setup_services
+
+    await async_setup_services(hass)
 
 
 async def _setup_websocket_integration(hass: HomeAssistant) -> None:

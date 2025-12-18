@@ -34,6 +34,8 @@ import { getRamsesMessageBroker } from '/local/ramses_extras/helpers/ramses-mess
 import { HvacFanCardHandlers } from './message-handlers.js';
 import {
   callWebSocket,
+  sendFanCommand,
+  setFanParameter,
 } from '/local/ramses_extras/helpers/card-services.js';
 import {
   // validateCoreEntities,
@@ -522,29 +524,17 @@ class HvacFanCard extends RamsesBaseCard {
     }
 
     try {
-      // console.log(`📡 Calling WebSocket set_fan_parameter for ${paramKey}...`);
       // Extract the parameter ID from the entity name (e.g., "param_31" -> "31")
       const paramId = paramKey.startsWith('param_') ? paramKey.replace('param_', '') : paramKey;
 
-      const result = await callWebSocket(this._hass, {
-        type: 'ramses_extras/default/set_fan_parameter',
-        device_id: this.config.device_id,
-        param_id: paramId,
-        value: newValue.toString(),
-      });
+      await setFanParameter(this._hass, this.config.device_id, paramId, newValue.toString());
 
-      if (result.success) {
+      {
         // console.log(`✅ Parameter ${paramKey} update sent successfully via WebSocket`);
         if (paramItem) {
           paramItem.classList.remove('loading');
           paramItem.classList.add('success');
           setTimeout(() => paramItem.classList.remove('success'), 2000);
-        }
-      } else {
-        console.error(`❌ Failed to update parameter ${paramKey}:`, result.error_message);
-        if (paramItem) {
-          paramItem.classList.remove('loading');
-          paramItem.classList.add('error');
         }
       }
     } catch (error) {
@@ -883,11 +873,7 @@ window.send_command = function (commandKey, deviceId, buttonElement) {
 
     (async () => {
       try {
-        await callWebSocket(element._hass, {
-          type: 'ramses_extras/default/send_fan_command',
-          device_id: deviceId,
-          command: commandKey,
-        });
+        await sendFanCommand(element._hass, deviceId, commandKey);
 
         // Command sent successfully - Python queue handles all timing and processing
         // UI will update automatically when device state changes via WebSocket messages

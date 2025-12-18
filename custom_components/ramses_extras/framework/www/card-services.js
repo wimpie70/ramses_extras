@@ -130,11 +130,25 @@ export function getEntityState(hass, entityId) {
  * @returns {Promise<Object>} WebSocket response
  */
 export async function setFanParameter(hass, deviceId, paramId, value) {
-  return callWebSocket(hass, {
-    type: 'ramses_extras/default/set_fan_parameter',
+  return callService(hass, 'ramses_extras', 'set_fan_parameter', {
     device_id: deviceId,
     param_id: paramId,
     value: value,
+  });
+}
+
+/**
+ * Send a fan command (fire-and-forget)
+ *
+ * @param {Object} hass - Home Assistant instance
+ * @param {string} deviceId - Device ID
+ * @param {string} command - Command key (e.g. fan_high, fan_request31DA)
+ * @returns {Promise<Object>} Service call result
+ */
+export async function sendFanCommand(hass, deviceId, command) {
+  return callService(hass, 'ramses_extras', 'send_fan_command', {
+    device_id: deviceId,
+    command: command,
   });
 }
 
