@@ -702,7 +702,16 @@ def _import_entity_mappings_sync(feature_id: str, device_id: str) -> dict[str, s
         "BOOLEAN_CONFIGS",
     ]
 
+    config_type_domains = {
+        "SENSOR_CONFIGS": "sensor",
+        "SWITCH_CONFIGS": "switch",
+        "NUMBER_CONFIGS": "number",
+        "BINARY_SENSOR_CONFIGS": "binary_sensor",
+        "BOOLEAN_CONFIGS": "binary_sensor",
+    }
+
     for config_type in config_types:
+        domain = config_type_domains[config_type]
         # Try with "_CARD" suffix first (for hello_world -> hello_world_SWITCH_CONFIGS)
         config_key = f"{feature_id.upper()}_{config_type}"
         if hasattr(feature_module, config_key):
@@ -712,11 +721,14 @@ def _import_entity_mappings_sync(feature_id: str, device_id: str) -> dict[str, s
                 entity_template = config.get("entity_template", "")
                 if entity_template:
                     # Replace {device_id} placeholder with the actual device_id
-                    entity_id = entity_template.replace(
+                    entity_name_only = entity_template.replace(
                         "{device_id}", device_id_underscore
                     )
                     # Use the entity_name as the state key
-                    mappings[entity_name] = entity_id
+                    if "." in entity_name_only:
+                        mappings[entity_name] = entity_name_only
+                    else:
+                        mappings[entity_name] = f"{domain}.{entity_name_only}"
 
         # Also try without "_CARD" suffix
         # (for hello_world -> HELLO_WORLD_SWITCH_CONFIGS)
@@ -730,11 +742,14 @@ def _import_entity_mappings_sync(feature_id: str, device_id: str) -> dict[str, s
                     entity_template = config.get("entity_template", "")
                     if entity_template:
                         # Replace {device_id} placeholder with the actual device_id
-                        entity_id = entity_template.replace(
+                        entity_name_only = entity_template.replace(
                             "{device_id}", device_id_underscore
                         )
                         # Use the entity_name as the state key
-                        mappings[entity_name] = entity_id
+                        if "." in entity_name_only:
+                            mappings[entity_name] = entity_name_only
+                        else:
+                            mappings[entity_name] = f"{domain}.{entity_name_only}"
 
     return mappings
 

@@ -17,9 +17,10 @@ from datetime import timedelta
 # Avoid circular imports by importing when needed in methods
 from typing import Any
 
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import CoreState, HomeAssistant, State
 from homeassistant.helpers.event import async_track_state_change
 
+from ...const import DOMAIN
 from ..helpers.automation.core import (
     _get_required_entities_from_feature,
     _singularize_entity_type,
@@ -105,6 +106,18 @@ class ExtrasBaseAutomation(ABC):
         # Mark as active immediately
         self._active = True
 
+        self.hass.data.setdefault(DOMAIN, {}).setdefault("feature_ready", {})[
+            self.feature_id
+        ] = False
+
+        if getattr(self.hass, "state", None) == CoreState.running:
+            _LOGGER.info(
+                f"🏁 Home Assistant already running, initializing {self.feature_id} "
+                "automation now"
+            )
+            await self._on_homeassistant_started(None)
+            return
+
         # Listen for HA startup event instead of complex validation
         self.hass.bus.async_listen_once(
             "homeassistant_started", self._on_homeassistant_started
@@ -122,8 +135,18 @@ class ExtrasBaseAutomation(ABC):
         try:
             # Register entity listeners after HA is ready
             await self._register_entity_listeners()
+
+            self.hass.data.setdefault(DOMAIN, {}).setdefault("feature_ready", {})[
+                self.feature_id
+            ] = True
+            self.hass.bus.async_fire(
+                "ramses_extras_feature_ready", {"feature_id": self.feature_id}
+            )
             _LOGGER.info(f"✅ {self.feature_id} automation initialized successfully")
         except Exception as e:
+            self.hass.data.setdefault(DOMAIN, {}).setdefault("feature_ready", {})[
+                self.feature_id
+            ] = False
             _LOGGER.error(f"❌ Failed to initialize {self.feature_id} automation: {e}")
 
     async def stop(self) -> None:

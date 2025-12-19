@@ -63,6 +63,27 @@ async def ws_get_enabled_features(
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
+        vol.Required("type"): "ramses_extras/default/get_feature_ready",
+        vol.Required("feature_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_feature_ready(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    try:
+        feature_id = str(msg["feature_id"])
+        ready = (
+            hass.data.get(DOMAIN, {}).get("feature_ready", {}).get(feature_id, False)
+        )
+        connection.send_result(msg["id"], {"feature_id": feature_id, "ready": ready})
+    except Exception as err:
+        _LOGGER.error("Failed to get feature readiness: %s", err)
+        connection.send_error(msg["id"], "get_feature_ready_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
         vol.Required("type"): "ramses_extras/websocket_info",
     }
 )

@@ -244,9 +244,11 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
         """
         parsed_mappings = {}
 
+        device_id_underscore = device_id.replace(":", "_")
+
         for state_name, entity_template in entity_mappings.items():
             # Replace {device_id} with actual device_id
-            parsed_entity = entity_template.replace("{device_id}", device_id)
+            parsed_entity = entity_template.replace("{device_id}", device_id_underscore)
             parsed_mappings[state_name] = parsed_entity
 
             self._logger.debug(

@@ -68,6 +68,9 @@ export class RamsesBaseCard extends HTMLElement {
     this._hassLoadTimeout = null; // Timeout for HASS load detection (2 minute fallback)
     this._hassReadyListener = null; // Listener for HASS ready event
 
+    this._featureReady = false;
+    this._featureReadyUnsub = null;
+
     this._featureConfigLoadAttached = false;
 
     // Initialize translations
@@ -187,12 +190,21 @@ export class RamsesBaseCard extends HTMLElement {
 
       // Force re-render if we have config and hass ready
       if (this._config && this._hass) {
-        this.render();
+        if (!this._isHomeAssistantRunning()) {
+          this.renderHassInitializing();
+        } else {
+          this._ensureFeatureReadyLoaded();
+          this.render();
+        }
       }
     } catch (error) {
       console.warn(`⚠️ Failed to initialize translations for ${this.constructor.name}:`, error);
       this._translationsLoaded = true; // Continue without translations
     }
+  }
+
+  _isHomeAssistantRunning() {
+    return this._hass?.config?.state === 'RUNNING';
   }
 
   /**
@@ -330,6 +342,16 @@ export class RamsesBaseCard extends HTMLElement {
 
       // Load initial state if hass is available
       if (this._hass) {
+        if (!this._isHomeAssistantRunning()) {
+          this.renderHassInitializing();
+          return;
+        }
+
+        this._ensureFeatureReadyLoaded();
+        if (!this._featureReady) {
+          this.renderFeatureInitializing();
+          return;
+        }
         this._checkAndLoadInitialState();
         this.render();
       }
@@ -362,26 +384,54 @@ export class RamsesBaseCard extends HTMLElement {
    * @param {Object} hass - Home Assistant instance
    */
   set hass(hass) {
+    const previousConnection = this._hass?.connection;
     this._hass = hass;
 
     if (this._config) {
+      const connectionChanged = previousConnection !== hass?.connection;
+
+      if (!this._isHomeAssistantRunning()) {
+        this._hassLoaded = false;
+        this.clearUpdateThrottle();
+        this.renderHassInitializing();
+        return;
+      }
+
+      this._ensureFeatureReadyLoaded();
+      if (!this._featureReady) {
+        this._hassLoaded = false;
+        this.clearUpdateThrottle();
+        this.renderFeatureInitializing();
+        return;
+      }
+
+      if (!this._hassLoaded) {
+        this._hassLoaded = true;
+        this.clearUpdateThrottle();
+        this._checkAndLoadInitialState();
+        this.render();
+        return;
+      }
+
       // Mark that HASS is being set (may be during initial load)
-      this._hassLoaded = false;
+      if (connectionChanged) {
+        this._hassLoaded = false;
+      }
 
       // Clear any existing timeout
-      if (this._hassLoadTimeout) {
+      if (connectionChanged && this._hassLoadTimeout) {
         clearTimeout(this._hassLoadTimeout);
       }
 
       // Clear any existing ready listener
-      if (this._hassReadyListener) {
+      if (connectionChanged && this._hassReadyListener) {
         this._hassReadyListener();
         this._hassReadyListener = null;
       }
 
       // Listen for the HASS ready event to mark when HASS is fully loaded
       // This is the proper way to detect when HASS has finished its initial state sync
-      if (hass && hass.connection) {
+      if (connectionChanged && hass && hass.connection) {
         this._hassReadyListener = hass.connection.addEventListener('ready', () => {
           this._hassLoaded = true;
           console.log(`✅ ${this.constructor.name}: HASS ready event received, allowing updates and rendering`);
@@ -394,16 +444,18 @@ export class RamsesBaseCard extends HTMLElement {
       }
 
       // Fallback timeout in case ready event doesn't fire
-      this._hassLoadTimeout = setTimeout(() => {
-        if (!this._hassLoaded) {
-          this._hassLoaded = true;
-          console.log(`⚠️ ${this.constructor.name}: HASS ready timeout reached after 2 minutes, assuming HASS is loaded`);
+      if (connectionChanged) {
+        this._hassLoadTimeout = setTimeout(() => {
+          if (!this._hassLoaded) {
+            this._hassLoaded = true;
+            console.log(`⚠️ ${this.constructor.name}: HASS ready timeout reached after 2 minutes, assuming HASS is loaded`);
 
-          // After timeout, load initial state and render
-          this._loadInitialState();
-          this.render();
-        }
-      }, 120000); // Wait 2 minutes for ready event
+            // After timeout, load initial state and render
+            this._loadInitialState();
+            this.render();
+          }
+        }, 120000); // Wait 2 minutes for ready event
+      }
 
       // Clear throttle when hass is set to allow initial updates
       this.clearUpdateThrottle();
@@ -671,12 +723,90 @@ export class RamsesBaseCard extends HTMLElement {
       this._hassReadyListener = null;
     }
 
+    if (this._featureReadyUnsub) {
+      this._featureReadyUnsub();
+      this._featureReadyUnsub = null;
+    }
+
     // Reset state
     this._initialStateLoaded = false;
     this._rendered = false;
     this._commandInProgress = false;
     this._previousStates = {};
     this._hassLoaded = false;
+  }
+
+  _ensureFeatureReadyLoaded() {
+    if (!this._hass?.connection) {
+      return;
+    }
+
+    const featureId = this.getFeatureName();
+    window.ramsesExtras = window.ramsesExtras || {};
+    window.ramsesExtras.featureReady = window.ramsesExtras.featureReady || {};
+    window.ramsesExtras._featureReadyPromises = window.ramsesExtras._featureReadyPromises || {};
+
+    if (window.ramsesExtras.featureReady[featureId] === true) {
+      this._featureReady = true;
+      return;
+    }
+
+    if (!window.ramsesExtras._featureReadyPromises[featureId]) {
+      window.ramsesExtras._featureReadyPromises[featureId] = callWebSocket(this._hass, {
+        type: 'ramses_extras/default/get_feature_ready',
+        feature_id: featureId,
+      })
+        .then((result) => {
+          const ready = result?.ready === true;
+          window.ramsesExtras.featureReady[featureId] = ready;
+          if (ready) {
+            this._featureReady = true;
+            this.clearUpdateThrottle();
+            this._checkAndLoadInitialState();
+            this.render();
+          } else {
+            this._subscribeFeatureReady();
+          }
+        })
+        .catch((error) => {
+          console.warn('⚠️ Failed to query feature readiness:', error);
+          this._subscribeFeatureReady();
+        });
+    }
+
+    this._subscribeFeatureReady();
+  }
+
+  _subscribeFeatureReady() {
+    if (this._featureReadyUnsub || !this._hass?.connection) {
+      return;
+    }
+
+    const featureId = this.getFeatureName();
+    try {
+      this._featureReadyUnsub = this._hass.connection.subscribeEvents((event) => {
+        const readyFeatureId = event?.data?.feature_id;
+        if (readyFeatureId !== featureId) {
+          return;
+        }
+
+        window.ramsesExtras = window.ramsesExtras || {};
+        window.ramsesExtras.featureReady = window.ramsesExtras.featureReady || {};
+        window.ramsesExtras.featureReady[featureId] = true;
+
+        this._featureReady = true;
+        this.clearUpdateThrottle();
+        this._checkAndLoadInitialState();
+        this.render();
+
+        if (this._featureReadyUnsub) {
+          this._featureReadyUnsub();
+          this._featureReadyUnsub = null;
+        }
+      }, 'ramses_extras_feature_ready');
+    } catch (error) {
+      console.warn('⚠️ Failed to subscribe to feature ready events:', error);
+    }
   }
 
   /**
@@ -891,6 +1021,38 @@ export class RamsesBaseCard extends HTMLElement {
           </div>
           <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
             ${this.getConfigErrorMessage()}
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
+  renderHassInitializing() {
+    this.shadowRoot.innerHTML = `
+      <ha-card>
+        <div style="padding: 16px; text-align: center; color: #666;">
+          <ha-icon icon="mdi:progress-clock"></ha-icon>
+          <div style="margin-top: 8px;">
+            Home Assistant is initializing
+          </div>
+          <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
+            Please wait until startup completes
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
+  renderFeatureInitializing() {
+    this.shadowRoot.innerHTML = `
+      <ha-card>
+        <div style="padding: 16px; text-align: center; color: #666;">
+          <ha-icon icon="mdi:progress-clock"></ha-icon>
+          <div style="margin-top: 8px;">
+            Ramses Extras is initializing
+          </div>
+          <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
+            Waiting for feature startup to complete
           </div>
         </div>
       </ha-card>
