@@ -203,7 +203,7 @@ export class RamsesBaseCard extends HTMLElement {
         if (!this._isHomeAssistantRunning()) {
           this.renderHassInitializing();
         } else {
-          this._ensureFeatureReadyLoaded();
+          this._ensureCardsEnabledLoaded();
           this.render();
         }
       }
@@ -795,9 +795,12 @@ export class RamsesBaseCard extends HTMLElement {
             window.ramsesExtras._cardsEnabledPromise = null;
           }
         });
+    } else {
+      // If promise exists but we're not enabled yet, ensure we're subscribed
+      if (!this._cardsEnabledUnsub) {
+        this._subscribeCardsEnabled();
+      }
     }
-
-    this._subscribeCardsEnabled();
   }
 
   _subscribeCardsEnabled() {
@@ -807,6 +810,11 @@ export class RamsesBaseCard extends HTMLElement {
 
     try {
       this._cardsEnabledUnsub = this._hass.connection.subscribeEvents(() => {
+        // Prevent multiple renders when the event fires multiple times
+        if (this._cardsEnabled) {
+          return;
+        }
+
         window.ramsesExtras = window.ramsesExtras || {};
         window.ramsesExtras.cardsEnabled = true;
 
@@ -814,11 +822,6 @@ export class RamsesBaseCard extends HTMLElement {
         this.clearUpdateThrottle();
         this._checkAndLoadInitialState();
         this.render();
-
-        if (this._cardsEnabledUnsub) {
-          this._cardsEnabledUnsub();
-          this._cardsEnabledUnsub = null;
-        }
       }, 'ramses_extras_cards_enabled');
     } catch (error) {
       console.warn('⚠️ Failed to subscribe to cards enabled events:', error);

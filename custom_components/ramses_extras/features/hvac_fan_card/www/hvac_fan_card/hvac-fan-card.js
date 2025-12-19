@@ -559,6 +559,9 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   disconnectedCallback() {
+    // Call parent's disconnectedCallback first to clean up cards_enabled subscription
+    super.disconnectedCallback();
+
     // Clean up message listener when card is removed
     if (this._config?.device_id) {
       const messageHelper = getRamsesMessageBroker();
