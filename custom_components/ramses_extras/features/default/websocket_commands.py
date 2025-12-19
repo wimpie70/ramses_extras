@@ -63,23 +63,19 @@ async def ws_get_enabled_features(
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
-        vol.Required("type"): "ramses_extras/default/get_feature_ready",
-        vol.Required("feature_id"): str,
+        vol.Required("type"): "ramses_extras/default/get_cards_enabled",
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_get_feature_ready(
+async def ws_get_cards_enabled(
     hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
     try:
-        feature_id = str(msg["feature_id"])
-        ready = (
-            hass.data.get(DOMAIN, {}).get("feature_ready", {}).get(feature_id, False)
-        )
-        connection.send_result(msg["id"], {"feature_id": feature_id, "ready": ready})
+        cards_enabled = hass.data.get(DOMAIN, {}).get("cards_enabled") is True
+        connection.send_result(msg["id"], {"cards_enabled": cards_enabled})
     except Exception as err:
-        _LOGGER.error("Failed to get feature readiness: %s", err)
-        connection.send_error(msg["id"], "get_feature_ready_failed", str(err))
+        _LOGGER.error("Failed to get cards_enabled: %s", err)
+        connection.send_error(msg["id"], "get_cards_enabled_failed", str(err))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

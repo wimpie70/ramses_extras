@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.event import async_track_state_change_event
 
+from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
@@ -72,9 +73,16 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     def _is_feature_enabled(self) -> bool:
         """Check if humidity_control feature is enabled in config."""
         try:
-            enabled_features = self.config_entry.data.get("enabled_features", {})
-            result: bool = enabled_features.get("humidity_control", False)
-            return result
+            domain_data = self.hass.data.get(DOMAIN, {})
+            enabled_features = domain_data.get("enabled_features")
+            if not isinstance(enabled_features, dict):
+                enabled_features = (
+                    self.config_entry.options.get("enabled_features")
+                    or self.config_entry.data.get("enabled_features")
+                    or {}
+                )
+
+            return enabled_features.get("humidity_control", False) is True
         except Exception as e:
             _LOGGER.warning(f"Could not check feature status: {e}")
             return False

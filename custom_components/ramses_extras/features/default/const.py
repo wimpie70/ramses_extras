@@ -63,6 +63,7 @@ WS_CMD_GET_BOUND_REM = "ramses_extras/get_bound_rem"
 WS_CMD_GET_2411_SCHEMA = "ramses_extras/get_2411_schema"
 WS_CMD_SEND_FAN_COMMAND = "ramses_extras/default/send_fan_command"
 WS_CMD_GET_ENABLED_FEATURES = "ramses_extras/default/get_enabled_features"
+WS_CMD_GET_CARDS_ENABLED = "ramses_extras/default/get_cards_enabled"
 WS_CMD_GET_ENTITY_MAPPINGS = "ramses_extras/get_entity_mappings"
 WS_CMD_GET_ALL_FEATURE_ENTITIES = "ramses_extras/get_all_feature_entities"
 
@@ -72,6 +73,7 @@ DEFAULT_WEBSOCKET_COMMANDS = {
     "get_bound_rem": WS_CMD_GET_BOUND_REM,
     "get_2411_schema": WS_CMD_GET_2411_SCHEMA,
     "get_enabled_features": WS_CMD_GET_ENABLED_FEATURES,
+    "get_cards_enabled": WS_CMD_GET_CARDS_ENABLED,
     "get_entity_mappings": WS_CMD_GET_ENTITY_MAPPINGS,
     "get_all_feature_entities": WS_CMD_GET_ALL_FEATURE_ENTITIES,
 }
@@ -112,6 +114,7 @@ __all__ = [
     "WS_CMD_GET_2411_SCHEMA",
     "WS_CMD_SEND_FAN_COMMAND",
     "WS_CMD_GET_ENABLED_FEATURES",
+    "WS_CMD_GET_CARDS_ENABLED",
     "WS_CMD_GET_ENTITY_MAPPINGS",
     "WS_CMD_GET_ALL_FEATURE_ENTITIES",
     "DEFAULT_WEBSOCKET_COMMANDS",

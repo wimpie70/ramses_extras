@@ -78,8 +78,8 @@ export class RamsesBaseCard extends HTMLElement {
     this._hassLoadTimeout = null; // Timeout for HASS load detection (2 minute fallback)
     this._hassReadyListener = null; // Listener for HASS ready event
 
-    this._featureReady = false;
-    this._featureReadyUnsub = null;
+    this._cardsEnabled = false;
+    this._cardsEnabledUnsub = null;
 
     this._featureConfigLoadAttached = false;
 
@@ -357,10 +357,12 @@ export class RamsesBaseCard extends HTMLElement {
           return;
         }
 
-        this._ensureFeatureReadyLoaded();
-        if (!this._featureReady) {
-          this.renderFeatureInitializing();
-          return;
+        if (!this._cardsEnabled) {
+          this._ensureCardsEnabledLoaded();
+          if (!this._cardsEnabled) {
+            this.renderFeatureInitializing();
+            return;
+          }
         }
         this._checkAndLoadInitialState();
         this.render();
@@ -407,12 +409,14 @@ export class RamsesBaseCard extends HTMLElement {
         return;
       }
 
-      this._ensureFeatureReadyLoaded();
-      if (!this._featureReady) {
-        this._hassLoaded = false;
-        this.clearUpdateThrottle();
-        this.renderFeatureInitializing();
-        return;
+      if (!this._cardsEnabled) {
+        this._ensureCardsEnabledLoaded();
+        if (!this._cardsEnabled) {
+          this._hassLoaded = false;
+          this.clearUpdateThrottle();
+          this.renderFeatureInitializing();
+          return;
+        }
       }
 
       if (!this._hassLoaded) {
@@ -733,10 +737,15 @@ export class RamsesBaseCard extends HTMLElement {
       this._hassReadyListener = null;
     }
 
-    if (this._featureReadyUnsub) {
-      this._featureReadyUnsub();
-      this._featureReadyUnsub = null;
+    if (typeof this._cardsEnabledUnsub === 'function') {
+      this._cardsEnabledUnsub();
     }
+    this._cardsEnabledUnsub = null;
+
+    if (typeof this._featureReadyUnsub === 'function') {
+      this._featureReadyUnsub();
+    }
+    this._featureReadyUnsub = null;
 
     // Reset state
     this._initialStateLoaded = false;
@@ -746,76 +755,73 @@ export class RamsesBaseCard extends HTMLElement {
     this._hassLoaded = false;
   }
 
-  _ensureFeatureReadyLoaded() {
+  _ensureCardsEnabledLoaded() {
     if (!this._hass?.connection) {
       return;
     }
 
-    const featureId = this.getFeatureName();
     window.ramsesExtras = window.ramsesExtras || {};
-    window.ramsesExtras.featureReady = window.ramsesExtras.featureReady || {};
-    window.ramsesExtras._featureReadyPromises = window.ramsesExtras._featureReadyPromises || {};
+    window.ramsesExtras._cardsEnabledPromise = window.ramsesExtras._cardsEnabledPromise || null;
 
-    if (window.ramsesExtras.featureReady[featureId] === true) {
-      this._featureReady = true;
+    if (window.ramsesExtras.cardsEnabled === true) {
+      this._cardsEnabled = true;
       return;
     }
 
-    if (!window.ramsesExtras._featureReadyPromises[featureId]) {
-      window.ramsesExtras._featureReadyPromises[featureId] = callWebSocket(this._hass, {
-        type: 'ramses_extras/default/get_feature_ready',
-        feature_id: featureId,
+    if (!window.ramsesExtras._cardsEnabledPromise) {
+      window.ramsesExtras._cardsEnabledPromise = callWebSocket(this._hass, {
+        type: 'ramses_extras/default/get_cards_enabled',
       })
         .then((result) => {
-          const ready = result?.ready === true;
-          window.ramsesExtras.featureReady[featureId] = ready;
-          if (ready) {
-            this._featureReady = true;
+          const enabled = result?.cards_enabled === true;
+          if (enabled) {
+            window.ramsesExtras.cardsEnabled = true;
+          }
+          if (enabled) {
+            this._cardsEnabled = true;
             this.clearUpdateThrottle();
             this._checkAndLoadInitialState();
             this.render();
           } else {
-            this._subscribeFeatureReady();
+            this._subscribeCardsEnabled();
           }
         })
         .catch((error) => {
-          console.warn('⚠️ Failed to query feature readiness:', error);
-          this._subscribeFeatureReady();
+          console.warn('⚠️ Failed to query cards_enabled:', error);
+          this._subscribeCardsEnabled();
+        })
+        .finally(() => {
+          if (window.ramsesExtras) {
+            window.ramsesExtras._cardsEnabledPromise = null;
+          }
         });
     }
 
-    this._subscribeFeatureReady();
+    this._subscribeCardsEnabled();
   }
 
-  _subscribeFeatureReady() {
-    if (this._featureReadyUnsub || !this._hass?.connection) {
+  _subscribeCardsEnabled() {
+    if (this._cardsEnabledUnsub || !this._hass?.connection) {
       return;
     }
 
-    const featureId = this.getFeatureName();
     try {
-      this._featureReadyUnsub = this._hass.connection.subscribeEvents((event) => {
-        const readyFeatureId = event?.data?.feature_id;
-        if (readyFeatureId !== featureId) {
-          return;
-        }
-
+      this._cardsEnabledUnsub = this._hass.connection.subscribeEvents(() => {
         window.ramsesExtras = window.ramsesExtras || {};
-        window.ramsesExtras.featureReady = window.ramsesExtras.featureReady || {};
-        window.ramsesExtras.featureReady[featureId] = true;
+        window.ramsesExtras.cardsEnabled = true;
 
-        this._featureReady = true;
+        this._cardsEnabled = true;
         this.clearUpdateThrottle();
         this._checkAndLoadInitialState();
         this.render();
 
-        if (this._featureReadyUnsub) {
-          this._featureReadyUnsub();
-          this._featureReadyUnsub = null;
+        if (this._cardsEnabledUnsub) {
+          this._cardsEnabledUnsub();
+          this._cardsEnabledUnsub = null;
         }
-      }, 'ramses_extras_feature_ready');
+      }, 'ramses_extras_cards_enabled');
     } catch (error) {
-      console.warn('⚠️ Failed to subscribe to feature ready events:', error);
+      console.warn('⚠️ Failed to subscribe to cards enabled events:', error);
     }
   }
 

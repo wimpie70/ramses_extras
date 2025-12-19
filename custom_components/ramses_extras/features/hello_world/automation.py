@@ -13,10 +13,11 @@ how to implement automation-driven entity control patterns in Ramses Extras.
 """
 
 import logging
-from typing import Any, cast
+from typing import Any
 
 from homeassistant.core import HomeAssistant, State
 
+from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
@@ -65,9 +66,16 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             returns False as a safe default and logs a warning.
         """
         try:
-            enabled_features = self.config_entry.data.get("enabled_features", {})
-            result: bool = enabled_features.get("hello_world", False)
-            return result
+            domain_data = self.hass.data.get(DOMAIN, {})
+            enabled_features = domain_data.get("enabled_features")
+            if not isinstance(enabled_features, dict):
+                enabled_features = (
+                    self.config_entry.options.get("enabled_features")
+                    or self.config_entry.data.get("enabled_features")
+                    or {}
+                )
+
+            return enabled_features.get("hello_world", False) is True
         except Exception as e:
             _LOGGER.warning(f"Could not check feature status: {e}")
             return False

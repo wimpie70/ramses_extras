@@ -279,11 +279,63 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Explicitly create and start feature instances for
     #  enabled features (including default)
     features = hass.data[DOMAIN].setdefault("features", {})
-    enabled_feature_names = list(entry.data.get("enabled_features", {}).keys())
+    feature_ready = hass.data[DOMAIN].setdefault("feature_ready", {})
+    hass.data[DOMAIN].setdefault("cards_enabled", False)
+    hass.data[DOMAIN]["cards_pending_features"] = set()
+    enabled_features = entry.data.get("enabled_features") or entry.options.get(
+        "enabled_features"
+    )
+    if not isinstance(enabled_features, dict):
+        enabled_features = {}
+    enabled_feature_names = [k for k, v in enabled_features.items() if v is True]
     # Always include default
     if "default" not in enabled_feature_names:
         enabled_feature_names.append("default")
     import importlib
+
+    automation_managers_to_start: list[Any] = []
+    cards_pending_features: set[str] = set()
+
+    @callback  # type: ignore[untyped-decorator]
+    def _on_feature_ready(event: Event[dict[str, Any]]) -> None:
+        feature_id = event.data.get("feature_id")
+        if not isinstance(feature_id, str):
+            return
+
+        pending = hass.data.get(DOMAIN, {}).get("cards_pending_features")
+        if not isinstance(pending, set):
+            return
+
+        if feature_id not in pending:
+            return
+
+        pending.discard(feature_id)
+
+        _LOGGER.debug(
+            "✅ Cards latch: received feature_ready for %s, remaining pending=%s",
+            feature_id,
+            sorted(pending),
+        )
+
+        if pending:
+            return
+
+        if hass.data[DOMAIN].get("cards_enabled") is True:
+            return
+
+        hass.data[DOMAIN]["cards_enabled"] = True
+        _LOGGER.debug("✅ Cards latch: cards_enabled=True")
+        hass.bus.async_fire("ramses_extras_cards_enabled", {})
+
+    hass.data[DOMAIN]["cards_pending_features"] = cards_pending_features
+
+    existing_unsub = hass.data[DOMAIN].get("_cards_enabled_unsub")
+    if callable(existing_unsub):
+        existing_unsub()
+
+    hass.data[DOMAIN]["_cards_enabled_unsub"] = hass.bus.async_listen(
+        "ramses_extras_feature_ready", _on_feature_ready
+    )
 
     for feature_name in enabled_feature_names:
         if feature_name in features:
@@ -308,13 +360,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     feature_instance = create_feature_func(hass, entry)
 
                 # Start the automation manager if it exists in the feature instance
-                if feature_instance and "automation" in feature_instance:
-                    automation_manager = feature_instance["automation"]
-                    if (
-                        automation_manager
-                        and not automation_manager.is_automation_active()
-                    ):
-                        hass.async_create_task(automation_manager.start())
+                automation_manager = None
+                if isinstance(feature_instance, dict):
+                    automation_manager = feature_instance.get("automation")
+
+                if automation_manager:
+                    feature_ready.setdefault(feature_name, False)
+                    cards_pending_features.add(feature_name)
+                    if not automation_manager.is_automation_active():
+                        automation_managers_to_start.append(automation_manager)
+                else:
+                    feature_ready[feature_name] = True
+                    hass.bus.async_fire(
+                        "ramses_extras_feature_ready", {"feature_id": feature_name}
+                    )
 
                 features[feature_name] = feature_instance
                 _LOGGER.info(f"✅ Created feature instance: {feature_name}")
@@ -322,6 +381,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.warning(
                 f"⚠️ Failed to create feature instance '{feature_name}': {e}"
             )
+
+    if not cards_pending_features:
+        hass.data[DOMAIN]["cards_enabled"] = True
+        _LOGGER.debug("✅ Cards latch: cards_enabled=True (no pending automations)")
+        hass.bus.async_fire("ramses_extras_cards_enabled", {})
+
+    for automation_manager in automation_managers_to_start:
+        hass.async_create_task(automation_manager.start())
     return True
 
 
