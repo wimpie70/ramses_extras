@@ -511,7 +511,6 @@ class HelloWorld extends RamsesBaseCard {
 }
 
 // Register the card using the base class registration
-console.log('🔄 HelloWorld: Starting registration...');
 HelloWorld.register();
 
 // Export for testing purposes

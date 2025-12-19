@@ -9,6 +9,16 @@ import { SimpleCardTranslator } from './card-translations.js';
 import { callWebSocket, entityExists, getEntityState, buildEntityId } from './card-services.js';
 import { getRamsesMessageBroker } from './ramses-message-broker.js';
 import { getFeatureTranslationPath } from './paths.js';
+/**
+ * window.ramsesExtras = window.ramsesExtras || {};
+ * window.ramsesExtras.debug = true;
+ */
+const isDebugEnabled = () => window.ramsesExtras?.debug === true;
+const debugLog = (...args) => {
+  if (isDebugEnabled()) {
+    console.log(...args);
+   }
+ };
 
 /**
  * RamsesBaseCard - Base class for Ramses Extras custom cards
@@ -227,12 +237,12 @@ export class RamsesBaseCard extends HTMLElement {
 
     if (!window.ramsesExtras?.features) {
       this._ensureFeatureConfigLoaded();
-      console.log(`Feature ${featureName} is enabled: unknown (loading)`);
+      debugLog(`Feature ${featureName} is enabled: unknown (loading)`);
       return null;
     }
 
     const isEnabled = window.ramsesExtras.features[featureName] === true;
-    console.log(`Feature ${featureName} is enabled: ${isEnabled}`);
+    debugLog(`Feature ${featureName} is enabled: ${isEnabled}`);
     return isEnabled;
   }
 
@@ -434,7 +444,7 @@ export class RamsesBaseCard extends HTMLElement {
       if (connectionChanged && hass && hass.connection) {
         this._hassReadyListener = hass.connection.addEventListener('ready', () => {
           this._hassLoaded = true;
-          console.log(`✅ ${this.constructor.name}: HASS ready event received, allowing updates and rendering`);
+          debugLog(`✅ ${this.constructor.name}: HASS ready event received, allowing updates and rendering`);
           this._hassReadyListener = null;
 
           // After HASS is ready, load initial state and render
@@ -448,7 +458,7 @@ export class RamsesBaseCard extends HTMLElement {
         this._hassLoadTimeout = setTimeout(() => {
           if (!this._hassLoaded) {
             this._hassLoaded = true;
-            console.log(`⚠️ ${this.constructor.name}: HASS ready timeout reached after 2 minutes, assuming HASS is loaded`);
+            debugLog(`⚠️ ${this.constructor.name}: HASS ready timeout reached after 2 minutes, assuming HASS is loaded`);
 
             // After timeout, load initial state and render
             this._loadInitialState();
@@ -473,7 +483,7 @@ export class RamsesBaseCard extends HTMLElement {
    */
   shouldUpdate() {
     if (!this._hass || !this.config) {
-      console.log(`🔍 ${this.constructor.name}: shouldUpdate - missing hass or config`);
+      debugLog(`🔍 ${this.constructor.name}: shouldUpdate - missing hass or config`);
       return false;
     }
 
@@ -485,7 +495,7 @@ export class RamsesBaseCard extends HTMLElement {
     // Throttle updates to prevent excessive calls
     const now = Date.now();
     if (now - this._lastUpdateTime < this._updateThrottleTime) {
-      console.log(`🔍 ${this.constructor.name}: shouldUpdate - throttled, skipping update check`);
+      debugLog(`🔍 ${this.constructor.name}: shouldUpdate - throttled, skipping update check`);
       return false;
     }
 
@@ -493,14 +503,14 @@ export class RamsesBaseCard extends HTMLElement {
 
     if (Object.keys(requiredEntities).length === 0) {
       // No specific entities to monitor, always update
-      console.log(`🔍 ${this.constructor.name}: shouldUpdate - no required entities, always update`);
+      debugLog(`🔍 ${this.constructor.name}: shouldUpdate - no required entities, always update`);
       return true;
     }
 
     // Check if any monitored entities have changed
     const hasChanges = Object.entries(requiredEntities).some(([key, entityId]) => {
       if (!entityId) {
-        console.log(`🔍 ${this.constructor.name}: shouldUpdate - entity ${key} is null/undefined`);
+        debugLog(`🔍 ${this.constructor.name}: shouldUpdate - entity ${key} is null/undefined`);
         return false;
       }
 
@@ -509,7 +519,7 @@ export class RamsesBaseCard extends HTMLElement {
       this._previousStates[entityId] = newState;
 
       const changed = oldState !== newState;
-      console.log(`🔍 ${this.constructor.name}: shouldUpdate - entity ${entityId}:`, {
+      debugLog(`🔍 ${this.constructor.name}: shouldUpdate - entity ${entityId}:`, {
         oldState: oldState?.state,
         newState: newState?.state,
         changed
@@ -518,7 +528,7 @@ export class RamsesBaseCard extends HTMLElement {
       return changed;
     });
 
-    console.log(`🔍 ${this.constructor.name}: shouldUpdate result:`, hasChanges);
+    debugLog(`🔍 ${this.constructor.name}: shouldUpdate result:`, hasChanges);
 
     // Update the last update time if there are changes
     if (hasChanges) {
@@ -549,7 +559,7 @@ export class RamsesBaseCard extends HTMLElement {
 
     try {
       // Default implementation - subclasses can override
-      console.log(`🔄 ${this.constructor.name}: Loading initial state for device:`, this._config.device_id);
+      debugLog(`🔄 ${this.constructor.name}: Loading initial state for device:`, this._config.device_id);
     } catch (error) {
       console.warn(`⚠️ ${this.constructor.name}: Failed to load initial state:`, error);
     } finally {
@@ -693,7 +703,7 @@ export class RamsesBaseCard extends HTMLElement {
    * Connected callback - setup message broker and lifecycle
    */
   connectedCallback() {
-    console.log(`🔗 ${this.constructor.name}: Component connected to DOM`);
+    debugLog(`🔗 ${this.constructor.name}: Component connected to DOM`);
 
     // Setup message broker integration
     this._setupMessageBroker();
@@ -703,7 +713,7 @@ export class RamsesBaseCard extends HTMLElement {
    * Disconnected callback - cleanup
    */
   disconnectedCallback() {
-    console.log(`🧹 ${this.constructor.name}: Cleaning up component`);
+    debugLog(`🧹 ${this.constructor.name}: Cleaning up component`);
 
     // Clean up message broker
     this._cleanupMessageBroker();
@@ -821,7 +831,7 @@ export class RamsesBaseCard extends HTMLElement {
     try {
       this._messageBroker = getRamsesMessageBroker();
       this._messageBroker.addListener(this, this._config.device_id, this._messageCodes);
-      console.log(`📡 ${this.constructor.name}: Registered for message codes:`, this._messageCodes);
+      debugLog(`📡 ${this.constructor.name}: Registered for message codes:`, this._messageCodes);
     } catch (error) {
       console.warn(`⚠️ ${this.constructor.name}: Failed to setup message broker:`, error);
     }
@@ -834,7 +844,7 @@ export class RamsesBaseCard extends HTMLElement {
     if (this._messageBroker && this._config?.device_id) {
       try {
         this._messageBroker.removeListener(this, this._config.device_id);
-        console.log(`🧹 ${this.constructor.name}: Removed from message broker`);
+        debugLog(`🧹 ${this.constructor.name}: Removed from message broker`);
       } catch (error) {
         console.warn(`⚠️ ${this.constructor.name}: Error cleaning up message broker:`, error);
       }
@@ -853,9 +863,9 @@ export class RamsesBaseCard extends HTMLElement {
 
     if (!customElements.get(tagName)) {
       customElements.define(tagName, this);
-      console.log(`✅ ${this.name}: Custom element '${tagName}' defined successfully`);
+      debugLog(`✅ ${this.name}: Custom element '${tagName}' defined successfully`);
     } else {
-      console.log(`⚠️ ${this.name}: Custom element '${tagName}' already exists`);
+      debugLog(`⚠️ ${this.name}: Custom element '${tagName}' already exists`);
     }
   }
 
@@ -878,9 +888,9 @@ export class RamsesBaseCard extends HTMLElement {
 
     if (!existingCard) {
       window.customCards.push(customCardInfo);
-      console.log(`✅ ${this.name}: Registered with HA custom cards:`, customCardInfo.type);
+      debugLog(`✅ ${this.name}: Registered with HA custom cards:`, customCardInfo.type);
     } else {
-      console.log(`⚠️ ${this.name}: Custom card '${customCardInfo.type}' already registered`);
+      debugLog(`⚠️ ${this.name}: Custom card '${customCardInfo.type}' already registered`);
     }
   }
 
@@ -935,7 +945,7 @@ export class RamsesBaseCard extends HTMLElement {
       // Final verification - only check, don't register again
       const verifiedCard = window.customCards.find(card => card.type === cardInfo.type);
       if (verifiedCard) {
-        console.log(`✅ ${this.name}: Registration verified successfully for type: ${cardInfo.type}`);
+        debugLog(`✅ ${this.name}: Registration verified successfully for type: ${cardInfo.type}`);
       } else {
         console.error(`❌ ${this.name}: Failed to verify registration for type: ${cardInfo.type}`);
       }
