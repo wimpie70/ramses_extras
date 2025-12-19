@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name="ramses_extras",
-    version="0.9.2",
+    version="10.0.0",
     packages=[
         "custom_components.ramses_extras",
         "custom_components.ramses_extras.framework",
