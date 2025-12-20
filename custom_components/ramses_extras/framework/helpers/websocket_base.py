@@ -283,7 +283,7 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             # Check for switch configurations (any feature-specific naming)
             for attr_name in dir(feature_module):
                 if attr_name.endswith("_SWITCH_CONFIGS") and attr_name.startswith(
-                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "")
+                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "HVAC_FAN_CARD_", "")
                 ):
                     switch_configs = getattr(feature_module, attr_name)
                     for entity_name, config in switch_configs.items():
@@ -297,7 +297,9 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             for attr_name in dir(feature_module):
                 if attr_name.endswith(
                     "_BINARY_SENSOR_CONFIGS"
-                ) and attr_name.startswith(("HELLO_WORLD_", "HUMIDITY_CONTROL_", "")):
+                ) and attr_name.startswith(
+                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "HVAC_FAN_CARD_", "")
+                ):
                     sensor_configs = getattr(feature_module, attr_name)
                     for entity_name, config in sensor_configs.items():
                         if "entity_template" in config:
@@ -309,7 +311,7 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             # Check for sensor configurations
             for attr_name in dir(feature_module):
                 if attr_name.endswith("_SENSOR_CONFIGS") and attr_name.startswith(
-                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "")
+                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "HVAC_FAN_CARD_", "")
                 ):
                     sensor_configs = getattr(feature_module, attr_name)
                     for entity_name, config in sensor_configs.items():
@@ -322,7 +324,7 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             # Check for number configurations
             for attr_name in dir(feature_module):
                 if attr_name.endswith("_NUMBER_CONFIGS") and attr_name.startswith(
-                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "")
+                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "HVAC_FAN_CARD_", "")
                 ):
                     number_configs = getattr(feature_module, attr_name)
                     for entity_name, config in number_configs.items():
@@ -331,6 +333,18 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
                             entity_mappings[f"{entity_name}_state"] = (
                                 f"number.{template}"
                             )
+
+            # Fallback: Check for entity_mappings in feature constants
+            if not entity_mappings:
+                for attr_name in dir(feature_module):
+                    if attr_name.endswith("_CONST"):
+                        feature_const = getattr(feature_module, attr_name)
+                        if (
+                            isinstance(feature_const, dict)
+                            and "entity_mappings" in feature_const
+                        ):
+                            entity_mappings = feature_const["entity_mappings"]
+                            break
 
             self._logger.debug(
                 f"Found entity mappings for {self.feature_identifier}: "
