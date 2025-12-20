@@ -30,7 +30,6 @@ import './hvac-fan-card-editor.js';
 
 // Import reusable helpers using environment-aware path constants
 // import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
-import { getRamsesMessageBroker } from '/local/ramses_extras/helpers/ramses-message-broker.js';
 import { HvacFanCardHandlers } from './message-handlers.js';
 import {
   callWebSocket,
@@ -42,7 +41,6 @@ import {
   validateDehumidifyEntities,
   getEntityValidationReport,
 } from '/local/ramses_extras/helpers/card-validation.js';
-
 
 class HvacFanCard extends RamsesBaseCard {
   constructor() {
@@ -546,35 +544,18 @@ class HvacFanCard extends RamsesBaseCard {
     }
   }
 
-  // Add event listeners after the component is connected to the DOM
-  connectedCallback() {
-    // Register for real-time message updates if we have a device ID
+  _onConnected() {
     if (this._config?.device_id) {
-      const messageHelper = getRamsesMessageBroker();
-      messageHelper.addListener(this, this._config.device_id, ['31DA', '10D0']);
-
-      // Request initial data when card is fully loaded
       this.requestInitialData();
     }
   }
 
-  disconnectedCallback() {
-    // Call parent's disconnectedCallback first to clean up cards_enabled subscription
-    super.disconnectedCallback();
-
-    // Clean up message listener when card is removed
-    if (this._config?.device_id) {
-      const messageHelper = getRamsesMessageBroker();
-      messageHelper.removeListener(this, this._config.device_id);
-
-      // Clear any event reception check timers
-      if (this._eventCheckTimer) {
-        clearTimeout(this._eventCheckTimer);
-        this._eventCheckTimer = null;
-      }
+  _onDisconnected() {
+    if (this._eventCheckTimer) {
+      clearTimeout(this._eventCheckTimer);
+      this._eventCheckTimer = null;
     }
 
-    // Clear other intervals
     if (this._stateCheckInterval) {
       clearInterval(this._stateCheckInterval);
       this._stateCheckInterval = null;

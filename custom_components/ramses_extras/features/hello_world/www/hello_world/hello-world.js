@@ -1,5 +1,27 @@
 /* eslint-disable no-console */
 
+/**
+ * Hello World - Simple demonstration card for Ramses Extras
+ *
+ * This card demonstrates the capabilities of the RamsesBaseCard framework.
+ * It shows how to create a simple card with:
+ * - Basic configuration (device_id, display options)
+ * - Entity mapping via WebSocket
+ * - Communication with the backend via WebSocket
+ * - Backend Automation listening and acting on entity changes
+ * - State management and rendering
+ * - Interactive controls
+ *
+ * How it works:
+ * - When the card is loaded it will fetch the entities for the device.
+ * - When the entities are fetched it will render the card.
+ * - When the card is rendered it will attach event listeners.
+ * - When clicking the button it will send a websocket command to the backend.
+ * - The switch entity for the device will be toggled.
+ * - The features automation will listen to this and be triggered and then update the sensor entity.
+ * - The card listens to the sensor entity and will re-render when it changes.
+ */
+
 // Import the base card class (matching working hvac_fan_card pattern)
 import { RamsesBaseCard } from '/local/ramses_extras/helpers/ramses-base-card.js';
 
@@ -10,16 +32,7 @@ import './hello-world-editor.js';
 import { CARD_STYLE } from './card-styles.js';
 import { createCardContent } from './templates/card-templates.js';
 
-/**
- * Helloworld - Simple demonstration card for Ramses Extras
- *
- * This card demonstrates the capabilities of the RamsesBaseCard framework.
- * It shows how to create a simple card with:
- * - Basic configuration (device_id, display options)
- * - Entity mapping via WebSocket
- * - State management and rendering
- * - Interactive controls
- */
+
 class HelloWorld extends RamsesBaseCard {
   constructor() {
     super();
@@ -53,6 +66,10 @@ class HelloWorld extends RamsesBaseCard {
       console.error('Error creating config element:', error);
       return null;
     }
+  }
+
+  _onDisconnected() {
+    this._removeEventListeners();
   }
 
   static getStubConfig() {
@@ -216,29 +233,6 @@ class HelloWorld extends RamsesBaseCard {
   }
 
   // ========== OVERRIDE OPTIONAL METHODS ==========
-
-  /**
-   * Check if the card has a valid configuration for rendering
-   * @returns {boolean} True if card has valid configuration
-   */
-  hasValidConfig() {
-    return this._config && this._config.device_id;
-  }
-
-  validateConfig(config) {
-    return {
-      valid: true,
-      errors: [],
-    };
-  }
-
-  /**
-   * Get configuration error message for display
-   * @returns {string} Error message to display when configuration is invalid
-   */
-  getConfigErrorMessage() {
-    return 'Device ID is required. Please configure the card with a device_id to use this card.';
-  }
 
   /**
    * Get default configuration
@@ -457,26 +451,6 @@ class HelloWorld extends RamsesBaseCard {
     if (switchElement) {
       switchElement.checked = actualState;
     }
-  }
-
-  /**
-   * Get device display name based on configuration
-   * @returns {string} Device display name
-   */
-  getDeviceDisplayName() {
-    const deviceId = this._config.device_id;
-    const deviceName = this._config.name || 'Hello World Switch';
-
-    if (this._config.show_device_id_only) {
-      return deviceId;
-    }
-
-    if (this._config.show_name_only) {
-      return deviceName;
-    }
-
-    // Default: show both
-    return `${deviceName} (${deviceId})`;
   }
 
   /**

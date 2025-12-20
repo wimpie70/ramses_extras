@@ -64,6 +64,8 @@ export class RamsesBaseCard extends HTMLElement {
     this._pendingRequests = new Map();
     this._commandInProgress = false;
 
+    this._onceKeys = new Set();
+
     // Message broker integration
     this._messageBroker = null;
     this._messageCodes = [];
@@ -348,6 +350,7 @@ export class RamsesBaseCard extends HTMLElement {
       this._rendered = false;
       this._initialStateLoaded = false;
       this._previousStates = {};
+      this._onceKeys = new Set();
       this.clearUpdateThrottle(); // Clear throttle on config change
 
       // Load initial state if hass is available
@@ -646,6 +649,55 @@ export class RamsesBaseCard extends HTMLElement {
     this._previousStates = {};
   }
 
+  _runOnce(key, fn) {
+    if (this._onceKeys.has(key)) {
+      return;
+    }
+
+    this._onceKeys.add(key);
+    return fn();
+  }
+
+  _maybeRunOnceWhenReady(key, fn) {
+    if (!this._hass || !this._config) {
+      return;
+    }
+    if (!this._isHomeAssistantRunning()) {
+      return;
+    }
+    if (!this._cardsEnabled) {
+      return;
+    }
+    if (!this.isConnected) {
+      return;
+    }
+
+    return this._runOnce(key, fn);
+  }
+
+  async _withElementFeedback(element, fn, successMs = 2000) {
+    if (element) {
+      element.classList.add('loading');
+      element.classList.remove('success', 'error');
+    }
+
+    try {
+      const result = await fn();
+      if (element) {
+        element.classList.remove('loading');
+        element.classList.add('success');
+        setTimeout(() => element.classList.remove('success'), successMs);
+      }
+      return result;
+    } catch (error) {
+      if (element) {
+        element.classList.remove('loading');
+        element.classList.add('error');
+      }
+      throw error;
+    }
+  }
+
   // ========== ENTITY UTILITIES ==========
 
   /**
@@ -711,13 +763,27 @@ export class RamsesBaseCard extends HTMLElement {
 
     // Setup message broker integration
     this._setupMessageBroker();
+
+    try {
+      this._onConnected();
+    } catch (error) {
+      console.warn(`⚠️ ${this.constructor.name}: Error in _onConnected():`, error);
+    }
   }
+
+  _onConnected() {}
 
   /**
    * Disconnected callback - cleanup
    */
   disconnectedCallback() {
     debugLog(`🧹 ${this.constructor.name}: Cleaning up component`);
+
+    try {
+      this._onDisconnected();
+    } catch (error) {
+      console.warn(`⚠️ ${this.constructor.name}: Error in _onDisconnected():`, error);
+    }
 
     // Clean up message broker
     this._cleanupMessageBroker();
@@ -754,6 +820,8 @@ export class RamsesBaseCard extends HTMLElement {
     this._previousStates = {};
     this._hassLoaded = false;
   }
+
+  _onDisconnected() {}
 
   _ensureCardsEnabledLoaded() {
     if (!this._hass?.connection) {
@@ -1003,6 +1071,18 @@ export class RamsesBaseCard extends HTMLElement {
     const deviceId = this._config?.device_id || 'Unknown Device';
     const deviceName = this._config?.name || this.constructor.name;
 
+    if (this._config?.show_device_id_only === true) {
+      return deviceId;
+    }
+
+    if (this._config?.show_name_only === true) {
+      return deviceName;
+    }
+
+    if (this._config?.show_both === false) {
+      return deviceName;
+    }
+
     return `${deviceName} (${deviceId})`;
   }
 
@@ -1014,7 +1094,7 @@ export class RamsesBaseCard extends HTMLElement {
   hasValidConfig() {
     // Check for required device_id - cards that need device_id should override this method
     // to add their specific validation logic
-    return true;
+    return Boolean(this._config?.device_id);
   }
 
   /**
@@ -1023,7 +1103,7 @@ export class RamsesBaseCard extends HTMLElement {
    * @returns {string} Error message to display when configuration is invalid
    */
   getConfigErrorMessage() {
-    return 'Configuration is required. Please configure this card to use it.';
+    return 'Device ID is required. Please configure the card with a device_id to use this card.';
   }
 
   /**
