@@ -83,6 +83,15 @@ HVAC_FAN_CARD_CONST = {
     "cards": HVAC_FAN_CARD_CONFIGS,
     # Device mappings for the feature
     "device_mappings": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
+    # Entity mappings for frontend cards
+    "entity_mappings": {
+        "indoor_abs_humidity": "sensor.indoor_absolute_humidity_{device_id}",
+        "outdoor_abs_humidity": "sensor.outdoor_absolute_humidity_{device_id}",
+        "co2": "sensor.co2_level_{device_id}",
+        "dehum_mode": "switch.dehumidify_{device_id}",
+        "dehum_active": "binary_sensor.dehumidify_active_{device_id}",
+        "comfort_temp": "number.param_75_{device_id}",
+    },
 }
 
 
