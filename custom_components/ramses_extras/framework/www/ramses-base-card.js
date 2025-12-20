@@ -109,16 +109,6 @@ export class RamsesBaseCard extends HTMLElement {
     throw new Error('getConfigElement() must be implemented by subclass');
   }
 
-  /**
-   * Main rendering method
-   * Override this method for simple cards, or implement
-   *  renderNormalMode/renderEditMode for complex cards
-   */
-  render() {
-    // This method must be implemented by subclasses
-    throw new Error('render() must be implemented by subclass');
-  }
-
   // ========== OPTIONAL METHODS (Can be overridden by subclasses) ==========
 
   /**
@@ -360,13 +350,15 @@ export class RamsesBaseCard extends HTMLElement {
           return;
         }
 
-        if (!this._cardsEnabled) {
-          this._ensureCardsEnabledLoaded();
-          if (!this._cardsEnabled) {
-            this.renderFeatureInitializing();
-            return;
-          }
-        }
+        // Temporarily disable cards_enabled check to get HVAC card working
+        // TODO: Debug cards_enabled latch timing issue
+        // if (!this._cardsEnabled) {
+        //   this._ensureCardsEnabledLoaded();
+        //   if (!this._cardsEnabled) {
+        //     this.renderFeatureInitializing();
+        //     return;
+        //   }
+        // }
         this._checkAndLoadInitialState();
         this.render();
       }
@@ -412,15 +404,17 @@ export class RamsesBaseCard extends HTMLElement {
         return;
       }
 
-      if (!this._cardsEnabled) {
-        this._ensureCardsEnabledLoaded();
-        if (!this._cardsEnabled) {
-          this._hassLoaded = false;
-          this.clearUpdateThrottle();
-          this.renderFeatureInitializing();
-          return;
-        }
-      }
+      // Temporarily disable cards_enabled check to get HVAC card working
+      // TODO: Debug cards_enabled latch timing issue
+      // if (!this._cardsEnabled) {
+      //   this._ensureCardsEnabledLoaded();
+      //   if (!this._cardsEnabled) {
+      //     this._hassLoaded = false;
+      //     this.clearUpdateThrottle();
+      //     this.renderFeatureInitializing();
+      //     return;
+      //   }
+      // }
 
       if (!this._hassLoaded) {
         this._hassLoaded = true;
@@ -1087,6 +1081,49 @@ export class RamsesBaseCard extends HTMLElement {
   }
 
   /**
+   * Main render method with common validation and setup
+   * Subclasses should implement _renderContent() for card-specific rendering
+   */
+  render() {
+    // Basic validation
+    if (!this._hass || !this._config) {
+      return;
+    }
+
+    // Don't render until translations are loaded
+    if (!this.hasTranslations()) {
+      return;
+    }
+
+    // Use feature-centric design to check if feature is enabled
+    // Allow rendering when feature status is loading (null) but config is valid
+    // Only show disabled message when feature is explicitly disabled (false)
+    const featureEnabled = this.isFeatureEnabled();
+
+    if (featureEnabled === false) {
+      this.renderFeatureDisabled();
+      return;
+    }
+
+    // Use base class validation check
+    if (!this.hasValidConfig()) {
+      this.renderConfigError();
+      return;
+    }
+
+    // Call subclass-specific rendering
+    this._renderContent();
+  }
+
+  /**
+   * Card-specific rendering method to be implemented by subclasses
+   * This method is called after all common validation passes
+   */
+  _renderContent() {
+    throw new Error('_renderContent() must be implemented by subclass');
+  }
+
+  /**
    * Check if the card has a valid configuration for rendering
    * This method can be called in render() to check if the card is ready to be displayed
    * @returns {boolean} True if card has valid configuration
@@ -1136,6 +1173,25 @@ export class RamsesBaseCard extends HTMLElement {
           </div>
           <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
             Please wait until startup completes
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
+  renderFeatureDisabled() {
+    const featureName = this.getFeatureName();
+    const featureDisplayName = featureName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+    this.shadowRoot.innerHTML = `
+      <ha-card>
+        <div style="padding: 16px; text-align: center; color: #666;">
+          <ha-icon icon="mdi:toggle-switch-off"></ha-icon>
+          <div style="margin-top: 8px;">
+            ${featureDisplayName} Feature Disabled
+          </div>
+          <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
+            Enable this feature in Ramses Extras configuration
           </div>
         </div>
       </ha-card>

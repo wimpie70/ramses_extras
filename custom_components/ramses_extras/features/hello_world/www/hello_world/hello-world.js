@@ -97,60 +97,11 @@ class HelloWorld extends RamsesBaseCard {
     }
   }
 
+
   /**
-   * Main rendering method
+   * Card-specific rendering implementation
    */
-  render() {
-    if (!this._config || !this._hass) {
-      if (!this._rendered) {
-        this.shadowRoot.innerHTML = `
-          <ha-card>Card not configured</ha-card>
-        `;
-        this._rendered = true;
-      }
-      return;
-    }
-
-    // Check if the hello_world feature is enabled
-    // If not enabled, show a disabled message instead of loading entities
-    const featureEnabled = this.isFeatureEnabled();
-
-    // Feature state may be loading (null) while the base card fetches flags via WebSocket
-    if (featureEnabled === null) {
-      return;
-    }
-
-    if (featureEnabled === false) {
-      if (!this._rendered) {
-        this.shadowRoot.innerHTML = `
-          <ha-card>
-            <div style="padding: 16px; text-align: center; color: #666;">
-              <ha-icon icon="mdi:information-outline"></ha-icon>
-              <div style="margin-top: 8px;">
-                Hello World feature is disabled
-              </div>
-              <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
-                Enable the feature in Ramses Extras configuration to use this card
-              </div>
-            </div>
-          </ha-card>
-        `;
-        this._rendered = true;
-      }
-      return;
-    }
-
-    // Don't render until translations are loaded
-    if (!this.hasTranslations()) {
-      return;
-    }
-
-    // Use base class validation check
-    if (!this.hasValidConfig()) {
-      this.renderConfigError();
-      return;
-    }
-
+  _renderContent() {
     // Use feature-centric design to get entity IDs (same as getRequiredEntities)
     const deviceId = this._config?.device_id;
     let switchEntityId = this._config?.switchEntityId;
@@ -220,11 +171,11 @@ class HelloWorld extends RamsesBaseCard {
       }
 
       if (statusDiv) {
-        const statusText = switchState ? 'ON' : 'OFF';
-        statusDiv.innerHTML = `Status: ${statusText}`;
+        statusDiv.textContent = `Switch: ${switchState ? 'ON' : 'OFF'}`;
       }
 
       if (sensorStatusDiv) {
+        sensorStatusDiv.textContent = `Sensor: ${sensorState ? 'ON' : 'OFF'}`;
         const sensorText = sensorState ? 'ON' : 'OFF';
         const sensorPrefix = this.t('ui.card.hello_world.binary_sensor_changed_by_automation');
         sensorStatusDiv.textContent = `${sensorPrefix} ${sensorText}`;
@@ -325,21 +276,8 @@ class HelloWorld extends RamsesBaseCard {
       // Force a render after entity mappings are loaded to ensure
       // getRequiredEntities() has the correct entity IDs
       this.render();
-
-      // Then load initial state
-      const result = await this._sendWebSocketCommand({
-        type: 'ramses_extras/hello_world/get_switch_state',
-        device_id: this._config.device_id
-      }, `initial_state_${this._config.device_id}`);
-
-      // Update previous states from WebSocket response (boolean values)
-      this._previousSwitchState = result.switch_state;
-      this._previousSensorState = result.binary_sensor_state;
-
-      // Force another render with loaded state
-      this.render();
     } catch (error) {
-      console.warn('HelloWorld: Failed to load initial state:', error);
+      console.warn('HelloWorld: Failed to load entity mappings:', error);
       this.render();
     }
   }

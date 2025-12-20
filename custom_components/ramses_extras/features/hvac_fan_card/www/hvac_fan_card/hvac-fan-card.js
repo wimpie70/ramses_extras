@@ -86,35 +86,10 @@ class HvacFanCard extends RamsesBaseCard {
   /**
    * Main rendering method
    */
-  render() {
-    if (!this._hass || !this.config) {
-      console.error('❌ Missing hass or config:', {
-        hass: !!this._hass,
-        _config: !!this._config,
-        config: !!this.config,
-      });
-      return;
-    }
-
-    // Check for required device_id at render time (not during initial creation)
-    if (!this._config.device_id) {
-      console.error('❌ Missing required device_id for HVAC fan card');
-      this.shadowRoot.innerHTML = `
-        <ha-card>
-          <div style="padding: 16px; text-align: center; color: #666;">
-            <ha-icon icon="mdi:alert-outline"></ha-icon>
-            <div style="margin-top: 8px;">
-              Device ID is required
-            </div>
-            <div style="font-size: 12px; margin-top: 4px; opacity: 0.8;">
-              Please configure the card with a device_id to use this card
-            </div>
-          </div>
-        </ha-card>
-      `;
-      return;
-    }
-
+  /**
+   * Card-specific rendering implementation
+   */
+  _renderContent() {
     // Check if we're in parameter edit mode
     if (this.parameterEditMode) {
       this.renderParameterEditMode();
