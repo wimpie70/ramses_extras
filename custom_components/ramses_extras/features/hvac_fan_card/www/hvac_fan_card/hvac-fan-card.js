@@ -7,15 +7,6 @@
 // Import the base card class
 import { RamsesBaseCard } from '/local/ramses_extras/helpers/ramses-base-card.js';
 
-// Import shared path constants (using new JS_FEATURE_REORGANIZATION pattern)
-// import {
-//   // PATHS, HELPER_PATHS,
-//   getFeatureTranslationPath
-// } from '/local/ramses_extras/helpers/paths.js';
-
-// Translation path configuration - using shared constants
-// const TRANSLATION_BASE_PATH = getFeatureTranslationPath('hvac_fan_card', 'en').replace('/translations/en.json', '');
-
 import { NORMAL_SVG, BYPASS_OPEN_SVG } from './airflow-diagrams.js';
 import { CARD_STYLE } from './card-styles.js';
 import {
@@ -28,8 +19,6 @@ import {
 import { createTemplateData } from './templates/template-helpers.js';
 import './hvac-fan-card-editor.js';
 
-// Import reusable helpers using environment-aware path constants
-// import { SimpleCardTranslator } from '/local/ramses_extras/helpers/card-translations.js';
 import { HvacFanCardHandlers } from './message-handlers.js';
 import {
   callWebSocket,
@@ -48,6 +37,7 @@ class HvacFanCard extends RamsesBaseCard {
 
     // HVAC-specific state
     this.parameterEditMode = false;
+    this._cachedEntities = null; // Cache for getRequiredEntities
     this.parameterSchema = null;
     this.availableParams = {};
     this._eventCheckTimer = null; // Timer for event checks
@@ -84,9 +74,6 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   /**
-   * Main rendering method
-   */
-  /**
    * Card-specific rendering implementation
    */
   _renderContent() {
@@ -114,25 +101,6 @@ class HvacFanCard extends RamsesBaseCard {
       show_both: true,
       show_status: true,
       compact_view: false
-    };
-  }
-
-  /**
-   * Get required entity configuration
-   * @returns {Object} Required entities mapping
-   */
-  getRequiredEntities() {
-    if (!this._config?.device_id) {
-      return {};
-    }
-
-    return {
-      indoor_abs_humidity: this._config.indoor_abs_humid_entity,
-      outdoor_abs_humidity: this._config.outdoor_abs_humid_entity,
-      co2: this._config.co2_entity,
-      dehum_mode: this._config.dehum_mode_entity,
-      dehum_active: this._config.dehum_active_entity,
-      comfort_temp: this._config.comfort_temp_entity,
     };
   }
 

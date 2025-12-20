@@ -84,6 +84,7 @@ export class RamsesBaseCard extends HTMLElement {
     this._cardsEnabledUnsub = null;
 
     this._featureConfigLoadAttached = false;
+    this._cachedEntities = null; // Cache for getRequiredEntities
 
     // Initialize translations
     this.initTranslations();
@@ -141,10 +142,44 @@ export class RamsesBaseCard extends HTMLElement {
   }
 
   /**
-   * Get required entity configuration for this card
+   * Get required entity configuration with caching
+   * Default implementation loads entity mappings from feature constants
+   * Override this method for custom entity logic
    * @returns {Object} Required entities mapping
    */
-  getRequiredEntities() {
+  async getRequiredEntities() {
+    // Use cached entities if available to avoid unnecessary recalculation
+    if (this._cachedEntities) {
+      return this._cachedEntities;
+    }
+
+    // Use feature-centric design to construct entity IDs
+    // This ensures we always have valid entity IDs to monitor
+    const deviceId = this._config?.device_id;
+
+    if (!deviceId) {
+      console.warn(`${this.constructor.name}: getRequiredEntities - no device_id available`);
+      return {};
+    }
+
+    try {
+      // Load entity mappings from backend feature constants
+      const result = await this._sendWebSocketCommand({
+        type: 'ramses_extras/get_entity_mappings',
+        device_id: deviceId,
+        feature_id: this.getFeatureName()
+      }, `entity_mappings_${deviceId}`);
+
+      if (result.mappings) {
+        // Cache the entities for future calls
+        this._cachedEntities = result.mappings;
+        return result.mappings;
+      }
+    } catch (error) {
+      console.warn(`${this.constructor.name}: Failed to load entity mappings:`, error);
+    }
+
+    // Fallback to empty entities if loading fails
     return {};
   }
 
@@ -170,6 +205,14 @@ export class RamsesBaseCard extends HTMLElement {
   renderEditMode() {
     // Default implementation calls main render method
     this.render();
+  }
+
+  /**
+   * Called when card is disconnected from DOM
+   * Override this method for card-specific cleanup
+   */
+  _onDisconnected() {
+    // Default implementation - override for card-specific cleanup
   }
 
   /**
@@ -814,8 +857,6 @@ export class RamsesBaseCard extends HTMLElement {
     this._previousStates = {};
     this._hassLoaded = false;
   }
-
-  _onDisconnected() {}
 
   _ensureCardsEnabledLoaded() {
     if (!this._hass?.connection) {

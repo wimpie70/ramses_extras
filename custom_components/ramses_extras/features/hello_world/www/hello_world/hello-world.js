@@ -201,44 +201,6 @@ class HelloWorld extends RamsesBaseCard {
   }
 
   /**
-   * Get required entity configuration
-   * @returns {Object} Required entities mapping
-   */
-  getRequiredEntities() {
-    // Use cached entities if available to avoid unnecessary recalculation
-    if (this._cachedEntities) {
-      return this._cachedEntities;
-    }
-
-    // Use feature-centric design to construct entity IDs
-    // This ensures we always have valid entity IDs to monitor
-    const deviceId = this._config?.device_id;
-
-    if (!deviceId) {
-      console.warn('HelloWorld: getRequiredEntities - no device_id available');
-      return {
-        switch: undefined,
-        sensor: undefined
-      };
-    }
-
-    // Build entity IDs using the framework's buildEntityId method
-    // This follows the feature-centric design pattern
-    const switchEntityId = this.buildEntityId('switch', 'hello_world_switch');
-    const sensorEntityId = this.buildEntityId('binary_sensor', 'hello_world_status');
-
-    const entities = {
-      switch: switchEntityId,
-      sensor: sensorEntityId
-    };
-
-    // Cache the entities for future calls
-    this._cachedEntities = entities;
-
-    return entities;
-  }
-
-  /**
    * Get feature name for translation path resolution
    * Override the default to return the correct feature directory name
    * @returns {string} Feature name
