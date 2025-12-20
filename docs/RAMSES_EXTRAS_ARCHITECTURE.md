@@ -1,29 +1,164 @@
-# Ramses Extras Architecture Guide
+# 1. Ramses Extras Architecture Guide
 
-## 1. Table of Contents
-- [1. Table of Contents](#1-table-of-contents)
-- [2. Overview \& Quick Start](#2-overview--quick-start)
-- [3. System Architecture](#3-system-architecture)
-- [4. Feature System](#4-feature-system)
-- [5. Framework Foundation](#5-framework-foundation)
-- [6. Device Feature Management](#6-device-feature-management)
-- [7. Entity Management](#7-entity-management)
-- [8. Home Assistant Integration](#8-home-assistant-integration)
-- [9. Frontend Architecture](#9-frontend-architecture)
-- [10. Development Guide](#10-development-guide)
-- [11. Debugging and Troubleshooting Guide](#11-debugging-and-troubleshooting-guide)
-- [12. API Reference](#12-api-reference)
+**Document Version:** 0.10.1
+
+## Table of Contents
+    - [Overview & Quick Start](#overview--quick-start)
+    - [What is Ramses Extras?](#what-is-ramses-extras)
+    - [Core Benefits](#core-benefits)
+        - [Key Concepts](#key-concepts)
+        - [Quick Start for Developers](#quick-start-for-developers)
+    - [System Architecture](#system-architecture)
+        - [High-Level Architecture](#high-level-architecture)
+        - [Core Design Principles](#core-design-principles)
+            - [Feature-Centric Organization](#feature-centric-organization)
+            - [Framework Foundation](#framework-foundation)
+            - [Python-Based Automations Not YAML](#python-based-automations-not-yaml)
+            - [ramses_cc Integration Hooks](#ramses_cc-integration-hooks)
+            - [Home Assistant Integration](#home-assistant-integration)
+        - [Directory Structure](#directory-structure)
+        - [Integration Flow](#integration-flow)
+            - [ramses_cc Readiness and Dependency Management](#ramses_cc-readiness-and-dependency-management)
+        - [ramses_cc Integration Architecture](#ramses_cc-integration-architecture)
+            - [Broker Access and Device Communication](#broker-access-and-device-communication)
+            - [ramses_rf Layer Integration](#ramses_rf-layer-integration)
+            - [Event System Integration](#event-system-integration)
+            - [Shared Constants and Schemas](#shared-constants-and-schemas)
+            - [Initialization Dependencies](#initialization-dependencies)
+            - [Integration Points](#integration-points)
+    - [Feature System](#feature-system)
+        - [How Features Work](#how-features-work)
+        - [Feature Lifecycle](#feature-lifecycle)
+        - [Current Features](#current-features)
+            - [✅ Default Feature](#-default-feature)
+            - [✅ Humidity Control](#-humidity-control)
+            - [✅ HVAC Fan Card](#-hvac-fan-card)
+            - [✅ Hello World Card](#-hello-world-card)
+        - [Feature Structure Pattern](#feature-structure-pattern)
+        - [Feature Components](#feature-components)
+            - [Required Components](#required-components)
+            - [Optional Components choose as needed](#optional-components-choose-as-needed)
+        - [Adding New Features](#adding-new-features)
+    - [Framework Foundation](#framework-foundation)
+        - [🏗️ Framework Architecture Overview](#-framework-architecture-overview)
+        - [📚 Base Classes](#-base-classes)
+            - [ExtrasBaseEntity](#extrasbaseentity)
+            - [ExtrasBaseAutomation](#extrasbaseautomation)
+            - [Platform Entity Classes](#platform-entity-classes)
+        - [🧩 Helper Modules](#%F0%9F%A7%A9-helper-modules)
+            - [Configuration Management framework/helpers/config/](#configuration-management-frameworkhelpersconfig)
+            - [Entity Management framework/helpers/entity/](#entity-management-frameworkhelpersentity)
+            - [Brand Customization framework/helpers/brand_customization/](#brand-customization-frameworkhelpersbrand_customization)
+            - [Service Framework framework/helpers/service/](#service-framework-frameworkhelpersservice)
+            - [Command Framework framework/helpers/commands/](#command-framework-frameworkhelperscommands)
+            - [Device Management framework/helpers/device/](#device-management-frameworkhelpersdevice)
+            - [Platform Setup Framework](#platform-setup-framework)
+        - [🛠️ Framework Services](#-framework-services)
+            - [Path Management](#path-management)
+            - [Message System](#message-system)
+        - [📖 Framework Usage Examples](#-framework-usage-examples)
+            - [Configuration Management Usage](#configuration-management-usage)
+            - [Platform Entity Usage](#platform-entity-usage)
+            - [Service Framework Usage](#service-framework-usage)
+    - [Device Feature Management](#device-feature-management)
+        - [Device Filtering](#device-filtering)
+        - [DeviceFeatureMatrix](#devicefeaturematrix)
+        - [Per-Device Feature Enablement](#per-device-feature-enablement)
+        - [Matrix State Management](#matrix-state-management)
+    - [Entity Management](#entity-management)
+        - [SimpleEntityManager](#simpleentitymanager)
+        - [Entity Creation Logic](#entity-creation-logic)
+        - [Entity Validation](#entity-validation)
+        - [Entity Registration](#entity-registration)
+    - [Home Assistant Integration](#home-assistant-integration)
+        - [Platform Integration Architecture](#platform-integration-architecture)
+            - [Root Platform Files Thin Wrappers](#root-platform-files-thin-wrappers)
+            - [Feature Platforms Business Logic](#feature-platforms-business-logic)
+        - [Entity Naming System](#entity-naming-system)
+        - [Configuration Flow Integration](#configuration-flow-integration)
+        - [Service Integration](#service-integration)
+    - [Frontend Architecture](#frontend-architecture)
+        - [JavaScript Card System](#javascript-card-system)
+            - [Card Architecture](#card-architecture)
+            - [Base Card Pattern RamsesBaseCard](#base-card-pattern-ramsesbasecard)
+            - [Feature Enablement and Startup Latches](#feature-enablement-and-startup-latches)
+            - [Deployment Structure](#deployment-structure)
+        - [Real-Time Message System](#real-time-message-system)
+            - [JavaScript Message Listener Integration](#javascript-message-listener-integration)
+            - [Message Processing Flow](#message-processing-flow)
+        - [Translation System](#translation-system)
+            - [Feature-Centric Translation Architecture](#feature-centric-translation-architecture)
+            - [Translation Loading System](#translation-loading-system)
+        - [Template Systems](#template-systems)
+            - [JavaScript Template System Frontend Cards](#javascript-template-system-frontend-cards)
+        - [Entity Resolution in Cards](#entity-resolution-in-cards)
+            - [getRequiredEntities via WebSocket entity mappingsgs](#getrequiredentities-via-websocket-entity-mappingsgs)
+            - [Translation Templates](#translation-templates)
+            - [Translation System Benefits](#translation-system-benefits)
+    - [Development Guide](#development-guide)
+        - [Coding Standards and Conventions](#coding-standards-and-conventions)
+            - [File Responsibilities](#file-responsibilities)
+            - [Naming Conventions](#naming-conventions)
+            - [Import Patterns](#import-patterns)
+        - [Development Workflow](#development-workflow)
+        - [Testing Structure](#testing-structure)
+    - [Debugging and Troubleshooting Guide](#debugging-and-troubleshooting-guide)
+        - [Common Issues and Solutions](#common-issues-and-solutions)
+            - [Feature Not Loading](#feature-not-loading)
+            - [Entities Not Created](#entities-not-created)
+            - [JavaScript Cards Not Loading](#javascript-cards-not-loading)
+            - [WebSocket Command Failures](#websocket-command-failures)
+            - [Feature Not Working as Expected](#feature-not-working-as-expected)
+            - [Performance Issues](#performance-issues)
+        - [Debug Tools](#debug-tools)
+            - [SimpleEntityManager Debug](#simpleentitymanager-debug)
+            - [WebSocket Testing](#websocket-testing)
+            - [Message Listener Debug](#message-listener-debug)
+            - [Device Enumeration Debug](#device-enumeration-debug)
+        - [Working Debug Tool Examples](#working-debug-tool-examples)
+            - [SimpleEntityManager Debug Python](#simpleentitymanager-debug-python)
+            - [WebSocket Testing JavaScript console](#websocket-testing-javascript-console)
+            - [Message Listener Debug JavaScript console](#message-listener-debug-javascript-console)
+        - [Debug Configuration](#debug-configuration)
+            - [Logging Configuration](#logging-configuration)
+            - [Debug Tools Summary](#debug-tools-summary)
+    - [API Reference](#api-reference)
+        - [DeviceFeatureMatrix API](#devicefeaturematrix-api)
+            - [Core Methods](#core-methods)
+        - [SimpleEntityManager API](#simpleentitymanager-api)
+            - [Core Methods](#core-methods)
+        - [WebSocket Commands API](#websocket-commands-api)
+            - [Command Registration](#command-registration)
+            - [Available Commands](#available-commands)
+            - [JavaScript Integration](#javascript-integration)
+        - [Device Handler API](#device-handler-api)
+            - [Device Type Handler Mapping](#device-type-handler-mapping)
+            - [Event System](#event-system)
+    - [Implementation Details](#implementation-details)
+        - [Core Algorithms and Patterns](#core-algorithms-and-patterns)
+            - [Entity Format Detection Algorithm](#entity-format-detection-algorithm)
+            - [Two-step Evaluation System](#two-step-evaluation-system)
+            - [Simple Entity Management Algorithm](#simple-entity-management-algorithm)
+        - [Error Handling Strategies](#error-handling-strategies)
+            - [Graceful Degradation](#graceful-degradation)
+            - [Error Recovery Patterns](#error-recovery-patterns)
+        - [Security Considerations](#security-considerations)
+            - [Input Validation](#input-validation)
+            - [Access Control](#access-control)
+            - [WebSocket Security](#websocket-security)
+
+<!-- /TOC -->i-reference)
 - [13. Implementation Details](#13-implementation-details)
 
 ---
 
-## 2. Overview & Quick Start
+## 1.2. Overview & Quick Start
 
-### What is Ramses Extras?
+### 1.2.1. What is Ramses Extras?
 
 Ramses Extras is a **feature-centric** Home Assistant integration that extends the ramses_cc integration with additional entities, automation, and UI components. It provides a clean, modular architecture that allows for easy extension and customization.
 
-### Core Benefits
+### 1.2.2. Core Benefits
 
 - **Feature-Centric Design**: Each feature is self-contained with its own automation, services, entities, and UI
 - **Framework Foundation**: Reusable components that all features can use
@@ -31,7 +166,7 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 - **Modular Architecture**: Easy to add new features using established patterns
 - **Real-time Updates**: WebSocket APIs and message listeners for immediate UI updates
 
-### Key Concepts
+### 1.2.3. Key Concepts
 
 - **Features**: Self-contained modules that provide specific functionality
 - **Framework**: Reusable base classes, helpers, and utilities
@@ -39,7 +174,7 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 - **Cards**: JavaScript-based UI components for the Lovelace interface
 - **Config_flow**: HA way to configure integrations
 
-### Quick Start for Developers
+### 1.2.4. Quick Start for Developers
 
 1. **Understand the Structure**: Features → Framework → HA Platforms
 2. **Enable Features**: Add features to `AVAILABLE_FEATURES` in `const.py`
@@ -51,9 +186,9 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 
 ---
 
-## 3. System Architecture
+## 1.3. System Architecture
 
-### High-Level Architecture
+### 1.3.1. High-Level Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -77,26 +212,26 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 └────────────────────────────────────────────────────────────┘
 ```
 
-### Core Design Principles
+### 1.3.2. Core Design Principles
 
-#### Feature-Centric Organization
+#### 1.3.2.1. Feature-Centric Organization
 - Each feature is **self-contained** with its own automation, services, entities, and config
 - Features are **modular** - only need a small addition to the framework root const.py to be loaded dynamically
 - Clear **separation of concerns** within each feature
 - A **default feature** provides common/shared functionality
 
-#### Framework Foundation
+#### 1.3.2.2. Framework Foundation
 - **Reusable helpers** that all features can use
 - **Base classes** for common functionality
 - **Common utilities** for logging, validation, etc.
 
-#### Python-Based Automations (Not YAML)
+#### 1.3.2.3. Python-Based Automations (Not YAML)
 - **Hardcoded Python Logic**: All automations are implemented as Python classes, not YAML automation rules
 - **Event-Driven Architecture**: Automations listen to ramses_cc events and device state changes
 - **Full Python Control**: Complete programmatic control over automation logic, conditions, and actions
 - **Framework Integration**: Automations use framework base classes for consistent patterns and lifecycle management
 
-#### ramses_cc Integration Hooks
+#### 1.3.2.4. ramses_cc Integration Hooks
 - **Broker Access**: Direct integration with ramses_cc broker for device communication
 - **ramses_rf Layer**: Access to underlying ramses_rf protocol layer for low-level device operations
 - **Event Subscriptions**: Listen to ramses_cc events for real-time device updates
@@ -104,12 +239,12 @@ Ramses Extras is a **feature-centric** Home Assistant integration that extends t
 - **Shared Constants**: Use ramses_cc constants and schemas for device communication
 - **Message Handling**: Direct access to ramses_cc message parsing and generation
 
-#### Home Assistant Integration
+#### 1.3.2.5. Home Assistant Integration
 - Standard HA platform integration (sensor, switch, binary_sensor, number)
 - Type-safe entity implementations
 - Full compatibility with HA ecosystem
 
-### Directory Structure
+### 1.3.3. Directory Structure
 
 ```
 custom_components/ramses_extras/
@@ -249,17 +384,17 @@ custom_components/ramses_extras/
     └── nl.json                  # Dutch integration strings
 ```
 
-### Integration Flow
+### 1.3.4. Integration Flow
 
-**Step 1:** **HA Integration Loads** - `__init__.py` handles integration setup
-**Step 2:** **ramses_cc Readiness Check** - Integration waits for ramses_cc to be loaded
-**Step 3:** **Device Enumeration** - Access devices already discovered by ramses_cc broker
-**Step 4:** **Feature Creation** - Feature factories create feature instances
-**Step 5:** **Platform Forwarding** - Root platforms forward to feature platforms
-**Step 6:** **Entity Registration** - Entities register with HA via feature platforms
-**Step 7:** **Asset Deployment** - JavaScript cards deployed to HA config directory
+- **Step 1:** **HA Integration Loads** - `__init__.py` handles integration setup
+- **Step 2:** **ramses_cc Readiness Check** - Integration waits for ramses_cc to be loaded
+- **Step 3:** **Device Enumeration** - Access devices already discovered by ramses_cc broker
+- **Step 4:** **Feature Creation** - Feature factories create feature instances
+- **Step 5:** **Platform Forwarding** - Root platforms forward to feature platforms
+- **Step 6:** **Entity Registration** - Entities register with HA via feature platforms
+- **Step 7:** **Asset Deployment** - JavaScript cards deployed to HA config directory
 
-#### ramses_cc Readiness and Dependency Management
+#### 1.3.4.1. ramses_cc Readiness and Dependency Management
 
 Ramses Extras **waits for ramses_cc to be ready** before initializing. The integration checks if ramses_cc is loaded and waits with retry if necessary:
 
@@ -281,11 +416,11 @@ else:
 3. **Device Enumeration** - Requires ramses_cc broker access for device enumeration
 4. **Event Integration** - Needs ramses_cc event system for real-time updates
 
-### ramses_cc Integration Architecture
+### 1.3.5. ramses_cc Integration Architecture
 
 Ramses Extras builds upon the ramses_cc integration by providing direct hooks into the underlying communication layer:
 
-#### Broker Access and Device Communication
+#### 1.3.5.1. Broker Access and Device Communication
 ```python
 # Direct broker access for device operations
 async def _get_broker_for_entry(hass):
@@ -302,13 +437,13 @@ async def _find_device_by_id(broker, device_id):
     return None
 ```
 
-#### ramses_rf Layer Integration
+#### 1.3.5.2. ramses_rf Layer Integration
 - **Protocol Access**: Direct access to ramses_rf protocol layer for low-level operations
 - **Message Handling**: Integration with ramses_rf message parsing and generation
 - **Device State**: Real-time access to device state through ramses_rf layer
 - **Command Sending**: Send commands directly through ramses_rf communication stack
 
-#### Event System Integration
+#### 1.3.5.3. Event System Integration
 ```python
 # Listen to ramses_cc events for real-time device updates
 self.hass.bus.async_listen("ramses_cc_message", self._on_ramses_message)
@@ -317,13 +452,13 @@ self.hass.bus.async_listen("ramses_cc_message", self._on_ramses_message)
 self.hass.bus.async_listen("ramses_device_ready_for_entities", self._on_device_ready)
 ```
 
-#### Shared Constants and Schemas
+#### 1.3.5.4. Shared Constants and Schemas
 - **Device Types**: Use ramses_cc device type definitions
 - **Parameter Schemas**: Leverage ramses_cc parameter schemas for device configuration
 - **Message Codes**: Integrate with ramses_cc message code definitions
 - **Error Handling**: Use ramses_cc error patterns and handling
 
-#### Initialization Dependencies
+#### 1.3.5.5. Initialization Dependencies
 
 **ramses_cc Readiness Requirement**: Ramses Extras **requires ramses_cc to be loaded and ready** before initialization:
 
@@ -340,7 +475,7 @@ else:
     hass.call_later(60.0, hass.async_create_task(delayed_retry))
 ```
 
-#### Integration Points
+#### 1.3.5.6. Integration Points
 1. **Device Enumeration**: Building on ramses_cc device discovery with enhanced capabilities
 2. **Message Processing**: Intercepting and processing ramses_cc messages for feature logic
 3. **State Synchronization**: Real-time state updates from ramses_cc to feature entities
@@ -350,15 +485,15 @@ else:
 
 ---
 
-## 4. Feature System
+## 1.4. Feature System
 
-### How Features Work
+### 1.4.1. How Features Work
 
 Each feature is a self-contained module that provides specific functionality. Features follow a consistent pattern and can be enabled/disabled independently.
 
 The `Hello World Card` feature can be used as a template to develop new functionality.
 
-### Feature Lifecycle
+### 1.4.2. Feature Lifecycle
 
 1. **Registration**: Feature added to `AVAILABLE_FEATURES` in main `const.py`
 2. **Discovery**: Config flow discovers available features
@@ -367,36 +502,36 @@ The `Hello World Card` feature can be used as a template to develop new function
 5. **Registration**: Feature registers its platforms with Home Assistant
 6. **Operation**: Feature operates independently with its own entities and automations
 
-### Current Features
+### 1.4.3. Current Features
 
-#### ✅ Default Feature
-- **Purpose**: Base functionality available for all devices
+#### 1.4.3.1. ✅ Default Feature
+- **Purpose**: Base functionality available for all other features
 - **Entities**: Basic sensor entities for device monitoring
 - **Commands**: Standard device commands and utilities
 - **WebSocket**: Basic command APIs for device interaction
 - **Platforms**: sensor
 
-#### ✅ Humidity Control
+#### 1.4.3.2. ✅ Humidity Control
 - **Purpose**: Advanced humidity-based ventilation control
 - **Entities**: Humidity sensors, control switches, number inputs
 - **Automation**: Python-based automatic fan speed adjustment (no YAML automation rules)
 - **Services**: Manual humidity control and configuration
 - **Platforms**: sensor, switch, number, binary_sensor
 
-#### ✅ HVAC Fan Card
+#### 1.4.3.3. ✅ HVAC Fan Card
 - **Purpose**: Real-time HVAC system monitoring and control card
 - **UI Components**: JavaScript Lovelace card with real-time updates
-- **Data Source**: WebSocket APIs and message listeners
+- **Data Source**: Entities, WebSocket APIs and message listeners
 - **Features**: Temperature display, fan speed control, mode selection
 - **Platforms**: No direct entities (UI-focused feature)
 
-#### ✅ Hello World Card
+#### 1.4.3.4. ✅ Hello World Card
 - **Purpose**: Template feature demonstrating complete Ramses Extras architecture
 - **Components**: Includes all standard feature components (automation, config, entities, services, platforms, www)
 - **Usage**: Can be copied and modified to create new features following established patterns
 - **Platforms**: sensor, switch, number, binary_sensor
 
-### Feature Structure Pattern
+### 1.4.4. Feature Structure Pattern
 
 ```python
 # features/humidity_control/__init__.py
@@ -415,15 +550,15 @@ def create_humidity_control_feature(hass, config_entry):
     }
 ```
 
-### Feature Components
+### 1.4.5. Feature Components
 
 Each feature contains these core components. **Some components are optional** depending on the feature's functionality:
 
-#### Required Components
+#### 1.4.5.1. Required Components
 - **__init__.py**: Feature factory functions (always required)
 - **const.py**: Feature-specific constants and mappings (always required)
 
-#### Optional Components (choose as needed)
+#### 1.4.5.2. Optional Components (choose as needed)
 - **automation.py**: Feature-specific automation logic in Python code (e.g., `HumidityAutomationManager`) - **Not YAML automation rules** - Optional, only if feature needs automation
 - **services.py**: Feature-specific service methods (e.g., `HumidityServices`) - Optional, only if feature needs services
 - **entities.py**: Feature-specific entity management (e.g., `HumidityEntities`) - Optional, only if feature needs entity management
@@ -432,73 +567,83 @@ Each feature contains these core components. **Some components are optional** de
 - **www/**: JavaScript UI components for Lovelace cards - Optional, only if feature needs UI components
 - **websocket_commands.py**: WebSocket API commands - Optional, only if feature needs WebSocket APIs
 
-### Adding New Features
+### 1.4.6. Adding New Features
 
-The `Hello World Card` feature serves as a template. Instead of following the next recipe, you can just copy this folder and refactor it for your own needs. You will still need to `register feature` by adding it to the main `const.py`
+The `Hello World` feature serves as a template. It has a bit more logic than only rendering 'Hello World': we added some extras to show how things work. Just use what you need.
 
-1. **Create Feature Structure**
-   ```bash
-   mkdir -p custom_components/ramses_extras/features/my_new_feature
-   mkdir -p custom_components/ramses_extras/features/my_new_feature/platforms
-   touch custom_components/ramses_extras/features/my_new_feature/__init__.py
-   touch custom_components/ramses_extras/features/my_new_feature/automation.py
-   touch custom_components/ramses_extras/features/my_new_feature/services.py
-   touch custom_components/ramses_extras/features/my_new_feature/entities.py
-   touch custom_components/ramses_extras/features/my_new_feature/config.py
-   touch custom_components/ramses_extras/features/my_new_feature/const.py
-   ```
+You can just copy the `hello_world` folder and refactor it for your own needs. You will still need to `register feature` by adding it to the main `const.py`.
 
-2. **Implement Core Components**
-   - Follow the established patterns in existing features
-   - Implement automation logic, services, entities, and configuration
-   - Create platform files for HA entity integration
+1. **Copy `Hello World` feature to your new feature folder**
+    - You can find it in the ramses_extras/custom_components/ramses_extras/features/hello_world folder.
+    - Copy the folder to ramses_extras/custom_components/ramses_extras/features/my_new_feature
+    - Refactor the files to match your feature name
 
-3. **Register Feature**
+2. **Register Feature**
    - Add feature to `AVAILABLE_FEATURES` in main `const.py`
    - Feature will be automatically discovered and enabled via config flow
 
+3. **Expose Feature in `config_flow.py`**
+   - Each feature needs a dedicated handler method on `RamsesExtrasOptionsFlowHandler` in the main `config_flow.py`
+   - When adding a new feature, add the matching `async_step_feature_<feature_id>()`
+
+    You can copy the `async def async_step_feature_default` method and adapt it to your needs or follow the `async_step_feature_humidity_control` example (since it is a bit less complex):
+
+1. **Test the new feature**
+    - Restart Home Assistant
+    - Go to the config flow and enable the new feature
+    - Restart Home Assistant again and reload your browser (clear cache)
+    - Check if the new feature is working, check the browser logs and the Home Assistant logs
+    - You may want to adjust the debug levels
+
+2. **Adapt the new feature to your needs**
+    - You can now adapt the new feature to your needs
+    - `const.py` is a good starting point for your new feature. A lot of the assets are defined here. The framework will handle a lot of the logic for you.
+    - Follow the established patterns in existing features
+    - Implement automation logic, services, entities, and configuration
+    - Create platform files for HA entity integration
+
 ---
 
-## 5. Framework Foundation
+## 1.5. Framework Foundation
 
 The Ramses Extras framework provides a comprehensive foundation for building features with reusable components, standardized patterns, and automated lifecycle management. The framework has been designed to accelerate feature development.
 
-### 🏗️ Framework Architecture Overview
+### 1.5.1. 🏗️ Framework Architecture Overview
 
 The framework follows a **layered architecture** approach:
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                    Framework Foundation                    │
-├────────────────────────────────────────────────────────────┤
-│  📦 Base Classes      🧩 Helpers       🌐 Services         │
-│  - Entity Bases       - Config         - Platform Setup    │
-│  - Automation         - Entity         - Service Mgmt      │
-│  - Platform Entity    - Brand Custom   - Validation        │
-│                       - Service                            │
-├────────────────────────────────────────────────────────────┤
-│  🔧 Platform Layer    📋 Entity Mgmt   🎯 Brand Support    │
-│  - Setup Framework    - Simple Mgr     - Detection         │
-│  - Integration        - Device Matrix  - Customization     │
-│  - Forwarding         - Management     - Model Config      │
-└────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                    Framework Foundation                                           │
+├───────────────────────────────────────────────────────────────────────────────────┤
+│  📦 Base Classes      🧩 Helpers       🌐 Services          🃏 Card System        │
+│  - Entity Bases       - Config         - Platform Setup     - RamsesBaseCard      │
+│  - Automation         - Entity         - Service Mgmt       - JS Helpers          │
+│  - Platform Entity    - Brand Custom   - Validation         - Asset Deploy        │
+│                       - Service                             - Translation Mgmt    │
+├───────────────────────────────────────────────────────────────────────────────────┤
+│  🔧 Platform Layer    📋 Entity Mgmt   🎯 Brand Support     🎴 Card Deployment    │
+│  - Setup Framework    - Simple Mgr     - Detection          - helpers/, features/ │
+│  - Integration        - Device Matrix  - Customization      - get_entity_mappings │
+│  - Forwarding         - Management     - Model Config       - feature toggles     │
+└───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 📚 Base Classes
+### 1.5.2. 📚 Base Classes
 
 The framework provides reusable base classes that all features can inherit from:
 
-#### ExtrasBaseEntity
+#### 1.5.2.1. ExtrasBaseEntity
 - **Purpose**: Base class for all custom entities
 - **Location**: `framework/base_classes/base_entity.py`
 - **Features**: Common entity functionality, device linking, state management
 
-#### ExtrasBaseAutomation
+#### 1.5.2.2. ExtrasBaseAutomation
 - **Purpose**: Base class for automation logic
 - **Location**: `framework/base_classes/base_automation.py`
 - **Features**: Automation patterns, lifecycle management, event handling
 
-#### Platform Entity Classes
+#### 1.5.2.3. Platform Entity Classes
 - **Purpose**: Generic platform entity base classes for all HA platforms
 - **Location**: `framework/base_classes/platform_entities.py`
 - **Classes**:
@@ -507,9 +652,19 @@ The framework provides reusable base classes that all features can inherit from:
   - `ExtrasBinarySensorEntity` - Generic binary sensor entity for all features
   - `ExtrasSensorEntity` - Generic sensor entity for all features
 
-### 🧩 Helper Modules
+#### 1.5.2.4. RamsesBaseCard
+- **Purpose**: Shared base class for all Lovelace cards shipped with Ramses Extras
+- **Location**: `framework/www/ramses-base-card.js` (deployed as `/local/ramses_extras/helpers/ramses-base-card.js`)
+- **Features**:
+  - Centralized lifecycle hooks (`connectedCallback`/`disconnectedCallback`) that call optional `_onConnected()` / `_onDisconnected()` overrides
+  - Common `render()` implementation that gates on HASS availability, translations, card config validation, feature enablement, and the `cards_enabled` latch before delegating to `_renderContent()`
+  - Built-in UX helpers (`renderConfigError()`, `renderFeatureDisabled()`, etc.)
+  - WebSocket + message-bus convenience helpers, entity ID resolution via `getRequiredEntities()` and caching
+  - Translation + throttling utilities so feature cards only focus on UI specifics
 
-#### Configuration Management (`framework/helpers/config/`)
+### 1.5.3. 🧩 Helper Modules
+
+#### 1.5.3.1. Configuration Management (`framework/helpers/config/`)
 - **Purpose**: Reusable configuration management patterns
 - **Components**:
   - `core.py` - `ExtrasConfigManager` base class for configuration management
@@ -518,14 +673,14 @@ The framework provides reusable base classes that all features can inherit from:
   - `templates.py` - `ConfigTemplates` with pre-built default configurations
 - **Usage**: All features can use the same configuration patterns
 
-#### Entity Management (`framework/helpers/entity/`)
+#### 1.5.3.2. Entity Management (`framework/helpers/entity/`)
 - **Purpose**: Comprehensive entity lifecycle and registry management
 - **Components**:
   - `core.py` - `EntityHelpers` class with comprehensive entity utilities
   - `simple_entity_manager.py` - `SimpleEntityManager` class for simplified entity management
   - `device_feature_matrix.py` - `DeviceFeatureMatrix` for per-device feature tracking
 
-#### Brand Customization (`framework/helpers/brand_customization/`)
+#### 1.5.3.3. Brand Customization (`framework/helpers/brand_customization/`)
 Note: Framework exists but limited implementation
 - **Purpose**: Centralized brand detection and customization patterns
 - **Components**:
@@ -535,7 +690,7 @@ Note: Framework exists but limited implementation
   - `entities.py` - `EntityGenerationManager` for brand-specific entity generation
 - **Usage**: Supports multiple brands (Orcon, Zehnder, etc.) through framework
 
-#### Service Framework (`framework/helpers/service/`)
+#### 1.5.3.4. Service Framework (`framework/helpers/service/`)
 - **Purpose**: Comprehensive service registration, execution, and validation
 - **Components**:
   - `core.py` - `ExtrasServiceManager` base class for service execution
@@ -545,19 +700,19 @@ Note: Framework exists but limited implementation
 - **Service Types**: ACTION, STATUS, CONFIGURATION, DIAGNOSTIC, CONTROL
 - **Service Scopes**: DEVICE, FEATURE, GLOBAL
 
-#### Command Framework (`framework/helpers/commands/`)
+#### 1.5.3.5. Command Framework (`framework/helpers/commands/`)
 - **Purpose**: Command registration and management system
 - **Components**:
   - `registry.py` - `CommandRegistry` for centralized command management
 - **Usage**: Features can register their commands and access standard command libraries
 
-#### Device Management (`framework/helpers/device/`)
+#### 1.5.3.6. Device Management (`framework/helpers/device/`)
 - **Purpose**: Device-related utilities and filtering
 - **Components**:
   - `core.py` - Device helper functions
   - `filter.py` - Device filtering utilities for config flow
 
-#### Platform Setup Framework
+#### 1.5.3.7. Platform Setup Framework
 - **Purpose**: Reusable platform setup patterns and automation support
 - **Location**: Enhanced `framework/helpers/platform.py`
 - **Features**:
@@ -565,21 +720,21 @@ Note: Framework exists but limited implementation
   - Standard platform integration patterns
   - Integration with Home Assistant platform system
 
-### 🛠️ Framework Services
+### 1.5.4. 🛠️ Framework Services
 
-#### Path Management
+#### 1.5.4.1. Path Management
 - **Python Paths**: `framework/helpers/paths.py` - Shared path constants
 - **JavaScript Paths**: `framework/www/paths.js` - Environment-aware path constants
 - **Asset Management**: Automatic deployment of JavaScript files and helpers
 
-#### Message System
+#### 1.5.4.2. Message System
 - **WebSocket Commands**: Feature-centric WebSocket API architecture
 - **Message Listeners**: Real-time ramses_cc message handling
 - **Event System**: Framework-level event handling for inter-feature communication
 
-### 📖 Framework Usage Examples
+### 1.5.5. 📖 Framework Usage Examples
 
-#### Configuration Management Usage
+#### 1.5.5.1. Configuration Management Usage
 ```python
 class HumidityConfig(ExtrasConfigManager):
     DEFAULT_CONFIG = {
@@ -592,7 +747,7 @@ class HumidityConfig(ExtrasConfigManager):
         pass
 ```
 
-#### Platform Entity Usage
+#### 1.5.5.2. Platform Entity Usage
 ```python
 class HumiditySwitch(ExtrasSwitchEntity):
     """Switch entity for humidity control."""
@@ -623,7 +778,7 @@ class HumiditySwitch(ExtrasSwitchEntity):
         self.async_write_ha_state()
 ```
 
-#### Service Framework Usage
+#### 1.5.5.3. Service Framework Usage
 ```python
 class HumidityServices(ExtrasServiceManager):
     SERVICE_DEFINITIONS = {
@@ -636,13 +791,13 @@ class HumidityServices(ExtrasServiceManager):
 
 ---
 
-## 6. Device Feature Management
+## 1.6. Device Feature Management
 
 Ramses Extras supports per-device feature management, allowing users to enable features for specific devices only.
 
 So far this is only implemented to determine what entities will be created for what device. This is done with the DeviceFeatureMatrix. The generic config_flow step for features let users enable certain devices. Only for enabled devices (and enabled features) entities will be created ! The Default feature has it's own config_flow step that can act as an example if you want to override the generic (framework) step.
 
-### Device Filtering
+### 1.6.1. Device Filtering
 
 Each feature can specify which device types it supports using `allowed_device_slugs`:
 
@@ -659,7 +814,7 @@ AVAILABLE_FEATURES = {
 }
 ```
 
-### DeviceFeatureMatrix
+### 1.6.2. DeviceFeatureMatrix
 
 The `DeviceFeatureMatrix` class tracks which features are enabled for which devices:
 
@@ -677,7 +832,7 @@ combinations = matrix.get_all_enabled_combinations()
 # Returns: [("fan_device_1", "humidity_control"), ("fan_device_2", "hvac_fan_card")]
 ```
 
-### Per-Device Feature Enablement
+### 1.6.3. Per-Device Feature Enablement
 
 Users can enable features for specific devices through the config flow:
 
@@ -686,7 +841,7 @@ Users can enable features for specific devices through the config flow:
 3. **Confirmation**: Review entity changes before applying
 4. **Application**: System creates entities only for selected device/feature combinations
 
-### Matrix State Management
+### 1.6.4. Matrix State Management
 
 The DeviceFeatureMatrix supports state serialization for persistence:
 
@@ -707,9 +862,9 @@ The matrix state is stored in the Home Assistant config entry under the `device_
 
 ---
 
-## 7. Entity Management
+## 1.7. Entity Management
 
-### SimpleEntityManager
+### 1.7.1. SimpleEntityManager
 
 The `SimpleEntityManager` provides a simplified approach to entity lifecycle management:
 
@@ -743,7 +898,7 @@ class SimpleEntityManager:
         """Check entity consistency on startup."""
 ```
 
-### Entity Creation Logic
+### 1.7.2. Entity Creation Logic
 
 Entities are created based on the device/feature matrix:
 
@@ -756,7 +911,7 @@ for device_id, feature_id in combinations:
     required_entities.extend(entity_ids)
 ```
 
-### Entity Validation
+### 1.7.3. Entity Validation
 
 The system validates entity consistency on startup:
 
@@ -780,7 +935,7 @@ async def validate_entities_on_startup(self) -> None:
     await self._create_missing_entities(missing_entities)
 ```
 
-### Entity Registration
+### 1.7.4. Entity Registration
 
 Entities are registered directly with Home Assistant's entity registry:
 
@@ -805,13 +960,13 @@ async def _create_entity_directly(self, entity_id: str) -> None:
 
 ---
 
-## 8. Home Assistant Integration
+## 1.8. Home Assistant Integration
 
-### Platform Integration Architecture
+### 1.8.1. Platform Integration Architecture
 
 Ramses Extras uses a **thin wrapper** architecture for Home Assistant platform integration:
 
-#### Root Platform Files (Thin Wrappers)
+#### 1.8.1.1. Root Platform Files (Thin Wrappers)
 ```python
 # sensor.py - ROOT PLATFORM (Thin Wrapper)
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -822,7 +977,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     )
 ```
 
-#### Feature Platforms (Business Logic)
+#### 1.8.1.2. Feature Platforms (Business Logic)
 ```python
 # features/humidity_control/platforms/sensor.py
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -837,7 +992,7 @@ class HumidityAbsoluteSensor(SensorEntity, ExtrasBaseEntity):
     # Feature-specific behavior
 ```
 
-### Entity Naming System
+### 1.8.2. Entity Naming System
 
 Universal entity naming with automatic format detection:
 
@@ -845,7 +1000,7 @@ Universal entity naming with automatic format detection:
 - **Extras Format**: Device ID at end (`sensor.indoor_absolute_humidity_32_153289`)
 - **Automatic Detection**: Format determined by device_id position within entity name
 
-### Configuration Flow Integration
+### 1.8.3. Configuration Flow Integration
 
 ```python
 # config_flow.py
@@ -862,7 +1017,7 @@ async def async_step_features(self, user_input):
         return await self.async_step_confirm()
 ```
 
-### Service Integration
+### 1.8.4. Service Integration
 
 - **Integration-Level Services**: Services defined in `services.yaml`
 - **Feature-Specific Services**: Implemented in feature `services.py` files
@@ -871,24 +1026,62 @@ async def async_step_features(self, user_input):
 
 ---
 
-## 9. Frontend Architecture
+## 1.9. Frontend Architecture
 
-### JavaScript Card System
+### 1.9.1. JavaScript Card System
 
 Ramses Extras provides a sophisticated JavaScript-based frontend system for Lovelace UI integration:
 
-#### Card Architecture
+#### 1.9.1.1. Card Architecture
 - **Self-Contained Cards**: Each feature can have its own JavaScript card
 - **Framework Helpers**: Reusable JavaScript utilities for all cards
 - **Real-time Updates**: WebSocket APIs and message listeners for immediate updates
 - **Responsive Design**: Mobile-friendly card layouts and interactions
 
-#### Deployment Structure
+#### 1.9.1.2. Base Card Pattern (RamsesBaseCard)`)
+
+All Ramses Extras Lovelace cards extend the shared base class:
+
+- **Source**: `custom_components/ramses_extras/framework/www/ramses-base-card.js`
+- **Deployed**: `/local/ramses_extras/helpers/ramses-base-card.js`
+
+The base card centralizes:
+
+- **Lifecycle**: `connectedCallback()` / `disconnectedCallback()` are handled in the base class, which calls optional hooks:
+  - `_onConnected()`
+  - `_onDisconnected()`
+- **Common render checks**: `render()` lives in the base class and performs shared validation/gating.
+  - Subclasses implement `_renderContent()` for the card-specific DOM updates.
+- **UX states**:
+  - translations not ready (no render)
+  - config invalid (`renderConfigError()`)
+  - feature explicitly disabled (`renderFeatureDisabled()`)
+
+This pattern keeps cards minimal: most cards should only implement `_renderContent()` and feature-specific hooks.
+
+#### 1.9.1.3. Feature Enablement and Startup Latches
+
+Frontend cards are gated by two backend-driven readiness mechanisms:
+
+- **Feature flags (`enabled_features`)**
+  - Queried via WebSocket: `ramses_extras/default/get_enabled_features`
+  - Stored client-side on `window.ramsesExtras.features`
+  - Used by `RamsesBaseCard.isFeatureEnabled()`
+  - If a feature is explicitly disabled (`false`), the base card renders `renderFeatureDisabled()`
+
+- **Cards latch (`cards_enabled`)**
+  - Queried via WebSocket: `ramses_extras/default/get_cards_enabled`
+  - Becomes `true` after required startup automations/features report ready
+  - Broadcast via event: `ramses_extras_cards_enabled`
+  - Used by the base card to avoid rendering cards before backend startup completes
+
+#### 1.9.1.4. Deployment Structure
 
 **Source Structure (Development Files):**
 ```
 custom_components/ramses_extras/
 ├── framework/www/                             # Reusable JavaScript utilities
+│   ├── ramses-base-card.js                     # Base class for all cards
 │   ├── paths.js                               # Environment-aware path constants
 │   ├── card-commands.js
 │   ├── card-services.js
@@ -907,6 +1100,7 @@ custom_components/ramses_extras/
 ```
 hass/config/www/ramses_extras/
 ├── helpers/                         # Shared utilities (from framework/www/)
+│   ├── ramses-base-card.js           # Base class for all cards
 │   ├── paths.js
 │   ├── card-commands.js
 │   ├── card-services.js
@@ -922,13 +1116,13 @@ hass/config/www/ramses_extras/
         └── translations/
 ```
 
-### Real-Time Message System
+### 1.9.2. Real-Time Message System
 
-#### JavaScript Message Listener Integration
+#### 1.9.2.1. JavaScript Message Listener Integration
 The system provides real-time HVAC state updates through ramses_cc 31DA message handling:
 
 ```javascript
-// Auto-registration in card connectedCallback()
+// Auto-registration in base-card connectedCallback(), with optional feature hook
 const messageHelper = getRamsesMessageBroker();
 messageHelper.addListener(this, "32:153289", ["31DA", "10D0"]);
 
@@ -939,7 +1133,7 @@ handle_31DA(messageData) {
 }
 ```
 
-#### Message Processing Flow
+#### 1.9.2.2. Message Processing Flow
 ```
 31DA Message → RamsesMessageBroker → HvacFanCardHandlers.handle_31DA() → Card Update
      ↓                  ↓                          ↓                         ↓
@@ -947,9 +1141,9 @@ Real-time     Route to correct           Extract/format             Immediate UI
 HVAC Data     card                       data                       re-render
 ```
 
-### Translation System
+### 1.9.3. Translation System
 
-#### Feature-Centric Translation Architecture
+#### 1.9.3.1. Feature-Centric Translation Architecture
 
 The translation system follows a **feature-centric design** where translations can be located within feature folders for better isolation and organization:
 
@@ -970,7 +1164,7 @@ The translation system follows a **feature-centric design** where translations c
    - **Purpose**: Shared utilities and framework components
    - **Format**: JSON files per language for reusable components
 
-#### Translation Loading System
+#### 1.9.3.2. Translation Loading System
 
 The system provides dynamic translation loading for both integration and frontend:
 
@@ -990,20 +1184,42 @@ def load_feature_translations(feature_name, language="en"):
         return DEFAULT_TRANSLATIONS
 ```
 
-### Template Systems
+### 1.9.4. Template Systems
 
-#### JavaScript Template System (Frontend Cards)
+#### 1.9.4.1. JavaScript Template System (Frontend Cards)
 - **Location**: `features/{feature}/www/{feature}/templates/` directories
 - **Purpose**: Generate HTML dynamically for Home Assistant Lovelace card. We can for example generate all the commands and entities we need from only the device_id we choose when we edited the card in the dashboard.
 - **Structure**: Modular template organization with separate files for header, controls, etc.
 
-#### Translation Templates
+### 1.9.5. Entity Resolution in Cards
+
+Cards treat **Home Assistant state** (`hass.states`) as the source of truth. Entity IDs are derived using a feature-centric mapping layer.
+
+#### 1.9.5.1. getRequiredEntities() via WebSocket entity mappingsgs
+
+The base card provides an async `getRequiredEntities()` that loads entity IDs via:
+
+- **WebSocket**: `ramses_extras/get_entity_mappings`
+- **Inputs**:
+  - `device_id`
+  - `feature_id` (from `getFeatureName()`)
+
+On the backend, entity mappings are derived from each feature’s `const.py` using:
+
+- Entity config dicts (e.g. `*_SENSOR_CONFIGS`, `*_SWITCH_CONFIGS`, etc. containing `entity_template`)
+- Or (when a feature is UI-focused) `*_CONST["entity_mappings"]`
+
+The result is cached on the card instance (`_cachedEntities`) to avoid repeated WS calls.
+
+This keeps frontend cards and editors from hardcoding entity IDs, while still allowing advanced cards to override `getRequiredEntities()` when needed.
+
+#### 1.9.5.2. Translation Templates
 - **Purpose**: UI localization with dynamic translation loading
 - **Location**: `features/{feature}/www/{feature}/translations/` directories for both integration and frontend
 - **Benefits**: Feature-specific translations provide better isolation and easier maintenance
 - **Pattern**: Follows the same feature-centric approach as other feature components
 
-#### Translation System Benefits
+#### 1.9.5.3. Translation System Benefits
 
 1. **Feature Isolation**: Each feature maintains its own translations
 2. **Easy Maintenance**: Translations are co-located with feature code
@@ -1013,27 +1229,27 @@ def load_feature_translations(feature_name, language="en"):
 
 ---
 
-## 10. Development Guide
+## 1.10. Development Guide
 
 You are welcome to contribute to this integration. If you are missing support for a device, or have a nice card that you like to share, please do. You can contribute to this github repo, leave a message (issue) when you have questions, an idea, or found bugs.
 
 Also read the `Contributing` section on github to see how to setup a development environment.
 
-### Coding Standards and Conventions
+### 1.10.1. Coding Standards and Conventions
 
-#### File Responsibilities
+#### 1.10.1.1. File Responsibilities
 - **Root Platform Files**: Only HA integration code, forward to features
 - **Feature Files**: Feature-specific business logic and entity implementations
 - **Framework Files**: Reusable utilities and base classes
 - **Frontend Files**: JavaScript/HTML assets for UI components
 
-#### Naming Conventions
+#### 1.10.1.2. Naming Conventions
 - **Feature Names**: snake_case (e.g., `humidity_control`)
 - **Entity Classes**: PascalCase with feature prefix (e.g., `HumidityAbsoluteSensor`)
 - **Helper Functions**: snake_case (e.g., `calculate_absolute_humidity`)
 - **Constants**: UPPER_SNAKE_CASE (e.g., `HUMIDITY_CONTROL_FEATURE`)
 
-#### Import Patterns
+#### 1.10.1.3. Import Patterns
 ```python
 # Feature imports (relative)
 from ...automation import HumidityAutomationManager
@@ -1049,7 +1265,7 @@ from homeassistant.config_entries import ConfigEntry
 
 **Note**: Framework components should use absolute imports from features to avoid module resolution issues. Relative imports like `from ...framework.helpers.automation` may resolve incorrectly in some Python environments.
 
-### Development Workflow
+### 1.10.2. Development Workflow
 
 1. **Framework-First Development**
    - **Step 1**: Start with framework components for configuration, entities, and services
@@ -1107,7 +1323,7 @@ from homeassistant.config_entries import ConfigEntry
    - Provide examples of framework usage
    - Include migration notes for legacy patterns
 
-### Testing Structure
+### 1.10.3. Testing Structure
 
 ```
 tests/
@@ -1133,13 +1349,13 @@ tests/
 
 ---
 
-## 11. Debugging and Troubleshooting Guide
+## 1.11. Debugging and Troubleshooting Guide
 
 This comprehensive troubleshooting guide covers common issues, debugging tools, and solutions for Ramses Extras integration.
 
-### Common Issues and Solutions
+### 1.11.1. Common Issues and Solutions
 
-#### Feature Not Loading
+#### 1.11.1.1. Feature Not Loading
 
 **Symptoms**: Feature doesn't appear in HA configuration options
 
@@ -1149,7 +1365,7 @@ This comprehensive troubleshooting guide covers common issues, debugging tools, 
 3. Check HA logs for import or initialization errors
 4. Ensure feature directory structure is correct
 
-#### Entities Not Created
+#### 1.11.1.2. Entities Not Created
 
 **Symptoms**: Features enabled but no entities appear in HA
 
@@ -1160,7 +1376,7 @@ This comprehensive troubleshooting guide covers common issues, debugging tools, 
 4. Verify device discovery is working correctly
 5. Check entity states in HA
 
-#### JavaScript Cards Not Loading
+#### 1.11.1.3. JavaScript Cards Not Loading
 
 **Symptoms**: UI cards don't appear or show errors
 
@@ -1171,7 +1387,7 @@ This comprehensive troubleshooting guide covers common issues, debugging tools, 
 4. Ensure feature has `ui_card: true` in configuration
 5. Clear your browser cache (Ctrl+Shift+R or similar for your system)
 
-#### WebSocket Command Failures
+#### 1.11.1.4. WebSocket Command Failures
 
 **Symptoms**: WebSocket commands return errors or time out
 
@@ -1182,7 +1398,7 @@ This comprehensive troubleshooting guide covers common issues, debugging tools, 
 4. Check HA logs for WebSocket-related errors
 5. Ensure device_id is properly passed to commands
 
-#### Feature Not Working as Expected
+#### 1.11.1.5. Feature Not Working as Expected
 
 **Symptoms**: Feature enabled but doesn't function correctly
 
@@ -1192,7 +1408,7 @@ This comprehensive troubleshooting guide covers common issues, debugging tools, 
 3. Check parameter validation and error handling
 4. Verify WebSocket commands are registered during setup
 
-#### Performance Issues
+#### 1.11.1.6. Performance Issues
 
 **Symptoms**: Slow entity creation, high memory usage, or laggy UI
 
@@ -1202,35 +1418,35 @@ This comprehensive troubleshooting guide covers common issues, debugging tools, 
 3. Monitor device discovery performance
 4. Optimize JavaScript card update frequency
 
-### Debug Tools
+### 1.11.2. Debug Tools
 
-#### SimpleEntityManager Debug
+#### 1.11.2.1. SimpleEntityManager Debug
 - Use entity validation on startup for troubleshooting
 - Check entity creation and removal logs
 - Monitor device feature matrix state
 
-#### WebSocket Testing
+#### 1.11.2.2. WebSocket Testing
 - Use `callWebSocket()` function for WebSocket command testing
 - Test WebSocket commands in browser console
 
-#### Message Listener Debug
+#### 1.11.2.3. Message Listener Debug
 - Use `RamsesMessageBroker.instance.getListenerInfo()` for message routing
 - Check registered message listeners for debugging
 
-#### Device Enumeration Debug
+#### 1.11.2.4. Device Enumeration Debug
 - Check logs for device enumeration and handler execution
 - Monitor device discovery performance
 
-### Working Debug Tool Examples
+### 1.11.3. Working Debug Tool Examples
 
-#### SimpleEntityManager Debug (Python)
+#### 1.11.3.1. SimpleEntityManager Debug (Python)
 ```python
 # In config flow or debug console
 entity_manager = SimpleEntityManager(hass)
 await entity_manager.validate_entities_on_startup()
 ```
 
-#### WebSocket Testing (JavaScript console)
+#### 1.11.3.2. WebSocket Testing (JavaScript console)
 ```javascript
 // Test WebSocket commands in browser console
 const result = await callWebSocket(hass, {
@@ -1240,16 +1456,16 @@ const result = await callWebSocket(hass, {
 console.log('WebSocket result:', result);
 ```
 
-#### Message Listener Debug (JavaScript console)
+#### 1.11.3.3. Message Listener Debug (JavaScript console)
 ```javascript
 // Check registered message listeners
 const listenerInfo = RamsesMessageBroker.instance.getListenerInfo();
 console.log('Active listeners:', listenerInfo);
 ```
 
-### Debug Configuration
+### 1.11.4. Debug Configuration
 
-#### Logging Configuration
+#### 1.11.4.1. Logging Configuration
 
 Enable detailed logging in HA configuration:
 
@@ -1263,7 +1479,7 @@ logger:
     custom_components.ramses_extras.features: debug
 ```
 
-#### Debug Tools Summary
+#### 1.11.4.2. Debug Tools Summary
 
 1. **SimpleEntityManager Debug**: Use `validate_entities_on_startup()` to check entity consistency
 2. **WebSocket Testing**: Use `callWebSocket()` function to test WebSocket commands
@@ -1272,11 +1488,11 @@ logger:
 
 ---
 
-## 12. API Reference
+## 1.12. API Reference
 
-### DeviceFeatureMatrix API
+### 1.12.1. DeviceFeatureMatrix API
 
-#### Core Methods
+#### 1.12.1.1. Core Methods
 
 ```python
 class DeviceFeatureMatrix:
@@ -1302,9 +1518,9 @@ class DeviceFeatureMatrix:
         """Restore matrix state from saved state."""
 ```
 
-### SimpleEntityManager API
+### 1.12.2. SimpleEntityManager API
 
-#### Core Methods
+#### 1.12.2.1. Core Methods
 
 ```python
 class SimpleEntityManager:
@@ -1338,9 +1554,9 @@ class SimpleEntityManager:
         """Remove a single entity directly."""
 ```
 
-### WebSocket Commands API
+### 1.12.3. WebSocket Commands API
 
-#### Command Registration
+#### 1.12.3.1. Command Registration
 
 ```python
 @websocket_api.websocket_command({
@@ -1354,7 +1570,7 @@ async def ws_get_bound_rem_default(hass, connection, msg):
     # Implementation with SimpleEntityManager and device integration
 ```
 
-#### Available Commands
+#### 1.12.3.2. Available Commands
 
 The `default feature` is always enabled (and not listed in the config flow)
 
@@ -1363,7 +1579,7 @@ The `default feature` is always enabled (and not listed in the config flow)
 - **`ramses_extras/default/get_2411_schema`**: Get device parameter schema
 - **`ramses_extras`**: Get information about available commands
 
-#### JavaScript Integration
+#### 1.12.3.3. JavaScript Integration
 
 ```javascript
 // Get bound REM device
@@ -1379,9 +1595,9 @@ const schema = await callWebSocket(hass, {
 });
 ```
 
-### Device Handler API
+### 1.12.4. Device Handler API
 
-#### Device Type Handler Mapping
+#### 1.12.4.1. Device Type Handler Mapping
 
 ```python
 # Framework mapping (const.py)
@@ -1392,7 +1608,7 @@ DEVICE_TYPE_HANDLERS = {
 }
 ```
 
-#### Event System
+#### 1.12.4.2. Event System
 
 **Event Name**: `ramses_device_ready_for_entities`
 
@@ -1409,11 +1625,11 @@ DEVICE_TYPE_HANDLERS = {
 
 ---
 
-## 13. Implementation Details
+## 1.13. Implementation Details
 
-### Core Algorithms and Patterns
+### 1.13.1. Core Algorithms and Patterns
 
-#### Entity Format Detection Algorithm
+#### 1.13.1.1. Entity Format Detection Algorithm
 
 The automatic format detection system uses device_id position within entity names:
 
@@ -1430,7 +1646,7 @@ def _detect_format_by_position(position: int, entity_name: str) -> str:
 - Device ID at **beginning** (≤30% of entity name length) → **CC Format**
 - Device ID at **end** (>30% of entity name length) → **Extras Format**
 
-#### Two-step Evaluation System
+#### 1.13.1.2. Two-step Evaluation System
 
 The enhanced device discovery uses a two-phase evaluation system.
 
@@ -1444,7 +1660,7 @@ The enhanced device discovery uses a two-phase evaluation system.
 - Check entity-specific flags before creation
 - Apply any modifications from event listeners
 
-#### Simple Entity Management Algorithm
+#### 1.13.1.3. Simple Entity Management Algorithm
 
 Simplified entity management approach:
 
@@ -1474,14 +1690,14 @@ async def calculate_entity_changes(
     return list(entities_to_create), list(entities_to_remove)
 ```
 
-### Error Handling Strategies
+### 1.13.2. Error Handling Strategies
 
-#### Graceful Degradation
+#### 1.13.2.1. Graceful Degradation
 - Entity registry access failures return empty set (don't stop catalog building)
 - Individual feature scanning errors are logged per feature but don't stop other features
 - All operations designed for graceful degradation
 
-#### Error Recovery Patterns
+#### 1.13.2.2. Error Recovery Patterns
 ```python
 async def validate_entities_on_startup(self) -> None:
     """Check entity consistency on startup."""
@@ -1504,19 +1720,19 @@ async def validate_entities_on_startup(self) -> None:
     await self._create_missing_entities(missing_entities)
 ```
 
-### Security Considerations
+### 1.13.3. Security Considerations
 
-#### Input Validation
+#### 1.13.3.1. Input Validation
 - Voluptuous schema validation for all WebSocket parameters
 - Entity name validation with automatic format detection
 - Device ID validation and sanitization
 
-#### Access Control
+#### 1.13.3.2. Access Control
 - Device access control verification before operations
 - Rate limiting for WebSocket commands to prevent abuse
 - Error sanitization to prevent information leakage
 
-#### WebSocket Security
+#### 1.13.3.3. WebSocket Security
 - Required parameter validation for all commands
 - Device permission verification before sensitive operations
 - Comprehensive error handling with user-friendly messages
