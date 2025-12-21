@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ramses_extras"
-version = "10.0.0"
+version = "0.10.1"
 description = "Extra features for Ramses CC integration"
 authors = ["Willem (wimpie70)"]
 
