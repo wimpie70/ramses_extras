@@ -47,7 +47,8 @@
           "feature_default": "Feature: Default",
           "feature_humidity_control": "Feature: Humidity Control",
           "feature_hvac_fan_card": "Feature: Hvac Fan Card",
-          "feature_hello_world": "Feature: Hello World"
+          "feature_hello_world": "Feature: Hello World",
+          "feature_sensor_control": "Feature: Sensor Control"
         }
       },
       "enable_features": {
@@ -95,6 +96,10 @@
       "feature_hello_world": {
         "title": "Hello World Card Configuration",
         "description": "Configure the template feature for demonstration purposes"
+      },
+      "feature_sensor_control": {
+        "title": "Sensor Control Configuration",
+        "description": "Configure sensor source selection (indoor/outdoor/CO2 + abs humidity)"
       }
     }
   }

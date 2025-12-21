@@ -11,9 +11,13 @@ while keeping configuration **centralized in the integration Options Flow** and 
 - **source metadata** (where it came from, and optionally the raw/internal values too)
 
 Scope (now):
-- Indoor temperature + RH
-- Outdoor temperature + RH
+- Indoor temperature
+- Indoor humidity
 - CO2
+- Outdoor temperature
+- Outdoor humidity
+- Indoor absolute humidity (derived from a selected temp + humidity pair)
+- Outdoor absolute humidity (derived from a selected temp + humidity pair)
 
 Out of scope (now):
 - Comfort temperature (already available in HVAC device data)
@@ -22,7 +26,7 @@ Out of scope (now):
 
 ## Problem Statements (examples)
 
-- Some HVAC devices are installed in thermally biased locations (attic/top floor), so internal `indoor_temp` is not representative for living spaces → bypass decisions become “wrong” from the user perspective.
+- Some HVAC devices are installed in thermally biased locations (attic/top floor), so internal `indoor_temperature` is not representative for living spaces → bypass decisions become “wrong” from the user perspective.
 - Some devices may have missing sensors or only 1 humidity sensor; sometimes we still want to compute absolute humidity using a *different* RH/temp pair (possibly external).
 - We want “effective” values for logic, but also want to **see what the sources are** in the card (and optionally show raw internal readings too).
 
@@ -37,6 +41,7 @@ A feature that:
 - Provides a resolver used by:
   - `ramses_extras/get_entity_mappings` (so cards keep using existing pattern)
   - humidity-control automation logic
+- Can be bootstrapped by copying the existing `hello_world` feature as a template to inherit the full framework wiring (config, entities, services, UI scaffolding) before customizing sensor-specific logic.
 
 ### Central config location
 - **Options flow** stores all selections in config entry options, e.g.:
@@ -49,15 +54,13 @@ Cards may later offer *view-only* source information, and optionally a per-card 
 ## Data Model (proposal)
 
 ### Metrics
-- `indoor_temp`
-- `indoor_rh`
-- `outdoor_temp`
-- `outdoor_rh`
+- `indoor_temperature`
+- `indoor_humidity`
 - `co2`
-
-Derived (phase 2+):
-- `indoor_abs_humidity` (derived from effective indoor temp + effective indoor RH)
-- `outdoor_abs_humidity` (derived from effective outdoor temp + effective outdoor RH)
+- `outdoor_temperature`
+- `outdoor_humidity`
+- `indoor_abs_humidity` (derived)
+- `outdoor_abs_humidity` (derived)
 
 ### Source descriptor
 
@@ -65,7 +68,7 @@ Each metric resolves to a `SourceDescriptor`:
 
 ```json
 {
-  "kind": "internal | external",
+  "kind": "internal | external | derived",
   "entity_id": "sensor.living_room_temperature",
   "label": "Living room temp",
   "origin": "ramses_cc | homeassistant",
@@ -77,13 +80,14 @@ Each metric resolves to a `SourceDescriptor`:
 
 - **internal** means “use the standard ramses_extras mapping for this device/metric”.
 - **external** means “use a specific HA `entity_id`”.
-- Missing sensors are allowed; resolver returns `null` + reason.
+- If an override is set but invalid/missing, **fail closed**: resolver returns `null` + reason (no fallback).
+- If internal is not available for a device model, resolver returns `null` + reason.
 
 ### Validation rules (backend)
 
 - For derived absolute humidity:
-  - Must have both temp and RH sources available.
-  - Mixing sources is allowed but should emit warnings (potentially misleading).
+  - Must have both a temperature source and a humidity source configured for the derived metric.
+  - If either source is missing/invalid, the derived metric resolves to `null`.
 - For CO2:
   - If missing, allow `null`.
 - If an internal sensor doesn’t exist (device model lacks it), show as unavailable in the UI.
@@ -95,7 +99,7 @@ Each metric resolves to a `SourceDescriptor`:
 Extend existing `ramses_extras/get_entity_mappings` to return:
 
 - `mappings`: effective entity IDs (what the card/automation should use)
-- `sources`: metadata per mapping (so the UI can show “external/internal” and label)
+- `sources`: metadata per mapping (so the UI can show “external/internal” and label) (**always included**)
 - `raw_internal` (optional): default internal mapping regardless of override, for UI comparison
 
 ### Example response
@@ -103,35 +107,52 @@ Extend existing `ramses_extras/get_entity_mappings` to return:
 ```json
 {
   "mappings": {
-    "indoor_temp": "sensor.living_room_temperature",
-    "indoor_rh": "sensor.32_153289_indoor_humidity",
-    "outdoor_temp": "sensor.32_153289_outdoor_temp",
-    "outdoor_rh": "sensor.netatmo_outdoor_humidity",
-    "co2": null
+    "indoor_temperature": "sensor.living_room_temperature",
+    "indoor_humidity": "sensor.32_153289_indoor_humidity",
+    "co2": null,
+    "outdoor_temperature": "sensor.32_153289_outdoor_temp",
+    "outdoor_humidity": "sensor.netatmo_outdoor_humidity",
+    "indoor_abs_humidity": "sensor.32_153289_indoor_abs_humidity",
+    "outdoor_abs_humidity": null
+  },
+  "abs_humidity_inputs": {
+    "indoor_abs_humidity": {
+      "temperature": "sensor.living_room_temperature",
+      "humidity": "sensor.32_153289_indoor_humidity"
+    },
+    "outdoor_abs_humidity": {
+      "temperature": null,
+      "humidity": null
+    }
   },
   "sources": {
-    "indoor_temp": {
+    "indoor_temperature": {
       "kind": "external",
       "entity_id": "sensor.living_room_temperature",
       "label": "Living room temp"
     },
-    "indoor_rh": {
+    "indoor_humidity": {
       "kind": "internal",
       "entity_id": "sensor.32_153289_indoor_humidity",
       "label": "FAN indoor RH"
     },
-    "outdoor_rh": {
+    "outdoor_humidity": {
       "kind": "external",
       "entity_id": "sensor.netatmo_outdoor_humidity",
       "label": "Netatmo outdoor RH"
+    },
+    "indoor_abs_humidity": {
+      "kind": "derived",
+      "entity_id": "sensor.32_153289_indoor_abs_humidity",
+      "label": "FAN indoor abs humidity"
     }
   },
   "raw_internal": {
-    "indoor_temp": "sensor.32_153289_indoor_temp",
-    "indoor_rh": "sensor.32_153289_indoor_humidity",
-    "outdoor_temp": "sensor.32_153289_outdoor_temp",
-    "outdoor_rh": "sensor.32_153289_outdoor_humidity",
-    "co2": "sensor.32_153289_co2_level"
+    "indoor_temperature": "sensor.32_153289_indoor_temp",
+    "indoor_humidity": "sensor.32_153289_indoor_humidity",
+    "co2": "sensor.32_153289_co2_level",
+    "outdoor_temperature": "sensor.32_153289_outdoor_temp",
+    "outdoor_humidity": "sensor.32_153289_outdoor_humidity"
   }
 }
 ```
@@ -145,26 +166,32 @@ Extend existing `ramses_extras/get_entity_mappings` to return:
 
 ## Options Flow UX (proposal)
 
-Per device (FAN), allow selection via dropdown/entity-picker for:
+Per device (initially FAN + CO2-capable devices), show a **single combined form** with dropdown/entity-picker fields for:
 
-1. **Indoor temperature source**
+1. **Indoor temperature**
    - Internal (default)
    - External entity picker
-2. **Indoor RH source**
+2. **Indoor humidity**
    - Internal (default)
    - External entity picker
-3. **Outdoor temperature source**
+3. **CO2**
    - Internal (default, if available)
-   - External entity picker
-4. **Outdoor RH source**
-   - Internal (default, if available)
-   - External entity picker
-5. **CO2 source**
-   - Internal (if available)
    - External entity picker
    - None
+4. **Outdoor temperature**
+   - Internal (default, if available)
+   - External entity picker
+5. **Outdoor humidity**
+   - Internal (default, if available)
+   - External entity picker
+6. **Indoor absolute humidity (derived)**
+   - Temperature source (Internal / External entity)
+   - Humidity source (Internal / External entity)
+7. **Outdoor absolute humidity (derived)**
+   - Temperature source (Internal / External entity)
+   - Humidity source (Internal / External entity)
 
-**Confirmation-step warnings:** e.g. “Abs humidity will mix temp from Living Room and RH from FAN; this may be physically inconsistent.”
+**Confirmation-step warnings:** derived metrics will be missing if either paired source is missing/invalid.
 
 ---
 
@@ -182,10 +209,10 @@ Per metric, show:
 ## Phases & Progress
 
 ### Phase 0 — Design & contracts
-- [ ] Decide metric keys + naming (indoor/outdoor/CO2)
-- [ ] Decide WS response format (`mappings` + `sources` + optional `raw_internal`)
-- [ ] Decide config-entry storage keys and defaults
-- [ ] Decide initial UI constraints (entity pickers, device filter, allowed domains)
+- [x] Decide metric keys + naming (indoor/outdoor/CO2 + abs humidity)
+- [x] Decide WS response format (`mappings` + `sources` + optional `raw_internal` + abs humidity inputs)
+- [x] Decide config-entry storage keys and defaults
+- [x] Decide initial UI constraints (entity pickers, device filter, allowed domains)
 
 ### Phase 1 — Backend: `sensor_control` config + resolver
 - [ ] Add new feature folder `features/sensor_control/`
@@ -232,7 +259,7 @@ Per metric, show:
 
 | Phase | Status | Notes |
 | --- | --- | --- |
-| Phase 0 — Design & contracts | Not started | Waiting for metric/key decisions |
+| Phase 0 — Design & contracts | Completed | Metric keys + WS payload + UX decided |
 | Phase 1 — Backend: `sensor_control` config + resolver | Not started | Requires feature scaffolding + options flow work |
 | Phase 2 — Integrate with `get_entity_mappings` | Not started | Blocked on Phase 1 resolver outputs |
 | Phase 3 — HVAC card UI | Not started | Depends on WS payload changes |
@@ -243,7 +270,7 @@ Per metric, show:
 
 ## Acceptance Criteria (initial milestone)
 
-- A device can use an external living-room temperature sensor for `indoor_temp`.
+- A device can use an external living-room temperature sensor for `indoor_temperature`.
 - HVAC card shows the effective temperature and indicates it is external.
 - Backend mapping WS returns both effective mapping + source metadata.
-- Humidity automation can use external outdoor RH (or indoor RH) and still function, with warnings if pairing is mixed.
+- Humidity automation can use external outdoor humidity (or indoor humidity) and still function.

@@ -976,6 +976,13 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self._selected_feature = "hello_world"
         return await self.async_step_feature_config(user_input)
 
+    async def async_step_feature_sensor_control(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Handle sensor control feature configuration."""
+        self._selected_feature = "sensor_control"
+        return await self.async_step_feature_config(user_input)
+
     # Matrix State Persistence Methods
     def _save_matrix_state(self) -> None:
         """Save current matrix state to config entry data."""

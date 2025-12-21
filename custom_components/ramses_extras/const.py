@@ -150,4 +150,15 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "allowed_device_slugs": ["*"],
         "has_device_config": True,
     },
+    "sensor_control": {
+        "name": "Sensor Control",
+        "description": (
+            "Central sensor source selection (indoor/outdoor/CO2 + abs humidity)"
+        ),
+        "feature_module": "features.sensor_control",
+        "handler": "handle_hvac_ventilator",
+        "default_enabled": False,
+        "allowed_device_slugs": ["FAN", "CO2"],
+        "has_device_config": True,
+    },
 }

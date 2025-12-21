@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "feature_sensor_control": {
+        "title": "Sensor Control Configuration",
+        "description": "Configure sensor source selection"
+      }
+    }
+  }
+}
