@@ -38,6 +38,8 @@ class HvacFanCard extends RamsesBaseCard {
     // HVAC-specific state
     this.parameterEditMode = false;
     this._cachedEntities = null; // Cache for getRequiredEntities
+    this._entityMappings = null;
+    this._entityMappingsLoading = false;
     this.parameterSchema = null;
     this.availableParams = {};
     this._eventCheckTimer = null; // Timer for event checks
@@ -135,59 +137,74 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   /**
-   * Set card configuration with additional entity building
+   * Set card configuration
    * @param {Object} config - Card configuration
    */
   setConfig(config) {
-    // Call parent setConfig for validation and basic processing
     super.setConfig(config);
+  }
 
-    // If config is empty, return early
-    if (!config || Object.keys(config).length === 0) {
+  /**
+   * Load initial state including entity mappings
+   */
+  async _loadInitialState() {
+    if (!this._hass || !this._config?.device_id) {
       return;
     }
 
-    // Additional processing: build entity IDs based on device_id
-    const deviceId = this._config.device_id;
+    try {
+      await this._loadEntityMappings();
+      this.render();
+    } catch (error) {
+      console.warn('HvacFanCard: Failed to load initial state:', error);
+      this.render();
+    } finally {
+      this.clearUpdateThrottle();
+    }
+  }
 
-    // Add auto-generated entity IDs to config
-    this._config = {
-      ...this._config,
-      // Auto-generate absolute humidity sensor entities (created by integration)
-      indoor_abs_humid_entity: 'sensor.indoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
-      outdoor_abs_humid_entity: 'sensor.outdoor_absolute_humidity_' + deviceId.replace(/:/g, '_'),
-      // Fallback to calculated humidity if absolute humidity sensor don't exist
-      indoor_temp_entity:
-        this._config.indoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_temp',
-      outdoor_temp_entity:
-        this._config.outdoor_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_temp',
-      indoor_humidity_entity:
-        this._config.indoor_humidity_entity ||
-        'sensor.' + deviceId.replace(/:/g, '_') + '_indoor_humidity',
-      outdoor_humidity_entity:
-        this._config.outdoor_humidity_entity ||
-        'sensor.' + deviceId.replace(/:/g, '_') + '_outdoor_humidity',
-      supply_temp_entity:
-        this._config.supply_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_temp',
-      exhaust_temp_entity:
-        this._config.exhaust_temp_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_exhaust_temp',
-      fan_speed_entity:
-        this._config.fan_speed_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_rate',
-      fan_mode_entity:
-        this._config.fan_mode_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_fan_mode',
-      co2_entity: this._config.co2_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_co2_level',
-      flow_entity: this._config.flow_entity || 'sensor.' + deviceId.replace(/:/g, '_') + '_supply_flow',
-      bypass_entity:
-        this._config.bypass_entity || 'binary_sensor.' + deviceId.replace(/:/g, '_') + '_bypass_position',
-      // Use configured entities if provided, otherwise auto-generate
-      dehum_mode_entity:
-        this._config.dehum_mode_entity || 'switch.dehumidify_' + deviceId.replace(/:/g, '_'),
-      dehum_active_entity:
-        this._config.dehum_active_entity ||
-        'binary_sensor.dehumidifying_active_' + deviceId.replace(/:/g, '_'),
-      comfort_temp_entity:
-        this._config.comfort_temp_entity || 'number.' + deviceId.replace(/:/g, '_') + '_param_75',
-    };
+  async _loadEntityMappings() {
+    if (!this._hass || !this._config?.device_id) {
+      return;
+    }
+
+    if (this._entityMappingsLoading) {
+      return;
+    }
+
+    this._entityMappingsLoading = true;
+
+    try {
+      const result = await this._sendWebSocketCommand({
+        type: 'ramses_extras/get_entity_mappings',
+        device_id: this._config.device_id,
+        feature_id: 'hvac_fan_card',
+      }, `hvac_fan_mappings_${this._config.device_id}`);
+
+      if (result.mappings) {
+        // Cache mappings for base getRequiredEntities()
+        this._cachedEntities = result.mappings;
+
+        // Merge entity mappings into config, but keep any explicit overrides
+        const updatedConfig = { ...this._config };
+        Object.entries(result.mappings).forEach(([key, value]) => {
+          if (
+            updatedConfig[key] === undefined ||
+            updatedConfig[key] === null ||
+            updatedConfig[key] === ''
+          ) {
+            updatedConfig[key] = value;
+          }
+        });
+
+        this._config = updatedConfig;
+        this._entityMappings = { ...(this._entityMappings || {}), ...result.mappings };
+      }
+    } catch (error) {
+      console.warn('HvacFanCard: Failed to load entity mappings:', error);
+    } finally {
+      this._entityMappingsLoading = false;
+    }
   }
 
 
@@ -230,10 +247,14 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   renderNormalMode() {
+    if (!this._entityMappings && !this._entityMappingsLoading) {
+      this._loadEntityMappings();
+    }
+
     // Validate entities are available
     this.validateEntities();
 
-    const config = this.config; // Use config consistently
+    const config = this.config || {};
     const hass = this._hass;
 
     // Check dehumidify entity availability
@@ -679,9 +700,6 @@ class HvacFanCard extends RamsesBaseCard {
     }
   }
 }
-
-// Include the editor component
-// This ensures the editor is loaded when the card is used
 
 // Register the web component
 if (!customElements.get('hvac-fan-card')) {

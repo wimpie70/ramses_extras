@@ -85,12 +85,30 @@ HVAC_FAN_CARD_CONST = {
     "device_mappings": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
     # Entity mappings for frontend cards
     "entity_mappings": {
-        "indoor_abs_humidity": "sensor.indoor_absolute_humidity_{device_id}",
-        "outdoor_abs_humidity": "sensor.outdoor_absolute_humidity_{device_id}",
-        "co2": "sensor.co2_level_{device_id}",
-        "dehum_mode": "switch.dehumidify_{device_id}",
-        "dehum_active": "binary_sensor.dehumidify_active_{device_id}",
-        "comfort_temp": "number.param_75_{device_id}",
+        # Absolute humidity sensors provided by integration
+        "indoor_abs_humid_entity": "sensor.indoor_absolute_humidity_{device_id}",
+        "outdoor_abs_humid_entity": "sensor.outdoor_absolute_humidity_{device_id}",
+        # Temperature sensors
+        "indoor_temp_entity": "sensor.{device_id}_indoor_temp",
+        "outdoor_temp_entity": "sensor.{device_id}_outdoor_temp",
+        "supply_temp_entity": "sensor.{device_id}_supply_temp",
+        "exhaust_temp_entity": "sensor.{device_id}_exhaust_temp",
+        # Humidity sensors
+        "indoor_humidity_entity": "sensor.{device_id}_indoor_humidity",
+        "outdoor_humidity_entity": "sensor.{device_id}_outdoor_humidity",
+        # Fan / airflow sensors
+        "fan_speed_entity": "sensor.{device_id}_fan_rate",
+        "fan_mode_entity": "sensor.{device_id}_fan_mode",
+        "flow_entity": "sensor.{device_id}_supply_flow",
+        # CO2 sensor
+        "co2_entity": "sensor.{device_id}_co2_level",
+        # Bypass position
+        "bypass_entity": "binary_sensor.{device_id}_bypass_position",
+        # Dehumidify controls
+        "dehum_mode_entity": "switch.dehumidify_{device_id}",
+        "dehum_active_entity": "binary_sensor.dehumidifying_active_{device_id}",
+        # Comfort temperature parameter
+        "comfort_temp_entity": "number.{device_id}_param_75",
     },
 }
 
