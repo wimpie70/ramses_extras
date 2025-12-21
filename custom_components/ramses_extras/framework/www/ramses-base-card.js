@@ -17,8 +17,8 @@ const isDebugEnabled = () => window.ramsesExtras?.debug === true;
 const debugLog = (...args) => {
   if (isDebugEnabled()) {
     console.log(...args);
-   }
- };
+  }
+};
 
 /**
  * RamsesBaseCard - Base class for Ramses Extras custom cards
@@ -53,6 +53,8 @@ export class RamsesBaseCard extends HTMLElement {
     // Core state management
     this._hass = null;
     this._config = null;
+    this._translations = null;
+
     this._initialStateLoaded = false;
     this._rendered = false;
 
@@ -65,6 +67,8 @@ export class RamsesBaseCard extends HTMLElement {
     this._commandInProgress = false;
 
     this._onceKeys = new Set();
+
+    this._backendReadyPromise = null;
 
     // Message broker integration
     this._messageBroker = null;
@@ -249,7 +253,35 @@ export class RamsesBaseCard extends HTMLElement {
   }
 
   _isHomeAssistantRunning() {
-    return this._hass?.config?.state === 'RUNNING';
+    return this._hass?.connected && this._hass?.config?.state === 'RUNNING';
+  }
+
+  _confirmBackendReady() {
+    if (this._hassLoaded) {
+      return;
+    }
+    if (!this._isHomeAssistantRunning()) {
+      return;
+    }
+    if (!this._hass?.connection) {
+      return;
+    }
+    if (this._backendReadyPromise) {
+      return;
+    }
+
+    this._backendReadyPromise = callWebSocket(this._hass, {
+      type: 'ramses_extras/default/get_cards_enabled',
+    })
+      .then(() => {
+        this._hassLoaded = true;
+        this._backendReadyPromise = null;
+        this.render();
+      })
+      .catch(() => {
+        this._backendReadyPromise = null;
+        setTimeout(() => this._confirmBackendReady(), 1000);
+      });
   }
 
   /**
@@ -440,12 +472,25 @@ export class RamsesBaseCard extends HTMLElement {
     if (this._config) {
       const connectionChanged = previousConnection !== hass?.connection;
 
+      // During restart/reconnect the websocket connection object changes.
+      // Keep the card in an initializing state until the HA connection is ready.
+      if (connectionChanged) {
+        this._hassLoaded = false;
+        this.clearUpdateThrottle();
+        this.render();
+      }
+
       if (!this._isHomeAssistantRunning()) {
         this._hassLoaded = false;
         this.clearUpdateThrottle();
         this.renderHassInitializing();
         return;
       }
+
+      // Ensure we latch startup until HA websocket finishes initial sync.
+      // Some restarts keep the same connection object, so don't rely solely on
+      // connectionChanged to attach the ready listener.
+      const needsReadyLatch = !this._hassLoaded;
 
       // Temporarily disable cards_enabled check to get HVAC card working
       // TODO: Debug cards_enabled latch timing issue
@@ -459,36 +504,34 @@ export class RamsesBaseCard extends HTMLElement {
       //   }
       // }
 
-      if (!this._hassLoaded) {
-        this._hassLoaded = true;
-        this.clearUpdateThrottle();
-        this._checkAndLoadInitialState();
-        this.render();
-        return;
-      }
-
-      // Mark that HASS is being set (may be during initial load)
-      if (connectionChanged) {
-        this._hassLoaded = false;
-      }
+      // Note: do not set _hassLoaded = true here.
+      // We wait for the websocket 'ready' event (or timeout) to avoid
+      // cards becoming interactive while HA is still initializing.
 
       // Clear any existing timeout
       if (connectionChanged && this._hassLoadTimeout) {
         clearTimeout(this._hassLoadTimeout);
+        this._hassLoadTimeout = null;
       }
 
       // Clear any existing ready listener
-      if (connectionChanged && this._hassReadyListener) {
+      if (connectionChanged && typeof this._hassReadyListener === 'function') {
         this._hassReadyListener();
         this._hassReadyListener = null;
       }
 
-      // Listen for the HASS ready event to mark when HASS is fully loaded
-      // This is the proper way to detect when HASS has finished its initial state sync
-      if (connectionChanged && hass && hass.connection) {
+      // Listen for the HASS ready event to mark when HASS is fully loaded.
+      // Do this whenever we need the latch, not only on connectionChanged.
+      if (needsReadyLatch && hass && hass.connection && !this._hassReadyListener) {
         this._hassReadyListener = hass.connection.addEventListener('ready', () => {
           this._hassLoaded = true;
-          debugLog(`✅ ${this.constructor.name}: HASS ready event received, allowing updates and rendering`);
+          debugLog(
+            `✅ ${this.constructor.name}: HASS ready event received, allowing updates and rendering`
+          );
+
+          if (typeof this._hassReadyListener === 'function') {
+            this._hassReadyListener();
+          }
           this._hassReadyListener = null;
 
           // After HASS is ready, load initial state and render
@@ -497,12 +540,22 @@ export class RamsesBaseCard extends HTMLElement {
         });
       }
 
+      // If we missed the 'ready' event (e.g. after a hard refresh), confirm readiness
+      // by probing a lightweight backend websocket command.
+      if (!this._hassLoaded) {
+        this._confirmBackendReady();
+      }
+
       // Fallback timeout in case ready event doesn't fire
-      if (connectionChanged) {
+      if (needsReadyLatch && !this._hassLoadTimeout) {
         this._hassLoadTimeout = setTimeout(() => {
           if (!this._hassLoaded) {
             this._hassLoaded = true;
-            debugLog(`⚠️ ${this.constructor.name}: HASS ready timeout reached after 2 minutes, assuming HASS is loaded`);
+            debugLog(
+              `⚠️ ${this.constructor.name}: HASS ready timeout reached after 2 minutes, assuming HASS is loaded`
+            );
+
+            this._hassLoadTimeout = null;
 
             // After timeout, load initial state and render
             this._loadInitialState();
@@ -987,6 +1040,7 @@ export class RamsesBaseCard extends HTMLElement {
   static registerCustomCard() {
     window.customCards = window.customCards || [];
 
+    // Use static getCardInfo during registration (hass not available yet)
     const cardInfo = this.getCardInfo();
 
     // Register with clean type name (no custom: prefix for internal registration)
@@ -1007,15 +1061,6 @@ export class RamsesBaseCard extends HTMLElement {
   }
 
   /**
-   * Get tag name for this card
-   * @returns {string} Tag name (kebab-case)
-   */
-  static getTagName() {
-    // Convert class name to kebab-case
-    return this.name.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
-  }
-
-  /**
    * Get card info for HA registration
    * Override this method to customize card registration info
    * @returns {Object} Card registration info
@@ -1028,6 +1073,15 @@ export class RamsesBaseCard extends HTMLElement {
       preview: true,
       documentationURL: 'https://github.com/wimpie70/ramses_extras',
     };
+  }
+
+  /**
+   * Get tag name for this card
+   * @returns {string} Tag name (kebab-case)
+   */
+  static getTagName() {
+    // Convert class name to kebab-case
+    return this.name.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
   }
 
   /**
@@ -1131,6 +1185,14 @@ export class RamsesBaseCard extends HTMLElement {
       return;
     }
 
+    // Prevent interaction during HA restart / reconnect.
+    // - hass.connected goes false while the websocket reconnects
+    // - _hassLoaded stays false until the connection 'ready' event fires
+    if (!this._isHomeAssistantRunning() || !this._hassLoaded) {
+      this.renderHassInitializing();
+      return;
+    }
+
     // Don't render until translations are loaded
     if (!this.hasTranslations()) {
       return;
@@ -1146,7 +1208,7 @@ export class RamsesBaseCard extends HTMLElement {
       return;
     }
 
-    // Use base class validation check
+    // Use subclass validation check
     if (!this.hasValidConfig()) {
       this.renderConfigError();
       return;

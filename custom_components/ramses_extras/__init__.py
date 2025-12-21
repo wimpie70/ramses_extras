@@ -27,7 +27,7 @@ from .const import (
 )
 
 # Import CardRegistry for simplified card registration
-from .framework.helpers.card_registry import ALL_CARDS, CardRegistry
+from .framework.helpers.card_registry import CardRegistry
 from .framework.helpers.paths import DEPLOYMENT_PATHS, PathConstants
 
 # Since this integration can only be set up from config entries,
@@ -243,7 +243,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # ALWAYS register all card resources at startup using CardRegistry
     # This ensures cards are available before Lovelace parses dashboards
-    await _register_cards_with_registry(hass, entry)
+    await _register_cards(hass)
 
     # Copy helper files and expose feature config for card functionality
     await _setup_card_files_and_config(hass, entry)
@@ -869,26 +869,23 @@ async def _discover_devices_from_entity_registry(hass: HomeAssistant) -> list[st
         return []
 
 
-async def _register_cards_with_registry(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> None:
-    """Register all cards using clean CardRegistry for
-     unconditional startup registration.
+async def _register_cards(hass: HomeAssistant) -> None:
+    """Register all cards using feature-centric CardRegistry.
 
-    This uses the new simplified CardRegistry that follows HA standards:
+    This uses the new feature-centric CardRegistry that follows HA standards:
     - Uses standard lovelace_resources storage key
-    - Registers all cards unconditionally at startup
+    - Discovers cards from feature const.py files dynamically
+    - Maintains feature-centric architecture
     - Simple, reliable implementation
-    - No feature-based conditional logic
     """
     try:
-        _LOGGER.info("🔧 Starting clean CardRegistry-based card registration")
+        _LOGGER.info("🔧 Starting feature-centric CardRegistry registration")
 
-        # Create CardRegistry and register all cards unconditionally
+        # Create CardRegistry and register discovered cards from features
         registry = CardRegistry(hass)
-        await registry.register(ALL_CARDS)
+        await registry.register_discovered_cards()
 
-        _LOGGER.info("✅ CardRegistry registration complete - all cards available")
+        _LOGGER.info("✅ Feature-centric CardRegistry registration complete")
 
     except Exception as e:
         _LOGGER.error(f"❌ CardRegistry registration failed: {e}")

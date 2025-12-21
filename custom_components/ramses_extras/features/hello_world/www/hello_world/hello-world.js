@@ -210,7 +210,7 @@ class HelloWorld extends RamsesBaseCard {
   }
 
   /**
-   * Get card info for HA registration with proper display name
+   * Get card info for HA registration
    * @returns {Object} Card registration info
    */
   static getCardInfo() {

@@ -819,16 +819,5 @@ window.send_command = function (commandKey, deviceId, buttonElement) {
 
 
 
-// Register it with HA for automatic discovery
-window.customCards = window.customCards || [];
-
-if (!window.customCards.some((card) => card.type === 'hvac-fan-card')) {
-  window.customCards.push({
-    type: 'hvac-fan-card',
-    name: 'Hvac Fan Control Card',
-    description:
-      'Advanced control card for Orcon or other ventilation systems with multi-language support',
-    preview: true, // Shows in card picker
-    documentationURL: 'https://github.com/wimpie70/ramses_extras',
-  });
-}
+// Register the card using the base class registration
+HvacFanCard.register();

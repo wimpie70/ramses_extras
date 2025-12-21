@@ -1,10 +1,10 @@
 # Part of the Ramses Extra integration
 # See https://github.com/wimpie70/ramses_extras for more information
 #
-"""Constants for Hello World Switch Card feature.
+"""Constants for Hello World  feature.
 
 This module defines all constants, configurations, and entity mappings for the
-Hello World Switch Card feature, including entity configurations, device mappings,
+Hello World feature, including entity configurations, device mappings,
 and WebSocket command definitions.
 
 :platform: Home Assistant
@@ -15,15 +15,10 @@ and WebSocket command definitions.
 
 from typing import Any
 
-# Import CardRegistry for proper card registration
-from custom_components.ramses_extras.framework.helpers.card_registry import (
-    HELLO_WORLD_CARD,
-)
-
 DOMAIN = "hello_world"
 
 # Feature configuration
-FEATURE_NAME = "Hello World Switch Card"
+FEATURE_NAME = "Hello World"
 FEATURE_DESCRIPTION = (
     "Template feature demonstrating complete Ramses Extras architecture"
 )
@@ -96,13 +91,27 @@ HELLO_WORLD_CONFIG = {
     }
 }
 
-# Legacy card configurations removed - now handled by CardRegistry
-
 # Default configuration
 DEFAULT_CONFIG = {
     "enabled": True,
     "auto_discovery": True,
 }
+
+# Card configurations for feature-centric card management
+# To add new cards, simply add another dictionary to this list
+HELLO_WORLD_CARD_CONFIGS: list[dict[str, Any]] = [
+    {
+        "card_id": "hello-world",
+        "card_name": "Hello World Card",
+        "description": "A simple demonstration card for "
+        "Ramses Extras Hello World feature",
+        "location": "hello_world",
+        "preview": True,
+        "documentation_url": "https://github.com/wimpie70/ramses_extras/wiki/Hello-World-Card",
+        "supported_device_types": ["HvacVentilator"],
+        "javascript_file": "hello-world.js",
+    },
+]
 
 # Entity structure for SimpleEntityManager
 HELLO_WORLD_CONST = {
@@ -110,11 +119,13 @@ HELLO_WORLD_CONST = {
         "switch": ["hello_world_switch"],
         "binary_sensor": ["hello_world_status"],
     },
+    # Cards that this feature manages
+    "cards": HELLO_WORLD_CARD_CONFIGS,
 }
 
 
 def load_feature() -> None:
-    """Load hello world card feature into the registry.
+    """Load hello world feature into the registry.
 
     This function registers all components of the Hello World feature with the
     Ramses Extras framework, including entity configurations, device mappings,

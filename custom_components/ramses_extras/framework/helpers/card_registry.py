@@ -4,6 +4,7 @@ This module provides a simple, standards-compliant registry for managing
 Home Assistant Lovelace custom cards. It follows the architectural principle:
 - Resources are registered unconditionally at startup
 - Features control behavior, not existence
+- Cards are defined in feature const.py files (feature-centric)
 
 The registry uses Home Assistant's standard lovelace_resources storage
 and proper path resolution for reliable card registration.
@@ -11,6 +12,7 @@ and proper path resolution for reliable card registration.
 
 from __future__ import annotations
 
+import importlib
 import logging
 from dataclasses import dataclass
 from typing import Iterable
@@ -56,12 +58,12 @@ class CardRegistry:
     1. Unconditional registration at startup (before dashboards load)
     2. Standard HA storage patterns (lovelace_resources)
     3. Proper path resolution using PathConstants
-    4. No feature-based conditional logic
+    4. Feature-centric card definitions from const.py files
     5. Simple, maintainable implementation
 
     Usage:
         registry = CardRegistry(hass)
-        await registry.register([HELLO_WORLD_CARD, ...])
+        await registry.register_discovered_cards()
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -72,6 +74,68 @@ class CardRegistry:
         """
         self._hass = hass
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+
+    @staticmethod
+    def discover_cards_from_features() -> list[LovelaceCard]:
+        """Discover cards from all feature const.py files.
+
+        This method dynamically discovers card configurations from feature
+        const.py files, maintaining the feature-centric architecture.
+
+        Returns:
+            List of LovelaceCard definitions discovered from features
+        """
+        cards = []
+
+        # List of known features that might have cards
+        features_to_check = [
+            "hello_world",
+            "hvac_fan_card",
+            # Add more features as they implement card configs
+        ]
+
+        for feature_id in features_to_check:
+            try:
+                # Import the feature's const module
+                const_module = importlib.import_module(
+                    f"custom_components.ramses_extras.features.{feature_id}.const"
+                )
+
+                # Look for card configurations in the const module
+                # Map feature_id to its card configs attribute name
+                card_config_attributes = {
+                    "hello_world": "HELLO_WORLD_CARD_CONFIGS",
+                    "hvac_fan_card": "HVAC_FAN_CARD_CONFIGS",
+                }
+
+                card_configs_attr = card_config_attributes.get(feature_id)
+                if card_configs_attr and hasattr(const_module, card_configs_attr):
+                    card_configs = getattr(const_module, card_configs_attr)
+
+                    for card_config in card_configs:
+                        # Convert feature config to LovelaceCard
+                        card = LovelaceCard(
+                            type=card_config["card_id"],
+                            resource_path=f"/local/ramses_extras/features/{card_config['location']}/{card_config['javascript_file']}",
+                            name=card_config["card_name"],
+                            description=card_config.get("description", ""),
+                            preview=card_config.get("preview", True),
+                        )
+                        cards.append(card)
+                        _LOGGER.debug(
+                            f"🎴 Discovered card "
+                            f"'{card.name}' from feature '{feature_id}'"
+                        )
+
+            except ImportError as e:
+                _LOGGER.debug(f"Feature '{feature_id}' not available: {e}")
+            except Exception as e:
+                _LOGGER.warning(
+                    f"Failed to discover cards from feature '{feature_id}': {e}"
+                )
+
+        _LOGGER.info(f"🎴 Discovered {len(cards)} cards from features")
+        return cards
 
     async def register(self, cards: Iterable[LovelaceCard]) -> None:
         """Register cards with Home Assistant's Lovelace system.
@@ -162,6 +226,15 @@ class CardRegistry:
             # Don't raise - let the integration continue
             # Card registration issues shouldn't break startup
 
+    async def register_discovered_cards(self) -> None:
+        """Discover and register cards from all features.
+
+        This is the main method that should be called during integration startup.
+        It automatically discovers cards from feature const.py files and registers them.
+        """
+        cards = self.discover_cards_from_features()
+        await self.register(cards)
+
     @staticmethod
     def lovelace_type(card_type: str) -> str:
         """Get the Lovelace YAML type for a card.
@@ -205,33 +278,3 @@ class CardRegistry:
             "description": description,
             "preview": preview,
         }
-
-
-# Card definitions - Single source of truth for all cards
-# These cards will be registered unconditionally at startup
-
-# Hello World Card - Simple demonstration card
-HELLO_WORLD_CARD = LovelaceCard(
-    type="hello-world",
-    resource_path="/local/ramses_extras/features/hello_world/hello-world.js",
-    name="Hello World Card",
-    description="A simple demonstration card for Ramses Extras Hello World feature",
-    preview=True,
-)
-
-# HVAC Fan Card - Advanced fan control card
-HVAC_FAN_CARD = LovelaceCard(
-    type="hvac-fan-card",
-    resource_path="/local/ramses_extras/features/hvac_fan_card/hvac-fan-card.js",
-    name="HVAC Fan Card",
-    description="Advanced fan card for control and configuration of "
-    "(Orcon) ventilation systems",
-    preview=True,
-)
-
-# All cards registry - Add new cards here
-ALL_CARDS = [
-    HELLO_WORLD_CARD,
-    HVAC_FAN_CARD,
-    # Future cards should be added here
-]
