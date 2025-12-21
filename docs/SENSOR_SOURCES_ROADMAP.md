@@ -228,6 +228,19 @@ Per metric, show:
 
 ---
 
+## Status Snapshot
+
+| Phase | Status | Notes |
+| --- | --- | --- |
+| Phase 0 — Design & contracts | Not started | Waiting for metric/key decisions |
+| Phase 1 — Backend: `sensor_control` config + resolver | Not started | Requires feature scaffolding + options flow work |
+| Phase 2 — Integrate with `get_entity_mappings` | Not started | Blocked on Phase 1 resolver outputs |
+| Phase 3 — HVAC card UI | Not started | Depends on WS payload changes |
+| Phase 4 — Humidity automation | Not started | Requires effective mappings + validation logic |
+| Phase 5 — Derived/advanced sensors | Not started | Optional stretch once earlier phases land |
+
+---
+
 ## Acceptance Criteria (initial milestone)
 
 - A device can use an external living-room temperature sensor for `indoor_temp`.
