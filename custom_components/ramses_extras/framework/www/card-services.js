@@ -213,3 +213,71 @@ export async function getAvailableDevices(hass) {
   console.log(`✅ Cached ${_devicesCache.length} devices for ${CACHE_DURATION}ms`);
   return _devicesCache;
 }
+
+/**
+ * Normalize a device descriptor for editor dropdowns
+ * @param {Object} device - Raw device object from backend
+ * @returns {Object} Normalized descriptor with id, label and slug metadata
+ */
+export function normalizeDeviceDescriptor(device = {}) {
+  const id = device.device_id || device.id || '';
+  const slugs = Array.isArray(device.slugs)
+    ? device.slugs.map((slug) => slug?.toString()).filter(Boolean)
+    : [];
+
+  const slugLabel =
+    device.slug_label ||
+    (slugs.length ? slugs.join(', ') : '');
+
+  const detail =
+    slugLabel ||
+    device.device_type ||
+    device.model ||
+    device.type ||
+    '';
+
+  const label = detail ? `${id} (${detail})` : id;
+
+  return {
+    id,
+    slugs,
+    slugLabel,
+    detail,
+    label,
+    raw: device,
+  };
+}
+
+/**
+ * Filter devices by allowed slug codes
+ * @param {Array} devices - Device list from backend
+ * @param {Array} allowedSlugs - Slug codes to include (e.g. ['FAN'])
+ * @returns {Array} Filtered devices
+ */
+export function filterDevicesBySlugs(devices = [], allowedSlugs = ['*']) {
+  if (!Array.isArray(devices)) {
+    return [];
+  }
+
+  if (!allowedSlugs || allowedSlugs.includes('*')) {
+    return devices;
+  }
+
+  const normalizedAllowed = allowedSlugs.map((slug) => slug.toUpperCase());
+
+  return devices.filter((device) => {
+    const slugs = Array.isArray(device.slugs)
+      ? device.slugs.map((slug) => slug?.toString().toUpperCase()).filter(Boolean)
+      : [];
+
+    if (slugs.length === 0 && device.slug_label) {
+      slugs.push(...device.slug_label.split(',').map((slug) => slug.trim().toUpperCase()));
+    }
+
+    if (slugs.length === 0 && device.device_type) {
+      slugs.push(device.device_type.toUpperCase());
+    }
+
+    return slugs.some((slug) => normalizedAllowed.includes(slug));
+  });
+}

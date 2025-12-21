@@ -61,6 +61,26 @@ class HvacFanCard extends RamsesBaseCard {
    * Get configuration element for HA editor
    * @returns {HTMLElement|null} Configuration element
    */
+  static getConfigElement() {
+    try {
+      if (typeof window.HvacFanCardEditor === 'undefined') {
+        console.error('HvacFanCardEditor is not defined on window');
+        return null;
+      }
+      return document.createElement('hvac-fan-card-editor');
+    } catch (error) {
+      console.error('Error creating config element:', error);
+      return null;
+    }
+  }
+
+  static getStubConfig() {
+    return {
+      type: `custom:${this.getTagName()}`,
+      ...this.prototype.getDefaultConfig(),
+    };
+  }
+
   getConfigElement() {
     try {
       // Ensure the editor is available before creating it
@@ -265,16 +285,12 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Temperature data
     const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp : null;
-
     const outdoorTemp = da31Data.outdoor_temp !== undefined ? da31Data.outdoor_temp : null;
-
     const supplyTemp = da31Data.supply_temp !== undefined ? da31Data.supply_temp : null;
-
     const exhaustTemp = da31Data.exhaust_temp !== undefined ? da31Data.exhaust_temp : null;
 
     // Humidity data
     const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity : null;
-
     const outdoorHumidity =
       da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity : null;
 
@@ -833,8 +849,6 @@ window.send_command = function (commandKey, deviceId, buttonElement) {
     console.log('Element _hass:', element?._hass);
   }
 };
-
-
 
 
 // Register the card using the base class registration

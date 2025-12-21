@@ -6,7 +6,10 @@
 /* eslint-disable no-undef */
 
 // Import reusable helpers using environment-aware path constants
-import { getAvailableDevices } from '/local/ramses_extras/helpers/card-services.js';
+import {
+  getAvailableDevices,
+  normalizeDeviceDescriptor,
+} from '/local/ramses_extras/helpers/card-services.js';
 
 /**
  * Hello World Card Editor using HTMLElement pattern (like hvac_fan_card)
@@ -90,6 +93,15 @@ class HelloworldEditor extends HTMLElement {
   }
 
   _renderEditor(ramsesDevices) {
+    const deviceOptions = ramsesDevices.length
+      ? ramsesDevices
+        .map((device) => {
+          const selectedAttr = this._config.device_id === device.id ? 'selected' : '';
+          return `<option value="${device.id}" ${selectedAttr}>${device.label}</option>`;
+        })
+        .join('')
+      : '<option disabled>No Ramses RF devices found</option>';
+
     // Show the complete editor interface
     this.innerHTML = `
       <div class="card-config">
@@ -97,10 +109,10 @@ class HelloworldEditor extends HTMLElement {
           <label for="device_id">Device ID *</label>
           <select id="device_id" class="config-input" required>
             <option value="">Select a device...</option>
-            ${ramsesDevices.map(device => `<option value="${device.id}" ${this._config.device_id === device.id ? 'selected' : ''}>${device.id} (${device.type})</option>`).join('')}
-            ${ramsesDevices.length === 0 ? '<option disabled>No Ramses RF devices found</option>' : ''}
+            ${deviceOptions}
           </select>
           <small class="form-help">Select the Ramses RF device for the Hello World switch</small>
+          <div class="form-note">You may need to enable the device in the Ramses Extras configuration.</div>
         </div>
 
         <div class="form-group">
@@ -159,10 +171,13 @@ class HelloworldEditor extends HTMLElement {
           padding: 8px 12px;
           border: 1px solid var(--divider-color);
           border-radius: 4px;
-          background: var(--input-background-color, #fff);
           color: var(--primary-text-color);
           font-size: 14px;
           box-sizing: border-box;
+        }
+
+        .config-input option {
+          color: inherit;
         }
 
         .checkbox-group {
@@ -187,6 +202,12 @@ class HelloworldEditor extends HTMLElement {
           margin-top: 4px;
           font-size: 12px;
           color: var(--secondary-text-color);
+        }
+
+        .form-note {
+          margin-top: 4px;
+          font-size: 12px;
+          color: var(--primary-text-color, #333);
         }
 
         .device-info {
@@ -223,9 +244,13 @@ class HelloworldEditor extends HTMLElement {
     console.log('✅ Available devices retrieved:', devices);
 
     if (devices && Array.isArray(devices)) {
-      const ramsesDevices = devices.map(device => ({
-        id: device.device_id,
-        type: device.device_type || device.model || 'Unknown'
+      const ramsesDevices = devices.map((device) => normalizeDeviceDescriptor({
+        device_id: device.device_id,
+        slugs: device.slugs,
+        slug_label: device.slug_label,
+        device_type: device.device_type,
+        model: device.model,
+        type: device.type,
       }));
 
       console.log('🎯 Found', ramsesDevices.length, 'Ramses devices via WebSocket');

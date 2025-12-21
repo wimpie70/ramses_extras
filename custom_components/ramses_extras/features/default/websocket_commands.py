@@ -16,6 +16,7 @@ from ...const import (
     discover_ws_commands,
     get_all_ws_commands,
 )
+from ...framework.helpers.device.filter import DeviceFilter
 from ...framework.helpers.ramses_commands import RamsesCommands
 from ...framework.helpers.websocket_base import GetEntityMappingsCommand
 
@@ -266,6 +267,13 @@ async def ws_get_available_devices(
                     return str(value)
         return None
 
+    def _extract_device_slugs(device: Any) -> list[str]:
+        try:
+            slugs = DeviceFilter._get_device_slugs(device)
+            return [str(slug) for slug in slugs if str(slug)]
+        except Exception:  # pragma: no cover - defensive
+            return []
+
     devices = hass.data.get(DOMAIN, {}).get("devices", [])
     results: list[dict[str, Any]] = []
     if isinstance(devices, list):
@@ -273,10 +281,14 @@ async def ws_get_available_devices(
             device_id = _extract_device_id(device)
             if not device_id:
                 continue
+            slugs = _extract_device_slugs(device)
+            slug_label = ", ".join(dict.fromkeys(slugs)) if slugs else None
             results.append(
                 {
                     "device_id": device_id,
                     "device_type": _extract_device_type(device) or "Unknown",
+                    "slugs": slugs,
+                    "slug_label": slug_label,
                 }
             )
 

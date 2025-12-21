@@ -89,7 +89,7 @@ function getHumidityControlEntities(deviceId, hass) {
         attributes: hass.states[entityId].attributes || {}
       });
     } else {
-      console.log('❌ Missing humidity entity:', entityId);
+      // console.log('❌ Missing humidity entity:', entityId);
     }
   });
 
