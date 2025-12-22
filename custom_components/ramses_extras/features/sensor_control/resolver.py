@@ -10,38 +10,9 @@ from typing import Any, Dict, List, Optional
 from homeassistant.core import HomeAssistant
 
 from ...const import DOMAIN
+from .const import INTERNAL_SENSOR_MAPPINGS, SUPPORTED_METRICS
 
 _LOGGER = logging.getLogger(__name__)
-
-# Supported metrics for sensor control
-SUPPORTED_METRICS = [
-    "indoor_temperature",
-    "indoor_humidity",
-    "co2",
-    "outdoor_temperature",
-    "outdoor_humidity",
-    "indoor_abs_humidity",
-    "outdoor_abs_humidity",
-]
-
-# Internal sensor mappings for supported device types
-INTERNAL_SENSOR_MAPPINGS = {
-    "FAN": {
-        "indoor_temperature": "sensor.{device_id}_temperature",
-        "indoor_humidity": "sensor.{device_id}_humidity",
-        "co2": "sensor.{device_id}_co2",
-        "outdoor_temperature": "sensor.{device_id}_outdoor_temperature",
-        "outdoor_humidity": "sensor.{device_id}_outdoor_humidity",
-    },
-    "CO2": {
-        "indoor_temperature": "sensor.{device_id}_temperature",
-        "indoor_humidity": "sensor.{device_id}_humidity",
-        "co2": "sensor.{device_id}_co2",
-        # CO2 devices typically don't have outdoor sensors
-        "outdoor_temperature": None,
-        "outdoor_humidity": None,
-    },
-}
 
 
 class SensorControlResolver:

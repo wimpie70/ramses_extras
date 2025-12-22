@@ -4,6 +4,36 @@ from typing import Any
 
 DOMAIN = "sensor_control"
 
+# Supported metrics for sensor control
+SUPPORTED_METRICS = [
+    "indoor_temperature",
+    "indoor_humidity",
+    "co2",
+    "outdoor_temperature",
+    "outdoor_humidity",
+    "indoor_abs_humidity",
+    "outdoor_abs_humidity",
+]
+
+# Internal sensor mappings for supported device types
+INTERNAL_SENSOR_MAPPINGS = {
+    "FAN": {
+        "indoor_temperature": "sensor.{device_id}_temperature",
+        "indoor_humidity": "sensor.{device_id}_humidity",
+        "co2": "sensor.{device_id}_co2",
+        "outdoor_temperature": "sensor.{device_id}_outdoor_temperature",
+        "outdoor_humidity": "sensor.{device_id}_outdoor_humidity",
+    },
+    "CO2": {
+        "indoor_temperature": "sensor.{device_id}_temperature",
+        "indoor_humidity": "sensor.{device_id}_humidity",
+        "co2": "sensor.{device_id}_co2",
+        # CO2 devices typically don't have outdoor sensors
+        "outdoor_temperature": None,
+        "outdoor_humidity": None,
+    },
+}
+
 SENSOR_CONTROL_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {}
 SENSOR_CONTROL_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {}
 SENSOR_CONTROL_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {}
@@ -29,6 +59,8 @@ def load_feature() -> None:
 
 __all__ = [
     "DOMAIN",
+    "SUPPORTED_METRICS",
+    "INTERNAL_SENSOR_MAPPINGS",
     "SENSOR_CONTROL_SENSOR_CONFIGS",
     "SENSOR_CONTROL_SWITCH_CONFIGS",
     "SENSOR_CONTROL_NUMBER_CONFIGS",
