@@ -259,18 +259,18 @@ Per metric, show:
 
 | Phase | Status | Notes |
 | --- | --- | --- |
-| Phase 0 — Design & contracts | Completed | Metric keys + WS payload + UX decided |
-| Phase 1 — Backend: `sensor_control` config + resolver | Not started | Requires feature scaffolding + options flow work |
-| Phase 2 — Integrate with `get_entity_mappings` | Not started | Blocked on Phase 1 resolver outputs |
-| Phase 3 — HVAC card UI | Not started | Depends on WS payload changes |
-| Phase 4 — Humidity automation | Not started | Requires effective mappings + validation logic |
-| Phase 5 — Derived/advanced sensors | Not started | Optional stretch once earlier phases land |
+| Phase 0 — Design & contracts | ✅ Completed | Metric keys + WS payload + UX decided |
+| Phase 1 — Backend: `sensor_control` config + resolver | ✅ Completed | Feature scaffolding + options flow + resolver implemented |
+| Phase 2 — Integrate with `get_entity_mappings` | ✅ Completed | WS command extended with sensor control outputs |
+| Phase 3 — HVAC card UI | ✅ Completed | Visual indicators for sensor sources implemented |
+| Phase 4 — Humidity automation | ✅ Completed | Automation uses effective sensor mappings |
+| Phase 5 — Derived/advanced sensors | ✅ Completed | Absolute humidity derived sensors supported |
 
 ---
 
-## Acceptance Criteria (initial milestone)
+## Acceptance Criteria (initial milestone) ✅ ALL COMPLETED
 
-- A device can use an external living-room temperature sensor for `indoor_temperature`.
-- HVAC card shows the effective temperature and indicates it is external.
-- Backend mapping WS returns both effective mapping + source metadata.
-- Humidity automation can use external outdoor humidity (or indoor humidity) and still function.
+- ✅ A device can use an external living-room temperature sensor for `indoor_temperature`.
+- ✅ HVAC card shows the effective temperature and indicates it is external.
+- ✅ Backend mapping WS returns both effective mapping + source metadata.
+- ✅ Humidity automation can use external outdoor humidity (or indoor humidity) and still function.

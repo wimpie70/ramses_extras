@@ -40,6 +40,8 @@ class HvacFanCard extends RamsesBaseCard {
     this._cachedEntities = null; // Cache for getRequiredEntities
     this._entityMappings = null;
     this._entityMappingsLoading = false;
+    this._sensorSources = null; // Store sensor source information
+    this._rawInternalMappings = null; // Store raw internal mappings
     this.parameterSchema = null;
     this.availableParams = {};
     this._eventCheckTimer = null; // Timer for event checks
@@ -205,6 +207,16 @@ class HvacFanCard extends RamsesBaseCard {
         // Cache mappings for base getRequiredEntities()
         this._cachedEntities = result.mappings;
 
+        // Store sensor control sources if available
+        if (result.sources) {
+          this._sensorSources = result.sources;
+        }
+
+        // Store raw internal mappings if available
+        if (result.raw_internal) {
+          this._rawInternalMappings = result.raw_internal;
+        }
+
         // Merge entity mappings into config, but keep any explicit overrides
         const updatedConfig = { ...this._config };
         Object.entries(result.mappings).forEach(([key, value]) => {
@@ -225,6 +237,103 @@ class HvacFanCard extends RamsesBaseCard {
     } finally {
       this._entityMappingsLoading = false;
     }
+  }
+
+  /**
+   * Create sensor source indicator HTML for a given metric
+   * @param {string} metric - The metric name (e.g., 'indoor_temperature')
+   * @returns {string} HTML string for the sensor source indicator
+   */
+  _createSensorSourceIndicator(metric) {
+    if (!this._sensorSources || !this._sensorSources[metric]) {
+      return '';
+    }
+
+    const source = this._sensorSources[metric];
+    const { kind, entity_id, valid = true } = source;
+
+    // Don't show indicators for internal sensors (default behavior)
+    if (kind === 'internal') {
+      return '';
+    }
+
+    // Define display configuration for different metrics
+    const metricConfig = {
+      indoor_temperature: { icon: '🌡️', label: 'Indoor Temp' },
+      indoor_humidity: { icon: '💧', label: 'Indoor Humidity' },
+      outdoor_temperature: { icon: '🌡️', label: 'Outdoor Temp' },
+      outdoor_humidity: { icon: '💧', label: 'Outdoor Humidity' },
+      co2: { icon: '🫧', label: 'CO₂' },
+      indoor_abs_humidity: { icon: '💨', label: 'Indoor Abs Humidity' },
+      outdoor_abs_humidity: { icon: '💨', label: 'Outdoor Abs Humidity' },
+    };
+
+    const config = metricConfig[metric] || { icon: '📊', label: metric };
+
+    // Determine status and styling
+    let statusClass = 'sensor-source-external';
+    let statusText = '';
+
+    if (kind === 'external_entity') {
+      if (valid && entity_id) {
+        statusClass = 'sensor-source-external valid';
+        statusText = `External: ${entity_id}`;
+      } else {
+        statusClass = 'sensor-source-external invalid';
+        statusText = 'External: Invalid Entity';
+      }
+    } else if (kind === 'derived') {
+      statusClass = 'sensor-source-derived';
+      statusText = 'Derived Sensor';
+    } else if (kind === 'none') {
+      statusClass = 'sensor-source-disabled';
+      statusText = 'Disabled';
+    }
+
+    return `
+      <div class="sensor-source-indicator ${statusClass}" title="${statusText}">
+        <span class="sensor-source-icon">${config.icon}</span>
+        <span class="sensor-source-label">${config.label}</span>
+        <span class="sensor-source-kind">${kind}</span>
+      </div>
+    `;
+  }
+
+  /**
+   * Create a comprehensive sensor sources panel for the card
+   * @returns {string} HTML string for the sensor sources panel
+   */
+  _createSensorSourcesPanel() {
+    if (!this._sensorSources) {
+      return '';
+    }
+
+    const metrics = [
+      'indoor_temperature',
+      'indoor_humidity',
+      'co2',
+      'outdoor_temperature',
+      'outdoor_humidity',
+      'indoor_abs_humidity',
+      'outdoor_abs_humidity',
+    ];
+
+    const indicators = metrics
+      .map(metric => this._createSensorSourceIndicator(metric))
+      .filter(html => html.trim() !== '');
+
+    if (indicators.length === 0) {
+      return '';
+    }
+
+    return `
+      <div class="sensor-sources-panel">
+        <div class="sensor-sources-title">Sensor Sources</div>
+        <div class="sensor-sources-grid">
+          ${indicators.join('')}
+        </div>
+      </div>
+    `;
   }
 
 
@@ -365,6 +474,7 @@ class HvacFanCard extends RamsesBaseCard {
     // Generate HTML using template functions
     const cardHtml = [
       createCardHeader(CARD_STYLE),
+      this._createSensorSourcesPanel(), // Add sensor sources panel
       createTopSection(templateData),
       createControlsSection(dehumEntitiesAvailable, config), // Pass availability flag and config
       createCardFooter(),

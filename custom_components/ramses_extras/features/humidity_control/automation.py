@@ -322,16 +322,31 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             dict[str, str], HUMIDITY_CONTROL_CONST.get("entity_mappings", {})
         )
 
-        for state_name, entity_template in state_mappings.items():
-            # Replace {device_id} placeholder in entity template
-            entity_id = entity_template.format(device_id=device_id)
-            state = self.hass.states.get(entity_id)
+        # Check if sensor_control is available and use effective mappings
+        sensor_control_mappings = await self._get_sensor_control_mappings(device_id)
+        if sensor_control_mappings:
+            _LOGGER.info(f"Using sensor_control mappings for device {device_id}")
+            # Use sensor_control effective mappings for sensor entities
+            effective_mappings = state_mappings.copy()
+            for state_name, entity_id in sensor_control_mappings.items():
+                if entity_id:  # Only override if sensor_control provides a valid entity
+                    effective_mappings[state_name] = entity_id
+            state_mappings = effective_mappings
+
+        for state_name, entity_id in state_mappings.items():
+            # Handle both template format (with {device_id}) and direct entity IDs
+            if "{device_id}" in entity_id:
+                actual_entity_id = entity_id.format(device_id=device_id)
+            else:
+                actual_entity_id = entity_id
+
+            state = self.hass.states.get(actual_entity_id)
 
             if not state:
-                raise ValueError(f"Entity {entity_id} not found")
+                raise ValueError(f"Entity {actual_entity_id} not found")
 
             if state.state in ["unavailable", "unknown"]:
-                raise ValueError(f"Entity {entity_id} state unavailable")
+                raise ValueError(f"Entity {actual_entity_id} state unavailable")
 
             # Determine entity type from entity_id and handle appropriately
             entity_type = self._extract_entity_type_from_id(entity_id)
@@ -339,6 +354,81 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             states[state_name] = value
 
         return states
+
+    async def _get_sensor_control_mappings(
+        self, device_id: str
+    ) -> dict[str, str] | None:
+        """Get effective sensor mappings from sensor_control feature.
+
+        Args:
+            device_id: Device identifier
+
+        Returns:
+            Dictionary of state_name to entity_id mappings,
+            or None if sensor_control not available
+        """
+        try:
+            # Check if sensor_control feature is enabled
+            if not self._is_sensor_control_enabled():
+                return None
+
+            # Use the same WebSocket command as the frontend
+            from custom_components.ramses_extras.framework.helpers.websocket_base import (  # noqa: E501
+                GetEntityMappingsCommand,
+            )
+
+            # Create and execute the command for sensor_control feature
+            cmd = GetEntityMappingsCommand(self.hass, "sensor_control")
+
+            # Mock WebSocket connection for command execution
+            class MockConnection:
+                def __init__(self) -> None:
+                    self.result: dict[str, Any] | None = None
+
+                def send_result(self, msg_id: str, result: dict[str, Any]) -> None:
+                    self.result = result
+
+            connection = MockConnection()
+            # Use dict instead of MockMessage
+            msg = {"id": "test", "device_id": device_id}
+
+            await cmd.execute(connection, msg)
+
+            if connection.result and connection.result.get("success"):
+                mappings = connection.result.get("mappings", {})
+                _LOGGER.debug(
+                    f"Got sensor_control mappings for {device_id}: {mappings}"
+                )
+                return cast(dict[str, str], mappings)
+            _LOGGER.warning(f"Failed to get sensor_control mappings for {device_id}")
+            return None
+
+        except Exception as err:
+            _LOGGER.error(
+                f"Error getting sensor_control mappings for {device_id}: {err}"
+            )
+            return None
+
+    def _is_sensor_control_enabled(self) -> bool:
+        """Check if sensor_control feature is enabled.
+
+        Returns:
+            True if sensor_control is enabled, False otherwise
+        """
+        try:
+            config_entry = self.hass.data.get(DOMAIN, {}).get("config_entry")
+            if not config_entry:
+                return False
+
+            enabled_features = (
+                config_entry.data.get("enabled_features")
+                or config_entry.options.get("enabled_features")
+                or {}
+            )
+
+            return bool(enabled_features.get("sensor_control", False))
+        except Exception:
+            return False
 
     async def start(self) -> None:
         """Start the humidity control automation.

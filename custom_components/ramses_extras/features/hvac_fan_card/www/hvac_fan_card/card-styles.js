@@ -16,6 +16,92 @@ export const CARD_STYLE = `
   transition: all 0.3s ease;
 }
 
+/* ====== SENSOR SOURCES PANEL ====== */
+.sensor-sources-panel {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sensor-sources-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.8;
+}
+
+.sensor-sources-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.sensor-source-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: default;
+  position: relative;
+}
+
+.sensor-source-indicator:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Sensor source status styles */
+.sensor-source-external.valid {
+  background: rgba(76, 175, 80, 0.2);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  color: #a5d6a7;
+}
+
+.sensor-source-external.invalid {
+  background: rgba(244, 67, 54, 0.2);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  color: #ef9a9a;
+}
+
+.sensor-source-derived {
+  background: rgba(33, 150, 243, 0.2);
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  color: #90caf9;
+}
+
+.sensor-source-disabled {
+  background: rgba(158, 158, 158, 0.2);
+  border: 1px solid rgba(158, 158, 158, 0.3);
+  color: #e0e0e0;
+}
+
+.sensor-source-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sensor-source-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.sensor-source-kind {
+  font-size: 9px;
+  text-transform: uppercase;
+  opacity: 0.7;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
 /* ====== MAIN CONTENT SECTIONS ====== */
 .top-section, .parameter-edit-section {
   background: #f5f5f5;

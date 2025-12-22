@@ -39,6 +39,19 @@ note: the following are tested with an Orcon WTW FAN
 - **Bilingual Support**: English and Dutch translations
 - **Full Test Coverage**: Comprehensive test suite with validation
 
+### **✅ Sensor Control**
+
+**Central sensor source management and override system:**
+
+- **Flexible Source Selection**: Configure external entities for any sensor metric
+- **Supported Metrics**: Indoor/outdoor temperature, humidity, CO₂, and absolute humidity
+- **Fail-Closed Behavior**: Invalid external entities safely disable rather than fallback
+- **Source Types**: Internal (default), external entities, derived (absolute humidity), or disabled
+- **Visual Indicators**: HVAC fan card shows sensor source status with color-coded indicators
+- **WebSocket Integration**: Real-time sensor mapping updates via `ramses_extras/get_entity_mappings`
+- **Automation Integration**: Humidity control automatically uses effective sensor mappings
+- **Per-Device Configuration**: Different sensor sources for each FAN/CO2 device
+
 ### **✅ HVAC Fan Card**
 
 **Advanced Lovelace card for ventilation system control:**
