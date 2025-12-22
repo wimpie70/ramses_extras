@@ -274,7 +274,7 @@ class HvacFanCard extends RamsesBaseCard {
     let statusClass = 'sensor-source-external';
     let statusText = '';
 
-    if (kind === 'external_entity') {
+    if (kind === 'external_entity' || kind === 'external') {
       if (valid && entity_id) {
         statusClass = 'sensor-source-external valid';
         statusText = `External: ${entity_id}`;
@@ -435,11 +435,17 @@ class HvacFanCard extends RamsesBaseCard {
       flowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow : null,
       exhaustFlowRate: da31Data.exhaust_flow !== undefined ? da31Data.exhaust_flow : null,
       // Other data - raw values only
-      co2Level: hass.states[config.co2_entity]?.state
-        ? isNaN(parseFloat(hass.states[config.co2_entity].state))
-          ? null
-          : parseFloat(hass.states[config.co2_entity].state)
-        : null,
+      // Prefer sensor_control-resolved CO2 mapping (config.co2) when available,
+      // fall back to the original co2_entity from feature constants.
+      co2Level: (() => {
+        const co2EntityId = config.co2 || config.co2_entity;
+        const state = co2EntityId && hass.states[co2EntityId]?.state;
+        if (!state) {
+          return null;
+        }
+        const numeric = parseFloat(state);
+        return Number.isNaN(numeric) ? null : numeric;
+      })(),
       // Dehumidifier entities (only if available)
       dehumMode: dehumEntitiesAvailable
         ? hass.states[config.dehum_mode_entity]?.state || 'off'

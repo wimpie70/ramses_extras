@@ -191,8 +191,10 @@ class SensorControlResolver:
                 {**source_metadata, "entity_id": internal_entity_id},
             )
 
-        # Handle external_entity kind
-        if override_kind == "external_entity":
+        # Handle external entity kind
+        # Accept both the canonical value "external_entity" and
+        # the shorthand "external" used by the config flow.
+        if override_kind in ("external_entity", "external"):
             if override_entity_id and self._entity_exists(override_entity_id):
                 return override_entity_id, source_metadata
             # Fail-closed: invalid external entity

@@ -20,6 +20,7 @@ from .const import (
     GITHUB_WIKI_URL,
     INTEGRATION_DIR,
 )
+from .features.sensor_control.const import SUPPORTED_METRICS
 from .framework.helpers.config_flow import ConfigFlowHelper
 from .framework.helpers.device.filter import DeviceFilter
 from .framework.helpers.entity.simple_entity_manager import (
@@ -457,6 +458,77 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="view_configuration",
+            description_placeholders={"info": info_text},
+            data_schema=vol.Schema({}),
+        )
+
+    async def async_step_sensor_control_overview(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Show a read-only overview of sensor_control mappings.
+
+        This summarizes per-device mappings for each supported metric, so users
+        can quickly see which entities are in use without diving into
+        per-device sensor_control submenus.
+        """
+
+        # Ensure we have the latest options snapshot
+        self._refresh_config_entry()
+
+        options = dict(self._config_entry.options)
+        sensor_control_options = options.get("sensor_control") or {}
+        sources: dict[str, dict[str, dict[str, Any]]] = sensor_control_options.get(
+            "sources", {}
+        )
+
+        if not sources:
+            info_text = (
+                "📡 **Sensor Control Overview**\n\n"
+                "No sensor control mappings have been configured yet.\n\n"
+                "Use the Sensor Control feature menu to assign sensors per device."
+            )
+            return self.async_show_form(
+                step_id="sensor_control_overview",
+                description_placeholders={"info": info_text},
+                data_schema=vol.Schema({}),
+            )
+
+        # Build per-device summary
+        lines: list[str] = ["📡 **Sensor Control Overview**\n"]
+
+        # Sort device keys for stable display
+        for device_key in sorted(sources.keys()):
+            device_sources = sources.get(device_key) or {}
+            # Convert back to colon-separated device id for readability
+            device_id = device_key.replace("_", ":")
+            lines.append(f"\n**Device {device_id}** ({device_key}):")
+
+            # Show metrics in a fixed order using SUPPORTED_METRICS
+            for metric in SUPPORTED_METRICS:
+                override = device_sources.get(metric) or {}
+                kind = str(override.get("kind") or "internal")
+                entity_id = override.get("entity_id")
+
+                if kind == "internal":
+                    summary = "internal"
+                elif kind in ("external", "external_entity"):
+                    if entity_id:
+                        summary = f"external → {entity_id}"
+                    else:
+                        summary = "external (no entity)"
+                elif kind == "derived":
+                    summary = "derived"
+                elif kind == "none":
+                    summary = "disabled"
+                else:
+                    summary = f"{kind}"
+
+                lines.append(f"- {metric}: {summary}")
+
+        info_text = "\n".join(lines)
+
+        return self.async_show_form(
+            step_id="sensor_control_overview",
             description_placeholders={"info": info_text},
             data_schema=vol.Schema({}),
         )
@@ -1357,10 +1429,15 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     "✅ Matrix changes applied successfully - options flow complete"
                 )
 
-                # For options flows, complete by returning a result that ends the flow
-                # Options flows complete by not specifying a next step
-                #  and returning True for last_step
-                return self.async_create_entry(title="", data={})
+                # For options flows, complete by returning a result that ends the flow.
+                # IMPORTANT: Do not wipe existing config_entry.options here; other
+                # feature-specific config flows (e.g. sensor_control) persist their
+                # settings in config_entry.options. Use the latest options snapshot
+                # from the config entry so those settings remain intact.
+                return self.async_create_entry(
+                    title="",
+                    data=dict(self._config_entry.options),
+                )
 
             except Exception as e:
                 _LOGGER.error(f"❌ Error applying matrix changes: {e}")
