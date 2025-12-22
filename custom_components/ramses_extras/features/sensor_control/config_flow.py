@@ -6,14 +6,64 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.helpers import selector
 
-from ...const import AVAILABLE_FEATURES
+from ...const import AVAILABLE_FEATURES, DOMAIN
+from ...framework.helpers.device.filter import DeviceFilter
 from .const import SUPPORTED_METRICS
+from .device_types import DEVICE_TYPE_HANDLERS
 
 _LOGGER = logging.getLogger(__name__)
 
 
 def _device_key(device_id: str) -> str:
     return device_id.replace(":", "_")
+
+
+def _get_device_type(flow: Any, device_id: str) -> str | None:
+    """Best-effort lookup of device type for a given device_id.
+
+    This mirrors the logic used by the websocket helpers, but is kept local to
+    avoid adding hard dependencies between subsystems.
+    """
+
+    try:
+        devices = flow.hass.data.get(DOMAIN, {}).get("devices", [])  # noqa: SLF001
+        for device in devices:
+            # Reuse the same device_id extraction strategy as the default
+            # websocket helpers so we reliably match the selected device.
+            extracted_id: str | None
+            if isinstance(device, str):
+                extracted_id = device
+            else:
+                extracted_id = None
+                for attr in ("id", "device_id", "_id", "name"):
+                    if hasattr(device, attr):
+                        value = getattr(device, attr)
+                        if value is not None:
+                            extracted_id = str(value)
+                            break
+
+            if extracted_id != device_id:
+                continue
+
+            # We found the matching device; now derive a logical device type
+            # using the central DeviceFilter slug logic (FAN, CO2, etc.).
+            slugs = DeviceFilter._get_device_slugs(device)
+            if not slugs:
+                return None
+
+            # Prefer a slug that matches a known handler key.
+            for slug in slugs:
+                key = str(slug).upper()
+                if key in DEVICE_TYPE_HANDLERS:
+                    return key
+
+            # Fallback: return the first slug in uppercase so callers can
+            # still make a reasonable decision.
+            return str(slugs[0]).upper()
+    except Exception:  # pragma: no cover - defensive best-effort lookup
+        _LOGGER.exception("Failed to get device type for %s", device_id)
+
+    return None
 
 
 async def async_step_sensor_control_config(
@@ -141,6 +191,21 @@ async def async_step_sensor_control_config(
         device_sources,
     )
 
+    # Resolve device type and select an appropriate handler. For now we support
+    # FAN and CO2 explicitly; other types will fall back to the FAN handler so
+    # they at least get a working UI.
+    raw_device_type = _get_device_type(flow, selected_device_id) or "FAN"
+    device_type = str(raw_device_type).upper()
+    handler = DEVICE_TYPE_HANDLERS.get(device_type) or DEVICE_TYPE_HANDLERS["FAN"]
+
+    _LOGGER.debug(
+        "Sensor control handler for device %s (type=%s -> key=%s): %s",
+        selected_device_id,
+        raw_device_type,
+        device_type,
+        getattr(handler, "__name__", repr(handler)),
+    )
+
     def _get_kind(metric: str, default: str = "internal") -> str:
         raw = device_sources.get(metric) or {}
         kind = raw.get("kind")
@@ -208,22 +273,7 @@ async def async_step_sensor_control_config(
             flow._sensor_control_group_stage = action
             return await async_step_sensor_control_config(flow, None)
 
-        group_options = [
-            selector.SelectOptionDict(
-                value="indoor_basic", label="Indoor temperature & humidity"
-            ),
-            selector.SelectOptionDict(
-                value="outdoor_basic", label="Outdoor temperature & humidity"
-            ),
-            selector.SelectOptionDict(value="co2", label="CO2"),
-            selector.SelectOptionDict(
-                value="indoor_abs", label="Indoor absolute humidity inputs"
-            ),
-            selector.SelectOptionDict(
-                value="outdoor_abs", label="Outdoor absolute humidity inputs"
-            ),
-            selector.SelectOptionDict(value="done", label="Finish editing device"),
-        ]
+        group_options = handler.get_group_options(selected_device_id)
 
         menu_schema = vol.Schema(
             {
@@ -250,72 +300,14 @@ async def async_step_sensor_control_config(
             description_placeholders={"info": info_text},
         )
 
-    # Handle submissions for each group step
+    # Handle submissions for each group step via the per-device-type handler
     if user_input is not None:
-        if group_stage == "indoor_basic":
-            # Indoor temperature and humidity
-            device_sources["indoor_temperature"] = _source_from_input(
-                user_input,
-                "indoor_temperature_kind",
-                "indoor_temperature_entity",
-                False,
-            )
-            device_sources["indoor_humidity"] = _source_from_input(
-                user_input,
-                "indoor_humidity_kind",
-                "indoor_humidity_entity",
-                False,
-            )
-        elif group_stage == "outdoor_basic":
-            # Outdoor temperature and humidity
-            device_sources["outdoor_temperature"] = _source_from_input(
-                user_input,
-                "outdoor_temperature_kind",
-                "outdoor_temperature_entity",
-                False,
-            )
-            device_sources["outdoor_humidity"] = _source_from_input(
-                user_input,
-                "outdoor_humidity_kind",
-                "outdoor_humidity_entity",
-                False,
-            )
-        elif group_stage == "co2":
-            # CO2 source
-            device_sources["co2"] = _source_from_input(
-                user_input,
-                "co2_kind",
-                "co2_entity",
-                True,
-            )
-        elif group_stage == "indoor_abs":
-            # Indoor absolute humidity inputs
-            device_abs_inputs["indoor_abs_humidity"] = {
-                "temperature": _abs_part_from_input(
-                    user_input,
-                    "indoor_abs_humidity_temperature_kind",
-                    "indoor_abs_humidity_temperature_entity",
-                ),
-                "humidity": _abs_part_from_input(
-                    user_input,
-                    "indoor_abs_humidity_humidity_kind",
-                    "indoor_abs_humidity_humidity_entity",
-                ),
-            }
-        elif group_stage == "outdoor_abs":
-            # Outdoor absolute humidity inputs
-            device_abs_inputs["outdoor_abs_humidity"] = {
-                "temperature": _abs_part_from_input(
-                    user_input,
-                    "outdoor_abs_humidity_temperature_kind",
-                    "outdoor_abs_humidity_temperature_entity",
-                ),
-                "humidity": _abs_part_from_input(
-                    user_input,
-                    "outdoor_abs_humidity_humidity_kind",
-                    "outdoor_abs_humidity_humidity_entity",
-                ),
-            }
+        device_sources, device_abs_inputs = handler.handle_group_submission(
+            group_stage,
+            user_input,
+            device_sources,
+            device_abs_inputs,
+        )
 
         # Persist updates for this device
         sources[dkey] = device_sources
@@ -332,7 +324,9 @@ async def async_step_sensor_control_config(
             sensor_control_options,
         )
 
-        await flow.hass.config_entries.async_update_entry(  # noqa: SLF001
+        # async_update_entry is not a coroutine in this HA version; it returns a
+        # bool and must not be awaited.
+        flow.hass.config_entries.async_update_entry(  # noqa: SLF001
             flow._config_entry,  # noqa: SLF001
             options=options,
         )
@@ -354,161 +348,19 @@ async def async_step_sensor_control_config(
         selector.EntitySelectorConfig(domain=["sensor"])
     )
 
-    # Per-group schemas
-    if group_stage == "indoor_basic":
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    "indoor_temperature_kind",
-                    default=_get_kind("indoor_temperature"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=kind_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(
-                    "indoor_temperature_entity",
-                    default=_get_entity("indoor_temperature"),
-                ): sensor_selector,
-                vol.Required(
-                    "indoor_humidity_kind",
-                    default=_get_kind("indoor_humidity"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=kind_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(
-                    "indoor_humidity_entity",
-                    default=_get_entity("indoor_humidity"),
-                ): sensor_selector,
-            }
+    # Per-group schemas via the per-device-type handler
+    try:
+        schema, info_suffix = handler.build_group_schema(
+            group_stage,
+            device_sources,
+            device_abs_inputs,
+            kind_options,
+            kind_options_with_none,
+            sensor_selector,
         )
-        info_suffix = "Indoor temperature and humidity sources."
-    elif group_stage == "outdoor_basic":
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    "outdoor_temperature_kind",
-                    default=_get_kind("outdoor_temperature"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=kind_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(
-                    "outdoor_temperature_entity",
-                    default=_get_entity("outdoor_temperature"),
-                ): sensor_selector,
-                vol.Required(
-                    "outdoor_humidity_kind",
-                    default=_get_kind("outdoor_humidity"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=kind_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(
-                    "outdoor_humidity_entity",
-                    default=_get_entity("outdoor_humidity"),
-                ): sensor_selector,
-            }
-        )
-        info_suffix = "Outdoor temperature and humidity sources."
-    elif group_stage == "co2":
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    "co2_kind", default=_get_kind("co2")
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=kind_options_with_none,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional("co2_entity", default=_get_entity("co2")): sensor_selector,
-            }
-        )
-        info_suffix = "CO2 sensor source."
-    elif group_stage == "indoor_abs":
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    "indoor_abs_humidity_temperature_kind",
-                    default=_get_abs_kind("indoor_abs_humidity", "temperature"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=kind_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(
-                    "indoor_abs_humidity_temperature_entity",
-                    default=_get_abs_entity("indoor_abs_humidity", "temperature"),
-                ): sensor_selector,
-                vol.Required(
-                    "indoor_abs_humidity_humidity_kind",
-                    default=_get_abs_kind("indoor_abs_humidity", "humidity"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=kind_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(
-                    "indoor_abs_humidity_humidity_entity",
-                    default=_get_abs_entity("indoor_abs_humidity", "humidity"),
-                ): sensor_selector,
-            }
-        )
-        info_suffix = "Indoor absolute humidity input sensors."
-    elif group_stage == "outdoor_abs":
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    "outdoor_abs_humidity_temperature_kind",
-                    default=_get_abs_kind("outdoor_abs_humidity", "temperature"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=kind_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(
-                    "outdoor_abs_humidity_temperature_entity",
-                    default=_get_abs_entity("outdoor_abs_humidity", "temperature"),
-                ): sensor_selector,
-                vol.Required(
-                    "outdoor_abs_humidity_humidity_kind",
-                    default=_get_abs_kind("outdoor_abs_humidity", "humidity"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=kind_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-                vol.Optional(
-                    "outdoor_abs_humidity_humidity_entity",
-                    default=_get_abs_entity("outdoor_abs_humidity", "humidity"),
-                ): sensor_selector,
-            }
-        )
-        info_suffix = "Outdoor absolute humidity input sensors."
-    else:
-        # Fallback to group menu if something unexpected happens
+    except Exception:
+        # If the handler does not support this group (or any other error
+        # occurs), fall back to the group menu to avoid breaking the flow.
         flow._sensor_control_group_stage = "select_group"
         return await async_step_sensor_control_config(flow, None)
 

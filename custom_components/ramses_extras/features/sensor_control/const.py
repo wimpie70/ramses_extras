@@ -24,14 +24,7 @@ INTERNAL_SENSOR_MAPPINGS = {
         "outdoor_temperature": "sensor.{device_id}_outdoor_temperature",
         "outdoor_humidity": "sensor.{device_id}_outdoor_humidity",
     },
-    "CO2": {
-        "indoor_temperature": "sensor.{device_id}_temperature",
-        "indoor_humidity": "sensor.{device_id}_humidity",
-        "co2": "sensor.{device_id}_co2",
-        # CO2 devices typically don't have outdoor sensors
-        "outdoor_temperature": None,
-        "outdoor_humidity": None,
-    },
+    "CO2": {},
 }
 
 SENSOR_CONTROL_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {}

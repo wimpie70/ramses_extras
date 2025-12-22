@@ -124,7 +124,7 @@ class SensorControlResolver:
     def _get_internal_mappings(
         self, device_id: str, device_type: str
     ) -> dict[str, str | None]:
-        """Get internal sensor mappings for a device.
+        """Get the internal (default) sensor mappings for a device.
 
         Args:
             device_id: Device ID
@@ -135,8 +135,8 @@ class SensorControlResolver:
         """
         device_key = device_id.replace(":", "_")
         internal_mappings = INTERNAL_SENSOR_MAPPINGS.get(device_type, {})
-        if not isinstance(internal_mappings, dict):
-            internal_mappings = {}
+        # INTERNAL_SENSOR_MAPPINGS.get() always returns a dict, so no need for
+        # isinstance check
 
         result: dict[str, str | None] = {}
         for metric, template in internal_mappings.items():

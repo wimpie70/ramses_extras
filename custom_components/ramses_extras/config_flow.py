@@ -1,3 +1,5 @@
+import asyncio
+import inspect
 import json
 import logging
 import shutil
@@ -616,11 +618,35 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         # Add high-level feature/device summary from helper
         feature_device_summary = helper.get_feature_device_summary()
 
+        # Add a brief summary of current sensor_control mappings so that
+        # sensor-related changes are visible in the confirmation step.
+        sensor_control_summary = ""
+        try:
+            options = dict(self._config_entry.options)
+            sensor_control_options = options.get("sensor_control") or {}
+            sources: dict[str, dict[str, Any]] = sensor_control_options.get(
+                "sources", {}
+            )
+            if sources:
+                device_ids = [key.replace("_", ":") for key in sorted(sources.keys())]
+                joined_ids = ", ".join(device_ids)
+                sensor_control_summary = (
+                    "\nSensor control mappings are configured for devices: "
+                    f"{joined_ids}."
+                )
+        except Exception:
+            # Best-effort only; do not break the confirm step if options are
+            # unexpectedly shaped.
+            sensor_control_summary = ""
+
         info_text = "✅ **Confirm configuration changes**\n\n"
         if feature_change_lines:
             info_text += "Feature changes:\n" + "\n".join(feature_change_lines) + "\n\n"
 
         info_text += feature_device_summary
+
+        if sensor_control_summary:
+            info_text += sensor_control_summary + "\n"
 
         return self.async_show_form(
             step_id="confirm",
@@ -783,7 +809,15 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             if hasattr(feature_config_flow, config_function_name):
                 config_function = getattr(feature_config_flow, config_function_name)
                 _LOGGER.info(f"📦 Using feature-specific config flow for {feature_id}")
-                return await config_function(self, user_input)
+                # Support both async and sync feature-specific config flows.
+                if asyncio.iscoroutinefunction(config_function):
+                    return await config_function(self, user_input)
+
+                result = config_function(self, user_input)
+                if inspect.isawaitable(result):
+                    return await result
+
+                return result
 
             _LOGGER.debug(
                 f"Feature {feature_id} has config_flow.py but no "
