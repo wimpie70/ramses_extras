@@ -205,17 +205,25 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
                 else:
                     parsed_mappings = entity_mappings
 
-                # Return as a clean dictionary with templates
-                self._send_success(
-                    connection,
-                    msg["id"],
-                    {
-                        "mappings": parsed_mappings,  # Dictionary of parsed templates
-                        "success": True,
-                        "feature_identifier": self.feature_identifier,
-                        "device_id": device_id,
-                    },
-                )
+                # Build base result
+                result = {
+                    "mappings": parsed_mappings,  # Dictionary of parsed templates
+                    "success": True,
+                    "feature_identifier": self.feature_identifier,
+                    "device_id": device_id,
+                }
+
+                # Apply sensor_control overrides if enabled and device_id provided
+                if device_id and self._is_sensor_control_enabled():
+                    sensor_result = await self._apply_sensor_control_overrides(
+                        device_id, parsed_mappings
+                    )
+                    if sensor_result:
+                        # Merge sensor control results
+                        result.update(sensor_result)
+
+                # Return the complete result
+                self._send_success(connection, msg["id"], result)
             else:
                 self._send_error(
                     connection,
@@ -357,6 +365,105 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
                 f"Failed to get entity mappings for {self.feature_identifier}: {error}"
             )
             return {}
+
+    def _is_sensor_control_enabled(self) -> bool:
+        """Check if sensor_control feature is enabled.
+
+        Returns:
+            True if sensor_control is enabled, False otherwise
+        """
+        try:
+            from ...const import DOMAIN
+
+            config_entry = self.hass.data.get(DOMAIN, {}).get("config_entry")
+            if not config_entry:
+                return False
+
+            enabled_features = (
+                config_entry.data.get("enabled_features")
+                or config_entry.options.get("enabled_features")
+                or {}
+            )
+
+            return bool(enabled_features.get("sensor_control", False))
+        except Exception:
+            return False
+
+    async def _apply_sensor_control_overrides(
+        self, device_id: str, base_mappings: dict[str, str]
+    ) -> dict[str, Any]:
+        """Apply sensor control overrides to base mappings.
+
+        Args:
+            device_id: Device ID
+            base_mappings: Base entity mappings from feature
+
+        Returns:
+            Dictionary with sensor control results to merge into main response
+        """
+        try:
+            # Import resolver to avoid circular imports
+            from ...features.sensor_control.resolver import SensorControlResolver
+
+            resolver = SensorControlResolver(self.hass)
+
+            # Determine device type from device registry or fallback
+            device_type = self._get_device_type(device_id)
+            if not device_type:
+                self._logger.warning(
+                    f"Could not determine device type for {device_id}, "
+                    "skipping sensor control overrides"
+                )
+                return {}
+
+            # Get sensor control resolution
+            sensor_result = await resolver.resolve_entity_mappings(
+                device_id, device_type
+            )
+
+            # Merge sensor control mappings with base mappings
+            # Sensor control takes precedence for supported metrics
+            merged_mappings = base_mappings.copy()
+            merged_mappings.update(sensor_result["mappings"])
+
+            return {
+                "mappings": merged_mappings,
+                "sources": sensor_result["sources"],
+                "raw_internal": sensor_result.get("raw_internal"),
+                "abs_humidity_inputs": sensor_result.get("abs_humidity_inputs", {}),
+            }
+
+        except Exception as err:
+            self._logger.error(f"Failed to apply sensor control overrides: {err}")
+            return {}
+
+    def _get_device_type(self, device_id: str) -> str | None:
+        """Get device type for a device ID.
+
+        Args:
+            device_id: Device ID
+
+        Returns:
+            Device type (FAN, CO2, etc.) or None if not found
+        """
+        try:
+            from ...const import DOMAIN
+
+            devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
+            for device in devices:
+                if isinstance(device, dict):
+                    if device.get("device_id") == device_id:
+                        return device.get("type")
+                elif hasattr(device, "device_id"):
+                    if device.device_id == device_id:
+                        return getattr(device, "type", None)
+                elif hasattr(device, "id"):
+                    if device.id == device_id:
+                        return getattr(device, "type", None)
+        except Exception as err:
+            self._logger.error(f"Failed to get device type for {device_id}: {err}")
+
+        return None
 
 
 class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
