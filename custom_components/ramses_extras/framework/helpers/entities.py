@@ -82,7 +82,7 @@ def validate_humidity_value(value: float | None, entity_name: str) -> bool:
     """
     if value is None or not (0 <= value <= 100):
         _LOGGER.error(
-            "Invalid humidity value %.1f%% for %s (must be 0-100%%)", value, entity_name
+            "Invalid humidity value %s for %s (must be 0-100%%)", value, entity_name
         )
         return False
 
@@ -101,7 +101,7 @@ def validate_temperature_value(value: float | None, entity_name: str) -> bool:
     """
     if value is None or not (-50 <= value <= 100):
         _LOGGER.error(
-            "Invalid temperature %.1f°C for %s (must be -50 to 100°C)",
+            "Invalid temperature %s°C for %s (must be -50 to 100°C)",
             value,
             entity_name,
         )

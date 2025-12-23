@@ -22,6 +22,7 @@ optional = true
 
 [tool.poetry.group.test.dependencies]
  pytest-homeassistant-custom-component = "0.13.289"
+ pytest-cov = "^4.0.0"
 
 [build-system]
 requires = ["setuptools", "wheel"]
@@ -114,3 +115,4 @@ line-ending = "auto"
 
 [tool.pytest.ini_options]
   asyncio_mode = "auto"
+  addopts = "--cov=custom_components --cov-report=term-missing --cov-report=html --cov-fail-under=40"

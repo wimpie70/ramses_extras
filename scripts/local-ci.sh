@@ -73,7 +73,7 @@ fi
 
 # Run pytest
 echo "  🧪 Running pytest..."
-if pytest tests/ -v --tb=short; then
+if pytest tests/ -v --tb=short --cov=custom_components --cov-report=term-missing --cov-report=html; then
     print_status "pytest passed"
 else
     print_error "pytest failed"
