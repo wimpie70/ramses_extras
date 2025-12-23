@@ -273,21 +273,33 @@ class HvacFanCard extends RamsesBaseCard {
     // Determine status and styling
     let statusClass = 'sensor-source-external';
     let statusText = '';
+    let displayEntity = '';
 
     if (kind === 'external_entity' || kind === 'external') {
       if (valid && entity_id) {
         statusClass = 'sensor-source-external valid';
         statusText = `External: ${entity_id}`;
+        displayEntity = entity_id;
       } else {
         statusClass = 'sensor-source-external invalid';
         statusText = 'External: Invalid Entity';
+        displayEntity = entity_id || 'Invalid';
       }
     } else if (kind === 'derived') {
       statusClass = 'sensor-source-derived';
-      statusText = 'Derived Sensor';
+      // For derived sensors, show the actual entity being used from mappings
+      const actualEntity = this._entityMappings?.[metric];
+      if (actualEntity) {
+        statusText = `Derived: ${actualEntity}`;
+        displayEntity = actualEntity;
+      } else {
+        statusText = 'Derived Sensor';
+        displayEntity = 'Calculated';
+      }
     } else if (kind === 'none') {
       statusClass = 'sensor-source-disabled';
       statusText = 'Disabled';
+      displayEntity = 'Disabled';
     }
 
     return `
@@ -295,6 +307,7 @@ class HvacFanCard extends RamsesBaseCard {
         <span class="sensor-source-icon">${config.icon}</span>
         <span class="sensor-source-label">${config.label}</span>
         <span class="sensor-source-kind">${kind}</span>
+        <span class="sensor-source-entity">${displayEntity}</span>
       </div>
     `;
   }
@@ -359,6 +372,7 @@ class HvacFanCard extends RamsesBaseCard {
     // Generate HTML for parameter edit mode
     const cardHtml = [
       createCardHeader(CARD_STYLE),
+      this._createSensorSourcesPanel(), // Add sensor sources panel in settings
       createParameterEditSection(templateData),
       createCardFooter(),
     ].join('');
@@ -480,7 +494,6 @@ class HvacFanCard extends RamsesBaseCard {
     // Generate HTML using template functions
     const cardHtml = [
       createCardHeader(CARD_STYLE),
-      this._createSensorSourcesPanel(), // Add sensor sources panel
       createTopSection(templateData),
       createControlsSection(dehumEntitiesAvailable, config), // Pass availability flag and config
       createCardFooter(),

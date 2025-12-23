@@ -102,6 +102,17 @@ export const CARD_STYLE = `
   letter-spacing: 0.3px;
 }
 
+.sensor-source-entity {
+  font-size: 10px;
+  opacity: 0.8;
+  font-weight: 400;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: 4px;
+}
+
 /* ====== MAIN CONTENT SECTIONS ====== */
 .top-section, .parameter-edit-section {
   background: #f5f5f5;
