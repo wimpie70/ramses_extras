@@ -3,8 +3,14 @@ pytest_homeassistant_custom_component."""
 
 import asyncio
 from typing import Any, Generator
+from unittest import mock as _mock
 
 import pytest
+
+# Provide a minimal pytest.mock shim backed by unittest.mock so tests can use
+# pytest.mock.patch without requiring the pytest-mock plugin to be installed.
+if not hasattr(pytest, "mock"):
+    pytest.mock = _mock
 
 
 def sync_generate_entity_ids(
