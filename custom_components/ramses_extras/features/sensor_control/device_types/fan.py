@@ -49,17 +49,57 @@ def _source_from_input(
     return {"kind": "internal"}
 
 
-def _abs_part_from_input(
+def _abs_temp_part_from_input(
     data: dict[str, Any], kind_key: str, ent_key: str
 ) -> dict[str, Any]:
-    """Build an absolute-humidity input descriptor from form input."""
+    """Build temperature-side input for absolute humidity from form input.
+
+    kind options:
+    - "internal": use internal temperature sensor
+    - "external_temp": use external temperature entity
+    - "external_abs": use external absolute humidity entity directly
+    """
     kind = str(data.get(kind_key) or "internal")
-    if kind == "external":
-        ent = data.get(ent_key)
+    ent = data.get(ent_key)
+
+    if kind == "internal":
+        return {"kind": "internal"}
+
+    if kind in {"external_temp", "external_abs", "external"}:
         if ent:
-            return {"kind": "external", "entity_id": str(ent)}
+            # "external" from older configs is treated as "external_temp"
+            normalized = "external_temp" if kind == "external" else kind
+            return {"kind": normalized, "entity_id": str(ent)}
         # No valid external entity selected, fall back to internal
         return {"kind": "internal"}
+
+    return {"kind": "internal"}
+
+
+def _abs_humidity_part_from_input(
+    data: dict[str, Any], kind_key: str, ent_key: str
+) -> dict[str, Any]:
+    """Build humidity-side input for absolute humidity from form input.
+
+    kind options:
+    - "internal": use internal relative humidity sensor
+    - "external": use external relative humidity sensor
+    - "none": do not use humidity (metric may be disabled or direct abs)
+    """
+    kind = str(data.get(kind_key) or "internal")
+    ent = data.get(ent_key)
+
+    if kind == "internal":
+        return {"kind": "internal"}
+
+    if kind == "external":
+        if ent:
+            return {"kind": "external", "entity_id": str(ent)}
+        return {"kind": "internal"}
+
+    if kind == "none":
+        return {"kind": "none"}
+
     return {"kind": "internal"}
 
 
@@ -148,30 +188,46 @@ def handle_group_submission(
             True,
         )
     elif group_stage == "indoor_abs":
+        temp_cfg = _abs_temp_part_from_input(
+            user_input,
+            "indoor_abs_humidity_temperature_kind",
+            "indoor_abs_humidity_temperature_entity",
+        )
+        hum_cfg = _abs_humidity_part_from_input(
+            user_input,
+            "indoor_abs_humidity_humidity_kind",
+            "indoor_abs_humidity_humidity_entity",
+        )
+
+        if temp_cfg.get("kind") == "external_abs":
+            hum_cfg = {"kind": "none"}
+        elif hum_cfg.get("kind") == "none":
+            temp_cfg = {"kind": "none"}
+
         new_abs["indoor_abs_humidity"] = {
-            "temperature": _abs_part_from_input(
-                user_input,
-                "indoor_abs_humidity_temperature_kind",
-                "indoor_abs_humidity_temperature_entity",
-            ),
-            "humidity": _abs_part_from_input(
-                user_input,
-                "indoor_abs_humidity_humidity_kind",
-                "indoor_abs_humidity_humidity_entity",
-            ),
+            "temperature": temp_cfg,
+            "humidity": hum_cfg,
         }
     elif group_stage == "outdoor_abs":
+        temp_cfg = _abs_temp_part_from_input(
+            user_input,
+            "outdoor_abs_humidity_temperature_kind",
+            "outdoor_abs_humidity_temperature_entity",
+        )
+        hum_cfg = _abs_humidity_part_from_input(
+            user_input,
+            "outdoor_abs_humidity_humidity_kind",
+            "outdoor_abs_humidity_humidity_entity",
+        )
+
+        if temp_cfg.get("kind") == "external_abs":
+            hum_cfg = {"kind": "none"}
+        elif hum_cfg.get("kind") == "none":
+            temp_cfg = {"kind": "none"}
+
         new_abs["outdoor_abs_humidity"] = {
-            "temperature": _abs_part_from_input(
-                user_input,
-                "outdoor_abs_humidity_temperature_kind",
-                "outdoor_abs_humidity_temperature_entity",
-            ),
-            "humidity": _abs_part_from_input(
-                user_input,
-                "outdoor_abs_humidity_humidity_kind",
-                "outdoor_abs_humidity_humidity_entity",
-            ),
+            "temperature": temp_cfg,
+            "humidity": hum_cfg,
         }
 
     return new_sources, new_abs
@@ -324,16 +380,37 @@ def build_group_schema(
             )
         )
 
+        temp_kind_default = _get_abs_kind(
+            device_abs_inputs, "indoor_abs_humidity", "temperature"
+        )
+        if temp_kind_default == "external":
+            temp_kind_default = "external_temp"
+
+        abs_temp_kind_options = [
+            selector.SelectOptionDict(value="internal", label="Internal (temperature)"),
+            selector.SelectOptionDict(
+                value="external_temp", label="External temperature"
+            ),
+            selector.SelectOptionDict(
+                value="external_abs",
+                label="External absolute humidity",
+            ),
+        ]
+
+        abs_hum_kind_options = [
+            selector.SelectOptionDict(value="internal", label="Internal (%)"),
+            selector.SelectOptionDict(value="external", label="External (%)"),
+            selector.SelectOptionDict(value="none", label="None"),
+        ]
+
         schema = vol.Schema(
             {
                 vol.Required(
                     "indoor_abs_humidity_temperature_kind",
-                    default=_get_abs_kind(
-                        device_abs_inputs, "indoor_abs_humidity", "temperature"
-                    ),
+                    default=temp_kind_default,
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=kind_options,
+                        options=abs_temp_kind_options,
                         multiple=False,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
@@ -346,7 +423,7 @@ def build_group_schema(
                     ),
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=kind_options,
+                        options=abs_hum_kind_options,
                         multiple=False,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
@@ -380,16 +457,41 @@ def build_group_schema(
             )
         )
 
+        temp_kind_default = _get_abs_kind(
+            device_abs_inputs, "outdoor_abs_humidity", "temperature"
+        )
+        if temp_kind_default == "external":
+            temp_kind_default = "external_temp"
+
+        abs_temp_kind_options = [
+            selector.SelectOptionDict(
+                value="internal",
+                label="Internal (temperature)",
+            ),
+            selector.SelectOptionDict(
+                value="external_temp",
+                label="External temperature",
+            ),
+            selector.SelectOptionDict(
+                value="external_abs",
+                label="External absolute humidity",
+            ),
+        ]
+
+        abs_hum_kind_options = [
+            selector.SelectOptionDict(value="internal", label="Internal (%)"),
+            selector.SelectOptionDict(value="external", label="External (%)"),
+            selector.SelectOptionDict(value="none", label="None"),
+        ]
+
         schema = vol.Schema(
             {
                 vol.Required(
                     "outdoor_abs_humidity_temperature_kind",
-                    default=_get_abs_kind(
-                        device_abs_inputs, "outdoor_abs_humidity", "temperature"
-                    ),
+                    default=temp_kind_default,
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=kind_options,
+                        options=abs_temp_kind_options,
                         multiple=False,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
@@ -402,7 +504,7 @@ def build_group_schema(
                     ),
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=kind_options,
+                        options=abs_hum_kind_options,
                         multiple=False,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )

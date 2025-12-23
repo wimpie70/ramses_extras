@@ -8,7 +8,7 @@ values based on temperature and relative humidity measurements.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -16,6 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change
 
+from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_entity import (
     ExtrasBaseEntity,
 )
@@ -363,29 +364,29 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
     async def _recalculate_and_update(self) -> None:
         """Recalculate absolute humidity and update sensor state.
 
-        This method retrieves the current temperature and humidity values,
-        calculates the absolute humidity, and updates the sensor state
-        if the calculation is successful.
-
-        The calculation uses the Magnus formula for accurate absolute
-        humidity determination based on temperature and relative humidity.
-
-        .. note::
-            If either temperature or humidity data is unavailable, or if
-            the calculation fails, the sensor state is not updated.
+        For absolute humidity sensors, this first attempts to use the
+        sensor_control configuration (abs_humidity_inputs + resolver
+        mappings). If that is not available or fails, it falls back to
+        the original CC-based temp/RH entities.
         """
         try:
-            temp, rh = self._get_temp_and_humidity()
-            result = self._calculate_abs_humidity(temp, rh)
+            result: float | None = None
+
+            if self._sensor_type in [
+                "indoor_absolute_humidity",
+                "outdoor_absolute_humidity",
+            ]:
+                result = await self._async_compute_abs_from_sensor_control()
+
+            if result is None:
+                temp, rh = self._get_temp_and_humidity()
+                result = self._calculate_abs_humidity(temp, rh)
 
             if result is not None:
                 _LOGGER.debug(
-                    "Recalculated absolute humidity for"
-                    " %s: %.2f g/m³ (T=%.1f°C, RH=%.1f%%)",
+                    "Recalculated absolute humidity for %s: %.2f g/m³",
                     self._attr_name,
                     result,
-                    temp,
-                    rh,
                 )
                 self._attr_native_value = result
                 self.async_write_ha_state()
@@ -399,19 +400,14 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         values from the underlying ramses_cc entities required for absolute
         humidity calculation.
 
-        :return: tuple: (temperature, humidity) in Celsius and percentage respectively,
-                  or (None, None) if sensors are missing/failed
+        :return: tuple: (temperature, humidity) in Celsius and percentage
+                  respectively, or (None, None) if sensors are missing/failed
         :rtype: tuple[float | None, float | None]
 
         .. note::
             The method validates that humidity values are within the valid
             range (0-100%) and handles unavailable/unknown states gracefully.
         """
-        # Import humidity calculation helper
-        from custom_components.ramses_extras.framework.helpers.entities import (
-            calculate_absolute_humidity,
-        )
-
         if self._sensor_type not in ENTITY_PATTERNS:
             _LOGGER.error(
                 "Unknown sensor type for humidity calculation: %s", self._sensor_type
@@ -481,6 +477,184 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         except (ValueError, AttributeError) as e:
             _LOGGER.debug("Error parsing temp/humidity for %s: %s", self._attr_name, e)
             return None, None
+
+    async def _async_compute_abs_from_sensor_control(self) -> float | None:
+        """Compute absolute humidity using sensor_control configuration.
+
+        This uses SensorControlResolver's abs_humidity_inputs and mappings
+        to determine which temperature and humidity entities (or direct
+        absolute humidity entity) should be used for this sensor.
+        """
+        try:
+            if not self._is_sensor_control_enabled():
+                return None
+
+            # Import resolver lazily to avoid circular imports
+            from custom_components.ramses_extras.features.sensor_control.resolver import (  # noqa: E501
+                SensorControlResolver,
+            )
+
+            device_id_str = extract_device_id_as_string(self._device_id)
+            device_type = self._get_device_type(device_id_str)
+            if not device_type:
+                return None
+
+            resolver = SensorControlResolver(self.hass)
+            result = await resolver.resolve_entity_mappings(device_id_str, device_type)
+
+            abs_inputs = cast(dict[str, Any], result.get("abs_humidity_inputs") or {})
+            mappings = cast(dict[str, str | None], result.get("mappings") or {})
+
+            side = (
+                "indoor"
+                if self._sensor_type == "indoor_absolute_humidity"
+                else "outdoor"
+            )
+            metric = f"{side}_abs_humidity"
+            metric_cfg = cast(dict[str, Any], abs_inputs.get(metric) or {})
+
+            if not metric_cfg:
+                # No special config for this side - let fallback handle it
+                return None
+
+            temp_cfg = cast(dict[str, Any], metric_cfg.get("temperature") or {})
+            hum_cfg = cast(dict[str, Any], metric_cfg.get("humidity") or {})
+
+            temp_kind = str(temp_cfg.get("kind") or "internal")
+            hum_kind = str(hum_cfg.get("kind") or "internal")
+
+            # Direct absolute humidity entity
+            if temp_kind == "external_abs":
+                abs_entity_id = cast(str | None, temp_cfg.get("entity_id"))
+                if not abs_entity_id:
+                    return None
+
+                # Avoid recursion if user accidentally selects this sensor itself
+                if abs_entity_id == self.entity_id:
+                    return None
+
+                state = self.hass.states.get(abs_entity_id)
+                if not state or state.state in [
+                    "unavailable",
+                    "unknown",
+                    "uninitialized",
+                ]:
+                    return None
+
+                try:
+                    return float(state.state)
+                except ValueError:
+                    return None
+
+            # If humidity is disabled and not in external_abs mode, skip
+            if hum_kind == "none":
+                return None
+
+            # Derived mode: temperature + RH
+            temp_metric = f"{side}_temperature"
+            if temp_kind == "internal":
+                temp_entity_id = mappings.get(temp_metric)
+            elif temp_kind == "external_temp":
+                temp_entity_id = cast(str | None, temp_cfg.get("entity_id"))
+            else:
+                return None
+
+            if not temp_entity_id:
+                return None
+
+            temp_state = self.hass.states.get(temp_entity_id)
+            if not temp_state or temp_state.state in [
+                "unavailable",
+                "unknown",
+                "uninitialized",
+            ]:
+                return None
+
+            try:
+                temp_value = float(temp_state.state)
+            except ValueError:
+                return None
+
+            hum_metric = f"{side}_humidity"
+            if hum_kind == "internal":
+                hum_entity_id = mappings.get(hum_metric)
+            elif hum_kind == "external":
+                hum_entity_id = cast(str | None, hum_cfg.get("entity_id"))
+            else:
+                return None
+
+            if not hum_entity_id:
+                return None
+
+            hum_state = self.hass.states.get(hum_entity_id)
+            if not hum_state or hum_state.state in [
+                "unavailable",
+                "unknown",
+                "uninitialized",
+            ]:
+                return None
+
+            try:
+                hum_value = float(hum_state.state)
+            except ValueError:
+                return None
+
+            from custom_components.ramses_extras.framework.helpers.entities import (
+                calculate_absolute_humidity,
+            )
+
+            calc_result = calculate_absolute_humidity(temp_value, hum_value)
+            return float(calc_result) if calc_result is not None else None
+        except Exception as err:  # pragma: no cover - defensive
+            _LOGGER.debug(
+                "Error computing absolute humidity from sensor_control for %s: %s",
+                self._attr_name,
+                err,
+            )
+            return None
+
+    def _is_sensor_control_enabled(self) -> bool:
+        """Check if sensor_control feature is enabled in config_entry.
+
+        This mirrors the check used in the WebSocket helper.
+        """
+        try:
+            config_entry = self.hass.data.get(DOMAIN, {}).get("config_entry")
+            if not config_entry:
+                return False
+
+            enabled_features = (
+                config_entry.data.get("enabled_features")
+                or config_entry.options.get("enabled_features")
+                or {}
+            )
+
+            return bool(enabled_features.get("sensor_control", False))
+        except Exception:
+            return False
+
+    def _get_device_type(self, device_id: str) -> str | None:
+        """Get device type for sensor_control resolution.
+
+        The resolver needs a device type (e.g. "FAN"). We reuse the
+        same lookup strategy as the WebSocket helpers.
+        """
+        try:
+            devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
+            for device in devices:
+                if isinstance(device, dict):
+                    if device.get("device_id") == device_id:
+                        return cast(str | None, device.get("type"))
+                elif hasattr(device, "device_id"):
+                    if extract_device_id_as_string(device.device_id) == device_id:
+                        return cast(str | None, getattr(device, "type", None))
+                elif hasattr(device, "id"):
+                    if extract_device_id_as_string(device.id) == device_id:
+                        return cast(str | None, getattr(device, "type", None))
+        except Exception as err:  # pragma: no cover - defensive
+            _LOGGER.debug("Failed to get device type for %s: %s", device_id, err)
+
+        return None
 
     def _calculate_abs_humidity(
         self, temp: float | None, rh: float | None

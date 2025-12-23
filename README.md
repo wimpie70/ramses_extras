@@ -25,6 +25,10 @@ Ramses Extras provides additional features, entities, automation, and UI compone
 
 note: the following are tested with an Orcon WTW FAN
 
+- **Humidity Control** – advanced humidity-based automation and entities
+- **Sensor Control** – central sensor mapping for Humidity Control + HVAC Fan Card
+- **HVAC Fan Card** – advanced Lovelace card for FAN monitoring and control
+
 ### **✅ Humidity Control**
 
 **Intelligent humidity-based ventilation automation:**
@@ -52,6 +56,66 @@ note: the following are tested with an Orcon WTW FAN
 - **Automation Integration**: Humidity control automatically uses effective sensor mappings
 - **Per-Device Configuration**: Different sensor sources for each FAN/CO2 device
 
+For **absolute humidity**, Sensor Control does not expose a direct entity itself.
+Instead it drives the default feature's resolver-aware sensors:
+
+- `sensor.indoor_absolute_humidity_{device_id}`
+- `sensor.outdoor_absolute_humidity_{device_id}`
+
+These sensors are calculated as follows:
+
+- If `abs_humidity_inputs` are configured for a device/side, the sensor derives
+  absolute humidity either from:
+  - an external temperature + relative humidity pair, or
+  - a direct external absolute humidity sensor.
+- If no `abs_humidity_inputs` are configured, they fall back to the internal
+  ramses_cc temperature/humidity values.
+
+This makes the default absolute humidity sensors the **single source of truth**
+for:
+
+- the Humidity Control automation logic, and
+- the HVAC Fan Card graphs and status.
+
+Sensor Control itself does not create new sensors. Instead, it rewires _which_
+entities other features use for each metric:
+
+- Humidity Control reads indoor/outdoor temperature and humidity via
+  `SensorControlResolver`, so changing mappings in the Sensor Control UI
+  immediately affects the automation inputs.
+- The HVAC Fan Card resolves entities through the same resolver and shows the
+  effective source (internal vs external vs derived vs disabled) using
+  color-coded indicators.
+
+The Sensor Control configuration flow provides:
+
+- A **global overview** page that summarizes only non-internal mappings per
+  device, including absolute humidity inputs, so you can quickly see which
+  metrics are overridden.
+- A **per-device group menu** that shows the current non-internal mappings for
+  the selected device before you dive into a specific group (indoor, outdoor,
+  CO₂, absolute humidity).
+- A **Finish** option in the per-device menu that saves all changes as you go
+  and returns to the main Ramses Extras options menu.
+
+CO₂ support today focuses on using a dedicated CO₂ device as an external input
+for a FAN. The CO₂ device has a preview-only configuration screen; the real
+mappings are configured on the FAN device under the **CO₂** group.
+
+This is especially useful when you have multiple FANs with different hardware
+capabilities:
+
+- One FAN may have a full set of built-in sensors.
+- Another FAN may be missing one or more sensors, or its internal sensors may
+  not represent the rooms you actually care about.
+
+With Sensor Control you can still give **both** FANs the same
+features/automations and UI:
+
+- The first FAN uses its internal sensors.
+- The second FAN can point individual metrics to external HA sensors located in
+  better positions (or on other devices).
+
 ### **✅ HVAC Fan Card**
 
 **Advanced Lovelace card for ventilation system control:**
@@ -62,6 +126,12 @@ note: the following are tested with an Orcon WTW FAN
 - **Status Display**: Temperature, humidity, efficiency, and CO₂ monitoring
 - **Template System**: Modular JavaScript templates for dynamic content
 - **Responsive Design**: Works across different device sizes
+
+The card uses `ramses_extras/get_entity_mappings` to resolve entities and
+Sensor Control's resolver metadata to populate a **Sensor Sources** panel. When
+absolute humidity is configured via Sensor Control, the card marks the indoor
+and outdoor absolute humidity metrics as **derived** and shows them alongside
+temperature, humidity, and CO₂ sources.
 
 ### **🏛️ Framework Foundation**
 
@@ -97,6 +167,7 @@ note: the following are tested with an Orcon WTW FAN
 3. Search for **"Ramses Extras"**
 4. Select which features to enable:
    - ✅ **Humidity Control** (works together with the hvac Fan Card)
+   - ✅ **Sensor Control** (shared sensor mapping for Humidity Control + HVAC Fan Card)
    - 🟡 **HVAC Fan Card**
 
 ### **Basic Usage**

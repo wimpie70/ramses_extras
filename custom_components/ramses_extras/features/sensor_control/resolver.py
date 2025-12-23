@@ -79,6 +79,29 @@ class SensorControlResolver:
 
         # Resolve each metric
         for metric in SUPPORTED_METRICS:
+            # Absolute humidity metrics are driven by abs_humidity_inputs rather
+            # than direct sensor_control overrides. If a device has explicit
+            # abs_humidity_inputs configured for a metric, expose it as a
+            # non-internal (derived) source so frontends like the HVAC fan card
+            # can show it in the Sensor Sources panel.
+            if metric in ("indoor_abs_humidity", "outdoor_abs_humidity"):
+                metric_cfg = abs_humidity_inputs.get(metric) or {}
+                if metric_cfg:
+                    result["mappings"][metric] = None
+                    result["sources"][metric] = {
+                        "kind": "derived",
+                        "entity_id": None,
+                        "valid": True,
+                    }
+                else:
+                    result["mappings"][metric] = None
+                    result["sources"][metric] = {
+                        "kind": "internal",
+                        "entity_id": None,
+                        "valid": True,
+                    }
+                continue
+
             # Get internal mapping for this metric
             internal_entity_id = internal_mappings.get(metric)
 

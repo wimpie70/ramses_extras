@@ -111,7 +111,9 @@ async def async_step_sensor_control_config(
         )
 
         # Build a compact overview of existing mappings so the user can see
-        # current sensor sources before picking a device.
+        # current sensor sources before picking a device. Only show
+        # non-internal mappings to keep this readable, and include
+        # abs_humidity_inputs for the abs humidity metrics.
         overview_lines: list[str] = []
         try:
             options = dict(flow._config_entry.options)  # noqa: SLF001
@@ -119,34 +121,79 @@ async def async_step_sensor_control_config(
             sources: dict[str, dict[str, dict[str, Any]]] = sensor_control_options.get(
                 "sources", {}
             )
+            abs_inputs: dict[str, dict[str, Any]] = sensor_control_options.get(
+                "abs_humidity_inputs", {}
+            )
 
-            if sources:
-                overview_lines.append("📡 **Existing Sensor Control Mappings**\n")
-                for device_key in sorted(sources.keys()):
+            device_keys = set(sources.keys()) | set(abs_inputs.keys())
+
+            if device_keys:
+                overview_lines.append("Existing Sensor Control Mappings\n")
+                for device_key in sorted(device_keys):
                     device_sources = sources.get(device_key) or {}
+                    device_abs_inputs = abs_inputs.get(device_key) or {}
                     device_id = device_key.replace("_", ":")
-                    overview_lines.append(f"**Device {device_id}** ({device_key}):")
+
+                    device_lines: list[str] = []
 
                     for metric in SUPPORTED_METRICS:
-                        override = device_sources.get(metric) or {}
-                        kind = str(override.get("kind") or "internal")
-                        entity_id = override.get("entity_id")
+                        if metric in ("indoor_abs_humidity", "outdoor_abs_humidity"):
+                            metric_cfg = device_abs_inputs.get(metric) or {}
+                            temp_cfg = metric_cfg.get("temperature") or {}
+                            hum_cfg = metric_cfg.get("humidity") or {}
+                            temp_kind = str(temp_cfg.get("kind") or "internal")
+                            hum_kind = str(hum_cfg.get("kind") or "internal")
 
-                        if kind == "internal":
-                            summary = "internal"
-                        elif kind in ("external", "external_entity"):
-                            summary = (
-                                f"external → {entity_id}" if entity_id else "external"
-                            )
-                        elif kind == "derived":
-                            summary = "derived"
-                        elif kind == "none":
-                            summary = "disabled"
+                            abs_parts: list[str] = []
+                            if temp_kind == "external_abs":
+                                ent = temp_cfg.get("entity_id")
+                                if ent:
+                                    abs_parts.append(f"external abs  {ent}")
+                                else:
+                                    abs_parts.append("external abs (no entity)")
+                            else:
+                                if temp_kind in ("external", "external_temp"):
+                                    ent = temp_cfg.get("entity_id")
+                                    if ent:
+                                        abs_parts.append(f"temp: external  {ent}")
+                                if hum_kind == "external":
+                                    ent = hum_cfg.get("entity_id")
+                                    if ent:
+                                        abs_parts.append(f"humidity: external  {ent}")
+                                if hum_kind == "none":
+                                    abs_parts.append("humidity: none")
+
+                            if not abs_parts:
+                                continue
+
+                            summary = "; ".join(abs_parts)
+                            device_lines.append(f"- {metric}: {summary}")
                         else:
-                            summary = kind
+                            override = device_sources.get(metric) or {}
+                            kind = str(override.get("kind") or "internal")
+                            entity_id = override.get("entity_id")
 
-                        overview_lines.append(f"- {metric}: {summary}")
+                            if kind == "internal":
+                                continue
+                            if kind in ("external", "external_entity"):
+                                if entity_id:
+                                    summary = f"external  {entity_id}"
+                                else:
+                                    summary = "external (no entity)"
+                            elif kind == "derived":
+                                summary = "derived"
+                            elif kind == "none":
+                                summary = "disabled"
+                            else:
+                                summary = kind
 
+                            device_lines.append(f"- {metric}: {summary}")
+
+                    if not device_lines:
+                        continue
+
+                    overview_lines.append(f"**Device {device_id}** ({device_key}):")
+                    overview_lines.extend(device_lines)
                     overview_lines.append("")
         except Exception:  # pragma: no cover - overview is best-effort only
             overview_lines = []
@@ -155,7 +202,7 @@ async def async_step_sensor_control_config(
         if overview_lines:
             info_text += "\n".join(overview_lines) + "\n\n"
 
-        info_text += "🧭 **Sensor Control**\n\n"
+        info_text += "Sensor Control\n\n"
         info_text += "Select a device to configure sensor sources."
         return flow.async_show_form(
             step_id="feature_config",
@@ -264,10 +311,11 @@ async def async_step_sensor_control_config(
         if user_input is not None:
             action = str(user_input.get("group_action") or "")
             if action == "done":
-                # Go back to device selection for this feature
+                # All changes are already saved when groups are submitted.
+                # Return to the main options menu for the integration.
                 flow._sensor_control_stage = "select_device"
                 flow._sensor_control_group_stage = "select_group"
-                return await async_step_sensor_control_config(flow, None)
+                return await flow.async_step_main_menu()
 
             # Switch to the selected group configuration step
             flow._sensor_control_group_stage = action
@@ -287,8 +335,76 @@ async def async_step_sensor_control_config(
             }
         )
 
-        info_text = (
-            "🧭 **Sensor Control**\n\n"
+        # Build a compact overview of non-internal mappings for this device,
+        # including abs_humidity_inputs so users can see absolute humidity
+        # wiring without going back to the global overview.
+        device_overview: list[str] = []
+        try:
+            if device_sources or device_abs_inputs:
+                device_overview.append("Current mappings for this device")
+                for metric in SUPPORTED_METRICS:
+                    if metric in ("indoor_abs_humidity", "outdoor_abs_humidity"):
+                        metric_cfg = device_abs_inputs.get(metric) or {}
+                        temp_cfg = metric_cfg.get("temperature") or {}
+                        hum_cfg = metric_cfg.get("humidity") or {}
+                        temp_kind = str(temp_cfg.get("kind") or "internal")
+                        hum_kind = str(hum_cfg.get("kind") or "internal")
+
+                        device_abs_parts: list[str] = []
+                        if temp_kind == "external_abs":
+                            ent = temp_cfg.get("entity_id")
+                            if ent:
+                                device_abs_parts.append(f"external abs  {ent}")
+                            else:
+                                device_abs_parts.append("external abs (no entity)")
+                        else:
+                            if temp_kind in ("external", "external_temp"):
+                                ent = temp_cfg.get("entity_id")
+                                if ent:
+                                    device_abs_parts.append(f"temp: external  {ent}")
+                            if hum_kind == "external":
+                                ent = hum_cfg.get("entity_id")
+                                if ent:
+                                    device_abs_parts.append(
+                                        f"humidity: external  {ent}"
+                                    )
+                            if hum_kind == "none":
+                                device_abs_parts.append("humidity: none")
+
+                        if not device_abs_parts:
+                            continue
+
+                        summary = "; ".join(device_abs_parts)
+                        device_overview.append(f"- {metric}: {summary}")
+                    else:
+                        override = device_sources.get(metric) or {}
+                        kind = str(override.get("kind") or "internal")
+                        entity_id = override.get("entity_id")
+
+                        if kind == "internal":
+                            continue
+                        if kind in ("external", "external_entity"):
+                            if entity_id:
+                                summary = f"external  {entity_id}"
+                            else:
+                                summary = "external (no entity)"
+                        elif kind == "derived":
+                            summary = "derived"
+                        elif kind == "none":
+                            summary = "disabled"
+                        else:
+                            summary = kind
+
+                        device_overview.append(f"- {metric}: {summary}")
+        except Exception:  # pragma: no cover - best-effort overview only
+            device_overview = []
+
+        info_text = ""
+        if device_overview:
+            info_text += "\n".join(device_overview) + "\n\n"
+
+        info_text += (
+            "Sensor Control\n\n"
             f"Configuring device: `{selected_device_id}`\n\n"
             "Select which group of sensors to configure. You can return here to "
             "configure other groups or choose Finish when done."

@@ -482,8 +482,13 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         sources: dict[str, dict[str, dict[str, Any]]] = sensor_control_options.get(
             "sources", {}
         )
+        abs_inputs: dict[str, dict[str, Any]] = sensor_control_options.get(
+            "abs_humidity_inputs", {}
+        )
 
-        if not sources:
+        device_keys = set(sources.keys()) | set(abs_inputs.keys())
+
+        if not device_keys:
             info_text = (
                 "📡 **Sensor Control Overview**\n\n"
                 "No sensor control mappings have been configured yet.\n\n"
@@ -495,37 +500,78 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 data_schema=vol.Schema({}),
             )
 
-        # Build per-device summary
+        # Build per-device summary, showing only non-internal mappings and
+        # including abs_humidity_inputs for the abs humidity metrics.
         lines: list[str] = ["📡 **Sensor Control Overview**\n"]
 
         # Sort device keys for stable display
-        for device_key in sorted(sources.keys()):
+        for device_key in sorted(device_keys):
             device_sources = sources.get(device_key) or {}
+            device_abs_inputs = abs_inputs.get(device_key) or {}
             # Convert back to colon-separated device id for readability
             device_id = device_key.replace("_", ":")
-            lines.append(f"\n**Device {device_id}** ({device_key}):")
+
+            device_lines: list[str] = []
 
             # Show metrics in a fixed order using SUPPORTED_METRICS
             for metric in SUPPORTED_METRICS:
-                override = device_sources.get(metric) or {}
-                kind = str(override.get("kind") or "internal")
-                entity_id = override.get("entity_id")
+                if metric in ("indoor_abs_humidity", "outdoor_abs_humidity"):
+                    metric_cfg = device_abs_inputs.get(metric) or {}
+                    temp_cfg = metric_cfg.get("temperature") or {}
+                    hum_cfg = metric_cfg.get("humidity") or {}
+                    temp_kind = str(temp_cfg.get("kind") or "internal")
+                    hum_kind = str(hum_cfg.get("kind") or "internal")
 
-                if kind == "internal":
-                    summary = "internal"
-                elif kind in ("external", "external_entity"):
-                    if entity_id:
-                        summary = f"external → {entity_id}"
+                    abs_parts: list[str] = []
+                    if temp_kind == "external_abs":
+                        ent = temp_cfg.get("entity_id")
+                        if ent:
+                            abs_parts.append(f"external abs → {ent}")
+                        else:
+                            abs_parts.append("external abs (no entity)")
                     else:
-                        summary = "external (no entity)"
-                elif kind == "derived":
-                    summary = "derived"
-                elif kind == "none":
-                    summary = "disabled"
-                else:
-                    summary = f"{kind}"
+                        if temp_kind in ("external", "external_temp"):
+                            ent = temp_cfg.get("entity_id")
+                            if ent:
+                                abs_parts.append(f"temp: external → {ent}")
+                        if hum_kind == "external":
+                            ent = hum_cfg.get("entity_id")
+                            if ent:
+                                abs_parts.append(f"humidity: external → {ent}")
+                        if hum_kind == "none":
+                            abs_parts.append("humidity: none")
 
-                lines.append(f"- {metric}: {summary}")
+                    if not abs_parts:
+                        continue
+
+                    summary = "; ".join(abs_parts)
+                    device_lines.append(f"- {metric}: {summary}")
+                else:
+                    override = device_sources.get(metric) or {}
+                    kind = str(override.get("kind") or "internal")
+                    entity_id = override.get("entity_id")
+
+                    if kind == "internal":
+                        continue
+                    if kind in ("external", "external_entity"):
+                        if entity_id:
+                            summary = f"external → {entity_id}"
+                        else:
+                            summary = "external (no entity)"
+                    elif kind == "derived":
+                        summary = "derived"
+                    elif kind == "none":
+                        summary = "disabled"
+                    else:
+                        summary = f"{kind}"
+
+                    device_lines.append(f"- {metric}: {summary}")
+
+            if not device_lines:
+                continue
+
+            lines.append(f"\n**Device {device_id}** ({device_key}):")
+            lines.extend(device_lines)
 
         info_text = "\n".join(lines)
 

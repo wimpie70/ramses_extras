@@ -19,8 +19,8 @@ todo: create json file in local/www/ramses_extras/config with the card info for 
 
 
 
-sensor control
-- abs humid needs 2 entities
-- confirm step does not show changes
+sensor control improvements
 
-note for the docs: The great thing is that, say we have 1 FAN with all internal sensors provided and 1 with a missing one, we can still give both FAN's the same kind of features/automations, etc...
+- why external calculated abs humid entities:
+We may have a few temp/humid sensors for 1 fan. eg. a bathroom and a kitchen....I want to be able to create logic later that if 1 of them goes high we also should ventilate high (but then for eg 15 minutes) to get rid of the local moisture. But this would need extra logic and handshaking with automations that control the speed....
+Or, we would create some kind of OR logic for the different abs humid entities -> select the highest one as the one to work with and fall back to internal after 15 minutes...or always use the highest one....The same but upside-down goes for too dry air.

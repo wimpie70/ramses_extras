@@ -6,6 +6,10 @@ This module provides minimal WebSocket infrastructure for Ramses Extras features
 import logging
 from typing import TYPE_CHECKING, Any, Callable
 
+from custom_components.ramses_extras.framework.helpers.device.core import (
+    extract_device_id_as_string,
+)
+
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
 
@@ -440,8 +444,12 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
     def _get_device_type(self, device_id: str) -> str | None:
         """Get device type for a device ID.
 
+        This helper is resilient to different device ID formats used across the
+        codebase (e.g. "32:153289" vs "32_153289"). It normalizes both the
+        provided ID and stored IDs to a colon-based form before comparing.
+
         Args:
-            device_id: Device ID
+            device_id: Device ID as passed by the caller (may use ':' or '_')
 
         Returns:
             Device type (FAN, CO2, etc.) or None if not found
@@ -450,16 +458,23 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             from ...const import DOMAIN
 
             devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
+
+            # Normalize incoming ID to colon form for comparison
+            target_colon = str(device_id).replace("_", ":")
+
             for device in devices:
                 if isinstance(device, dict):
-                    if device.get("device_id") == device_id:
-                        return device.get("type")
-                elif hasattr(device, "device_id"):
-                    if device.device_id == device_id:
-                        return getattr(device, "type", None)
-                elif hasattr(device, "id"):
-                    if device.id == device_id:
-                        return getattr(device, "type", None)
+                    raw_id = device.get("device_id")
+                    dev_type = device.get("type")
+                else:
+                    raw_id = device
+                    dev_type = getattr(device, "type", None)
+
+                dev_id_str = extract_device_id_as_string(raw_id)
+                dev_colon = dev_id_str.replace("_", ":")
+
+                if dev_colon == target_colon:
+                    return dev_type
         except Exception as err:
             self._logger.error(f"Failed to get device type for {device_id}: {err}")
 

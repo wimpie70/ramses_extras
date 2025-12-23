@@ -183,6 +183,13 @@ custom_components/ramses_extras/
 │   │       ├── number.py        # Feature number entities
 │   │       └── binary_sensor.py # Feature binary sensor entities
 │   │
+│   ├── sensor_control/          # Sensor source mapping feature
+│   │   ├── __init__.py
+│   │   ├── const.py
+│   │   ├── config_flow.py       # Feature-specific config flow helper
+│   │   ├── resolver.py          # SensorControlResolver implementation
+│   │   └── device_types/        # Per-device-type config handlers
+│   │
 │   ├── hvac_fan_card/           # HVAC fan card feature
 │   │   ├── __init__.py
 │   │   ├── const.py
@@ -431,6 +438,210 @@ The `Hello World Card` feature can be used as a template to develop new function
 - **Automation**: Python-based automatic fan speed adjustment (no YAML automation rules)
 - **Services**: Manual humidity control and configuration
 - **Platforms**: sensor, switch, number, binary_sensor
+
+### ✅ Sensor Control
+- **Purpose**: Central place to define which entities provide sensor data for each device
+- **Scope**: Indoor/outdoor temperature, humidity, CO₂ and derived absolute humidity
+- **Config Flow**: Per-device, per-metric configuration with support for:
+  - `internal` (use built-in ramses_cc/Ramses Extras entities)
+  - `external` (use an arbitrary HA sensor entity)
+  - `derived` (absolute humidity computed from temperature + relative humidity)
+  - `none` (explicitly disable a metric)
+- **Persistence**: Stores mappings in the `sensor_control` options section of the main
+  config entry. Keys are `sources` (per-device, per-metric overrides) and
+  `abs_humidity_inputs` (per-device, per-metric inputs for derived sensors).
+- **Internal Sensor Templates**: Baseline internal entity IDs are defined in
+  `features/sensor_control/const.py` via `INTERNAL_SENSOR_MAPPINGS`. Templates use
+  `{device_id}` and are expanded to real entity IDs (e.g.
+  `sensor.fan_indoor_temp_{device_id}` → `sensor.fan_indoor_temp_32_153289`).
+- **Resolver**: `SensorControlResolver` combines internal templates with user
+  overrides and validates external entities. It returns, for each metric:
+  - the effective entity ID (or `None` for derived/disabled)
+  - metadata describing the source kind and validity
+
+This feature is intentionally **framework-level**. It does not create new
+entities of its own; instead it is consumed by other features.
+
+#### 4.3.1. Sensor Control, Absolute Humidity and Humidity Control
+
+Humidity Control uses `SensorControlResolver` to obtain indoor/outdoor
+temperature and humidity for each FAN device. The automation logic never
+hardcodes entity IDs:
+
+- Internal default sensors are taken from `INTERNAL_SENSOR_MAPPINGS`.
+- If the user configures an external entity for a metric, that entity is used
+  instead — as long as it exists in HA.
+- If an external entity is missing or invalid, the metric **fails closed** and is
+  treated as disabled for that device.
+
+This keeps Humidity Control logic simple and decoupled from how sensors are
+actually wired in a given installation.
+
+Absolute humidity is handled as a **hybrid** between Sensor Control and the
+default feature:
+
+1. Sensor Control stores, per device and per side (indoor/outdoor), which
+   inputs should be used to compute absolute humidity in the
+   `abs_humidity_inputs` option tree:
+
+   - `temperature.kind` can be:
+     - `internal` – use the internal temperature metric from
+       `INTERNAL_SENSOR_MAPPINGS`.
+     - `external_temp` – use a specific external temperature entity.
+     - `external_abs` – use a direct external absolute humidity entity.
+   - `humidity.kind` can be:
+     - `internal` – use the internal humidity metric from
+       `INTERNAL_SENSOR_MAPPINGS`.
+     - `external` – use a specific external humidity entity.
+     - `none` – humidity input is disabled.
+
+2. The **default feature's** absolute humidity sensors:
+
+   - `sensor.indoor_absolute_humidity_{device_id}`
+   - `sensor.outdoor_absolute_humidity_{device_id}`
+
+   are now **resolver-aware**. When they update, they:
+
+   - Use `SensorControlResolver` to read `abs_humidity_inputs` and resolve the
+     correct temperature/humidity or direct absolute humidity entity.
+   - Compute absolute humidity via the shared
+     `calculate_absolute_humidity()` helper when using temp+RH.
+   - Fall back to the original ramses_cc-based temp/RH entities when no
+     `abs_humidity_inputs` are configured for that side.
+
+3. This makes those default absolute humidity sensors the **single source of
+   truth** for:
+
+   - Humidity Control's automation decisions.
+   - The HVAC Fan Card's status display and graphs.
+
+Sensor Control itself does **not** generate absolute humidity entities; it
+only controls what goes into these default sensors.
+
+#### 4.3.2. Sensor Control and HVAC Fan Card
+
+The HVAC Fan Card also uses the same resolver via the
+`ramses_extras/get_entity_mappings` WebSocket command. For each configured
+device it receives:
+
+- Effective entity IDs for the metrics it needs to render
+- Source metadata so the card can show whether a value is internal, external,
+  derived or disabled
+
+The card then:
+
+- Renders the correct entities regardless of how they are wired.
+- Uses **color-coded indicators** to show when a metric comes from an external
+  sensor, a derived sensor, or is disabled.
+
+For absolute humidity specifically:
+
+- The resolver exposes `indoor_abs_humidity` and `outdoor_abs_humidity` in
+  `sources` as:
+  - `kind = "derived"` when `abs_humidity_inputs` are configured for that
+    metric.
+  - `kind = "internal"` when no configuration exists (the default behaviour).
+- The HVAC Fan Card's **Sensor Sources** panel includes
+  `indoor_abs_humidity` and `outdoor_abs_humidity` alongside temperature,
+  humidity and CO₂, showing them as *derived* when Sensor Control actively
+  drives the inputs.
+
+This means that Sensor Control sits squarely between **raw devices** on one
+side and **features/cards** on the other, providing a single source of truth
+for all sensor wiring.
+
+#### 4.3.3. CO₂ Support
+
+CO₂ support is currently focused on using a dedicated CO₂ device as an external
+input for a FAN:
+
+- The CO₂ device type has a **preview-only** configuration step — it does not
+  expose real mappings yet.
+- Real CO₂ mappings are configured under the **CO₂** group on the FAN device in
+  the Sensor Control config flow.
+- The resolver treats CO₂ like any other metric: it starts from internal
+  templates (if present) and then applies the per-device overrides.
+
+This architecture leaves room to later extend CO₂ behaviour without changing
+how other features consume the data.
+
+#### 4.3.4. Practical Scenarios
+
+Sensor Control is particularly valuable when you have **heterogeneous FAN
+hardware** or when built-in sensors are not representative for the rooms you
+want to ventilate or heat.
+
+- **Scenario 1 – Mixed hardware**:
+  - FAN A has a full set of internal sensors (indoor/outdoor temperature and
+    humidity).
+  - FAN B is missing some sensors.
+  - Using Sensor Control, both FANs can still participate in the same
+    automations and UI:
+    - FAN A uses internal sensors.
+    - FAN B points specific metrics to external HA sensors located in better
+      positions or on other devices.
+
+- **Scenario 2 – Non-representative internal sensors**:
+  - A FAN is installed in a technical room or attic, while the rooms of
+    interest are bedrooms or living areas.
+  - Internal temperature/humidity sensors do not reflect the target rooms.
+  - With Sensor Control, you can map those metrics to external room sensors,
+    while still using the same Humidity Control logic and HVAC Fan Card.
+
+In all cases, the resolver hides the complexity and exposes a uniform
+"effective sensors" view to consuming features.
+
+#### 4.3.5. Configuration Walkthrough (High Level)
+
+1. Enable the **Sensor Control** feature in the Ramses Extras config flow.
+2. Open the Sensor Control configuration:
+   - Select the FAN device you want to configure.
+   - Choose a metric group (indoor, outdoor, CO₂, absolute humidity).
+3. For each metric in the group, choose:
+   - **Internal** to use the default internal mapping.
+   - **External** and select an HA sensor entity.
+   - For **absolute humidity** groups:
+     - Choose between *internal/default*, *external temperature + humidity*, or
+       a *direct external absolute humidity* sensor.
+     - If you select a direct external absolute humidity sensor, Sensor Control
+       treats the default absolute humidity sensor as a pass-through for that
+       external entity (no internal calculation).
+   - **None** to explicitly disable that metric.
+4. Repeat for other groups and devices as needed.
+5. Confirm changes in the main Ramses Extras confirmation step.
+
+The Sensor Control configuration flow also provides two read-only summaries to
+make complex setups easier to reason about:
+
+- A **global overview** step in the main Ramses Extras options flow that shows
+  only non-internal mappings per device, including absolute humidity inputs.
+- A **per-device summary** in the Sensor Control group menu that lists the
+  current non-internal mappings for the selected device before you pick a
+  group to edit.
+
+Once saved, the new mappings are immediately visible to both Humidity Control
+and the HVAC Fan Card.
+
+#### 4.3.6. Data Flow Overview
+
+At a high level, the data flow with Sensor Control enabled looks like this:
+
+```text
+Device sensors (internal + external HA entities)
+           │
+           ▼
+  INTERNAL_SENSOR_MAPPINGS + user overrides
+           │
+           ▼
+  SensorControlResolver (per device, per metric)
+           │
+           ├──► Humidity Control automation (uses effective metrics)
+           │
+           └──► HVAC Fan Card (via get_entity_mappings WebSocket)
+```
+
+This makes it clear that Sensor Control is the **single source of truth** for
+which entities are used as sensor inputs across features.
 
 ### ✅ HVAC Fan Card
 - **Purpose**: Real-time HVAC system monitoring and control card

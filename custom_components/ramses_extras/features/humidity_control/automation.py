@@ -315,26 +315,25 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         """
         from .const import HUMIDITY_CONTROL_CONST
 
-        states = {}
+        states: dict[str, Any] = {}
 
-        # Get entity mappings from humidity control constants
+        # Base mappings from humidity control constants; abs humidity entities
+        # are now resolver-aware via the default feature and should be treated
+        # as the canonical source for indoor_abs/outdoor_abs.
         state_mappings = cast(
             dict[str, str], HUMIDITY_CONTROL_CONST.get("entity_mappings", {})
-        )
+        ).copy()
 
-        # Check if sensor_control is available and use effective mappings
-        sensor_control_mappings = await self._get_sensor_control_mappings(device_id)
-        if sensor_control_mappings:
-            _LOGGER.info(f"Using sensor_control mappings for device {device_id}")
-            # Use sensor_control effective mappings for sensor entities
-            effective_mappings = state_mappings.copy()
-            for state_name, entity_id in sensor_control_mappings.items():
-                if entity_id:  # Only override if sensor_control provides a valid entity
-                    effective_mappings[state_name] = entity_id
-            state_mappings = effective_mappings
+        # Optional context from sensor_control via WebSocket helper to align
+        # indoor_rh with the same indoor_humidity source used elsewhere.
+        sensor_ctx = await self._get_sensor_control_context(device_id)
+        if sensor_ctx:
+            metric_mappings = cast(dict[str, str], sensor_ctx.get("mappings") or {})
+            indoor_humidity_entity = metric_mappings.get("indoor_humidity")
+            if indoor_humidity_entity:
+                state_mappings["indoor_rh"] = indoor_humidity_entity
 
         for state_name, entity_id in state_mappings.items():
-            # Handle both template format (with {device_id}) and direct entity IDs
             if "{device_id}" in entity_id:
                 actual_entity_id = entity_id.format(device_id=device_id)
             else:
@@ -348,40 +347,31 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             if state.state in ["unavailable", "unknown"]:
                 raise ValueError(f"Entity {actual_entity_id} state unavailable")
 
-            # Determine entity type from entity_id and handle appropriately
             entity_type = self._extract_entity_type_from_id(entity_id)
             value = self._convert_entity_state(entity_type, state.state)
             states[state_name] = value
 
         return states
 
-    async def _get_sensor_control_mappings(
+    async def _get_sensor_control_context(
         self, device_id: str
-    ) -> dict[str, str] | None:
-        """Get effective sensor mappings from sensor_control feature.
+    ) -> dict[str, Any] | None:
+        """Get merged mappings + abs_humidity_inputs from sensor_control.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Dictionary of state_name to entity_id mappings,
-            or None if sensor_control not available
+        Uses the same WebSocket command as the frontend so that humidity_control
+        benefits from the exact same resolver logic as the cards.
         """
         try:
-            # Check if sensor_control feature is enabled
             if not self._is_sensor_control_enabled():
                 return None
 
-            # Use the same WebSocket command as the frontend
             from custom_components.ramses_extras.framework.helpers.websocket_base import (  # noqa: E501
                 GetEntityMappingsCommand,
             )
 
-            # Create and execute the command for sensor_control feature
-            cmd = GetEntityMappingsCommand(self.hass, "sensor_control")
+            cmd = GetEntityMappingsCommand(self.hass, self.feature_id)
 
-            # Mock WebSocket connection for command execution
-            class MockConnection:
+            class MockConnection:  # pragma: no cover - simple data holder
                 def __init__(self) -> None:
                     self.result: dict[str, Any] | None = None
 
@@ -389,23 +379,23 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     self.result = result
 
             connection = MockConnection()
-            # Use dict instead of MockMessage
-            msg = {"id": "test", "device_id": device_id}
+            msg = {
+                "id": "humidity_control_sensor_context",
+                "device_id": device_id,
+            }
 
             await cmd.execute(connection, msg)
 
-            if connection.result and connection.result.get("success"):
-                mappings = connection.result.get("mappings", {})
-                _LOGGER.debug(
-                    f"Got sensor_control mappings for {device_id}: {mappings}"
+            if not connection.result or not connection.result.get("success"):
+                _LOGGER.warning(
+                    "Failed to get sensor_control context for %s", device_id
                 )
-                return cast(dict[str, str], mappings)
-            _LOGGER.warning(f"Failed to get sensor_control mappings for {device_id}")
-            return None
+                return None
 
-        except Exception as err:
+            return connection.result
+        except Exception as err:  # pragma: no cover - defensive logging
             _LOGGER.error(
-                f"Error getting sensor_control mappings for {device_id}: {err}"
+                "Error getting sensor_control context for %s: %s", device_id, err
             )
             return None
 
