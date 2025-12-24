@@ -39,7 +39,10 @@ async def async_setup_entry(
 
 
 async def create_humidity_sensor(
-    hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
+    hass: HomeAssistant,
+    device_id: str,
+    entity_configs: dict[str, Any],
+    config_entry: ConfigEntry | None = None,
 ) -> list[ExtrasSensorEntity]:
     """Create humidity sensor for a device.
 

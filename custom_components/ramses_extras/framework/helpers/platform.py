@@ -10,7 +10,6 @@ Key components:
 - Configuration-driven entity generation
 """
 
-import importlib
 import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
 
@@ -47,6 +46,36 @@ def _get_platform_key(platform: str) -> str:
     return platform_to_key.get(platform, f"{platform}s")
 
 
+def _get_devices_ready_for_entities(hass: "HomeAssistant") -> list[str]:
+    """Get devices that are ready for entity creation.
+
+    Args:
+        hass: Home Assistant instance
+
+    Returns:
+        List of device IDs ready for entities
+    """
+    return cast(list[str], hass.data.get("ramses_extras", {}).get("devices", []))
+
+
+def _get_required_entities_from_feature(
+    feature_id: str, platform: str
+) -> dict[str, Any]:
+    """Get required entities configuration for a feature and platform.
+
+    Args:
+        feature_id: Feature identifier
+        platform: Platform name
+
+    Returns:
+        Dictionary of entity configurations
+    """
+    # Return entity configs for feature
+    # For now, return empty dict as placeholder
+    _LOGGER.debug(f"Getting entities for feature {feature_id}, platform {platform}")
+    return {}
+
+
 def get_enabled_features(
     hass: "HomeAssistant", config_entry: ConfigEntry
 ) -> dict[str, bool]:
@@ -61,7 +90,6 @@ def get_enabled_features(
     """
     if not config_entry:
         return {}
-
     data = config_entry.data or {}
     enabled_features = data.get("enabled_features", {})
     return dict(enabled_features) if isinstance(enabled_features, dict) else {}
@@ -150,7 +178,8 @@ class PlatformSetup:
         async_add_entities: AddEntitiesCallback,
         entity_configs: dict[str, Any],
         entity_factory: Callable[
-            ["HomeAssistant", str, ConfigEntry | None], Awaitable[list[Entity]]
+            ["HomeAssistant", str, dict[str, Any], ConfigEntry | None],
+            Awaitable[list[Entity]],
         ],
         store_entities_for_automation: bool = False,
         feature_id: str | None = None,
@@ -174,8 +203,8 @@ class PlatformSetup:
         """
         _LOGGER.info("Setting up %s platform with generic setup", platform)
 
-        # Get devices from Home Assistant data
-        devices = hass.data.get("ramses_extras", {}).get("devices", [])
+        # Get devices ready for entities
+        devices = _get_devices_ready_for_entities(hass)
         _LOGGER.info(
             "%s platform: found %d devices: %s", platform, len(devices), devices
         )
@@ -231,8 +260,10 @@ class PlatformSetup:
         entities = []
         for device_id in devices:
             try:
-                # Create entities for this device using the provided factory
-                device_entities = await entity_factory(hass, device_id, config_entry)
+                # Create entities for device using factory
+                device_entities = await entity_factory(
+                    hass, device_id, entity_configs, config_entry
+                )
                 entities.extend(device_entities)
                 _LOGGER.info(
                     "Created %d %s entities for device %s",
@@ -242,7 +273,7 @@ class PlatformSetup:
                 )
             except Exception as e:
                 _LOGGER.error(
-                    "Failed to create %s entities for device %s: %e",
+                    "Failed to create %s entities for device %s: %s",
                     platform,
                     device_id,
                     e,
@@ -420,7 +451,7 @@ class PlatformSetup:
                 )
             except Exception as e:
                 _LOGGER.error(
-                    "Failed to setup %s platform for feature %s: %e",
+                    "Failed to setup %s platform for feature %s: %s",
                     platform,
                     feature_id,
                     e,
@@ -455,7 +486,10 @@ class PlatformSetup:
 
     @staticmethod
     async def _default_entity_factory(
-        hass: "HomeAssistant", device_id: str, config_entry: ConfigEntry | None = None
+        hass: "HomeAssistant",
+        device_id: str,
+        entity_configs: dict[str, Any],
+        config_entry: ConfigEntry | None = None,
     ) -> list[Entity]:
         """Default entity factory for basic entity creation.
 

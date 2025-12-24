@@ -54,7 +54,10 @@ async def async_setup_entry(
 
 
 async def create_hello_world_binary_sensor(
-    hass: "HomeAssistant", device_id: str, config_entry: ConfigEntry | None = None
+    hass: "HomeAssistant",
+    device_id: str,
+    entity_configs: dict[str, Any],
+    config_entry: ConfigEntry | None = None,
 ) -> list[ExtrasBinarySensorEntity]:
     """Create Hello World binary sensor for a device.
 

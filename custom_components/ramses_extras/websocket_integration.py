@@ -7,11 +7,32 @@ Uses the exact same pattern as the old working implementation.
 import logging
 from typing import TYPE_CHECKING, Any
 
-import voluptuous as vol
 from homeassistant.components import websocket_api
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import AVAILABLE_FEATURES, DOMAIN, discover_ws_commands, get_all_ws_commands
+
+
+def _import_websocket_module(feature_name: str) -> bool:
+    """Import WebSocket module for a feature.
+
+    Args:
+        feature_name: Name of the feature
+
+    Returns:
+        True if import successful
+
+    Raises:
+        ImportError: If import fails
+    """
+    try:
+        websocket_module_path = f"custom_components.ramses_extras.features.{feature_name}.websocket_commands"  # noqa: E501
+        __import__(websocket_module_path, fromlist=[""])
+        return True
+    except ImportError:
+        raise
+
 
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
@@ -147,6 +168,8 @@ async def async_setup_websocket_integration(hass: HomeAssistant) -> bool:
         await async_register_websocket_commands(hass)
 
         # Log registration info
+        from .const import DOMAIN
+
         info = get_websocket_commands_info()
         _LOGGER.info(
             f"WebSocket integration setup complete: {info['total_commands']} commands"
@@ -164,6 +187,11 @@ async def async_setup_websocket_integration(hass: HomeAssistant) -> bool:
     except Exception as error:
         _LOGGER.error(f"Failed to set up WebSocket integration: {error}")
         return False
+
+
+async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Setup entry for websocket integration."""
+    return await async_setup_websocket_integration(hass)
 
 
 async def async_cleanup_websocket_integration(hass: HomeAssistant) -> None:
@@ -212,6 +240,8 @@ def get_enabled_websocket_commands(
         return {}
 
     # Get all registered commands from registry
+    from .const import get_all_ws_commands
+
     all_commands = get_all_ws_commands()
 
     # Check if feature has commands registered in the registry
