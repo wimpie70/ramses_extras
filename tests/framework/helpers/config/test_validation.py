@@ -374,6 +374,87 @@ class TestConfigValidator:
         assert is_valid is False
         assert len(errors) >= 1
 
+    def test_validate_all_with_invalid_numeric_type(self):
+        """Test validate_all with invalid numeric type (string instead of number)."""
+        config = {"temperature": "invalid"}
+        validation_rules = {"temperature": {"type": "numeric", "min": 0, "max": 100}}
+
+        is_valid, errors = self.validator.validate_all(config, validation_rules)
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "must be numeric" in errors[0]  # type: ignore[operator]
+
+    def test_validate_all_with_missing_required_field(self):
+        """Test validate_all with missing required field."""
+        config = {}  # Missing required field
+        validation_rules = {"enabled": {"type": "boolean", "required": True}}
+
+        is_valid, errors = self.validator.validate_all(config, validation_rules)
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "'enabled' is required" in errors[0]
+
+    def test_validate_all_with_malformed_dependency(self):
+        """Test validate_all with malformed dependency configuration."""
+        config = {"setting": True}  # Missing 'enabled'
+        validation_rules = {
+            "setting": {"dependency": {"key": "enabled"}}  # defaults to True
+        }
+
+        is_valid, errors = self.validator.validate_all(config, validation_rules)
+
+        assert is_valid is False  # 'enabled' not in config, dependency fails
+        assert len(errors) == 1
+        assert "requires 'enabled' to be True" in errors[0]
+
+    def test_validate_all_with_invalid_string_choice(self):
+        """Test validate_all with invalid string choice."""
+        config = {"mode": "invalid_mode"}
+        validation_rules = {
+            "mode": {"type": "string", "choices": ["auto", "manual", "eco"]}
+        }
+
+        is_valid, errors = self.validator.validate_all(config, validation_rules)
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "must be one of ['auto', 'manual', 'eco']" in errors[0]
+
+    def test_validate_all_with_invalid_list_item_type(self):
+        """Test validate_all with invalid list item type."""
+        config = {"sensors": ["sensor1", 123, "sensor3"]}  # Mixed types
+        validation_rules = {"sensors": {"type": "list", "item_type": str}}
+
+        is_valid, errors = self.validator.validate_all(config, validation_rules)
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "must be str" in errors[0]
+
+    def test_validate_all_with_out_of_range_numeric(self):
+        """Test validate_all with numeric value out of range."""
+        config = {"humidity": 150}  # Above max 100
+        validation_rules = {"humidity": {"type": "numeric", "min": 0, "max": 100}}
+
+        is_valid, errors = self.validator.validate_all(config, validation_rules)
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "must be between 0 and 100" in errors[0]  # type: ignore[operator]
+
+    def test_validate_all_with_empty_string_when_min_length_required(self):
+        """Test validate_all with empty string when min_length is set."""
+        config = {"name": ""}
+        validation_rules = {"name": {"type": "string", "min_length": 1}}
+
+        is_valid, errors = self.validator.validate_all(config, validation_rules)
+
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "must be at least 1 characters long" in errors[0]
+
 
 class TestValidationRules:
     """Test cases for predefined validation rules."""

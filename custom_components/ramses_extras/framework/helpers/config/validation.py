@@ -268,7 +268,7 @@ class ConfigValidator:
 
         for key, rules in validation_rules.items():
             if isinstance(rules, dict):
-                # Handle different validation types
+                # Handle type validation
                 if "type" in rules:
                     validation_type = rules["type"]
                     if validation_type == "numeric":
@@ -279,10 +279,14 @@ class ConfigValidator:
                             rules.get("max", float("inf")),
                             rules.get("required", False),
                         )
+                        if not is_valid and error:
+                            errors.append(error)
                     elif validation_type == "boolean":
                         is_valid, error = self.validate_boolean(
                             config, key, rules.get("required", False)
                         )
+                        if not is_valid and error:
+                            errors.append(error)
                     elif validation_type == "string":
                         is_valid, error = self.validate_string(
                             config,
@@ -292,6 +296,8 @@ class ConfigValidator:
                             rules.get("min_length", 0),
                             rules.get("max_length"),
                         )
+                        if not is_valid and error:
+                            errors.append(error)
                     elif validation_type == "list":
                         is_valid, error = self.validate_list(
                             config,
@@ -302,17 +308,20 @@ class ConfigValidator:
                             rules.get("min_items", 0),
                             rules.get("max_items"),
                         )
-                    else:
-                        is_valid, error = True, None
+                        if not is_valid and error:
+                            errors.append(error)
 
-                elif "dependency" in rules:
-                    # Handle dependency validation
+                # Handle dependency validation
+                if "dependency" in rules:
                     dep_config = rules["dependency"]
                     is_valid, error = self.validate_dependency(
                         config, key, dep_config["key"], dep_config.get("value", True)
                     )
-                elif "range_relationship" in rules:
-                    # Handle range relationship validation
+                    if not is_valid and error:
+                        errors.append(error)
+
+                # Handle range relationship validation
+                if "range_relationship" in rules:
                     range_config = rules["range_relationship"]
                     is_valid, error = self.validate_range_relationship(
                         config,
@@ -320,13 +329,11 @@ class ConfigValidator:
                         range_config["other_key"],
                         range_config.get("allow_equal", False),
                     )
-                else:
-                    is_valid, error = True, None
+                    if not is_valid and error:
+                        errors.append(error)
             else:
-                is_valid, error = True, None
-
-            if not is_valid and error:
-                errors.append(error)
+                # Handle legacy rules (not dict)
+                pass
 
         return len(errors) == 0, errors
 
