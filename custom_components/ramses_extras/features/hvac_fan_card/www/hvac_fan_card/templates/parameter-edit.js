@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+
 /**
  * Parameter Edit Template
  * Provides UI for editing 2411 device parameters

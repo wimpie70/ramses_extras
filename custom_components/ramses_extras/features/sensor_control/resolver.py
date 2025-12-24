@@ -168,9 +168,10 @@ class SensorControlResolver:
             else:
                 result[metric] = None
 
-        # Absolute humidity metrics are derived, not internal
-        result["indoor_abs_humidity"] = None
-        result["outdoor_abs_humidity"] = None
+        # Ensure all supported metrics are present
+        for metric in SUPPORTED_METRICS:
+            if metric not in result:
+                result[metric] = None
 
         return result
 
@@ -241,6 +242,8 @@ class SensorControlResolver:
         Returns:
             True if entity exists, False otherwise
         """
+        if not entity_id:
+            return False
         try:
             return self.hass.states.get(entity_id) is not None
         except Exception:

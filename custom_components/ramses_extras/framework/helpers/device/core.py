@@ -38,8 +38,6 @@ def extract_device_id_as_string(device_id: str | Any) -> str:
         return str(device_id._id)
     if hasattr(device_id, "name"):
         return str(device_id.name)
-    if hasattr(device_id, "__str__"):
-        return str(device_id)
     return f"device_{id(device_id)}"  # Fallback to object id
 
 

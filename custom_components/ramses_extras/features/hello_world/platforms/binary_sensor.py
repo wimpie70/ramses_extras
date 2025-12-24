@@ -144,12 +144,15 @@ class HelloWorldBinarySensor(ExtrasBinarySensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         base_attrs = super().extra_state_attributes or {}
+        device_id_underscore = self.device_id.replace(":", "_")
         return {
             **base_attrs,
             "automation_controlled": True,
             "controlled_by": "hello_world_automation",
             "switch_entity": EntityHelpers.generate_entity_name_from_template(
-                "switch", "hello_world_switch_{device_id}", device_id=self.device_id
+                "switch",
+                "hello_world_switch_{device_id}",
+                device_id=device_id_underscore,
             ),
             "demo_feature": True,
             "pattern": "switch → automation → binary_sensor",

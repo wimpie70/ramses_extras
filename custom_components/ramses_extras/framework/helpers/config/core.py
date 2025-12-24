@@ -62,20 +62,20 @@ class ExtrasConfigManager:
             # Start with default config
             self._config = self._default_config.copy()
 
-            # Update with config entry options if available
-            if self.config_entry.options:
-                self._config.update(self.config_entry.options)
-                _LOGGER.debug(
-                    f"Updated {self.feature_id} config with options: "
-                    f"{self.config_entry.options}"
-                )
-
             # Update with config entry data if available
             if self.config_entry.data:
                 self._config.update(self.config_entry.data)
                 _LOGGER.debug(
                     f"Updated {self.feature_id} config with data: "
                     f"{self.config_entry.data}"
+                )
+
+            # Update with config entry options if available
+            if self.config_entry.options:
+                self._config.update(self.config_entry.options)
+                _LOGGER.debug(
+                    f"Updated {self.feature_id} config with options: "
+                    f"{self.config_entry.options}"
                 )
 
             _LOGGER.info(f"Configuration loaded: {len(self._config)} settings")
@@ -184,12 +184,19 @@ class ExtrasConfigManager:
         """
         return self._config.copy()
 
-    def update(self, updates: dict[str, Any]) -> None:
+    def update(self, updates: Any) -> None:
         """Update multiple configuration values.
 
         Args:
             updates: Dictionary of updates
         """
+        if not isinstance(updates, dict):
+            _LOGGER.warning(
+                f"{self.feature_id} configuration update ignored: "
+                f"updates must be a dictionary, got {type(updates)}"
+            )
+            return
+
         self._config.update(updates)
         _LOGGER.info(
             f"{self.feature_id} configuration updated with {len(updates)} values"
@@ -284,12 +291,20 @@ class ExtrasConfigManager:
 
         return True
 
-    def get_string_validation(self, key: str, choices: list | None = None) -> bool:
+    def get_string_validation(
+        self,
+        key: str,
+        choices: list | None = None,
+        min_length: int = 0,
+        max_length: int | None = None,
+    ) -> bool:
         """Validate a string configuration value.
 
         Args:
             key: Configuration key
             choices: Optional list of valid choices
+            min_length: Minimum allowed length (default 0)
+            max_length: Maximum allowed length (default None for no limit)
 
         Returns:
             True if valid
@@ -298,6 +313,20 @@ class ExtrasConfigManager:
         if not isinstance(value, str):
             _LOGGER.error(
                 f"{self.feature_id} configuration error: '{key}' must be string"
+            )
+            return False
+
+        if len(value) < min_length:
+            _LOGGER.error(
+                f"{self.feature_id} configuration error: '{key}' must be at least "
+                f"{min_length} characters long"
+            )
+            return False
+
+        if max_length is not None and len(value) > max_length:
+            _LOGGER.error(
+                f"{self.feature_id} configuration error: '{key}' must be at most "
+                f"{max_length} characters long"
             )
             return False
 

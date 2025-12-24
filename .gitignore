@@ -89,3 +89,4 @@ coverage.xml
 
 # Mock files and test directories
 MagicMock/
+.eslintcache

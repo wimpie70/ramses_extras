@@ -15,6 +15,9 @@ export default [
       '.venv/**',
       '**/*.py',
       '**/__pycache__/**',
+      'MagicMock/**',
+      'htmlcov/**',
+      '.coverage',
     ],
   },
 

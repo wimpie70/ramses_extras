@@ -102,10 +102,12 @@ def _singularize_entity_type(entity_type: str) -> str:
     """
     # Handle common entity type plurals
     entity_type_mapping = {
-        "sensor": "sensor",
-        "switch": "switch",
-        "binary_sensor": "binary_sensor",
-        "number": "number",
+        "sensors": "sensor",
+        "switches": "switch",
+        "numbers": "number",
+        "binary_sensors": "binary_sensor",
+        "climates": "climate",
+        "selects": "select",
         "devices": "device",
         "entities": "entity",
     }
@@ -115,6 +117,10 @@ def _singularize_entity_type(entity_type: str) -> str:
 
 class EntityHelpers:
     """Enhanced entity helpers with automatic format detection."""
+
+    # Class-level cache references for testing
+    _DEVICE_ID_CACHE = _DEVICE_ID_CACHE
+    _FORMAT_CACHE = _FORMAT_CACHE
 
     @staticmethod
     def _clear_caches() -> None:
@@ -235,7 +241,7 @@ class EntityHelpers:
             parsed_name = identifier if identifier else "unknown"
         else:
             # Extras Format: device_id at end
-            parsed_name = entity_name[:position]
+            parsed_name = entity_name[:position].rstrip("_")
 
         # Step 6: Validation and confidence assessment
         confidence = EntityHelpers._calculate_format_confidence(
@@ -251,81 +257,6 @@ class EntityHelpers:
             "confidence": confidence,
             "is_valid": confidence > 0.7,
         }
-
-    @staticmethod
-    def generate_entity_name_from_template(
-        entity_type: str, template: str, validate_format: bool = True, **kwargs: Any
-    ) -> str:
-        """Enhanced universal template with validation and error handling.
-
-        Args:
-            entity_type: Type of entity ("sensor", "switch", "number", "binary_sensor")
-            template: Template string with placeholders
-            validate_format: Whether to validate the generated format
-            **kwargs: Template placeholder values
-
-        Returns:
-            Generated entity ID with automatic format detection
-
-        Raises:
-            ValueError: If template is invalid or required placeholders missing
-        """
-        # Validate template structure
-        if not template or not isinstance(template, str):
-            raise ValueError("Template must be a non-empty string")
-
-        # Validate entity_type
-        valid_types = {
-            "sensor",
-            "switch",
-            "number",
-            "binary_sensor",
-            "climate",
-            "select",
-        }
-        if entity_type not in valid_types:
-            raise ValueError(
-                f"Invalid entity_type: {entity_type}. Must be one of {valid_types}"
-            )
-
-        # Extract placeholders and validate required values
-        placeholders = re.findall(r"\{(\w+)\}", template)
-        missing_placeholders = [p for p in placeholders if p not in kwargs]
-        if missing_placeholders:
-            raise ValueError(f"Missing required placeholders: {missing_placeholders}")
-
-        # Handle device_id with enhanced detection
-        if "device_id" in kwargs and "{device_id}" in template:
-            device_id = kwargs["device_id"]
-
-            # Validate device_id format
-            if not re.match(r"\d+[:_]\d+", device_id):
-                raise ValueError(f"Invalid device_id format: {device_id}")
-
-            # Detect format by template position
-            device_pos = template.find("{device_id}")  # noqa: F841
-            format_hint = EntityHelpers._get_format_hint_from_template(template)  # noqa: F841
-
-            # Generate entity name with format validation
-            entity_name = template.format(**kwargs)
-            full_entity_id = f"{entity_type}.{entity_name}"
-
-            # Optional format validation
-            if validate_format:
-                parsed = EntityHelpers.parse_entity_id(full_entity_id)
-                if not parsed:
-                    raise ValueError(
-                        f"Generated entity_id failed validation: {full_entity_id}"
-                    )
-
-            return full_entity_id
-
-        # Simple template processing for non-device_id templates
-        try:
-            entity_name = template.format(**kwargs)
-            return f"{entity_type}.{entity_name}"
-        except KeyError as e:
-            raise ValueError(f"Template processing failed for placeholder: {e}")  # noqa: B904
 
     @staticmethod
     def validate_entity_name(entity_id: str) -> dict[str, Any]:
@@ -481,6 +412,9 @@ class EntityHelpers:
         Returns:
             List of matching entity IDs
         """
+        if not patterns:
+            return []
+
         matching_entities = []
         for entity in entities:
             entity_id = (
@@ -489,7 +423,7 @@ class EntityHelpers:
             for pattern in patterns:
                 if pattern.endswith("*"):
                     prefix = pattern[:-1]
-                    if entity_id.startswith(prefix):
+                    if prefix and entity_id.startswith(prefix):  # Skip empty prefix
                         matching_entities.append(entity_id)
                         break
                 elif entity_id == pattern:
@@ -532,7 +466,10 @@ class EntityHelpers:
         all_states = hass.states.async_all()
 
         for state in all_states:
-            entity_id = state.entity_id
+            try:
+                entity_id = state.entity_id
+            except AttributeError:
+                continue  # Skip invalid state objects
             parsed = EntityHelpers.parse_entity_id(entity_id)
             if parsed and parsed[2] == device_id:
                 entity_ids.append(entity_id)
@@ -568,6 +505,73 @@ class EntityHelpers:
         """
         parsed = EntityHelpers.parse_entity_id(entity_id)
         return parsed[2] if parsed else None
+
+    @staticmethod
+    def generate_entity_name_from_template(
+        entity_type: str, template: str, device_id: str | None = None, **kwargs: Any
+    ) -> str:
+        """Generate entity name from template with device ID substitution.
+
+        Args:
+            entity_type: Entity type (sensor, switch, etc.)
+            template: Template string with optional {device_id} placeholder
+            device_id: Device ID to substitute (optional if template doesn't need it)
+            **kwargs: Additional template variables
+
+        Returns:
+            Generated entity ID
+
+        Raises:
+            ValueError: If template is invalid or required placeholders are missing
+        """
+        if not template or template.strip() == "":
+            raise ValueError("Template must be a non-empty string")
+
+        if template is None:
+            raise ValueError("Template must be a non-empty string")
+
+        # Validate entity type
+        valid_entity_types = {
+            "sensor",
+            "switch",
+            "number",
+            "binary_sensor",
+            "climate",
+            "select",
+        }
+        if entity_type not in valid_entity_types:
+            raise ValueError(f"Invalid entity_type: {entity_type}")
+
+        # Check for required placeholders
+        if device_id is not None and "{device_id}" in template:
+            # Device ID provided and template needs it - substitute it
+            template = template.replace("{device_id}", device_id)
+        elif device_id is not None and "{device_id}" not in template:
+            # Device ID provided but template doesn't use it - invalid
+            raise ValueError("Missing required placeholders")
+        elif device_id is None and "{device_id}" in template:
+            # Template needs device_id but none provided
+            raise ValueError("Missing required placeholders")
+
+        # Validate device_id format if provided
+        if device_id is not None and not re.match(r"\d+_\d+", device_id):
+            raise ValueError("Invalid device_id format")
+
+        # Substitute any other placeholders
+        for key, value in kwargs.items():
+            placeholder = f"{{{key}}}"
+            if placeholder in template:
+                template = template.replace(placeholder, str(value))
+
+        # Check for remaining placeholders
+        if "{" in template or "}" in template:
+            raise ValueError("Missing required placeholders")
+
+        # Ensure we have a valid entity type prefix
+        if not template.startswith(f"{entity_type}."):
+            template = f"{entity_type}.{template}"
+
+        return template
 
     @staticmethod
     def get_all_required_entity_ids_for_device(device_id: str) -> list[str]:
