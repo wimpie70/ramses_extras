@@ -5,7 +5,7 @@ Do we know what cards are enabled at startup ?
 - same for registered resources
 - we can instead show a placeholder card for each feature that is disabled, with a message to enable it in the config flow
 - we can create small 'main-card.js' files for each card, that will be registered. It will redirect to the real card if enabled, or show a 'this card is disabled, you can enabled it's feature from the Ramses Extras configuration'
-
+- add update parameters
 sensor control improvements
 
 - why external calculated abs humid entities:

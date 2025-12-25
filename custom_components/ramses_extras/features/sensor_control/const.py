@@ -43,10 +43,11 @@ SENSOR_CONTROL_CONST: dict[str, Any] = {
 
 
 def load_feature() -> None:
-    from custom_components.ramses_extras.const import register_ws_commands
     from custom_components.ramses_extras.extras_registry import extras_registry
 
-    register_ws_commands(DOMAIN, SENSOR_CONTROL_WEBSOCKET_COMMANDS)
+    extras_registry.register_websocket_commands(
+        DOMAIN, SENSOR_CONTROL_WEBSOCKET_COMMANDS
+    )
     extras_registry.register_feature(DOMAIN)
 
 

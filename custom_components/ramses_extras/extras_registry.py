@@ -19,6 +19,7 @@ class RamsesEntityRegistry:
         self._boolean_configs: dict[str, dict[str, Any]] = {}
         self._device_mappings: dict[str, dict[str, Any]] = {}
         self._card_configs: dict[str, dict[str, Any]] = {}
+        self._websocket_commands: dict[str, dict[str, str]] = {}
         self._lock = threading.Lock()
         self._loaded_features: set[str] = set()
 
@@ -73,6 +74,13 @@ class RamsesEntityRegistry:
         """Mark a feature as registered."""
         with self._lock:
             self._loaded_features.add(feature_name)
+
+    def register_websocket_commands(
+        self, feature_name: str, commands: dict[str, str]
+    ) -> None:
+        """Register WebSocket command metadata for a feature."""
+        with self._lock:
+            self._websocket_commands[feature_name] = dict(commands)
 
     def load_feature_definitions(
         self, feature_name: str, feature_module_path: str
@@ -260,6 +268,7 @@ class RamsesEntityRegistry:
             self._boolean_configs.clear()
             self._device_mappings.clear()
             self._card_configs.clear()
+            self._websocket_commands.clear()
             self._loaded_features.clear()
             _LOGGER.info("✅ EntityRegistry state cleared")
 
@@ -302,6 +311,28 @@ class RamsesEntityRegistry:
         """Get all card configurations."""
         with self._lock:
             return self._card_configs.copy()
+
+    def get_websocket_commands_for_feature(self, feature_name: str) -> dict[str, str]:
+        """Get WebSocket command metadata for a feature."""
+        with self._lock:
+            return self._websocket_commands.get(feature_name, {}).copy()
+
+    def get_all_websocket_commands(self) -> dict[str, dict[str, str]]:
+        """Get WebSocket command metadata for all features."""
+        with self._lock:
+            return {
+                name: commands.copy()
+                for name, commands in self._websocket_commands.items()
+            }
+
+    def get_features_with_websocket_commands(self) -> list[str]:
+        """List features that expose WebSocket commands."""
+        with self._lock:
+            return [
+                feature_name
+                for feature_name, commands in self._websocket_commands.items()
+                if commands
+            ]
 
     def clear_all(self) -> None:
         """Clear all configurations (useful for testing)."""

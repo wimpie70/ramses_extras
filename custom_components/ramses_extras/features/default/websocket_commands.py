@@ -10,12 +10,8 @@ from typing import TYPE_CHECKING, Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 
-from ...const import (
-    AVAILABLE_FEATURES,
-    DOMAIN,
-    discover_ws_commands,
-    get_all_ws_commands,
-)
+from ...const import AVAILABLE_FEATURES, DOMAIN
+from ...extras_registry import extras_registry
 from ...framework.helpers.device.filter import DeviceFilter
 from ...framework.helpers.ramses_commands import RamsesCommands
 from ...framework.helpers.websocket_base import GetEntityMappingsCommand
@@ -95,8 +91,8 @@ async def ws_websocket_info(
     architectural consistency.
     """
     # Get all registered WebSocket commands
-    all_commands = get_all_ws_commands()
-    features_with_commands = discover_ws_commands()
+    all_commands = extras_registry.get_all_websocket_commands()
+    features_with_commands = extras_registry.get_features_with_websocket_commands()
 
     # Build commands info dynamically from registry
     commands_info = []

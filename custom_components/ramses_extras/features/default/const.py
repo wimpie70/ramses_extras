@@ -81,7 +81,6 @@ DEFAULT_WEBSOCKET_COMMANDS = {
 
 def load_feature() -> None:
     """Load default feature into the registry."""
-    from custom_components.ramses_extras.const import register_ws_commands
     from custom_components.ramses_extras.extras_registry import extras_registry
 
     # Register entity configurations
@@ -92,7 +91,7 @@ def load_feature() -> None:
     extras_registry.register_device_mappings(DEFAULT_DEVICE_ENTITY_MAPPING)
 
     # Register WebSocket commands
-    register_ws_commands("default", DEFAULT_WEBSOCKET_COMMANDS)
+    extras_registry.register_websocket_commands("default", DEFAULT_WEBSOCKET_COMMANDS)
 
     # Also register the websocket_commands module for auto-discovery
     from custom_components.ramses_extras.features.default import websocket_commands

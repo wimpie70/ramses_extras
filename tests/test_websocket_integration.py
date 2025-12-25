@@ -7,6 +7,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras import websocket_integration
+from custom_components.ramses_extras.extras_registry import extras_registry
 
 
 @pytest.mark.asyncio
@@ -36,9 +37,19 @@ async def test_async_setup_entry_success(hass):
     fake_module.ws_handler = ws_handler
 
     with (
-        patch(
-            "custom_components.ramses_extras.const.WS_COMMAND_REGISTRY",
-            {"default": {}, "hello_world": {}, "humidity_control": {}},
+        patch.object(
+            extras_registry,
+            "get_all_websocket_commands",
+            return_value={
+                "default": {},
+                "hello_world": {},
+                "humidity_control": {},
+            },
+        ),
+        patch.object(
+            extras_registry,
+            "get_features_with_websocket_commands",
+            return_value=["default", "hello_world", "humidity_control"],
         ),
         patch.object(
             websocket_integration,
@@ -88,12 +99,15 @@ async def test_async_setup_entry_with_missing_modules(hass):
         patch.object(
             websocket_integration, "_import_websocket_module", side_effect=mock_import
         ),
-        patch(
-            "custom_components.ramses_extras.const.WS_COMMAND_REGISTRY",
-            {
-                "default": {},
-                "missing_feature": {},
-            },
+        patch.object(
+            extras_registry,
+            "get_all_websocket_commands",
+            return_value={"default": {}, "missing_feature": {}},
+        ),
+        patch.object(
+            extras_registry,
+            "get_features_with_websocket_commands",
+            return_value=["default", "missing_feature"],
         ),
     ):
         # Setup should not raise

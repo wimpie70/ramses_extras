@@ -13,7 +13,8 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, discover_ws_commands, get_all_ws_commands
+from .const import DOMAIN
+from .extras_registry import extras_registry
 
 
 def _import_websocket_module(feature_name: str) -> Any:
@@ -70,8 +71,8 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
     _LOGGER.info("Registering Ramses Extras WebSocket commands")
 
     # Get all registered WebSocket commands from the registry
-    all_commands = get_all_ws_commands()
-    features_with_commands = discover_ws_commands()
+    all_commands = extras_registry.get_all_websocket_commands()
+    features_with_commands = extras_registry.get_features_with_websocket_commands()
 
     if not features_with_commands:
         _LOGGER.warning("No WebSocket commands registered for any features")
@@ -126,8 +127,8 @@ def get_websocket_commands_info() -> dict[str, Any]:
         Dictionary containing WebSocket commands information
     """
     # Get all registered WebSocket commands from the registry
-    all_commands = get_all_ws_commands()
-    features_with_commands = discover_ws_commands()
+    all_commands = extras_registry.get_all_websocket_commands()
+    features_with_commands = extras_registry.get_features_with_websocket_commands()
 
     # Build commands by feature
     commands_by_feature = {}
@@ -243,7 +244,7 @@ def get_enabled_websocket_commands(
         return {}
 
     # Get all registered commands from registry
-    all_commands = get_all_ws_commands()
+    all_commands = extras_registry.get_all_websocket_commands()
 
     # Check if feature has commands registered in the registry
     feature_commands = all_commands.get(feature_name, {})

@@ -60,6 +60,12 @@ HELLO_WORLD_DEVICE_ENTITY_MAPPING = {
         "sensor": [],  # Placeholder
         "number": [],  # Placeholder
     },
+    "HgiController": {
+        "switch": ["hello_world_switch"],
+        "binary_sensor": ["hello_world_status"],
+        "sensor": [],
+        "number": [],
+    },
 }
 
 # WebSocket commands
@@ -141,7 +147,6 @@ def load_feature() -> None:
     This function should be called during integration setup to make the feature
     available to the Ramses Extras framework.
     """
-    from custom_components.ramses_extras.const import register_ws_commands
     from custom_components.ramses_extras.extras_registry import extras_registry
 
     # Register entity configurations
@@ -150,7 +155,9 @@ def load_feature() -> None:
     extras_registry.register_device_mappings(HELLO_WORLD_DEVICE_ENTITY_MAPPING)
 
     # Register WebSocket commands
-    register_ws_commands("hello_world", HELLO_WORLD_WEBSOCKET_COMMANDS)
+    extras_registry.register_websocket_commands(
+        "hello_world", HELLO_WORLD_WEBSOCKET_COMMANDS
+    )
 
     # Card registration now handled by CardRegistry - no legacy configs needed
 
