@@ -4,7 +4,7 @@ This module provides minimal WebSocket infrastructure for Ramses Extras features
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from custom_components.ramses_extras.framework.helpers.device.core import (
     extract_device_id_as_string,
@@ -111,58 +111,6 @@ class DeviceWebSocketCommand(BaseWebSocketCommand):
         """
         super().__init__(hass, feature_name)
         self._ramses_data = hass.data.get("ramses_cc", {})
-
-
-# WebSocket command registry for feature-centric organization
-WEBSOCKET_COMMANDS: dict[str, dict[str, Callable]] = {}
-
-
-def register_websocket_command(
-    feature_name: str, command_name: str, handler_class: type[BaseWebSocketCommand]
-) -> None:
-    """Register a WebSocket command for a feature.
-
-    Args:
-        feature_name: Name of the feature
-        command_name: Name of the command
-        handler_class: Handler class for the command
-    """
-    if feature_name not in WEBSOCKET_COMMANDS:
-        WEBSOCKET_COMMANDS[feature_name] = {}
-    WEBSOCKET_COMMANDS[feature_name][command_name] = handler_class
-    _LOGGER.debug(
-        f"Registered WebSocket command {command_name} for feature {feature_name}"
-    )
-
-
-def get_websocket_commands_for_feature(feature_name: str) -> dict[str, Callable]:
-    """Get all WebSocket commands for a feature.
-
-    Args:
-        feature_name: Name of the feature
-
-    Returns:
-        Dictionary of command name to handler class mappings
-    """
-    return WEBSOCKET_COMMANDS.get(feature_name, {})
-
-
-def get_all_websocket_commands() -> dict[str, dict[str, Callable]]:
-    """Get all registered WebSocket commands.
-
-    Returns:
-        Dictionary of feature name to command mappings
-    """
-    return WEBSOCKET_COMMANDS.copy()
-
-
-def discover_websocket_commands() -> list[str]:
-    """Discover all features that have WebSocket commands registered.
-
-    Returns:
-        List of feature names with WebSocket commands
-    """
-    return list(WEBSOCKET_COMMANDS.keys())
 
 
 class GetEntityMappingsCommand(BaseWebSocketCommand):

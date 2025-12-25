@@ -4,38 +4,59 @@ This module handles WebSocket command registration and integration with Home Ass
 Uses the exact same pattern as the old working implementation.
 """
 
+import asyncio
+import importlib
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import AVAILABLE_FEATURES, DOMAIN, discover_ws_commands, get_all_ws_commands
+from .const import DOMAIN, discover_ws_commands, get_all_ws_commands
 
 
-def _import_websocket_module(feature_name: str) -> bool:
-    """Import WebSocket module for a feature.
+def _import_websocket_module(feature_name: str) -> Any:
+    """Import the WebSocket commands module for a feature.
 
-    Args:
-        feature_name: Name of the feature
-
-    Returns:
-        True if import successful
+    Importing executes the `@websocket_api.websocket_command` decorators.
 
     Raises:
-        ImportError: If import fails
+        ImportError: If import fails.
     """
-    try:
-        websocket_module_path = f"custom_components.ramses_extras.features.{feature_name}.websocket_commands"  # noqa: E501
-        __import__(websocket_module_path, fromlist=[""])
-        return True
-    except ImportError:
-        raise
+
+    websocket_module_path = (
+        f"custom_components.ramses_extras.features.{feature_name}.websocket_commands"
+    )
+    return importlib.import_module(websocket_module_path)
 
 
-if TYPE_CHECKING:
-    from homeassistant.components.websocket_api import WebSocket
+def _register_commands_from_module(hass: HomeAssistant, module: Any) -> int:
+    """Register all websocket commands found in a module.
+
+    Home Assistant's `@websocket_api.websocket_command` decorator only tags
+    a handler. Registration happens via `websocket_api.async_register_command`.
+
+    Returns:
+        Number of commands registered.
+    """
+
+    registered = 0
+
+    for attr_name in dir(module):
+        handler = getattr(module, attr_name, None)
+        if not callable(handler):
+            continue
+
+        command = getattr(handler, "_ws_command", None)
+        if not isinstance(command, str):
+            continue
+
+        websocket_api.async_register_command(hass, handler)
+        registered += 1
+
+    return registered
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,41 +77,26 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
         _LOGGER.warning("No WebSocket commands registered for any features")
         return
 
-    # Import commands dynamically for each feature to ensure decorators are executed
-    for feature_name, commands in all_commands.items():
+    # Import modules, then register handlers with HA.
+    for feature_name in all_commands:
         try:
-            # Dynamic import of websocket_commands module for this feature
-            # This ensures the module is loaded and decorators are executed
-            websocket_module_path = f"custom_components.ramses_extras.features.{feature_name}.websocket_commands"  # noqa: E501
-            _LOGGER.info(f"🔌 Importing WebSocket module: {websocket_module_path}")
-            websocket_module = __import__(websocket_module_path, fromlist=[""])
-            _LOGGER.info(
-                f"✅ Successfully imported WebSocket module: {websocket_module}"
+            websocket_module = await asyncio.to_thread(
+                _import_websocket_module,
+                feature_name,
             )
-
-            # Check if the expected handler functions exist and register them
-            expected_handlers = [f"ws_{cmd_name}" for cmd_name in commands.keys()]
-            for handler_name in expected_handlers:
-                handler_func = getattr(websocket_module, handler_name, None)
-                if handler_func:
-                    _LOGGER.info(f"✅ Found handler function: {handler_name}")
-                    # Register the handler with Home Assistant's WebSocket API
-                    try:
-                        websocket_api.async_register_command(hass, handler_func)
-                        _LOGGER.info(f"🔗 Registered WebSocket command: {handler_name}")
-                    except Exception as register_error:
-                        _LOGGER.error(
-                            f"❌ Failed to register {handler_name}: {register_error}"
-                        )
-                else:
-                    _LOGGER.warning(f"❌ Missing handler function: {handler_name}")
+            registered = _register_commands_from_module(hass, websocket_module)
+            _LOGGER.debug(
+                "Imported websocket_commands module for feature '%s' (%d handlers)",
+                feature_name,
+                registered,
+            )
 
         except ImportError as error:
             # Check if this is a missing websocket_commands.py file
             if "websocket_commands" in str(error):
-                _LOGGER.info(
-                    f"Feature '{feature_name}' does not have a websocket_commands.py "
-                    f"file - commands are registered via decorators in other modules"
+                _LOGGER.debug(
+                    "Feature '%s' has no websocket_commands module",
+                    feature_name,
                 )
             else:
                 _LOGGER.warning(
@@ -167,9 +173,6 @@ async def async_setup_websocket_integration(hass: HomeAssistant) -> bool:
         # Register WebSocket commands
         await async_register_websocket_commands(hass)
 
-        # Log registration info
-        from .const import DOMAIN
-
         info = get_websocket_commands_info()
         _LOGGER.info(
             f"WebSocket integration setup complete: {info['total_commands']} commands"
@@ -240,8 +243,6 @@ def get_enabled_websocket_commands(
         return {}
 
     # Get all registered commands from registry
-    from .const import get_all_ws_commands
-
     all_commands = get_all_ws_commands()
 
     # Check if feature has commands registered in the registry

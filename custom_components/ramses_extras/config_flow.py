@@ -9,8 +9,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
-from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import (
+    HANDLERS,
+    ConfigEntry,
+    ConfigFlow,
+    FlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 
 from .const import (
@@ -146,11 +152,11 @@ async def _remove_card_config_flow(hass: "HomeAssistant", card_path: Path) -> No
         _LOGGER.error(f"Failed to remove card: {e}")
 
 
-@config_entries.HANDLERS.register(DOMAIN)
-class RamsesExtrasConfigFlow(config_entries.ConfigFlow):
+@HANDLERS.register(DOMAIN)
+class RamsesExtrasConfigFlow(ConfigFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle the initial step."""
         # Check if we already have an entry for this domain
         existing_entries = self.hass.config_entries.async_entries(DOMAIN)
@@ -185,7 +191,7 @@ class RamsesExtrasConfigFlow(config_entries.ConfigFlow):
         return RamsesExtrasOptionsFlowHandler(config_entry)
 
 
-class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
+class RamsesExtrasOptionsFlowHandler(OptionsFlow):
     """Handle options flow for Ramses Extras."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
@@ -205,9 +211,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         self._all_devices: list[Any] | None = None
         self._features_for_device_config: list[str] | None = None
 
-    def _refresh_config_entry(self) -> None:
+    def _refresh_config_entry(self, hass: HomeAssistant) -> None:
         entry_id = getattr(self._config_entry, "entry_id", None)
-        config_entries = getattr(self.hass, "config_entries", None)
+        config_entries = getattr(hass, "config_entries", None)
         if not entry_id or config_entries is None:
             return
 
@@ -219,17 +225,17 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, list[str]] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle options initialization - redirect to main menu."""
         return await self.async_step_main_menu()
 
     async def async_step_main_menu(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle the main configuration menu with ramses_cc style
         link/button navigation."""
 
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
 
         # Build main menu options with ramses_cc style (links/buttons, not dropdowns)
         # Menu options must be a list of step IDs; labels are provided via translations
@@ -386,9 +392,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_features(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle enable/disable features step."""
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
         # Get current enabled features
         current_features = self._config_entry.data.get("enabled_features", {})
         enabled_features = {k: v for k, v in current_features.items() if k != "default"}
@@ -431,13 +437,13 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_configure_devices(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle configure devices step."""
         return await self.async_step_main_menu()
 
     async def async_step_view_configuration(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle view configuration step."""
         # Get current configuration summary
         current_features = self._config_entry.data.get("enabled_features", {})
@@ -466,7 +472,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_sensor_control_overview(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Show a read-only overview of sensor_control mappings.
 
         This summarizes per-device mappings for each supported metric, so users
@@ -475,7 +481,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
         """
 
         # Ensure we have the latest options snapshot
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
 
         options = dict(self._config_entry.options)
         sensor_control_options = options.get("sensor_control") or {}
@@ -583,7 +589,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_advanced_settings(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle advanced settings step."""
         if user_input is not None:
             # Handle advanced settings form submission
@@ -615,7 +621,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Confirmation step after feature or device configuration.
 
         This step summarizes pending changes and applies them once confirmed,
@@ -633,6 +639,19 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             if staged_enabled_features != current_features:
                 new_data = dict(self._config_entry.data)
                 new_data["enabled_features"] = staged_enabled_features
+
+                # Clean up device_feature_matrix to remove disabled features
+                device_feature_matrix = new_data.get("device_feature_matrix", {})
+                for device_id in device_feature_matrix:
+                    device_features = device_feature_matrix[device_id]
+                    # Remove features that are now disabled
+                    device_feature_matrix[device_id] = {
+                        feature_id: enabled
+                        for feature_id, enabled in device_features.items()
+                        if staged_enabled_features.get(feature_id, False)
+                    }
+                new_data["device_feature_matrix"] = device_feature_matrix
+
                 self.hass.config_entries.async_update_entry(
                     self._config_entry,
                     data=new_data,
@@ -640,6 +659,11 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
                 # Update cards based on new feature set
                 await _manage_cards_config_flow(self.hass, staged_enabled_features)
+
+                # Clean up orphaned devices after feature changes
+                from . import _cleanup_orphaned_devices
+
+                await _cleanup_orphaned_devices(self.hass, self._config_entry)
 
             # Reset pending state and return to main menu
             self._pending_data = None
@@ -706,9 +730,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def generic_step_feature_config(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle configuration for a feature using the generic flow."""
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
         if not hasattr(self, "_selected_feature"):
             # This should not happen if called from the menu
             return self.async_abort(reason="invalid_feature")
@@ -826,9 +850,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_feature_config(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle feature configuration step."""
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
         _LOGGER.info(
             "🎯 async_step_feature_config called - FEATURE CONFIG STEP STARTED"
         )
@@ -881,9 +905,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_device_selection(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle device selection step."""
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
         if not hasattr(self, "_selected_feature") or not self._selected_feature:
             # Fallback to main menu if no feature is selected
             return await self.async_step_main_menu()
@@ -904,7 +928,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             self._get_config_flow_helper().get_enabled_devices_for_feature(feature_id)
         )
 
-        # Build device options
+        # Create device selection options
         device_options = [
             selector.SelectOptionDict(
                 value=device_id, label=self._get_device_label(device)
@@ -912,6 +936,9 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             for device in filtered_devices
             if (device_id := self._extract_device_id(device))
         ]
+
+        option_values = {opt["value"] for opt in device_options}
+        current_enabled = [d for d in current_enabled if d in option_values]
 
         # Create schema for device selection
         schema = vol.Schema(
@@ -1052,7 +1079,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     # Add handler for dynamic feature menu items
     async def async_step_feature_default(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle default configuration via feature-specific helper.
 
         This method stays as the Home Assistant entrypoint but delegates the
@@ -1087,14 +1114,14 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_feature_humidity_control(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle humidity control feature configuration."""
         self._selected_feature = "humidity_control"
         return await self.async_step_feature_config(user_input)
 
     async def async_step_feature_hvac_fan_card(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle HVAC fan card feature configuration.
 
         The HVAC fan card does not require per-device configuration. This
@@ -1123,14 +1150,14 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_feature_hello_world(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle hello world card feature configuration."""
         self._selected_feature = "hello_world"
         return await self.async_step_feature_config(user_input)
 
     async def async_step_feature_sensor_control(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle sensor control feature configuration."""
         self._selected_feature = "sensor_control"
         return await self.async_step_feature_config(user_input)
@@ -1138,17 +1165,17 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
     # Matrix State Persistence Methods
     def _save_matrix_state(self) -> None:
         """Save current matrix state to config entry data."""
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
         matrix_state = self._get_config_flow_helper().get_feature_device_matrix_state()
         new_data = dict(self._config_entry.data)
         new_data["device_feature_matrix"] = matrix_state
         self.hass.config_entries.async_update_entry(self._config_entry, data=new_data)
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
         _LOGGER.info(f"Saved matrix state with {len(matrix_state)} devices")
 
     def _restore_matrix_state(self) -> None:
         """Restore matrix state from config entry."""
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
         matrix_state = self._config_entry.data.get("device_feature_matrix", {})
         if matrix_state:
             self._get_config_flow_helper().restore_matrix_state(matrix_state)
@@ -1192,7 +1219,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
             _LOGGER.error(f"❌ Error during direct platform reload: {e}")
             # Don't re-raise - platform reload failure shouldn't break config flow
 
-    async def _show_matrix_based_confirmation(self) -> config_entries.FlowResult:
+    async def _show_matrix_based_confirmation(self) -> FlowResult:
         """Show confirmation with matrix-based entity changes."""
         _LOGGER.info("DEBUG: _show_matrix_based_confirmation called")
         _LOGGER.debug(f"config_entries: {self.config_entry.data}")
@@ -1366,12 +1393,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_matrix_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle matrix-based confirmation."""
         _LOGGER.info("🎯 async_step_matrix_confirm called - MATRIX CONFIRMATION STEP")
         _LOGGER.info(f"📋 User input: {user_input}")
 
-        self._refresh_config_entry()
+        self._refresh_config_entry(self.hass)
 
         if user_input is not None:
             # User confirmed the changes - apply them and complete the options flow
@@ -1408,7 +1435,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     self.hass.config_entries.async_update_entry(
                         self._config_entry, data=new_data
                     )
-                    self._refresh_config_entry()
+                    self._refresh_config_entry(self.hass)
                     _LOGGER.info(
                         f"✅ Saved new matrix state with "
                         f"{len(temp_matrix_state)} devices"
@@ -1440,7 +1467,7 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     self.hass.config_entries.async_update_entry(
                         self._config_entry, data=new_data
                     )
-                    self._refresh_config_entry()
+                    self._refresh_config_entry(self.hass)
                     _LOGGER.info(
                         f"Updated config entry with new matrix state "
                         f"{temp_matrix_state}"
@@ -1452,18 +1479,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                     _LOGGER.info("Updated helper with new matrix state")
 
                     # Store information about entities to be created for platform setup
-                    entities_created = []
+                    # IMPORTANT: do not create entity-registry-only entries here.
+                    # Entity objects must be created by the normal HA platform setup
+                    # flow (async_add_entities). Otherwise entities become
+                    #  'unavailable'.
 
-                    # Create missing entities FIRST
-                    for entity_id in entities_to_create:
-                        try:
-                            await entity_manager.create_entity(entity_id)
-                            entities_created.append(entity_id)
-                            _LOGGER.info(f"Created entity: {entity_id}")
-                        except Exception as e:
-                            _LOGGER.warning(f"Failed to create entity {entity_id}: {e}")
-
-                    # Remove extra entities SECOND (before platform reload)
+                    # Remove extra entities (before platform reload)
                     for entity_id in entities_to_remove:
                         try:
                             await entity_manager.remove_entity(entity_id)
@@ -1471,24 +1492,12 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                         except Exception as e:
                             _LOGGER.warning(f"Failed to remove entity {entity_id}: {e}")
 
-                    # Store the created entities in hass.data for platform setup to find
-                    if entities_created:
-                        if "ramses_extras" not in self.hass.data:
-                            self.hass.data["ramses_extras"] = {}
-                        if (
-                            "pending_entity_creation"
-                            not in self.hass.data["ramses_extras"]
-                        ):
-                            self.hass.data["ramses_extras"][
-                                "pending_entity_creation"
-                            ] = []
-                        self.hass.data["ramses_extras"][
-                            "pending_entity_creation"
-                        ].extend(entities_created)
-                        _LOGGER.info(
-                            f"Stored {len(entities_created)} pending entities "
-                            f"for platform setup"
-                        )
+                    # Clean up devices that no longer have any features enabled
+                    _LOGGER.info("=== ABOUT TO CALL CLEANUP FUNCTION ===")
+                    from . import _cleanup_orphaned_devices
+
+                    await _cleanup_orphaned_devices(self.hass, self._config_entry)
+                    _LOGGER.info("=== CLEANUP FUNCTION COMPLETED ===")
 
                     # Reload the config entry to trigger platform setup for new entities
                     # This must happen AFTER entity creation so platforms
@@ -1527,3 +1536,58 @@ class RamsesExtrasOptionsFlowHandler(config_entries.OptionsFlow):
                 return await self._show_matrix_based_confirmation()
 
         return await self._show_matrix_based_confirmation()
+
+    async def _cleanup_orphaned_devices(
+        self,
+        old_matrix: dict[str, dict[str, bool]],
+        new_matrix: dict[str, dict[str, bool]],
+    ) -> None:
+        """Clean up devices that no longer have any entities.
+
+        Simple logic: if a device has no entities, it's orphaned and should be removed.
+        """
+        _LOGGER.info("=== DEVICE CLEANUP DEBUG: Function called ===")
+
+        from homeassistant.helpers import device_registry as dr
+        from homeassistant.helpers import entity_registry as er
+
+        device_registry = dr.async_get(self.hass)
+        entity_registry = er.async_get(self.hass)
+
+        # Get all devices that belong to ramses_extras
+        ramses_devices = []
+        for device_entry in device_registry.devices.values():
+            if (DOMAIN, device_entry.id) in device_entry.identifiers or any(
+                identifier[0] == DOMAIN for identifier in device_entry.identifiers
+            ):
+                ramses_devices.append(device_entry)
+
+        # Find orphaned devices: devices that have no entities
+        orphaned_devices = []
+        for device_entry in ramses_devices:
+            # Check if this device has any entities
+            entities = entity_registry.entities.get(device_entry.id, [])
+            if not entities:
+                # No entities found - this device is orphaned
+                device_id = list(device_entry.identifiers)[0][1]  # Extract device ID
+                orphaned_devices.append((device_id, device_entry))
+                _LOGGER.info(f"Found orphaned device: {device_id} (no entities)")
+
+        if not orphaned_devices:
+            _LOGGER.info("No orphaned devices found")
+            return
+
+        _LOGGER.info(f"Removing {len(orphaned_devices)} orphaned devices")
+
+        # Remove orphaned devices
+        for device_id, device_entry in orphaned_devices:
+            try:
+                if self._config_entry.entry_id in device_entry.config_entries:
+                    device_registry.async_remove_device(device_entry.id)
+                    _LOGGER.info(f"Removed orphaned device: {device_id}")
+                else:
+                    _LOGGER.debug(
+                        f"Device {device_id} not owned by ramses_extras, skipping"
+                    )
+            except Exception as e:
+                _LOGGER.warning(f"Failed to remove device {device_id}: {e}")

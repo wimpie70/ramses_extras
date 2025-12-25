@@ -1,9 +1,9 @@
 """Tests for websocket_integration.py."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras import websocket_integration
@@ -26,15 +26,39 @@ async def test_async_setup_entry_success(hass):
         }
     }
 
-    # Mock the import functions
-    with patch(
-        "custom_components.ramses_extras.const.WS_COMMAND_REGISTRY",
-        {"default": {}, "hello_world": {}, "humidity_control": {}},
+    fake_module = MagicMock()
+
+    def ws_handler(hass: HomeAssistant, connection: Any, msg: dict[str, Any]) -> None:
+        return None
+
+    ws_handler._ws_command = "ramses_extras/default/get_cards_enabled"  # type: ignore[attr-defined]  # noqa: SLF001
+    ws_handler._ws_schema = False  # type: ignore[attr-defined]  # noqa: SLF001
+    fake_module.ws_handler = ws_handler
+
+    with (
+        patch(
+            "custom_components.ramses_extras.const.WS_COMMAND_REGISTRY",
+            {"default": {}, "hello_world": {}, "humidity_control": {}},
+        ),
+        patch.object(
+            websocket_integration,
+            "_import_websocket_module",
+            autospec=True,
+            return_value=fake_module,
+        ) as mock_import,
+        patch(
+            "custom_components.ramses_extras.websocket_integration.websocket_api.async_register_command"
+        ) as mock_register,
     ):
-        # Setup the integration
         await websocket_integration.async_setup_entry(hass, config_entry)
 
-        # The test passes if no exception is raised
+        assert mock_import.call_count == 3
+        mock_import.assert_any_call("default")
+        mock_import.assert_any_call("hello_world")
+        mock_import.assert_any_call("humidity_control")
+
+        # One decorated handler is discovered & registered per imported module.
+        assert mock_register.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -55,16 +79,16 @@ async def test_async_setup_entry_with_missing_modules(hass):
     }
 
     # Mock the import functions to raise ImportError for missing modules
-    def mock_import(feature_name):
+    def mock_import(feature_name: str) -> None:
         if feature_name == "missing_feature":
             raise ImportError("No module")
-        return True
+        return
 
     with (
         patch.object(
             websocket_integration, "_import_websocket_module", side_effect=mock_import
         ),
-        patch(  # noqa: E501
+        patch(
             "custom_components.ramses_extras.const.WS_COMMAND_REGISTRY",
             {
                 "default": {},

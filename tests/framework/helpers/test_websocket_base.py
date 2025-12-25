@@ -6,14 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.ramses_extras.framework.helpers.websocket_base import (
-    WEBSOCKET_COMMANDS,
     BaseWebSocketCommand,
     DeviceWebSocketCommand,
     GetEntityMappingsCommand,
-    discover_websocket_commands,
-    get_all_websocket_commands,
-    get_websocket_commands_for_feature,
-    register_websocket_command,
 )
 
 
@@ -136,88 +131,6 @@ class TestDeviceWebSocketCommand:
         command = DeviceWebSocketCommand(hass, feature_name)
 
         assert command._ramses_data == {}
-
-
-class TestWebsocketCommandRegistry:
-    """Test WebSocket command registry functions."""
-
-    def test_register_websocket_command(self, hass):
-        """Test registering a WebSocket command."""
-        feature_name = "test_feature"
-        command_name = "test_command"
-        handler_class = MagicMock
-
-        # Clear registry first
-        WEBSOCKET_COMMANDS.clear()
-
-        register_websocket_command(feature_name, command_name, handler_class)
-
-        assert feature_name in WEBSOCKET_COMMANDS
-        assert command_name in WEBSOCKET_COMMANDS[feature_name]
-        assert WEBSOCKET_COMMANDS[feature_name][command_name] == handler_class
-
-    def test_register_websocket_command_multiple_features(self, hass):
-        """Test registering commands for multiple features."""
-        WEBSOCKET_COMMANDS.clear()
-
-        # Register for feature1
-        register_websocket_command("feature1", "cmd1", MagicMock)
-        register_websocket_command("feature1", "cmd2", MagicMock)
-
-        # Register for feature2
-        register_websocket_command("feature2", "cmd3", MagicMock)
-
-        assert len(WEBSOCKET_COMMANDS) == 2
-        assert len(WEBSOCKET_COMMANDS["feature1"]) == 2
-        assert len(WEBSOCKET_COMMANDS["feature2"]) == 1
-
-    def test_get_websocket_commands_for_feature_existing(self, hass):
-        """Test getting commands for an existing feature."""
-        WEBSOCKET_COMMANDS.clear()
-        handler_class = MagicMock
-        WEBSOCKET_COMMANDS["test_feature"] = {"test_cmd": handler_class}
-
-        result = get_websocket_commands_for_feature("test_feature")
-
-        assert result == {"test_cmd": handler_class}
-
-    def test_get_websocket_commands_for_feature_nonexistent(self, hass):
-        """Test getting commands for a nonexistent feature."""
-        WEBSOCKET_COMMANDS.clear()
-
-        result = get_websocket_commands_for_feature("nonexistent_feature")
-
-        assert result == {}
-
-    def test_get_all_websocket_commands(self, hass):
-        """Test getting all WebSocket commands."""
-        WEBSOCKET_COMMANDS.clear()
-        WEBSOCKET_COMMANDS["feature1"] = {"cmd1": MagicMock, "cmd2": MagicMock}
-        WEBSOCKET_COMMANDS["feature2"] = {"cmd3": MagicMock}
-
-        result = get_all_websocket_commands()
-
-        assert result == WEBSOCKET_COMMANDS
-        assert result is not WEBSOCKET_COMMANDS  # Should be a copy
-
-    def test_discover_websocket_commands(self, hass):
-        """Test discovering features with WebSocket commands."""
-        WEBSOCKET_COMMANDS.clear()
-        WEBSOCKET_COMMANDS["feature1"] = {"cmd1": MagicMock}
-        WEBSOCKET_COMMANDS["feature2"] = {"cmd2": MagicMock, "cmd3": MagicMock}
-
-        result = discover_websocket_commands()
-
-        # Result should contain feature names (order may vary)
-        assert set(result) == {"feature1", "feature2"}
-
-    def test_discover_websocket_commands_empty(self, hass):
-        """Test discovering commands when registry is empty."""
-        WEBSOCKET_COMMANDS.clear()
-
-        result = discover_websocket_commands()
-
-        assert result == []
 
 
 class TestGetEntityMappingsCommand:

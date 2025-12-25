@@ -8,12 +8,14 @@ import importlib
 import logging
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
@@ -133,33 +135,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("📊 Loading entity definitions from features...")
     from .extras_registry import extras_registry
 
-    # Always load default feature definitions
-    _LOGGER.info("🔧 Loading default entity definitions...")
-    from .features.default.const import (
-        DEFAULT_BOOLEAN_CONFIGS,
-        DEFAULT_DEVICE_ENTITY_MAPPING,
-        DEFAULT_NUMBER_CONFIGS,
-        DEFAULT_SENSOR_CONFIGS,
-        DEFAULT_SWITCH_CONFIGS,
-    )
-
-    extras_registry.register_sensor_configs(DEFAULT_SENSOR_CONFIGS)
-    extras_registry.register_switch_configs(DEFAULT_SWITCH_CONFIGS)
-    extras_registry.register_number_configs(DEFAULT_NUMBER_CONFIGS)
-    extras_registry.register_boolean_configs(DEFAULT_BOOLEAN_CONFIGS)
-    extras_registry.register_device_mappings(DEFAULT_DEVICE_ENTITY_MAPPING)
-    extras_registry.register_feature("default")
-
-    # Load default feature's WebSocket commands and other feature components
+    # Load default feature definitions
     _LOGGER.info("🔧 Loading default feature...")
     from .features.default.commands import register_default_commands
     from .features.default.const import load_feature
-
-    # Import WebSocket commands to ensure decorators are executed
-    _LOGGER.info("🔌 Importing WebSocket commands module for decorator execution...")
-    from .features.default import websocket_commands  # noqa: F401
-
-    _LOGGER.info("✅ WebSocket commands module imported successfully")
 
     load_feature()
 
@@ -389,6 +368,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     for automation_manager in automation_managers_to_start:
         hass.async_create_task(automation_manager.start())
+
     return True
 
 
@@ -475,12 +455,57 @@ console.log('🔧 Ramses Extras features loaded:', window.ramsesExtras.features)
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     try:
-        hass.data[DOMAIN]["enabled_features"] = (
+        data = hass.data.setdefault(DOMAIN, {})
+
+        old_enabled_features_raw = data.get("enabled_features")
+        new_enabled_features_raw = (
             entry.data.get("enabled_features")
             or entry.options.get("enabled_features")
             or {}
         )
+
+        old_enabled_features = (
+            old_enabled_features_raw
+            if isinstance(old_enabled_features_raw, dict)
+            else {}
+        )
+        new_enabled_features = (
+            new_enabled_features_raw
+            if isinstance(new_enabled_features_raw, dict)
+            else {}
+        )
+
+        old_matrix_state_raw = data.get("device_feature_matrix")
+        new_matrix_state_raw = entry.data.get("device_feature_matrix") or {}
+
+        old_matrix_state = (
+            old_matrix_state_raw if isinstance(old_matrix_state_raw, dict) else {}
+        )
+        new_matrix_state = (
+            new_matrix_state_raw if isinstance(new_matrix_state_raw, dict) else {}
+        )
+
+        data["enabled_features"] = new_enabled_features
+        data["device_feature_matrix"] = new_matrix_state
+
         await _expose_feature_config_to_frontend(hass, entry)
+
+        enabled_features_changed = old_enabled_features != new_enabled_features
+        matrix_changed = old_matrix_state != new_matrix_state
+
+        if enabled_features_changed or matrix_changed:
+            if data.get("_reload_pending") is True:
+                return
+
+            data["_reload_pending"] = True
+
+            async def _do_reload() -> None:
+                try:
+                    await hass.config_entries.async_reload(entry.entry_id)
+                finally:
+                    hass.data.get(DOMAIN, {}).pop("_reload_pending", None)
+
+            hass.async_create_task(_do_reload())
     except Exception as e:
         _LOGGER.warning("⚠️ Failed to update frontend feature configuration: %s", e)
 
@@ -749,7 +774,7 @@ async def _discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
                 broker = broker_data
             elif isinstance(broker_data, dict) and "broker" in broker_data:
                 broker = broker_data["broker"]
-            elif hasattr(broker_data, "broker"):
+            elif not isinstance(broker_data, dict) and hasattr(broker_data, "broker"):
                 broker = broker_data.broker
             else:
                 # Direct assignment if broker is stored directly
@@ -934,7 +959,93 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     if unload_ok:
-        # Clean up stored data
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        # Clean up stored data (single-instance integration)
+        hass.data.pop(DOMAIN, None)
 
     return bool(unload_ok)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove a config entry.
+
+    For this single-instance integration, ensure we don't leave orphaned entity
+    registry entries behind when the user removes the integration.
+    """
+
+    # Remove entities
+    entity_registry = er.async_get(hass)
+    entity_entries = list(entity_registry.entities.values())
+    for entity_entry in entity_entries:
+        if entity_entry.platform != DOMAIN:
+            continue
+        entity_registry.async_remove(entity_entry.entity_id)
+
+    # Remove devices created by ramses_extras (but not ramses_cc devices)
+    device_registry = dr.async_get(hass)
+    device_entries = list(device_registry.devices.values())
+    for device_entry in device_entries:
+        # Only remove devices that were created by ramses_extras
+        # Check if the device has our integration as a config entry
+        if entry.id in device_entry.config_entries:
+            device_registry.async_remove_device(device_entry.id)
+
+
+async def _cleanup_orphaned_devices(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    device_registry: Any | None = None,
+    entity_registry: Any | None = None,
+) -> None:
+    """Clean up orphaned devices.
+
+    Simple logic: if a device has no entities, it's orphaned and should be removed.
+    """
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+
+    device_registry = cast(Any, device_registry or dr.async_get(hass))
+    entity_registry = cast(Any, entity_registry or er.async_get(hass))
+
+    if device_registry is None:
+        _LOGGER.warning("Device registry unavailable, skipping cleanup")
+        return
+
+    if entity_registry is None:
+        _LOGGER.warning("Entity registry unavailable, skipping cleanup")
+        return
+
+    # Get all devices that belong to ramses_extras
+    ramses_devices = []
+    for device_entry in device_registry.devices.values():
+        if any(identifier[0] == DOMAIN for identifier in device_entry.identifiers):
+            ramses_devices.append(device_entry)
+
+    # Find orphaned devices: devices that have no entities
+    orphaned_devices = []
+    for device_entry in ramses_devices:
+        # Check if this device has any entities
+        entities = entity_registry.entities.get(device_entry.id, [])
+        if not entities:
+            # No entities found - this device is orphaned
+            device_id = list(device_entry.identifiers)[0][1]  # Extract device ID
+            orphaned_devices.append((device_id, device_entry))
+            _LOGGER.info(f"Found orphaned device: {device_id} (no entities)")
+
+    if not orphaned_devices:
+        _LOGGER.debug("No orphaned devices found")
+        return
+
+    _LOGGER.info(f"Removing {len(orphaned_devices)} orphaned devices")
+
+    # Remove orphaned devices
+    for device_id, device_entry in orphaned_devices:
+        try:
+            if entry.entry_id in device_entry.config_entries:
+                device_registry.async_remove_device(device_entry.id)
+                _LOGGER.info(f"Removed orphaned device: {device_id}")
+            else:
+                _LOGGER.debug(
+                    f"Device {device_id} not owned by ramses_extras, skipping"
+                )
+        except Exception as e:
+            _LOGGER.warning(f"Failed to remove device {device_id}: {e}")

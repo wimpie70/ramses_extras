@@ -1,6 +1,6 @@
 """Tests for platform.py."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntry
@@ -35,21 +35,15 @@ async def test_async_create_and_add_platform_entities_success(hass):
         return entities
 
     # Mock async_add_entities
-    async_add_entities = AsyncMock()
+    async_add_entities = MagicMock()
 
     # Mock device ready for entities
     mock_device = MagicMock()
     mock_device.id = "32_123456"
 
-    with (
-        patch(
-            "custom_components.ramses_extras.framework.helpers.platform._get_devices_ready_for_entities",
-            return_value=[mock_device],
-        ),
-        patch(
-            "custom_components.ramses_extras.framework.helpers.platform._get_required_entities_from_feature",
-            return_value=entity_configs,
-        ),
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.platform._get_devices_ready_for_entities",
+        return_value=[mock_device],
     ):
         # Call the function
         await platform.PlatformSetup.async_create_and_add_platform_entities(
@@ -59,7 +53,6 @@ async def test_async_create_and_add_platform_entities_success(hass):
             async_add_entities=async_add_entities,
             entity_configs=entity_configs,
             entity_factory=entity_factory,
-            feature_id="test_feature",
             store_entities_for_automation=True,
         )
 
@@ -75,7 +68,7 @@ async def test_async_create_and_add_platform_entities_no_devices(hass):
     config_entry = MagicMock()
     entity_configs = {}
     entity_factory = MagicMock(return_value=[])
-    async_add_entities = AsyncMock()
+    async_add_entities = MagicMock()
 
     with patch(
         "custom_components.ramses_extras.framework.helpers.platform._get_devices_ready_for_entities",
@@ -88,7 +81,6 @@ async def test_async_create_and_add_platform_entities_no_devices(hass):
             async_add_entities=async_add_entities,
             entity_configs=entity_configs,
             entity_factory=entity_factory,
-            feature_id="test_feature",
         )
 
         # Verify no entities were added
@@ -100,7 +92,7 @@ async def test_async_create_and_add_platform_entities_factory_error(hass):
     """Test platform setup with entity factory error."""
     config_entry = MagicMock()
     entity_configs = {"entity1": {"type": "sensor"}}
-    async_add_entities = AsyncMock()
+    async_add_entities = MagicMock()
 
     async def failing_factory(hass, device_id, entity_configs, config_entry):
         raise Exception("Factory error")
@@ -108,15 +100,9 @@ async def test_async_create_and_add_platform_entities_factory_error(hass):
     mock_device = MagicMock()
     mock_device.id = "32_123456"
 
-    with (
-        patch(
-            "custom_components.ramses_extras.framework.helpers.platform._get_devices_ready_for_entities",
-            return_value=[mock_device],
-        ),
-        patch(
-            "custom_components.ramses_extras.framework.helpers.platform._get_required_entities_from_feature",
-            return_value=entity_configs,
-        ),
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.platform._get_devices_ready_for_entities",
+        return_value=[mock_device],
     ):
         # Should not raise, but log error
         await platform.PlatformSetup.async_create_and_add_platform_entities(
@@ -126,7 +112,6 @@ async def test_async_create_and_add_platform_entities_factory_error(hass):
             async_add_entities=async_add_entities,
             entity_configs=entity_configs,
             entity_factory=failing_factory,
-            feature_id="test_feature",
         )
 
         # Verify no entities were added due to error

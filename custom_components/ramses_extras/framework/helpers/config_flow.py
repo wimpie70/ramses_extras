@@ -1,6 +1,7 @@
 """Config flow utilities for Ramses Extras feature configuration."""
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -31,6 +32,26 @@ class ConfigFlowHelper:
         self.device_feature_matrix = DeviceFeatureMatrix()
         self.device_filter = DeviceFilter()
 
+        def _normalize_device_id(device_id: str) -> str:
+            if ":" in device_id:
+                return device_id
+            if "_" in device_id:
+                return device_id.replace("_", ":")
+            return device_id
+
+        matrix_state: dict[str, dict[str, bool]] = {}
+        data = getattr(config_entry, "data", None)
+        if isinstance(data, Mapping):
+            raw_state = data.get("device_feature_matrix")
+            if isinstance(raw_state, Mapping):
+                for k, v in raw_state.items():
+                    device_id = _normalize_device_id(str(k))
+                    if isinstance(v, Mapping):
+                        matrix_state[device_id] = dict(v)
+
+        if matrix_state:
+            self.device_feature_matrix.restore_device_feature_matrix_state(matrix_state)
+
     def get_feature_config_schema(
         self, feature_id: str, devices: list[Any]
     ) -> vol.Schema:
@@ -60,10 +81,16 @@ class ConfigFlowHelper:
             if (device_id := self._extract_device_id(device))
         ]
 
+        default_enabled = self.get_enabled_devices_for_feature(feature_id)
+        option_values = {opt.value for opt in device_options}
+        default_for_selector = [d for d in default_enabled if d in option_values]
+
         # Add schema for device selection
         schema = vol.Schema(
             {
-                vol.Required("enabled_devices", default=[]): selector.SelectSelector(
+                vol.Required(
+                    "enabled_devices", default=default_for_selector
+                ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=device_options,
                         multiple=True,
@@ -164,7 +191,8 @@ class ConfigFlowHelper:
 
         # Set new devices
         for device_id in device_ids:
-            self.device_feature_matrix.enable_feature_for_device(device_id, feature_id)
+            normalized = device_id if ":" in device_id else device_id.replace("_", ":")
+            self.device_feature_matrix.enable_feature_for_device(normalized, feature_id)
 
     def is_device_enabled_for_feature(self, device_id: str, feature_id: str) -> bool:
         """Check if a device is enabled for a specific feature.

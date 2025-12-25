@@ -12,6 +12,7 @@ from unittest.mock import Mock
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
 
+from ....const import DOMAIN
 from .device_feature_matrix import DeviceFeatureMatrix
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,7 +37,9 @@ class SimpleEntityManager:
     - Basic entity validation on startup
     """
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(
+        self, hass: HomeAssistant, enabled_features: dict[str, bool] | None = None
+    ) -> None:
         """Initialize SimpleEntityManager.
 
         Args:
@@ -44,6 +47,25 @@ class SimpleEntityManager:
         """
         self.hass = hass
         self.device_feature_matrix = DeviceFeatureMatrix()
+        self._enabled_features = enabled_features
+
+    def _get_enabled_features(self) -> dict[str, bool]:
+        """Return enabled feature flags.
+
+        Prefer the injected snapshot (for deterministic behavior), otherwise fall
+        back to hass.data which is updated on entry reload.
+        """
+        if isinstance(self._enabled_features, dict) and self._enabled_features:
+            return self._enabled_features
+
+        data = getattr(self.hass, "data", None)
+        if isinstance(data, dict):
+            extras_data = data.get(DOMAIN)
+            if isinstance(extras_data, dict):
+                enabled = extras_data.get("enabled_features")
+                if isinstance(enabled, dict):
+                    return enabled
+        return {}
 
     async def create_entities_for_feature(
         self, feature_id: str, device_ids: list[str]
@@ -174,15 +196,16 @@ class SimpleEntityManager:
                 except Exception as e:
                     _LOGGER.warning(f"Failed to remove extra entity {entity_id}: {e}")
 
-        # Create missing entities
+        # IMPORTANT: Don't create entity-registry-only entries here.
+        # Entities must be created by the HA platform setup flow (async_add_entities).
+        # Creating entity registry entries without a backing entity object results in
+        # entities that show up but remain permanently 'unavailable'.
         if missing_entities:
-            _LOGGER.info(f"Creating {len(missing_entities)} missing entities...")
-            for entity_id in missing_entities:
-                try:
-                    await self._create_entity_directly(entity_id)
-                    _LOGGER.info(f"Created missing entity: {entity_id}")
-                except Exception as e:
-                    _LOGGER.warning(f"Failed to create missing entity {entity_id}: {e}")
+            _LOGGER.info(
+                "Startup validation: %d entities missing (will be created "
+                "via platform setup)",
+                len(missing_entities),
+            )
 
     async def _get_current_entities(self) -> list[str]:
         """Get all entity IDs that currently exist in Home Assistant.
@@ -214,10 +237,14 @@ class SimpleEntityManager:
         """
         required_entities = []
 
+        enabled_features = self._get_enabled_features()
+
         # Get all enabled feature/device combinations from matrix
         combinations = self.device_feature_matrix.get_all_enabled_combinations()
 
         for device_id, feature_id in combinations:
+            if feature_id != "default" and enabled_features.get(feature_id) is not True:
+                continue
             # Generate entity IDs for this feature/device combination
             entity_ids = await self._generate_entity_ids_for_combination(
                 feature_id, device_id
@@ -340,35 +367,33 @@ class SimpleEntityManager:
         return entity_ids
 
     def _is_managed_entity(self, entity_id: str) -> bool:
-        """Check if an entity is managed by SimpleEntityManager.
+        """Check if an entity is managed by this integration.
 
-        We should only remove entities that we would create, not all entities.
+        We should only remove entities that belong to ramses_extras.
 
         Args:
             entity_id: Entity ID to check
 
         Returns:
-            True if entity is managed by SimpleEntityManager, False otherwise
+            True if entity is managed by ramses_extras, False otherwise
         """
-        # CRITICAL FIX: Simplified approach - check if entity_id matches our patterns
-        # We manage entities that follow our naming patterns for any feature/device
-
-        # Check if entity_id matches our standard patterns
-        # Our entities follow patterns like: sensor.indoor_absolute_humidity_32_153289
-        # or: sensor.outdoor_absolute_humidity_32_153289
-
-        # Check for default feature patterns, we check these especially on startup so
-        # we don't remove anything we shouldn't
-        # if entity_id.startswith(
-        #     ("sensor.indoor_absolute_humidity_", "sensor.outdoor_absolute_humidity_")
-        # ):
-        # return True
-
-        # Check for other feature patterns (add as needed)
-        # For now, we'll be conservative and only manage the default feature entities
-        # This prevents accidentally removing entities we don't manage
-
-        return False
+        try:
+            entity_registry_instance = entity_registry.async_get(self.hass)
+            entity_entry = entity_registry_instance.async_get(entity_id)
+            if not entity_entry:
+                return False
+            # Managed if platform matches or config_entry_id
+            #  matches any ramses_extras entry
+            if entity_entry.platform == DOMAIN:
+                return True
+            # Also check config_entry_id for robustness
+            if entity_entry.config_entry_id:
+                for entry in self.hass.config_entries.async_entries(DOMAIN):
+                    if entry.entry_id == entity_entry.config_entry_id:
+                        return True
+            return False
+        except Exception:
+            return False
 
     async def _remove_feature_entities(
         self, feature_id: str, device_id: str

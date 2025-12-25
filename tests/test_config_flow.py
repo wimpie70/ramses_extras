@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers import selector
 
+from custom_components.ramses_extras import _cleanup_orphaned_devices
 from custom_components.ramses_extras.config_flow import (
     RamsesExtrasConfigFlow,
     RamsesExtrasOptionsFlowHandler,
@@ -279,6 +280,83 @@ class TestRamsesExtrasOptionsFlowHandler:
 
         options_flow.hass = mock_hass
 
-        options_flow._refresh_config_entry()
+        options_flow._refresh_config_entry(mock_hass)
 
         assert options_flow._config_entry == mock_latest
+
+    @pytest.mark.asyncio
+    async def test_feature_changes_trigger_cleanup(self, hass):
+        """Test that feature enable/disable changes trigger cleanup."""
+        mock_config_entry = MagicMock()
+        mock_config_entry.data = {"enabled_features": {"humidity_control": True}}
+        mock_config_entry.entry_id = "test_entry_id"
+
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+        options_flow.hass = hass
+
+        # Stage feature changes first
+        options_flow._pending_data = {
+            "enabled_features_old": {"humidity_control": True},
+            "enabled_features_new": {},  # Disable all features
+        }
+        options_flow._feature_changes_detected = True
+
+        # Mock the cleanup function
+        with (
+            patch(
+                "custom_components.ramses_extras._cleanup_orphaned_devices"
+            ) as mock_cleanup,
+            patch(
+                "custom_components.ramses_extras.config_flow._manage_cards_config_flow"
+            ),
+            patch.object(hass.config_entries, "async_update_entry"),
+        ):
+            # Confirm the feature changes
+            user_input = {"confirm": True}
+
+            await options_flow.async_step_confirm(user_input)
+
+            # Should return to main menu after applying changes
+            # Verify cleanup was called
+            mock_cleanup.assert_called_once_with(hass, mock_config_entry)
+
+    @pytest.mark.asyncio
+    async def test_matrix_confirmation_triggers_cleanup(self, hass):
+        """Test that matrix confirmation triggers cleanup."""
+        mock_config_entry = MagicMock()
+        mock_config_entry.data = {
+            "enabled_features": {"humidity_control": True},
+            "device_feature_matrix": {"32:153289": {"humidity_control": True}},
+        }
+        mock_config_entry.entry_id = "test_entry_id"
+
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+        options_flow.hass = hass
+
+        # Mock the cleanup function and other dependencies
+        with (
+            patch(
+                "custom_components.ramses_extras._cleanup_orphaned_devices"
+            ) as mock_cleanup,
+            patch.object(options_flow, "_entity_manager") as mock_entity_manager,
+            patch.object(hass, "async_create_task"),
+            patch.object(hass.config_entries, "async_update_entry"),
+            patch.object(hass.config_entries, "async_reload"),
+        ):
+            mock_entity_manager.remove_entity = AsyncMock()
+
+            # Simulate matrix confirmation with entities to remove
+            options_flow._pending_data = {
+                "entities_to_remove": ["switch.test_entity"],
+                "old_matrix_state": {"32:153289": {"humidity_control": True}},
+                "temp_matrix_state": {},  # Device removed
+            }
+            # Set the temp matrix state that the method expects
+            options_flow._temp_matrix_state = {}
+
+            user_input = {"confirm": True}
+
+            await options_flow.async_step_matrix_confirm(user_input)
+
+            # Verify cleanup was called
+            mock_cleanup.assert_called_once_with(hass, mock_config_entry)

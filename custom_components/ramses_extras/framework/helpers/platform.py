@@ -11,6 +11,7 @@ Key components:
 """
 
 import logging
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
 
 from homeassistant.config_entries import ConfigEntry
@@ -56,24 +57,6 @@ def _get_devices_ready_for_entities(hass: "HomeAssistant") -> list[str]:
         List of device IDs ready for entities
     """
     return cast(list[str], hass.data.get("ramses_extras", {}).get("devices", []))
-
-
-def _get_required_entities_from_feature(
-    feature_id: str, platform: str
-) -> dict[str, Any]:
-    """Get required entities configuration for a feature and platform.
-
-    Args:
-        feature_id: Feature identifier
-        platform: Platform name
-
-    Returns:
-        Dictionary of entity configurations
-    """
-    # Return entity configs for feature
-    # For now, return empty dict as placeholder
-    _LOGGER.debug(f"Getting entities for feature {feature_id}, platform {platform}")
-    return {}
 
 
 def get_enabled_features(
@@ -215,46 +198,16 @@ class PlatformSetup:
 
         # Filter devices by feature enablement if feature_id is provided
         if feature_id:
-            # Get entity manager to check device_feature_matrix
-            _LOGGER.debug(f"unfiltered devices: {devices}")
-            entity_manager = hass.data.get("ramses_extras", {}).get("entity_manager")
-            if entity_manager is None:
-                # Create a temporary entity manager for device enablement checking
-                from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
-                    SimpleEntityManager,
-                )
-
-                entity_manager = SimpleEntityManager(hass)
-
-                # Restore matrix state from config entry if available
-                matrix_state = config_entry.data.get("device_feature_matrix", {})
-                if matrix_state:
-                    entity_manager.restore_device_feature_matrix_state(matrix_state)
-                    _LOGGER.debug(
-                        f"Restored matrix state with {len(matrix_state)} devices"
-                    )
-
-            # Filter devices to only include those enabled for this feature
-            filtered_devices = []
-            from custom_components.ramses_extras.framework.helpers.device.core import (
-                extract_device_id_as_string,
+            devices = PlatformSetup.get_filtered_devices_for_feature(
+                hass=hass,
+                feature_id=feature_id,
+                config_entry=config_entry,
+                devices=devices,
             )
-
-            for device_id in devices:
-                device_id_str = extract_device_id_as_string(device_id)
-                if entity_manager.is_device_enabled_for_feature(
-                    device_id_str, feature_id
-                ):
-                    filtered_devices.append(device_id_str)
-                else:
-                    _LOGGER.debug(
-                        f"Skipping disabled device for {feature_id} feature: "
-                        f"{device_id_str}"
-                    )
-
-            devices = filtered_devices
             _LOGGER.debug(
-                "Filtered to %d enabled devices for feature %s", devices, feature_id
+                "Filtered to %d enabled devices for feature %s",
+                len(devices),
+                feature_id,
             )
 
         entities = []
@@ -331,7 +284,7 @@ class PlatformSetup:
                     )
             except Exception as e:
                 _LOGGER.error(
-                    "Failed to create %s entity for device %s: %e",
+                    "Failed to create %s entity for device %s: %s",
                     entity_type,
                     device_id,
                     e,
@@ -518,6 +471,7 @@ class PlatformSetup:
         hass: "HomeAssistant",
         feature_id: str,
         config_entry: ConfigEntry,
+        devices: list[str] | None = None,
     ) -> list[str]:
         """Get devices filtered by feature enablement.
 
@@ -530,39 +484,74 @@ class PlatformSetup:
             List of device IDs enabled for the specified feature
         """
         # Get all devices
-        devices = hass.data.get("ramses_extras", {}).get("devices", [])
+        device_ids = (
+            devices
+            if devices is not None
+            else hass.data.get("ramses_extras", {}).get("devices", [])
+        )
 
-        # Get entity manager for device filtering
-        entity_manager = hass.data.get("ramses_extras", {}).get("entity_manager")
-        if entity_manager is None:
-            # Create a temporary entity manager for device enablement checking
-            from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
-                SimpleEntityManager,
-            )
+        # Use the config entry as the source of truth for per-device enablement.
+        # Avoid depending on an in-memory entity_manager, which can be stale across
+        # reloads/option changes.
+        data = getattr(config_entry, "data", {}) or {}
+        matrix_state = (
+            data.get("device_feature_matrix", {}) if isinstance(data, Mapping) else {}
+        )
 
-            entity_manager = SimpleEntityManager(hass)
+        # If there is no per-device matrix configured, fall back to global enablement.
+        # Otherwise we risk filtering out *all* devices and creating no entities.
+        matrix_is_empty = not isinstance(matrix_state, Mapping) or not matrix_state
 
-            # Restore matrix state from config entry if available
-            matrix_state = config_entry.data.get("device_feature_matrix", {})
-            if matrix_state:
-                entity_manager.restore_device_feature_matrix_state(matrix_state)
-                _LOGGER.debug(f"Restored matrix state with {len(matrix_state)} devices")
+        config_data = getattr(config_entry, "data", {}) or {}
+        config_opts = getattr(config_entry, "options", {}) or {}
+        enabled_features = {}
+        if isinstance(config_data, Mapping):
+            enabled_features = config_data.get("enabled_features", {})
+        if (not enabled_features) and isinstance(config_opts, Mapping):
+            enabled_features = config_opts.get("enabled_features", {})
 
-        # Filter devices to only include those enabled for this feature
+        feature_globally_enabled = feature_id == "default" or (
+            isinstance(enabled_features, Mapping)
+            and enabled_features.get(feature_id) is True
+        )
+
+        if matrix_is_empty and feature_globally_enabled:
+            return [extract_device_id_as_string(device_id) for device_id in device_ids]
+
+        # Filter devices to only include those enabled for this feature.
+        # We accept both `32:153289` and `32_153289` forms for robustness.
         filtered_devices = []
-        for device_id in devices:
+        for device_id in device_ids:
             device_id_str = extract_device_id_as_string(device_id)
-            if entity_manager.is_device_enabled_for_feature(device_id_str, feature_id):
+            if not isinstance(matrix_state, Mapping):
+                continue
+
+            candidates = {
+                device_id_str,
+                device_id_str.replace(":", "_"),
+                device_id_str.replace("_", ":"),
+            }
+            is_enabled = False
+            for candidate in candidates:
+                features_for_device = matrix_state.get(candidate)
+                if isinstance(features_for_device, Mapping) and (
+                    features_for_device.get(feature_id) is True
+                ):
+                    is_enabled = True
+                    break
+            if is_enabled:
                 filtered_devices.append(device_id_str)
-            else:
-                _LOGGER.debug(
-                    f"Skipping disabled device for {feature_id} feature: "
-                    f"{device_id_str}"
-                )
+                continue
+
+            _LOGGER.debug(
+                "Skipping disabled device for %s feature: %s",
+                feature_id,
+                device_id_str,
+            )
 
         _LOGGER.info(
             "Filtered %d devices to %d enabled devices for feature %s",
-            len(devices),
+            len(device_ids),
             len(filtered_devices),
             feature_id,
         )
