@@ -190,19 +190,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             # Import in executor to avoid blocking event loop
                             await _import_module_in_executor(module_path)
 
-                # Import WebSocket commands to ensure decorators are executed
-                try:
-                    websocket_module_path = (
-                        f"custom_components.ramses_extras.features.{feature_name}"
-                        ".websocket_commands"
-                    )
-                    await _import_module_in_executor(websocket_module_path)
-                    _LOGGER.debug("Imported WebSocket commands for %s", feature_name)
-                except ImportError:
-                    _LOGGER.debug(
-                        f"No WebSocket commands module found for {feature_name}"
-                    )
-
             except ImportError:
                 pass
 

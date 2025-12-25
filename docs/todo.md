@@ -20,21 +20,27 @@ Or, we would create some kind of OR logic for the different abs humid entities -
 
  - **Consolidate WebSocket registries (there are 2 today)**
    - **Problem**
-     - `custom_components/ramses_extras/const.py` has `WS_COMMAND_REGISTRY` + `register_ws_commands()`.
-     - `custom_components/ramses_extras/websocket_integration.py` registers commands by iterating `get_all_ws_commands()` and then uses string-based import + `getattr()`.
+     - `custom_components/ramses_extras/websocket_integration.py` registers commands by iterating registry metadata and then uses import + `getattr()`.
+     - Note: `WS_COMMAND_REGISTRY` + `register_ws_commands()` in `custom_components/ramses_extras/const.py` appears to already be removed (todo.md was outdated).
    - **Why this is risky/obsolete**
-     - The real HA registration mechanism is decorators (`@websocket_api.websocket_command`) in e.g. `features/default/websocket_commands.py`.
+     - Home Assistant decorators (e.g. `@websocket_api.websocket_command`) only tag handlers (`_ws_command`, `_ws_schema`); they do **not** register handlers.
+     - Actual registration requires calling `websocket_api.async_register_command(hass, handler)`.
    - **Goal**
      - Decide on *one* source of truth for “what commands exist” (metadata) and *one* mechanism for “how commands are registered” (decorators).
    - **Concrete actions**
-     - Consider dropping `_import_websocket_module()` and the `expected_handlers = [f"ws_{cmd_name}"]` pattern in `websocket_integration.py`.
-     - Ensure all WebSocket commands are registered only via decorator imports (import modules at startup).
+     - Keep decorators for schema/command metadata tagging.
+     - Ensure we have exactly one registrar that calls `websocket_api.async_register_command()`.
+     - Avoid double-importing websocket modules.
+       - Chosen: registrar imports+registers (Option A): `websocket_integration.py` imports feature `websocket_commands` and registers handlers.
+       - `__init__.py` should not import per-feature `websocket_commands` modules.
 
  - **Remove / rewrite placeholder code paths that were introduced for tests**
-   - `custom_components/ramses_extras/framework/helpers/platform.py`
-     - `_get_required_entities_from_feature()` currently returns `{}` (placeholder).
-     - If not needed, remove it and its call sites.
-     - If needed, implement it properly via `extras_registry` + per-feature const (`*_CONST["required_entities"]`).
+   - Note: this item was partially outdated.
+   - `_get_required_entities_from_feature()` lives in `custom_components/ramses_extras/framework/helpers/entity/core.py`.
+     - It is implemented (imports `features.<feature>.const` and reads `*_CONST["required_entities"]`).
+     - It still returns `{}` if the const/module/key is missing.
+   - Next action:
+     - Confirm which call sites still rely on it and whether we want the fallback-to-empty behaviour.
 
  - **Fix duplication inside `PlatformSetup.async_create_and_add_platform_entities()`**
    - `custom_components/ramses_extras/framework/helpers/platform.py`
