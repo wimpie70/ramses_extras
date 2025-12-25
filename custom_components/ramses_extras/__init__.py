@@ -59,7 +59,7 @@ async def _handle_startup_event(
     """Handle Home Assistant startup event."""
     # This will only be called if the user has Ramses Extras configured
     # from a YAML file. If configured via UI, async_setup_entry will handle it.
-    _LOGGER.info("🏠  Starting Ramses Extras from YAML configuration")
+    _LOGGER.info("Starting Ramses Extras from YAML configuration")
 
     await async_setup_yaml_config(hass, config)
 
@@ -92,7 +92,7 @@ async def async_setup_yaml_config(hass: HomeAssistant, config: ConfigType) -> No
         return
 
     try:
-        _LOGGER.info("🔧 Setting up Ramses Extras from YAML configuration...")
+        _LOGGER.info("Setting up Ramses Extras from YAML configuration...")
 
         # Create a config entry from YAML for the integrations to use
         entry_data = {
@@ -115,7 +115,7 @@ async def async_setup_yaml_config(hass: HomeAssistant, config: ConfigType) -> No
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up entry for Ramses Extras."""
-    _LOGGER.info("🚀 STARTING Ramses Extras integration setup...")
+    _LOGGER.info("Starting Ramses Extras integration setup...")
 
     # Setup from UI (config entry)
     hass.data.setdefault(DOMAIN, {})
@@ -129,21 +129,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    _LOGGER.info(f"📋 Enabled features: {entry.data.get('enabled_features', {})}")
+    _LOGGER.debug("Enabled features: %s", entry.data.get("enabled_features", {}))
 
     # Load entity definitions from default feature and all enabled features
-    _LOGGER.info("📊 Loading entity definitions from features...")
+    _LOGGER.debug("Loading entity definitions from features...")
     from .extras_registry import extras_registry
 
     # Load default feature definitions
-    _LOGGER.info("🔧 Loading default feature...")
+    _LOGGER.debug("Loading default feature definitions")
     from .features.default.commands import register_default_commands
     from .features.default.const import load_feature
 
     load_feature()
 
     # Register default device type commands
-    _LOGGER.info("🔧 Registering default device type commands...")
+    _LOGGER.debug("Registering default device type commands")
     register_default_commands()
 
     # Load enabled feature definitions
@@ -152,9 +152,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name for name, enabled in enabled_features_dict.items() if enabled
     ]
 
-    _LOGGER.info(
-        f"🔧 Loading definitions from {len(enabled_feature_names)} "
-        f"enabled features: {enabled_feature_names}"
+    _LOGGER.debug(
+        "Loading definitions from %d enabled features: %s",
+        len(enabled_feature_names),
+        enabled_feature_names,
     )
 
     # Load each enabled feature dynamically
@@ -169,10 +170,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # Call the feature's load function
             if hasattr(feature_module, "load_feature"):
                 feature_module.load_feature()
-                _LOGGER.info(f"✅ Loaded {feature_name} feature definitions")
+                _LOGGER.debug("Loaded %s feature definitions", feature_name)
             else:
                 _LOGGER.warning(
-                    f"⚠️  Feature '{feature_name}' has no load_feature function"
+                    "Feature '%s' has no load_feature function", feature_name
                 )
 
             # Import platform modules to trigger registration
@@ -196,7 +197,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         ".websocket_commands"
                     )
                     await _import_module_in_executor(websocket_module_path)
-                    _LOGGER.info(f"✅ Imported WebSocket commands for {feature_name}")
+                    _LOGGER.debug("Imported WebSocket commands for %s", feature_name)
                 except ImportError:
                     _LOGGER.debug(
                         f"No WebSocket commands module found for {feature_name}"
@@ -206,7 +207,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 pass
 
         except ImportError as e:
-            _LOGGER.warning(f"⚠️  Failed to load feature '{feature_name}': {e}")
+            _LOGGER.warning("Failed to load feature '%s': %s", feature_name, e)
 
     # Log loaded definitions for verification
     sensor_count = len(extras_registry.get_all_sensor_configs())
@@ -214,11 +215,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     number_count = len(extras_registry.get_all_number_configs())
     boolean_count = len(extras_registry.get_all_boolean_configs())
     _LOGGER.info(
-        f"✅ EntityRegistry loaded: {sensor_count} sensor, {switch_count} switch, "
-        f"{number_count} number, {boolean_count} binary sensor"
+        "Entity registry loaded: %d sensor, %d switch, %d number, %d binary sensor",
+        sensor_count,
+        switch_count,
+        number_count,
+        boolean_count,
     )
 
-    _LOGGER.info("WebSocket functionality moved to feature-centric architecture")
+    _LOGGER.debug("WebSocket functionality uses feature-centric architecture")
 
     # ALWAYS register all card resources at startup using CardRegistry
     # This ensures cards are available before Lovelace parses dashboards
@@ -228,31 +232,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await _setup_card_files_and_config(hass, entry)
 
     # Register services before setting up platforms
-    _LOGGER.info("🔧 Registering services early...")
+    _LOGGER.debug("Registering services")
     await _register_services(hass)
 
     # Register WebSocket commands for features
-    _LOGGER.info("🔌 Setting up WebSocket integration...")
+    _LOGGER.debug("Setting up WebSocket integration")
     await _setup_websocket_integration(hass)
 
     # CRITICAL: Discover devices BEFORE setting up platforms
     # This ensures platforms have device data when they initialize
-    _LOGGER.info("🔍 Discovering devices before platform setup...")
+    _LOGGER.debug("Discovering devices before platform setup")
     await _discover_and_store_devices(hass)
 
     # Forward the setup to the sensor, switch, etc. platforms
-    _LOGGER.info("🔧 Registering supported platforms...")
+    _LOGGER.debug("Registering supported platforms")
     await hass.config_entries.async_forward_entry_setups(
         entry,
         [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.NUMBER],
     )
 
     # Continue with additional platform setup if needed
-    _LOGGER.info("🔍 Starting async_setup_platforms...")
+    _LOGGER.debug("Starting async_setup_platforms")
     await async_setup_platforms(hass)
 
     # STEP: Post-creation validation with SimpleEntityManager
-    _LOGGER.info("🔍 Running SimpleEntityManager post-creation validation...")
+    _LOGGER.debug("Running SimpleEntityManager post-creation validation")
     await _validate_startup_entities_simple(hass, entry)
 
     # Explicitly create and start feature instances for

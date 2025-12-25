@@ -318,3 +318,75 @@ class TestDiscoverAndStoreDevices:
             # Verify devices were stored in hass.data
             assert hass.data[DOMAIN]["devices"] == mock_devices
             assert hass.data[DOMAIN]["device_discovery_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_runs_core_steps(hass):
+    """Ensure async_setup_entry runs the expected setup phases."""
+    from custom_components.ramses_extras import async_setup_entry
+
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {"enabled_features": {}}
+    entry.options = {}
+    entry.add_update_listener = MagicMock(return_value="listener_unsub")
+    entry.async_on_unload = MagicMock()
+
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+
+    extras_registry_mock = MagicMock()
+    extras_registry_mock.get_all_sensor_configs.return_value = {}
+    extras_registry_mock.get_all_switch_configs.return_value = {}
+    extras_registry_mock.get_all_number_configs.return_value = {}
+    extras_registry_mock.get_all_boolean_configs.return_value = {}
+
+    with (
+        patch(
+            "custom_components.ramses_extras.extras_registry.extras_registry",
+            extras_registry_mock,
+        ),
+        patch("custom_components.ramses_extras.features.default.const.load_feature"),
+        patch(
+            "custom_components.ramses_extras.features.default.commands.register_default_commands"
+        ),
+        patch(
+            "custom_components.ramses_extras._register_cards", new_callable=AsyncMock
+        ) as mock_register_cards,
+        patch(
+            "custom_components.ramses_extras._setup_card_files_and_config",
+            new_callable=AsyncMock,
+        ) as mock_setup_card_files,
+        patch(
+            "custom_components.ramses_extras._register_services",
+            new_callable=AsyncMock,
+        ) as mock_register_services,
+        patch(
+            "custom_components.ramses_extras._setup_websocket_integration",
+            new_callable=AsyncMock,
+        ) as mock_setup_ws,
+        patch(
+            "custom_components.ramses_extras._discover_and_store_devices",
+            new_callable=AsyncMock,
+        ) as mock_discover_devices,
+        patch(
+            "custom_components.ramses_extras.async_setup_platforms",
+            new_callable=AsyncMock,
+        ) as mock_async_setup_platforms,
+        patch(
+            "custom_components.ramses_extras._validate_startup_entities_simple",
+            new_callable=AsyncMock,
+        ) as mock_validate_entities,
+    ):
+        result = await async_setup_entry(hass, entry)
+
+    assert result is True
+    entry.add_update_listener.assert_called_once()
+    entry.async_on_unload.assert_called_once_with("listener_unsub")
+    mock_register_cards.assert_awaited_once()
+    mock_setup_card_files.assert_awaited_once()
+    mock_register_services.assert_awaited_once()
+    mock_setup_ws.assert_awaited_once()
+    mock_discover_devices.assert_awaited_once()
+    mock_async_setup_platforms.assert_awaited_once_with(hass)
+    mock_validate_entities.assert_awaited_once_with(hass, entry)
+    hass.config_entries.async_forward_entry_setups.assert_awaited_once()
