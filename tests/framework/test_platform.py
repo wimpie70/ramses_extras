@@ -1,6 +1,6 @@
 """Tests for platform.py."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntry
@@ -85,6 +85,76 @@ async def test_async_create_and_add_platform_entities_no_devices(hass):
 
         # Verify no entities were added
         async_add_entities.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_create_and_add_platform_entities_filters_devices_for_feature(
+    hass: HomeAssistant,
+) -> None:
+    """Ensure non-default features use filtered device list."""
+    config_entry = MagicMock()
+    entity_configs = {"entity": {"type": "sensor"}}
+    async_add_entities = MagicMock()
+    entity_factory = AsyncMock(return_value=[MagicMock()])
+
+    with (
+        patch(
+            "custom_components.ramses_extras.framework.helpers.platform._get_devices_ready_for_entities",
+            return_value=["32:153289", "18:149488"],
+        ),
+        patch.object(
+            platform.PlatformSetup,
+            "get_filtered_devices_for_feature",
+            return_value=["32:153289"],
+        ) as mock_filter,
+    ):
+        await platform.PlatformSetup.async_create_and_add_platform_entities(
+            platform="sensor",
+            hass=hass,
+            config_entry=config_entry,
+            async_add_entities=async_add_entities,
+            entity_configs=entity_configs,
+            entity_factory=entity_factory,
+            feature_id="hello_world",
+        )
+
+    mock_filter.assert_called_once()
+    entity_factory.assert_awaited_once()
+    async_add_entities.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_async_create_and_add_platform_entities_default_feature_no_filter(
+    hass: HomeAssistant,
+) -> None:
+    """Ensure default feature skips filtering helper."""
+    config_entry = MagicMock()
+    entity_configs = {"entity": {"type": "sensor"}}
+    async_add_entities = MagicMock()
+    entity_factory = AsyncMock(return_value=[MagicMock()])
+
+    with (
+        patch(
+            "custom_components.ramses_extras.framework.helpers.platform._get_devices_ready_for_entities",
+            return_value=["32:153289", "18:149488"],
+        ),
+        patch.object(
+            platform.PlatformSetup, "get_filtered_devices_for_feature"
+        ) as mock_filter,
+    ):
+        await platform.PlatformSetup.async_create_and_add_platform_entities(
+            platform="sensor",
+            hass=hass,
+            config_entry=config_entry,
+            async_add_entities=async_add_entities,
+            entity_configs=entity_configs,
+            entity_factory=entity_factory,
+            feature_id="default",
+        )
+
+    mock_filter.assert_not_called()
+    assert entity_factory.await_count == 2
+    async_add_entities.assert_called_once()
 
 
 @pytest.mark.asyncio

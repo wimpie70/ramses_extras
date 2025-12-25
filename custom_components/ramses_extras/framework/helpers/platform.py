@@ -78,73 +78,6 @@ def get_enabled_features(
     return dict(enabled_features) if isinstance(enabled_features, dict) else {}
 
 
-def calculate_required_entities(
-    platform: str,
-    enabled_features: dict[str, bool],
-    devices: list[str],
-    hass: "HomeAssistant",
-) -> list[str]:
-    """Calculate required entities for a platform based on device mappings.
-
-    Args:
-        platform: Platform type (sensor, switch, etc.)
-        enabled_features: Dictionary of enabled features
-        devices: List of device IDs
-        hass: Home Assistant instance
-
-    Returns:
-        List of required entity types
-    """
-    required_entities = []
-
-    # Get device mappings from extras_registry
-    from custom_components.ramses_extras.extras_registry import extras_registry
-    from custom_components.ramses_extras.framework.helpers.device.core import (
-        find_ramses_device,
-        get_device_type,
-    )
-
-    platform_key = _get_platform_key(platform)
-    device_mappings = extras_registry.get_all_device_mappings()
-
-    # For each device, check what entities it should have
-    for device_id in devices:
-        device = find_ramses_device(hass, device_id)
-        if not device:
-            continue
-
-        device_type = get_device_type(device)
-        if device_type not in device_mappings:
-            continue
-
-        entity_mapping = device_mappings[device_type]
-        entities_for_platform = entity_mapping.get(platform_key, [])
-
-        # Add entities that aren't already in the list
-        for entity in entities_for_platform:
-            if entity not in required_entities:
-                required_entities.append(entity)
-
-    _LOGGER.info(
-        f"Platform {platform}: calculated {len(required_entities)} "
-        f"required entities for {len(devices)} devices: {required_entities}"
-    )
-
-    # Debug: Log device mapping information
-    if platform in ["switch", "binary_sensor", "number", "sensor"]:
-        _LOGGER.info(f"Debug: {platform} platform analysis from device mappings:")
-        for device_id in devices:
-            device = find_ramses_device(hass, device_id)
-            if device:
-                device_type = get_device_type(device)
-                if device_type in device_mappings:
-                    entity_mapping = device_mappings[device_type]
-                    entities = entity_mapping.get(platform_key, [])
-                    _LOGGER.info(f"  Device {device_id} ({device_type}): {entities}")
-
-    return required_entities
-
-
 class PlatformSetup:
     """Enhanced platform setup utilities for all features.
 
@@ -184,31 +117,31 @@ class PlatformSetup:
                 for automation access (default: False)
             feature_id: Feature identifier for device filtering (optional)
         """
-        _LOGGER.info("Setting up %s platform with generic setup", platform)
+        _LOGGER.debug("Setting up %s platform with generic setup", platform)
 
         # Get devices ready for entities
-        devices = _get_devices_ready_for_entities(hass)
-        _LOGGER.info(
-            "%s platform: found %d devices: %s", platform, len(devices), devices
-        )
-
-        if not devices:
-            _LOGGER.warning("No devices found for %s platform", platform)
-            return
-
-        # Filter devices by feature enablement if feature_id is provided
-        if feature_id:
+        if feature_id and feature_id != "default":
             devices = PlatformSetup.get_filtered_devices_for_feature(
                 hass=hass,
                 feature_id=feature_id,
                 config_entry=config_entry,
-                devices=devices,
+                devices=_get_devices_ready_for_entities(hass),
             )
             _LOGGER.debug(
-                "Filtered to %d enabled devices for feature %s",
+                "%s platform: filtered %d devices for feature %s",
+                platform,
                 len(devices),
                 feature_id,
             )
+        else:
+            devices = _get_devices_ready_for_entities(hass)
+            _LOGGER.debug(
+                "%s platform: found %d devices: %s", platform, len(devices), devices
+            )
+
+        if not devices:
+            _LOGGER.warning("No devices found for %s platform", platform)
+            return
 
         entities = []
         for device_id in devices:
@@ -218,7 +151,7 @@ class PlatformSetup:
                     hass, device_id, entity_configs, config_entry
                 )
                 entities.extend(device_entities)
-                _LOGGER.info(
+                _LOGGER.debug(
                     "Created %d %s entities for device %s",
                     len(device_entities),
                     platform,
@@ -240,57 +173,6 @@ class PlatformSetup:
             # Optionally store entities for automation access
             if store_entities_for_automation:
                 PlatformSetup._store_entities_for_automation(hass, entities)
-
-    @staticmethod
-    def create_entities_for_device(
-        device_id: str,
-        entity_configs: dict[str, Any],
-        entity_factory: Callable[["HomeAssistant", str, dict[str, Any]], Entity],
-        hass: "HomeAssistant | None" = None,
-    ) -> list[Entity]:
-        """Create entities for a specific device.
-
-        This method provides a consistent way to create multiple entities
-        for a device based on configuration.
-
-        Args:
-            device_id: Device identifier
-            entity_configs: Dictionary of entity configurations
-            entity_factory: Factory function to create individual entities
-            hass: Optional Home Assistant instance
-
-        Returns:
-            List of created entities
-        """
-        entities = []
-
-        for entity_type, config in entity_configs.items():
-            try:
-                # Check if device supports this entity type
-                if not PlatformSetup._is_entity_supported_for_device(device_id, config):
-                    _LOGGER.debug(
-                        "Entity type %s not supported for device %s",
-                        entity_type,
-                        device_id,
-                    )
-                    continue
-
-                # Create entity using the factory
-                entity = entity_factory(hass, device_id, config)
-                if entity:
-                    entities.append(entity)
-                    _LOGGER.debug(
-                        "Created %s entity for device %s", entity_type, device_id
-                    )
-            except Exception as e:
-                _LOGGER.error(
-                    "Failed to create %s entity for device %s: %s",
-                    entity_type,
-                    device_id,
-                    e,
-                )
-
-        return entities
 
     @staticmethod
     def _is_entity_supported_for_device(device_id: str, config: dict[str, Any]) -> bool:

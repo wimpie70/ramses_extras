@@ -14,6 +14,8 @@ Or, we would create some kind of OR logic for the different abs humid entities -
 
 # Ramses Extras - Improvement / Cleanup TODO
 
+> **Testing reminder:** For every task below, evaluate whether we can add or improve tests for the files we touch to keep increasing coverage.
+
  ## High priority (low risk, immediate cleanup)
 
  - **Consolidate WebSocket registries (there are 2 today)**

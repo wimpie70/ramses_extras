@@ -29,7 +29,7 @@ HELLO_WORLD_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {
         "name_template": "Hello World Switch {device_id}",
         "entity_template": "hello_world_switch_{device_id}",
         "icon": "mdi:lightbulb",
-        "device_types": ["HvacVentilator"],
+        "device_types": ["HvacVentilator", "HgiController"],
         # "default_enabled": True,
     }
 }
@@ -39,7 +39,7 @@ HELLO_WORLD_BINARY_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
         "name_template": "Hello World Status {device_id}",
         "entity_template": "hello_world_status_{device_id}",
         "device_class": "connectivity",
-        "device_types": ["HvacVentilator"],
+        "device_types": ["HvacVentilator", "HgiController"],
         # "default_enabled": True,
     }
 }
