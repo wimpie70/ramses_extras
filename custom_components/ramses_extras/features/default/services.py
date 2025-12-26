@@ -29,9 +29,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def _async_set_fan_parameter(call: ServiceCall) -> None:
         data = dict(call.data)
 
+        param_id = str(data["param_id"]).upper()
+
         service_data: dict[str, Any] = {
             "device_id": data["device_id"],
-            "param_id": data["param_id"],
+            "param_id": param_id,
             "value": str(data["value"]),
         }
         if from_id := data.get("from_id"):
