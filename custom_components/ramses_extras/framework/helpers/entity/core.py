@@ -63,6 +63,30 @@ async def _get_required_entities_from_feature(feature_id: str) -> dict[str, list
         return {}
 
 
+def get_required_entities_from_feature_sync(feature_id: str) -> dict[str, list[str]]:
+    """Synchronous wrapper for _get_required_entities_from_feature.
+
+    Args:
+        feature_id: Feature identifier
+
+    Returns:
+        Dictionary mapping entity types to entity names
+    """
+    try:
+        # For testing purposes, create a new event loop each time
+        # This avoids issues with existing running loops
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(
+                _get_required_entities_from_feature(feature_id)
+            )
+        finally:
+            loop.close()
+    except Exception:
+        return {}
+
+
 def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
     """Synchronous import of required entities (blocking operation).
 

@@ -119,25 +119,29 @@ class PlatformSetup:
         """
         _LOGGER.debug("Setting up %s platform with generic setup", platform)
 
-        # Get devices ready for entities
-        if feature_id and feature_id != "default":
-            devices = PlatformSetup.get_filtered_devices_for_feature(
+        # Unified device fetching and filtering
+        devices = (
+            PlatformSetup.get_filtered_devices_for_feature(
                 hass=hass,
                 feature_id=feature_id,
                 config_entry=config_entry,
                 devices=_get_devices_ready_for_entities(hass),
             )
-            _LOGGER.debug(
-                "%s platform: filtered %d devices for feature %s",
-                platform,
-                len(devices),
-                feature_id,
-            )
-        else:
-            devices = _get_devices_ready_for_entities(hass)
-            _LOGGER.debug(
-                "%s platform: found %d devices: %s", platform, len(devices), devices
-            )
+            if feature_id and feature_id != "default"
+            else _get_devices_ready_for_entities(hass)
+        )
+
+        feature_suffix = (
+            " for feature " + feature_id
+            if feature_id and feature_id != "default"
+            else ""
+        )
+        _LOGGER.debug(
+            "%s platform: %d devices%s",
+            platform,
+            len(devices),
+            feature_suffix,
+        )
 
         if not devices:
             _LOGGER.warning("No devices found for %s platform", platform)

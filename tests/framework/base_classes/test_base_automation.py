@@ -168,7 +168,7 @@ class TestExtrasBaseAutomation:
         with (
             patch(
                 "custom_components.ramses_extras.framework.base_classes."
-                "base_automation._get_required_entities_from_feature"
+                "base_automation.get_required_entities_from_feature_sync"
             ) as mock_get,
             patch(
                 "custom_components.ramses_extras.framework.base_classes."
@@ -336,9 +336,12 @@ class TestExtrasBaseAutomation:
     @pytest.mark.asyncio
     async def test_validate_device_entities_missing(self, automation, hass):
         """Test device entity validation with missing entities."""
+        # Ensure entity does not exist
+        hass.states.get.return_value = None
+
         with patch(
-            "custom_components.ramses_extras.framework.helpers.automation.core."
-            "_get_required_entities_from_feature"
+            "custom_components.ramses_extras.framework.base_classes."
+            "base_automation._get_required_entities_from_feature"
         ) as mock_get:
             mock_get.return_value = {"sensors": ["temperature"]}
 

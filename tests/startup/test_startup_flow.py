@@ -175,7 +175,7 @@ class TestStartupFlow:
             # Verify success message was logged (SimpleEntityManager
             #  logs different message)
             mock_logger.info.assert_any_call(
-                "✅ SimpleEntityManager startup validation completed"
+                "SimpleEntityManager startup validation completed"
             )
 
     @pytest.mark.asyncio
@@ -238,7 +238,7 @@ class TestStartupFlow:
             # Verify success message was logged (SimpleEntityManager
             #  doesn't log discrepancies the same way)
             mock_logger.info.assert_any_call(
-                "✅ SimpleEntityManager startup validation completed"
+                "SimpleEntityManager startup validation completed"
             )
 
     @pytest.mark.asyncio

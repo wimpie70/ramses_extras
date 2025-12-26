@@ -22,8 +22,11 @@ from homeassistant.helpers.event import async_track_state_change
 
 from ...const import DOMAIN
 from ..helpers.automation.core import (
-    _get_required_entities_from_feature,
     _singularize_entity_type,
+)
+from ..helpers.entity.core import (
+    _get_required_entities_from_feature,
+    get_required_entities_from_feature_sync,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -199,7 +202,7 @@ class ExtrasBaseAutomation(ABC):
         patterns = []
 
         # Get required entities from the feature's own module
-        required_entities = _get_required_entities_from_feature(self.feature_id)
+        required_entities = get_required_entities_from_feature_sync(self.feature_id)
 
         for entity_type, entity_names in required_entities.items():
             for entity_name in entity_names:
@@ -448,7 +451,7 @@ class ExtrasBaseAutomation(ABC):
             True if all entities exist, False otherwise
         """
         # Get required entities from the feature's const module
-        required_entities = _get_required_entities_from_feature(self.feature_id)
+        required_entities = await _get_required_entities_from_feature(self.feature_id)
         if not required_entities:
             _LOGGER.warning(
                 f"No required entities found for feature: {self.feature_id}"

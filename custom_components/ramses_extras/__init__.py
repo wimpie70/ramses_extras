@@ -282,7 +282,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         pending.discard(feature_id)
 
         _LOGGER.debug(
-            "✅ Cards latch: received feature_ready for %s, remaining pending=%s",
+            "Cards latch: received feature_ready for %s, remaining pending=%s",
             feature_id,
             sorted(pending),
         )
@@ -294,7 +294,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return
 
         hass.data[DOMAIN]["cards_enabled"] = True
-        _LOGGER.debug("✅ Cards latch: cards_enabled=True")
+        _LOGGER.debug("Cards latch: cards_enabled=True")
         hass.bus.async_fire("ramses_extras_cards_enabled", {})
 
     hass.data[DOMAIN]["cards_pending_features"] = cards_pending_features
@@ -346,15 +346,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     )
 
                 features[feature_name] = feature_instance
-                _LOGGER.info(f"✅ Created feature instance: {feature_name}")
+                _LOGGER.info(f"Created feature instance: {feature_name}")
         except Exception as e:
-            _LOGGER.warning(
-                f"⚠️ Failed to create feature instance '{feature_name}': {e}"
-            )
+            _LOGGER.warning(f"Failed to create feature instance '{feature_name}': {e}")
 
     if not cards_pending_features:
         hass.data[DOMAIN]["cards_enabled"] = True
-        _LOGGER.debug("✅ Cards latch: cards_enabled=True (no pending automations)")
+        _LOGGER.debug("Cards latch: cards_enabled=True (no pending automations)")
         hass.bus.async_fire("ramses_extras_cards_enabled", {})
 
     for automation_manager in automation_managers_to_start:
@@ -383,12 +381,12 @@ async def _setup_websocket_integration(hass: HomeAssistant) -> None:
 
         success = await async_setup_websocket_integration(hass)
         if success:
-            _LOGGER.info("✅ WebSocket integration setup complete")
+            _LOGGER.info("WebSocket integration setup complete")
         else:
-            _LOGGER.warning("⚠️ WebSocket integration setup failed")
+            _LOGGER.warning("WebSocket integration setup failed")
 
     except Exception as error:
-        _LOGGER.error(f"❌ Error setting up WebSocket integration: {error}")
+        _LOGGER.error(f"Error setting up WebSocket integration: {error}")
         # Don't fail the entire integration if WebSocket setup fails
 
 
@@ -401,7 +399,7 @@ async def _expose_feature_config_to_frontend(
 ) -> None:
     """Expose feature configuration to frontend JavaScript for card feature toggles."""
     try:
-        _LOGGER.info("🔧 Exposing feature configuration to frontend...")
+        _LOGGER.info("Exposing feature configuration to frontend...")
 
         # Get enabled features from the entry
         enabled_features = (
@@ -421,7 +419,7 @@ window.ramsesExtras = window.ramsesExtras || {{}};
 window.ramsesExtras.features = {js_enabled_features};
 
 // Log feature configuration for debugging
-console.log('🔧 Ramses Extras features loaded:', window.ramsesExtras.features);
+console.log('Ramses Extras features loaded:', window.ramsesExtras.features);
 """
 
         # Write the JavaScript file to the helpers directory
@@ -434,11 +432,11 @@ console.log('🔧 Ramses Extras features loaded:', window.ramsesExtras.features)
         await asyncio.to_thread(feature_config_file.write_text, js_content)
 
         _LOGGER.info(
-            f"✅ Feature configuration exposed to frontend: {feature_config_file}"
+            f"Feature configuration exposed to frontend: {feature_config_file}"
         )
 
     except Exception as e:
-        _LOGGER.error(f"❌ Failed to expose feature configuration to frontend: {e}")
+        _LOGGER.error(f"Failed to expose feature configuration to frontend: {e}")
         import traceback
 
         _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
@@ -498,14 +496,14 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
             hass.async_create_task(_do_reload())
     except Exception as e:
-        _LOGGER.warning("⚠️ Failed to update frontend feature configuration: %s", e)
+        _LOGGER.warning("Failed to update frontend feature configuration: %s", e)
 
 
 async def _copy_all_card_files(hass: HomeAssistant) -> None:
     """Copy all card files to Home Assistant's www directory regardless
     of feature status."""
     try:
-        _LOGGER.info("📦 Starting unconditional card files copy process...")
+        _LOGGER.info("Starting unconditional card files copy process...")
 
         # Card files to copy (regardless of feature status)
         card_files_to_copy = [
@@ -536,7 +534,6 @@ async def _copy_all_card_files(hass: HomeAssistant) -> None:
         for card_file in card_files_to_copy:
             source_dir = Path(card_file["source"])  # type: ignore[arg-type]
             destination_dir = Path(card_file["destination"])  # type: ignore[arg-type]
-            feature_name = card_file["feature_name"]
 
             if source_dir.exists():
                 destination_dir.mkdir(parents=True, exist_ok=True)
@@ -547,16 +544,14 @@ async def _copy_all_card_files(hass: HomeAssistant) -> None:
                     destination_dir,
                     dirs_exist_ok=True,
                 )
-                _LOGGER.info(
-                    f"✅ Copied {feature_name} card files to {destination_dir}"
-                )
+                _LOGGER.info(f"Card file copied: {source_dir} -> {destination_dir}")
             else:
-                _LOGGER.warning(f"⚠️ Card source directory not found: {source_dir}")
+                _LOGGER.warning(f"Card source directory not found: {source_dir}")
 
-        _LOGGER.info("✅ All card files copy process complete")
+        _LOGGER.info("All card files copy process complete")
 
     except Exception as e:
-        _LOGGER.error(f"❌ Failed to copy card files: {e}")
+        _LOGGER.error(f"Failed to copy card files: {e}")
         import traceback
 
         _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
@@ -568,7 +563,7 @@ async def _copy_all_card_files(hass: HomeAssistant) -> None:
 async def _copy_helper_files(hass: HomeAssistant) -> None:
     """Copy helper files to Home Assistant's www directory for card functionality."""
     try:
-        _LOGGER.info("📦 Starting helper files copy process...")
+        _LOGGER.info("Starting helper files copy process...")
 
         # Source and destination paths
         source_helpers_dir = INTEGRATION_DIR / "framework" / "www"
@@ -576,17 +571,17 @@ async def _copy_helper_files(hass: HomeAssistant) -> None:
             hass.config.config_dir
         )
 
-        _LOGGER.info(f"📁 Source helpers directory: {source_helpers_dir}")
-        _LOGGER.info(f"📁 Destination helpers directory: {destination_helpers_dir}")
-        _LOGGER.info(f"📂 Source directory exists: {source_helpers_dir.exists()}")
+        _LOGGER.info(f"Source helpers directory: {source_helpers_dir}")
+        _LOGGER.info(f"Destination helpers directory: {destination_helpers_dir}")
+        _LOGGER.info(f"Source directory exists: {source_helpers_dir.exists()}")
 
         if not source_helpers_dir.exists():
-            _LOGGER.warning(f"⚠️ Helper files directory not found: {source_helpers_dir}")
+            _LOGGER.warning(f"Helper files directory not found: {source_helpers_dir}")
             return
 
         # Create destination directory if it doesn't exist
         destination_helpers_dir.mkdir(parents=True, exist_ok=True)
-        _LOGGER.info(f"📁 Created directory: {destination_helpers_dir}")
+        _LOGGER.info(f"Created directory: {destination_helpers_dir}")
 
         # Copy all helper files
         await asyncio.to_thread(
@@ -595,10 +590,10 @@ async def _copy_helper_files(hass: HomeAssistant) -> None:
             destination_helpers_dir,
             dirs_exist_ok=True,
         )
-        _LOGGER.info("✅ Helper files copied successfully")
+        _LOGGER.info("Helper files copied successfully")
 
     except Exception as e:
-        _LOGGER.error(f"❌ Failed to copy helper files: {e}")
+        _LOGGER.error(f"Failed to copy helper files: {e}")
         import traceback
 
         _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
@@ -637,7 +632,7 @@ async def _validate_startup_entities_simple(
         # Validate entities on startup
         await entity_manager.validate_entities_on_startup()
 
-        _LOGGER.info("✅ SimpleEntityManager startup validation completed")
+        _LOGGER.info("SimpleEntityManager startup validation completed")
 
     except Exception as e:
         _LOGGER.error(f"SimpleEntityManager startup validation failed: {e}")
@@ -680,43 +675,41 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
     _setup_in_progress = True
 
     try:
-        _LOGGER.info("🚀 Platform setup: integrating with device discovery...")
+        _LOGGER.info("Platform setup: integrating with device discovery...")
 
         # Check if ramses_cc is loaded and working
         ramses_cc_loaded = "ramses_cc" in hass.config.components
-        _LOGGER.info(f"🔍 Ramses CC loaded: {ramses_cc_loaded}")
+        _LOGGER.info(f"Ramses CC loaded: {ramses_cc_loaded}")
 
         if ramses_cc_loaded:
-            _LOGGER.info("🔍 Ramses CC is loaded, verifying device discovery...")
+            _LOGGER.info("Ramses CC is loaded, verifying device discovery...")
 
             # Check if device discovery was already completed
             device_data = hass.data.setdefault(DOMAIN, {})
             if "devices" in device_data and "device_discovery_complete" in device_data:
-                _LOGGER.info(
-                    "✅ Device discovery already completed, using cached results"
-                )
+                _LOGGER.info("Device discovery already completed, using cached results")
                 devices = device_data["devices"]
                 device_ids = [getattr(device, "id", str(device)) for device in devices]
-                _LOGGER.info("📋 Using cached device IDs: %s", device_ids)
+                _LOGGER.info("Using cached device IDs: %s", device_ids)
             else:
                 # Re-discover devices and update storage
                 devices = await _discover_ramses_devices(hass)
                 device_ids = [getattr(device, "id", str(device)) for device in devices]
                 device_data["devices"] = devices
                 device_data["device_discovery_complete"] = True
-                _LOGGER.info("📋 Fresh discovery device IDs: %s", device_ids)
+                _LOGGER.info("Fresh discovery device IDs: %s", device_ids)
 
             if devices:
                 _LOGGER.info(
-                    "✅ Platform setup: Found %d Ramses devices: %s",
+                    "Platform setup: Found %d Ramses devices: %s",
                     len(devices),
                     device_ids,
                 )
             else:
-                _LOGGER.info("⚠️ Platform setup: No Ramses devices found via any method")
+                _LOGGER.info("Platform setup: No Ramses devices found via any method")
 
             return
-        _LOGGER.info("⚠️  Ramses CC not loaded yet, will retry in 60 seconds.")
+        _LOGGER.info("Ramses CC not loaded yet, will retry in 60 seconds.")
 
         # Schedule a retry in 60 seconds - only if ramses_cc not loaded
         if "ramses_cc" not in hass.config.components:
@@ -895,19 +888,19 @@ async def _register_cards(hass: HomeAssistant) -> None:
     - Simple, reliable implementation
     """
     try:
-        _LOGGER.info("🔧 Starting feature-centric CardRegistry registration")
+        _LOGGER.info("Starting feature-centric CardRegistry registration")
 
         # Create CardRegistry and register discovered cards from features
         registry = CardRegistry(hass)
         await registry.register_discovered_cards()
 
-        _LOGGER.info("✅ Feature-centric CardRegistry registration complete")
+        _LOGGER.info("Feature-centric CardRegistry registration complete")
 
     except Exception as e:
-        _LOGGER.error(f"❌ CardRegistry registration failed: {e}")
+        _LOGGER.error(f"CardRegistry registration failed: {e}")
         # Don't raise - let the integration continue without card registration
         # This ensures that card registration issues don't break the entire startup
-        _LOGGER.warning("⚠️ Continuing integration startup without card registration")
+        _LOGGER.warning("Continuing integration startup without card registration")
 
 
 async def _setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -916,7 +909,7 @@ async def _setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) 
     This handles the file copying and config exposure that cards need for functionality.
     """
     try:
-        _LOGGER.info("🔧 Setting up card files and configuration")
+        _LOGGER.info("Setting up card files and configuration")
 
         # Always copy helper files for card functionality
         await _copy_helper_files(hass)
@@ -927,16 +920,16 @@ async def _setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) 
         # Expose feature configuration to frontend for card feature toggles
         await _expose_feature_config_to_frontend(hass, entry)
 
-        _LOGGER.info("✅ Card files and configuration setup complete")
+        _LOGGER.info("Card files and configuration setup complete")
 
     except Exception as e:
-        _LOGGER.error(f"❌ Card files and config setup failed: {e}")
+        _LOGGER.error(f"Card files and config setup failed: {e}")
         raise
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.info("🚫 Unloading Ramses Extras integration...")
+    _LOGGER.info("Unloading Ramses Extras integration...")
 
     # Forward the unload to our platforms
     unload_ok = await hass.config_entries.async_unload_platforms(
