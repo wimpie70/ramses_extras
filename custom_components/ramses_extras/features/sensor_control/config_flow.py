@@ -75,7 +75,11 @@ async def async_step_sensor_control_config(
     # Make sure we work with the latest config entry/options state
     refresh = getattr(flow, "_refresh_config_entry", None)
     if callable(refresh):  # noqa: SIM108
-        refresh()
+        hass = getattr(flow, "hass", None)
+        if hass is not None:
+            refresh(hass)
+        else:
+            refresh()
 
     helper = flow._get_config_flow_helper()  # noqa: SLF001
     devices = flow._get_all_devices()  # noqa: SLF001
