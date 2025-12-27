@@ -4,6 +4,7 @@ import json
 import logging
 import shutil
 import traceback
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -197,7 +198,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
-        self._pending_data: dict[str, Any] | None = None
+        self._pending_data: dict[str, Any] = {}
         self._entity_manager: SimpleEntityManager | None = (
             None  # Will be initialized when needed
         )
@@ -414,9 +415,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 staged_enabled_features[feature_id] = feature_id in selected_features
 
             # Store staged changes in pending data for confirm step
-            if self._pending_data is None:
-                self._pending_data = {}
-
             self._pending_data["enabled_features_old"] = current_features
             self._pending_data["enabled_features_new"] = staged_enabled_features
             self._feature_changes_detected = staged_enabled_features != current_features
@@ -630,7 +628,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         helper = self._get_config_flow_helper()
 
         current_features = self._config_entry.data.get("enabled_features", {})
-        pending = self._pending_data or {}
+        pending = self._pending_data
 
         staged_enabled_features = pending.get("enabled_features_new", current_features)
 
@@ -666,7 +664,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 await _cleanup_orphaned_devices(self.hass, self._config_entry)
 
             # Reset pending state and return to main menu
-            self._pending_data = None
+            self._pending_data = {}
             self._feature_changes_detected = False
 
             return await self.async_step_main_menu()
@@ -786,6 +784,13 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 }
             self._selected_feature = feature_id
             self._temp_matrix_state = temp_matrix_state
+
+            _LOGGER.debug(
+                "Staged device selection for feature %s: selected=%s matrix_devices=%s",
+                feature_id,
+                selected_device_ids,
+                sorted(temp_matrix_state.keys()),
+            )
 
             # Log the matrix state for debugging
             _LOGGER.debug(f"self.temp matrix state: {self._temp_matrix_state}")
@@ -1399,6 +1404,17 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         _LOGGER.info(f"📋 User input: {user_input}")
 
         self._refresh_config_entry(self.hass)
+        data_matrix = {}
+        opts_matrix = {}
+        if isinstance(self._config_entry.data, Mapping):
+            data_matrix = self._config_entry.data.get("device_feature_matrix", {})
+        if isinstance(self._config_entry.options, Mapping):
+            opts_matrix = self._config_entry.options.get("device_feature_matrix", {})
+        _LOGGER.debug(
+            "Matrix on entry before confirm: data=%s options=%s",
+            len(data_matrix) if isinstance(data_matrix, Mapping) else "n/a",
+            len(opts_matrix) if isinstance(opts_matrix, Mapping) else "n/a",
+        )
 
         if user_input is not None:
             # User confirmed the changes - apply them and complete the options flow
@@ -1523,9 +1539,21 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 # feature-specific config flows (e.g. sensor_control) persist their
                 # settings in config_entry.options. Use the latest options snapshot
                 # from the config entry so those settings remain intact.
+                result_options = dict(self._config_entry.options)
+                temp_matrix_state = getattr(self, "_temp_matrix_state", None)
+                if isinstance(temp_matrix_state, Mapping):
+                    result_options["device_feature_matrix"] = {
+                        str(device_id): dict(features)
+                        for device_id, features in temp_matrix_state.items()
+                        if isinstance(features, Mapping)
+                    }
+                    _LOGGER.debug(
+                        "Returning options with matrix_devices=%s",
+                        len(temp_matrix_state),
+                    )
                 return self.async_create_entry(
                     title="",
-                    data=dict(self._config_entry.options),
+                    data=result_options,
                 )
 
             except Exception as e:

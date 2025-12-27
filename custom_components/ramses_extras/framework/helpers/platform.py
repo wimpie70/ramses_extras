@@ -370,18 +370,28 @@ class PlatformSetup:
             List of device IDs enabled for the specified feature
         """
         # Get all devices
-        device_ids = (
+        raw_devices = (
             devices
             if devices is not None
             else hass.data.get("ramses_extras", {}).get("devices", [])
         )
 
+        device_ids = [
+            extract_device_id_as_string(device_id) for device_id in raw_devices
+        ]
+
         # Use the config entry as the source of truth for per-device enablement.
-        # Avoid depending on an in-memory entity_manager, which can be stale across
-        # reloads/option changes.
+        # Check both data and options for matrix state to handle different storage
+        # locations.
         data = getattr(config_entry, "data", {}) or {}
+        opts = getattr(config_entry, "options", {}) or {}
+
         matrix_state = (
-            data.get("device_feature_matrix", {}) if isinstance(data, Mapping) else {}
+            opts.get("device_feature_matrix", {})
+            if isinstance(opts, Mapping) and "device_feature_matrix" in opts
+            else data.get("device_feature_matrix", {})
+            if isinstance(data, Mapping) and "device_feature_matrix" in data
+            else {}
         )
 
         # If there is no per-device matrix configured, fall back to global enablement.

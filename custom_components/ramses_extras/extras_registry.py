@@ -87,10 +87,7 @@ class RamsesEntityRegistry:
     ) -> None:
         """Load entity definitions from a feature module
         (lazy loading to avoid circular imports)."""
-        _LOGGER.debug(
-            f"Starting to load feature definitions for "
-            f"'{feature_name}' from {feature_module_path}"
-        )
+        _LOGGER.debug(f"Loading feature '{feature_name}'...")
 
         start_time = time.time()
 
@@ -102,93 +99,62 @@ class RamsesEntityRegistry:
             _LOGGER.debug(f"Loading feature '{feature_name}'...")
 
             try:
-                _LOGGER.debug(f"Attempting to import module: {feature_module_path}")
                 # Import the feature module lazily to avoid circular imports
                 feature_module = importlib.import_module(feature_module_path)
-                _LOGGER.debug(
-                    f"Successfully imported module for '{feature_name}' "
-                    f"({time.time() - start_time:.2f}s)"
-                )
 
                 # Load feature's sensor configurations
-                _LOGGER.debug(f"Checking for sensor configs for '{feature_name}'...")
                 sensor_key = f"{feature_name.upper()}_SENSOR_CONFIGS"
                 if hasattr(feature_module, sensor_key):
-                    _LOGGER.debug(f"Found sensor configs for '{feature_name}'")
                     sensor_configs = getattr(feature_module, sensor_key)
                     self._sensor_configs.update(sensor_configs)
                     _LOGGER.debug(
                         f"Loaded {len(sensor_configs)} sensor configs "
                         f"for '{feature_name}'"
                     )
-                else:
-                    _LOGGER.debug(f"No sensor configs found for '{feature_name}'")
 
                 # Load feature's switch configurations
-                _LOGGER.debug(f"Checking for switch configs for '{feature_name}'...")
                 switch_key = f"{feature_name.upper()}_SWITCH_CONFIGS"
                 if hasattr(feature_module, switch_key):
-                    _LOGGER.debug(f"Found switch configs for '{feature_name}'")
                     switch_configs = getattr(feature_module, switch_key)
                     self._switch_configs.update(switch_configs)
                     _LOGGER.debug(
                         f"Loaded {len(switch_configs)} switch configs "
                         f"for '{feature_name}'"
                     )
-                else:
-                    _LOGGER.debug(f"No switch configs found for '{feature_name}'")
 
                 # Load feature's number configurations
-                _LOGGER.debug(f"Checking for number configs for '{feature_name}'...")
                 number_key = f"{feature_name.upper()}_NUMBER_CONFIGS"
                 if hasattr(feature_module, number_key):
-                    _LOGGER.debug(f"Found number configs for '{feature_name}'")
                     number_configs = getattr(feature_module, number_key)
                     self._number_configs.update(number_configs)
                     _LOGGER.debug(
                         f"Loaded {len(number_configs)} number configs "
                         f"for '{feature_name}'"
                     )
-                else:
-                    _LOGGER.debug(f"No number configs found for '{feature_name}'")
 
                 # Load feature's boolean configurations
-                _LOGGER.debug(f"Checking for boolean configs for '{feature_name}'...")
                 boolean_key = f"{feature_name.upper()}_BOOLEAN_CONFIGS"
                 if hasattr(feature_module, boolean_key):
-                    _LOGGER.debug(f"Found boolean configs for '{feature_name}'")
                     boolean_configs = getattr(feature_module, boolean_key)
                     self._boolean_configs.update(boolean_configs)
                     _LOGGER.debug(
                         f"Loaded {len(boolean_configs)} boolean configs "
                         f"for '{feature_name}'"
                     )
-                else:
-                    _LOGGER.debug(f"No boolean configs found for '{feature_name}'")
 
                 # Load feature's device mappings
-                _LOGGER.debug(f"Checking for device mappings for '{feature_name}'...")
                 mapping_key = f"{feature_name.upper()}_DEVICE_ENTITY_MAPPING"
                 if hasattr(feature_module, mapping_key):
-                    _LOGGER.debug(f"Found device mappings for '{feature_name}'")
                     device_mapping = getattr(feature_module, mapping_key)
                     self._device_mappings.update(device_mapping)
                     _LOGGER.debug(f"Loaded device mappings for '{feature_name}'")
-                else:
-                    _LOGGER.debug(f"No device mappings found for '{feature_name}'")
 
                 # Load feature's card configuration
-                _LOGGER.debug(
-                    f"Checking for card configuration for '{feature_name}'..."
-                )
                 card_config_key = f"{feature_name.upper()}_CARD_CONFIG"
                 if hasattr(feature_module, card_config_key):
-                    _LOGGER.debug(f"Found card configuration for '{feature_name}'")
                     card_config = getattr(feature_module, card_config_key)
                     self._card_configs[feature_name] = card_config
                     _LOGGER.debug(f"Loaded card configuration for '{feature_name}'")
-                else:
-                    _LOGGER.debug(f"No card configuration found for '{feature_name}'")
 
                 self._loaded_features.add(feature_name)
                 total_time = time.time() - start_time

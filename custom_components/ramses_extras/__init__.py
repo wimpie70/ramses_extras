@@ -131,83 +131,119 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("Enabled features: %s", entry.data.get("enabled_features", {}))
 
-    # Load entity definitions from default feature and all enabled features
-    _LOGGER.debug("Loading entity definitions from features...")
-    from .extras_registry import extras_registry
+    async def _load_feature_definitions_and_platforms(
+        hass: HomeAssistant, entry: ConfigEntry
+    ) -> None:
+        """Load feature definitions, platforms, and WebSocket modules.
 
-    # Load default feature definitions
-    _LOGGER.debug("Loading default feature definitions")
-    from .features.default.commands import register_default_commands
-    from .features.default.const import load_feature
+        This is the single authoritative place for loading:
+        - Feature definitions (via load_feature)
+        - Platform registrations (via async_forward_entry_setups)
+        - WebSocket integration (via async_setup_websocket_integration)
+        """
+        from .extras_registry import extras_registry
 
-    load_feature()
+        # Load default feature definitions
+        from .features.default.commands import register_default_commands
+        from .features.default.const import load_feature
 
-    # Register default device type commands
-    _LOGGER.debug("Registering default device type commands")
-    register_default_commands()
+        load_feature()
+        register_default_commands()
 
-    # Load enabled feature definitions
-    enabled_features_dict = entry.data.get("enabled_features", {})
-    enabled_feature_names = [
-        name for name, enabled in enabled_features_dict.items() if enabled
-    ]
+        # Load enabled feature definitions
+        enabled_features_dict = entry.data.get("enabled_features", {})
+        enabled_feature_names = [
+            name for name, enabled in enabled_features_dict.items() if enabled
+        ]
 
-    _LOGGER.debug(
-        "Loading definitions from %d enabled features: %s",
-        len(enabled_feature_names),
-        enabled_feature_names,
-    )
+        _LOGGER.info(
+            "Loading definitions from %d enabled features: %s",
+            len(enabled_feature_names),
+            enabled_feature_names,
+        )
 
-    # Load each enabled feature dynamically
-    for feature_name in enabled_feature_names:
-        try:
-            # Import the feature's const module
-            module_name = (
-                f"custom_components.ramses_extras.features.{feature_name}.const"
-            )
-            feature_module = __import__(module_name, fromlist=["load_feature"])
-
-            # Call the feature's load function
-            if hasattr(feature_module, "load_feature"):
-                feature_module.load_feature()
-                _LOGGER.debug("Loaded %s feature definitions", feature_name)
-            else:
-                _LOGGER.warning(
-                    "Feature '%s' has no load_feature function", feature_name
-                )
-
-            # Import platform modules to trigger registration
+        for feature_name in enabled_feature_names:
             try:
-                # Import all platform modules for this feature
-                platforms_dir = (
-                    INTEGRATION_DIR / "features" / feature_name / "platforms"
+                module_name = (
+                    f"custom_components.ramses_extras.features.{feature_name}.const"
                 )
-                if platforms_dir.exists():
-                    for platform_file in platforms_dir.glob("*.py"):
-                        if platform_file.name != "__init__.py":
-                            module_path = f"custom_components.ramses_extras.features.{feature_name}.platforms.{platform_file.stem}"  # noqa: E501
+                feature_module = __import__(module_name, fromlist=["load_feature"])
 
-                            # Import in executor to avoid blocking event loop
-                            await _import_module_in_executor(module_path)
+                if hasattr(feature_module, "load_feature"):
+                    feature_module.load_feature()
+                    _LOGGER.debug("Loaded %s feature definitions", feature_name)
+                else:
+                    _LOGGER.warning(
+                        "Feature '%s' has no load_feature function", feature_name
+                    )
 
-            except ImportError:
-                pass
+                # Import platform modules to trigger registration
+                if feature_name == "default":
+                    # Default feature has platforms in subdirectories
+                    try:
+                        __import__(
+                            "custom_components.ramses_extras.features.default.platforms.sensor"
+                        )
+                    except ImportError:
+                        pass
+                    try:
+                        __import__(
+                            "custom_components.ramses_extras.features.default.platforms.switch"
+                        )
+                    except ImportError:
+                        pass
+                    try:
+                        __import__(
+                            "custom_components.ramses_extras.features.default.platforms.binary_sensor"
+                        )
+                    except ImportError:
+                        pass
+                    try:
+                        __import__(
+                            "custom_components.ramses_extras.features.default.platforms.number"
+                        )
+                    except ImportError:
+                        pass
+                else:
+                    # Other features use standard platform module structure
+                    platform_module_name = (
+                        f"custom_components.ramses_extras.features."
+                        f"{feature_name}.platform"
+                    )
+                    try:
+                        __import__(platform_module_name)
+                    except ImportError:
+                        pass
 
-        except ImportError as e:
-            _LOGGER.warning("Failed to load feature '%s': %s", feature_name, e)
+            except ImportError as e:
+                _LOGGER.warning("Failed to load feature '%s': %s", feature_name, e)
 
-    # Log loaded definitions for verification
-    sensor_count = len(extras_registry.get_all_sensor_configs())
-    switch_count = len(extras_registry.get_all_switch_configs())
-    number_count = len(extras_registry.get_all_number_configs())
-    boolean_count = len(extras_registry.get_all_boolean_configs())
-    _LOGGER.info(
-        "Entity registry loaded: %d sensor, %d switch, %d number, %d binary sensor",
-        sensor_count,
-        switch_count,
-        number_count,
-        boolean_count,
-    )
+        # CRITICAL: Discover devices BEFORE setting up platforms
+        await _discover_and_store_devices(hass)
+
+        # Forward the setup to the sensor, switch, etc. platforms
+        await hass.config_entries.async_forward_entry_setups(
+            entry,
+            [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.NUMBER],
+        )
+
+        # Register WebSocket commands for features
+        await _setup_websocket_integration(hass)
+
+        # Log loaded definitions for verification
+        sensor_count = len(extras_registry.get_all_sensor_configs())
+        switch_count = len(extras_registry.get_all_switch_configs())
+        number_count = len(extras_registry.get_all_number_configs())
+        boolean_count = len(extras_registry.get_all_boolean_configs())
+        _LOGGER.info(
+            "Entity registry loaded: %d sensor, %d switch, %d number, %d binary sensor",
+            sensor_count,
+            switch_count,
+            number_count,
+            boolean_count,
+        )
+
+    await _load_feature_definitions_and_platforms(hass, entry)
 
     _LOGGER.debug("WebSocket functionality uses feature-centric architecture")
 
@@ -219,31 +255,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await _setup_card_files_and_config(hass, entry)
 
     # Register services before setting up platforms
-    _LOGGER.debug("Registering services")
     await _register_services(hass)
 
-    # Register WebSocket commands for features
-    _LOGGER.debug("Setting up WebSocket integration")
-    await _setup_websocket_integration(hass)
-
-    # CRITICAL: Discover devices BEFORE setting up platforms
-    # This ensures platforms have device data when they initialize
-    _LOGGER.debug("Discovering devices before platform setup")
-    await _discover_and_store_devices(hass)
-
-    # Forward the setup to the sensor, switch, etc. platforms
-    _LOGGER.debug("Registering supported platforms")
-    await hass.config_entries.async_forward_entry_setups(
-        entry,
-        [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.NUMBER],
-    )
-
     # Continue with additional platform setup if needed
-    _LOGGER.debug("Starting async_setup_platforms")
     await async_setup_platforms(hass)
 
     # STEP: Post-creation validation with SimpleEntityManager
-    _LOGGER.debug("Running SimpleEntityManager post-creation validation")
     await _validate_startup_entities_simple(hass, entry)
 
     # Explicitly create and start feature instances for
@@ -346,9 +363,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     )
 
                 features[feature_name] = feature_instance
-                _LOGGER.info(f"Created feature instance: {feature_name}")
+                _LOGGER.info("Created feature instance: %s", feature_name)
         except Exception as e:
-            _LOGGER.warning(f"Failed to create feature instance '{feature_name}': {e}")
+            _LOGGER.warning(
+                "Failed to create feature instance '%s': %s", feature_name, e
+            )
 
     if not cards_pending_features:
         hass.data[DOMAIN]["cards_enabled"] = True
@@ -386,7 +405,7 @@ async def _setup_websocket_integration(hass: HomeAssistant) -> None:
             _LOGGER.warning("WebSocket integration setup failed")
 
     except Exception as error:
-        _LOGGER.error(f"Error setting up WebSocket integration: {error}")
+        _LOGGER.error("Error setting up WebSocket integration: %s", error)
         # Don't fail the entire integration if WebSocket setup fails
 
 
@@ -432,14 +451,14 @@ console.log('Ramses Extras features loaded:', window.ramsesExtras.features);
         await asyncio.to_thread(feature_config_file.write_text, js_content)
 
         _LOGGER.info(
-            f"Feature configuration exposed to frontend: {feature_config_file}"
+            "Feature configuration exposed to frontend: %s", feature_config_file
         )
 
     except Exception as e:
-        _LOGGER.error(f"Failed to expose feature configuration to frontend: {e}")
+        _LOGGER.error("Failed to expose feature configuration to frontend: %s", e)
         import traceback
 
-        _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+        _LOGGER.debug("Full traceback: %s", traceback.format_exc())
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -544,7 +563,7 @@ async def _copy_all_card_files(hass: HomeAssistant) -> None:
                     destination_dir,
                     dirs_exist_ok=True,
                 )
-                _LOGGER.info(f"Card file copied: {source_dir} -> {destination_dir}")
+                _LOGGER.info("Card file copied: %s -> %s", source_dir, destination_dir)
             else:
                 _LOGGER.warning(f"Card source directory not found: {source_dir}")
 

@@ -20,6 +20,13 @@
      - Updated `base_automation.py` to use appropriate version (async for async contexts, sync wrapper for sync contexts)
    - The function is now properly implemented and no longer a "placeholder" - it correctly reads `required_entities` from feature const modules.
 
+ - [x] **Fix humidity control persistence issue**
+   - ✅ Fixed the issue where `humidity_control` device enablement was not persisting across Home Assistant restarts when configured alone (without changes to other features like `hello_world`).
+   - ✅ Added targeted debug logs in options flow to trace matrix state.
+   - ✅ Modified options flow to persist `device_feature_matrix` in `config_entry.options` instead of only `config_entry.data`.
+   - ✅ Updated platform setup to prioritize `config_entry.options` matrix over `config_entry.data` matrix.
+   - ✅ Fixed lint/type errors introduced by new code changes.
+
 
 ## Status: Next (priority)
 

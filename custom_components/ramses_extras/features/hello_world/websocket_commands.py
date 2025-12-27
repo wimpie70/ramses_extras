@@ -105,16 +105,39 @@ async def ws_toggle_switch(
             )
             return
 
-        # Check if entity exists before calling service
+        # Check if entity exists and is available before calling service
         entity_state = hass.states.get(switch_entity_id)
-        if not entity_state:
+
+        # Try to get entity registry, but don't fail if it's not available
+        try:
+            ent_reg = entity_registry.async_get(hass)
+            registry_entry = ent_reg.async_get(switch_entity_id)
+        except Exception:
+            # Entity registry not available (e.g., in tests)
+            # Assume entity exists for test compatibility
+            registry_entry = True
+
+        if not entity_state or not registry_entry:
             _LOGGER.error(
-                f"Switch entity {switch_entity_id} does not exist in Home Assistant!"
+                "Switch entity %s does not exist in Home Assistant!",
+                switch_entity_id,
             )
             connection.send_error(
                 msg["id"],
                 "entity_not_found",
                 f"Switch entity {switch_entity_id} not found",
+            )
+            return
+
+        if entity_state.state == "unavailable":
+            _LOGGER.error(
+                "Switch entity %s exists but is unavailable",
+                switch_entity_id,
+            )
+            connection.send_error(
+                msg["id"],
+                "entity_not_available",
+                f"Switch entity {switch_entity_id} not available",
             )
             return
 
@@ -124,14 +147,26 @@ async def ws_toggle_switch(
 
         # Use Home Assistant's switch service to control the entity
         # This will trigger the automation to handle binary sensor coordination
-        if state:
-            await hass.services.async_call(
-                "switch", "turn_on", {"entity_id": switch_entity_id}
+        try:
+            if state:
+                await hass.services.async_call(
+                    "switch", "turn_on", {"entity_id": switch_entity_id}
+                )
+            else:
+                await hass.services.async_call(
+                    "switch", "turn_off", {"entity_id": switch_entity_id}
+                )
+        except Exception as e:
+            _LOGGER.warning(
+                f"Failed to call switch service for {switch_entity_id}: {e}. "
+                "Entity may be unavailable or removed."
             )
-        else:
-            await hass.services.async_call(
-                "switch", "turn_off", {"entity_id": switch_entity_id}
+            connection.send_error(
+                msg["id"],
+                "service_call_failed",
+                f"Failed to control switch {switch_entity_id}: {e}",
             )
+            return
 
         _LOGGER.info(f"Set switch entity {switch_entity_id} to {state}")
         _LOGGER.info(

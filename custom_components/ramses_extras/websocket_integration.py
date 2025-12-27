@@ -1,7 +1,9 @@
 """WebSocket Integration for Ramses Extras.
 
-This module handles WebSocket command registration and integration with Home Assistant.
-Uses the exact same pattern as the old working implementation.
+This module ONLY handles WebSocket command registration and integration
+with Home Assistant. It does NOT host command handlers themselves—those
+live in per-feature websocket_commands.py modules. This keeps the
+integration minimal and feature-centric.
 """
 
 import asyncio
@@ -113,10 +115,11 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
     # Log summary
     total_commands = sum(len(commands) for commands in all_commands.values())
     _LOGGER.info(
-        f"Imported WebSocket command modules for "
-        f"{len(features_with_commands)} features: "
-        f"{', '.join(features_with_commands)} "
-        f"({total_commands} commands available)"
+        "Imported WebSocket command modules for %d features: %s "
+        "(%d commands available)",
+        len(features_with_commands),
+        ", ".join(features_with_commands),
+        total_commands,
     )
 
 
@@ -176,7 +179,8 @@ async def async_setup_websocket_integration(hass: HomeAssistant) -> bool:
 
         info = get_websocket_commands_info()
         _LOGGER.info(
-            f"WebSocket integration setup complete: {info['total_commands']} commands"
+            "WebSocket integration setup complete: %s commands",
+            info["total_commands"],
         )
 
         # Store integration state in hass.data
@@ -189,7 +193,7 @@ async def async_setup_websocket_integration(hass: HomeAssistant) -> bool:
         return True
 
     except Exception as error:
-        _LOGGER.error(f"Failed to set up WebSocket integration: {error}")
+        _LOGGER.error("Failed to set up WebSocket integration: %s", error)
         return False
 
 
@@ -212,7 +216,7 @@ async def async_cleanup_websocket_integration(hass: HomeAssistant) -> None:
         _LOGGER.info("WebSocket integration cleanup complete")
 
     except Exception as error:
-        _LOGGER.error(f"Error during WebSocket integration cleanup: {error}")
+        _LOGGER.error("Error during WebSocket integration cleanup: %s", error)
 
 
 def is_websocket_enabled(hass: HomeAssistant) -> bool:
@@ -250,7 +254,7 @@ def get_enabled_websocket_commands(
     feature_commands = all_commands.get(feature_name, {})
 
     if not feature_commands:
-        _LOGGER.debug(f"No WebSocket commands registered for feature: {feature_name}")
+        _LOGGER.debug("No WebSocket commands registered for feature: %s", feature_name)
         return {}
 
     # Check if the feature is enabled based on configuration
@@ -259,8 +263,8 @@ def get_enabled_websocket_commands(
     # Default feature is always considered enabled
     if feature_name == "default":
         _LOGGER.debug(
-            f"Default feature always enabled, returning "
-            f"{len(feature_commands)} commands"
+            "Default feature always enabled, returning %d commands",
+            len(feature_commands),
         )
         return feature_commands
 
@@ -270,14 +274,11 @@ def get_enabled_websocket_commands(
 
         if feature_name in enabled_features:
             _LOGGER.debug(
-                f"Feature {feature_name} enabled in config, returning "
-                f"{len(feature_commands)} commands"
+                "Feature %s enabled in config, returning %d commands",
+                feature_name,
+                len(feature_commands),
             )
             return feature_commands
 
-        _LOGGER.debug(f"Feature {feature_name} not enabled in config")
-        return {}
-
     # Fallback: if no config entry, deny non-default features
-    _LOGGER.debug("No config entry found, only allowing default feature")
     return {}

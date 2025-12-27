@@ -80,10 +80,17 @@ async def test_ws_toggle_switch_calls_service_when_entity_exists(hass) -> None:
 
     # Create mock states and services
     mock_states = MagicMock()
-    mock_states.get.return_value = MagicMock()
+    mock_entity = MagicMock()
+    mock_entity.state = "on"  # Set a non-unavailable state
+    mock_states.get.return_value = mock_entity
 
     mock_services = MagicMock()
     mock_services.async_call = AsyncMock(return_value=None)
+
+    # Mock entity registry
+    mock_ent_reg = MagicMock()
+    mock_registry_entry = MagicMock()
+    mock_ent_reg.async_get.return_value = mock_registry_entry
 
     # Replace hass.states and hass.services temporarily
     original_states = hass.states
@@ -92,10 +99,15 @@ async def test_ws_toggle_switch_calls_service_when_entity_exists(hass) -> None:
     hass.services = mock_services
 
     try:
-        await ws_toggle_switch(hass, conn, msg)
-        mock_services.async_call.assert_awaited_once_with(
-            "switch", "turn_off", {"entity_id": "switch.hello_world_switch_18_149488"}
-        )
+        with patch(
+            "homeassistant.helpers.entity_registry.async_get", return_value=mock_ent_reg
+        ):
+            await ws_toggle_switch(hass, conn, msg)
+            mock_services.async_call.assert_awaited_once_with(
+                "switch",
+                "turn_off",
+                {"entity_id": "switch.hello_world_switch_18_149488"},
+            )
     finally:
         hass.states = original_states
         hass.services = original_services
