@@ -107,7 +107,7 @@ async def create_default_sensor(
     """Create default sensor for a device.
 
     This function creates humidity sensors for a specific device based on
-    the DEFAULT_SENSOR_CONFIGS configuration. Currently supports HvacVentilator
+    the DEFAULT_SENSOR_CONFIGS configuration. Currently supports FAN
     devices with absolute humidity calculation capabilities.
 
     :param hass: Home Assistant instance
@@ -135,7 +135,7 @@ async def create_default_sensor(
 
     # Create sensor for each configured sensor type
     for sensor_type, config in DEFAULT_SENSOR_CONFIGS.items():
-        if config.get("supported_device_types") and "HvacVentilator" in config.get(
+        if config.get("supported_device_types") and "FAN" in config.get(
             "supported_device_types", []
         ):
             # Create sensor with calculation logic (always create, listeners

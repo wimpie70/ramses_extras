@@ -7,6 +7,7 @@ from .const import (
     DEFAULT_SENSOR_CONFIGS,
     DEFAULT_SWITCH_CONFIGS,
 )
+from .platforms.sensor import async_setup_entry as sensor_async_setup_entry
 
 # Export all definitions for EntityRegistry aggregation
 __all__ = [
@@ -15,7 +16,7 @@ __all__ = [
     "DEFAULT_NUMBER_CONFIGS",
     "DEFAULT_BOOLEAN_CONFIGS",
     "DEFAULT_DEVICE_ENTITY_MAPPING",
-    "async_step_default_config",
+    "sensor_async_setup_entry",
 ]
 
 # Note: WebSocket commands are now handled directly in websocket_integration.py

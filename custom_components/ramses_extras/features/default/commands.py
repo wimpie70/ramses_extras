@@ -7,9 +7,9 @@ feature initialization.
 
 from ...framework.helpers.commands.registry import get_command_registry
 
-# HvacVentilator command definitions
+# FAN command definitions
 # These are the standard fan/ventilation commands available to all features
-HVAC_VENTILATOR_COMMANDS = {
+FAN_COMMANDS = {
     # Fan speed commands
     "fan_high": {
         "code": "22F1",
@@ -122,18 +122,18 @@ def register_default_commands() -> None:
     """
     registry = get_command_registry()
 
-    # Register HvacVentilator commands by device type
+    # Register FAN commands by device type
     registry.register_device_commands(
-        device_type="HvacVentilator",
+        device_type="FAN",
         category="standard",
-        commands=HVAC_VENTILATOR_COMMANDS,
+        commands=FAN_COMMANDS,
     )
 
     # Register commands globally for easy access
-    registry.register_commands("default", HVAC_VENTILATOR_COMMANDS)
+    registry.register_commands("default", FAN_COMMANDS)
 
 
 __all__ = [
-    "HVAC_VENTILATOR_COMMANDS",
+    "FAN_COMMANDS",
     "register_default_commands",
 ]

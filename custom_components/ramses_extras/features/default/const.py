@@ -17,7 +17,7 @@ DEFAULT_SENSOR_CONFIGS = {
         "unit": "g/m³",
         "icon": "mdi:water-percent",
         "device_class": None,
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": ["FAN"],
         "entity_template": "indoor_absolute_humidity_{device_id}",
     },
     "outdoor_absolute_humidity": {
@@ -26,7 +26,7 @@ DEFAULT_SENSOR_CONFIGS = {
         "unit": "g/m³",
         "icon": "mdi:weather-partly-cloudy",
         "device_class": None,
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": ["FAN"],
         "entity_template": "outdoor_absolute_humidity_{device_id}",
     },
 }
@@ -39,7 +39,7 @@ DEFAULT_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
 # Base device type to entity mapping
 # Note: Default feature creates absolute humidity sensors for all devices
 DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
-    "HvacVentilator": {
+    "FAN": {
         "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
         # Other entity types will be added by individual features
     },

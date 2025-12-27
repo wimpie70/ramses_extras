@@ -78,14 +78,14 @@ class TestDefaultFeatureConstants:
         assert isinstance(DEFAULT_DEVICE_ENTITY_MAPPING, dict)
 
         # Should contain mappings for different device types
-        assert "HvacVentilator" in DEFAULT_DEVICE_ENTITY_MAPPING
+        assert "FAN" in DEFAULT_DEVICE_ENTITY_MAPPING
 
-        # HvacVentilator device mapping
-        ventilator_mapping = DEFAULT_DEVICE_ENTITY_MAPPING["HvacVentilator"]
-        assert isinstance(ventilator_mapping, dict)
+        # FAN device mapping
+        fan_mapping = DEFAULT_DEVICE_ENTITY_MAPPING["FAN"]
+        assert isinstance(fan_mapping, dict)
 
         # Should contain entity type mappings
-        assert "sensor" in ventilator_mapping
+        assert "sensor" in fan_mapping
 
     def test_entity_templates_contain_device_id_placeholder(self):
         """Test that entity templates contain {device_id} placeholder."""
