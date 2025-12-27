@@ -256,6 +256,7 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         self._sensor_type = sensor_type
         self._attr_native_unit_of_measurement = config.get("unit", "g/m³")
         self._attr_device_class = config.get("device_class")
+        self._attr_icon = config.get("icon")
 
         # Set unique_id and name
         device_id_underscore = device_id_str.replace(":", "_")
