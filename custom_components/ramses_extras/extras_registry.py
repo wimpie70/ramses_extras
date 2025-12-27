@@ -100,6 +100,9 @@ class RamsesEntityRegistry:
 
             try:
                 # Import the feature module lazily to avoid circular imports
+                feature_module_path = (
+                    f"custom_components.ramses_extras.features.{feature_name}.const"
+                )
                 feature_module = importlib.import_module(feature_module_path)
 
                 # Load feature's sensor configurations
@@ -155,6 +158,21 @@ class RamsesEntityRegistry:
                     card_config = getattr(feature_module, card_config_key)
                     self._card_configs[feature_name] = card_config
                     _LOGGER.debug(f"Loaded card configuration for '{feature_name}'")
+
+                # Load feature's WebSocket commands
+                websocket_key = f"{feature_name.upper()}_WEBSOCKET_COMMANDS"
+                if hasattr(feature_module, websocket_key):
+                    websocket_commands = getattr(feature_module, websocket_key)
+                    self._websocket_commands[feature_name] = websocket_commands
+                    _LOGGER.info(
+                        f"Loaded {len(websocket_commands)} WebSocket commands "
+                        f"for '{feature_name}': {list(websocket_commands.keys())}"
+                    )
+                else:
+                    _LOGGER.debug(
+                        f"No WebSocket commands found for '{feature_name}' "
+                        f"(key: {websocket_key})"
+                    )
 
                 self._loaded_features.add(feature_name)
                 total_time = time.time() - start_time

@@ -32,7 +32,7 @@
 
 ### High priority (low risk, immediate cleanup)
 
- - [ ] **Fix duplication inside `PlatformSetup.async_create_and_add_platform_entities()`**
+ - [x] **Fix duplication inside `PlatformSetup.async_create_and_add_platform_entities()`**
    - `custom_components/ramses_extras/framework/helpers/platform.py`
      - It duplicates device filtering logic already present in `get_filtered_devices_for_feature()`.
    - **Goal**
@@ -40,7 +40,7 @@
 
 ### High priority (low risk)
 
- - [ ] **Reduce noisy logging and emoji logging**
+ - [x] **Reduce noisy logging and emoji logging**
    - `custom_components/ramses_extras/__init__.py`, `extras_registry.py`, `websocket_integration.py`.
    - Convert high-frequency logs to `_LOGGER.debug()`; keep a few key `_LOGGER.info()` at startup.
    - Decide a consistent policy on emojis (either keep only for milestone logs, or remove).
@@ -61,7 +61,8 @@
        - imports platform modules (registration)
        - imports websocket modules (decorators)
 
- - [ ] **Pick one WebSocket “integration boundary”**
+ - [x] **Pick one WebSocket “integration boundary”**
+ - [ ] see top of this doc
    - Today, default feature already exposes core WS endpoints (`features/default/websocket_commands.py`).
    - Meanwhile `custom_components/ramses_extras/websocket_integration.py` tries to dynamically import and register.
    - **Goal**
