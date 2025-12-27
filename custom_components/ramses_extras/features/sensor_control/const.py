@@ -4,6 +4,9 @@ from typing import Any
 
 DOMAIN = "sensor_control"
 
+# Feature identification
+FEATURE_ID = "sensor_control"
+
 # Supported metrics for sensor control
 SUPPORTED_METRICS = [
     "indoor_temperature",

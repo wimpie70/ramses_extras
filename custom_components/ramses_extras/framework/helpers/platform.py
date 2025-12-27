@@ -120,15 +120,12 @@ class PlatformSetup:
         _LOGGER.debug("Setting up %s platform with generic setup", platform)
 
         # Unified device fetching and filtering
-        devices = (
-            PlatformSetup.get_filtered_devices_for_feature(
-                hass=hass,
-                feature_id=feature_id,
-                config_entry=config_entry,
-                devices=_get_devices_ready_for_entities(hass),
-            )
-            if feature_id and feature_id != "default"
-            else _get_devices_ready_for_entities(hass)
+        effective_feature_id = feature_id if feature_id else "default"
+        devices = PlatformSetup.get_filtered_devices_for_feature(
+            hass=hass,
+            feature_id=effective_feature_id,
+            config_entry=config_entry,
+            devices=_get_devices_ready_for_entities(hass),
         )
 
         feature_suffix = (

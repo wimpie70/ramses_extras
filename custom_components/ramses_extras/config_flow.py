@@ -198,7 +198,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
-        self._pending_data: dict[str, Any] = {}
+        self._pending_data: dict[str, Any] | None = None
         self._entity_manager: SimpleEntityManager | None = (
             None  # Will be initialized when needed
         )
@@ -258,7 +258,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         # Add dynamic feature options for features with config flows
         # Only list features that are actually enabled in the config entry
         dynamic_features_found = []
-        current_features = self._config_entry.data.get("enabled_features", {})
+        current_features = (self._config_entry.data or {}).get("enabled_features", {})
         for feature_id, feature_config in AVAILABLE_FEATURES.items():
             # Don't Skip default feature from menu (we may have settings for it)
             # if feature_id == "default":
@@ -397,7 +397,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         """Handle enable/disable features step."""
         self._refresh_config_entry(self.hass)
         # Get current enabled features
-        current_features = self._config_entry.data.get("enabled_features", {})
+        current_features = (self._config_entry.data or {}).get("enabled_features", {})
         enabled_features = {k: v for k, v in current_features.items() if k != "default"}
 
         # Get config flow helper
@@ -414,7 +414,10 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                     continue  # Skip default feature in selector
                 staged_enabled_features[feature_id] = feature_id in selected_features
 
-            # Store staged changes in pending data for confirm step
+            if self._pending_data is None:
+                self._pending_data = {}
+
+            assert self._pending_data is not None
             self._pending_data["enabled_features_old"] = current_features
             self._pending_data["enabled_features_new"] = staged_enabled_features
             self._feature_changes_detected = staged_enabled_features != current_features
@@ -444,7 +447,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
     ) -> FlowResult:
         """Handle view configuration step."""
         # Get current configuration summary
-        current_features = self._config_entry.data.get("enabled_features", {})
+        current_features = (self._config_entry.data or {}).get("enabled_features", {})
         enabled_count = sum(
             1
             for enabled in current_features.values()
@@ -627,8 +630,8 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         """
         helper = self._get_config_flow_helper()
 
-        current_features = self._config_entry.data.get("enabled_features", {})
-        pending = self._pending_data
+        current_features = (self._config_entry.data or {}).get("enabled_features", {})
+        pending = self._pending_data or {}
 
         staged_enabled_features = pending.get("enabled_features_new", current_features)
 
@@ -746,7 +749,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
         _LOGGER.info(f"Using generic config flow for {feature_id}")
         # Restore matrix state to see current device assignments
-        matrix_state = self._config_entry.data.get("device_feature_matrix", {})
+        matrix_state = (self._config_entry.data or {}).get("device_feature_matrix", {})
         if matrix_state:
             helper.restore_matrix_state(matrix_state)
             _LOGGER.info(f"Restored matrix state with {len(matrix_state)} devices")
@@ -1181,7 +1184,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
     def _restore_matrix_state(self) -> None:
         """Restore matrix state from config entry."""
         self._refresh_config_entry(self.hass)
-        matrix_state = self._config_entry.data.get("device_feature_matrix", {})
+        matrix_state = (self._config_entry.data or {}).get("device_feature_matrix", {})
         if matrix_state:
             self._get_config_flow_helper().restore_matrix_state(matrix_state)
             _LOGGER.info(f"Restored matrix state with {len(matrix_state)} devices")
@@ -1252,7 +1255,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             # Prefer the per-flow snapshot if present
             old_matrix_state = getattr(self, "_old_matrix_state", None)
             if (old_matrix_state is None) or (old_matrix_state == {}):
-                old_matrix_state = self._config_entry.data.get(
+                old_matrix_state = (self._config_entry.data or {}).get(
                     "device_feature_matrix", {}
                 )
 
@@ -1407,7 +1410,9 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         data_matrix = {}
         opts_matrix = {}
         if isinstance(self._config_entry.data, Mapping):
-            data_matrix = self._config_entry.data.get("device_feature_matrix", {})
+            data_matrix = (self._config_entry.data or {}).get(
+                "device_feature_matrix", {}
+            )
         if isinstance(self._config_entry.options, Mapping):
             opts_matrix = self._config_entry.options.get("device_feature_matrix", {})
         _LOGGER.debug(
@@ -1441,7 +1446,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                     _LOGGER.info(f"DEBUG: old_matrix_state = {old_matrix_state}")
                     if old_matrix_state is None:
                         # Fallback to config entry if _old_matrix_state not available
-                        old_matrix_state = self._config_entry.data.get(
+                        old_matrix_state = (self._config_entry.data or {}).get(
                             "device_feature_matrix", {}
                         )
                     _LOGGER.info(f"DEBUG: old_matrix_state = {old_matrix_state}")

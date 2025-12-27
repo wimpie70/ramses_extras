@@ -145,9 +145,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Load default feature definitions
         from .features.default.commands import register_default_commands
-        from .features.default.const import load_feature
 
-        load_feature()
         register_default_commands()
 
         # Load enabled feature definitions
@@ -156,67 +154,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             name for name, enabled in enabled_features_dict.items() if enabled
         ]
 
-        _LOGGER.info(
-            "Loading definitions from %d enabled features: %s",
-            len(enabled_feature_names),
-            enabled_feature_names,
-        )
+        # Always include default
+        if "default" not in enabled_feature_names:
+            enabled_feature_names.append("default")
 
-        for feature_name in enabled_feature_names:
-            try:
-                module_name = (
-                    f"custom_components.ramses_extras.features.{feature_name}.const"
-                )
-                feature_module = __import__(module_name, fromlist=["load_feature"])
-
-                if hasattr(feature_module, "load_feature"):
-                    feature_module.load_feature()
-                    _LOGGER.debug("Loaded %s feature definitions", feature_name)
-                else:
-                    _LOGGER.warning(
-                        "Feature '%s' has no load_feature function", feature_name
-                    )
-
-                # Import platform modules to trigger registration
-                if feature_name == "default":
-                    # Default feature has platforms in subdirectories
-                    try:
-                        __import__(
-                            "custom_components.ramses_extras.features.default.platforms.sensor"
-                        )
-                    except ImportError:
-                        pass
-                    try:
-                        __import__(
-                            "custom_components.ramses_extras.features.default.platforms.switch"
-                        )
-                    except ImportError:
-                        pass
-                    try:
-                        __import__(
-                            "custom_components.ramses_extras.features.default.platforms.binary_sensor"
-                        )
-                    except ImportError:
-                        pass
-                    try:
-                        __import__(
-                            "custom_components.ramses_extras.features.default.platforms.number"
-                        )
-                    except ImportError:
-                        pass
-                else:
-                    # Other features use standard platform module structure
-                    platform_module_name = (
-                        f"custom_components.ramses_extras.features."
-                        f"{feature_name}.platform"
-                    )
-                    try:
-                        __import__(platform_module_name)
-                    except ImportError:
-                        pass
-
-            except ImportError as e:
-                _LOGGER.warning("Failed to load feature '%s': %s", feature_name, e)
+        extras_registry.load_all_features(enabled_feature_names)
 
         # CRITICAL: Discover devices BEFORE setting up platforms
         await _discover_and_store_devices(hass)
@@ -676,7 +618,7 @@ async def _discover_and_store_devices(hass: HomeAssistant) -> None:
 
     device_ids = [getattr(device, "id", str(device)) for device in devices]
     _LOGGER.info(
-        "💾 Stored %d devices for platform access: %s",
+        "Stored %d devices for platform access: %s",
         len(devices),
         device_ids,
     )
@@ -701,22 +643,24 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
         _LOGGER.info(f"Ramses CC loaded: {ramses_cc_loaded}")
 
         if ramses_cc_loaded:
-            _LOGGER.info("Ramses CC is loaded, verifying device discovery...")
+            _LOGGER.debug("Ramses CC is loaded, verifying device discovery...")
 
             # Check if device discovery was already completed
             device_data = hass.data.setdefault(DOMAIN, {})
             if "devices" in device_data and "device_discovery_complete" in device_data:
-                _LOGGER.info("Device discovery already completed, using cached results")
+                _LOGGER.debug(
+                    "Device discovery already completed, using cached results"
+                )
                 devices = device_data["devices"]
                 device_ids = [getattr(device, "id", str(device)) for device in devices]
-                _LOGGER.info("Using cached device IDs: %s", device_ids)
+                _LOGGER.debug("Using cached device IDs: %s", device_ids)
             else:
                 # Re-discover devices and update storage
                 devices = await _discover_ramses_devices(hass)
                 device_ids = [getattr(device, "id", str(device)) for device in devices]
                 device_data["devices"] = devices
                 device_data["device_discovery_complete"] = True
-                _LOGGER.info("Fresh discovery device IDs: %s", device_ids)
+                _LOGGER.debug("Fresh discovery device IDs: %s", device_ids)
 
             if devices:
                 _LOGGER.info(

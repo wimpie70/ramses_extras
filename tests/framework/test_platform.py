@@ -124,10 +124,10 @@ async def test_async_create_and_add_platform_entities_filters_devices_for_featur
 
 
 @pytest.mark.asyncio
-async def test_async_create_and_add_platform_entities_default_feature_no_filter(
+async def test_async_create_and_add_platform_entities_default_feature(
     hass: HomeAssistant,
 ) -> None:
-    """Ensure default feature skips filtering helper."""
+    """Ensure default feature uses filtering helper."""
     config_entry = MagicMock()
     entity_configs = {"entity": {"type": "sensor"}}
     async_add_entities = MagicMock()
@@ -142,6 +142,7 @@ async def test_async_create_and_add_platform_entities_default_feature_no_filter(
             platform.PlatformSetup, "get_filtered_devices_for_feature"
         ) as mock_filter,
     ):
+        mock_filter.return_value = ["32:153289", "18:149488"]
         await platform.PlatformSetup.async_create_and_add_platform_entities(
             platform="sensor",
             hass=hass,
@@ -152,7 +153,7 @@ async def test_async_create_and_add_platform_entities_default_feature_no_filter(
             feature_id="default",
         )
 
-    mock_filter.assert_not_called()
+    mock_filter.assert_called_once()
     assert entity_factory.await_count == 2
     async_add_entities.assert_called_once()
 

@@ -4,8 +4,10 @@ from typing import Any
 
 from homeassistant.helpers.entity import EntityCategory
 
+DOMAIN = "default"
+
 # Feature identification
-FEATURE_ID_DEFAULT = "default"
+FEATURE_ID = "default"
 
 # Base entity configurations (shared across features)
 DEFAULT_SENSOR_CONFIGS = {
@@ -43,13 +45,6 @@ DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
     },
 }
 
-# Default feature constant configuration for EntityManager
-DEFAULT_CONST = {
-    "required_entities": {
-        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"]
-    }
-}
-
 # Entity patterns for absolute humidity sensors
 # Maps sensor types to their required underlying temperature and humidity entities
 ENTITY_PATTERNS = {
@@ -78,6 +73,14 @@ DEFAULT_WEBSOCKET_COMMANDS = {
     "get_all_feature_entities": WS_CMD_GET_ALL_FEATURE_ENTITIES,
 }
 
+# Default feature constant configuration for EntityManager
+DEFAULT_CONST = {
+    "required_entities": {
+        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"]
+    },
+    "websocket_commands": DEFAULT_WEBSOCKET_COMMANDS,
+}
+
 
 def load_feature() -> None:
     """Load default feature into the registry."""
@@ -100,7 +103,7 @@ def load_feature() -> None:
 
 
 __all__ = [
-    "FEATURE_ID_DEFAULT",
+    "FEATURE_ID",
     "DEFAULT_CONST",
     "DEFAULT_SENSOR_CONFIGS",
     "DEFAULT_SWITCH_CONFIGS",

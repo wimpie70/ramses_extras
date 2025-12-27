@@ -17,6 +17,9 @@ from typing import Any
 
 DOMAIN = "hello_world"
 
+# Feature identification
+FEATURE_ID = "hello_world"
+
 # Feature configuration
 FEATURE_NAME = "Hello World"
 FEATURE_DESCRIPTION = (
@@ -127,6 +130,7 @@ HELLO_WORLD_CONST = {
     },
     # Cards that this feature manages
     "cards": HELLO_WORLD_CARD_CONFIGS,
+    "websocket_commands": HELLO_WORLD_WEBSOCKET_COMMANDS,
 }
 
 
@@ -166,6 +170,7 @@ def load_feature() -> None:
 
 __all__ = [
     "DOMAIN",
+    "FEATURE_ID",
     "FEATURE_NAME",
     "FEATURE_DESCRIPTION",
     "HELLO_WORLD_SWITCH_CONFIGS",

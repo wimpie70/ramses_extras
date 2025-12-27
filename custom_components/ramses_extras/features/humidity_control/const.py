@@ -4,6 +4,9 @@ from typing import Any
 
 from homeassistant.helpers.entity import EntityCategory
 
+# Feature identification
+FEATURE_ID = "humidity_control"
+
 # Feature-specific brand customizers configuration
 ORCON_DEVICE_MODELS = {
     "HRV400": {
@@ -152,6 +155,7 @@ HUMIDITY_CONTROL_CONST = {
         "switch": ["dehumidify"],
         "binary_sensor": ["dehumidifying_active"],
     },
+    "websocket_commands": HUMIDITY_CONTROL_WEBSOCKET_COMMANDS,
     # Entity mappings for automation logic
     # Note: Sensor entities are maintained by ramses_rf, not created by this feature
     "entity_mappings": {
@@ -204,6 +208,7 @@ def load_feature() -> None:
 
 
 __all__ = [
+    "FEATURE_ID",
     "HUMIDITY_SWITCH_CONFIGS",
     "HUMIDITY_NUMBER_CONFIGS",
     "HUMIDITY_BOOLEAN_CONFIGS",

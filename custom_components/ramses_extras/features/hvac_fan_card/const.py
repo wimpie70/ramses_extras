@@ -4,6 +4,9 @@ from typing import Any
 
 DOMAIN = "hvac_fan_card"
 
+# Feature identification
+FEATURE_ID = "hvac_fan_card"
+
 # HVAC Fan Card inherits shared sensor from default feature
 # No additional entity configurations needed - uses shared sensor
 HVAC_FAN_CARD_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {}
@@ -78,9 +81,10 @@ HVAC_FAN_CARD_CONFIGS: list[dict[str, Any]] = [
 
 # Feature-specific constants for HVAC Fan Card management
 HVAC_FAN_CARD_CONST = {
-    "feature_id": "hvac_fan_card",
+    "required_entities": {},  # No entities created by this feature
     # Cards that this feature manages
     "cards": HVAC_FAN_CARD_CONFIGS,
+    "websocket_commands": HVAC_FAN_CARD_WEBSOCKET_COMMANDS,
     # Device mappings for the feature
     "device_mappings": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
     # Entity mappings for frontend cards
