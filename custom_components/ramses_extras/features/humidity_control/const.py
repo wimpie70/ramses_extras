@@ -188,6 +188,16 @@ HUMIDITY_CONTROL_DEFAULTS = {
     "cooldown_period_minutes": 15,
 }
 
+FEATURE_DEFINITION = {
+    "feature_id": FEATURE_ID,
+    "sensor_configs": {},
+    "switch_configs": HUMIDITY_SWITCH_CONFIGS,
+    "number_configs": HUMIDITY_NUMBER_CONFIGS,
+    "boolean_configs": HUMIDITY_BOOLEAN_CONFIGS,
+    "device_entity_mapping": HUMIDITY_DEVICE_ENTITY_MAPPING,
+    "websocket_commands": HUMIDITY_CONTROL_WEBSOCKET_COMMANDS,
+}
+
 
 def load_feature() -> None:
     """Load humidity control feature into the registry."""
@@ -209,6 +219,7 @@ def load_feature() -> None:
 
 __all__ = [
     "FEATURE_ID",
+    "FEATURE_DEFINITION",
     "HUMIDITY_SWITCH_CONFIGS",
     "HUMIDITY_NUMBER_CONFIGS",
     "HUMIDITY_BOOLEAN_CONFIGS",

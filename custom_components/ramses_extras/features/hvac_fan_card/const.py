@@ -116,6 +116,17 @@ HVAC_FAN_CARD_CONST = {
     },
 }
 
+FEATURE_DEFINITION = {
+    "feature_id": FEATURE_ID,
+    "sensor_configs": HVAC_FAN_CARD_SENSOR_CONFIGS,
+    "switch_configs": HVAC_FAN_CARD_SWITCH_CONFIGS,
+    "number_configs": HVAC_FAN_CARD_NUMBER_CONFIGS,
+    "boolean_configs": HVAC_FAN_CARD_BOOLEAN_CONFIGS,
+    "device_entity_mapping": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
+    "websocket_commands": HVAC_FAN_CARD_WEBSOCKET_COMMANDS,
+    "card_config": HVAC_FAN_CARD_CONFIGS[0] if HVAC_FAN_CARD_CONFIGS else {},
+}
+
 
 def load_feature() -> None:
     """Load hvac_fan_card feature into the registry."""
@@ -145,6 +156,7 @@ __all__ = [
     "HVAC_FAN_CARD_WEBSOCKET_COMMANDS",
     "HVAC_FAN_CARD_CONFIGS",
     "HVAC_FAN_CARD_CONST",
+    "FEATURE_DEFINITION",
     "FEATURE_WEB_CONFIGS",
     "HVAC_FAN_CARD_CARD_CONFIG",
     "load_feature",

@@ -81,6 +81,16 @@ DEFAULT_CONST = {
     "websocket_commands": DEFAULT_WEBSOCKET_COMMANDS,
 }
 
+FEATURE_DEFINITION = {
+    "feature_id": FEATURE_ID,
+    "sensor_configs": DEFAULT_SENSOR_CONFIGS,
+    "switch_configs": DEFAULT_SWITCH_CONFIGS,
+    "number_configs": DEFAULT_NUMBER_CONFIGS,
+    "boolean_configs": DEFAULT_BOOLEAN_CONFIGS,
+    "device_entity_mapping": DEFAULT_DEVICE_ENTITY_MAPPING,
+    "websocket_commands": DEFAULT_WEBSOCKET_COMMANDS,
+}
+
 
 def load_feature() -> None:
     """Load default feature into the registry."""
@@ -105,6 +115,7 @@ def load_feature() -> None:
 __all__ = [
     "FEATURE_ID",
     "DEFAULT_CONST",
+    "FEATURE_DEFINITION",
     "DEFAULT_SENSOR_CONFIGS",
     "DEFAULT_SWITCH_CONFIGS",
     "DEFAULT_NUMBER_CONFIGS",

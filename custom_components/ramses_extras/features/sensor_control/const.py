@@ -44,6 +44,16 @@ SENSOR_CONTROL_CONST: dict[str, Any] = {
     "required_entities": {},
 }
 
+FEATURE_DEFINITION: dict[str, Any] = {
+    "feature_id": FEATURE_ID,
+    "sensor_configs": SENSOR_CONTROL_SENSOR_CONFIGS,
+    "switch_configs": SENSOR_CONTROL_SWITCH_CONFIGS,
+    "number_configs": SENSOR_CONTROL_NUMBER_CONFIGS,
+    "boolean_configs": SENSOR_CONTROL_BOOLEAN_CONFIGS,
+    "device_entity_mapping": SENSOR_CONTROL_DEVICE_ENTITY_MAPPING,
+    "websocket_commands": SENSOR_CONTROL_WEBSOCKET_COMMANDS,
+}
+
 
 def load_feature() -> None:
     from custom_components.ramses_extras.extras_registry import extras_registry
@@ -56,6 +66,7 @@ def load_feature() -> None:
 
 __all__ = [
     "DOMAIN",
+    "FEATURE_DEFINITION",
     "SUPPORTED_METRICS",
     "INTERNAL_SENSOR_MAPPINGS",
     "SENSOR_CONTROL_SENSOR_CONFIGS",

@@ -133,6 +133,17 @@ HELLO_WORLD_CONST = {
     "websocket_commands": HELLO_WORLD_WEBSOCKET_COMMANDS,
 }
 
+FEATURE_DEFINITION = {
+    "feature_id": FEATURE_ID,
+    "sensor_configs": HELLO_WORLD_SENSOR_CONFIGS,
+    "switch_configs": HELLO_WORLD_SWITCH_CONFIGS,
+    "number_configs": HELLO_WORLD_NUMBER_CONFIGS,
+    "boolean_configs": HELLO_WORLD_BINARY_SENSOR_CONFIGS,
+    "device_entity_mapping": HELLO_WORLD_DEVICE_ENTITY_MAPPING,
+    "websocket_commands": HELLO_WORLD_WEBSOCKET_COMMANDS,
+    "card_config": HELLO_WORLD_CARD_CONFIGS[0] if HELLO_WORLD_CARD_CONFIGS else {},
+}
+
 
 def load_feature() -> None:
     """Load hello world feature into the registry.
@@ -171,6 +182,7 @@ def load_feature() -> None:
 __all__ = [
     "DOMAIN",
     "FEATURE_ID",
+    "FEATURE_DEFINITION",
     "FEATURE_NAME",
     "FEATURE_DESCRIPTION",
     "HELLO_WORLD_SWITCH_CONFIGS",

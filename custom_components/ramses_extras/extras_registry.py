@@ -105,6 +105,60 @@ class RamsesEntityRegistry:
                 )
                 feature_module = importlib.import_module(feature_module_path)
 
+                feature_definition = getattr(
+                    feature_module,
+                    "FEATURE_DEFINITION",
+                    None,
+                )
+                if isinstance(feature_definition, dict):
+                    sensor_configs = feature_definition.get("sensor_configs", {})
+                    if isinstance(sensor_configs, dict):
+                        self._sensor_configs.update(sensor_configs)
+
+                    switch_configs = feature_definition.get("switch_configs", {})
+                    if isinstance(switch_configs, dict):
+                        self._switch_configs.update(switch_configs)
+
+                    number_configs = feature_definition.get("number_configs", {})
+                    if isinstance(number_configs, dict):
+                        self._number_configs.update(number_configs)
+
+                    boolean_configs = feature_definition.get("boolean_configs", {})
+                    if isinstance(boolean_configs, dict):
+                        self._boolean_configs.update(boolean_configs)
+
+                    device_mapping = feature_definition.get("device_entity_mapping")
+                    if isinstance(device_mapping, dict):
+                        self._device_mappings.update(device_mapping)
+
+                    card_config = feature_definition.get("card_config")
+                    if isinstance(card_config, dict):
+                        self._card_configs[feature_name] = card_config
+
+                    websocket_commands = feature_definition.get(
+                        "websocket_commands",
+                        {},
+                    )
+                    if isinstance(websocket_commands, dict):
+                        self._websocket_commands[feature_name] = dict(
+                            websocket_commands
+                        )
+                        _LOGGER.info(
+                            "Loaded %d WebSocket commands for '%s': %s",
+                            len(websocket_commands),
+                            feature_name,
+                            list(websocket_commands.keys()),
+                        )
+
+                    self._loaded_features.add(feature_name)
+                    total_time = time.time() - start_time
+                    _LOGGER.debug(
+                        "Successfully loaded feature '%s' in %.2fs",
+                        feature_name,
+                        total_time,
+                    )
+                    return
+
                 # Load feature's sensor configurations
                 sensor_key = f"{feature_name.upper()}_SENSOR_CONFIGS"
                 if hasattr(feature_module, sensor_key):

@@ -7,35 +7,6 @@
 
 ## Status: Next (priority)
 
-### High priority (medium risk)
-
- - [ ] **Handle new devices discovered after restart**
-   - Sometimes on restart not all devices are available immediately.
-   - New devices may be discovered later by ramses_cc.
-   - **Goal**
-     - Hook into ramses_cc device discovery method or HA events.
-     - Respond to new devices being found and make them available for configuration.
-     - Ensure devices discovered after restart can be configured without requiring integration restart.
-
-## Status: Next (cleanup / tech debt)
-
- - [ ] **Prune unused helpers in `framework/helpers/platform.py`**
-   - Candidates:
-     - `create_entities_for_device()` (looks unused and contains older logging patterns).
-     - `calculate_required_entities()` (seems like debug tooling; verify if used anywhere).
-   - Replace ad-hoc debug listing (`_LOGGER.info("Debug: ...")`) with structured debug logs.
-
- - [ ] **Unify feature constants shape**
-   - Today features expose varying const structures:
-     - `features/default/const.py` uses `DEFAULT_CONST`.
-     - `features/hello_world/const.py` uses `HELLO_WORLD_CONST` but still has placeholder configs.
-     - `features/humidity_control/const.py` uses `HUMIDITY_CONTROL_CONST`.
-   - Goal: one convention for:
-     - `FEATURE_ID`
-     - `required_entities`
-     - cards config
-     - WS command metadata (if kept)
-
 ## Sensor control improvements (Later)
 
  - [ ] **External calculated absolute humidity entities / multi-sensor strategy**
