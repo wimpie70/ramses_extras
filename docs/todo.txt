@@ -4,27 +4,6 @@
 > **Registry reminder:** Changing registries is delicate; keep changes isolated and avoid touching global registries unless strictly required.
 
 
-## Status: Next (structural / medium risk)
-
- - [ ] **Clarify the “feature loading” pipeline (there appear to be multiple overlapping mechanisms)**
-   - `custom_components/ramses_extras/__init__.py`
-     - Loads feature const modules with `load_feature()`.
-     - Imports platform modules from each feature’s `platforms/*.py`.
-     - Imports feature `websocket_commands` modules.
-   - `custom_components/ramses_extras/extras_registry.py`
-     - Has its own `load_all_features()`/`load_feature_definitions()` concept.
-   - **Goal**
-     - Have one authoritative place that:
-       - loads feature definitions (configs/mappings)
-       - imports platform modules (registration)
-       - imports websocket modules (decorators)
-
- - [ ] **Clarify WebSocket boundary (document + enforce)**
-   - Current implementation: decorators live in per-feature modules, explicit registration lives in
-     `custom_components/ramses_extras/websocket_integration.py`.
-   - **Goal**
-     - Decide whether to keep explicit registration (current) or switch to a different pattern.
-     - Align `docs/todo.txt` wording with the chosen approach.
 
 ## Status: Next (priority)
 
@@ -57,7 +36,10 @@
      - cards config
      - WS command metadata (if kept)
 
-## new: fix 2025-12-28 10:03:52.587 WARNING (MainThread) [homeassistant.helpers.frame] Detected that custom integration 'ramses_extras' calls `async_track_state_change` instead of `async_track_state_change_event` which is deprecated and will be removed in Home Assistant 2025.5 at custom_components/ramses_extras/framework/base_classes/base_automation.py, line 252: listener = async_track_state_change(. Please report it to the author of the 'ramses_extras' custom integration
+ - [ ] **Fix HA deprecation: use `async_track_state_change_event`**
+   - Home Assistant warns that `async_track_state_change` is deprecated and will be removed.
+   - Location: `framework/base_classes/base_automation.py` (listener registration).
+   - Goal: migrate to `async_track_state_change_event` without changing automation behavior.
 
 ## Sensor control improvements (Later)
 

@@ -14,7 +14,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers.event import async_track_state_change_event
 
 from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_entity import (
@@ -340,18 +340,13 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         )
 
         # Track state changes on both temperature and humidity sensor
-        async def state_changed_listener(*args: Any) -> None:
-            """Handle state changes on temperature or humidity sensor.
+        def _handle_state_change_event(event: Any) -> None:
+            self.hass.async_create_task(self._recalculate_and_update())
 
-            This callback is triggered when either the temperature or humidity
-            entity changes state. It recalculates the absolute humidity value
-            and updates the sensor state.
-            """
-            await self._recalculate_and_update()
-
-        # Listen for state changes on both sensor
-        async_track_state_change(
-            self.hass, [temp_entity, humidity_entity], state_changed_listener
+        async_track_state_change_event(
+            self.hass,
+            [temp_entity, humidity_entity],
+            _handle_state_change_event,
         )
 
         self._listeners_set_up = True

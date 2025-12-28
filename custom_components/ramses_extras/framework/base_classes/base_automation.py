@@ -18,7 +18,7 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import CoreState, HomeAssistant, State
-from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers.event import async_track_state_change_event
 
 from ...const import DOMAIN
 from ..helpers.automation.core import (
@@ -249,8 +249,18 @@ class ExtrasBaseAutomation(ABC):
                     if entity.entity_id.startswith(prefix):
                         _LOGGER.debug("Found entity: %s", entity.entity_id)
                         if entity.entity_id not in self._specific_entity_ids:
-                            listener = async_track_state_change(
-                                self.hass, entity.entity_id, self._handle_state_change
+
+                            def _handle_state_change_event(event: Any) -> None:
+                                self._handle_state_change(
+                                    event.data.get("entity_id"),
+                                    event.data.get("old_state"),
+                                    event.data.get("new_state"),
+                                )
+
+                            listener = async_track_state_change_event(
+                                self.hass,
+                                entity.entity_id,
+                                _handle_state_change_event,
                             )
 
                             if listener:

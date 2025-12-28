@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.core import State
@@ -204,7 +204,7 @@ class TestExtrasBaseAutomation:
         listener_mock = MagicMock()
         with patch(
             "custom_components.ramses_extras.framework.base_classes."
-            "base_automation.async_track_state_change",
+            "base_automation.async_track_state_change_event",
             return_value=listener_mock,
         ) as mock_track:
             await automation._register_entity_listeners()
@@ -213,10 +213,29 @@ class TestExtrasBaseAutomation:
             assert "sensor.test_32_153289" in automation._specific_entity_ids
             assert listener_mock in automation._listeners
 
-            # Check that async_track_state_change was called
+            # Check that async_track_state_change_event was called
             mock_track.assert_called_once_with(
-                hass, "sensor.test_32_153289", automation._handle_state_change
+                hass,
+                "sensor.test_32_153289",
+                ANY,
             )
+
+            # Validate the adapter callback forwards entity_id/old_state/new_state
+            callback = mock_track.call_args.args[2]
+            event = MagicMock()
+            event.data = {
+                "entity_id": "sensor.test_32_153289",
+                "old_state": None,
+                "new_state": State("sensor.test_32_153289", "26.0"),
+            }
+
+            with patch.object(automation, "_handle_state_change") as mock_handler:
+                callback(event)
+                mock_handler.assert_called_once_with(
+                    "sensor.test_32_153289",
+                    None,
+                    event.data["new_state"],
+                )
 
     @pytest.mark.asyncio
     async def test_register_entity_listeners_no_entities(self, automation, hass):
