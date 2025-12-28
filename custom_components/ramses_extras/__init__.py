@@ -24,6 +24,7 @@ from .const import (
     AVAILABLE_FEATURES,
     CARD_FOLDER,
     DOMAIN,
+    EVENT_DEVICES_UPDATED,
     PLATFORM_REGISTRY,
     register_feature_platform,
 )
@@ -168,6 +169,60 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["enabled_features"] = entry.data.get("enabled_features", {})
     hass.data[DOMAIN]["PLATFORM_REGISTRY"] = (
         PLATFORM_REGISTRY  # Make registry available to platforms
+    )
+
+    device_refresh_task: asyncio.Task[None] | None = None
+    device_refresh_lock: asyncio.Lock = hass.data[DOMAIN].setdefault(
+        "_devices_refresh_lock",
+        asyncio.Lock(),
+    )
+
+    async def _refresh_devices_after_delay() -> None:
+        try:
+            await asyncio.sleep(5)
+            async with device_refresh_lock:
+                await _discover_and_store_devices(hass)
+            async_dispatcher_send(hass, EVENT_DEVICES_UPDATED)
+        except asyncio.CancelledError:
+            return
+
+    def _schedule_device_refresh() -> None:
+        nonlocal device_refresh_task
+        if device_refresh_task is not None and not device_refresh_task.done():
+            return
+        device_refresh_task = hass.async_create_task(_refresh_devices_after_delay())
+
+    @callback  # type: ignore[untyped-decorator]
+    def _cancel_device_refresh_task() -> None:
+        nonlocal device_refresh_task
+        if device_refresh_task is not None and not device_refresh_task.done():
+            device_refresh_task.cancel()
+
+    @callback  # type: ignore[untyped-decorator]
+    def _on_entity_registry_updated(
+        event: Event[er.EventEntityRegistryUpdatedData],
+    ) -> None:
+        data = event.data
+        if data.get("action") != "create":
+            return
+        entity_id = data.get("entity_id")
+        if not isinstance(entity_id, str):
+            return
+
+        entity_reg = er.async_get(hass)
+        entry = entity_reg.async_get(entity_id)
+        if entry is None or getattr(entry, "platform", None) != "ramses_cc":
+            return
+
+        _schedule_device_refresh()
+
+    entry.async_on_unload(_cancel_device_refresh_task)
+
+    entry.async_on_unload(
+        hass.bus.async_listen(
+            er.EVENT_ENTITY_REGISTRY_UPDATED,
+            _on_entity_registry_updated,
+        )
     )
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))

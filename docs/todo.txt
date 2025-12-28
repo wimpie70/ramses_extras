@@ -36,11 +36,6 @@
      - cards config
      - WS command metadata (if kept)
 
- - [ ] **Fix HA deprecation: use `async_track_state_change_event`**
-   - Home Assistant warns that `async_track_state_change` is deprecated and will be removed.
-   - Location: `framework/base_classes/base_automation.py` (listener registration).
-   - Goal: migrate to `async_track_state_change_event` without changing automation behavior.
-
 ## Sensor control improvements (Later)
 
  - [ ] **External calculated absolute humidity entities / multi-sensor strategy**

@@ -40,6 +40,7 @@ FEATURE_ID_hello_world = "hello_world"
 
 # Event system constants
 EVENT_DEVICE_READY_FOR_ENTITIES = "ramses_device_ready_for_entities"
+EVENT_DEVICES_UPDATED = "ramses_extras_devices_updated"
 
 # Platform registry for dynamic feature platform discovery
 PLATFORM_REGISTRY: dict[str, dict[str, Callable]] = {}

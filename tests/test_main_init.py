@@ -1,12 +1,17 @@
 # tests/test_init.py
 """Test main integration file."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from custom_components.ramses_extras import DOMAIN
-from custom_components.ramses_extras.const import AVAILABLE_FEATURES, PLATFORM_REGISTRY
+from custom_components.ramses_extras.const import (
+    AVAILABLE_FEATURES,
+    EVENT_DEVICES_UPDATED,
+    PLATFORM_REGISTRY,
+)
 
 
 class TestImportModuleInExecutor:
@@ -381,7 +386,7 @@ async def test_async_setup_entry_runs_core_steps(hass):
 
     assert result is True
     entry.add_update_listener.assert_called_once()
-    entry.async_on_unload.assert_called_once_with("listener_unsub")
+    entry.async_on_unload.assert_any_call("listener_unsub")
     mock_register_cards.assert_awaited_once()
     mock_setup_card_files.assert_awaited_once()
     mock_register_services.assert_awaited_once()
@@ -390,3 +395,89 @@ async def test_async_setup_entry_runs_core_steps(hass):
     mock_async_setup_platforms.assert_awaited_once_with(hass)
     mock_validate_entities.assert_awaited_once_with(hass, entry)
     hass.config_entries.async_forward_entry_setups.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_entity_registry_create_triggers_device_refresh(hass):
+    """Ensure new ramses_cc entities trigger device list refresh."""
+    from homeassistant.helpers import entity_registry as er
+
+    from custom_components.ramses_extras import async_setup_entry
+
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {"enabled_features": {}}
+    entry.options = {}
+    entry.add_update_listener = MagicMock(return_value="listener_unsub")
+    entry.async_on_unload = MagicMock()
+
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+
+    extras_registry_mock = MagicMock()
+    extras_registry_mock.get_all_sensor_configs.return_value = {}
+    extras_registry_mock.get_all_switch_configs.return_value = {}
+    extras_registry_mock.get_all_number_configs.return_value = {}
+    extras_registry_mock.get_all_boolean_configs.return_value = {}
+
+    entity_reg = MagicMock()
+    ramses_cc_entity_entry = MagicMock()
+    ramses_cc_entity_entry.platform = "ramses_cc"
+    entity_reg.async_get.return_value = ramses_cc_entity_entry
+
+    with (
+        patch(
+            "custom_components.ramses_extras.extras_registry.extras_registry",
+            extras_registry_mock,
+        ),
+        patch("custom_components.ramses_extras.features.default.const.load_feature"),
+        patch(
+            "custom_components.ramses_extras.features.default.commands.register_default_commands"
+        ),
+        patch(
+            "custom_components.ramses_extras._register_cards", new_callable=AsyncMock
+        ),
+        patch(
+            "custom_components.ramses_extras._setup_card_files_and_config",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.ramses_extras._register_services",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.ramses_extras._setup_websocket_integration",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.ramses_extras._discover_and_store_devices",
+            new_callable=AsyncMock,
+        ) as mock_discover_devices,
+        patch(
+            "custom_components.ramses_extras.async_setup_platforms",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.ramses_extras._validate_startup_entities_simple",
+            new_callable=AsyncMock,
+        ),
+        patch("custom_components.ramses_extras.er.async_get", return_value=entity_reg),
+        patch("custom_components.ramses_extras.async_dispatcher_send") as mock_send,
+        patch("custom_components.ramses_extras.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        result = await async_setup_entry(hass, entry)
+        assert result is True
+
+        # Initial discovery happens during setup.
+        assert mock_discover_devices.await_count == 1
+
+        # Fire an entity registry "create" event for a ramses_cc entity.
+        # Use the literal event name as other tests may patch the constant.
+        hass.bus.async_fire(
+            "entity_registry_updated",
+            {"action": "create", "entity_id": "sensor.test_32_153289"},
+        )
+        await hass.async_block_till_done()
+
+        # One additional refresh should have been scheduled.
+        assert mock_discover_devices.await_count == 2
+        mock_send.assert_any_call(hass, EVENT_DEVICES_UPDATED)
