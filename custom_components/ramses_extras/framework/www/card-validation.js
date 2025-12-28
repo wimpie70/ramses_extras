@@ -37,20 +37,15 @@ export function validateCoreEntities(hass, config) {
   const availableCoreEntities = [];
 
   Object.entries(coreEntities).forEach(([name, entityId]) => {
-    if (entityExists(hass, entityId)) {
-      availableCoreEntities.push(name);
-    } else {
-      missingCoreEntities.push(name);
+    // Only consider it missing if an entityId was provided but doesn't exist
+    if (entityId) {
+      if (entityExists(hass, entityId)) {
+        availableCoreEntities.push(name);
+      } else {
+        missingCoreEntities.push(name);
+      }
     }
   });
-
-  if (availableCoreEntities.length > 0) {
-    // console.log('✅ Available entities:', availableCoreEntities.join(', '));
-  }
-
-  if (missingCoreEntities.length > 0) {
-    console.warn('⚠️ Missing entities:', missingCoreEntities.join(', '));
-  }
 
   return {
     valid: missingCoreEntities.length === 0,
@@ -85,10 +80,12 @@ export function validateDehumidifyEntities(hass, config) {
   const availableDehumEntities = [];
 
   Object.entries(dehumEntities).forEach(([name, entityId]) => {
-    if (entityExists(hass, entityId)) {
-      availableDehumEntities.push(name);
-    } else {
-      missingDehumEntities.push(name);
+    if (entityId) {
+      if (entityExists(hass, entityId)) {
+        availableDehumEntities.push(name);
+      } else {
+        missingDehumEntities.push(name);
+      }
     }
   });
 
@@ -127,10 +124,12 @@ export function validateAbsoluteHumidityEntities(hass, config) {
   const availableAbsEntities = [];
 
   Object.entries(absHumidEntities).forEach(([name, entityId]) => {
-    if (entityExists(hass, entityId)) {
-      availableAbsEntities.push(name);
-    } else {
-      missingAbsEntities.push(name);
+    if (entityId) {
+      if (entityExists(hass, entityId)) {
+        availableAbsEntities.push(name);
+      } else {
+        missingAbsEntities.push(name);
+      }
     }
   });
 

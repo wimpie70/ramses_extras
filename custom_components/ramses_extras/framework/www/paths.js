@@ -277,14 +277,23 @@ export function resolveBasePaths(environment = null) {
 export const PATHS = {
   // Dynamic base paths (resolved at runtime)
   get RAMSES_EXTRAS_BASE() {
+    if (typeof window !== 'undefined' && window.ramsesExtras?.assetBase) {
+      return window.ramsesExtras.assetBase;
+    }
     return resolveBasePaths().RAMSES_EXTRAS_BASE;
   },
 
   get HELPERS_BASE() {
+    if (typeof window !== 'undefined' && window.ramsesExtras?.assetBase) {
+      return `${window.ramsesExtras.assetBase}/helpers`;
+    }
     return resolveBasePaths().HELPERS_BASE;
   },
 
   get FEATURES_BASE() {
+    if (typeof window !== 'undefined' && window.ramsesExtras?.assetBase) {
+      return `${window.ramsesExtras.assetBase}/features`;
+    }
     return resolveBasePaths().FEATURES_BASE;
   },
 

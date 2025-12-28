@@ -47,6 +47,10 @@ class TestStartupFlow:
         # Mock all the startup steps
         with (
             patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,
             ),
@@ -85,6 +89,10 @@ class TestStartupFlow:
 
         with (
             patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,
             ),
@@ -119,6 +127,10 @@ class TestStartupFlow:
 
         with (
             patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,
             ),
@@ -148,6 +160,10 @@ class TestStartupFlow:
         mock_entity_manager.validate_entities_on_startup = AsyncMock()
 
         with (
+            patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,
@@ -188,6 +204,10 @@ class TestStartupFlow:
         )
 
         with (
+            patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,
@@ -258,6 +278,10 @@ class TestStartupFlow:
 
         with (
             patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,
             ),
@@ -295,6 +319,10 @@ class TestStartupFlow:
         mock_entity_manager.validate_entities_on_startup = AsyncMock()
 
         with (
+            patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,
@@ -336,6 +364,10 @@ class TestStartupFlow:
             call_order.append("_validate_startup_entities_simple")
 
         with (
+            patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "custom_components.ramses_extras._register_services",
                 mock_register_services,
@@ -379,6 +411,10 @@ class TestStartupFlow:
         mock_entity_manager.apply_entity_changes = AsyncMock()
 
         with (
+            patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,
@@ -432,6 +468,10 @@ class TestStartupEntityCreationVsValidation:
 
         with (
             patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,
             ),
@@ -481,6 +521,10 @@ class TestStartupEntityCreationVsValidation:
             validation_steps.append("validation_executed")
 
         with (
+            patch(
+                "custom_components.ramses_extras._setup_card_files_and_config",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "custom_components.ramses_extras._register_services",
                 new_callable=AsyncMock,

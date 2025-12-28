@@ -8,5 +8,5 @@ We may have a few temp/humid sensors for 1 fan. eg. a bathroom and a kitchen....
 Or, we would create some kind of OR logic for the different abs humid entities -> select the highest one as the one to work with and fall back to internal after 15 minutes...or always use the highest one....The same but upside-down goes for too dry air.
 
 
-
-check humid control devices not saved
+logo: see https://github.com/home-assistant/brands/pull/5118
+https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_cc

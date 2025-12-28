@@ -10,7 +10,7 @@ import {
   getAvailableDevices,
   normalizeDeviceDescriptor,
   filterDevicesBySlugs,
-} from '/local/ramses_extras/helpers/card-services.js';
+} from '../../helpers/card-services.js';
 
 class HvacFanCardEditor extends HTMLElement {
   constructor() {

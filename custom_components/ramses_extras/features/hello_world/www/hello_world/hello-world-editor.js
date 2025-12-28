@@ -9,7 +9,7 @@
 import {
   getAvailableDevices,
   normalizeDeviceDescriptor,
-} from '/local/ramses_extras/helpers/card-services.js';
+} from '../../helpers/card-services.js';
 
 /**
  * Hello World Card Editor using HTMLElement pattern (like hvac_fan_card)

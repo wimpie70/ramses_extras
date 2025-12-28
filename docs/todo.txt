@@ -9,19 +9,19 @@
 
 ### Card deployment & registration refactor (MutationObserver loader)
 
- - [ ] **Define target contract and acceptance criteria (bootstrap loader)**
+ - [x] **Define target contract and acceptance criteria (bootstrap loader)**
    - Goal: Only a tiny `main.js` is registered as a Lovelace resource.
    - Cards + editors are loaded on-demand via `import()`.
    - “On-demand” trigger uses `MutationObserver` (load only if a matching element appears).
    - Confirm how we determine “enabled features” in JS (WS call vs config entry options).
 
- - [ ] **Decide asset layout + versioning strategy**
+ - [x] **Decide asset layout + versioning strategy**
    - Pick one:
      - Versioned directory (e.g. `/local/ramses_extras/vX.Y.Z/...`) to avoid browser cache issues.
      - Stable paths with cache-busting query string (e.g. `main.js?v=X.Y.Z`).
    - Document what is considered “managed” by the integration under `/config/www/ramses_extras/`.
 
- - [ ] **Implement `main.js` bootstrap (minimal runtime)**
+ - [x] **Implement `main.js` bootstrap (minimal runtime)**
    - Loads once, sets up:
      - `MutationObserver` that detects:
        - Known Ramses Extras custom card tags (e.g. `ramses-hvac-fan-card`, `ramses-hello-world`, ...).
@@ -30,12 +30,12 @@
      - `import()` the feature card module once, then disconnect or narrow observer.
    - No top-level imports except tiny helper(s).
 
- - [ ] **Refactor registration flow (Python)**
+ - [x] **Refactor registration flow (Python)**
    - Change CardRegistry registration to register only the bootstrap resource (`main.js`).
    - Keep feature-specific resource registration out of `lovelace_resources`.
    - Ensure the bootstrap resource is added early enough (before dashboards parse).
 
- - [ ] **Asset deployment sync + cleanup on upgrade**
+ - [x] **Asset deployment sync + cleanup on upgrade**
    - Make card deployment idempotent:
      - Copy helpers + feature assets into `/config/www/ramses_extras/...`.
      - Remove stale files that no longer exist in source (or replace the whole managed dir).
@@ -45,10 +45,10 @@
    - Clean up legacy Lovelace resources:
      - Remove old per-card `lovelace_resources` entries that point to feature JS files.
 
- - [ ] **Testing & validation**
+ - [x] **Testing & validation**
    - Add unit tests for:
-     - CardRegistry writes only the bootstrap resource.
-     - Deployment cleanup removes stale files safely (in a temp directory).
+     - [x] CardRegistry writes only the bootstrap resource.
+     - [x] Deployment cleanup removes stale files safely (in a temp directory).
    - Run `make local-ci`.
 
 ## Sensor control improvements (Later)

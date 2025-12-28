@@ -9,7 +9,7 @@ reference helpers or construct feature-specific paths for deployment.
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 class PathConstants:
@@ -121,6 +121,24 @@ class DeploymentPaths:
     """Paths specifically for deployment and file operations."""
 
     @staticmethod
+    def get_destination_root(hass_config_dir: str | Path, version: str) -> Path:
+        """Get the destination root path for versioned deployment.
+
+        Args:
+            hass_config_dir: Home Assistant config directory (can be string or Path)
+            version: Integration version string (e.g. "0.10.3")
+
+        Returns:
+            Destination root path for this version.
+        """
+
+        if isinstance(hass_config_dir, str):
+            hass_config_dir = Path(hass_config_dir)
+
+        version_dir = f"v{version}"
+        return hass_config_dir / "www" / "ramses_extras" / version_dir
+
+    @staticmethod
     def get_source_feature_path(integration_dir: Path, feature_name: str) -> Path:
         """Get the source path for feature files in the integration directory.
 
@@ -135,7 +153,9 @@ class DeploymentPaths:
 
     @staticmethod
     def get_destination_features_path(
-        hass_config_dir: str | Path, feature_name: str
+        hass_config_dir: str | Path,
+        feature_name: str,
+        version: str | None = None,
     ) -> Path:
         """Get the destination path for feature deployment.
 
@@ -146,13 +166,20 @@ class DeploymentPaths:
         Returns:
             Destination path for feature deployment
         """
-        # Convert to Path if it's a string
-        if isinstance(hass_config_dir, str):
-            hass_config_dir = Path(hass_config_dir)
-        return hass_config_dir / "www" / "ramses_extras" / "features" / feature_name
+
+        if version is None:
+            if isinstance(hass_config_dir, str):
+                hass_config_dir = Path(hass_config_dir)
+            return hass_config_dir / "www" / "ramses_extras" / "features" / feature_name
+
+        root = DeploymentPaths.get_destination_root(hass_config_dir, version)
+        return root / "features" / feature_name
 
     @staticmethod
-    def get_destination_helpers_path(hass_config_dir: str | Path) -> Path:
+    def get_destination_helpers_path(
+        hass_config_dir: str | Path,
+        version: str | None = None,
+    ) -> Path:
         """Get the destination path for helper files deployment.
 
         Args:
@@ -161,10 +188,14 @@ class DeploymentPaths:
         Returns:
             Destination path for helper files
         """
-        # Convert to Path if it's a string
-        if isinstance(hass_config_dir, str):
-            hass_config_dir = Path(hass_config_dir)
-        return hass_config_dir / "www" / "ramses_extras" / "helpers"
+
+        if version is None:
+            if isinstance(hass_config_dir, str):
+                hass_config_dir = Path(hass_config_dir)
+            return hass_config_dir / "www" / "ramses_extras" / "helpers"
+
+        root = DeploymentPaths.get_destination_root(hass_config_dir, version)
+        return root / "helpers"
 
 
 def validate_path(path: str) -> bool:

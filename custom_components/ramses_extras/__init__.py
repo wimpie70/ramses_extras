@@ -19,6 +19,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
 from .const import (
     AVAILABLE_FEATURES,
@@ -41,6 +42,71 @@ _LOGGER = logging.getLogger(__name__)
 
 INTEGRATION_DIR = Path(__file__).parent
 _setup_in_progress = False
+
+
+async def _async_get_integration_version(hass: HomeAssistant) -> str:
+    data = hass.data.setdefault(DOMAIN, {})
+    cached_version = data.get("_integration_version")
+    if isinstance(cached_version, str) and cached_version:
+        return cached_version
+
+    try:
+        integration = await async_get_integration(hass, DOMAIN)
+        version = integration.manifest.get("version")
+        if isinstance(version, str) and version:
+            data["_integration_version"] = version
+            return version
+    except Exception:
+        pass
+
+    data["_integration_version"] = "0.0.0"
+    return "0.0.0"
+
+
+async def _cleanup_old_card_deployments(
+    hass: HomeAssistant,
+    current_version: str,
+) -> None:
+    root_dir = Path(hass.config.config_dir) / "www" / "ramses_extras"
+    if not root_dir.exists():
+        return
+
+    current_dirname = f"v{current_version}"
+
+    legacy_helpers = root_dir / "helpers"
+    legacy_features = root_dir / "features"
+
+    def _do_cleanup() -> None:
+        legacy_helpers.mkdir(parents=True, exist_ok=True)
+        legacy_features.mkdir(parents=True, exist_ok=True)
+
+        shim_content = (
+            f'import "/local/ramses_extras/v{current_version}/helpers/main.js";\n'
+        )
+
+        legacy_shims: list[Path] = [
+            legacy_helpers / "main.js",
+            legacy_features / "hello_world" / "hello-world.js",
+            legacy_features / "hello_world" / "hello-world-editor.js",
+            legacy_features / "hvac_fan_card" / "hvac-fan-card.js",
+            legacy_features / "hvac_fan_card" / "hvac-fan-card-editor.js",
+        ]
+
+        for shim_path in legacy_shims:
+            shim_path.parent.mkdir(parents=True, exist_ok=True)
+            shim_path.write_text(shim_content)
+
+        for entry in root_dir.iterdir():
+            if not entry.is_dir():
+                continue
+            if not entry.name.startswith("v"):
+                continue
+            if entry.name == current_dirname:
+                continue
+
+            shutil.rmtree(entry, ignore_errors=True)
+
+    await asyncio.to_thread(_do_cleanup)
 
 
 async def _import_module_in_executor(module_path: str) -> Any:
@@ -289,11 +355,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("WebSocket functionality uses feature-centric architecture")
 
-    # ALWAYS register all card resources at startup using CardRegistry
-    # This ensures cards are available before Lovelace parses dashboards
-    await _register_cards(hass)
-
-    # Copy helper files and expose feature config for card functionality
+    # Copy helper files, register/clean Lovelace resources, deploy card assets.
     await _setup_card_files_and_config(hass, entry)
 
     # Register services before setting up platforms
@@ -484,8 +546,10 @@ console.log('Ramses Extras features loaded:', window.ramsesExtras.features);
 """
 
         # Write the JavaScript file to the helpers directory
+        version = await _async_get_integration_version(hass)
         destination_helpers_dir = DEPLOYMENT_PATHS.get_destination_helpers_path(
-            hass.config.config_dir
+            hass.config.config_dir,
+            version,
         )
         feature_config_file = destination_helpers_dir / "ramses-extras-features.js"
 
@@ -566,6 +630,8 @@ async def _copy_all_card_files(hass: HomeAssistant) -> None:
     try:
         _LOGGER.info("Starting unconditional card files copy process...")
 
+        version = await _async_get_integration_version(hass)
+
         # Card files to copy (regardless of feature status)
         card_files_to_copy = [
             {
@@ -575,7 +641,9 @@ async def _copy_all_card_files(hass: HomeAssistant) -> None:
                 / "www"
                 / "hello_world",
                 "destination": DEPLOYMENT_PATHS.get_destination_features_path(
-                    hass.config.config_dir, "hello_world"
+                    hass.config.config_dir,
+                    "hello_world",
+                    version,
                 ),
                 "feature_name": "hello_world",
             },
@@ -586,7 +654,9 @@ async def _copy_all_card_files(hass: HomeAssistant) -> None:
                 / "www"
                 / "hvac_fan_card",
                 "destination": DEPLOYMENT_PATHS.get_destination_features_path(
-                    hass.config.config_dir, "hvac_fan_card"
+                    hass.config.config_dir,
+                    "hvac_fan_card",
+                    version,
                 ),
                 "feature_name": "hvac_fan_card",
             },
@@ -626,10 +696,13 @@ async def _copy_helper_files(hass: HomeAssistant) -> None:
     try:
         _LOGGER.info("Starting helper files copy process...")
 
+        version = await _async_get_integration_version(hass)
+
         # Source and destination paths
         source_helpers_dir = INTEGRATION_DIR / "framework" / "www"
         destination_helpers_dir = DEPLOYMENT_PATHS.get_destination_helpers_path(
-            hass.config.config_dir
+            hass.config.config_dir,
+            version,
         )
 
         _LOGGER.info(f"Source helpers directory: {source_helpers_dir}")
@@ -953,9 +1026,11 @@ async def _register_cards(hass: HomeAssistant) -> None:
     try:
         _LOGGER.info("Starting feature-centric CardRegistry registration")
 
-        # Create CardRegistry and register discovered cards from features
+        version = await _async_get_integration_version(hass)
+
+        # Create CardRegistry and register bootstrap resource
         registry = CardRegistry(hass)
-        await registry.register_discovered_cards()
+        await registry.register_bootstrap(version)
 
         _LOGGER.info("Feature-centric CardRegistry registration complete")
 
@@ -974,8 +1049,16 @@ async def _setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) 
     try:
         _LOGGER.info("Setting up card files and configuration")
 
-        # Always copy helper files for card functionality
+        # Always copy helper files first so the bootstrap module exists.
         await _copy_helper_files(hass)
+
+        # Register bootstrap resource and clean up legacy resources before removing
+        # any old deployed files.
+        await _register_cards(hass)
+
+        # Keep only the current versioned deployment dir.
+        version = await _async_get_integration_version(hass)
+        await _cleanup_old_card_deployments(hass, version)
 
         # Always copy all card files regardless of feature status
         await _copy_all_card_files(hass)

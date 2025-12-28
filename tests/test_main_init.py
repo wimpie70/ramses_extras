@@ -355,9 +355,6 @@ async def test_async_setup_entry_runs_core_steps(hass):
             "custom_components.ramses_extras.features.default.commands.register_default_commands"
         ),
         patch(
-            "custom_components.ramses_extras._register_cards", new_callable=AsyncMock
-        ) as mock_register_cards,
-        patch(
             "custom_components.ramses_extras._setup_card_files_and_config",
             new_callable=AsyncMock,
         ) as mock_setup_card_files,
@@ -387,7 +384,6 @@ async def test_async_setup_entry_runs_core_steps(hass):
     assert result is True
     entry.add_update_listener.assert_called_once()
     entry.async_on_unload.assert_any_call("listener_unsub")
-    mock_register_cards.assert_awaited_once()
     mock_setup_card_files.assert_awaited_once()
     mock_register_services.assert_awaited_once()
     mock_setup_ws.assert_awaited_once()
@@ -432,9 +428,6 @@ async def test_entity_registry_create_triggers_device_refresh(hass):
         patch("custom_components.ramses_extras.features.default.const.load_feature"),
         patch(
             "custom_components.ramses_extras.features.default.commands.register_default_commands"
-        ),
-        patch(
-            "custom_components.ramses_extras._register_cards", new_callable=AsyncMock
         ),
         patch(
             "custom_components.ramses_extras._setup_card_files_and_config",

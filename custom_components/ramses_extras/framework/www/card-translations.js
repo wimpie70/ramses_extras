@@ -7,6 +7,21 @@
  * Embedded translation system to avoid module import issues
  */
 
+// Helper to rewrite paths to versioned base if needed
+function rewritePathToVersioned(path) {
+  if (typeof window === 'undefined' || !window.ramsesExtras || !window.ramsesExtras.assetBase) {
+    return path;
+  }
+
+  // Only rewrite /local/ramses_extras/features/... paths
+  if (path.startsWith('/local/ramses_extras/features/')) {
+    const relativePath = path.replace('/local/ramses_extras/features/', '');
+    return `${window.ramsesExtras.assetBase}/features/${relativePath}`;
+  }
+
+  return path;
+}
+
 // Simple translation system embedded directly in the card
 export class SimpleCardTranslator {
   constructor(cardName) {
@@ -38,7 +53,8 @@ export class SimpleCardTranslator {
   }
 
   async loadTranslations(cardPath) {
-    const translationPath = `${cardPath}/translations/${this.currentLanguage}.json`;
+    const versionedCardPath = rewritePathToVersioned(cardPath);
+    const translationPath = `${versionedCardPath}/translations/${this.currentLanguage}.json`;
     try {
       const response = await fetch(translationPath);
       if (response.ok) {
@@ -60,7 +76,8 @@ export class SimpleCardTranslator {
   }
 
   async loadFallbackTranslations(cardPath) {
-    const fallbackPath = `${cardPath}/translations/en.json`;
+    const versionedCardPath = rewritePathToVersioned(cardPath);
+    const fallbackPath = `${versionedCardPath}/translations/en.json`;
     try {
       const fallbackResponse = await fetch(fallbackPath);
 
@@ -189,7 +206,8 @@ export class CardTranslations {
    * @param {string} language - Language code
    */
   async loadTranslations(cardPath, language = this.currentLanguage) {
-    const translationPath = `${cardPath}/translations/${language}.json`;
+    const versionedCardPath = rewritePathToVersioned(cardPath);
+    const translationPath = `${versionedCardPath}/translations/${language}.json`;
 
     try {
       const response = await fetch(translationPath);

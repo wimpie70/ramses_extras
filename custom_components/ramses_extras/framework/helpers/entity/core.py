@@ -73,16 +73,7 @@ def get_required_entities_from_feature_sync(feature_id: str) -> dict[str, list[s
         Dictionary mapping entity types to entity names
     """
     try:
-        # For testing purposes, create a new event loop each time
-        # This avoids issues with existing running loops
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(
-                _get_required_entities_from_feature(feature_id)
-            )
-        finally:
-            loop.close()
+        return _import_required_entities_sync(feature_id)
     except Exception:
         return {}
 

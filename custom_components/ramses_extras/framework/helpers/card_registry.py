@@ -12,7 +12,6 @@ and proper path resolution for reliable card registration.
 
 from __future__ import annotations
 
-import importlib
 import logging
 from dataclasses import dataclass
 from typing import Iterable
@@ -76,66 +75,18 @@ class CardRegistry:
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
 
     @staticmethod
-    def discover_cards_from_features() -> list[LovelaceCard]:
-        """Discover cards from all feature const.py files.
+    def bootstrap_resource(version: str) -> LovelaceCard:
+        """Return the single Lovelace resource needed for Ramses Extras cards.
 
-        This method dynamically discovers card configurations from feature
-        const.py files, maintaining the feature-centric architecture.
-
-        Returns:
-            List of LovelaceCard definitions discovered from features
+        With the MutationObserver-based loader, we register only a tiny bootstrap
+        module (`main.js`) and let it dynamically import feature cards/editors.
         """
-        cards = []
 
-        # List of known features that might have cards
-        features_to_check = [
-            "hello_world",
-            "hvac_fan_card",
-            # Add more features as they implement card configs
-        ]
-
-        for feature_id in features_to_check:
-            try:
-                # Import the feature's const module
-                const_module = importlib.import_module(
-                    f"custom_components.ramses_extras.features.{feature_id}.const"
-                )
-
-                # Look for card configurations in the const module
-                # Map feature_id to its card configs attribute name
-                card_config_attributes = {
-                    "hello_world": "HELLO_WORLD_CARD_CONFIGS",
-                    "hvac_fan_card": "HVAC_FAN_CARD_CONFIGS",
-                }
-
-                card_configs_attr = card_config_attributes.get(feature_id)
-                if card_configs_attr and hasattr(const_module, card_configs_attr):
-                    card_configs = getattr(const_module, card_configs_attr)
-
-                    for card_config in card_configs:
-                        # Convert feature config to LovelaceCard
-                        card = LovelaceCard(
-                            type=card_config["card_id"],
-                            resource_path=f"/local/ramses_extras/features/{card_config['location']}/{card_config['javascript_file']}",
-                            name=card_config["card_name"],
-                            description=card_config.get("description", ""),
-                            preview=card_config.get("preview", True),
-                        )
-                        cards.append(card)
-                        _LOGGER.debug(
-                            f"🎴 Discovered card "
-                            f"'{card.name}' from feature '{feature_id}'"
-                        )
-
-            except ImportError as e:
-                _LOGGER.debug(f"Feature '{feature_id}' not available: {e}")
-            except Exception as e:
-                _LOGGER.warning(
-                    f"Failed to discover cards from feature '{feature_id}': {e}"
-                )
-
-        _LOGGER.info(f"🎴 Discovered {len(cards)} cards from features")
-        return cards
+        return LovelaceCard(
+            type="ramses-extras",
+            resource_path=f"/local/ramses_extras/v{version}/helpers/main.js",
+            name="Ramses Extras (bootstrap)",
+        )
 
     async def register(self, cards: Iterable[LovelaceCard]) -> None:
         """Register cards with Home Assistant's Lovelace system.
@@ -183,6 +134,33 @@ class CardRegistry:
                     needs_save = True
                     _LOGGER.info("🔧 Migrated resource: %s", item["url"])
 
+            # Remove legacy Ramses Extras resources. We only want the versioned
+            # bootstrap entrypoint to be listed in lovelace_resources.
+            allowed_urls = {card.resource_path for card in cards_list}
+            if data.get("items"):
+                filtered_items = []
+                removed = 0
+                for item in data["items"]:
+                    url = item.get("url")
+                    if not isinstance(url, str):
+                        filtered_items.append(item)
+                        continue
+
+                    is_ramses_extras = url.startswith("/local/ramses_extras/")
+                    if is_ramses_extras and url not in allowed_urls:
+                        removed += 1
+                        needs_save = True
+                        continue
+
+                    filtered_items.append(item)
+
+                if removed:
+                    _LOGGER.info(
+                        "Removed %d legacy Ramses Extras Lovelace resources",
+                        removed,
+                    )
+                data["items"] = filtered_items
+
             existing_resources = {item["url"] for item in data["items"]}
 
             # Add new resources
@@ -227,13 +205,18 @@ class CardRegistry:
             # Card registration issues shouldn't break startup
 
     async def register_discovered_cards(self) -> None:
-        """Discover and register cards from all features.
+        """Deprecated compatibility wrapper.
 
-        This is the main method that should be called during integration startup.
-        It automatically discovers cards from feature const.py files and registers them.
+        Use :meth:`register_bootstrap` instead.
         """
-        cards = self.discover_cards_from_features()
-        await self.register(cards)
+        _LOGGER.warning(
+            "register_discovered_cards() is deprecated; use register_bootstrap()"
+        )
+
+    async def register_bootstrap(self, version: str) -> None:
+        """Register the versioned bootstrap resource for Ramses Extras cards."""
+
+        await self.register([self.bootstrap_resource(version)])
 
     @staticmethod
     def lovelace_type(card_type: str) -> str:

@@ -23,7 +23,7 @@
  */
 
 // Import the base card class (matching working hvac_fan_card pattern)
-import { RamsesBaseCard } from '/local/ramses_extras/helpers/ramses-base-card.js';
+import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 
 // Import the editor component
 import './hello-world-editor.js';

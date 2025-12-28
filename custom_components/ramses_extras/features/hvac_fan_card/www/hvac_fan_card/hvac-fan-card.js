@@ -5,7 +5,7 @@
 /* global clearInterval */
 
 // Import the base card class
-import { RamsesBaseCard } from '/local/ramses_extras/helpers/ramses-base-card.js';
+import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 
 import { NORMAL_SVG, BYPASS_OPEN_SVG } from './airflow-diagrams.js';
 import { CARD_STYLE } from './card-styles.js';
@@ -24,12 +24,12 @@ import {
   callWebSocket,
   sendFanCommand,
   setFanParameter,
-} from '/local/ramses_extras/helpers/card-services.js';
+} from '../../helpers/card-services.js';
 import {
   // validateCoreEntities,
   validateDehumidifyEntities,
   getEntityValidationReport,
-} from '/local/ramses_extras/helpers/card-validation.js';
+} from '../../helpers/card-validation.js';
 
 class HvacFanCard extends RamsesBaseCard {
   constructor() {
