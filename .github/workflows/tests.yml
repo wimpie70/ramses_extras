@@ -53,6 +53,14 @@ jobs:
         run: |
           python -m pytest tests/ -v
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
       - name: Run mypy
         run: |
           mypy custom_components/ tests/ --config-file config/mypy.ini || echo "mypy failed but continuing"
