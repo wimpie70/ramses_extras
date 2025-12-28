@@ -38,7 +38,7 @@
      - Respond to new devices being found and make them available for configuration.
      - Ensure devices discovered after restart can be configured without requiring integration restart.
 
-## Status: Later (cleanup / tech debt)
+## Status: Next (cleanup / tech debt)
 
  - [ ] **Prune unused helpers in `framework/helpers/platform.py`**
    - Candidates:
@@ -57,6 +57,7 @@
      - cards config
      - WS command metadata (if kept)
 
+## new: fix 2025-12-28 10:03:52.587 WARNING (MainThread) [homeassistant.helpers.frame] Detected that custom integration 'ramses_extras' calls `async_track_state_change` instead of `async_track_state_change_event` which is deprecated and will be removed in Home Assistant 2025.5 at custom_components/ramses_extras/framework/base_classes/base_automation.py, line 252: listener = async_track_state_change(. Please report it to the author of the 'ramses_extras' custom integration
 
 ## Sensor control improvements (Later)
 

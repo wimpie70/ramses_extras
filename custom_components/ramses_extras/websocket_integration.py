@@ -72,16 +72,42 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """
     _LOGGER.info("Registering Ramses Extras WebSocket commands")
 
-    # Get all registered WebSocket commands from the registry
-    all_commands = extras_registry.get_all_websocket_commands()
-    features_with_commands = extras_registry.get_features_with_websocket_commands()
+    config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+    enabled_features_raw = hass.data.get(DOMAIN, {}).get("enabled_features")
 
-    if not features_with_commands:
+    if enabled_features_raw is None and config_entry is not None:
+        enabled_features_raw = (
+            config_entry.data.get("enabled_features")
+            or config_entry.options.get("enabled_features")
+            or {}
+        )
+
+    enabled_feature_names: list[str]
+    if isinstance(enabled_features_raw, dict):
+        enabled_feature_names = [
+            name for name, enabled in enabled_features_raw.items() if enabled
+        ]
+    elif isinstance(enabled_features_raw, list):
+        enabled_feature_names = list(enabled_features_raw)
+    else:
+        enabled_feature_names = []
+
+    if "default" not in enabled_feature_names:
+        enabled_feature_names.append("default")
+
+    all_commands = extras_registry.get_all_websocket_commands()
+    enabled_features_with_commands = [
+        feature_name
+        for feature_name in enabled_feature_names
+        if all_commands.get(feature_name)
+    ]
+
+    if not enabled_features_with_commands:
         _LOGGER.warning("No WebSocket commands registered for any features")
         return
 
     # Import modules, then register handlers with HA.
-    for feature_name in all_commands:
+    for feature_name in enabled_features_with_commands:
         try:
             websocket_module = await asyncio.to_thread(
                 _import_websocket_module,
@@ -113,31 +139,57 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
             )
 
     # Log summary
-    total_commands = sum(len(commands) for commands in all_commands.values())
+    total_commands = sum(
+        len(all_commands.get(feature_name, {}))
+        for feature_name in enabled_features_with_commands
+    )
     _LOGGER.info(
         "Imported WebSocket command modules for %d features: %s "
         "(%d commands available)",
-        len(features_with_commands),
-        ", ".join(features_with_commands),
+        len(enabled_features_with_commands),
+        ", ".join(enabled_features_with_commands),
         total_commands,
     )
 
 
-def get_websocket_commands_info() -> dict[str, Any]:
+def get_websocket_commands_info(hass: HomeAssistant) -> dict[str, Any]:
     """Get information about registered WebSocket commands.
 
     Returns:
         Dictionary containing WebSocket commands information
     """
-    # Get all registered WebSocket commands from the registry
     all_commands = extras_registry.get_all_websocket_commands()
-    features_with_commands = extras_registry.get_features_with_websocket_commands()
+    config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+    enabled_features_raw = hass.data.get(DOMAIN, {}).get("enabled_features")
+
+    if enabled_features_raw is None and config_entry is not None:
+        enabled_features_raw = (
+            config_entry.data.get("enabled_features")
+            or config_entry.options.get("enabled_features")
+            or {}
+        )
+
+    enabled_feature_names: list[str]
+    if isinstance(enabled_features_raw, dict):
+        enabled_feature_names = [
+            name for name, enabled in enabled_features_raw.items() if enabled
+        ]
+    elif isinstance(enabled_features_raw, list):
+        enabled_feature_names = list(enabled_features_raw)
+    else:
+        enabled_feature_names = []
+
+    if "default" not in enabled_feature_names:
+        enabled_feature_names.append("default")
 
     # Build commands by feature
     commands_by_feature = {}
     commands_list = []
 
-    for feature_name, commands in all_commands.items():
+    for feature_name in enabled_feature_names:
+        commands = all_commands.get(feature_name, {})
+        if not commands:
+            continue
         command_names = list(commands.keys())
         commands_by_feature[feature_name] = {
             "command_count": len(command_names),
@@ -157,8 +209,12 @@ def get_websocket_commands_info() -> dict[str, Any]:
             )
 
     return {
-        "total_features": len(features_with_commands),
-        "total_commands": sum(len(commands) for commands in all_commands.values()),
+        "total_features": len(
+            [f for f in enabled_feature_names if all_commands.get(f)]
+        ),
+        "total_commands": sum(
+            len(all_commands.get(f, {})) for f in enabled_feature_names
+        ),
         "commands_by_feature": commands_by_feature,
         "commands": commands_list,
     }
@@ -177,7 +233,7 @@ async def async_setup_websocket_integration(hass: HomeAssistant) -> bool:
         # Register WebSocket commands
         await async_register_websocket_commands(hass)
 
-        info = get_websocket_commands_info()
+        info = get_websocket_commands_info(hass)
         _LOGGER.info(
             "WebSocket integration setup complete: %s commands",
             info["total_commands"],
@@ -268,11 +324,21 @@ def get_enabled_websocket_commands(
         )
         return feature_commands
 
-    # For other features, check if explicitly enabled in config
     if config_entry and hasattr(config_entry, "options"):
-        enabled_features = config_entry.options.get("enabled_features", [])
+        enabled_features_raw = (
+            config_entry.data.get("enabled_features")
+            or config_entry.options.get("enabled_features")
+            or {}
+        )
 
-        if feature_name in enabled_features:
+        if isinstance(enabled_features_raw, dict):
+            is_enabled = bool(enabled_features_raw.get(feature_name, False))
+        elif isinstance(enabled_features_raw, list):
+            is_enabled = feature_name in enabled_features_raw
+        else:
+            is_enabled = False
+
+        if is_enabled:
             _LOGGER.debug(
                 "Feature %s enabled in config, returning %d commands",
                 feature_name,

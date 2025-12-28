@@ -16,14 +16,18 @@ async def test_async_setup_entry_success(hass):
     # Mock config entry
     config_entry = MagicMock()
     config_entry.entry_id = "test_entry"
+    config_entry.data = {"enabled_features": {"hello_world": True}}
+    config_entry.options = {}
 
     # Mock hass data
     hass.data = {
         "ramses_extras": {
+            "config_entry": config_entry,
+            "enabled_features": {"hello_world": True},
             "features": {
                 "default": MagicMock(),
                 "hello_world": MagicMock(),
-            }
+            },
         }
     }
 
@@ -41,9 +45,13 @@ async def test_async_setup_entry_success(hass):
             extras_registry,
             "get_all_websocket_commands",
             return_value={
-                "default": {},
-                "hello_world": {},
-                "humidity_control": {},
+                "default": {
+                    "get_cards_enabled": "ramses_extras/default/get_cards_enabled"
+                },
+                "hello_world": {
+                    "toggle_switch": "ramses_extras/hello_world/toggle_switch"
+                },
+                "humidity_control": {"noop": "ramses_extras/humidity_control/noop"},
             },
         ),
         patch.object(
@@ -63,13 +71,12 @@ async def test_async_setup_entry_success(hass):
     ):
         await websocket_integration.async_setup_entry(hass, config_entry)
 
-        assert mock_import.call_count == 3
+        assert mock_import.call_count == 2
         mock_import.assert_any_call("default")
         mock_import.assert_any_call("hello_world")
-        mock_import.assert_any_call("humidity_control")
 
         # One decorated handler is discovered & registered per imported module.
-        assert mock_register.call_count == 3
+        assert mock_register.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -78,14 +85,18 @@ async def test_async_setup_entry_with_missing_modules(hass):
     # Mock config entry
     config_entry = MagicMock()
     config_entry.entry_id = "test_entry"
+    config_entry.data = {"enabled_features": {"missing_feature": True}}
+    config_entry.options = {}
 
     # Mock hass data
     hass.data = {
         "ramses_extras": {
+            "config_entry": config_entry,
+            "enabled_features": {"missing_feature": True},
             "features": {
                 "default": MagicMock(),
                 "missing_feature": MagicMock(),
-            }
+            },
         }
     }
 
@@ -102,7 +113,12 @@ async def test_async_setup_entry_with_missing_modules(hass):
         patch.object(
             extras_registry,
             "get_all_websocket_commands",
-            return_value={"default": {}, "missing_feature": {}},
+            return_value={
+                "default": {
+                    "get_cards_enabled": "ramses_extras/default/get_cards_enabled"
+                },
+                "missing_feature": {"x": "ramses_extras/missing_feature/x"},
+            },
         ),
         patch.object(
             extras_registry,

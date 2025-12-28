@@ -53,12 +53,55 @@ async def _import_module_in_executor(module_path: str) -> Any:
     return await loop.run_in_executor(None, _do_import)
 
 
+async def _import_feature_platform_modules(feature_names: list[str]) -> None:
+    """Import per-feature platform modules so they can register into
+    `PLATFORM_REGISTRY`.
+
+    The feature platform modules register themselves via
+    :func:`custom_components.ramses_extras.const.register_feature_platform` at
+    import time. The root HA platforms (e.g.
+    :mod:`custom_components.ramses_extras.sensor`) depend on these registrations.
+
+    Features are allowed to omit a platform module (e.g. no `number` platform).
+    Missing modules are treated as normal and ignored.
+
+    :param feature_names: Feature IDs to import platforms for.
+    """
+    platform_module_names = {
+        Platform.SENSOR: "sensor",
+        Platform.SWITCH: "switch",
+        Platform.BINARY_SENSOR: "binary_sensor",
+        Platform.NUMBER: "number",
+    }
+
+    for feature_name in feature_names:
+        for platform_name in platform_module_names.values():
+            module_path = (
+                "custom_components.ramses_extras.features."
+                f"{feature_name}.platforms.{platform_name}"
+            )
+
+            try:
+                await asyncio.to_thread(importlib.import_module, module_path)
+            except ModuleNotFoundError as err:
+                if err.name in {module_path, module_path.rsplit(".", 1)[0]}:
+                    continue
+                _LOGGER.warning(
+                    "Unexpected import error while loading platform module %s: %s",
+                    module_path,
+                    err,
+                )
+            except Exception as err:
+                _LOGGER.warning(
+                    "Error importing platform module %s: %s",
+                    module_path,
+                    err,
+                )
+
+
 async def _handle_startup_event(
     event: Event, hass: HomeAssistant, config: ConfigType
 ) -> None:
-    """Handle Home Assistant startup event."""
-    # This will only be called if the user has Ramses Extras configured
-    # from a YAML file. If configured via UI, async_setup_entry will handle it.
     _LOGGER.info("Starting Ramses Extras from YAML configuration")
 
     await async_setup_yaml_config(hass, config)
@@ -159,6 +202,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             enabled_feature_names.append("default")
 
         extras_registry.load_all_features(enabled_feature_names)
+
+        await _import_feature_platform_modules(enabled_feature_names)
 
         # CRITICAL: Discover devices BEFORE setting up platforms
         await _discover_and_store_devices(hass)
