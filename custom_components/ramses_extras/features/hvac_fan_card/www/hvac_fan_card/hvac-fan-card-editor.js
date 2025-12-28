@@ -19,13 +19,10 @@ class HvacFanCardEditor extends HTMLElement {
     this._hass = null;
     this._initialized = false;
     this._devicesFetched = false;
-
-    console.log('HvacFanCardEditor: Constructor');
   }
 
   connectedCallback() {
     this._initialized = true;
-    console.log('HvacFanCardEditor connected');
 
     if (this._config && this._hass) {
       this._updateContent();
@@ -33,13 +30,11 @@ class HvacFanCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
-    console.log('HvacFanCardEditor setConfig called with:', config);
     this._config = config ? JSON.parse(JSON.stringify(config)) : {};
     this._updateContent();
   }
 
   set hass(hass) {
-    console.log('HvacFanCardEditor hass set');
     this._hass = hass;
     if (this._config && this._initialized) {
       this._updateContent();

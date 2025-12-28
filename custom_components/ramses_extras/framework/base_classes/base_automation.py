@@ -102,9 +102,10 @@ class ExtrasBaseAutomation(ABC):
             return
 
         _LOGGER.info(
-            f"🚀 Starting {self.feature_id} automation (HA event-based startup)"
+            "Starting %s automation (HA event-based startup)",
+            self.feature_id,
         )
-        _LOGGER.info(f"📋 Entity patterns: {self.entity_patterns}")
+        _LOGGER.debug("Entity patterns: %s", self.entity_patterns)
 
         # Mark as active immediately
         self._active = True
@@ -115,8 +116,8 @@ class ExtrasBaseAutomation(ABC):
 
         if getattr(self.hass, "state", None) == CoreState.running:
             _LOGGER.info(
-                f"🏁 Home Assistant already running, initializing {self.feature_id} "
-                "automation now"
+                "Home Assistant already running, initializing %s automation now",
+                self.feature_id,
             )
             await self._on_homeassistant_started(None)
             return
@@ -126,13 +127,14 @@ class ExtrasBaseAutomation(ABC):
             "homeassistant_started", self._on_homeassistant_started
         )
 
-        _LOGGER.info(f"✅ {self.feature_id} automation registered for HA startup")
-        _LOGGER.info("🎯 Will initialize when Home Assistant is ready")
+        _LOGGER.debug("%s automation registered for HA startup", self.feature_id)
+        _LOGGER.debug("Will initialize when Home Assistant is ready")
 
     async def _on_homeassistant_started(self, event: Any) -> None:
         """Handle Home Assistant startup event."""
         _LOGGER.info(
-            f"🏠 Home Assistant started, initializing {self.feature_id} automation"
+            "Home Assistant started, initializing %s automation",
+            self.feature_id,
         )
 
         try:
@@ -145,12 +147,12 @@ class ExtrasBaseAutomation(ABC):
             self.hass.bus.async_fire(
                 "ramses_extras_feature_ready", {"feature_id": self.feature_id}
             )
-            _LOGGER.info(f"✅ {self.feature_id} automation initialized successfully")
+            _LOGGER.info("%s automation initialized successfully", self.feature_id)
         except Exception as e:
             self.hass.data.setdefault(DOMAIN, {}).setdefault("feature_ready", {})[
                 self.feature_id
             ] = False
-            _LOGGER.error(f"❌ Failed to initialize {self.feature_id} automation: {e}")
+            _LOGGER.error("Failed to initialize %s automation: %s", self.feature_id, e)
 
     async def stop(self) -> None:
         """Stop the automation and clean up all resources."""
@@ -231,8 +233,8 @@ class ExtrasBaseAutomation(ABC):
         Simple approach: register listeners for entity patterns and let HA
         handle entity availability. No complex validation cycles.
         """
-        _LOGGER.info(f"🎯 Registering listeners for {self.feature_id}")
-        _LOGGER.info(f"🎯 Entity patterns: {self.entity_patterns}")
+        _LOGGER.debug("Registering listeners for %s", self.feature_id)
+        _LOGGER.debug("Entity patterns: %s", self.entity_patterns)
 
         listeners_registered = 0
 
@@ -245,7 +247,7 @@ class ExtrasBaseAutomation(ABC):
 
                 for entity in entities:
                     if entity.entity_id.startswith(prefix):
-                        _LOGGER.debug(f"🔍 Found entity: {entity.entity_id}")
+                        _LOGGER.debug("Found entity: %s", entity.entity_id)
                         if entity.entity_id not in self._specific_entity_ids:
                             listener = async_track_state_change(
                                 self.hass, entity.entity_id, self._handle_state_change
@@ -256,12 +258,14 @@ class ExtrasBaseAutomation(ABC):
                                 self._specific_entity_ids.add(entity.entity_id)
                                 listeners_registered += 1
                                 _LOGGER.debug(
-                                    f"✅ Registered listener: {entity.entity_id}"
+                                    "Registered listener: %s",
+                                    entity.entity_id,
                                 )
 
         _LOGGER.info(
-            f"✅ Registered {listeners_registered} entity listeners for "
-            f"{self.feature_id}"
+            "Registered %d entity listeners for %s",
+            listeners_registered,
+            self.feature_id,
         )
 
         # If no entities found, set up a periodic check for entities

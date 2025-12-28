@@ -143,8 +143,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             _LOGGER.debug("Humidity control feature disabled, stopping device checks")
             return False
 
-        _LOGGER.info(f"🔍 _check_any_device_ready called for {self.feature_id}")
-        _LOGGER.info(f"📋 Entity patterns being checked: {self.entity_patterns}")
+        _LOGGER.debug("Checking whether any device is ready for %s", self.feature_id)
+        _LOGGER.debug("Entity patterns being checked: %s", self.entity_patterns)
 
         # Use the humidity-specific entity patterns
         patterns = self.entity_patterns
@@ -190,38 +190,43 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     ]
 
                 if matching_entities:
-                    _LOGGER.info(
-                        f"🔍 Found {len(matching_entities)} matching entities for "
-                        f"pattern {pattern}"
+                    _LOGGER.debug(
+                        "Found %d matching entities for pattern %s",
+                        len(matching_entities),
+                        pattern,
                     )
                     # Check each matching entity's device has all required entities
                     for entity_state in matching_entities:
                         device_id = self._extract_device_id(entity_state.entity_id)
-                        _LOGGER.info(
-                            f"🔍 Checking device_id={device_id} from entity "
-                            f"{entity_state.entity_id}"
+                        _LOGGER.debug(
+                            "Checking device_id=%s from entity %s",
+                            device_id,
+                            entity_state.entity_id,
                         )
                         if device_id:
                             validation_result = await self._validate_device_entities(
                                 device_id
                             )
-                            _LOGGER.info(
-                                f"🔍 Validation result for {device_id}: "
-                                f"{validation_result}"
+                            _LOGGER.debug(
+                                "Validation result for %s: %s",
+                                device_id,
+                                validation_result,
                             )
                             if validation_result:
                                 _LOGGER.info(
-                                    f"✅ Enhanced Humidity Control: Device {device_id} "
-                                    f"has all {self.feature_id} entities ready"
+                                    "Humidity control: device %s has all %s "
+                                    "entities ready",
+                                    device_id,
+                                    self.feature_id,
                                 )
                                 return True
                         else:
                             _LOGGER.warning(
-                                f"⚠️ Could not extract device_id from "
-                                f"{entity_state.entity_id}"
+                                "Could not extract device_id from %s",
+                                entity_state.entity_id,
                             )
                 else:
-                    _LOGGER.info(f"❌ No matching entities found for pattern {pattern}")
+                    _LOGGER.debug("No matching entities found for pattern %s", pattern)
 
         return False
 
@@ -248,7 +253,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         # Get entity registry
         registry = entity_registry.async_get(self.hass)
 
-        _LOGGER.info(f"🔍 Validating entities for device_id={device_id}")
+        _LOGGER.debug("Validating entities for device_id=%s", device_id)
 
         # Check entities from required_entities (created by humidity_control feature)
         for entity_type, entity_names in required_entities.items():
@@ -258,29 +263,29 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             for entity_name in entity_names:
                 # Generate expected entity ID using humidity control patterns
                 expected_entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
-                _LOGGER.info(f"🔍 Checking for entity: {expected_entity_id}")
+                _LOGGER.debug("Checking for entity: %s", expected_entity_id)
 
                 # Check entity registry instead of states
                 entity_entry = registry.async_get(expected_entity_id)
                 if not entity_entry:
-                    _LOGGER.warning(f"❌ Missing entity: {expected_entity_id}")
+                    _LOGGER.warning("Missing entity: %s", expected_entity_id)
                     missing_entities.append(expected_entity_id)
                 else:
-                    _LOGGER.info(f"✅ Found entity: {expected_entity_id}")
+                    _LOGGER.debug("Found entity: %s", expected_entity_id)
 
         # Check entities from entity_mappings (created by default feature)
         for state_name, entity_template in entity_mappings.items():
             # Replace {device_id} placeholder in entity template
             expected_entity_id = entity_template.format(device_id=device_id)
-            _LOGGER.info(f"🔍 Checking for mapped entity: {expected_entity_id}")
+            _LOGGER.debug("Checking for mapped entity: %s", expected_entity_id)
 
             # Check entity registry instead of states
             entity_entry = registry.async_get(expected_entity_id)
             if not entity_entry:
-                _LOGGER.warning(f"❌ Missing mapped entity: {expected_entity_id}")
+                _LOGGER.warning("Missing mapped entity: %s", expected_entity_id)
                 missing_entities.append(expected_entity_id)
             else:
-                _LOGGER.info(f"✅ Found mapped entity: {expected_entity_id}")
+                _LOGGER.debug("Found mapped entity: %s", expected_entity_id)
 
         if missing_entities:
             # Only log missing entities once per device to avoid log spam

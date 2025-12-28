@@ -1,6 +1,6 @@
 """Integration tests for config flow navigation and feature configuration."""
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntry
@@ -24,7 +24,10 @@ def mock_hass():
 @pytest.fixture
 def mock_config_entry():
     """Create a mock config entry."""
-    return Mock(spec=ConfigEntry)
+    entry = Mock(spec=ConfigEntry)
+    entry.data = {}
+    entry.options = {}
+    return entry
 
 
 @pytest.fixture
@@ -232,12 +235,13 @@ async def test_config_flow_navigation(mock_hass, mock_config_entry):
     """Test config flow navigation between steps."""
     # Set up mock config_entry with data attribute
     mock_config_entry.data = {"enabled_features": {}}
+    mock_config_entry.options = {}
 
     # Mock the async_show_menu method (new ramses_cc style navigation)
     with patch.object(
-        RamsesExtrasOptionsFlowHandler, "async_show_menu", new_callable=AsyncMock
+        RamsesExtrasOptionsFlowHandler,
+        "async_show_menu",
     ) as mock_show_menu:
-        # Set the return value to be awaitable
         mock_show_menu.return_value = {"type": "menu", "step_id": "main_menu"}
 
         handler = RamsesExtrasOptionsFlowHandler(mock_config_entry)
@@ -256,10 +260,10 @@ async def test_config_flow_navigation(mock_hass, mock_config_entry):
 
     # Test features step (should still work with async_show_form)
     with patch.object(
-        RamsesExtrasOptionsFlowHandler, "async_show_form", new_callable=AsyncMock
+        RamsesExtrasOptionsFlowHandler,
+        "async_show_form",
     ) as mock_show_form:
-        # Set the return value to be awaitable
-        mock_show_form.return_value = {"type": "form", "step_id": "enable_features"}
+        mock_show_form.return_value = {"type": "form", "step_id": "features"}
 
         handler = RamsesExtrasOptionsFlowHandler(mock_config_entry)
         handler.hass = mock_hass  # Set the hass attribute
@@ -280,6 +284,7 @@ async def test_feature_config_step(mock_hass, mock_config_entry):
     """Test feature configuration step."""
     # Set up mock config_entry with data attribute
     mock_config_entry.data = {"enabled_features": {}}
+    mock_config_entry.options = {}
 
     # Mock devices
     mock_devices = [
@@ -291,9 +296,9 @@ async def test_feature_config_step(mock_hass, mock_config_entry):
     mock_hass.data = {"ramses_extras": {"devices": mock_devices}}
 
     with patch.object(
-        RamsesExtrasOptionsFlowHandler, "async_show_form", new_callable=AsyncMock
+        RamsesExtrasOptionsFlowHandler,
+        "async_show_form",
     ) as mock_show_form:
-        # Set the return value to be awaitable
         mock_show_form.return_value = {"type": "form", "step_id": "feature_config"}
 
         handler = RamsesExtrasOptionsFlowHandler(mock_config_entry)
@@ -318,7 +323,8 @@ async def test_hvac_fan_card_step_info_only(mock_hass, mock_config_entry):
     mock_config_entry.data = {"enabled_features": {"hvac_fan_card": True}}
 
     with patch.object(
-        RamsesExtrasOptionsFlowHandler, "async_show_form", new_callable=AsyncMock
+        RamsesExtrasOptionsFlowHandler,
+        "async_show_form",
     ) as mock_show_form:
         mock_show_form.return_value = {"type": "form", "step_id": "feature_config"}
 
@@ -351,9 +357,9 @@ async def test_device_selection_step(mock_hass, mock_config_entry):
     mock_hass.data = {"ramses_extras": {"devices": mock_devices}}
 
     with patch.object(
-        RamsesExtrasOptionsFlowHandler, "async_show_form", new_callable=AsyncMock
+        RamsesExtrasOptionsFlowHandler,
+        "async_show_form",
     ) as mock_show_form:
-        # Set the return value to be awaitable
         mock_show_form.return_value = {"type": "form", "step_id": "device_selection"}
 
         handler = RamsesExtrasOptionsFlowHandler(mock_config_entry)

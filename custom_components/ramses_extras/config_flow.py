@@ -314,76 +314,9 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 feature_lines
             )
 
-        # DEBUG: Log translation availability
-        _LOGGER.info(f"DEBUG: Current language: {self.hass.config.language}")
-        _LOGGER.info(f"DEBUG: Translation domain: {DOMAIN}")
-
-        # DEBUG: Check if translation files are available
-        try:
-            from homeassistant.helpers.translation import async_get_translations
-
-            translations = await async_get_translations(  # noqa: F841
-                self.hass,
-                self.hass.config.language,
-                "options",
-                integrations=[DOMAIN],
-            )
-            # _LOGGER.info(f"DEBUG: Available translations: {translations}")
-        except Exception as e:
-            _LOGGER.error(f"DEBUG: Error checking translations: {e}")
-
-        # DEBUG: Check if feature translations exist in options category
-        try:
-            feature_translations = await async_get_translations(
-                self.hass,
-                self.hass.config.language,
-                "options",
-                integrations=[DOMAIN],
-            )
-            _LOGGER.info(f"DEBUG: Feature item translation: {feature_translations}")
-        except Exception as e:
-            _LOGGER.error(f"DEBUG: Error checking feature_item translation: {e}")
-
-        # DEBUG: Check if translations are loaded at all
-        try:
-            # Try to get the integration translations directly
-            integration_translations = self.hass.data.get("translations", {}).get(
-                DOMAIN, {}
-            )
-            _LOGGER.info(
-                f"DEBUG: Integration translations loaded: "
-                f"{bool(integration_translations)}"
-            )
-            if integration_translations:
-                _LOGGER.info(
-                    f"DEBUG: Integration translations content: "
-                    f"{integration_translations}"
-                )
-        except Exception as e:
-            _LOGGER.error(f"DEBUG: Error checking integration translations: {e}")
-
-        # DEBUG: Check translation file paths (run blocking I/O in executor)
-        try:
-            import os
-
-            translations_dir = os.path.join(os.path.dirname(__file__), "translations")
-            _LOGGER.info(f"DEBUG: Translations directory: {translations_dir}")
-
-            def _path_info(path: str) -> tuple[bool, list[str]]:
-                exists = os.path.exists(path)
-                files: list[str] = []
-                if exists:
-                    files = os.listdir(path)
-                return exists, files
-
-            exists, files = await self.hass.async_add_executor_job(
-                _path_info, translations_dir
-            )
-            _LOGGER.info(f"DEBUG: Translations directory exists: {exists}")
-            if exists:
-                _LOGGER.info(f"DEBUG: Files in translations directory: {files}")
-        except Exception as e:
-            _LOGGER.error(f"DEBUG: Error checking translation files: {e}")
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("Current language: %s", self.hass.config.language)
+            _LOGGER.debug("Translation domain: %s", DOMAIN)
 
         return self.async_show_menu(
             step_id="main_menu",
@@ -653,9 +586,24 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                     }
                 new_data["device_feature_matrix"] = device_feature_matrix
 
+                new_options = dict(self._config_entry.options)
+                options_matrix = new_options.get("device_feature_matrix")
+                if isinstance(options_matrix, Mapping):
+                    cleaned_matrix: dict[str, dict[str, bool]] = {}
+                    for device_id, device_features in options_matrix.items():
+                        if not isinstance(device_features, Mapping):
+                            continue
+                        cleaned_matrix[str(device_id)] = {
+                            feature_id: bool(enabled)
+                            for feature_id, enabled in device_features.items()
+                            if staged_enabled_features.get(feature_id, False)
+                        }
+                    new_options["device_feature_matrix"] = cleaned_matrix
+
                 self.hass.config_entries.async_update_entry(
                     self._config_entry,
                     data=new_data,
+                    options=new_options,
                 )
 
                 # Update cards based on new feature set
@@ -747,14 +695,14 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         devices = self._get_all_devices()  # noqa: SLF001
         helper = self._get_config_flow_helper()
 
-        _LOGGER.info(f"Using generic config flow for {feature_id}")
+        _LOGGER.debug("Using generic config flow for %s", feature_id)
         # Restore matrix state to see current device assignments
-        matrix_state = (self._config_entry.data or {}).get("device_feature_matrix", {})
+        matrix_state = self._get_persisted_matrix_state()
         if matrix_state:
             helper.restore_matrix_state(matrix_state)
-            _LOGGER.info(f"Restored matrix state with {len(matrix_state)} devices")
+            _LOGGER.debug("Restored matrix state with %d devices", len(matrix_state))
         else:
-            _LOGGER.info("No matrix state found, starting with empty matrix")
+            _LOGGER.debug("No matrix state found, starting with empty matrix")
 
         _LOGGER.debug(f"matrix state: {matrix_state}")
         # Save the matrix state to be used for comparison to the flow
@@ -802,8 +750,8 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             # Log entity tracking attributes, check if they exist first
             entities_to_create = getattr(self, "_matrix_entities_to_create", [])
             entities_to_remove = getattr(self, "_matrix_entities_to_remove", [])
-            _LOGGER.debug(f"📝 Entities to create: {len(entities_to_create)}")
-            _LOGGER.debug(f"🗑️ Entities to remove: {len(entities_to_remove)}")
+            _LOGGER.debug("Entities to create: %d", len(entities_to_create))
+            _LOGGER.debug("Entities to remove: %d", len(entities_to_remove))
 
             # Route through the matrix-based confirm step so changes are summarized
             return await self._show_matrix_based_confirmation()
@@ -861,16 +809,10 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
     ) -> FlowResult:
         """Handle feature configuration step."""
         self._refresh_config_entry(self.hass)
-        _LOGGER.info(
-            "🎯 async_step_feature_config called - FEATURE CONFIG STEP STARTED"
-        )
-        _LOGGER.info(f"📋 User input: {user_input}")
-        _LOGGER.info(
-            f"🎯 Selected feature: {getattr(self, '_selected_feature', 'NOT SET')}"
-        )
+        _LOGGER.debug("async_step_feature_config called")
 
         if not hasattr(self, "_selected_feature") or not self._selected_feature:
-            _LOGGER.error("❌ No selected feature, redirecting to main menu")
+            _LOGGER.warning("No selected feature, redirecting to main menu")
             return await self.async_step_main_menu()
 
         feature_id = self._selected_feature
@@ -1094,29 +1036,26 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         actual form building to the feature's own config_flow helper so that
         the default feature can serve as an example for other features.
         """
-        _LOGGER.info(
-            "🎯 async_step_feature_default called - DEFAULT FEATURE CONFIG FLOW STARTED"
-        )
-        _LOGGER.info(f"📋 User input: {user_input}")
+        _LOGGER.debug("async_step_feature_default called")
 
         # CRITICAL FIX: Set the selected feature before calling the default config flow
         # This ensures that async_step_feature_config can properly route the flow
         self._selected_feature = "default"
-        _LOGGER.info(f"✅ Set _selected_feature to: {self._selected_feature}")
+        _LOGGER.debug("Set _selected_feature to: %s", self._selected_feature)
 
         try:
             from .features.default import config_flow as default_config_flow
 
-            _LOGGER.info("🔗 Importing default config flow module...")
+            _LOGGER.debug("Importing default config flow module")
             result = await default_config_flow.async_step_default_config(
                 self, user_input
             )
-            _LOGGER.info(f"✅ Default config flow completed, result: {result}")
+            _LOGGER.debug("Default config flow completed")
             return result
 
         except Exception as e:
-            _LOGGER.error(f"❌ ERROR in async_step_feature_default: {e}")
-            _LOGGER.error(f"Full traceback: {traceback.format_exc()}")
+            _LOGGER.error("Error in async_step_feature_default: %s", e)
+            _LOGGER.debug("Full traceback: %s", traceback.format_exc())
             # Fallback to main menu if there's an error
             return await self.async_step_main_menu()
 
@@ -1171,23 +1110,67 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         return await self.async_step_feature_config(user_input)
 
     # Matrix State Persistence Methods
+    def _get_persisted_matrix_state(self) -> dict[str, dict[str, bool]]:
+        self._refresh_config_entry(self.hass)
+
+        options = self._config_entry.options
+        if isinstance(options, Mapping):
+            opts_matrix = options.get("device_feature_matrix")
+            if isinstance(opts_matrix, Mapping):
+                return {
+                    str(device_id): dict(features)
+                    for device_id, features in opts_matrix.items()
+                    if isinstance(features, Mapping)
+                }
+
+        data = self._config_entry.data
+        if isinstance(data, Mapping):
+            data_matrix = data.get("device_feature_matrix")
+            if isinstance(data_matrix, Mapping):
+                return {
+                    str(device_id): dict(features)
+                    for device_id, features in data_matrix.items()
+                    if isinstance(features, Mapping)
+                }
+
+        return {}
+
+    def _persist_matrix_state(self, matrix_state: dict[str, dict[str, bool]]) -> None:
+        self._refresh_config_entry(self.hass)
+
+        new_options = dict(self._config_entry.options)
+        new_options["device_feature_matrix"] = {
+            str(device_id): dict(features)
+            for device_id, features in matrix_state.items()
+        }
+
+        new_data = dict(self._config_entry.data)
+        new_data["device_feature_matrix"] = {
+            str(device_id): dict(features)
+            for device_id, features in matrix_state.items()
+        }
+
+        self.hass.config_entries.async_update_entry(
+            self._config_entry,
+            options=new_options,
+            data=new_data,
+        )
+        self._refresh_config_entry(self.hass)
+
     def _save_matrix_state(self) -> None:
-        """Save current matrix state to config entry data."""
+        """Save current matrix state to config entry options."""
         self._refresh_config_entry(self.hass)
         matrix_state = self._get_config_flow_helper().get_feature_device_matrix_state()
-        new_data = dict(self._config_entry.data)
-        new_data["device_feature_matrix"] = matrix_state
-        self.hass.config_entries.async_update_entry(self._config_entry, data=new_data)
-        self._refresh_config_entry(self.hass)
-        _LOGGER.info(f"Saved matrix state with {len(matrix_state)} devices")
+        self._persist_matrix_state(matrix_state)
+        _LOGGER.debug("Saved matrix state with %d devices", len(matrix_state))
 
     def _restore_matrix_state(self) -> None:
         """Restore matrix state from config entry."""
         self._refresh_config_entry(self.hass)
-        matrix_state = (self._config_entry.data or {}).get("device_feature_matrix", {})
+        matrix_state = self._get_persisted_matrix_state()
         if matrix_state:
             self._get_config_flow_helper().restore_matrix_state(matrix_state)
-            _LOGGER.info(f"Restored matrix state with {len(matrix_state)} devices")
+            _LOGGER.debug("Restored matrix state with %d devices", len(matrix_state))
 
     async def _reload_platforms_for_entity_creation(self) -> None:
         """Reload platforms to create entities after configuration changes.
@@ -1195,7 +1178,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         This method triggers platform reloads to let Home Assistant's platform system
         create entities properly with the real async_add_entities callback.
         """
-        _LOGGER.info("🔄 Reloading platforms for entity creation...")
+        _LOGGER.info("Reloading platforms for entity creation...")
 
         try:
             # Use platform reload approach - this is the correct way
@@ -1203,15 +1186,15 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             # with the proper async_add_entities callback
             await self._direct_platform_reload()
 
-            _LOGGER.info("✅ Platform reload sequence completed")
+            _LOGGER.debug("Platform reload sequence completed")
 
         except Exception as e:
-            _LOGGER.error(f"❌ Error with platform reload: {e}")
+            _LOGGER.error("Error with platform reload: %s", e)
             # Don't re-raise - platform reload failure shouldn't break config flow
 
     async def _direct_platform_reload(self) -> None:
         """Fallback method for direct platform reloading."""
-        _LOGGER.info("🔄 Using direct platform reload...")
+        _LOGGER.debug("Using direct platform reload...")
 
         try:
             # Reload the config entry to trigger platform setup
@@ -1219,31 +1202,31 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             # with the proper async_add_entities callback
             _LOGGER.debug(f"Reloading config entry {self._config_entry.entry_id}...")
             await self.hass.config_entries.async_reload(self._config_entry.entry_id)
-            _LOGGER.debug("✅ Successfully reloaded config entry")
+            _LOGGER.debug("Successfully reloaded config entry")
 
-            _LOGGER.info("✅ Direct platform reload sequence completed")
+            _LOGGER.debug("Direct platform reload sequence completed")
 
         except Exception as e:
-            _LOGGER.error(f"❌ Error during direct platform reload: {e}")
+            _LOGGER.error("Error during direct platform reload: %s", e)
             # Don't re-raise - platform reload failure shouldn't break config flow
 
     async def _show_matrix_based_confirmation(self) -> FlowResult:
         """Show confirmation with matrix-based entity changes."""
-        _LOGGER.info("DEBUG: _show_matrix_based_confirmation called")
-        _LOGGER.debug(f"config_entries: {self.config_entry.data}")
+        _LOGGER.debug("_show_matrix_based_confirmation called")
         # Ensure we have the latest entity lists
         if hasattr(self, "_matrix_entities_to_create") and hasattr(
             self, "_matrix_entities_to_remove"
         ):
             entities_to_create = self._matrix_entities_to_create
             entities_to_remove = self._matrix_entities_to_remove
-            _LOGGER.info(
-                f"DEBUG: Using pre-computed entities - Create: "
-                f"{len(entities_to_create)}, Remove: {len(entities_to_remove)}"
+            _LOGGER.debug(
+                "Using pre-computed entities - create=%d remove=%d",
+                len(entities_to_create),
+                len(entities_to_remove),
             )
         else:
             # Fallback: compute entity changes if not already pre-computed
-            _LOGGER.info("DEBUG: Computing entity changes for confirmation")
+            _LOGGER.debug("Computing entity changes for confirmation")
 
             # Use SimpleEntityManager for entity management
             entity_manager = SimpleEntityManager(self.hass)
@@ -1255,12 +1238,10 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             # Prefer the per-flow snapshot if present
             old_matrix_state = getattr(self, "_old_matrix_state", None)
             if (old_matrix_state is None) or (old_matrix_state == {}):
-                old_matrix_state = (self._config_entry.data or {}).get(
-                    "device_feature_matrix", {}
-                )
+                old_matrix_state = self._get_persisted_matrix_state()
 
-            _LOGGER.debug(f"DEBUG: Temp matrix state: {temp_matrix_state}")
-            _LOGGER.info(f"DEBUG: Old matrix state: {old_matrix_state}")
+            _LOGGER.debug("Temp matrix state devices=%s", len(temp_matrix_state or {}))
+            _LOGGER.debug("Old matrix state devices=%s", len(old_matrix_state or {}))
 
             if temp_matrix_state is not None:
                 (
@@ -1270,9 +1251,8 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                     old_matrix_state,
                     temp_matrix_state,
                 )
-                _LOGGER.info(
-                    "DEBUG: Computed entities from matrix diff - "
-                    "Create: %s, Remove: %s",
+                _LOGGER.debug(
+                    "Computed entities from matrix diff - create=%s remove=%s",
                     len(entities_to_create),
                     len(entities_to_remove),
                 )
@@ -1298,9 +1278,8 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                     if entity_manager._is_managed_entity(entity)
                 ]
 
-                _LOGGER.info(
-                    "DEBUG: Computed entities from current state - "
-                    "Create: %s, Remove: %s",
+                _LOGGER.debug(
+                    "Computed entities from current state - create=%s remove=%s",
                     len(entities_to_create),
                     len(entities_to_remove),
                 )
@@ -1403,29 +1382,15 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle matrix-based confirmation."""
-        _LOGGER.info("🎯 async_step_matrix_confirm called - MATRIX CONFIRMATION STEP")
-        _LOGGER.info(f"📋 User input: {user_input}")
+        _LOGGER.debug("async_step_matrix_confirm called")
 
         self._refresh_config_entry(self.hass)
-        data_matrix = {}
-        opts_matrix = {}
-        if isinstance(self._config_entry.data, Mapping):
-            data_matrix = (self._config_entry.data or {}).get(
-                "device_feature_matrix", {}
-            )
-        if isinstance(self._config_entry.options, Mapping):
-            opts_matrix = self._config_entry.options.get("device_feature_matrix", {})
-        _LOGGER.debug(
-            "Matrix on entry before confirm: data=%s options=%s",
-            len(data_matrix) if isinstance(data_matrix, Mapping) else "n/a",
-            len(opts_matrix) if isinstance(opts_matrix, Mapping) else "n/a",
-        )
+        matrix_state = self._get_persisted_matrix_state()
+        _LOGGER.debug("Matrix on entry before confirm: devices=%s", len(matrix_state))
 
         if user_input is not None:
             # User confirmed the changes - apply them and complete the options flow
-            _LOGGER.info(
-                "✅ User confirmed matrix changes - applying and completing flow"
-            )
+            _LOGGER.info("User confirmed matrix changes - applying")
 
             try:
                 # Apply matrix-based entity changes using SimpleEntityManager
@@ -1436,30 +1401,24 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 #  helper's current state
                 # The helper's state may not have the user's new selections
                 temp_matrix_state = getattr(self, "_temp_matrix_state", None)
-                _LOGGER.info(f"DEBUG: temp_matrix_state = {temp_matrix_state}")
+                _LOGGER.debug(
+                    "Staged matrix has %s devices",
+                    len(temp_matrix_state or {}),
+                )
 
                 if temp_matrix_state is not None:
                     # CRITICAL: Use the saved _old_matrix_state to avoid corruption
                     # The config entry may have been modified during the flow,
                     # so we use the originally saved state for accurate comparison
                     old_matrix_state = getattr(self, "_old_matrix_state", None)
-                    _LOGGER.info(f"DEBUG: old_matrix_state = {old_matrix_state}")
                     if old_matrix_state is None:
                         # Fallback to config entry if _old_matrix_state not available
-                        old_matrix_state = (self._config_entry.data or {}).get(
-                            "device_feature_matrix", {}
-                        )
-                    _LOGGER.info(f"DEBUG: old_matrix_state = {old_matrix_state}")
+                        old_matrix_state = self._get_persisted_matrix_state()
 
-                    new_data = dict(self._config_entry.data)
-                    new_data["device_feature_matrix"] = temp_matrix_state
-                    self.hass.config_entries.async_update_entry(
-                        self._config_entry, data=new_data
-                    )
-                    self._refresh_config_entry(self.hass)
-                    _LOGGER.info(
-                        f"✅ Saved new matrix state with "
-                        f"{len(temp_matrix_state)} devices"
+                    self._persist_matrix_state(temp_matrix_state)
+                    _LOGGER.debug(
+                        "Persisted new matrix state with %d devices",
+                        len(temp_matrix_state),
                     )
 
                     # Apply the temporary matrix state to entity manager
@@ -1482,22 +1441,10 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                         f"create, {len(entities_to_remove)} to remove"
                     )
 
-                    # Save the new matrix state to the config entry
-                    new_data = dict(self._config_entry.data)
-                    new_data["device_feature_matrix"] = temp_matrix_state
-                    self.hass.config_entries.async_update_entry(
-                        self._config_entry, data=new_data
-                    )
-                    self._refresh_config_entry(self.hass)
-                    _LOGGER.info(
-                        f"Updated config entry with new matrix state "
-                        f"{temp_matrix_state}"
-                    )
-
                     # Also update the helper's state to match the config entry
                     helper = self._get_config_flow_helper()
                     helper.restore_matrix_state(temp_matrix_state)
-                    _LOGGER.info("Updated helper with new matrix state")
+                    _LOGGER.debug("Updated helper with new matrix state")
 
                     # Store information about entities to be created for platform setup
                     # IMPORTANT: do not create entity-registry-only entries here.
@@ -1509,16 +1456,18 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                     for entity_id in entities_to_remove:
                         try:
                             await entity_manager.remove_entity(entity_id)
-                            _LOGGER.info(f"Removed entity: {entity_id}")
+                            _LOGGER.debug("Removed entity: %s", entity_id)
                         except Exception as e:
-                            _LOGGER.warning(f"Failed to remove entity {entity_id}: {e}")
+                            _LOGGER.warning(
+                                "Failed to remove entity %s: %s",
+                                entity_id,
+                                e,
+                            )
 
                     # Clean up devices that no longer have any features enabled
-                    _LOGGER.info("=== ABOUT TO CALL CLEANUP FUNCTION ===")
                     from . import _cleanup_orphaned_devices
 
                     await _cleanup_orphaned_devices(self.hass, self._config_entry)
-                    _LOGGER.info("=== CLEANUP FUNCTION COMPLETED ===")
 
                     # Reload the config entry to trigger platform setup for new entities
                     # This must happen AFTER entity creation so platforms
@@ -1526,7 +1475,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                     await self.hass.config_entries.async_reload(
                         self._config_entry.entry_id
                     )
-                    _LOGGER.info("Reloaded config entry to trigger platform setup")
+                    _LOGGER.debug("Reloaded config entry to trigger platform setup")
 
                 # Clear temporary data
                 self._matrix_entities_to_create: list = []
@@ -1536,7 +1485,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 self._selected_feature = None
 
                 _LOGGER.info(
-                    "✅ Matrix changes applied successfully - options flow complete"
+                    "Matrix changes applied successfully - options flow complete"
                 )
 
                 # For options flows, complete by returning a result that ends the flow.
@@ -1562,8 +1511,8 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 )
 
             except Exception as e:
-                _LOGGER.error(f"❌ Error applying matrix changes: {e}")
-                _LOGGER.error(f"Full traceback: {traceback.format_exc()}")
+                _LOGGER.error("Error applying matrix changes: %s", e)
+                _LOGGER.debug("Full traceback: %s", traceback.format_exc())
                 # If there's an error, show the confirmation form again
                 #  with error message
                 return await self._show_matrix_based_confirmation()
@@ -1579,7 +1528,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
         Simple logic: if a device has no entities, it's orphaned and should be removed.
         """
-        _LOGGER.info("=== DEVICE CLEANUP DEBUG: Function called ===")
+        _LOGGER.debug("Device cleanup: function called")
 
         from homeassistant.helpers import device_registry as dr
         from homeassistant.helpers import entity_registry as er
@@ -1604,20 +1553,20 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 # No entities found - this device is orphaned
                 device_id = list(device_entry.identifiers)[0][1]  # Extract device ID
                 orphaned_devices.append((device_id, device_entry))
-                _LOGGER.info(f"Found orphaned device: {device_id} (no entities)")
+                _LOGGER.debug("Found orphaned device: %s (no entities)", device_id)
 
         if not orphaned_devices:
-            _LOGGER.info("No orphaned devices found")
+            _LOGGER.debug("No orphaned devices found")
             return
 
-        _LOGGER.info(f"Removing {len(orphaned_devices)} orphaned devices")
+        _LOGGER.info("Removing %d orphaned devices", len(orphaned_devices))
 
         # Remove orphaned devices
         for device_id, device_entry in orphaned_devices:
             try:
                 if self._config_entry.entry_id in device_entry.config_entries:
                     device_registry.async_remove_device(device_entry.id)
-                    _LOGGER.info(f"Removed orphaned device: {device_id}")
+                    _LOGGER.info("Removed orphaned device: %s", device_id)
                 else:
                     _LOGGER.debug(
                         f"Device {device_id} not owned by ramses_extras, skipping"
