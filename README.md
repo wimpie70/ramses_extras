@@ -23,11 +23,33 @@ Ramses Extras provides additional features, entities, automation, and UI compone
 
 ## ✨ **Current Features**
 
-note: the following are tested with an Orcon WTW FAN
+note: the following are tested with an Orcon WTW
 
+- **Hello World** - template feature, example to develop new features
+- **HVAC Fan Card** – advanced Lovelace card for FAN monitoring and control
 - **Humidity Control** – advanced humidity-based automation and entities
 - **Sensor Control** – central sensor mapping for Humidity Control + HVAC Fan Card
-- **HVAC Fan Card** – advanced Lovelace card for FAN monitoring and control
+- **Default feature** - Common/reusable websockets, entities, etc to be used by other features
+
+### **✅ HVAC Fan Card**
+
+**Advanced Lovelace card for ventilation system control:**
+
+- **Visual Airflow Diagrams**: Real-time system status visualization
+- **Control Interface**: Fan speed, timer, and bypass controls
+- **Parameter Editing**: Configuration of system parameters
+- **Status Display**: Temperature, humidity, efficiency, and CO₂ monitoring
+- **Template System**: Modular JavaScript templates for dynamic content
+- **Responsive Design**: Works across different device sizes
+
+![HVAC Fan Card Screenshot 1](docs/hvac_fan_card_1.png)
+![HVAC Fan Card Screenshot 2](docs/hvac_fan_card_2.png)
+
+The card uses `ramses_extras/get_entity_mappings` to resolve entities and
+Sensor Control's resolver metadata to populate a **Sensor Sources** panel. When
+absolute humidity is configured via Sensor Control, the card marks the indoor
+and outdoor absolute humidity metrics as **derived** and shows them alongside
+temperature, humidity, and CO₂ sources.
 
 ### **✅ Humidity Control**
 
@@ -115,23 +137,6 @@ features/automations and UI:
 - The first FAN uses its internal sensors.
 - The second FAN can point individual metrics to external HA sensors located in
   better positions (or on other devices).
-
-### **✅ HVAC Fan Card**
-
-**Advanced Lovelace card for ventilation system control:**
-
-- **Visual Airflow Diagrams**: Real-time system status visualization
-- **Control Interface**: Fan speed, timer, and bypass controls
-- **Parameter Editing**: Configuration of system parameters
-- **Status Display**: Temperature, humidity, efficiency, and CO₂ monitoring
-- **Template System**: Modular JavaScript templates for dynamic content
-- **Responsive Design**: Works across different device sizes
-
-The card uses `ramses_extras/get_entity_mappings` to resolve entities and
-Sensor Control's resolver metadata to populate a **Sensor Sources** panel. When
-absolute humidity is configured via Sensor Control, the card marks the indoor
-and outdoor absolute humidity metrics as **derived** and shows them alongside
-temperature, humidity, and CO₂ sources.
 
 ### **🏛️ Framework Foundation**
 
