@@ -341,7 +341,10 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
 
         # Track state changes on both temperature and humidity sensor
         def _handle_state_change_event(event: Any) -> None:
-            self.hass.async_create_task(self._recalculate_and_update())
+            def _schedule_recalculate() -> None:
+                self.hass.async_create_task(self._recalculate_and_update())
+
+            self.hass.loop.call_soon_threadsafe(_schedule_recalculate)
 
         async_track_state_change_event(
             self.hass,
