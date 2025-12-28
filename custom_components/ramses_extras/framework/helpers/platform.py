@@ -28,25 +28,6 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_platform_key(platform: str) -> str:
-    """Convert platform name to the correct entity key in the configuration.
-
-    Args:
-        platform: Platform name (sensor, switch, binary_sensor, number)
-
-    Returns:
-        Correct key for required_entities configuration
-    """
-    # Convert platform name to plural form for configuration lookup
-    platform_to_key = {
-        "sensor": "sensor",
-        "switch": "switch",
-        "binary_sensor": "binary_sensor",
-        "number": "number",
-    }
-    return platform_to_key.get(platform, f"{platform}s")
-
-
 def _get_devices_ready_for_entities(hass: "HomeAssistant") -> list[str]:
     """Get devices that are ready for entity creation.
 
@@ -57,25 +38,6 @@ def _get_devices_ready_for_entities(hass: "HomeAssistant") -> list[str]:
         List of device IDs ready for entities
     """
     return cast(list[str], hass.data.get("ramses_extras", {}).get("devices", []))
-
-
-def get_enabled_features(
-    hass: "HomeAssistant", config_entry: ConfigEntry
-) -> dict[str, bool]:
-    """Get enabled features from config entry.
-
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-
-    Returns:
-        Dictionary of feature names to enabled status
-    """
-    if not config_entry:
-        return {}
-    data = config_entry.data or {}
-    enabled_features = data.get("enabled_features", {})
-    return dict(enabled_features) if isinstance(enabled_features, dict) else {}
 
 
 class PlatformSetup:
@@ -141,7 +103,7 @@ class PlatformSetup:
         )
 
         if not devices:
-            _LOGGER.warning("No devices found for %s platform", platform)
+            _LOGGER.debug("No devices found for %s platform", platform)
             return
 
         entities = []
@@ -166,132 +128,14 @@ class PlatformSetup:
                     e,
                 )
 
-        _LOGGER.info("Total %s entities created: %d", platform, len(entities))
+        _LOGGER.debug("Total %s entities created: %d", platform, len(entities))
         if entities:
             async_add_entities(entities, True)
-            _LOGGER.info("%s entities added to Home Assistant", platform)
+            _LOGGER.debug("%s entities added to Home Assistant", platform)
 
             # Optionally store entities for automation access
             if store_entities_for_automation:
                 PlatformSetup._store_entities_for_automation(hass, entities)
-
-    @staticmethod
-    def _is_entity_supported_for_device(device_id: str, config: dict[str, Any]) -> bool:
-        """Check if an entity type is supported for a device.
-
-        Args:
-            device_id: Device identifier
-            config: Entity configuration
-
-        Returns:
-            True if entity is supported for the device
-        """
-        supported_device_types = config.get("supported_device_types", [])
-
-        # If no specific device types are required, entity is supported
-        if not supported_device_types:
-            return True
-
-        # Check if device matches any of the supported types
-        # This is a simple implementation - can be enhanced with actual
-        # device type detection from device metadata
-        for supported_type in supported_device_types:
-            if supported_type in device_id:
-                return True
-
-        return False
-
-    @staticmethod
-    def filter_configs_by_device(
-        entity_configs: dict[str, Any], device_id: str
-    ) -> dict[str, Any]:
-        """Filter entity configurations to only include supported entities for a device.
-
-        Args:
-            entity_configs: All entity configurations
-            device_id: Device identifier
-
-        Returns:
-            Filtered configuration dictionary
-        """
-        filtered_configs = {}
-
-        for entity_type, config in entity_configs.items():
-            if PlatformSetup._is_entity_supported_for_device(device_id, config):
-                filtered_configs[entity_type] = config
-
-        return filtered_configs
-
-    @staticmethod
-    def get_platform_key(platform: str) -> str:
-        """Convert platform name to the correct entity key in the configuration.
-
-        This method provides a consistent way to map platform names to
-        configuration keys across the framework.
-
-        Args:
-            platform: Platform name (sensor, switch, binary_sensor, number)
-
-        Returns:
-            Correct key for configuration lookup
-        """
-        # Convert platform name to plural form for configuration lookup
-        platform_to_key = {
-            "sensor": "sensor",
-            "switch": "switch",
-            "binary_sensor": "binary_sensor",
-            "number": "number",
-        }
-        return platform_to_key.get(platform, f"{platform}s")
-
-    @staticmethod
-    async def setup_feature_platforms(
-        hass: "HomeAssistant",
-        config_entry: ConfigEntry,
-        feature_id: str,
-        platform_mappings: dict[str, dict[str, Any]],
-        async_add_entities_callbacks: dict[str, AddEntitiesCallback],
-    ) -> None:
-        """Setup all platforms for a feature.
-
-        This method provides a comprehensive way to setup multiple platforms
-        for a feature with consistent error handling and logging.
-
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
-            feature_id: Feature identifier
-            platform_mappings: Mapping of platform names to entity configurations
-            async_add_entities_callbacks: Mapping of platform names to add callbacks
-        """
-        _LOGGER.info("Setting up all platforms for feature: %s", feature_id)
-
-        for platform, entity_configs in platform_mappings.items():
-            if platform not in async_add_entities_callbacks:
-                _LOGGER.warning(
-                    "No async_add_entities callback found for platform %s "
-                    "in feature %s",
-                    platform,
-                    feature_id,
-                )
-                continue
-
-            try:
-                await PlatformSetup.async_create_and_add_platform_entities(
-                    platform=platform,
-                    hass=hass,
-                    config_entry=config_entry,
-                    async_add_entities=async_add_entities_callbacks[platform],
-                    entity_configs=entity_configs,
-                    entity_factory=PlatformSetup._default_entity_factory,
-                )
-            except Exception as e:
-                _LOGGER.error(
-                    "Failed to setup %s platform for feature %s: %s",
-                    platform,
-                    feature_id,
-                    e,
-                )
 
     @staticmethod
     def _store_entities_for_automation(
@@ -319,35 +163,6 @@ class PlatformSetup:
         _LOGGER.debug(
             "Stored %d entities for automation access in hass.data", stored_count
         )
-
-    @staticmethod
-    async def _default_entity_factory(
-        hass: "HomeAssistant",
-        device_id: str,
-        entity_configs: dict[str, Any],
-        config_entry: ConfigEntry | None = None,
-    ) -> list[Entity]:
-        """Default entity factory for basic entity creation.
-
-        This is a placeholder factory that features can override with
-        their specific entity creation logic.
-
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            config: Entity configuration
-
-        Returns:
-            Created entity or None
-        """
-        # This should be overridden by features with their specific logic
-        _LOGGER.warning(
-            "Default entity factory called - feature should provide custom factory. "
-            "Device: %s, ConfigEntry: %s",
-            device_id,
-            config_entry,
-        )
-        return []
 
     @staticmethod
     def get_filtered_devices_for_feature(
