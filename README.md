@@ -1,9 +1,9 @@
 # Ramses Extras
 
-[![CI](https://github.com/wimpie70/ramses_extras/actions/workflows/ci.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/ci.yml)
-[![Quality](https://github.com/wimpie70/ramses_extras/actions/workflows/quality.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/quality.yml)
-[![Tests](https://github.com/wimpie70/ramses_extras/actions/workflows/test.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/test.yml)
-[![Integration](https://github.com/wimpie70/ramses_extras/actions/workflows/integration.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/integration.yml)
+[![CI](https://github.com/wimpie70/ramses_extras/actions/workflows/check-lint.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/check-lint.yml)
+[![Quality](https://github.com/wimpie70/ramses_extras/actions/workflows/check-type.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/check-type.yml)
+[![Tests](https://github.com/wimpie70/ramses_extras/actions/workflows/tests.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/tests.yml)
+[![Integration](https://github.com/wimpie70/ramses_extras/actions/workflows/hassfest.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/hassfest.yml)
 [![codecov](https://codecov.io/gh/wimpie70/ramses_extras/branch/main/graph/badge.svg)](https://codecov.io/gh/wimpie70/ramses_extras)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
 [![Home Assistant 2025.10.4](https://img.shields.io/badge/home%20assistant-2025.10.4-green.svg)](https://home-assistant.io)
