@@ -15,9 +15,6 @@ from custom_components.ramses_extras.framework.helpers.config.core import (
 from custom_components.ramses_extras.framework.helpers.entity.core import (
     EntityHelpers,
 )
-from custom_components.ramses_extras.framework.helpers.service.core import (
-    ExtrasServiceManager,
-)
 
 
 class TestFrameworkIntegration:
@@ -51,27 +48,6 @@ class TestFrameworkIntegration:
         )
 
         assert entity_name == "sensor.32_153289_temperature"
-
-    @pytest.mark.asyncio
-    async def test_service_manager_with_config_manager(self):
-        """Test service manager integration with config manager."""
-        # Create config manager
-        config_manager = ExtrasConfigManager(
-            self.hass,
-            self.config_entry,
-            "test_feature",
-            {"enabled": True, "service_timeout": 30},
-        )
-        await config_manager.async_load()
-
-        # Create service manager
-        service_manager = ExtrasServiceManager(
-            self.hass, "test_feature", self.config_entry
-        )
-
-        # Test that service manager can access config
-        assert service_manager.config_entry == self.config_entry
-        assert service_manager.hass == self.hass
 
     @pytest.mark.asyncio
     async def test_sensor_control_resolver_with_config(self):
@@ -124,52 +100,6 @@ class TestFrameworkIntegration:
         assert result["sources"]["indoor_abs_humidity"]["kind"] == "derived"
 
     @pytest.mark.asyncio
-    async def test_entity_helpers_with_service_manager(self):
-        """Test entity helpers working with service manager."""
-        # Create service manager
-        service_manager = ExtrasServiceManager(
-            self.hass, "test_feature", self.config_entry
-        )
-
-        # Mock entity finding
-        service_manager._find_entity_by_exact_pattern = AsyncMock(
-            return_value="sensor.32_153289_temp"
-        )
-
-        # Test entity finding through service manager
-        entity_id = await service_manager.find_entity_by_pattern(
-            "sensor", "{device_id}_temp", "32_153289"
-        )
-
-        assert entity_id == "sensor.32_153289_temp"
-
-        # Test entity state retrieval
-        mock_state = MagicMock()
-        mock_state.entity_id = "sensor.32_153289_temp"
-        mock_state.state = "25.5"
-        mock_state.attributes = {"unit": "°C"}
-        self.hass.states.get.return_value = mock_state
-
-        state = await service_manager.get_entity_state(
-            "32_153289", "sensor", "{device_id}_temp"
-        )
-
-        assert state is not None
-        assert state["entity_id"] == "sensor.32_153289_temp"
-        assert state["state"] == "25.5"
-
-
-class TestFeatureIntegration:
-    """Test cases for features working together."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.hass = MagicMock()
-        self.config_entry = MagicMock()
-        self.hass.data = {}
-        self.hass.async_create_task = MagicMock()
-
-    @pytest.mark.asyncio
     async def test_sensor_control_with_entity_helpers(self):
         """Test sensor control resolver working with entity helpers."""
         # Set up config entry with sensor control
@@ -214,31 +144,6 @@ class TestFeatureIntegration:
         assert validation["is_valid"] is True
         assert validation["entity_type"] == "sensor"
         assert validation["device_id"] == "32_153289"
-
-    @pytest.mark.asyncio
-    async def test_service_execution_with_entity_resolution(self):
-        """Test service execution working with entity resolution."""
-        # Create service manager
-        service_manager = ExtrasServiceManager(
-            self.hass, "humidity_control", self.config_entry
-        )
-
-        # Mock entity finding
-        service_manager.find_entity_by_pattern = AsyncMock(
-            return_value="switch.32_153289_fan"
-        )
-        service_manager.call_ha_service = AsyncMock(return_value=True)
-
-        # Test service execution
-        result = await service_manager.service_turn_on("32_153289", "{device_id}_fan")
-
-        assert result is True
-        service_manager.find_entity_by_pattern.assert_called_once_with(
-            "switch", "{device_id}_fan", "32_153289"
-        )
-        service_manager.call_ha_service.assert_called_once_with(
-            "switch", "turn_on", entity_id="switch.32_153289_fan"
-        )
 
 
 class TestEndToEndIntegration:
@@ -295,22 +200,3 @@ class TestEndToEndIntegration:
         # Validate entity
         validation = EntityHelpers.validate_entity_name(entity_id)
         assert validation["is_valid"] is True
-
-    @pytest.mark.asyncio
-    async def test_service_to_device_workflow(self):
-        """Test workflow from service call to device operation."""
-        # Create service manager
-        service_manager = ExtrasServiceManager(
-            self.hass, "test_feature", self.config_entry
-        )
-
-        # Mock Ramses commands
-        service_manager.ramses_commands.send_command = AsyncMock(return_value=True)
-
-        # Execute service
-        result = await service_manager.service_send_command("32_153289", "set_speed_5")
-
-        assert result is True
-        service_manager.ramses_commands.send_command.assert_called_once_with(
-            "32_153289", "set_speed_5"
-        )

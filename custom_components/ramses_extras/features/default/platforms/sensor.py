@@ -598,7 +598,7 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             except ValueError:
                 return None
 
-            from custom_components.ramses_extras.framework.helpers.entities import (
+            from custom_components.ramses_extras.framework.helpers.common import (
                 calculate_absolute_humidity,
             )
 
@@ -683,7 +683,7 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             return None
 
         # Import humidity calculation helper
-        from custom_components.ramses_extras.framework.helpers.entities import (
+        from custom_components.ramses_extras.framework.helpers.common import (
             calculate_absolute_humidity,
         )
 

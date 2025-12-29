@@ -21,9 +21,6 @@ from custom_components.ramses_extras.framework.helpers.device.core import (
 from custom_components.ramses_extras.framework.helpers.entity.core import (
     EntityHelpers,
 )
-from custom_components.ramses_extras.framework.helpers.service.core import (
-    ExtrasServiceManager,
-)
 
 
 class TestConfigManagerEdgeCases:
@@ -462,91 +459,4 @@ class TestSensorControlResolverEdgeCases:
         # Test with exception during state access
         self.hass.states.get.side_effect = Exception("State access error")
         result = self.resolver._entity_exists("sensor.test")
-        assert result is False
-
-
-class TestServiceManagerEdgeCases:
-    """Test edge cases for ExtrasServiceManager."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.hass = MagicMock()
-        self.config_entry = MagicMock(spec=ConfigEntry)
-        self.service_manager = ExtrasServiceManager(
-            self.hass, "test_feature", self.config_entry
-        )
-
-    @pytest.mark.asyncio
-    async def test_execute_service_with_exception_in_service_func(self):
-        """Test service execution when service function raises exception."""
-
-        async def failing_service(device_id, **kwargs):
-            raise Exception("Service execution failed")
-
-        self.service_manager._services["failing_service"] = failing_service
-
-        result = await self.service_manager.execute_service(
-            "failing_service", "32_153289"
-        )
-        assert result is False
-        assert self.service_manager._error_counts["failing_service"] == 1
-
-    @pytest.mark.asyncio
-    async def test_find_entity_by_pattern_with_template_error(self):
-        """Test entity finding when template processing fails."""
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.service.core.EntityHelpers"
-        ) as mock_helpers:
-            mock_helpers.generate_entity_name_from_template.side_effect = ValueError(
-                "Template error"
-            )
-
-            result = await self.service_manager.find_entity_by_pattern(
-                "sensor", "{invalid_template", "32_153289"
-            )
-            assert result is None
-
-    @pytest.mark.asyncio
-    async def test_call_ha_service_with_service_failure(self):
-        """Test HA service call when service fails."""
-        self.hass.services = MagicMock()
-        self.hass.services.async_call = AsyncMock(
-            side_effect=Exception("HA service error")
-        )
-
-        result = await self.service_manager.call_ha_service(
-            "switch", "turn_on", entity_id="switch.test"
-        )
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_get_entity_state_with_entity_not_found(self):
-        """Test getting entity state when entity is not found."""
-        self.service_manager.find_entity_by_pattern = AsyncMock(return_value=None)
-
-        result = await self.service_manager.get_entity_state(
-            "32_153289", "sensor", "{device_id}_temp"
-        )
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_service_turn_on_with_entity_error(self):
-        """Test turn on service when entity operations fail."""
-        self.service_manager.find_entity_by_pattern = AsyncMock(return_value=None)
-
-        result = await self.service_manager.service_turn_on(
-            "32_153289", "{device_id}_fan"
-        )
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_service_send_command_with_command_failure(self):
-        """Test send command service when command fails."""
-        self.service_manager.ramses_commands.send_command = AsyncMock(
-            return_value=False
-        )
-
-        result = await self.service_manager.service_send_command(
-            "32_153289", "invalid_command"
-        )
         assert result is False

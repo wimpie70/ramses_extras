@@ -186,13 +186,6 @@ class TestHumidityAutomationManager:
         assert decision["action"] == "stop"
         assert "acceptable range" in decision["reasoning"][0]
 
-    def test_singularize_entity_type(self):
-        """Test singularizing entity types."""
-        assert self.manager._singularize_entity_type("sensor") == "sensor"
-        assert self.manager._singularize_entity_type("switch") == "switch"
-        assert self.manager._singularize_entity_type("devices") == "device"
-        assert self.manager._singularize_entity_type("unknown") == "unknown"
-
     def test_generate_entity_patterns(self):
         """Test generating entity patterns."""
         patterns = self.manager._generate_entity_patterns()

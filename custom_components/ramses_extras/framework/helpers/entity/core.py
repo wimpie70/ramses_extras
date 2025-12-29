@@ -17,6 +17,11 @@ from typing import Any, cast
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
 
+from ..common import (
+    RamsesValidator,
+    _singularize_entity_type,
+)
+
 # AVAILABLE_FEATURES import removed to avoid blocking imports
 # from ....const import AVAILABLE_FEATURES
 
@@ -104,30 +109,6 @@ def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
 
     # Return empty dict if no required_entities found
     return {}
-
-
-def _singularize_entity_type(entity_type: str) -> str:
-    """Convert plural entity type to singular form.
-
-    Args:
-        entity_type: Plural entity type (e.g., "switch", "sensor", "number")
-
-    Returns:
-        Singular entity type (e.g., "switch", "sensor", "number")
-    """
-    # Handle common entity type plurals
-    entity_type_mapping = {
-        "sensors": "sensor",
-        "switches": "switch",
-        "numbers": "number",
-        "binary_sensors": "binary_sensor",
-        "climates": "climate",
-        "selects": "select",
-        "devices": "device",
-        "entities": "entity",
-    }
-
-    return entity_type_mapping.get(entity_type, entity_type)
 
 
 class EntityHelpers:

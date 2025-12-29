@@ -22,6 +22,10 @@ from custom_components.ramses_extras.framework.helpers.ramses_commands import (
     RamsesCommands,
 )
 
+from ...framework.helpers.common import (
+    RamsesValidator,
+    _singularize_entity_type,
+)
 from .config import HumidityConfig
 from .const import HUMIDITY_CONTROL_CONST
 from .services import HumidityServices
@@ -86,27 +90,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         except Exception as e:
             _LOGGER.warning(f"Could not check feature status: {e}")
             return False
-
-    def _singularize_entity_type(self, entity_type: str) -> str:
-        """Convert plural entity type to singular form.
-
-        Args:
-            entity_type: Plural entity type (e.g., "switch", "sensor", "number")
-
-        Returns:
-            Singular entity type (e.g., "switch", "sensor", "number")
-        """
-        # Handle common entity type plurals
-        entity_type_mapping = {
-            "sensor": "sensor",
-            "switch": "switch",
-            "binary_sensor": "binary_sensor",
-            "number": "number",
-            "devices": "device",
-            "entities": "entity",
-        }
-
-        return entity_type_mapping.get(entity_type, entity_type)
 
     def _generate_entity_patterns(self) -> list[str]:
         """Generate entity patterns for humidity control.
@@ -257,8 +240,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         # Check entities from required_entities (created by humidity_control feature)
         for entity_type, entity_names in required_entities.items():
-            # Convert plural to singular using the base class method
-            entity_base_type = self._singularize_entity_type(entity_type)
+            # Convert plural to singular using the common helper
+            entity_base_type = _singularize_entity_type(entity_type)
 
             for entity_name in entity_names:
                 # Generate expected entity ID using humidity control patterns

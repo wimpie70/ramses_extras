@@ -13,7 +13,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras.framework.helpers.config import (
-    ConfigSchema,
     ConfigValidator,
     ExtrasConfigManager,
 )
@@ -49,7 +48,6 @@ class HumidityConfig(ExtrasConfigManager):
 
         # Add humidity-specific configuration utilities
         self._validator = ConfigValidator("humidity_control")
-        self._schema_generator = ConfigSchema("humidity_control")
 
     def validate_config(self) -> bool:
         """Validate humidity control configuration.
@@ -91,8 +89,9 @@ class HumidityConfig(ExtrasConfigManager):
         Returns:
             Configuration schema dictionary
         """
-        return self._schema_generator.generate_basic_schema(
-            {
+        return {
+            "type": "object",
+            "properties": {
                 "enabled": {
                     "type": "boolean",
                     "title": "Enable Humidity Control",
@@ -129,8 +128,8 @@ class HumidityConfig(ExtrasConfigManager):
                     "max": 10.0,
                     "default": 1.0,
                 },
-            }
-        )
+            },
+        }
 
     # Inherited methods from ExtrasConfigManager:
     # - async_load()

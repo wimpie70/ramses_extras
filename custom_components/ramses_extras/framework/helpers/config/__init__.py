@@ -6,11 +6,9 @@ default configuration templates.
 """
 
 from .core import ExtrasConfigManager
-from .schema import ConfigSchema
 from .validation import ConfigValidator
 
 __all__ = [
     "ExtrasConfigManager",
     "ConfigValidator",
-    "ConfigSchema",
 ]

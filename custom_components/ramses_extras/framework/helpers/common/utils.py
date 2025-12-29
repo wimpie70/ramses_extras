@@ -1,4 +1,4 @@
-"""Entity helper functions for Ramses Extras."""
+"""Common utility functions for Ramses Extras."""
 
 import logging
 import math
@@ -70,41 +70,36 @@ def calculate_absolute_humidity(
         return None
 
 
-def validate_humidity_value(value: float | None, entity_name: str) -> bool:
-    """Validate humidity values are within reasonable ranges.
+def _singularize_entity_type(entity_type: str) -> str:
+    """Convert plural entity type to singular form.
 
     Args:
-        value: Humidity value to validate
-        entity_name: Name of the entity for error messages
+        entity_type: Plural entity type (e.g., "switch", "sensor", "number")
 
     Returns:
-        True if value is valid, False otherwise
+        Singular entity type (e.g., "switch", "sensor", "number")
     """
-    if value is None or not (0 <= value <= 100):
-        _LOGGER.error(
-            "Invalid humidity value %s for %s (must be 0-100%%)", value, entity_name
-        )
-        return False
+    # Handle common entity type plurals
+    entity_type_mapping = {
+        "sensor": "sensor",
+        "sensors": "sensor",
+        "switch": "switch",
+        "switches": "switch",
+        "binary_sensor": "binary_sensor",
+        "binary_sensors": "binary_sensor",
+        "number": "number",
+        "numbers": "number",
+        "devices": "device",
+        "entities": "entity",
+        "covers": "cover",
+        "fans": "fan",
+        "lights": "light",
+        "climate": "climate",
+        "climates": "climate",
+        "humidifiers": "humidifier",
+        "dehumidifiers": "dehumidifier",
+        "select": "select",
+        "selects": "select",
+    }
 
-    return True
-
-
-def validate_temperature_value(value: float | None, entity_name: str) -> bool:
-    """Validate temperature values are within reasonable ranges.
-
-    Args:
-        value: Temperature value to validate
-        entity_name: Name of the entity for error messages
-
-    Returns:
-        True if value is valid, False otherwise
-    """
-    if value is None or not (-50 <= value <= 100):
-        _LOGGER.error(
-            "Invalid temperature %s°C for %s (must be -50 to 100°C)",
-            value,
-            entity_name,
-        )
-        return False
-
-    return True
+    return entity_type_mapping.get(entity_type, entity_type)
