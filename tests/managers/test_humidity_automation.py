@@ -149,15 +149,15 @@ class TestHumidityAutomationEntityNaming:
                 "reasoning": "Low indoor RH: 55.0 < 65.0 but outdoor air too dry",
             },
             {
-                "name": "In acceptable range + very dry outdoor - should dehumidify",
+                "name": "In acceptable range + very dry outdoor - should stop",
                 "indoor_rh": 70,  # In acceptable range (65-75)
                 "indoor_abs": 10.0,
                 "outdoor_abs": 6.0,  # Very dry outdoor air
                 "max_humidity": 75,
                 "min_humidity": 65,
                 "offset": 0.5,
-                "expected_action": "dehumidify",
-                "reasoning": "Very dry outdoor air: -4.5 < -2.0",
+                "expected_action": "stop",
+                "reasoning": "Humidity in acceptable range",
             },
             {
                 "name": "In acceptable range + humid outdoor - should stop",
@@ -168,7 +168,7 @@ class TestHumidityAutomationEntityNaming:
                 "min_humidity": 65,
                 "offset": 0.5,
                 "expected_action": "stop",
-                "reasoning": "Humid outdoor air: 2.5 > 1.0",
+                "reasoning": "Humidity in acceptable range",
             },
             {
                 "name": "In acceptable range + balanced humidity - should stop",

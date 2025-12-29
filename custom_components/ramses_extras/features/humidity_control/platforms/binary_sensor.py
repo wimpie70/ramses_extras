@@ -52,7 +52,7 @@ async def async_setup_entry(
         except Exception as e:
             _LOGGER.error(
                 "Failed to create humidity control binary sensor entities "
-                "for device %s: %e",
+                "for device %s: %s",
                 device_id,
                 e,
             )

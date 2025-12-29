@@ -474,8 +474,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             entity_states: Validated entity state values (float or bool)
         """
         _LOGGER.debug(
-            "_process_automation_logic",
-            not self._automation_active or not self._is_feature_enabled(),
+            "_process_automation_logic: active=%s, enabled=%s",
+            self._automation_active,
+            self._is_feature_enabled(),
         )
         if not self._automation_active or not self._is_feature_enabled():
             return
@@ -650,42 +651,14 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 )
                 decision["confidence"] = 0.7
 
-        # PRIORITY 3: In acceptable range - use absolute humidity differential
+        # PRIORITY 3: In acceptable range - Stay at normal speed
         else:
-            if adjusted_diff < -2.0:
-                # Very dry outdoor air - activate dehumidification
-                decision["action"] = "dehumidify"
-                decision["reasoning"].append(
-                    f"Very dry outdoor air: {adjusted_diff:.1f} < -2.0 "
-                    f"(good for ventilation)"
-                )
-                decision["confidence"] = 0.7
-
-            elif adjusted_diff < -1.0:
-                # Moderately dry outdoor air - activate dehumidification
-                decision["action"] = "dehumidify"
-                decision["reasoning"].append(
-                    f"Dry outdoor air: {adjusted_diff:.1f} < -1.0 "
-                    f"(good for ventilation)"
-                )
-                decision["confidence"] = 0.6
-
-            elif adjusted_diff > 1.0:
-                # Outdoor air is more humid - stop dehumidification
-                decision["action"] = "stop"
-                decision["reasoning"].append(
-                    f"Humid outdoor air: {adjusted_diff:.1f} > 1.0 (avoid bringing in)"
-                )
-                decision["confidence"] = 0.7
-
-            else:
-                # In acceptable range with balanced humidity
-                decision["action"] = "stop"
-                decision["reasoning"].append(
-                    f"Humidity in acceptable range (RH: {indoor_rh:.1f}%, "
-                    f"diff: {adjusted_diff:.2f})"
-                )
-                decision["confidence"] = 0.8
+            decision["action"] = "stop"
+            decision["reasoning"].append(
+                f"Humidity in acceptable range (RH: {indoor_rh:.1f}%, "
+                f"range: {min_humidity:.1f}% - {max_humidity:.1f}%)"
+            )
+            decision["confidence"] = 1.0
 
         # Additional checks for extreme absolute values
         if indoor_abs > 15.0:  # High absolute humidity

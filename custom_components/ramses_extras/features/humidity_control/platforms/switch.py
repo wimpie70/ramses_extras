@@ -52,7 +52,7 @@ async def async_setup_entry(
             )
         except Exception as e:
             _LOGGER.error(
-                "Failed to create humidity switch entities for device %s: %e",
+                "Failed to create humidity switch entities for device %s: %s",
                 device_id,
                 e,
             )
@@ -129,7 +129,7 @@ class HumidityControlSwitch(ExtrasSwitchEntity):
 
         try:
             # Get the actual device object for communication
-            from ...framework.helpers.device.core import find_ramses_device
+            from ....framework.helpers.device.core import find_ramses_device
 
             device = find_ramses_device(self.hass, self.device_id)
 
@@ -149,7 +149,7 @@ class HumidityControlSwitch(ExtrasSwitchEntity):
 
         except Exception as e:
             _LOGGER.error(
-                "Failed to activate dehumidification for %s: %e", self._attr_name, e
+                "Failed to activate dehumidification for %s: %s", self._attr_name, e
             )
 
         self._is_on = True
@@ -161,7 +161,7 @@ class HumidityControlSwitch(ExtrasSwitchEntity):
 
         try:
             # Get the actual device object for communication
-            from ...framework.helpers.device.core import find_ramses_device
+            from ....framework.helpers.device.core import find_ramses_device
 
             device = find_ramses_device(self.hass, self.device_id)
 
@@ -180,7 +180,7 @@ class HumidityControlSwitch(ExtrasSwitchEntity):
 
         except Exception as e:
             _LOGGER.error(
-                "Failed to deactivate dehumidification for %s: %e", self._attr_name, e
+                "Failed to deactivate dehumidification for %s: %s", self._attr_name, e
             )
 
         self._is_on = False

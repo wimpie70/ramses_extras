@@ -50,7 +50,7 @@ async def async_setup_entry(
             )
         except Exception as e:
             _LOGGER.error(
-                "Failed to create humidity number entities for device %s: %e",
+                "Failed to create humidity number entities for device %s: %s",
                 device_id,
                 e,
             )
