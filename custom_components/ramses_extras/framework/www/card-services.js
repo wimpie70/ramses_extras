@@ -161,29 +161,31 @@ const CACHE_DURATION = 30000; // 30 seconds cache
  * Clear all caches (useful for debugging or hard refresh)
  */
 export function clearAllCaches() {
-  console.log('🧹 Clearing all card services caches');
+  console.log(' Clearing all card services caches');
   _devicesCache = null;
   _devicesCacheTimestamp = 0;
 }
 
 /**
- * Convert device ID from colon format to underscore format
+ * Format a device ID for use in entity IDs (replace colons with underscores)
  * @param {string} deviceId - Device ID in colon format (e.g., "01:02:03")
  * @returns {string} Device ID in underscore format (e.g., "01_02_03")
  */
 export function formatDeviceId(deviceId) {
-  return deviceId.replace(/:/g, '_');
+  if (!deviceId) return 'unknown_device';
+  return deviceId.toString().replace(/:/g, '_');
 }
 
 /**
- * Build entity ID from device ID and entity type
- * @param {string} deviceId - Device ID in colon format
- * @param {string} domain - Entity domain (e.g., "switch", "sensor")
+ * Build a complete entity ID from device ID and suffix
+ * @param {string} deviceId - Device ID
+ * @param {string} domain - HA domain (e.g., "sensor", "switch")
  * @param {string} entitySuffix - Entity suffix (e.g., "hello_world_switch")
  * @returns {string} Complete entity ID
  */
 export function buildEntityId(deviceId, domain, entitySuffix) {
-  return `${domain}.${entitySuffix}_${formatDeviceId(deviceId)}`;
+  const formattedId = formatDeviceId(deviceId);
+  return `${domain}.${entitySuffix}_${formattedId}`;
 }
 
 /**

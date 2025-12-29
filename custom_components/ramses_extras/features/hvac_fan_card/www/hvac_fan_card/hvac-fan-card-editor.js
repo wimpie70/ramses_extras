@@ -91,7 +91,7 @@ class HvacFanCardEditor extends HTMLElement {
             ${deviceOptions}
           </select>
           <small class="form-help">Select the Ramses RF FAN device ID</small>
-          <div class="form-note">You may need to enable the device in the Ramses Extras configuration.</div>
+          <div class="form-note">You may need to enable the device in the Ramses Extras configuration. Check the Hello World settings.</div>
         </div>
       </div>
 

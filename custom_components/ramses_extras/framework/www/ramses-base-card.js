@@ -384,62 +384,46 @@ export class RamsesBaseCard extends HTMLElement {
    * @param {Object} config - Card configuration
    */
   setConfig(config) {
+    // Basic validation of the config object itself
+    if (!config) {
+      this._config = {};
+      return;
+    }
+
     try {
-      // Flexible validation: only validate if config is not empty (during actual configuration)
-      // This allows the card to be created without configuration first
-      if (config && Object.keys(config).length > 0) {
-        // Validate configuration using subclass validation
-        const validation = this.validateConfig(config);
-        if (!validation.valid) {
-          throw new Error(`Configuration validation failed: ${validation.errors.join(', ')}`);
-        }
-      }
-
-      // If no config or empty config, just store it and return early
-      if (!config || Object.keys(config).length === 0) {
-        this._config = {};
-        return;
-      }
-
-      // Normalize device ID to colon format for consistency
+      const oldDeviceId = this._config?.device_id;
       const deviceId = config.device_id ? config.device_id.replace(/_/g, ':') : null;
 
       // Process configuration
       this._config = {
-        device_id: deviceId,
         ...this.getDefaultConfig(),
-        ...config
+        ...config,
+        device_id: deviceId, // Ensure normalized ID wins
       };
 
-      // Reset state
-      this._rendered = false;
-      this._initialStateLoaded = false;
-      this._previousStates = {};
-      this._onceKeys = new Set();
-      this.clearUpdateThrottle(); // Clear throttle on config change
+      // Reset state if device changed
+      if (deviceId !== oldDeviceId) {
+        this._rendered = false;
+        this._initialStateLoaded = false;
+        this._previousStates = {};
+        this._onceKeys = new Set();
+        this._cachedEntities = null;
+        this.clearUpdateThrottle();
+      }
 
       // Load initial state if hass is available
       if (this._hass) {
         if (!this._isHomeAssistantRunning()) {
           this.renderHassInitializing();
-          return;
+        } else {
+          this._checkAndLoadInitialState();
+          this.render();
         }
-
-        // Temporarily disable cards_enabled check to get HVAC card working
-        // TODO: Debug cards_enabled latch timing issue
-        // if (!this._cardsEnabled) {
-        //   this._ensureCardsEnabledLoaded();
-        //   if (!this._cardsEnabled) {
-        //     this.renderFeatureInitializing();
-        //     return;
-        //   }
-        // }
-        this._checkAndLoadInitialState();
-        this.render();
       }
     } catch (error) {
       console.error(`❌ ${this.constructor.name}: Configuration error:`, error);
-      throw error;
+      // We don't throw here to allow the card to stay in a predictable state
+      // and let render() show the config error if needed.
     }
   }
 
@@ -815,6 +799,7 @@ export class RamsesBaseCard extends HTMLElement {
    * @returns {string} Complete entity ID
    */
   buildEntityId(domain, entitySuffix) {
+    if (!this._config?.device_id) return '';
     return buildEntityId(this._config.device_id, domain, entitySuffix);
   }
 

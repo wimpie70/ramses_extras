@@ -418,16 +418,14 @@ class HvacFanCard extends RamsesBaseCard {
       da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity : null;
 
     // Use ramses_extras absolute humidity sensor (if available) - raw values only
-    const indoorAbsHumidity = hass.states[config.indoor_abs_humid_entity]?.state
-      ? isNaN(parseFloat(hass.states[config.indoor_abs_humid_entity].state))
-        ? null
-        : parseFloat(hass.states[config.indoor_abs_humid_entity].state)
-      : null;
-    const outdoorAbsHumidity = hass.states[config.outdoor_abs_humid_entity]?.state
-      ? isNaN(parseFloat(hass.states[config.outdoor_abs_humid_entity].state))
-        ? null
-        : parseFloat(hass.states[config.outdoor_abs_humid_entity].state)
-      : null;
+    const indoorAbsHumidity = this.getEntityStateAsNumber(
+      config.indoor_abs_humid_entity,
+      null
+    );
+    const outdoorAbsHumidity = this.getEntityStateAsNumber(
+      config.outdoor_abs_humid_entity,
+      null
+    );
 
     // Get 10D0 data for filter information
     const da10D0Data = this.get10D0Data();
@@ -451,28 +449,16 @@ class HvacFanCard extends RamsesBaseCard {
       // Other data - raw values only
       // Prefer sensor_control-resolved CO2 mapping (config.co2) when available,
       // fall back to the original co2_entity from feature constants.
-      co2Level: (() => {
-        const co2EntityId = config.co2 || config.co2_entity;
-        const state = co2EntityId && hass.states[co2EntityId]?.state;
-        if (!state) {
-          return null;
-        }
-        const numeric = parseFloat(state);
-        return Number.isNaN(numeric) ? null : numeric;
-      })(),
+      co2Level: this.getEntityStateAsNumber(config.co2 || config.co2_entity, null),
       // Dehumidifier entities (only if available)
       dehumMode: dehumEntitiesAvailable
-        ? hass.states[config.dehum_mode_entity]?.state || 'off'
+        ? this.getEntityState(config.dehum_mode_entity)?.state || 'off'
         : null,
       dehumActive: dehumEntitiesAvailable
-        ? hass.states[config.dehum_active_entity]?.state || 'off'
+        ? this.getEntityState(config.dehum_active_entity)?.state || 'off'
         : null,
       // Comfort temperature entity (will be available when created)
-      comfortTemp: hass.states[config.comfort_temp_entity]?.state
-        ? isNaN(parseFloat(hass.states[config.comfort_temp_entity].state))
-          ? null
-          : parseFloat(hass.states[config.comfort_temp_entity].state)
-        : null,
+      comfortTemp: this.getEntityStateAsNumber(config.comfort_temp_entity, null),
       // Bypass position
       bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position : null,
       dehumEntitiesAvailable, // Add availability flag
@@ -562,8 +548,11 @@ class HvacFanCard extends RamsesBaseCard {
     // Check all possible number entities for this device
     const available = {};
 
+    const deviceId = this.config?.device_id;
+    if (!deviceId) return available;
+
     // Get all states and filter for this device's number entities
-    const devicePrefix = `number.${this.config.device_id.replace(/:/g, '_')}_`;
+    const devicePrefix = `number.${deviceId.replace(/:/g, '_')}_`;
 
     Object.keys(this._hass.states).forEach((entityId) => {
       if (entityId.startsWith(devicePrefix) && entityId.startsWith('number.')) {

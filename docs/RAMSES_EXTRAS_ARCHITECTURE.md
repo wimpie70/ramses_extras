@@ -313,7 +313,7 @@ custom_components/ramses_extras/
 - **Step 4:** **Feature Creation** - Feature factories create feature instances
 - **Step 5:** **Platform Forwarding** - Root platforms forward to feature platforms
 - **Step 6:** **Entity Registration** - Entities register with HA via feature platforms
-- **Step 7:** **Asset Deployment** - JavaScript cards deployed to HA config directory
+- **Step 7:** **Asset Deployment & Registration** - JavaScript assets are deployed to versioned directories (e.g., `/local/ramses_extras/vX.Y.Z/`). A single bootstrap resource (`main.js`) is registered with Home Assistant's Lovelace resources. This loader uses a `MutationObserver` to dynamically `import()` feature cards only when their custom elements are present on the dashboard, ensuring optimal performance and cache reliability.
 
 ### ramses_cc Readiness and Dependency Management
 
@@ -1192,13 +1192,19 @@ async def async_step_matrix_confirm(self, user_input=None):
 
 ## 9.1. JavaScript Card System
 
-Ramses Extras provides a sophisticated JavaScript-based frontend system for Lovelace UI integration:
+Ramses Extras uses a modern, on-demand loading architecture for its Lovelace UI components to ensure optimal performance and cache reliability.
+
+### Bootstrap Loading (main.js)
+Instead of registering every custom card individually with Home Assistant, the integration registers a single **bootstrap resource** (`main.js`).
+
+- **On-Demand Loading**: `main.js` uses a `MutationObserver` to watch for Ramses Extras custom card tags (e.g., `<ramses-hvac-fan-card>`, `<ramses-hello-world>`) appearing in the DOM.
+- **Dynamic Imports**: When a tag is detected, the bootstrap loader dynamically calls `import()` to load the corresponding card module from its versioned path.
+- **Performance**: JavaScript files for cards are **only loaded if they are actually used** on the current dashboard page. If a dashboard doesn't contain a specific Ramses Extras card, its code is never fetched by the browser.
 
 ### Card Architecture
-- **Self-Contained Cards**: Each feature can have its own JavaScript card
-- **Framework Helpers**: Reusable JavaScript utilities for all cards
-- **Real-time Updates**: WebSocket APIs and message listeners for immediate updates
-- **Responsive Design**: Mobile-friendly card layouts and interactions
+- **Self-Contained Cards**: Each feature provides its own JavaScript card and editor module.
+- **Framework Helpers**: Reusable JavaScript utilities (validation, translations, services) are shared across all cards.
+- **Real-time Updates**: WebSocket APIs and message listeners for immediate updates.
 
 ### Base Card Pattern (RamsesBaseCard)`)
 
@@ -1237,48 +1243,44 @@ Frontend cards are gated by two backend-driven readiness mechanisms:
   - Broadcast via event: `ramses_extras_cards_enabled`
   - Used by the base card to avoid rendering cards before backend startup completes
 
-### Deployment Structure
+### Deployment & Versioning Structure
 
-Home Assistant will only serve static frontend assets (cards, helpers, etc) from /config/www. Therefore we deploy our .js content to /config/www/ramses_extras/feature_name/. But we still develop and distribute our .js content in custom_components/ramses_extras/features/feature_name/www/feature_name/ to keep as much feature content grouped together.
+Home Assistant serves static assets from `/config/www`. To prevent browser caching issues during updates, Ramses Extras uses **versioned deployment paths**.
 
-**Source Structure (Development Files):**
+**Source Structure (Integration Assets):**
 ```
 custom_components/ramses_extras/
-├── framework/www/                             # Reusable JavaScript utilities
-│   ├── ramses-base-card.js                     # Base class for all cards
-│   ├── paths.js                               # Environment-aware path constants
-│   ├── card-commands.js
-│   ├── card-services.js
-│   ├── card-translations.js
-│   ├── card-validation.js
-│   └── ramses-message-broker.js               # Global message handling
-├── features/hvac_fan_card/www/hvac_fan_card/  # Feature-specific cards
+├── framework/www/                             # Shared utilities
+│   ├── main.js                                # Bootstrap loader
+│   ├── ramses-base-card.js                    # Base class
+│   └── ...
+├── features/hvac_fan_card/www/hvac_fan_card/  # Feature assets
 │   ├── hvac-fan-card.js
-│   ├── hvac-fan-card-editor.js
-│   ├── message-handlers.js
-│   ├── templates/
-│   └── translations/
+│   └── ...
 ```
 
-**Target Deployment Structure:**
+**Target Deployment Structure (Versioned):**
+Assets are deployed to `/config/www/ramses_extras/v{version}/`.
+
 ```
-hass/config/www/ramses_extras/
-├── helpers/                         # Shared utilities (from framework/www/)
-│   ├── ramses-base-card.js           # Base class for all cards
-│   ├── paths.js
-│   ├── card-commands.js
-│   ├── card-services.js
-│   ├── card-translations.js
-│   ├── card-validation.js
-│   └── ramses-message-broker.js
+hass/config/www/ramses_extras/v0.10.3/
+├── helpers/                         # Shared utilities
+│   ├── main.js                      # Bootstrap loader (Registered Resource)
+│   ├── ramses-base-card.js
+│   └── ...
 └── features/                        # Feature-specific cards
-    └── hvac_fan_card/               # Each feature gets its own folder
+    └── hvac_fan_card/
         ├── hvac-fan-card.js
-        ├── hvac-fan-card-editor.js
-        ├── message-handlers.js
-        ├── templates/
-        └── translations/
+        └── ...
 ```
+
+**Resource Registration:**
+Only one entry is added to Home Assistant's `lovelace_resources`:
+- **URL**: `/local/ramses_extras/v0.10.3/helpers/main.js`
+- **Type**: `module`
+
+### Legacy Support & Shims
+For backward compatibility with hardcoded dashboard entries, the integration maintains "shim" files at stable legacy paths (e.g., `/local/ramses_extras/helpers/main.js`). These shims are tiny wrappers that simply `import` the current versioned file.
 
 ### Visual Editor Registration Requirements
 
@@ -1390,7 +1392,7 @@ def load_feature_translations(feature_name, language="en"):
 
 Cards treat **Home Assistant state** (`hass.states`) as the source of truth. Entity IDs are derived using a feature-centric mapping layer.
 
-### getRequiredEntities() via WebSocket entity mappingsgs
+### getRequiredEntities() via WebSocket entity mappings
 
 The base card provides an async `getRequiredEntities()` that loads entity IDs via:
 
@@ -1407,6 +1409,14 @@ On the backend, entity mappings are derived from each feature’s `const.py` usi
 The result is cached on the card instance (`_cachedEntities`) to avoid repeated WS calls.
 
 This keeps frontend cards and editors from hardcoding entity IDs, while still allowing advanced cards to override `getRequiredEntities()` when needed.
+
+### On-Demand Card Loading
+The architecture ensures that `.js` files for specific cards are **only loaded if they are actually needed** on the current dashboard.
+
+1.  **Bootstrap Loader**: `main.js` is the only file registered as a Lovelace resource.
+2.  **Tag Detection**: It monitors the DOM for Ramses Extras custom card tags.
+3.  **Dynamic Import**: When a tag is detected (e.g., a user navigates to a dashboard containing the HVAC card), the corresponding module is fetched via `import()`.
+4.  **Resource Efficiency**: This prevents the browser from fetching megabytes of unused card code on dashboards where they aren't displayed.
 
 ### Translation Templates
 - **Purpose**: UI localization with dynamic translation loading

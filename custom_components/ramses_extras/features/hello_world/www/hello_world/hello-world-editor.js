@@ -112,7 +112,7 @@ class HelloworldEditor extends HTMLElement {
             ${deviceOptions}
           </select>
           <small class="form-help">Select the Ramses RF device for the Hello World switch</small>
-          <div class="form-note">You may need to enable the device in the Ramses Extras configuration.</div>
+          <div class="form-note">You may need to enable the device in the Ramses Extras configuration. Check the Hello World settings.</div>
         </div>
 
         <div class="form-group">
