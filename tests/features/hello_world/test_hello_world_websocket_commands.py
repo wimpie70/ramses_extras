@@ -6,11 +6,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.ramses_extras.features.hello_world.websocket_commands import (
+    _get_entities_manager,
+    ws_get_switch_state,
     ws_toggle_switch,
 )
 
-# Get the original function without decorators
+# Unwrap decorators for testing
 ws_toggle_switch = ws_toggle_switch.__wrapped__
+ws_get_switch_state = ws_get_switch_state.__wrapped__
 
 
 class _FakeConnection:
@@ -118,3 +121,58 @@ async def test_ws_toggle_switch_calls_service_when_entity_exists(hass) -> None:
     assert result_payload["entity_id"] == "switch.hello_world_switch_18_149488"
     assert result_payload["state"] is False
     assert not conn.errors
+
+
+@pytest.mark.asyncio
+async def test_ws_get_switch_state(hass) -> None:
+    """Test ws_get_switch_state command."""
+    conn = _FakeConnection()
+    msg = {
+        "id": 3,
+        "type": "ramses_extras/hello_world/get_switch_state",
+        "device_id": "18:149488",
+    }
+
+    # Mock states
+    mock_states = MagicMock()
+    mock_switch_state = MagicMock()
+    mock_switch_state.state = "on"
+    mock_binary_state = MagicMock()
+    mock_binary_state.state = "off"
+
+    def mock_get(entity_id):
+        if "switch" in entity_id:
+            return mock_switch_state
+        return mock_binary_state
+
+    mock_states.get.side_effect = mock_get
+
+    original_states = hass.states
+    hass.states = mock_states
+
+    try:
+        await ws_get_switch_state(hass, conn, msg)
+    finally:
+        hass.states = original_states
+
+    assert conn.results and conn.results[0][0] == 3
+    payload = conn.results[0][1]
+    assert payload["switch_state"] is True
+    assert payload["binary_sensor_state"] is False
+
+
+def test_get_entities_manager(hass):
+    """Test internal _get_entities_manager helper."""
+    # From hass.data
+    mock_manager = MagicMock()
+    hass.data = {"ramses_extras": {"hello_world_entities": mock_manager}}
+    assert _get_entities_manager(hass) == mock_manager
+
+    # Fallback to creating new one
+    hass.data = {}
+    with patch(
+        "custom_components.ramses_extras.features.hello_world.websocket_commands.SimpleEntityManager"
+    ) as mock_class:
+        mock_instance = MagicMock()
+        mock_class.return_value = mock_instance
+        assert _get_entities_manager(hass) == mock_instance
