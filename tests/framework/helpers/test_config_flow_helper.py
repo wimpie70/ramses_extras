@@ -238,8 +238,7 @@ class TestConfigFlowHelper:
             "f2": {"name": "Feature 2", "description": "Long " * 20},
             "default": {"name": "Default"},
         }
-        patch_path = "custom_components.ramses_extras.framework."
-        "helpers.config_flow.AVAILABLE_FEATURES"
+        patch_path = "custom_components.ramses_extras.framework.helpers.config_flow.AVAILABLE_FEATURES"  # noqa: E501
         with patch.dict(patch_path, mock_features, clear=True):
             schema = helper.get_feature_selection_schema({"f1": True, "f2": False})
             assert "features" in schema.schema
