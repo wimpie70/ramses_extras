@@ -16,8 +16,8 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
@@ -855,8 +855,8 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
                 _setup_in_progress = False
                 await async_setup_platforms(hass)
 
-            # Use async_call_later instead of async_add_job
-            hass.call_later(60.0, hass.async_create_task(delayed_retry))
+            # Use async_call_later
+            async_call_later(hass, 60.0, delayed_retry)
 
     except Exception as e:
         _LOGGER.error(f"Error in platform setup: {e}")
