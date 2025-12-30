@@ -533,25 +533,27 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
 
             # Collect switch configurations
             for attr_name in dir(feature_module):
-                if attr_name.endswith("_SWITCH_CONFIGS"):
+                if attr_name.endswith("SWITCH_CONFIGS"):
                     switch_configs = getattr(feature_module, attr_name)
-                    all_entities["switch"] = switch_configs
+                    all_entities["switch"].update(switch_configs)
 
             # Collect binary sensor configurations
             for attr_name in dir(feature_module):
-                if attr_name.endswith(("_BINARY_SENSOR_CONFIGS", "_BOOLEAN_CONFIGS")):
+                if attr_name.endswith(("BINARY_SENSOR_CONFIGS", "BOOLEAN_CONFIGS")):
                     sensor_configs = getattr(feature_module, attr_name)
                     all_entities["binary_sensor"].update(sensor_configs)
 
             # Collect sensor configurations
             for attr_name in dir(feature_module):
-                if attr_name.endswith("_SENSOR_CONFIGS"):
+                if attr_name.endswith("SENSOR_CONFIGS") and not attr_name.endswith(
+                    "BINARY_SENSOR_CONFIGS"
+                ):
                     sensor_configs = getattr(feature_module, attr_name)
                     all_entities["sensor"].update(sensor_configs)
 
             # Collect number configurations
             for attr_name in dir(feature_module):
-                if attr_name.endswith("_NUMBER_CONFIGS"):
+                if attr_name.endswith("NUMBER_CONFIGS"):
                     number_configs = getattr(feature_module, attr_name)
                     all_entities["number"].update(number_configs)
 

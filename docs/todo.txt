@@ -8,21 +8,6 @@
 ## Status: Next (priority)
 
 
-## Framework Cleanup (Priority)
-
- - [ ] **Consolidate validation and calculation helpers**
-   - Move `calculate_absolute_humidity` from `framework/helpers/entities.py` to `framework/helpers/common/utils.py`.
-   - Remove redundant `validate_humidity_value` and `validate_temperature_value` from `entities.py` (already in `RamsesValidator`).
-   - Delete `framework/helpers/entities.py`.
- - [ ] **Remove unused Service Framework components**
-   - Remove `ServiceRegistrationManager` from `framework/helpers/service/registration.py`.
-   - Remove `ServiceValidator`, `ValidationResult`, and `validate_service_call` from `framework/helpers/service/validation.py`.
- - [ ] **Consolidate sparse modules**
-   - Move `_singularize_entity_type` from `framework/helpers/automation/core.py` to `framework/helpers/automation/__init__.py`.
-   - Delete `framework/helpers/automation/core.py`.
- - [ ] **Remove unused Config helpers**
-   - Delete `framework/helpers/config/schema.py` (unused `ConfigSchema`).
-
 ## Sensor control improvements (Later)
 
  - [ ] **External calculated absolute humidity entities / multi-sensor strategy**

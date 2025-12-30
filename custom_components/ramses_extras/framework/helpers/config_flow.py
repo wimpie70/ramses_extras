@@ -1,11 +1,13 @@
 """Config flow utilities for Ramses Extras feature configuration."""
 
+import importlib
+import inspect
 import logging
 from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import selector
 
 from custom_components.ramses_extras.const import AVAILABLE_FEATURES
@@ -20,7 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 class ConfigFlowHelper:
     """Helper class for config flow operations."""
 
-    def __init__(self, hass: Any, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self, hass: Any, config_entry: ConfigEntry) -> None:
         """Initialize the config flow helper.
 
         Args:
@@ -82,7 +84,7 @@ class ConfigFlowHelper:
         ]
 
         default_enabled = self.get_enabled_devices_for_feature(feature_id)
-        option_values = {opt.value for opt in device_options}
+        option_values = {opt["value"] for opt in device_options}
         default_for_selector = [d for d in default_enabled if d in option_values]
 
         # Add schema for device selection
@@ -353,7 +355,7 @@ class ConfigFlowHelper:
         feature_devices: dict[str, list[str]] = {}
 
         # Group by feature
-        for feature_id, device_id in combinations:
+        for device_id, feature_id in combinations:
             if feature_id not in feature_devices:
                 feature_devices[feature_id] = []
             feature_devices[feature_id].append(device_id)
@@ -373,10 +375,6 @@ class ConfigFlowHelper:
         Returns:
             Dictionary mapping feature_id to config flow class
         """
-        import importlib
-        import inspect
-        from typing import Any
-
         feature_config_flows = {}
 
         for feature_id, feature_config in AVAILABLE_FEATURES.items():

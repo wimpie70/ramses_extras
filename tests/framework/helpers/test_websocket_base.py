@@ -1,13 +1,14 @@
 # tests/framework/helpers/test_websocket_base.py
 """Test websocket base classes and utilities."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
 from custom_components.ramses_extras.framework.helpers.websocket_base import (
     BaseWebSocketCommand,
     DeviceWebSocketCommand,
+    GetAllFeatureEntitiesCommand,
     GetEntityMappingsCommand,
 )
 
@@ -321,8 +322,6 @@ class TestGetEntityMappingsCommand:
         """Test checking when sensor control is not configured."""
         command = GetEntityMappingsCommand(hass, "test_feature")
 
-        from unittest.mock import MagicMock
-
         from custom_components.ramses_extras.const import DOMAIN
 
         mock_config_entry = MagicMock()
@@ -333,3 +332,175 @@ class TestGetEntityMappingsCommand:
 
         result = command._is_sensor_control_enabled()
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_apply_sensor_control_overrides_success(self, hass):
+        """Test successful application of sensor control overrides."""
+        command = GetEntityMappingsCommand(hass, "test_feature")
+        device_id = "32:153289"
+        base_mappings = {"indoor_humidity": "sensor.base_rh"}
+
+        with (
+            patch.object(command, "_get_device_type", return_value="FAN"),
+            patch(
+                "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
+            ) as mock_resolver_class,
+        ):
+            mock_resolver = mock_resolver_class.return_value
+            mock_resolver.resolve_entity_mappings = AsyncMock(
+                return_value={
+                    "mappings": {"indoor_humidity": "sensor.override_rh"},
+                    "sources": {"indoor_humidity": "external"},
+                    "raw_internal": {},
+                    "abs_humidity_inputs": {},
+                }
+            )
+
+            result = await command._apply_sensor_control_overrides(
+                device_id, base_mappings
+            )
+
+            assert result["mappings"]["indoor_humidity"] == "sensor.override_rh"
+            assert result["sources"]["indoor_humidity"] == "external"
+
+    @pytest.mark.asyncio
+    async def test_apply_sensor_control_overrides_no_device_type(self, hass):
+        """Test application when device type cannot be determined."""
+        command = GetEntityMappingsCommand(hass, "test_feature")
+        with patch.object(command, "_get_device_type", return_value=None):
+            result = await command._apply_sensor_control_overrides(
+                "32:153289", {"test": "mapping"}
+            )
+            assert result == {}
+
+    def test_get_device_type(self, hass):
+        """Test getting device type from hass data."""
+        from custom_components.ramses_extras.const import DOMAIN
+
+        command = GetEntityMappingsCommand(hass, "test_feature")
+        device_id = "32:153289"
+
+        # Mock devices in hass data
+        mock_device = MagicMock()
+        mock_device.device_id = "32_153289"
+        mock_device.type = "FAN"
+
+        hass.data = {DOMAIN: {"devices": [mock_device]}}
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.websocket_base.extract_device_id_as_string",
+            return_value="32_153289",
+        ):
+            device_type = command._get_device_type(device_id)
+            assert device_type == "FAN"
+
+    def test_get_device_type_dict(self, hass):
+        """Test getting device type from dict-based device info."""
+        from custom_components.ramses_extras.const import DOMAIN
+
+        command = GetEntityMappingsCommand(hass, "test_feature")
+        hass.data = {DOMAIN: {"devices": [{"device_id": "32:153289", "type": "CO2"}]}}
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.websocket_base.extract_device_id_as_string",
+            return_value="32_153289",
+        ):
+            assert command._get_device_type("32_153289") == "CO2"
+
+
+class TestGetAllFeatureEntitiesCommand:
+    """Test GetAllFeatureEntitiesCommand class."""
+
+    def test_init(self, hass):
+        """Test initialization."""
+        command = GetAllFeatureEntitiesCommand(hass, "test_feature")
+        assert command.hass == hass
+        assert command.feature_identifier == "test_feature"
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_device_id(self, hass):
+        """Test execution when device_id is missing."""
+        command = GetAllFeatureEntitiesCommand(hass, "test_feature")
+        mock_connection = MagicMock()
+        msg = {"id": 1, "type": "get_all_feature_entities"}
+
+        await command.execute(mock_connection, msg)
+
+        mock_connection.send_error.assert_called_once_with(1, "missing_device_id", ANY)
+
+    @pytest.mark.asyncio
+    async def test_execute_success(self, hass):
+        """Test successful execution."""
+        command = GetAllFeatureEntitiesCommand(hass, "test_feature")
+        mock_connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "get_all_feature_entities",
+            "device_id": "32:153289",
+        }
+
+        mock_entities = {"sensor": {"temp": {"entity_template": "temp_{device_id}"}}}
+
+        with (
+            patch.object(
+                command, "_get_all_entities_from_feature", return_value=mock_entities
+            ),
+            patch.object(
+                command, "_parse_all_entity_templates", return_value={"parsed": "data"}
+            ),
+        ):
+            await command.execute(mock_connection, msg)
+
+            mock_connection.send_result.assert_called_once()
+            args, _ = mock_connection.send_result.call_args
+            assert args[1]["success"] is True
+            assert args[1]["entities"] == {"parsed": "data"}
+
+    @pytest.mark.asyncio
+    async def test_get_all_entities_from_feature(self, hass):
+        """Test collecting all entities from a feature."""
+        command = GetAllFeatureEntitiesCommand(hass, "test_feature")
+
+        mock_module = MagicMock()
+        # Mocking the attributes that _get_all_entities_from_feature looks for
+        mock_module.SENSOR_CONFIGS = {"temp": {"entity_template": "temp_t"}}
+        mock_module.SWITCH_CONFIGS = {"main": {"entity_template": "main_t"}}
+        mock_module.BINARY_SENSOR_CONFIGS = {"active": {"entity_template": "active_t"}}
+        mock_module.NUMBER_CONFIGS = {"level": {"entity_template": "level_t"}}
+
+        # Patch importlib and the module's dir()
+        with (
+            patch("importlib.import_module", return_value=mock_module),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.websocket_base.dir",
+                return_value=[
+                    "SENSOR_CONFIGS",
+                    "SWITCH_CONFIGS",
+                    "BINARY_SENSOR_CONFIGS",
+                    "NUMBER_CONFIGS",
+                ],
+            ),
+        ):
+            entities = await command._get_all_entities_from_feature()
+            assert "sensor" in entities
+            assert "temp" in entities["sensor"]
+            assert "switch" in entities
+            assert "main" in entities["switch"]
+            assert "binary_sensor" in entities
+            assert "active" in entities["binary_sensor"]
+            assert "number" in entities
+            assert "level" in entities["number"]
+
+    def test_parse_all_entity_templates(self, hass):
+        """Test parsing all entity templates."""
+        command = GetAllFeatureEntitiesCommand(hass, "test_feature")
+        all_entities = {
+            "sensor": {"temp": {"entity_template": "temp_{device_id}"}},
+            "switch": {"main": {"entity_template": "main_{device_id}"}},
+        }
+        device_id = "32_153289"
+
+        result = command._parse_all_entity_templates(all_entities, device_id)
+
+        assert result["sensor"]["temp"]["entity_id"] == "sensor.temp_32_153289"
+        assert result["switch"]["main"]["entity_id"] == "switch.main_32_153289"
