@@ -257,56 +257,6 @@ async def async_step_sensor_control_config(
         getattr(handler, "__name__", repr(handler)),
     )
 
-    def _get_kind(metric: str, default: str = "internal") -> str:
-        raw = device_sources.get(metric) or {}
-        kind = raw.get("kind")
-        return str(kind) if kind else default
-
-    def _get_entity(metric: str) -> str | None:
-        raw = device_sources.get(metric) or {}
-        ent = raw.get("entity_id")
-        return str(ent) if ent else None
-
-    def _get_abs_part(metric: str, part: str) -> dict[str, Any]:
-        metric_cfg = device_abs_inputs.get(metric) or {}
-        part_cfg = metric_cfg.get(part) or {}
-        if not isinstance(part_cfg, dict):
-            return {}
-        return part_cfg
-
-    def _get_abs_kind(metric: str, part: str) -> str:
-        return str(_get_abs_part(metric, part).get("kind") or "internal")
-
-    def _get_abs_entity(metric: str, part: str) -> str | None:
-        ent = _get_abs_part(metric, part).get("entity_id")
-        return str(ent) if ent else None
-
-    def _source_from_input(
-        data: dict[str, Any], kind_key: str, ent_key: str, allow_none: bool
-    ) -> dict[str, Any]:
-        kind = str(data.get(kind_key) or "internal")
-        if kind == "none" and allow_none:
-            return {"kind": "none"}
-        if kind == "external":
-            ent = data.get(ent_key)
-            if ent:
-                return {"kind": "external", "entity_id": str(ent)}
-            # No valid external entity selected, fall back to internal
-            return {"kind": "internal"}
-        return {"kind": "internal"}
-
-    def _abs_part_from_input(
-        data: dict[str, Any], kind_key: str, ent_key: str
-    ) -> dict[str, Any]:
-        kind = str(data.get(kind_key) or "internal")
-        if kind == "external":
-            ent = data.get(ent_key)
-            if ent:
-                return {"kind": "external", "entity_id": str(ent)}
-            # No valid external entity selected, fall back to internal
-            return {"kind": "internal"}
-        return {"kind": "internal"}
-
     # Submenu-style grouping: select which group of metrics to configure
     group_stage = getattr(flow, "_sensor_control_group_stage", "select_group")
 

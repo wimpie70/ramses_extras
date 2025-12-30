@@ -54,6 +54,23 @@ def test_get_device_type(flow):
         mock_filter._get_device_slugs.return_value = ["FAN"]
         assert _get_device_type(flow, "32:123456") == "FAN"
 
+    # Test fallback to upper case slug
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow.DeviceFilter"
+    ) as mock_filter:
+        mock_filter._get_device_slugs.return_value = ["unknown_type"]
+        assert _get_device_type(flow, "32:123456") == "UNKNOWN_TYPE"
+
+    # Test no slugs
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow.DeviceFilter"
+    ) as mock_filter:
+        mock_filter._get_device_slugs.return_value = []
+        assert _get_device_type(flow, "32:123456") is None
+
+    # Test device not found
+    assert _get_device_type(flow, "nonexistent") is None
+
 
 async def test_async_step_sensor_control_config_select_device(flow, helper):
     """Test the device selection stage."""
@@ -70,6 +87,55 @@ async def test_async_step_sensor_control_config_select_device(flow, helper):
     await async_step_sensor_control_config(flow, user_input)
     assert flow._sensor_control_selected_device == "32:123456"
     assert flow._sensor_control_stage == "configure_device"
+
+
+async def test_async_step_sensor_control_config_select_device_with_overview(
+    flow, helper
+):
+    """Test the device selection stage with existing configuration overview."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "select_device"
+
+    # Mock existing config to trigger overview generation
+    flow._config_entry.options = {
+        "sensor_control": {
+            "sources": {
+                "32_123456": {
+                    "indoor_temperature": {
+                        "kind": "external",
+                        "entity_id": "sensor.test",
+                    }
+                }
+            },
+            "abs_humidity_inputs": {
+                "32_123456": {
+                    "indoor_abs_humidity": {
+                        "temperature": {"kind": "external", "entity_id": "sensor.temp"},
+                        "humidity": {"kind": "external", "entity_id": "sensor.hum"},
+                    }
+                }
+            },
+        }
+    }
+
+    await async_step_sensor_control_config(flow, None)
+    flow.async_show_form.assert_called_once()
+    info_text = flow.async_show_form.call_args[1]["description_placeholders"]["info"]
+    assert "Existing Sensor Control Mappings" in info_text
+    assert "Device 32:123456" in info_text
+    assert "indoor_temperature: external  sensor.test" in info_text
+    assert "indoor_abs_humidity" in info_text
+
+
+async def test_async_step_sensor_control_config_select_device_refresh(flow, helper):
+    """Test that config entry is refreshed if possible."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "select_device"
+
+    flow._refresh_config_entry = MagicMock()
+
+    await async_step_sensor_control_config(flow, None)
+    flow._refresh_config_entry.assert_called_once()
 
 
 async def test_async_step_sensor_control_config_select_group_select(flow, helper):

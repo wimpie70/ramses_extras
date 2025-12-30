@@ -76,6 +76,77 @@ class TestConfigFlowHelper:
             schema = helper.get_feature_config_schema("hello_world", devices)
             assert "enabled_devices" in schema.schema
 
+    def test_normalize_device_id_cases(self, hass, config_entry):
+        """Test _normalize_device_id internal helper via init."""
+        config_entry.data = {
+            "device_feature_matrix": {
+                "32123456": {"hello_world": True},
+            }
+        }
+        helper = ConfigFlowHelper(hass, config_entry)
+        assert helper.is_device_enabled_for_feature("32123456", "hello_world") is True
+
+    def test_get_feature_info(self, hass, config_entry):
+        """Test getting feature info."""
+        helper = ConfigFlowHelper(hass, config_entry)
+        patch_features = (
+            "custom_components.ramses_extras.framework.helpers."
+            "config_flow.AVAILABLE_FEATURES"
+        )
+        with patch.dict(
+            patch_features, {"feat1": {"name": "F1", "description": "D1"}}, clear=True
+        ):
+            info = helper.get_feature_info("feat1")
+            assert info["name"] == "F1"
+            assert info["description"] == "D1"
+
+        with patch.dict(patch_features, {}, clear=True):
+            info = helper.get_feature_info("nonexistent")
+            assert info["name"] == "nonexistent"
+
+    def test_get_feature_selection_schema_no_desc(self, hass, config_entry):
+        """Test schema generation for feature without description."""
+        helper = ConfigFlowHelper(hass, config_entry)
+        patch_path = (
+            "custom_components.ramses_extras.framework.helpers."
+            "config_flow.AVAILABLE_FEATURES"
+        )
+        mock_features = {"f1": {"name": "No Desc"}}
+        with patch.dict(patch_path, mock_features, clear=True):
+            schema = helper.get_feature_selection_schema({})
+            assert "features" in schema.schema
+
+    def test_build_feature_info_text_with_default_and_desc(self, hass, config_entry):
+        """Test building info text with default feature and description."""
+        helper = ConfigFlowHelper(hass, config_entry)
+        patch_path = (
+            "custom_components.ramses_extras.framework.helpers."
+            "config_flow.AVAILABLE_FEATURES"
+        )
+        mock_features = {
+            "default": {"name": "Default"},
+            "f1": {"name": "F1", "description": "D1"},
+        }
+        with patch.dict(patch_path, mock_features, clear=True):
+            info = helper.build_feature_info_text()
+            assert "F1" in info
+            assert "D1" in info
+            assert "Default" not in info
+
+    def test_discover_feature_config_flows_no_class(self, hass, config_entry):
+        """Test discovery when no valid class is found in module."""
+        mock_features = {"test_f": {"has_device_config": True}}
+        patch_path = "custom_components.ramses_extras.const.AVAILABLE_FEATURES"
+
+        with patch.dict(patch_path, mock_features, clear=True):
+            helper = ConfigFlowHelper(hass, config_entry)
+            # No attributes that look like a valid config flow class
+            mock_module = MagicMock()
+
+            with patch("importlib.import_module", return_value=mock_module):
+                flows = helper.discover_feature_config_flows()
+                assert flows == {}
+
     def test_extract_device_id(self, hass, config_entry):
         """Test device ID extraction from various object types."""
         helper = ConfigFlowHelper(hass, config_entry)
