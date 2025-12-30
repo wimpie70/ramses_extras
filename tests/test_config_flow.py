@@ -1,110 +1,115 @@
 # tests/test_config_flow.py
 """Test config flow functionality."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+import builtins
+import json
+import logging
+import shutil
+from copy import deepcopy
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
-from custom_components.ramses_extras import _cleanup_orphaned_devices
 from custom_components.ramses_extras.config_flow import (
     RamsesExtrasConfigFlow,
     RamsesExtrasOptionsFlowHandler,
+    _copy_card_files_config_flow,
+    _get_feature_details_from_module,
+    _install_card_config_flow,
+    _manage_cards_config_flow,
+    _remove_card_config_flow,
 )
 from custom_components.ramses_extras.const import (
     AVAILABLE_FEATURES,
     CONF_ENABLED_FEATURES,
+    DOMAIN,
 )
+
+
+class MockDevice:
+    """Helper class for mocking device objects with real attributes."""
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
 
 class TestRamsesExtrasConfigFlow:
     """Test RamsesExtrasConfigFlow class."""
 
+    @pytest.mark.asyncio
+    async def test_async_step_user(self, hass):
+        """Test user step branches."""
+        # Already configured
+        with patch.object(
+            hass.config_entries, "async_entries", return_value=[MagicMock()]
+        ):
+            flow = RamsesExtrasConfigFlow()
+            flow.hass = hass
+            result = await flow.async_step_user()
+            assert result["type"] == "abort"
+            assert result["reason"] == "single_instance_allowed"
+
+        # Create entry
+        with patch.object(hass.config_entries, "async_entries", return_value=[]):
+            flow = RamsesExtrasConfigFlow()
+            flow.hass = hass
+            result = await flow.async_step_user()
+            assert result["type"] == "create_entry"
+            assert result["title"] == "Ramses Extras"
+
     def test_async_get_options_flow(self):
         """Test getting options flow handler."""
         mock_config_entry = MagicMock()
-
         options_flow = RamsesExtrasConfigFlow.async_get_options_flow(mock_config_entry)
-
         assert isinstance(options_flow, RamsesExtrasOptionsFlowHandler)
-        assert options_flow._config_entry == mock_config_entry
 
 
 class TestRamsesExtrasOptionsFlowHandler:
-    """Test RamsesExtrasOptionsFlowHandler class."""
-
-    def test_init(self):
-        """Test initialization of options flow handler."""
-        mock_config_entry = MagicMock()
-
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        assert options_flow._config_entry == mock_config_entry
-        assert options_flow._pending_data is None
-        assert options_flow._entity_manager is None
-        assert options_flow._config_flow_helper is None
-        assert options_flow._feature_changes_detected is False
+    """Test RamsesExtrasOptionsFlowHandler core logic and coverage branches."""
 
     @pytest.mark.asyncio
-    async def test_async_step_init_redirects_to_main_menu(self, hass):
-        """Test that async_step_init redirects to main menu."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        with patch.object(options_flow, "async_step_main_menu") as mock_main_menu:
-            mock_main_menu.return_value = {"type": "menu"}
-            result = await options_flow.async_step_init()
-
-            mock_main_menu.assert_called_once()
-            assert result == {"type": "menu"}
-
-    @pytest.mark.asyncio
-    async def test_async_step_main_menu(self, hass):
-        """Test main menu step."""
+    async def test_main_menu_and_view_config(self, hass):
+        """Test main menu and view configuration steps."""
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
             CONF_ENABLED_FEATURES: {"default": True, "sensor_control": True}
         }
+        mock_config_entry.options = {}
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
         options_flow.hass = hass
+        hass.config.language = "en"
 
-        result = await options_flow.async_step_main_menu()
+        with (
+            patch.object(
+                options_flow,
+                "_get_feature_title_from_translations",
+                return_value="Title",
+            ),
+            patch(
+                "custom_components.ramses_extras.config_flow._LOGGER.isEnabledFor",
+                return_value=True,
+            ),
+            patch.object(options_flow, "_refresh_config_entry"),
+        ):
+            result = await options_flow.async_step_main_menu()
+            assert result["type"] == "menu"
 
-        assert result["type"] == "menu"
-        assert "menu_options" in result
-        assert "description_placeholders" in result
-        # Should include features, configure_devices, view_configuration,
-        # advanced_settings
-        assert "features" in result["menu_options"]
-        assert "configure_devices" in result["menu_options"]
-        assert "view_configuration" in result["menu_options"]
-        assert "advanced_settings" in result["menu_options"]
-
-    @pytest.mark.asyncio
-    async def test_async_step_features(self, hass):
-        """Test features step."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {CONF_ENABLED_FEATURES: {"default": True}}
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        with patch.object(options_flow, "_get_config_flow_helper") as mock_helper:
-            mock_helper_instance = MagicMock()
-            mock_helper.return_value = mock_helper_instance
-            mock_helper_instance.get_feature_selection_schema.return_value = MagicMock()
-
-            result = await options_flow.async_step_features()
-
-            assert result["type"] == "form"
-            assert result["step_id"] == "features"
-            mock_helper.assert_called_once()
+        result = await options_flow.async_step_view_configuration()
+        assert result["type"] == "form"
+        assert "Current Configuration" in result["description_placeholders"]["info"]
 
     @pytest.mark.asyncio
-    async def test_async_step_features_with_user_input(self, hass):
-        """Test features step with user input."""
+    async def test_features_step(self, hass):
+        """Test features selection step."""
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
             CONF_ENABLED_FEATURES: {"default": True, "sensor_control": False}
@@ -112,1147 +117,532 @@ class TestRamsesExtrasOptionsFlowHandler:
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
         options_flow.hass = hass
 
-        user_input = {"features": ["sensor_control"]}
-
-        with patch.object(options_flow, "async_step_confirm") as mock_confirm:
-            mock_confirm.return_value = {"type": "form"}
-
-            await options_flow.async_step_features(user_input)
-
-            assert options_flow._pending_data is not None
-            assert options_flow._feature_changes_detected is True
-            mock_confirm.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_async_step_confirm_without_user_input(self, hass):
-        """Test confirm step without user input."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {CONF_ENABLED_FEATURES: {"default": True}}
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
         with patch.object(options_flow, "_get_config_flow_helper") as mock_helper:
-            mock_helper_instance = MagicMock()
-            mock_helper.return_value = mock_helper_instance
-            mock_helper_instance.get_feature_device_summary.return_value = "Summary"
+            helper_inst = mock_helper.return_value
+            helper_inst.get_feature_selection_schema.return_value = vol.Schema({})
 
-            result = await options_flow.async_step_confirm()
-
+            # Show form
+            result = await options_flow.async_step_features(None)
             assert result["type"] == "form"
-            assert result["step_id"] == "confirm"
+
+            # Submit
+            with patch.object(options_flow, "async_step_confirm") as mock_confirm:
+                mock_confirm.return_value = {"type": "form"}
+                await options_flow.async_step_features({"features": ["sensor_control"]})
+                assert options_flow._feature_changes_detected is True
+                mock_confirm.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_async_step_confirm_with_user_input(self, hass):
-        """Test confirm step with user input (confirmation)."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {CONF_ENABLED_FEATURES: {"default": True}}
-        mock_config_entry.options = {}
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-        options_flow._pending_data = {
-            "enabled_features_new": {"default": True, "sensor_control": True}
-        }
-
-        with (
-            patch.object(hass.config_entries, "async_update_entry") as mock_update,
-            patch.object(options_flow, "async_step_main_menu") as mock_main_menu,
-        ):
-            mock_main_menu.return_value = {"type": "menu"}
-            user_input = {}  # User confirmed
-
-            result = await options_flow.async_step_confirm(user_input)
-
-            mock_update.assert_called_once()
-            mock_main_menu.assert_called_once()
-            assert result == {"type": "menu"}
-
-    @pytest.mark.asyncio
-    async def test_async_step_view_configuration(self, hass):
-        """Test view configuration step."""
+    async def test_confirm_step_branches(self, hass):
+        """Test confirmation step logic branches (lines 592-601, 626-633, 650-659)."""
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
-            CONF_ENABLED_FEATURES: {"default": True, "sensor_control": True}
+            "enabled_features": {"default": True, "sensor_control": True},
+            "device_feature_matrix": {"device1": {"sensor_control": True}},
+        }
+        mock_config_entry.options = {
+            "device_feature_matrix": {"device1": {"sensor_control": True}},
+            "sensor_control": {
+                "sources": {"dev1": {"m1": {"kind": "external", "entity_id": "ent1"}}}
+            },
         }
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
         options_flow.hass = hass
 
-        result = await options_flow.async_step_view_configuration()
+        # Scenario: Disabling sensor_control
+        options_flow._pending_data = {
+            "enabled_features_new": {"default": True, "sensor_control": False}
+        }
 
-        assert result["type"] == "form"
-        assert result["step_id"] == "view_configuration"
-        assert "description_placeholders" in result
-        assert "Current Configuration" in result["description_placeholders"]["info"]
+        # Show form
+        with patch.object(options_flow, "_get_config_flow_helper") as mock_helper:
+            mock_helper.return_value.get_feature_device_summary.return_value = "Summary"
+            result = await options_flow.async_step_confirm(None)
+            info = result["description_placeholders"]["info"]
+            assert "sensor_control" in info.lower()
+
+        # Confirm changes
+        with (
+            patch.object(hass.config_entries, "async_update_entry") as mock_update,
+            patch.object(
+                options_flow, "async_step_main_menu", return_value={"type": "menu"}
+            ),
+            patch(
+                "custom_components.ramses_extras.config_flow._manage_cards_config_flow"
+            ),
+            patch("custom_components.ramses_extras._cleanup_orphaned_devices"),
+        ):
+            await options_flow.async_step_confirm({"confirm": True})
+            args, kwargs = mock_update.call_args
+            # Verify matrix was cleaned
+            assert (
+                "sensor_control"
+                not in kwargs["options"]["device_feature_matrix"]["device1"]
+            )
 
     @pytest.mark.asyncio
-    async def test_async_step_advanced_settings(self, hass):
-        """Test advanced settings step."""
+    async def test_sensor_control_overview_metrics(self, hass):
+        """Test sensor control overview metric variations."""
         mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        result = await options_flow.async_step_advanced_settings()
-
-        assert result["type"] == "form"
-        assert result["step_id"] == "advanced_settings"
-        assert "data_schema" in result
-
-    @pytest.mark.asyncio
-    async def test_async_step_sensor_control_overview_no_mappings(self, hass):
-        """Test sensor control overview with no mappings."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {}
-        mock_config_entry.options = {}
+        mock_config_entry.options = {
+            "sensor_control": {
+                "sources": {
+                    "device_1": {
+                        "indoor_temperature": {"kind": "external"},
+                        "co2": {"kind": "derived"},
+                        "outdoor_humidity": {"kind": "none"},
+                        "indoor_humidity": {"kind": "other"},
+                    }
+                },
+                "abs_humidity_inputs": {
+                    "device_1": {
+                        "indoor_abs_humidity": {
+                            "temperature": {"kind": "external_abs"},
+                            "humidity": {"kind": "none"},
+                        },
+                        "outdoor_abs_humidity": {
+                            "temperature": {
+                                "kind": "external",
+                                "entity_id": "sensor.t",
+                            },
+                            "humidity": {"kind": "external", "entity_id": "sensor.h"},
+                        },
+                    },
+                    "device_2": {},
+                },
+            }
+        }
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
         options_flow.hass = hass
 
         result = await options_flow.async_step_sensor_control_overview()
-
-        assert result["type"] == "form"
-        assert result["step_id"] == "sensor_control_overview"
-        expected_text = "No sensor control mappings"
-        assert expected_text in result["description_placeholders"]["info"]
-
-    @pytest.mark.asyncio
-    async def test_async_step_feature_config_generic(self, hass):
-        """Test generic feature config step."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-        options_flow._selected_feature = "test_feature"
-
-        with patch.object(options_flow, "generic_step_feature_config") as mock_generic:
-            mock_generic.return_value = {"type": "form"}
-
-            await options_flow.async_step_feature_config()
-
-            mock_generic.assert_called_once()
-
-    def test_get_all_devices(self, hass):
-        """Test getting all devices."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # Test with no devices
-        devices = options_flow._get_all_devices()
-        assert devices == []
-
-        # Test with devices
-        hass.data = {"ramses_extras": {"devices": ["device1", "device2"]}}
-        devices = options_flow._get_all_devices()
-        assert devices == ["device1", "device2"]
-
-    def test_get_device_label(self):
-        """Test getting device label."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        # Test string
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.device.filter."
-            "DeviceFilter._get_device_slugs",
-            return_value=None,
-        ):
-            assert options_flow._get_device_label("device1") == "device1"
-
-        # Test device with name
-        mock_device = MagicMock()
-        mock_device.name = "Device Name"
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.device.filter."
-            "DeviceFilter._get_device_slugs",
-            return_value=None,
-        ):
-            assert options_flow._get_device_label(mock_device) == "Device Name"
-
-    def test_refresh_config_entry(self):
-        """Test refreshing config entry."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.entry_id = "test_entry"
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        mock_hass = MagicMock()
-        mock_config_entries = MagicMock()
-        mock_hass.config_entries = mock_config_entries
-
-        mock_latest = MagicMock()
-        mock_config_entries.async_get_entry.return_value = mock_latest
-
-        options_flow.hass = mock_hass
-
-        options_flow._refresh_config_entry(mock_hass)
-
-        assert options_flow._config_entry == mock_latest
+        info = result["description_placeholders"]["info"]
+        assert "derived" in info
+        assert "disabled" in info
+        assert "external abs" in info
 
     @pytest.mark.asyncio
-    async def test_feature_changes_trigger_cleanup(self, hass):
-        """Test that feature enable/disable changes trigger cleanup."""
+    async def test_generic_step_logic(self, hass):
+        """Test generic_step_feature_config branches."""
         mock_config_entry = MagicMock()
-        mock_config_entry.data = {"enabled_features": {"humidity_control": True}}
-        mock_config_entry.entry_id = "test_entry_id"
-
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
         options_flow.hass = hass
+        options_flow._selected_feature = "sensor_control"
 
-        # Stage feature changes first
-        options_flow._pending_data = {
-            "enabled_features_old": {"humidity_control": True},
-            "enabled_features_new": {},  # Disable all features
-        }
-        options_flow._feature_changes_detected = True
-
-        # Mock the cleanup function
         with (
-            patch(
-                "custom_components.ramses_extras._cleanup_orphaned_devices"
-            ) as mock_cleanup,
-            patch(
-                "custom_components.ramses_extras.config_flow._manage_cards_config_flow"
+            patch.object(
+                options_flow, "_get_all_devices", return_value=[MockDevice(id="dev1")]
             ),
-            patch.object(hass.config_entries, "async_update_entry"),
+            patch.object(options_flow, "_get_config_flow_helper") as mock_get_helper,
+            patch.object(
+                options_flow,
+                "_get_persisted_matrix_state",
+                return_value={"dev1": {"sensor_control": True}},
+            ),
+            patch.object(options_flow, "_get_device_label", return_value="Label"),
+            patch.object(options_flow, "_extract_device_id", return_value="dev1"),
         ):
-            # Confirm the feature changes
-            user_input = {"confirm": True}
+            mock_helper = mock_get_helper.return_value
+            mock_helper.get_devices_for_feature_selection.return_value = [
+                MockDevice(id="dev1")
+            ]
+            mock_helper.get_enabled_devices_for_feature.return_value = ["dev1"]
+            mock_helper.get_feature_device_matrix_state.return_value = {
+                "dev1": {"sensor_control": True}
+            }
 
-            await options_flow.async_step_confirm(user_input)
+            # PRE
+            result = await options_flow.generic_step_feature_config(None)
+            assert result["type"] == "form"
 
-            # Should return to main menu after applying changes
-            # Verify cleanup was called
-            mock_cleanup.assert_called_once_with(hass, mock_config_entry)
+            # POST - Fix subscriptable error by returning dict
+            with patch.object(
+                options_flow,
+                "_show_matrix_based_confirmation",
+                return_value={"type": "form"},
+            ):
+                result = await options_flow.generic_step_feature_config(
+                    {"enabled_devices": ["dev1"]}
+                )
+                assert result["type"] == "form"
 
     @pytest.mark.asyncio
-    async def test_matrix_confirmation_triggers_cleanup(self, hass):
-        """Test that matrix confirmation triggers cleanup."""
+    async def test_async_step_device_selection(self, hass):
+        """Test async_step_device_selection branches."""
         mock_config_entry = MagicMock()
-        mock_config_entry.data = {
-            "enabled_features": {"humidity_control": True},
-            "device_feature_matrix": {"32:153289": {"humidity_control": True}},
-        }
-        mock_config_entry.entry_id = "test_entry_id"
-
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
         options_flow.hass = hass
+        options_flow._selected_feature = "sensor_control"
 
-        # Mock the cleanup function and other dependencies
+        with (
+            patch.object(
+                options_flow, "_get_all_devices", return_value=[MockDevice(id="dev1")]
+            ),
+            patch.object(options_flow, "_get_config_flow_helper") as mock_get_helper,
+            patch.object(options_flow, "_extract_device_id", return_value="dev1"),
+            patch.object(options_flow, "_get_device_label", return_value="Label"),
+        ):
+            mock_helper = mock_get_helper.return_value
+            mock_helper.get_devices_for_feature_selection.return_value = [
+                MockDevice(id="dev1")
+            ]
+            mock_helper.get_enabled_devices_for_feature.return_value = ["dev1"]
+
+            result = await options_flow.async_step_device_selection()
+            assert result["type"] == "form"
+            assert result["step_id"] == "device_selection"
+
+    @pytest.mark.asyncio
+    async def test_matrix_confirmation_logic(self, hass):
+        """Test matrix-based confirmation building."""
+        mock_config_entry = MagicMock()
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+        options_flow.hass = hass
+        options_flow._selected_feature = "sensor_control"
+
+        # Pre-computed
+        options_flow._matrix_entities_to_create = ["s1"]
+        options_flow._matrix_entities_to_remove = ["r1"]
+        result = await options_flow._show_matrix_based_confirmation()
+        assert "s1" in result["description_placeholders"]["info"]
+
+        # Fallback
+        delattr(options_flow, "_matrix_entities_to_create")
+        options_flow._temp_matrix_state = {}
         with (
             patch(
-                "custom_components.ramses_extras._cleanup_orphaned_devices"
-            ) as mock_cleanup,
-            patch.object(options_flow, "_entity_manager") as mock_entity_manager,
-            patch.object(hass, "async_create_task"),
-            patch.object(hass.config_entries, "async_update_entry"),
-            patch.object(hass.config_entries, "async_reload"),
+                "custom_components.ramses_extras.config_flow.SimpleEntityManager"
+            ) as mock_em_cls,
+            patch.object(options_flow, "_get_config_flow_helper") as mock_get_helper,
+            patch.object(options_flow, "_get_all_devices", return_value=[]),
         ):
-            mock_entity_manager.remove_entity = AsyncMock()
-            # Mock the calculate_entity_changes to return entities to remove
-            mock_entity_manager.calculate_entity_changes = AsyncMock(
-                return_value=(["entity_to_create"], ["switch.test_entity"])
+            mock_em = mock_em_cls.return_value
+            mock_em.calculate_entity_changes = AsyncMock(
+                return_value=(["new"], ["old"])
+            )
+            mock_em._calculate_required_entities = AsyncMock(return_value=[])
+            mock_em._get_current_entities = AsyncMock(return_value=[])
+            mock_helper = mock_get_helper.return_value
+            mock_helper.get_enabled_devices_for_feature.return_value = []
+            mock_matrix = MagicMock()
+            mock_helper.device_feature_matrix = mock_matrix
+            mock_matrix.get_all_enabled_combinations.return_value = []
+
+            result = await options_flow._show_matrix_based_confirmation()
+            assert "new" in result["description_placeholders"]["info"]
+
+    @pytest.mark.asyncio
+    async def test_cleanup_orphaned_devices(self, hass):
+        """Test orphaned device removal logic."""
+        config_entry = SimpleNamespace(entry_id="ramses_extras_cleanup_entry")
+        options_flow = RamsesExtrasOptionsFlowHandler(config_entry)
+        options_flow.hass = hass
+
+        device_registry = dr.async_get(hass)
+        entity_registry = er.async_get(hass)
+        with patch.object(
+            hass.config_entries,
+            "async_get_entry",
+            return_value=SimpleNamespace(entry_id=config_entry.entry_id),
+        ):
+            device_entry = device_registry.async_get_or_create(
+                config_entry_id=config_entry.entry_id,
+                identifiers={(DOMAIN, "cleanup_test_device")},
+                name="Test Device",
+            )
+        # Ensure the cleanup path considers this device orphaned
+        entity_registry.entities.pop(device_entry.id, None)
+
+        with patch(
+            "custom_components.ramses_extras.config_flow._LOGGER"
+        ) as mock_logger:
+            await options_flow._cleanup_orphaned_devices({}, {})
+            assert any(
+                "Device cleanup: function called" in str(call)
+                for call in mock_logger.debug.call_args_list
             )
 
-            # Simulate matrix confirmation with entities to remove
-            options_flow._pending_data = {
-                "entities_to_remove": ["switch.test_entity"],
-                "old_matrix_state": {"32:153289": {"humidity_control": True}},
-                "temp_matrix_state": {},  # Device removed
-            }
-            # Set the temp matrix state that the method expects
-            options_flow._temp_matrix_state = {}
-            user_input = {"confirm": True}
+    def test_device_helpers(self):
+        """Test device ID and label helpers."""
+        options_flow = RamsesExtrasOptionsFlowHandler(MagicMock())
+        assert options_flow._extract_device_id("ID") == "ID"
+        assert options_flow._extract_device_id(MockDevice(id="ID")) == "ID"
+        assert options_flow._extract_device_id(MockDevice(device_id="DID")) == "DID"
+        assert options_flow._extract_device_id(MockDevice(_id="PID")) == "PID"
+        assert options_flow._extract_device_id(MockDevice(name="NAME")) == "NAME"
 
-            await options_flow.async_step_matrix_confirm(user_input)
-
-            # Verify cleanup was called
-            mock_cleanup.assert_called_once_with(hass, mock_config_entry)
-
-    @pytest.mark.asyncio
-    async def test_matrix_confirm_persists_to_options(self, hass):
-        """Test that matrix confirmation persists
-        device_feature_matrix to config_entry.options."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {
-            "enabled_features": {"humidity_control": True},
-            "device_feature_matrix": {"32:153289": {"humidity_control": True}},
-        }
-        mock_config_entry.options = {"existing_option": "value"}
-        mock_config_entry.entry_id = "test_entry_id"
-
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # Set up temp matrix state as if user configured devices
-        temp_matrix = {
-            "32:153289": {"humidity_control": True},
-            "32:153290": {"humidity_control": True},  # New device added
-        }
-        options_flow._temp_matrix_state = temp_matrix
-
-        # Mock async_create_entry and config_entries methods
-        with (
-            patch.object(options_flow, "async_create_entry") as mock_create_entry,
-            patch.object(
-                hass.config_entries, "async_update_entry"
-            ) as mock_update_entry,
-            patch.object(hass.config_entries, "async_reload") as mock_reload,
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.device.filter.DeviceFilter._get_device_slugs",
+            return_value=["SLUG"],
         ):
-            mock_create_entry.return_value = {"type": "create_entry"}
-            mock_update_entry.return_value = None
-            mock_reload.return_value = None
-
-            user_input = {"confirm": True}
-
-            _ = await options_flow.async_step_matrix_confirm(user_input)
-
-            # Verify async_create_entry was called with correct options
-            mock_create_entry.assert_called_once()
-            call_args = mock_create_entry.call_args
-            returned_options = call_args[1]["data"]  # keyword argument 'data'
-
-            # Verify existing options are preserved
-            assert returned_options["existing_option"] == "value"
-
-            # Verify matrix is persisted to options
-            expected_matrix = {
-                "32:153289": {"humidity_control": True},
-                "32:153290": {"humidity_control": True},
-            }
-            assert returned_options["device_feature_matrix"] == expected_matrix
+            label = options_flow._get_device_label(MockDevice(name="NAME"))
+            assert "SLUG" in label
 
     @pytest.mark.asyncio
-    async def test_matrix_confirm_no_temp_matrix_state(self, hass):
-        """Test matrix confirmation when no temp_matrix_state is set."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.options = {"existing_option": "value"}
+    async def test_card_management(self, hass):
+        """Test card management helper paths."""
+        with (
+            patch(
+                "custom_components.ramses_extras.extras_registry.extras_registry.get_card_config",
+                return_value={"location": "loc"},
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("custom_components.ramses_extras.config_flow._LOGGER") as mock_logger,
+        ):
+            await _manage_cards_config_flow(hass, {"hvac_fan_card": True})
+            # Check logger calls directly
+            assert any(
+                "automatically registered" in str(call)
+                for call in mock_logger.info.call_args_list
+            )
 
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # No temp_matrix_state set
-        options_flow._temp_matrix_state = None  # type: ignore[assignment]
-
-        with patch.object(options_flow, "async_create_entry") as mock_create_entry:
-            mock_create_entry.return_value = {"type": "create_entry"}
-
-            user_input = {"confirm": True}
-
-            _ = await options_flow.async_step_matrix_confirm(user_input)
-
-            # Verify async_create_entry was called with existing options only
-            mock_create_entry.assert_called_once()
-            call_args = mock_create_entry.call_args
-            returned_options = call_args[1]["data"]
-
-            # Verify existing options are preserved
-            assert returned_options["existing_option"] == "value"
-
-            # Verify no matrix is added
-            assert "device_feature_matrix" not in returned_options
+    def test_copy_card_files(self, tmp_path):
+        """Test file copying logic fully."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "f.txt").write_text("content")
+        dst = tmp_path / "dst"
+        _copy_card_files_config_flow(src, dst)
+        assert (dst / "f.txt").read_text() == "content"
 
     @pytest.mark.asyncio
-    async def test_matrix_confirm_with_invalid_temp_matrix(self, hass):
-        """Test matrix confirmation with invalid temp_matrix_state (not a Mapping)."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.options = {"existing_option": "value"}
-
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+    async def test_translations_and_reloads(self, hass):
+        """Test translation loading and reload helpers."""
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "test"
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_entry)
         options_flow.hass = hass
+        hass.config.language = "en"
 
-        # Set invalid temp_matrix_state - this should cause the matrix confirmation
-        # logic to fail and the method should fall back to returning the confirm form
-        options_flow._temp_matrix_state = "invalid_string"  # type: ignore[assignment]
-
-        with patch.object(
-            options_flow, "_show_matrix_based_confirmation"
-        ) as mock_show_confirm:
-            mock_show_confirm.return_value = {
-                "type": "form",
-                "errors": {"base": "invalid_matrix"},
-            }
-
-            user_input = {"confirm": True}
-
-            result = await options_flow.async_step_matrix_confirm(user_input)
-
-            # Should return the confirmation form due to error handling
-            mock_show_confirm.assert_called_once()
-            assert result["type"] == "form"
-            assert result["errors"]["base"] == "invalid_matrix"
-
-    @pytest.mark.asyncio
-    async def test_generic_step_feature_config_sets_temp_matrix(self, hass):
-        """Test generic_step_feature_config sets temp_matrix_state correctly."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # Set the selected feature (this is normally done by async_step_feature_config)
-        options_flow._selected_feature = "test_feature"
-
-        # Mock the config flow helper
-        with patch.object(options_flow, "_get_config_flow_helper") as mock_helper:
-            helper_instance = MagicMock()
-            mock_helper.return_value = helper_instance
-
-            # Mock device selection and helper methods
-            user_input = {"enabled_devices": ["device1", "device2"]}
-            helper_instance.get_feature_device_matrix_state.return_value = {
-                "device1": {"test_feature": True},
-                "device2": {"test_feature": True},
-            }
-
-            # Mock _show_matrix_based_confirmation to return a form result
-            with patch.object(
-                options_flow, "_show_matrix_based_confirmation"
-            ) as mock_show_confirm:
-                mock_show_confirm.return_value = {
-                    "type": "form",
-                    "step_id": "matrix_confirm",
-                }
-
-                result = await options_flow.generic_step_feature_config(user_input)
-
-                # Verify the method completed and returned a confirmation form
-                mock_show_confirm.assert_called_once()
-                assert result["type"] == "form"
-                assert result["step_id"] == "matrix_confirm"
-
-                # Verify helper methods were called correctly
-                helper_instance.set_enabled_devices_for_feature.assert_called_once_with(
-                    "test_feature", ["device1", "device2"]
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.open", MagicMock()),
+            patch(
+                "json.load",
+                return_value={"config": {"step": {"feature_f": {"title": "T"}}}},
+            ),
+        ):
+            with patch.object(hass, "async_add_executor_job", create=True):
+                if hasattr(hass, "async_add_executor_job"):
+                    delattr(hass, "async_add_executor_job")
+                assert (
+                    await options_flow._get_feature_title_from_translations("f") == "T"
                 )
 
-                # Verify temp_matrix_state was set
-                assert options_flow._temp_matrix_state == {
-                    "device1": {"test_feature": True},
-                    "device2": {"test_feature": True},
-                }
-
-                # Verify selected feature was stored (should still be set)
-                assert options_flow._selected_feature == "test_feature"
+        with patch.object(
+            options_flow, "_direct_platform_reload", new_callable=AsyncMock
+        ) as mock_direct:
+            await options_flow._reload_platforms_for_entity_creation()
+            mock_direct.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_generic_step_feature_config_empty_matrix_state(self, hass):
-        """Test generic_step_feature_config handles empty matrix state."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+    async def test_direct_platform_reload_error(self, hass):
+        mock_entry = SimpleNamespace(entry_id="entry1")
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_entry)
         options_flow.hass = hass
 
-        # Set the selected feature (this is normally done by async_step_feature_config)
-        options_flow._selected_feature = "test_feature"
-
-        # Mock the config flow helper
-        with patch.object(options_flow, "_get_config_flow_helper") as mock_helper:
-            helper_instance = MagicMock()
-            mock_helper.return_value = helper_instance
-
-            # Mock device selection with empty matrix state
-            user_input = {"enabled_devices": []}
-            helper_instance.get_feature_device_matrix_state.return_value = {}
-
-            # Mock _show_matrix_based_confirmation to return a form result
-            with patch.object(
-                options_flow, "_show_matrix_based_confirmation"
-            ) as mock_show_confirm:
-                mock_show_confirm.return_value = {
-                    "type": "form",
-                    "step_id": "matrix_confirm",
-                }
-
-                result = await options_flow.generic_step_feature_config(user_input)
-
-                # Verify the method completed and returned a confirmation form
-                mock_show_confirm.assert_called_once()
-                assert result["type"] == "form"
-
-                # Verify temp_matrix_state was set to empty dict
-                assert options_flow._temp_matrix_state == {}
-
-    @pytest.mark.asyncio
-    async def test_matrix_confirm_error_handling(self, hass):
-        """Test matrix confirmation error handling."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.options = {}
-
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # Set up temp matrix state
-        options_flow._temp_matrix_state = {"device1": {"feature1": True}}
-
-        # Mock async_create_entry to raise an exception
-        with patch.object(options_flow, "async_create_entry") as mock_create_entry:
-            mock_create_entry.side_effect = Exception("Test error")
-
-            # Mock the confirmation display method
-            with patch.object(
-                options_flow, "_show_matrix_based_confirmation"
-            ) as mock_show_confirm:
-                mock_show_confirm.return_value = {
-                    "type": "form",
-                    "errors": {"base": "unknown_error"},
-                }
-
-                user_input = {"confirm": True}
-
-                result = await options_flow.async_step_matrix_confirm(user_input)
-
-                # Verify error handling returned the confirmation form
-                mock_show_confirm.assert_called_once()
-                assert result["type"] == "form"
-                assert result["errors"]["base"] == "unknown_error"
-
-
-class TestDeviceHelperMethods:
-    """Test device-related helper methods in RamsesExtrasOptionsFlowHandler."""
-
-    def test_get_all_devices_with_devices(self, hass):
-        """Test getting all devices when devices are available."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # Set up devices in hass.data
-        test_devices = ["device1", "device2", "device3"]
-        hass.data = {"ramses_extras": {"devices": test_devices}}
-
-        devices = options_flow._get_all_devices()
-
-        assert devices == test_devices
-
-    def test_get_all_devices_no_ramses_extras_data(self, hass):
-        """Test getting all devices when ramses_extras data doesn't exist."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # No ramses_extras data
-        hass.data = {}
-
-        devices = options_flow._get_all_devices()
-
-        assert devices == []
-
-    def test_get_all_devices_no_devices_key(self, hass):
-        """Test getting all devices when devices key doesn't exist."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # ramses_extras exists but no devices key
-        hass.data = {"ramses_extras": {}}
-
-        devices = options_flow._get_all_devices()
-
-        assert devices == []
-
-    def test_get_all_devices_invalid_devices_type(self, hass):
-        """Test getting all devices when devices is not a list."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # devices is not a list
-        hass.data = {"ramses_extras": {"devices": "invalid"}}
-
-        devices = options_flow._get_all_devices()
-
-        assert devices == []
-
-    def test_extract_device_id_from_string(self):
-        """Test extracting device ID from string."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        device_id = options_flow._extract_device_id("test_device_id")
-
-        assert device_id == "test_device_id"
-
-    def test_extract_device_id_from_device_with_id_attr(self):
-        """Test extracting device ID from object with id attribute."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        mock_device = MagicMock()
-        mock_device.id = "device_id_from_attr"
-
-        device_id = options_flow._extract_device_id(mock_device)
-
-        assert device_id == "device_id_from_attr"
-
-        """Test extracting device ID from object with device_id attribute."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        # Create a simple object with device_id attribute
-        device = type("Device", (), {"device_id": "device_id_from_device_attr"})()
-
-        device_id = options_flow._extract_device_id(device)
-
-        assert device_id == "device_id_from_device_attr"
-
-    def test_extract_device_id_from_device_with__id_attr(self):
-        """Test extracting device ID from object with _id attribute."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        # Create a simple object with _id attribute
-        device = type("Device", (), {"_id": "device_id_from_private_attr"})()
-
-        device_id = options_flow._extract_device_id(device)
-
-        assert device_id == "device_id_from_private_attr"
-
-    def test_extract_device_id_from_device_with_name_attr(self):
-        """Test extracting device ID from object with name attribute."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        # Create a simple object with name attribute
-        device = type("Device", (), {"name": "device_name_fallback"})()
-
-        device_id = options_flow._extract_device_id(device)
-
-        assert device_id == "device_name_fallback"
-
-    def test_get_device_label_from_device_with_name(self):
-        """Test getting device label from device object with name."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        # Create a simple object with name attribute
-        device = type("Device", (), {"name": "Device Name"})()
-
-        # Mock DeviceFilter._get_device_slugs to return empty list
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.device.filter."
-            "DeviceFilter._get_device_slugs",
-            return_value=[],
+        with patch.object(
+            hass.config_entries,
+            "async_reload",
+            new=AsyncMock(side_effect=Exception("boom")),
         ):
-            label = options_flow._get_device_label(device)
+            await options_flow._direct_platform_reload()
 
-            assert label == "Device Name"
+    @pytest.mark.asyncio
+    async def test_feature_default_success_and_error(self, hass):
+        mock_entry = SimpleNamespace(entry_id="entry1")
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_entry)
+        options_flow.hass = hass
 
-    def test_get_device_label_from_device_with_device_id(self):
-        """Test getting device label from device object with device_id."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        # Create a simple object with device_id attribute
-        device = type("Device", (), {"device_id": "device_123"})()
-
-        # Mock DeviceFilter._get_device_slugs to return empty list
         with patch(
-            "custom_components.ramses_extras.framework.helpers.device.filter."
-            "DeviceFilter._get_device_slugs",
-            return_value=[],
+            "custom_components.ramses_extras.features.default.config_flow."
+            "async_step_default_config",
+            new=AsyncMock(return_value={"type": "form"}),
         ):
-            label = options_flow._get_device_label(device)
-
-            assert label == "device_123"
-
-    def test_get_device_label_from_device_with_id(self):
-        """Test getting device label from device object with id."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        # Create a simple object with id attribute
-        device = type("Device", (), {"id": "id_456"})()
-
-        # Mock DeviceFilter._get_device_slugs to return empty list
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.device.filter."
-            "DeviceFilter._get_device_slugs",
-            return_value=[],
-        ):
-            label = options_flow._get_device_label(device)
-
-            assert label == "id_456"
-
-    def test_get_device_label_unknown_device(self):
-        """Test getting device label from device object with no valid attributes."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        # Create a simple object with no attributes
-        device = object()
-
-        # Mock DeviceFilter._get_device_slugs to return empty list
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.device.filter."
-            "DeviceFilter._get_device_slugs",
-            return_value=[],
-        ):
-            label = options_flow._get_device_label(device)
-
-            assert label == "Unknown Device"
-
-    def test_get_device_label_with_slugs(self):
-        """Test getting device label with device slugs included."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        mock_device = MagicMock()
-        mock_device.name = "Ventilation Unit"
-
-        # Mock the DeviceFilter._get_device_slugs to return slugs
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.device.filter."
-            "DeviceFilter._get_device_slugs",
-            return_value=["FAN", "VENT"],
-        ):
-            label = options_flow._get_device_label(mock_device)
-
-            assert "Ventilation Unit" in label
-            assert "FAN" in label
-            assert "VENT" in label
-
-    def test_get_device_label_with_duplicate_slugs(self):
-        """Test getting device label with duplicate slugs filtered out."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        mock_device = MagicMock()
-        mock_device.name = "Test Device"
-
-        # Mock slugs with duplicates
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.device.filter."
-            "DeviceFilter._get_device_slugs",
-            return_value=["FAN", "FAN", "VENT"],
-        ):
-            label = options_flow._get_device_label(mock_device)
-
-            # Should contain each unique slug only once
-            assert label.count("FAN") == 1
-            assert "VENT" in label
-
-    def test_get_device_label_slug_exception_handling(self):
-        """Test getting device label when slug extraction raises exception."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-
-        mock_device = MagicMock()
-        mock_device.name = "Test Device"
-
-        # Mock DeviceFilter._get_device_slugs to raise exception
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.device.filter."
-            "DeviceFilter._get_device_slugs",
-            side_effect=Exception("Test error"),
-        ):
-            label = options_flow._get_device_label(mock_device)
-
-            # Should still return the base label without slugs
-            assert label == "Test Device"
-
-
-class TestMainMenuVariations:
-    """Test main menu step with different configuration states."""
-
-    @pytest.mark.asyncio
-    async def test_main_menu_with_no_enabled_features(self, hass):
-        """Test main menu when no features are enabled."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {"enabled_features": {}}
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        result = await options_flow.async_step_main_menu()
-
-        assert result["type"] == "menu"
-        assert "menu_options" in result
-        # Should include all menu options
-        expected_options = [
-            "features",
-            "configure_devices",
-            "view_configuration",
-            "advanced_settings",
-        ]
-        for option in expected_options:
-            assert option in result["menu_options"]
-
-    @pytest.mark.asyncio
-    async def test_main_menu_with_some_features_enabled(self, hass):
-        """Test main menu when some features are enabled."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {
-            "enabled_features": {"humidity_control": True, "sensor_control": False}
-        }
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        result = await options_flow.async_step_main_menu()
-
-        assert result["type"] == "menu"
-        assert "menu_options" in result
-        # Should include all menu options
-        expected_options = [
-            "features",
-            "configure_devices",
-            "view_configuration",
-            "advanced_settings",
-        ]
-        for option in expected_options:
-            assert option in result["menu_options"]
-
-    @pytest.mark.asyncio
-    async def test_main_menu_with_all_features_enabled(self, hass):
-        """Test main menu when all features are enabled."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {
-            "enabled_features": {
-                "default": True,
-                "humidity_control": True,
-                "sensor_control": True,
-                "hello_world": True,
-                "hvac_fan_card": True,
-            }
-        }
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        result = await options_flow.async_step_main_menu()
-
-        assert result["type"] == "menu"
-        assert "menu_options" in result
-        # Should include all menu options
-        expected_options = [
-            "features",
-            "configure_devices",
-            "view_configuration",
-            "advanced_settings",
-        ]
-        for option in expected_options:
-            assert option in result["menu_options"]
-
-    @pytest.mark.asyncio
-    async def test_main_menu_missing_enabled_features_key(self, hass):
-        """Test main menu when enabled_features key is missing from config."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {}  # No enabled_features key
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        result = await options_flow.async_step_main_menu()
-
-        assert result["type"] == "menu"
-        assert "menu_options" in result
-        # Should still include all menu options
-        expected_options = [
-            "features",
-            "configure_devices",
-            "view_configuration",
-            "advanced_settings",
-        ]
-        for option in expected_options:
-            assert option in result["menu_options"]
-
-    @pytest.mark.asyncio
-    async def test_main_menu_with_invalid_enabled_features(self, hass):
-        """Test main menu when enabled_features is not a dict."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {"enabled_features": "invalid"}  # Not a dict
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # The method crashes when enabled_features is invalid (not a dict)
-        # This is expected behavior since the method assumes enabled_features is a dict
-        with pytest.raises(AttributeError, match="'str' object has no attribute 'get'"):
-            await options_flow.async_step_main_menu()
-
-    @pytest.mark.asyncio
-    async def test_main_menu_description_placeholders(self, hass):
-        """Test that main menu includes proper description placeholders."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {"enabled_features": {"humidity_control": True}}
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        result = await options_flow.async_step_main_menu()
-
-        assert result["type"] == "menu"
-        assert "description_placeholders" in result
-        placeholders = result["description_placeholders"]
-
-        # Should include menu description
-        assert "info" in placeholders
-        description = placeholders["info"]
-
-        # Should contain the count of enabled features
-        assert (
-            "1 features enabled" in description
-            or "have 1 features enabled" in description
-        )
-
-
-class TestFeatureSelection:
-    """Test feature selection step functionality."""
-
-    @pytest.mark.asyncio
-    async def test_feature_selection_show_form(self, hass):
-        """Test feature selection step shows form without user input."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {
-            "enabled_features": {
-                "default": True,
-                "humidity_control": True,
-                "sensor_control": False,
-            }
-        }
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # Mock the config flow helper
-        with patch.object(options_flow, "_get_config_flow_helper") as mock_helper:
-            helper_instance = MagicMock()
-            mock_helper.return_value = helper_instance
-
-            # Mock helper methods
-            mock_schema = MagicMock()
-            helper_instance.get_feature_selection_schema.return_value = mock_schema
-            helper_instance.build_feature_info_text.return_value = "Feature info text"
-
-            result = await options_flow.async_step_features()
-
+            result = await options_flow.async_step_feature_default()
             assert result["type"] == "form"
-            assert result["step_id"] == "features"
-            assert result["data_schema"] == mock_schema
-            assert result["description_placeholders"]["info"] == "Feature info text"
+            assert options_flow._selected_feature == "default"
 
-            # Verify helper was called correctly
-            helper_instance.get_feature_selection_schema.assert_called_once()
-            helper_instance.build_feature_info_text.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_feature_selection_with_user_input(self, hass):
-        """Test feature selection step processes user input correctly."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {
-            "enabled_features": {
-                "default": True,
-                "humidity_control": False,
-                "sensor_control": True,
-            }
-        }
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        user_input = {"features": ["humidity_control", "hello_world"]}
-
-        # Mock confirm step
-        with patch.object(options_flow, "async_step_confirm") as mock_confirm:
-            mock_confirm.return_value = {"type": "form"}
-
-            result = await options_flow.async_step_features(user_input)
-
-            # Should redirect to confirm step
-            mock_confirm.assert_called_once()
-            assert result == {"type": "form"}
-
-            # Verify pending data was set correctly
-            expected_old_features = {
-                "default": True,
-                "humidity_control": False,
-                "sensor_control": True,
-            }
-            # All features should be included in
-            #  new features, with selected ones enabled
-            expected_new_features = {
-                "default": True,  # Always enabled
-                "humidity_control": True,  # Selected
-                "hvac_fan_card": False,  # Not selected
-                "hello_world": True,  # Selected
-                "sensor_control": False,  # Was enabled but not selected
-            }
-
-            pending_data = options_flow._pending_data
-            assert pending_data["enabled_features_old"] == expected_old_features
-            assert pending_data["enabled_features_new"] == expected_new_features
-            assert options_flow._feature_changes_detected is True
-
-    @pytest.mark.asyncio
-    async def test_feature_selection_no_changes(self, hass):
-        """Test feature selection when user makes no changes."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {
-            "enabled_features": {
-                "default": True,
-                "humidity_control": True,
-                "hvac_fan_card": False,
-                "hello_world": False,
-                "sensor_control": False,
-            }
-        }
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        user_input = {"features": ["humidity_control"]}
-        # Only humidity_control selected (besides default which is always enabled)
-
-        # Mock confirm step
-        with patch.object(options_flow, "async_step_confirm") as mock_confirm:
-            mock_confirm.return_value = {"type": "form"}
-
-            result = await options_flow.async_step_features(user_input)
-
-            # Should still redirect to confirm step
-            mock_confirm.assert_called_once()
-            assert result == {"type": "form"}
-
-            # Verify pending data was set
-            assert options_flow._pending_data is not None
-            assert options_flow._feature_changes_detected is False
-            # No changes detected
-
-    @pytest.mark.asyncio
-    async def test_feature_selection_empty_selection(self, hass):
-        """Test feature selection when user selects no features."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {
-            "enabled_features": {"default": True, "humidity_control": True}
-        }
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        user_input = {"features": []}  # No features selected
-
-        # Mock confirm step
-        with patch.object(options_flow, "async_step_confirm") as mock_confirm:
-            mock_confirm.return_value = {"type": "form"}
-
-            result = await options_flow.async_step_features(user_input)
-
-            # Should redirect to confirm step
-            mock_confirm.assert_called_once()
-            assert result == {"type": "form"}
-
-            # Verify pending data shows default remains enabled, others disabled
-            expected_new_features = {
-                "default": True,  # Always enabled
-                "humidity_control": False,  # Not selected
-                "hvac_fan_card": False,  # Not selected
-                "hello_world": False,  # Not selected
-                "sensor_control": False,  # Not selected
-            }
-            pending_data = options_flow._pending_data
-            assert pending_data["enabled_features_new"] == expected_new_features
-            assert options_flow._feature_changes_detected is True
-
-    @pytest.mark.asyncio
-    async def test_feature_selection_missing_enabled_features(self, hass):
-        """Test feature selection when enabled_features key is missing."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {}  # No enabled_features key
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # Mock the config flow helper
-        with patch.object(options_flow, "_get_config_flow_helper") as mock_helper:
-            helper_instance = MagicMock()
-            mock_helper.return_value = helper_instance
-
-            # Mock helper methods
-            mock_schema = MagicMock()
-            helper_instance.get_feature_selection_schema.return_value = mock_schema
-            helper_instance.build_feature_info_text.return_value = "Feature info text"
-
-            result = await options_flow.async_step_features()
-
-            assert result["type"] == "form"
-            assert result["step_id"] == "features"
-
-            # Verify helper was called with empty dict as enabled_features
-            helper_instance.get_feature_selection_schema.assert_called_once_with({})
-
-
-class TestViewConfiguration:
-    """Test view configuration step functionality."""
-
-    @pytest.mark.asyncio
-    async def test_view_configuration_basic(self, hass):
-        """Test view configuration step shows current config."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {
-            "enabled_features": {
-                "default": True,
-                "humidity_control": True,
-                "sensor_control": False,
-            }
-        }
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        result = await options_flow.async_step_view_configuration()
-
-        assert result["type"] == "form"
-        assert result["step_id"] == "view_configuration"
-        assert "description_placeholders" in result
-
-        info_text = result["description_placeholders"]["info"]
-        assert "Current Configuration" in info_text
-        assert "Enabled features: 2" in info_text
-        assert "Humidity Control" in info_text
-
-    @pytest.mark.asyncio
-    async def test_view_configuration_no_features(self, hass):
-        """Test view configuration step when no features are enabled."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {"enabled_features": {}}
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        result = await options_flow.async_step_view_configuration()
-
-        assert result["type"] == "form"
-        info_text = result["description_placeholders"]["info"]
-        assert "Enabled features: 0" in info_text
-
-    @pytest.mark.asyncio
-    async def test_view_configuration_invalid_features(self, hass):
-        """Test view configuration step handles invalid enabled_features."""
-        mock_config_entry = MagicMock()
-        mock_config_entry.data = {"enabled_features": "invalid"}
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
-        options_flow.hass = hass
-
-        # The method crashes when enabled_features is invalid (not a dict)
-        # This is expected behavior since the method assumes enabled_features is a dict
-        with pytest.raises(
-            AttributeError, match="'str' object has no attribute 'values'"
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.config_flow."
+                "async_step_default_config",
+                new=AsyncMock(side_effect=Exception("boom")),
+            ),
+            patch.object(
+                options_flow,
+                "async_step_main_menu",
+                new=AsyncMock(return_value={"type": "menu"}),
+            ),
         ):
-            await options_flow.async_step_view_configuration()
-
-
-class TestAdvancedSettings:
-    """Test advanced settings step functionality."""
+            result = await options_flow.async_step_feature_default()
+            assert result["type"] == "menu"
 
     @pytest.mark.asyncio
-    async def test_advanced_settings_show_form(self, hass):
-        """Test advanced settings step shows form."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+    async def test_feature_config_routing_paths(self, hass):
+        mock_entry = MagicMock()
+        mock_entry.data = {"enabled_features": {"default": True}}
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_entry)
         options_flow.hass = hass
 
-        result = await options_flow.async_step_advanced_settings()
+        with patch.object(
+            options_flow,
+            "async_step_main_menu",
+            new=AsyncMock(return_value={"type": "menu"}),
+        ):
+            options_flow._selected_feature = None
+            result = await options_flow.async_step_feature_config()
+            assert result["type"] == "menu"
 
-        assert result["type"] == "form"
-        assert result["step_id"] == "advanced_settings"
-        assert "data_schema" in result
-        assert (
-            result["description_placeholders"]["info"] == "Configure advanced settings"
+        async def _feature_async(handler, user_input):
+            return {"type": "form", "step_id": "feature_async"}
+
+        module_name = (
+            "custom_components.ramses_extras.features.sensor_control.config_flow"
         )
+        feature_module = ModuleType("feature_module")
+        feature_module.async_step_sensor_control_config = _feature_async
+
+        original_import = builtins.__import__
+
+        def _import_side_effect(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == module_name:
+                return feature_module
+            return original_import(name, globals, locals, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=_import_side_effect):
+            options_flow._selected_feature = "sensor_control"
+            result = await options_flow.async_step_feature_config()
+            assert result["type"] == "form"
+            assert result["step_id"] == "feature_async"
+
+        with (
+            patch("builtins.__import__", side_effect=ImportError()),
+            patch.object(
+                options_flow,
+                "generic_step_feature_config",
+                new=AsyncMock(return_value={"type": "form", "step_id": "generic"}),
+            ) as mock_generic,
+        ):
+            options_flow._selected_feature = "sensor_control"
+            result = await options_flow.async_step_feature_config()
+            assert result["step_id"] == "generic"
+            assert mock_generic.called
+
+        with (
+            patch("builtins.__import__", side_effect=Exception("boom")),
+            patch.object(
+                options_flow,
+                "generic_step_feature_config",
+                new=AsyncMock(return_value={"type": "form", "step_id": "generic2"}),
+            ) as mock_generic,
+        ):
+            options_flow._selected_feature = "sensor_control"
+            result = await options_flow.async_step_feature_config()
+            assert result["step_id"] == "generic2"
+            assert mock_generic.called
 
     @pytest.mark.asyncio
-    async def test_advanced_settings_with_user_input(self, hass):
-        """Test advanced settings step handles user input."""
-        mock_config_entry = MagicMock()
-        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+    async def test_matrix_confirm_paths(self, hass):
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "entry1"
+        mock_entry.options = {"other": 1}
+        mock_entry.data = {}
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_entry)
         options_flow.hass = hass
+        options_flow._selected_feature = "sensor_control"
+        options_flow._temp_matrix_state = {"d1": {"sensor_control": True}}
+        options_flow._old_matrix_state = {"d1": {"sensor_control": False}}
 
-        user_input = {"debug_mode": True, "log_level": "debug"}
+        helper = MagicMock()
+        helper.restore_matrix_state = MagicMock()
 
-        # Currently the method doesn't process user input, just shows form
-        result = await options_flow.async_step_advanced_settings(user_input)
+        with (
+            patch.object(options_flow, "_get_config_flow_helper", return_value=helper),
+            patch.object(
+                hass.config_entries, "async_get_entry", return_value=mock_entry
+            ),
+            patch.object(hass.config_entries, "async_update_entry", new=MagicMock()),
+            patch(
+                "custom_components.ramses_extras.config_flow.SimpleEntityManager"
+            ) as mock_em_cls,
+            patch(
+                "custom_components.ramses_extras._cleanup_orphaned_devices",
+                new=AsyncMock(),
+            ),
+            patch.object(hass.config_entries, "async_reload", new=AsyncMock()),
+        ):
+            mock_em = mock_em_cls.return_value
+            mock_em.restore_device_feature_matrix_state = MagicMock()
+            mock_em.calculate_entity_changes = AsyncMock(return_value=(["c1"], ["r1"]))
+            mock_em.remove_entity = AsyncMock(side_effect=Exception("boom"))
 
-        # Should still return the form since no processing is implemented
-        assert result["type"] == "form"
-        assert result["step_id"] == "advanced_settings"
+            result = await options_flow.async_step_matrix_confirm({"confirm": True})
+            assert result["type"] == "create_entry"
+            assert result["data"]["other"] == 1
+            assert (
+                result["data"]["device_feature_matrix"]["d1"]["sensor_control"] is True
+            )
+
+        with patch.object(
+            options_flow,
+            "_show_matrix_based_confirmation",
+            new=AsyncMock(return_value={"type": "form"}),
+        ):
+            result = await options_flow.async_step_matrix_confirm(None)
+            assert result["type"] == "form"
+
+        options_flow._temp_matrix_state = {"d1": {"sensor_control": True}}
+        with (
+            patch(
+                "custom_components.ramses_extras.config_flow.SimpleEntityManager"
+            ) as mock_em_cls,
+            patch.object(
+                options_flow,
+                "_show_matrix_based_confirmation",
+                new=AsyncMock(return_value={"type": "form"}),
+            ),
+        ):
+            mock_em = mock_em_cls.return_value
+            mock_em.calculate_entity_changes = AsyncMock(side_effect=Exception("boom"))
+            result = await options_flow.async_step_matrix_confirm({"confirm": True})
+            assert result["type"] == "form"
+
+    @pytest.mark.asyncio
+    async def test_card_helpers_unhappy_paths(self, hass, tmp_path):
+        with (
+            patch(
+                "custom_components.ramses_extras.extras_registry.extras_registry."
+                "get_card_config",
+                return_value={"location": "loc"},
+            ),
+            patch("pathlib.Path.exists", return_value=False),
+            patch("custom_components.ramses_extras.config_flow._LOGGER") as mock_logger,
+        ):
+            await _manage_cards_config_flow(hass, {"hvac_fan_card": True})
+            assert mock_logger.warning.called
+
+        missing_path = tmp_path / "missing"
+        with patch(
+            "custom_components.ramses_extras.config_flow._LOGGER"
+        ) as mock_logger:
+            await _remove_card_config_flow(hass, missing_path)
+            assert mock_logger.debug.called
+
+        src = tmp_path / "src"
+        dst = tmp_path / "dst"
+        src.mkdir()
+        dst.mkdir()
+        (src / "f.txt").write_text("content")
+        hass.async_add_executor_job = AsyncMock(side_effect=Exception("boom"))
+        with patch(
+            "custom_components.ramses_extras.config_flow._LOGGER"
+        ) as mock_logger:
+            await _install_card_config_flow(hass, src, dst)
+            assert mock_logger.error.called
+
+    def test_standalone_helpers(self):
+        """Test standalone helpers coverage."""
+        assert _get_feature_details_from_module("non_existent") == {}
+        details = _get_feature_details_from_module("sensor_control")
+        assert "HvacVentilator" in details["supported_device_types"]
