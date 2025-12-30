@@ -21,7 +21,7 @@ from homeassistant.core import CoreState, HomeAssistant, State
 from homeassistant.helpers.event import async_track_state_change_event
 
 from ...const import DOMAIN
-from ..helpers.automation import _singularize_entity_type
+from ..helpers.common.utils import _singularize_entity_type
 from ..helpers.entity.core import (
     _get_required_entities_from_feature,
     get_required_entities_from_feature_sync,

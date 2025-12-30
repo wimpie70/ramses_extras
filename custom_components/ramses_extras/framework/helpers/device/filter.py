@@ -84,7 +84,7 @@ class DeviceFilter:
         # 2) Ramses RF DevType-based slug (e.g. FAN, HUM, CO2)
         # Most core Ramses devices expose a class-level _SLUG attribute.
         slug_attr = getattr(device, "_SLUG", None)
-        if slug_attr and not str(slug_attr).startswith("<Mock"):
+        if slug_attr and "Mock" not in str(slug_attr):
             # _LOGGER.debug("Device %s has _SLUG attribute", device)
             if isinstance(slug_attr, str):
                 slugs.append(slug_attr)
@@ -95,12 +95,17 @@ class DeviceFilter:
 
         # 3) Generic single-value attributes when we still have no slugs
         if not slugs:
-            if hasattr(device, "slug") and device.slug:  # noqa: SLF001
-                slugs.append(str(device.slug))  # noqa: SLF001
-            elif hasattr(device, "device_type") and device.device_type:  # noqa: SLF001
-                slugs.append(str(device.device_type))  # noqa: SLF001
-            elif hasattr(device, "type") and device.type:  # noqa: SLF001
-                slugs.append(str(device.type))  # noqa: SLF001
+            slug_val = getattr(device, "slug", None)
+            if slug_val and "Mock" not in str(slug_val):
+                slugs.append(str(slug_val))
+            else:
+                device_type_val = getattr(device, "device_type", None)
+                if device_type_val and "Mock" not in str(device_type_val):
+                    slugs.append(str(device_type_val))
+                else:
+                    type_val = getattr(device, "type", None)
+                    if type_val and "Mock" not in str(type_val):
+                        slugs.append(str(type_val))
 
         # 4) Fallback to class name when we still have no slug information.
         #    This keeps unit tests happy (class-name-only slugs) while still
