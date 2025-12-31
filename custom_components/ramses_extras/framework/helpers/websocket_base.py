@@ -3,6 +3,7 @@
 This module provides minimal WebSocket infrastructure for Ramses Extras features.
 """
 
+import importlib
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -234,65 +235,48 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
                 const_module_path += f"{self.feature_identifier}.const"
 
             # Import the const module for this feature
-            import importlib
-
             feature_module = importlib.import_module(const_module_path)
 
             entity_mappings = {}
+            prefixes = (
+                "HELLO_WORLD_",
+                "HUMIDITY_CONTROL_",
+                "HVAC_FAN_CARD_",
+                "SENSOR_CONTROL_",
+                "",
+            )
 
-            # Check for switch configurations (any feature-specific naming)
+            # Single loop over attributes for efficiency and consistency
             for attr_name in dir(feature_module):
-                if attr_name.endswith("_SWITCH_CONFIGS") and attr_name.startswith(
-                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "HVAC_FAN_CARD_", "")
-                ):
-                    switch_configs = getattr(feature_module, attr_name)
-                    for entity_name, config in switch_configs.items():
-                        if "entity_template" in config:
-                            template = config["entity_template"]
-                            entity_mappings[f"{entity_name}_state"] = (
-                                f"switch.{template}"
-                            )
+                if attr_name.startswith("__"):
+                    continue
 
-            # Check for binary sensor configurations
-            for attr_name in dir(feature_module):
-                if attr_name.endswith(
-                    "_BINARY_SENSOR_CONFIGS"
-                ) and attr_name.startswith(
-                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "HVAC_FAN_CARD_", "")
-                ):
-                    sensor_configs = getattr(feature_module, attr_name)
-                    for entity_name, config in sensor_configs.items():
-                        if "entity_template" in config:
-                            template = config["entity_template"]
-                            entity_mappings[f"{entity_name}_state"] = (
-                                f"binary_sensor.{template}"
-                            )
+                platform = None
+                for prefix in prefixes:
+                    if attr_name.startswith(prefix):
+                        suffix = attr_name[len(prefix) :]
+                        if suffix == "SWITCH_CONFIGS":
+                            platform = "switch"
+                        elif suffix in ("BINARY_SENSOR_CONFIGS", "BOOLEAN_CONFIGS"):
+                            platform = "binary_sensor"
+                        elif suffix == "SENSOR_CONFIGS":
+                            platform = "sensor"
+                        elif suffix == "NUMBER_CONFIGS":
+                            platform = "number"
 
-            # Check for sensor configurations
-            for attr_name in dir(feature_module):
-                if attr_name.endswith("_SENSOR_CONFIGS") and attr_name.startswith(
-                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "HVAC_FAN_CARD_", "")
-                ):
-                    sensor_configs = getattr(feature_module, attr_name)
-                    for entity_name, config in sensor_configs.items():
-                        if "entity_template" in config:
-                            template = config["entity_template"]
-                            entity_mappings[f"{entity_name}_state"] = (
-                                f"sensor.{template}"
-                            )
-
-            # Check for number configurations
-            for attr_name in dir(feature_module):
-                if attr_name.endswith("_NUMBER_CONFIGS") and attr_name.startswith(
-                    ("HELLO_WORLD_", "HUMIDITY_CONTROL_", "HVAC_FAN_CARD_", "")
-                ):
-                    number_configs = getattr(feature_module, attr_name)
-                    for entity_name, config in number_configs.items():
-                        if "entity_template" in config:
-                            template = config["entity_template"]
-                            entity_mappings[f"{entity_name}_state"] = (
-                                f"number.{template}"
-                            )
+                        if platform:
+                            configs = getattr(feature_module, attr_name)
+                            if isinstance(configs, dict):
+                                for entity_name, config in configs.items():
+                                    if (
+                                        isinstance(config, dict)
+                                        and "entity_template" in config
+                                    ):
+                                        template = config["entity_template"]
+                                        entity_mappings[f"{entity_name}_state"] = (
+                                            f"{platform}.{template}"
+                                        )
+                            break
 
             # Fallback: Check for entity_mappings in feature constants
             if not entity_mappings:
@@ -520,8 +504,6 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
                 const_module_path += f"{self.feature_identifier}.const"
 
             # Import the const module for this feature
-            import importlib
-
             feature_module = importlib.import_module(const_module_path)
 
             all_entities: dict[str, dict[str, Any]] = {
@@ -531,31 +513,37 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
                 "number": {},
             }
 
-            # Collect switch configurations
-            for attr_name in dir(feature_module):
-                if attr_name.endswith("SWITCH_CONFIGS"):
-                    switch_configs = getattr(feature_module, attr_name)
-                    all_entities["switch"].update(switch_configs)
+            prefixes = (
+                "HELLO_WORLD_",
+                "HUMIDITY_CONTROL_",
+                "HVAC_FAN_CARD_",
+                "SENSOR_CONTROL_",
+                "",
+            )
 
-            # Collect binary sensor configurations
+            # Collect configurations using suffix matching
             for attr_name in dir(feature_module):
-                if attr_name.endswith(("BINARY_SENSOR_CONFIGS", "BOOLEAN_CONFIGS")):
-                    sensor_configs = getattr(feature_module, attr_name)
-                    all_entities["binary_sensor"].update(sensor_configs)
+                if attr_name.startswith("__"):
+                    continue
 
-            # Collect sensor configurations
-            for attr_name in dir(feature_module):
-                if attr_name.endswith("SENSOR_CONFIGS") and not attr_name.endswith(
-                    "BINARY_SENSOR_CONFIGS"
-                ):
-                    sensor_configs = getattr(feature_module, attr_name)
-                    all_entities["sensor"].update(sensor_configs)
+                platform = None
+                for prefix in prefixes:
+                    if attr_name.startswith(prefix):
+                        suffix = attr_name[len(prefix) :]
+                        if suffix == "SWITCH_CONFIGS":
+                            platform = "switch"
+                        elif suffix in ("BINARY_SENSOR_CONFIGS", "BOOLEAN_CONFIGS"):
+                            platform = "binary_sensor"
+                        elif suffix == "SENSOR_CONFIGS":
+                            platform = "sensor"
+                        elif suffix == "NUMBER_CONFIGS":
+                            platform = "number"
 
-            # Collect number configurations
-            for attr_name in dir(feature_module):
-                if attr_name.endswith("NUMBER_CONFIGS"):
-                    number_configs = getattr(feature_module, attr_name)
-                    all_entities["number"].update(number_configs)
+                        if platform:
+                            configs = getattr(feature_module, attr_name)
+                            if isinstance(configs, dict):
+                                all_entities[platform].update(configs)
+                            break
 
             self._logger.debug(
                 f"Found all entities for {self.feature_identifier}: {all_entities}"

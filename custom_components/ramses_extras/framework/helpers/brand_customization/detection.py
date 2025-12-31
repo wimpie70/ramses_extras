@@ -7,9 +7,45 @@ or model strings, extracting common patterns from existing brand detection logic
 import logging
 from typing import Any
 
-from .models import DefaultModelConfig
-
 _LOGGER = logging.getLogger(__name__)
+
+
+class DefaultModelConfig:
+    """Default model configuration templates.
+
+    This class provides default configurations for unknown or generic models.
+    """
+
+    GENERIC_CONFIG = {
+        "max_fan_speed": 3,
+        "humidity_range": (35, 75),
+        "supported_modes": ["auto", "boost"],
+        "special_entities": ["filter_timer"],
+        "high_end_models": [],
+    }
+
+    @classmethod
+    def get_fallback_config(cls, model: str, brand_name: str) -> dict[str, Any]:
+        """Get fallback configuration for unknown models.
+
+        Args:
+            model: Device model string
+            brand_name: Brand identifier
+
+        Returns:
+            Model configuration dictionary
+        """
+        config = cls.GENERIC_CONFIG.copy()
+        config.update(
+            {
+                "model_key": "unknown",
+                "model_string": model,
+                "brand": brand_name,
+            }
+        )
+
+        _LOGGER.debug(f"Using fallback config for unknown {brand_name} model: {model}")
+        return config
 
 
 class BrandPatterns:

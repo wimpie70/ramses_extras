@@ -5,6 +5,7 @@ the complex EntityManager with direct entity creation/removal based on
 config flow decisions.
 """
 
+import importlib
 import logging
 from typing import Any, TypedDict
 from unittest.mock import Mock
@@ -238,8 +239,31 @@ class SimpleEntityManager:
         required_entities = []
 
         enabled_features = self._get_enabled_features()
+        matrix_state = self.device_feature_matrix.get_matrix_state()
+        matrix_is_empty = not matrix_state
 
-        # Get all enabled feature/device combinations from matrix
+        # Get all devices for fallback logic
+        devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
+        device_ids = [getattr(device, "id", str(device)) for device in devices]
+
+        # Get all possible features from registry to check global enablement
+        from ....extras_registry import extras_registry
+
+        all_features = extras_registry.get_loaded_features()
+
+        # If matrix is empty, use global enablement for all devices
+        if matrix_is_empty:
+            for feature_id in all_features:
+                # Check if feature is globally enabled
+                if feature_id == "default" or enabled_features.get(feature_id) is True:
+                    for device_id in device_ids:
+                        entity_ids = await self._generate_entity_ids_for_combination(
+                            feature_id, device_id
+                        )
+                        required_entities.extend(entity_ids)
+            return required_entities
+
+        # If matrix is NOT empty, use the matrix-defined combinations
         combinations = self.device_feature_matrix.get_all_enabled_combinations()
 
         for device_id, feature_id in combinations:
@@ -295,36 +319,63 @@ class SimpleEntityManager:
             List of entity IDs for this combination
         """
         entity_ids = []
+        from .core import EntityHelpers
 
-        # # Generate entity IDs based on feature configuration
-        # if feature_id == "default":
-        #     # Default feature creates absolute humidity sensors for all devices
-        #     entity_ids = [
-        #         f"sensor.indoor_absolute_humidity_{device_id.replace(':', '_')}",
-        #         f"sensor.outdoor_absolute_humidity_{device_id.replace(':', '_')}"
-        #     ]
-        # else:
         # For other features, try to get entity configurations
         try:
-            feature_module = (
+            feature_module_path = (
                 f"custom_components.ramses_extras.features.{feature_id}.const"
             )
-            feature_const = __import__(feature_module, fromlist=[""])
-            _LOGGER.info(f"Importing feature module: {feature_module}")
+            feature_module = importlib.import_module(feature_module_path)
+
             # Get required entities from feature configuration
-            required_entities = getattr(
-                feature_const, f"{feature_id.upper()}_CONST", {}
-            ).get("required_entities", {})
-            _LOGGER.info(
-                f"Found required_entities for {feature_id}: {required_entities}"
+            const_key = f"{feature_id.upper()}_CONST"
+            required_entities = getattr(feature_module, const_key, {}).get(
+                "required_entities", {}
             )
-            for entity_type, entity_names in required_entities.items():
+
+            # If not in CONST, try FEATURE_DEFINITION
+            if not required_entities and hasattr(feature_module, "FEATURE_DEFINITION"):
+                feature_def = feature_module.FEATURE_DEFINITION
+                # Look for configs and extract entity_names
+                for plat in ["sensor", "switch", "number", "binary_sensor"]:
+                    configs = feature_def.get(f"{plat}_configs", {})
+                    if configs:
+                        required_entities.setdefault(plat, []).extend(configs.keys())
+
+            _LOGGER.debug(
+                "Found required_entities for %s: %s", feature_id, required_entities
+            )
+
+            device_id_underscore = device_id.replace(":", "_")
+
+            for platform, entity_names in required_entities.items():
+                # Get the platform config dictionary
+                config_key = f"{feature_id.upper()}_{platform.upper()}_CONFIGS"
+                # Handle special case for binary_sensor vs boolean
+                if platform == "binary_sensor" and not hasattr(
+                    feature_module, config_key
+                ):
+                    config_key = f"{feature_id.upper()}_BOOLEAN_CONFIGS"
+
+                platform_configs = getattr(feature_module, config_key, {})
+
                 for entity_name in entity_names:
-                    # Generate entity ID using standard pattern
-                    entity_id = (
-                        f"{entity_type}.{entity_name}_{device_id.replace(':', '_')}"
+                    # Get template from config if available, otherwise use default
+                    config = platform_configs.get(entity_name, {})
+                    template = config.get(
+                        "entity_template", f"{entity_name}_{{device_id}}"
                     )
-                    entity_ids.append(entity_id)
+
+                    try:
+                        entity_id = EntityHelpers.generate_entity_name_from_template(
+                            platform, template, device_id=device_id_underscore
+                        )
+                        entity_ids.append(entity_id)
+                    except Exception as e:
+                        _LOGGER.warning(
+                            "Failed to generate entity ID for %s: %s", entity_name, e
+                        )
 
         except Exception as e:
             _LOGGER.debug(

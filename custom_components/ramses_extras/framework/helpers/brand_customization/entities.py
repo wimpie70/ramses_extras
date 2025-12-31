@@ -355,10 +355,11 @@ def generate_entity_templates_for_feature(
     # For now, return standard templates
     templates = StandardEntityTemplates.STANDARD_ENTITY_TEMPLATES.copy()
 
-    # Replace {brand} placeholder with actual brand name
+    # Replace {brand} placeholder with actual brand name, keep {device_id}
     for entity_type, template_list in templates.items():
         templates[entity_type] = [
-            template.format(brand=brand_name) for template in template_list
+            template.format(brand=brand_name, device_id="{device_id}")
+            for template in template_list
         ]
 
     return templates
