@@ -1,8 +1,4 @@
 {
   "name": "Ramses Extras",
-  "filename": "ramses_extras.zip",
-  "content_in_root": false,
-  "render_readme": true,
-  "zip_release": true,
-  "hide_default_branch": true
+  "render_readme": true
 }
