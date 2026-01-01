@@ -5,6 +5,7 @@
   "config_flow": true,
   "dependencies": ["ramses_cc", "frontend", "http"],
   "documentation": "https://github.com/wimpie70/ramses_extras",
+  "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/wimpie70/ramses_extras/issues",
   "requirements": [],
