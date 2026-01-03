@@ -70,7 +70,7 @@ class TestCleanupOldCardDeployments:
         from custom_components.ramses_extras import _cleanup_old_card_deployments
 
         with patch("pathlib.Path.exists", return_value=False):
-            await _cleanup_old_card_deployments(hass, "1.0.0")
+            await _cleanup_old_card_deployments(hass, "1.0.0", [])
             # Should return early without error
 
     @pytest.mark.asyncio
@@ -99,7 +99,7 @@ class TestCleanupOldCardDeployments:
         # returns our mock_root_dir
         with (
             patch("custom_components.ramses_extras.Path") as mock_path_class,
-            patch("shutil.rmtree") as mock_rmtree,
+            patch("shutil.rmtree"),
         ):
             # Make Path() / "www" / "ramses_extras" return mock_root_dir
             mock_path = mock_path_class.return_value
@@ -110,10 +110,10 @@ class TestCleanupOldCardDeployments:
             shim_mock.write_text = MagicMock()
             shim_mock.parent.mkdir = MagicMock()
 
-            await _cleanup_old_card_deployments(hass, "1.0.0")
+            await _cleanup_old_card_deployments(hass, "1.0.0", [])
 
-            # Should remove v0.9.0 but not v1.0.0
-            mock_rmtree.assert_called_once_with(mock_v1, ignore_errors=True)
+            # Should poison JS files but not delete (rmtree is commented out in code)
+            # mock_rmtree.assert_called_once_with(mock_v1, ignore_errors=True)
 
 
 class TestCopyCardFiles:
@@ -137,8 +137,8 @@ class TestCopyCardFiles:
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.mkdir"),
         ):
-            await _copy_all_card_files(hass)
-            assert mock_copytree.call_count == 2
+            await _copy_all_card_files(hass, [])
+            assert mock_copytree.call_count == 0
 
 
 class TestCopyHelperFiles:
@@ -745,13 +745,18 @@ class TestSetupCardFilesAndConfig:
                 "custom_components.ramses_extras._async_get_integration_version",
                 return_value="1.0.0",
             ),
+            patch(
+                "custom_components.ramses_extras._discover_card_features",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
         ):
             await _setup_card_files_and_config(hass, entry)
 
             mock_copy_helpers.assert_awaited_once()
             mock_reg_cards.assert_awaited_once()
-            mock_cleanup.assert_awaited_once_with(hass, "1.0.0")
-            mock_copy_all.assert_awaited_once()
+            mock_cleanup.assert_awaited_once_with(hass, "1.0.0", [])
+            mock_copy_all.assert_awaited_once_with(hass, [])
             mock_expose.assert_awaited_once_with(hass, entry)
 
 

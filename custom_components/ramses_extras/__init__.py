@@ -63,9 +63,44 @@ async def _async_get_integration_version(hass: HomeAssistant) -> str:
     return "0.0.0"
 
 
+async def _discover_card_features() -> list[dict[str, Any]]:
+    """Discover all features that contain card assets."""
+    features_dir = INTEGRATION_DIR / "features"
+    card_features = []
+
+    if not features_dir.exists():
+        return []
+
+    def _do_discovery() -> None:
+        for feature_path in features_dir.iterdir():
+            if not feature_path.is_dir():
+                continue
+
+            www_dir = feature_path / "www" / feature_path.name
+            if not www_dir.exists():
+                continue
+
+            # Find .js files that are likely cards or editors
+            js_files = list(www_dir.glob("*.js"))
+            if not js_files:
+                continue
+
+            card_features.append(
+                {
+                    "feature_name": feature_path.name,
+                    "source_dir": www_dir,
+                    "js_files": [f.name for f in js_files],
+                }
+            )
+
+    await asyncio.to_thread(_do_discovery)
+    return card_features
+
+
 async def _cleanup_old_card_deployments(
     hass: HomeAssistant,
     current_version: str,
+    card_features: list[dict[str, Any]],
 ) -> None:
     root_dir = Path(hass.config.config_dir) / "www" / "ramses_extras"
     if not root_dir.exists():
@@ -85,8 +120,8 @@ async def _cleanup_old_card_deployments(
             f'import "/local/ramses_extras/v{current_version}/helpers/main.js";\n'
         )
 
-        # Tombstone content for old versions to catch 404s and show a warning
-        tombstone_content = """
+        # Tombstone template for old versions to catch 404s and show a warning
+        tombstone_template = """
 /*
  * Ramses Extras - Restart Required
  * This version of the integration has been upgraded.
@@ -122,8 +157,8 @@ async def _cleanup_old_card_deployments(
         getCardSize() { return 2; }
     }
 
-    // Register all known tags as restart-required cards
-    const tags = ['hvac-fan-card', 'hello-world'];
+    // Register discovered tags as restart-required cards
+    const tags = TAGS_PLACEHOLDER;
     tags.forEach(tag => {
         if (!customElements.get(tag)) {
             customElements.define(tag, RestartRequiredCard);
@@ -134,11 +169,25 @@ async def _cleanup_old_card_deployments(
 
         legacy_shims: list[Path] = [
             legacy_helpers / "main.js",
-            legacy_features / "hello_world" / "hello-world.js",
-            legacy_features / "hello_world" / "hello-world-editor.js",
-            legacy_features / "hvac_fan_card" / "hvac-fan-card.js",
-            legacy_features / "hvac_fan_card" / "hvac-fan-card-editor.js",
         ]
+
+        # Collect tags for the tombstone JS from discovered card files
+        discovered_tags = set()
+        for feature in card_features:
+            for js_file in feature["js_files"]:
+                # Only include the main card file as a tag, not the editor
+                if js_file.endswith(".js") and not js_file.endswith("-editor.js"):
+                    tag = js_file.replace(".js", "")
+                    discovered_tags.add(tag)
+
+        # Update tombstone content with dynamic tags
+        tags_js = str(list(discovered_tags))
+        tombstone_content = tombstone_template.replace("TAGS_PLACEHOLDER", tags_js)
+
+        for feature in card_features:
+            feature_name = feature["feature_name"]
+            for js_file in feature["js_files"]:
+                legacy_shims.append(legacy_features / feature_name / js_file)
 
         for shim_path in legacy_shims:
             shim_path.parent.mkdir(parents=True, exist_ok=True)
@@ -692,7 +741,9 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
         _LOGGER.warning("Failed to update frontend feature configuration: %s", e)
 
 
-async def _copy_all_card_files(hass: HomeAssistant) -> None:
+async def _copy_all_card_files(
+    hass: HomeAssistant, card_features: list[dict[str, Any]]
+) -> None:
     """Copy all card files to Home Assistant's www directory regardless
     of feature status."""
     try:
@@ -700,39 +751,14 @@ async def _copy_all_card_files(hass: HomeAssistant) -> None:
 
         version = await _async_get_integration_version(hass)
 
-        # Card files to copy (regardless of feature status)
-        card_files_to_copy = [
-            {
-                "source": INTEGRATION_DIR
-                / "features"
-                / "hello_world"
-                / "www"
-                / "hello_world",
-                "destination": DEPLOYMENT_PATHS.get_destination_features_path(
-                    hass.config.config_dir,
-                    "hello_world",
-                    version,
-                ),
-                "feature_name": "hello_world",
-            },
-            {
-                "source": INTEGRATION_DIR
-                / "features"
-                / "hvac_fan_card"
-                / "www"
-                / "hvac_fan_card",
-                "destination": DEPLOYMENT_PATHS.get_destination_features_path(
-                    hass.config.config_dir,
-                    "hvac_fan_card",
-                    version,
-                ),
-                "feature_name": "hvac_fan_card",
-            },
-        ]
-
-        for card_file in card_files_to_copy:
-            source_dir = Path(card_file["source"])  # type: ignore[arg-type]
-            destination_dir = Path(card_file["destination"])  # type: ignore[arg-type]
+        for card_feature in card_features:
+            feature_name = card_feature["feature_name"]
+            source_dir = card_feature["source_dir"]
+            destination_dir = DEPLOYMENT_PATHS.get_destination_features_path(
+                hass.config.config_dir,
+                feature_name,
+                version,
+            )
 
             if source_dir.exists():
                 destination_dir.mkdir(parents=True, exist_ok=True)
@@ -1117,6 +1143,9 @@ async def _setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) 
     try:
         _LOGGER.info("Setting up card files and configuration")
 
+        # Discover all features with card assets once
+        card_features = await _discover_card_features()
+
         # Always copy helper files first so the bootstrap module exists.
         await _copy_helper_files(hass)
 
@@ -1126,10 +1155,10 @@ async def _setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) 
 
         # Keep only the current versioned deployment dir.
         version = await _async_get_integration_version(hass)
-        await _cleanup_old_card_deployments(hass, version)
+        await _cleanup_old_card_deployments(hass, version, card_features)
 
         # Always copy all card files regardless of feature status
-        await _copy_all_card_files(hass)
+        await _copy_all_card_files(hass, card_features)
 
         # Expose feature configuration to frontend for card feature toggles
         await _expose_feature_config_to_frontend(hass, entry)
