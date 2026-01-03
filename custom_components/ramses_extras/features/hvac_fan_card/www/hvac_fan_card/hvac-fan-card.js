@@ -398,7 +398,6 @@ class HvacFanCard extends RamsesBaseCard {
     this.validateEntities();
 
     const config = this.config || {};
-    const hass = this._hass;
 
     // Check dehumidify entity availability
     const dehumEntitiesAvailable = this.checkDehumidifyEntities();
