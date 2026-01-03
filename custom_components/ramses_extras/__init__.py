@@ -80,9 +80,57 @@ async def _cleanup_old_card_deployments(
         legacy_helpers.mkdir(parents=True, exist_ok=True)
         legacy_features.mkdir(parents=True, exist_ok=True)
 
-        shim_content = (
+        # Stable shim redirects to current version
+        stable_shim_content = (
             f'import "/local/ramses_extras/v{current_version}/helpers/main.js";\n'
         )
+
+        # Tombstone content for old versions to catch 404s and show a warning
+        tombstone_content = """
+/*
+ * Ramses Extras - Restart Required
+ * This version of the integration has been upgraded.
+ * Please restart Home Assistant to use the new version.
+ */
+(function() {
+    const warning = "Ramses Extras: Upgrade detected. " +
+                    "A Home Assistant restart is required.";
+    console["warn"](
+        "%c Ramses Extras %c " + warning,
+        "background: #df4b37; color: #fff; padding: 2px 4px; " +
+        "border-radius: 3px; font-weight: bold;",
+        "color: #df4b37; font-weight: bold;"
+    );
+
+    // Define a dummy card to show the warning in the UI
+    class RestartRequiredCard extends HTMLElement {
+        setConfig(config) { this._config = config; }
+        set hass(hass) {
+            if (!this.content) {
+                this.innerHTML = `
+                    <ha-card header="Ramses Extras - Restart Required">
+                        <div class="card-content" style="color: #df4b37; ` +
+                        `font-weight: bold; padding: 16px;">
+                            ${warning}<br><br>
+                            Please restart Home Assistant to complete the upgrade.
+                        </div>
+                    </ha-card>
+                `;
+                this.content = true;
+            }
+        }
+        getCardSize() { return 2; }
+    }
+
+    // Register all known tags as restart-required cards
+    const tags = ['hvac-fan-card', 'hello-world'];
+    tags.forEach(tag => {
+        if (!customElements.get(tag)) {
+            customElements.define(tag, RestartRequiredCard);
+        }
+    });
+})();
+"""
 
         legacy_shims: list[Path] = [
             legacy_helpers / "main.js",
@@ -94,7 +142,7 @@ async def _cleanup_old_card_deployments(
 
         for shim_path in legacy_shims:
             shim_path.parent.mkdir(parents=True, exist_ok=True)
-            shim_path.write_text(shim_content)
+            shim_path.write_text(stable_shim_content)
 
         for entry in root_dir.iterdir():
             if not entry.is_dir():
@@ -104,7 +152,19 @@ async def _cleanup_old_card_deployments(
             if entry.name == current_dirname:
                 continue
 
-            shutil.rmtree(entry, ignore_errors=True)
+            # Instead of deleting immediately, we "poison" old version files
+            # with tombstone warnings to help users realize a restart is needed
+            # if their browser is still trying to load the old version paths.
+            _LOGGER.debug("Poisoning old version deployment: %s", entry.name)
+            try:
+                for sub_file in entry.rglob("*.js"):
+                    sub_file.write_text(tombstone_content)
+            except Exception as e:
+                _LOGGER.warning("Failed to poison old version %s: %s", entry.name, e)
+
+            # Optional: We could still delete after some time, but for now we just
+            # keep them as tombstones.
+            # shutil.rmtree(entry, ignore_errors=True)
 
     await asyncio.to_thread(_do_cleanup)
 
@@ -531,22 +591,30 @@ async def _expose_feature_config_to_frontend(
             or {}
         )
 
+        version = await _async_get_integration_version(hass)
+
         # Use json.dumps to properly convert Python values to JavaScript
         import json
 
         js_enabled_features = json.dumps(enabled_features, indent=2)
 
+        # Log feature configuration for debugging
+        console_log = (
+            f"console.log('Ramses Extras features loaded (v{version}):', "
+            "window.ramsesExtras.features);"
+        )
+
         js_content = f"""// Ramses Extras Feature Configuration
 // Auto-generated during integration setup
 window.ramsesExtras = window.ramsesExtras || {{}};
+window.ramsesExtras.version = "{version}";
 window.ramsesExtras.features = {js_enabled_features};
 
 // Log feature configuration for debugging
-console.log('Ramses Extras features loaded:', window.ramsesExtras.features);
+{console_log}
 """
 
         # Write the JavaScript file to the helpers directory
-        version = await _async_get_integration_version(hass)
         destination_helpers_dir = DEPLOYMENT_PATHS.get_destination_helpers_path(
             hass.config.config_dir,
             version,
