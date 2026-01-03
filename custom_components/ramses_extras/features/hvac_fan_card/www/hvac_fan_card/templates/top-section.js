@@ -54,7 +54,7 @@ export function createTopSection(data) {
             <span id="outdoorHumidity">${outdoorHumidity}%</span>
             <span class="arrow">→</span>
             <span id="outdoorAbsHumidity">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
-            <span>💨</span>
+            <span>💧</span>
           </div>
           <div class="info-stack">
             <div>📊 ${efficiency}%</div>
