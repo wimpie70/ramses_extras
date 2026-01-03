@@ -67,7 +67,7 @@ export function createParameterEditSection(params) {
   `;
 }
 
-function getHumidityControlEntities(deviceId, hass) {
+function getHumidityControlEntities(deviceId, hass, config = {}) {
   const humidityControlEntities = [];
   const deviceIdUnderscore = deviceId.replace(/:/g, '_');
 
@@ -75,7 +75,8 @@ function getHumidityControlEntities(deviceId, hass) {
   // Integration converts friendly names: "Relative Humidity Minimum" → "relative_humidity_minimum"
   const humidityEntities = [
     `number.relative_humidity_minimum_${deviceIdUnderscore}`,
-    `number.relative_humidity_maximum_${deviceIdUnderscore}`
+    `number.relative_humidity_maximum_${deviceIdUnderscore}`,
+    `number.absolute_humidity_offset_${deviceIdUnderscore}`
   ];
 
   // console.log('🔍 Looking for humidity control entities:', humidityEntities);
@@ -110,6 +111,8 @@ function createHumidityControlItem(entity, hass) {
     displayName = 'Minimum Relative Humidity';
   } else if (entityId.includes('maximum')) {
     displayName = 'Maximum Relative Humidity';
+  } else if (entityId.includes('absolute_humidity_offset')) {
+    displayName = 'Absolute Humidity Offset';
   }
 
   return `
