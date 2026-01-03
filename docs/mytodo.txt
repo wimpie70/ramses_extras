@@ -1,6 +1,5 @@
 - more cleanup on the features, framework, starting with the hello world feature
 
-- check humid control automation...it seems to be enabled
 - hvac fan card editor: it never had a followup step for mapping entities (only device dropdown). good idea for future dev.
 
 - why external calculated abs humid entities:
