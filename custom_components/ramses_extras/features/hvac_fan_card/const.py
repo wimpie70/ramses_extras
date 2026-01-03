@@ -102,8 +102,11 @@ HVAC_FAN_CARD_CONST = {
         "outdoor_humidity_entity": "sensor.{device_id}_outdoor_humidity",
         # Fan / airflow sensors
         "fan_speed_entity": "sensor.{device_id}_fan_rate",
+        "exhaust_fan_speed_entity": "sensor.{device_id}_exhaust_fan_speed",
+        "supply_fan_speed_entity": "sensor.{device_id}_supply_fan_speed",
         "fan_mode_entity": "sensor.{device_id}_fan_mode",
-        "flow_entity": "sensor.{device_id}_supply_flow",
+        "supply_flow_entity": "sensor.{device_id}_supply_flow",
+        "exhaust_flow_entity": "sensor.{device_id}_exhaust_flow",
         # CO2 sensor
         "co2_entity": "sensor.{device_id}_co2_level",
         # Bypass position

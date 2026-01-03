@@ -66,7 +66,7 @@ export function createTemplateData(rawData) {
   const {
     indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
     indoorAbsHumidity, outdoorAbsHumidity,  // Integration-provided values (preferred)
-    supplyTemp, exhaustTemp, fanSpeed, fanMode, co2Level, flowRate, exhaustFlowRate,
+    supplyTemp, exhaustTemp, exhaustFanSpeed, supplyFanSpeed, fanMode, co2Level, supplyFlowRate, exhaustFlowRate,
     dehumMode, dehumActive, dehumEntitiesAvailable, comfortTemp, timerMinutes = 0, efficiency = 75,
     filterDaysRemaining = null
   } = rawData;
@@ -103,10 +103,11 @@ export function createTemplateData(rawData) {
     outdoorAbsHumidity: outdoorAbsHumidity,
 
     // Fan and air quality data
-    fanSpeed: fanSpeed || 'speed ?',
+    exhaustFanSpeed: exhaustFanSpeed || '?',
+    supplyFanSpeed: supplyFanSpeed || '?',
     fanMode: fanMode || 'auto',
     co2Level: co2Level || '?',
-    flowRate: flowRate || '?',
+    supplyFlowRate: supplyFlowRate || '?',
     exhaustFlowRate: exhaustFlowRate || '?',
     efficiency: calculatedEfficiency,
 

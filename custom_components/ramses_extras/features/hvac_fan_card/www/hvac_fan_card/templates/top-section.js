@@ -9,8 +9,8 @@ export function createTopSection(data) {
     indoorTemp, indoorHumidity, indoorAbsHumidity, comfortTemp, dehumMode, dehumActive,
     dehumEntitiesAvailable,
     supplyTemp, exhaustTemp,
-    fanSpeed, fanMode,
-    co2Level, flowRate, exhaustFlowRate, efficiency,
+    exhaustFanSpeed, supplyFanSpeed, fanMode,
+    co2Level, supplyFlowRate, exhaustFlowRate, efficiency,
     timerMinutes, airflowSvg, filterDaysRemaining
   } = data;
 
@@ -35,70 +35,65 @@ export function createTopSection(data) {
           <span id="timer">${timerMinutes} min</span>
         </div>
 
+        <div class="settings-container">
+          <button class="settings-icon" title="Edit device parameters">
+            ⚙️
+          </button>
+        </div>
+
         <!-- Corner Values -->
         <div class="corner-value top-left">
-          <div class="icon-circle blue">☁️</div>
-          <div class="temp-value">
-            <span>🌡️</span>
-            <span id="outdoorTemp">${outdoorTemp} °C</span>
+          <div class="corner-row">
+            <div class="temp-value outside-edge">
+              <span id="outdoorTemp">${outdoorTemp} °C</span>
+              <span>🌡️</span>
+            </div>
+            <div class="icon-circle blue">☁️</div>
           </div>
-          <div class="humidity-value">
-            <span>💧</span>
+          <div class="humidity-row">
             <span id="outdoorHumidity">${outdoorHumidity}%</span>
-          </div>
-          <div class="humidity-abs">
-            <span>💨</span>
+            <span class="arrow">→</span>
             <span id="outdoorAbsHumidity">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
+            <span>💨</span>
           </div>
-          <div class="side-value-item">
-            <span>📊</span>
-            <span id="efficiency">${efficiency}%</span>
-          </div>
-          <div class="side-value-item">
-            <span id="co2Level">${co2Level} ppm</span>
-          </div>
-          <div class="side-value-item">
-            <span>📅</span>
-            <span id="filterDaysRemaining">${filterDaysRemaining} days</span>
+          <div class="info-stack">
+            <div>📊 ${efficiency}%</div>
+            <div>🫧 ${co2Level} ppm</div>
+            <div>📅 ${filterDaysRemaining}d</div>
           </div>
         </div>
 
         <div class="corner-value top-right">
-          <div class="icon-circle red">🏠</div>
-          <div class="temp-value">
-            <span id="indoorTemp">${indoorTemp} °C</span>
-            <span>🌡️</span>
+          <div class="corner-row">
+            <div class="icon-circle red">🏠</div>
+            <div class="temp-value outside-edge">
+              <span>🌡️</span>
+              <span id="indoorTemp">${indoorTemp} °C</span>
+            </div>
           </div>
-          <div class="humidity-value">
-            <span id="indoorHumidity">${indoorHumidity}%</span>
+          <div class="humidity-row">
             <span>💧</span>
-          </div>
-          <div class="humidity-abs">
+            <span id="indoorHumidity">${indoorHumidity}%</span>
+            <span class="arrow">→</span>
             <span id="indoorAbsHumidity">${formatHumidity(indoorAbsHumidity, ' g/m³')}</span>
-            <span>💨</span>
           </div>
-          <!-- Comfort temperature - always show -->
-          <div class="comfort-temp">
-            <span id="comfortTemp">${comfortTemp} °C</span>
-            <span>🌡️</span>
+          <div class="info-stack">
+            <div>🌡️ Comfort: ${comfortTemp} °C</div>
+            ${dehumEntitiesAvailable ? `
+            <div class="dehum-row">
+              <span id="dehumMode">${dehumMode}</span>
+              <span>⚡</span>
+              <span class="arrow">→</span>
+              <span id="dehumActive">${dehumActive}</span>
+            </div>
+            ` : ''}
           </div>
-          ${dehumEntitiesAvailable ? `
-          <!-- Dehumidifier Mode - Auto Moisture Sensing -->
-          <div class="dehum-mode">
-            <span id="dehumMode">${dehumMode}</span>
-            <span>🖐️</span>
-          </div>
-          <div class="dehum-active">
-            <span id="dehumActive">${dehumActive}</span>
-            <span>💨</span>
-          </div>
-          ` : ''}
         </div>
 
         <div class="corner-value bottom-right">
           <div class="temp-value">
-            <span id="supplyTemp">${supplyTemp} °C</span>
             <span>🌡️</span>
+            <span id="supplyTemp">${supplyTemp} °C</span>
           </div>
         </div>
 
@@ -109,32 +104,25 @@ export function createTopSection(data) {
           </div>
         </div>
 
-        <div class="settings-container">
-          <button class="settings-icon" title="Edit device parameters">
-            ⚙️
-          </button>
-        </div>
-
         <!-- SVG Flow Direction Arrows -->
         <div class="airflow-diagram">
           ${airflowSvg}
         </div>
 
-        <!-- centre -->
-        <div class="centre">
-          <div class="centre-inner">
-            <div class="fanmode" id="fanMode">${fanMode}</div>
-            <div class="speed-display" id="fanSpeed">${fanSpeed}</div>
-          </div>
-        </div>
-
         <!-- Bottom Stats -->
         <div class="bottom-stats">
-          <div>
-            <span id="exhaustFlowRate">${exhaustFlowRate} L/s</span>
+          <div class="stats-top">
+            <div class="fanmode" id="fanMode">${fanMode}</div>
           </div>
-          <div>
-            <span id="flowRate">${flowRate} L/s</span>
+          <div class="stats-bottom">
+            <div class="stat-item left">
+              <div class="speed-display" id="exhaustFanSpeed">${exhaustFanSpeed}</div>
+              <span id="exhaustFlowRate">${exhaustFlowRate} L/s</span>
+            </div>
+            <div class="stat-item right">
+              <div class="speed-display" id="supplyFanSpeed">${supplyFanSpeed}</div>
+              <span id="supplyFlowRate">${supplyFlowRate} L/s</span>
+            </div>
           </div>
         </div>
       </div>

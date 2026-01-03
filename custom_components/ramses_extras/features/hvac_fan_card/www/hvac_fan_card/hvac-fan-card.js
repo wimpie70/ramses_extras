@@ -440,10 +440,11 @@ class HvacFanCard extends RamsesBaseCard {
       supplyTemp,
       exhaustTemp,
       // Fan data
-      fanSpeed: this._getFanSpeed(da31Data),
+      exhaustFanSpeed: this._formatSpeed(da31Data.exhaust_fan_speed),
+      supplyFanSpeed: this._formatSpeed(da31Data.supply_fan_speed),
       fanMode: this._getFanMode(da31Data),
       // Flow data
-      flowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow : null,
+      supplyFlowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow : null,
       exhaustFlowRate: da31Data.exhaust_flow !== undefined ? da31Data.exhaust_flow : null,
       // Other data - raw values only
       // Prefer sensor_control-resolved CO2 mapping (config.co2) when available,
@@ -748,6 +749,14 @@ class HvacFanCard extends RamsesBaseCard {
   // Get fan mode from 31DA data - always show fan_info as-is
   _getFanMode(da31Data) {
     return da31Data.fan_info || null;
+  }
+
+  // Format speed value consistently
+  _formatSpeed(speed) {
+    if (speed === undefined || speed === null) {
+      return null;
+    }
+    return `${Math.round(speed * 100)}%`;
   }
 
   // Attach event listeners for normal mode
