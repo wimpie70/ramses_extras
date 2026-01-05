@@ -8,6 +8,7 @@ from custom_components.ramses_extras.features.default.services import (
     SVC_GET_QUEUE_STATISTICS,
     SVC_SEND_FAN_COMMAND,
     SVC_SET_FAN_PARAMETER,
+    SVC_UPDATE_FAN_PARAMS,
     async_setup_services,
 )
 
@@ -27,12 +28,13 @@ async def test_async_setup_services(hass):
 
     await async_setup_services(hass)
 
-    assert hass.services.async_register.call_count == 3
+    assert hass.services.async_register.call_count == 4
     registered_services = [
         call.args[1] for call in hass.services.async_register.call_args_list
     ]
     assert SVC_SEND_FAN_COMMAND in registered_services
     assert SVC_SET_FAN_PARAMETER in registered_services
+    assert SVC_UPDATE_FAN_PARAMS in registered_services
     assert SVC_GET_QUEUE_STATISTICS in registered_services
 
 
@@ -82,14 +84,16 @@ async def test_set_fan_parameter_service(hass):
     call = MagicMock()
     call.data = {"device_id": "32:123456", "param_id": "01", "value": "10"}
 
-    hass.services.async_call = AsyncMock()
-    await set_param_func(call)
+    with patch(
+        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+    ) as mock_commands_class:
+        mock_commands = MagicMock()
+        mock_commands.set_fan_param = AsyncMock()
+        mock_commands_class.return_value = mock_commands
 
-    hass.services.async_call.assert_called_with(
-        "ramses_cc",
-        "set_fan_param",
-        {"device_id": "32:123456", "param_id": "01", "value": "10"},
-    )
+        await set_param_func(call)
+
+        mock_commands.set_fan_param.assert_called_with("32:123456", "01", "10", None)
 
     # Test with from_id
     call_with_from = MagicMock()
@@ -99,17 +103,62 @@ async def test_set_fan_parameter_service(hass):
         "value": "10",
         "from_id": "18:123456",
     }
-    await set_param_func(call_with_from)
-    hass.services.async_call.assert_called_with(
-        "ramses_cc",
-        "set_fan_param",
-        {
-            "device_id": "32:123456",
-            "param_id": "01",
-            "value": "10",
-            "from_id": "18:123456",
-        },
-    )
+    with patch(
+        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+    ) as mock_commands_class:
+        mock_commands = MagicMock()
+        mock_commands.set_fan_param = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await set_param_func(call_with_from)
+
+        mock_commands.set_fan_param.assert_called_with(
+            "32:123456", "01", "10", "18:123456"
+        )
+
+
+async def test_update_fan_params_service(hass):
+    """Test update_fan_params service call."""
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+
+    update_params_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_UPDATE_FAN_PARAMS:
+            update_params_func = call.args[2]
+            break
+
+    assert update_params_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456"}
+
+    with patch(
+        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+    ) as mock_commands_class:
+        mock_commands = MagicMock()
+        mock_commands.update_fan_params = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await update_params_func(call)
+
+        mock_commands.update_fan_params.assert_called_once_with("32:123456", None)
+
+    # Test with from_id
+    call_with_from = MagicMock()
+    call_with_from.data = {"device_id": "32:123456", "from_id": "18:123456"}
+    with patch(
+        "custom_components.ramses_extras.features.default.services.RamsesCommands"
+    ) as mock_commands_class:
+        mock_commands = MagicMock()
+        mock_commands.update_fan_params = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await update_params_func(call_with_from)
+
+        mock_commands.update_fan_params.assert_called_once_with(
+            "32:123456", "18:123456"
+        )
 
 
 async def test_get_queue_statistics_service(hass):

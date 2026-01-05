@@ -24,6 +24,7 @@ import {
   callWebSocket,
   sendFanCommand,
   setFanParameter,
+  refreshFanParameters,
 } from '../../helpers/card-services.js';
 import {
   // validateCoreEntities,
@@ -642,6 +643,31 @@ class HvacFanCard extends RamsesBaseCard {
     }
   }
 
+  // Refresh all parameters (2411 sequence)
+  async refreshParameters() {
+    const refreshBtn = this.shadowRoot?.querySelector('.refresh-params-btn');
+    if (refreshBtn) {
+      refreshBtn.classList.add('loading');
+    }
+
+    try {
+      await refreshFanParameters(this._hass, this.config.device_id);
+      // Success feedback
+      if (refreshBtn) {
+        refreshBtn.classList.remove('loading');
+        refreshBtn.classList.add('success');
+        setTimeout(() => refreshBtn.classList.remove('success'), 2000);
+      }
+    } catch (error) {
+      console.error('❌ Failed to refresh parameters:', error);
+      if (refreshBtn) {
+        refreshBtn.classList.remove('loading');
+        refreshBtn.classList.add('error');
+        setTimeout(() => refreshBtn.classList.remove('error'), 2000);
+      }
+    }
+  }
+
   _onConnected() {
     if (this._config?.device_id) {
       this.requestInitialData();
@@ -839,6 +865,16 @@ class HvacFanCard extends RamsesBaseCard {
         });
       });
       // console.log(`✅ ${deviceParamButtons.length} device parameter update button listeners attached`);
+    }
+
+    // Refresh button
+    const refreshBtn = this.shadowRoot?.querySelector('.refresh-params-btn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.refreshParameters();
+      });
     }
   }
 }

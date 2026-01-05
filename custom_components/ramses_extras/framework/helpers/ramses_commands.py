@@ -304,6 +304,96 @@ class RamsesCommands:
             device_id, cmd_def, priority, timeout
         )
 
+    async def update_fan_params(
+        self, device_id: str, from_id: str | None = None
+    ) -> CommandResult:
+        """Update all fan parameters for a device by calling ramses_cc broker directly.
+
+        This bypasses HA service validation warnings about referenced devices.
+
+        Args:
+            device_id: Target device ID
+            from_id: Optional source device ID
+
+        Returns:
+            CommandResult with execution status
+        """
+        try:
+            # Convert device_id format if needed (32_153289 -> 32:153289)
+            device_id_formatted = device_id.replace("_", ":")
+
+            ramses_cc_data = self.hass.data.get("ramses_cc", {})
+            broker = None
+            for entry_id, broker_instance in ramses_cc_data.items():
+                if hasattr(broker_instance, "get_all_fan_params"):
+                    broker = broker_instance
+                    break
+
+            if not broker:
+                return CommandResult(
+                    success=False, error_message="ramses_cc broker not found"
+                )
+
+            call_data = {"device_id": device_id_formatted}
+            if from_id:
+                call_data["from_id"] = from_id
+
+            # Call broker method directly
+            broker.get_all_fan_params(call_data)
+            return CommandResult(success=True)
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to trigger update_fan_params: {e}")
+            return CommandResult(success=False, error_message=str(e))
+
+    async def set_fan_param(
+        self, device_id: str, param_id: str, value: Any, from_id: str | None = None
+    ) -> CommandResult:
+        """Set a fan parameter by calling ramses_cc broker directly.
+
+        This bypasses HA service validation warnings about referenced devices.
+
+        Args:
+            device_id: Target device ID
+            param_id: Parameter ID (2-digit hex)
+            value: Value to set
+            from_id: Optional source device ID
+
+        Returns:
+            CommandResult with execution status
+        """
+        try:
+            # Convert device_id format if needed (32_153289 -> 32:153289)
+            device_id_formatted = device_id.replace("_", ":")
+
+            ramses_cc_data = self.hass.data.get("ramses_cc", {})
+            broker = None
+            for entry_id, broker_instance in ramses_cc_data.items():
+                if hasattr(broker_instance, "async_set_fan_param"):
+                    broker = broker_instance
+                    break
+
+            if not broker:
+                return CommandResult(
+                    success=False, error_message="ramses_cc broker not found"
+                )
+
+            call_data = {
+                "device_id": device_id_formatted,
+                "param_id": param_id,
+                "value": value,
+            }
+            if from_id:
+                call_data["from_id"] = from_id
+
+            # Call broker method directly
+            await broker.async_set_fan_param(call_data)
+            return CommandResult(success=True)
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to set fan parameter: {e}")
+            return CommandResult(success=False, error_message=str(e))
+
     async def _send_packet(self, device_id: str, cmd_def: dict[str, str]) -> bool:
         """Send a packet using the ramses_cc send_packet service.
 

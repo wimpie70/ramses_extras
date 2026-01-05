@@ -1,4 +1,5 @@
 - more cleanup on the features, framework, starting with the hello world feature
+- check if we need services.py, can't we use ramses_cc directly ?
 
 - hvac fan card editor: it never had a followup step for mapping entities (only device dropdown). good idea for future dev.
 
@@ -12,3 +13,5 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 
 
 - remove ignore: brands from hacs-validate.yml
+
+- on startup, we should get the persisted  state for humidity control. now we can restart with the fan on high or low without knowing or control

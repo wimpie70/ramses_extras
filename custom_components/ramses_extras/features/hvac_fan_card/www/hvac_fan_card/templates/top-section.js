@@ -86,6 +86,9 @@ export function createTopSection(data) {
               <span class="arrow">→</span>
               <span id="dehumActive">${dehumActive}</span>
             </div>
+            <div>
+              <span>&nbsp;</span>
+            </div>
             ` : ''}
           </div>
         </div>

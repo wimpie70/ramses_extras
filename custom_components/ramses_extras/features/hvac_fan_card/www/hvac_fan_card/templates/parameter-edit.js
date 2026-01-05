@@ -55,7 +55,12 @@ export function createParameterEditSection(params) {
       ${Object.keys(availableParams).length > 0 ? `
       <!-- Device Parameters Section -->
       <div class="param-section-header">
-        <h3>Device Parameters (2411)</h3>
+        <div class="header-content">
+          <h3>Device Parameters (2411)</h3>
+          <button class="refresh-params-btn" title="Refresh all parameters from device">
+            <span class="refresh-icon">🔄</span> Refresh
+          </button>
+        </div>
       </div>
       <div class="param-list" style="max-height: 400px; overflow-y: auto;">
         ${Object.entries(availableParams).map(([key, param]) =>

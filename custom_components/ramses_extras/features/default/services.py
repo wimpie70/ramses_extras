@@ -14,6 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 
 SVC_SEND_FAN_COMMAND = "send_fan_command"
 SVC_SET_FAN_PARAMETER = "set_fan_parameter"
+SVC_UPDATE_FAN_PARAMS = "update_fan_params"
 SVC_GET_QUEUE_STATISTICS = "get_queue_statistics"
 
 
@@ -28,18 +29,21 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def _async_set_fan_parameter(call: ServiceCall) -> None:
         data = dict(call.data)
-
+        device_id = data["device_id"]
         param_id = str(data["param_id"]).upper()
+        value = data["value"]
+        from_id = data.get("from_id")
 
-        service_data: dict[str, Any] = {
-            "device_id": data["device_id"],
-            "param_id": param_id,
-            "value": str(data["value"]),
-        }
-        if from_id := data.get("from_id"):
-            service_data["from_id"] = from_id
+        commands = RamsesCommands(hass)
+        await commands.set_fan_param(device_id, param_id, value, from_id)
 
-        await hass.services.async_call("ramses_cc", "set_fan_param", service_data)
+    async def _async_update_fan_params(call: ServiceCall) -> None:
+        data = dict(call.data)
+        device_id = data["device_id"]
+        from_id = data.get("from_id")
+
+        commands = RamsesCommands(hass)
+        await commands.update_fan_params(device_id, from_id)
 
     async def _async_get_queue_statistics(call: ServiceCall) -> None:
         commands = RamsesCommands(hass)
@@ -71,6 +75,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     vol.Required("device_id"): cv.string,
                     vol.Required("param_id"): cv.string,
                     vol.Required("value"): cv.string,
+                    vol.Optional("from_id"): cv.string,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_UPDATE_FAN_PARAMS):
+        hass.services.async_register(
+            DOMAIN,
+            SVC_UPDATE_FAN_PARAMS,
+            _async_update_fan_params,
+            schema=vol.Schema(
+                {
+                    vol.Required("device_id"): cv.string,
                     vol.Optional("from_id"): cv.string,
                 },
                 extra=vol.PREVENT_EXTRA,

@@ -42,3 +42,58 @@ set_fan_speed_mode:
       example: "High humidity detected"
       selector:
         text:
+
+update_fan_params:
+  name: Update Fan Parameters
+  description: Request a full refresh of all 2411 parameters from the device (sequential RQ sequence).
+  fields:
+    device_id:
+      name: Device ID
+      description: The Ramses device ID (e.g., "32:153289").
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    from_id:
+      name: From ID
+      description: Optional source device ID (e.g., a bound remote).
+      required: false
+      selector:
+        text:
+
+set_fan_parameter:
+  name: Set Fan Parameter
+  description: Set a specific 2411 parameter on a fan device.
+  fields:
+    device_id:
+      name: Device ID
+      description: The Ramses device ID (e.g., "32:153289").
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    param_id:
+      name: Parameter ID
+      description: The 2-digit hex ID of the parameter.
+      required: true
+      example: "31"
+      selector:
+        text:
+    value:
+      name: Value
+      description: The value to set for the parameter.
+      required: true
+      example: "5"
+      selector:
+        text:
+    from_id:
+      name: From ID
+      description: Optional source device ID (e.g., a bound remote).
+      required: false
+      selector:
+        text:
+
+get_queue_statistics:
+  name: Get Queue Statistics
+  description: Refresh the RAMSES command queue statistics in the integration data.
+  fields: {}

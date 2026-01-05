@@ -152,6 +152,20 @@ export async function sendFanCommand(hass, deviceId, command) {
   });
 }
 
+/**
+ * Refresh all fan parameters (2411 sequence)
+ *
+ * @param {Object} hass - Home Assistant instance
+ * @param {string} deviceId - Device ID
+ * @param {string} fromId - Optional source device ID
+ * @returns {Promise<Object>} Service call result
+ */
+export async function refreshFanParameters(hass, deviceId, fromId = null) {
+  const data = { device_id: deviceId };
+  if (fromId) data.from_id = fromId;
+  return callService(hass, 'ramses_extras', 'update_fan_params', data);
+}
+
 // Cache for available devices to prevent duplicate requests
 let _devicesCache = null;
 let _devicesCacheTimestamp = 0;

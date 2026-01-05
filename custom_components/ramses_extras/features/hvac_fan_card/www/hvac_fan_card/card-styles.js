@@ -119,7 +119,7 @@ export const CARD_STYLE = `
   padding: 12px;
   margin-bottom: 16px;
   position: relative;
-  min-height: 440px;
+  min-height: 380px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -166,6 +166,9 @@ export const CARD_STYLE = `
   font-size: 30px;
   background-color: transparent;
   border-color: transparent;
+}
+.settings-icon:hover {
+  cursor: pointer;
 }
 
 .bottom-stats {
@@ -295,7 +298,7 @@ export const CARD_STYLE = `
 /* ====== DIAGRAMS ====== */
 .airflow-diagram {
   position: absolute;
-  width: 55%;
+  width: 40%;
   height: auto;
   top: 60%;
   left: 50%;
@@ -322,11 +325,11 @@ export const CARD_STYLE = `
   background: #2a2a2a;
   border: 2px solid #3a3a3a;
   border-radius: 12px;
-  padding: 16px;
+  padding: 1px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 1px;
   cursor: pointer;
   transition: all 0.3s ease;
   flex: 1;
@@ -375,6 +378,51 @@ export const CARD_STYLE = `
   margin: 16px 0 12px 0;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(30, 58, 138, 0.2);
+}
+
+.param-section-header .header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.refresh-params-btn {
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin-right: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.refresh-params-btn:hover {
+  background: #357abd;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.refresh-params-btn:active {
+  transform: translateY(0);
+}
+
+.refresh-params-btn.loading .refresh-icon {
+  animation: spin 1s linear infinite;
+}
+
+.refresh-params-btn.success {
+  background: #28a745;
+}
+
+.refresh-params-btn.error {
+  background: #dc3545;
 }
 
 .param-section-header h3 {
@@ -470,6 +518,34 @@ export const CARD_STYLE = `
   background: #f8f9fa;
   color: #6c757d;
   cursor: not-allowed;
+}
+
+.param-update-btn {
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.param-update-btn:hover {
+  background: #357abd;
+}
+
+.param-item.loading .param-update-btn {
+  background: #ffc107;
+}
+
+.param-item.success .param-update-btn {
+  background: #28a745;
+}
+
+.param-item.error .param-update-btn {
+  background: #dc3545;
 }
 
 .param-status {
