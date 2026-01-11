@@ -237,58 +237,35 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             # Import the const module for this feature
             feature_module = importlib.import_module(const_module_path)
 
-            entity_mappings = {}
-            prefixes = (
-                "HELLO_WORLD_",
-                "HUMIDITY_CONTROL_",
-                "HVAC_FAN_CARD_",
-                "SENSOR_CONTROL_",
-                "",
+            feature_definition = getattr(feature_module, "FEATURE_DEFINITION", None)
+            if not isinstance(feature_definition, dict):
+                feature_definition = {}
+
+            entity_mappings = feature_definition.get("entity_mappings")
+            if not isinstance(entity_mappings, dict):
+                entity_mappings = {}
+            else:
+                entity_mappings = dict(entity_mappings)
+
+            config_sources = (
+                ("switch", "switch_configs"),
+                ("binary_sensor", "boolean_configs"),
+                ("sensor", "sensor_configs"),
+                ("number", "number_configs"),
             )
 
-            # Single loop over attributes for efficiency and consistency
-            for attr_name in dir(feature_module):
-                if attr_name.startswith("__"):
+            for platform, config_key in config_sources:
+                configs = feature_definition.get(config_key)
+                if not isinstance(configs, dict):
                     continue
 
-                platform = None
-                for prefix in prefixes:
-                    if attr_name.startswith(prefix):
-                        suffix = attr_name[len(prefix) :]
-                        if suffix == "SWITCH_CONFIGS":
-                            platform = "switch"
-                        elif suffix in ("BINARY_SENSOR_CONFIGS", "BOOLEAN_CONFIGS"):
-                            platform = "binary_sensor"
-                        elif suffix == "SENSOR_CONFIGS":
-                            platform = "sensor"
-                        elif suffix == "NUMBER_CONFIGS":
-                            platform = "number"
-
-                        if platform:
-                            configs = getattr(feature_module, attr_name)
-                            if isinstance(configs, dict):
-                                for entity_name, config in configs.items():
-                                    if (
-                                        isinstance(config, dict)
-                                        and "entity_template" in config
-                                    ):
-                                        template = config["entity_template"]
-                                        entity_mappings[f"{entity_name}_state"] = (
-                                            f"{platform}.{template}"
-                                        )
-                            break
-
-            # Fallback: Check for entity_mappings in feature constants
-            if not entity_mappings:
-                for attr_name in dir(feature_module):
-                    if attr_name.endswith("_CONST"):
-                        feature_const = getattr(feature_module, attr_name)
-                        if (
-                            isinstance(feature_const, dict)
-                            and "entity_mappings" in feature_const
-                        ):
-                            entity_mappings = feature_const["entity_mappings"]
-                            break
+                for entity_name, config in configs.items():
+                    if not isinstance(config, dict) or "entity_template" not in config:
+                        continue
+                    template = config["entity_template"]
+                    entity_mappings.setdefault(
+                        f"{entity_name}_state", f"{platform}.{template}"
+                    )
 
             self._logger.debug(
                 f"Found entity mappings for {self.feature_identifier}: "

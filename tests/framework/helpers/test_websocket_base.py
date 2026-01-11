@@ -262,15 +262,11 @@ class TestGetEntityMappingsCommand:
         command = GetEntityMappingsCommand(hass, "test.const")
 
         mock_module = MagicMock()
-        mock_module.SENSOR_CONFIGS = {"s1": {"entity_template": "t1"}}
+        mock_module.FEATURE_DEFINITION = {
+            "sensor_configs": {"s1": {"entity_template": "t1"}},
+        }
 
-        with (
-            patch("importlib.import_module", return_value=mock_module),
-            patch(
-                "custom_components.ramses_extras.framework.helpers.websocket_base.dir",
-                return_value=["SENSOR_CONFIGS"],
-            ),
-        ):
+        with patch("importlib.import_module", return_value=mock_module):
             mappings = await command._get_entity_mappings_from_feature()
             assert mappings == {"s1_state": "sensor.t1"}
 
@@ -280,27 +276,14 @@ class TestGetEntityMappingsCommand:
         command = GetEntityMappingsCommand(hass, "test")
 
         mock_module = MagicMock()
-        mock_module.HELLO_WORLD_SWITCH_CONFIGS = {"sw1": {"entity_template": "t_sw"}}
-        mock_module.HUMIDITY_CONTROL_BINARY_SENSOR_CONFIGS = {
-            "bs1": {"entity_template": "t_bs"}
+        mock_module.FEATURE_DEFINITION = {
+            "switch_configs": {"sw1": {"entity_template": "t_sw"}},
+            "boolean_configs": {"bs1": {"entity_template": "t_bs"}},
+            "sensor_configs": {"s1": {"entity_template": "t_s"}},
+            "number_configs": {"n1": {"entity_template": "t_n"}},
         }
-        mock_module.HVAC_FAN_CARD_SENSOR_CONFIGS = {"s1": {"entity_template": "t_s"}}
-        mock_module.SENSOR_CONTROL_NUMBER_CONFIGS = {"n1": {"entity_template": "t_n"}}
 
-        attrs = [
-            "HELLO_WORLD_SWITCH_CONFIGS",
-            "HUMIDITY_CONTROL_BINARY_SENSOR_CONFIGS",
-            "HVAC_FAN_CARD_SENSOR_CONFIGS",
-            "SENSOR_CONTROL_NUMBER_CONFIGS",
-        ]
-
-        with (
-            patch("importlib.import_module", return_value=mock_module),
-            patch(
-                "custom_components.ramses_extras.framework.helpers.websocket_base.dir",
-                return_value=attrs,
-            ),
-        ):
+        with patch("importlib.import_module", return_value=mock_module):
             mappings = await command._get_entity_mappings_from_feature()
             assert mappings["sw1_state"] == "switch.t_sw"
             assert mappings["bs1_state"] == "binary_sensor.t_bs"
@@ -309,19 +292,13 @@ class TestGetEntityMappingsCommand:
 
     @pytest.mark.asyncio
     async def test_get_entity_mappings_from_feature_fallback_const(self, hass):
-        """Test fallback to _CONST attribute."""
+        """Test explicit entity_mappings in FEATURE_DEFINITION."""
         command = GetEntityMappingsCommand(hass, "test")
 
         mock_module = MagicMock()
-        mock_module.TEST_CONST = {"entity_mappings": {"m1": "v1"}}
+        mock_module.FEATURE_DEFINITION = {"entity_mappings": {"m1": "v1"}}
 
-        with (
-            patch("importlib.import_module", return_value=mock_module),
-            patch(
-                "custom_components.ramses_extras.framework.helpers.websocket_base.dir",
-                return_value=["TEST_CONST"],
-            ),
-        ):
+        with patch("importlib.import_module", return_value=mock_module):
             mappings = await command._get_entity_mappings_from_feature()
             assert mappings == {"m1": "v1"}
 

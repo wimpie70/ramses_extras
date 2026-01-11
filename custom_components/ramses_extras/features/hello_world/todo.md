@@ -8,8 +8,9 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
 - [x] `hello_world` registers services under the integration domain (`ramses_extras.*`) using HA-style `vol.Schema` + `ServiceCall`
 - [x] `hello_world` keeps `sensor.py` as the placeholder example, and no longer exposes a placeholder `number` platform via consts/factory
 - [x] Hello World editor logging is guarded by `window.ramsesExtras.debug`
+- [x] `GetEntityMappingsCommand` uses `FEATURE_DEFINITION` (no legacy *_CONST / attribute scanning)
+- [x] `SimpleEntityManager` uses `FEATURE_DEFINITION` for entity generation (mypy clean)
 - [ ] Run local checks and confirm no lint/type/test regressions
-- [ ] Decide the codebase-wide plan to consolidate redundant feature const structures
 
 ## 1) Validate + CI checkpoint (do this before committing)
 
@@ -51,8 +52,30 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
   - Proposed direction:
     - make `FEATURE_DEFINITION` the single required dict for registry consumption
     - remove/avoid parallel structures like `FEATURE_WEB_CONFIGS`, `HELLO_WORLD_CONFIG`, etc.
+  - Semantics to keep straight:
+    - `*_configs` (e.g. `switch_configs`) = *definitions* (how to build an entity if it exists)
+    - `required_entities` = *intent* (which entities should be created/validated for the feature)
+      - If `required_entities` is omitted, we currently **derive it from the keys of `*_configs`**.
+      - Use explicit `required_entities` when:
+        - only a subset of configs should exist (optional entities)
+        - the feature relies on entities created elsewhere (e.g. ramses_rf sensors)
+        - the feature is card-only (configs empty) but automation/UI still needs mappings
+    - `entity_mappings` = *frontend/automation mapping* (template strings), may include entities not
+      created by this feature.
   - This should be done consistently across all features + the framework.
   - **Checkpoint:** after each refactor chunk, run `ruff` and `make local-ci`.
+
+- [ ] **Next concrete migration steps**
+  - [ ] Move `humidity_control` automation off `HUMIDITY_CONTROL_CONST`
+    - Add `required_entities` + `entity_mappings` into `FEATURE_DEFINITION`
+    - Update consumers to read from `FEATURE_DEFINITION`
+    - Remove `HUMIDITY_CONTROL_CONST` exports + update tests
+  - [ ] Remove unused per-feature web/card blobs
+    - `FEATURE_WEB_CONFIGS`, `HELLO_WORLD_CONFIG`, `HVAC_FAN_CARD_CARD_CONFIG`
+    - Keep only `FEATURE_DEFINITION['card_config']` / `*_CARD_CONFIGS` if still needed
+  - [ ] Simplify `extras_registry` fallback paths once all features are migrated
+    - Remove legacy scanning of `*_SENSOR_CONFIGS`, `*_CONST`, etc.
+  - [ ] **Checkpoint:** `mypy .` + `pytest .` (or `make local-ci`).
 
 - [ ] **Debug flag configuration**
   - Keep using `window.ramsesExtras.debug` as the frontend switch.

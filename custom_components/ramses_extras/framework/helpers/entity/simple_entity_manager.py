@@ -328,20 +328,33 @@ class SimpleEntityManager:
             )
             feature_module = importlib.import_module(feature_module_path)
 
-            # Get required entities from feature configuration
-            const_key = f"{feature_id.upper()}_CONST"
-            required_entities = getattr(feature_module, const_key, {}).get(
-                "required_entities", {}
+            def _as_config_dict(value: Any) -> dict[str, Any]:
+                if isinstance(value, dict):
+                    return value
+                return {}
+
+            feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
+            feature_def: dict[str, Any] = (
+                feature_def_obj if isinstance(feature_def_obj, dict) else {}
             )
 
-            # If not in CONST, try FEATURE_DEFINITION
-            if not required_entities and hasattr(feature_module, "FEATURE_DEFINITION"):
-                feature_def = feature_module.FEATURE_DEFINITION
-                # Look for configs and extract entity_names
-                for plat in ["sensor", "switch", "number", "binary_sensor"]:
-                    configs = feature_def.get(f"{plat}_configs", {})
-                    if configs:
-                        required_entities.setdefault(plat, []).extend(configs.keys())
+            required_entities = feature_def.get("required_entities")
+            if not isinstance(required_entities, dict):
+                required_entities = {}
+
+            config_sources: dict[str, dict[str, Any]] = {
+                "sensor": _as_config_dict(feature_def.get("sensor_configs")),
+                "switch": _as_config_dict(feature_def.get("switch_configs")),
+                "number": _as_config_dict(feature_def.get("number_configs")),
+                "binary_sensor": _as_config_dict(feature_def.get("boolean_configs")),
+            }
+
+            if not required_entities:
+                required_entities = {
+                    platform: list(configs.keys())
+                    for platform, configs in config_sources.items()
+                    if configs
+                }
 
             _LOGGER.debug(
                 "Found required_entities for %s: %s", feature_id, required_entities
@@ -350,15 +363,7 @@ class SimpleEntityManager:
             device_id_underscore = device_id.replace(":", "_")
 
             for platform, entity_names in required_entities.items():
-                # Get the platform config dictionary
-                config_key = f"{feature_id.upper()}_{platform.upper()}_CONFIGS"
-                # Handle special case for binary_sensor vs boolean
-                if platform == "binary_sensor" and not hasattr(
-                    feature_module, config_key
-                ):
-                    config_key = f"{feature_id.upper()}_BOOLEAN_CONFIGS"
-
-                platform_configs = getattr(feature_module, config_key, {})
+                platform_configs = config_sources.get(platform, {})
 
                 for entity_name in entity_names:
                     # Get template from config if available, otherwise use default
