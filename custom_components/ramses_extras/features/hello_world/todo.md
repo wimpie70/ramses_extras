@@ -56,6 +56,7 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
     - `*_configs` (e.g. `switch_configs`) = *definitions* (how to build an entity if it exists)
     - `required_entities` = *intent* (which entities should be created/validated for the feature)
       - If `required_entities` is omitted, we currently **derive it from the keys of `*_configs`**.
+      - Derived required entities exclude configs marked with `optional: True`.
       - Use explicit `required_entities` when:
         - only a subset of configs should exist (optional entities)
         - the feature relies on entities created elsewhere (e.g. ramses_rf sensors)

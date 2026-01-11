@@ -81,6 +81,8 @@ async def create_hello_world_switch(
     switch_list = []
 
     for switch_type, config in HELLO_WORLD_SWITCH_CONFIGS.items():
+        if config.get("optional") is True:
+            continue
         supported_types = config.get("device_types", [])
         if supported_types and "HvacVentilator" in supported_types:
             switch_entity = HelloWorldSwitch(hass, device_id, switch_type, config)

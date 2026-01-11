@@ -7,6 +7,16 @@ This module defines all constants, configurations, and entity mappings for the
 Hello World feature, including entity configurations, device mappings,
 and WebSocket command definitions.
 
+`FEATURE_DEFINITION` is the canonical structure consumed by the framework.
+
+Semantics:
+- `*_configs` (e.g. `switch_configs`) define how an entity is constructed.
+- `required_entities` defines which entities must exist for a feature/device.
+  - If `required_entities` is omitted, the framework derives it from `*_configs`.
+  - Derivation excludes any entity config where `optional: True`.
+- `entity_mappings` (when present) is for frontend/automation mapping and may
+  include entities that are created elsewhere.
+
 :platform: Home Assistant
 :feature: Hello World Constants
 :components: Entity Configurations, Device Mappings, WebSocket Commands
@@ -34,7 +44,14 @@ HELLO_WORLD_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {
         "icon": "mdi:lightbulb",
         "device_types": ["HvacVentilator", "HgiController"],
         # "default_enabled": True,
-    }
+    },
+    "hello_world_optional_switch": {  # optional example
+        "name_template": "Hello World Optional Switch {device_id}",
+        "entity_template": "hello_world_optional_switch_{device_id}",
+        "icon": "mdi:toggle-switch-variant",
+        "device_types": ["HvacVentilator", "HgiController"],
+        "optional": True,
+    },
 }
 
 HELLO_WORLD_BINARY_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {

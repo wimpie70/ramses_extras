@@ -333,6 +333,9 @@ class SimpleEntityManager:
                     return value
                 return {}
 
+            def _is_optional_entity(config: Any) -> bool:
+                return isinstance(config, dict) and config.get("optional") is True
+
             feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
             feature_def: dict[str, Any] = (
                 feature_def_obj if isinstance(feature_def_obj, dict) else {}
@@ -350,11 +353,15 @@ class SimpleEntityManager:
             }
 
             if not required_entities:
-                required_entities = {
-                    platform: list(configs.keys())
-                    for platform, configs in config_sources.items()
-                    if configs
-                }
+                required_entities = {}
+                for platform, configs in config_sources.items():
+                    entity_names = [
+                        entity_name
+                        for entity_name, config in configs.items()
+                        if not _is_optional_entity(config)
+                    ]
+                    if entity_names:
+                        required_entities[platform] = entity_names
 
             _LOGGER.debug(
                 "Found required_entities for %s: %s", feature_id, required_entities
