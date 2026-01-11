@@ -17,11 +17,11 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
 
 ## 1) Validate + CI checkpoint (do this before committing)
 
-- [ ] **Checkpoint 1: linters**
+- [x] **Checkpoint 1: linters**
   - Run:
     - `ruff check custom_components/ramses_extras`
     - `python3 -m compileall custom_components/ramses_extras`
-- [ ] **Checkpoint 2: tests**
+- [x] **Checkpoint 2: tests**
   - Run:
     - `make local-ci`
     - (or targeted) `pytest`
@@ -34,12 +34,12 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
   - Update frontend or backend mapping keys to match.
   - **Checkpoint:** rerun `make local-ci`.
 
-- [ ] **Remove duplicated editor factory methods in `hello-world.js`**
+- [x] **Remove duplicated editor factory methods in `hello-world.js`**
   - `hello-world.js` defines both static and instance `getConfigElement()`.
   - Keep only what the base card / HA requires.
   - **Checkpoint:** run `ruff` + `pytest` (or `make local-ci`).
 
-- [ ] **Make device support consistent**
+- [x] **Make device support consistent**
   - Entities are configured for `HvacVentilator` and `HgiController`, but the current factories still hardcode a `"HvacVentilator"` check.
   - Update the example to demonstrate the *intended* device-type filtering approach.
   - **Checkpoint:** run `make local-ci`.

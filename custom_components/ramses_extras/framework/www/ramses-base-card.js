@@ -110,8 +110,7 @@ export class RamsesBaseCard extends HTMLElement {
    * @returns {HTMLElement|null} Configuration element or null
    */
   getConfigElement() {
-    // This method must be implemented by subclasses
-    throw new Error('getConfigElement() must be implemented by subclass');
+    return null;
   }
 
   // ========== OPTIONAL METHODS (Can be overridden by subclasses) ==========

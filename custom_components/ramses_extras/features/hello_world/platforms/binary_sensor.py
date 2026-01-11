@@ -71,11 +71,41 @@ async def create_hello_world_binary_sensor(
     """
     sensor_list = []
 
+    device_type: str | None = None
+    try:
+        devices = hass.data.get("ramses_extras", {}).get("devices", [])
+        for device in devices:
+            if isinstance(device, dict):
+                raw_id = device.get("device_id")
+                dev_type = device.get("type")
+            else:
+                raw_id = device
+                dev_type = getattr(device, "type", None)
+
+            if raw_id is None:
+                continue
+            raw_str = str(raw_id)
+            if raw_str in {
+                device_id,
+                device_id.replace(":", "_"),
+                device_id.replace("_", ":"),
+            }:
+                device_type = str(dev_type) if dev_type is not None else None
+                break
+    except Exception:
+        device_type = None
+
     for sensor_type, config in HELLO_WORLD_BINARY_SENSOR_CONFIGS.items():
         supported_types = config.get("device_types", [])
-        if supported_types and "HvacVentilator" in supported_types:
-            sensor_entity = HelloWorldBinarySensor(hass, device_id, sensor_type, config)
-            sensor_list.append(sensor_entity)
+        if (
+            supported_types
+            and device_type is not None
+            and device_type not in supported_types
+        ):
+            continue
+
+        sensor_entity = HelloWorldBinarySensor(hass, device_id, sensor_type, config)
+        sensor_list.append(sensor_entity)
 
     return sensor_list
 

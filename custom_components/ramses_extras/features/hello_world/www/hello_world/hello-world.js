@@ -80,25 +80,6 @@ class HelloWorld extends RamsesBaseCard {
   }
 
   /**
-   * Get configuration element for HA editor
-   * @returns {HTMLElement|null} Configuration element
-   */
-  getConfigElement() {
-    try {
-      // Ensure the editor is available before creating it (similar to hvac_fan_card)
-      if (typeof window.HelloworldEditor === 'undefined') {
-        console.error('HelloworldEditor is not defined on window');
-        return null;
-      }
-      return document.createElement('hello-world-editor');
-    } catch (error) {
-      console.error('Error creating config element:', error);
-      return null;
-    }
-  }
-
-
-  /**
    * Card-specific rendering implementation
    */
   _renderContent() {
