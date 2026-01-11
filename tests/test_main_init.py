@@ -452,7 +452,7 @@ class TestExposeFeatureConfigToFrontend:
 
         mock_entry = MagicMock()
         mock_entry.data = {"enabled_features": {"humidity_control": True}}
-        mock_entry.options = {}
+        mock_entry.options = {"debug_mode": True, "log_level": "debug"}
 
         with patch(
             "custom_components.ramses_extras.framework.helpers.paths.DEPLOYMENT_PATHS.get_destination_helpers_path"
@@ -467,6 +467,9 @@ class TestExposeFeatureConfigToFrontend:
             mock_file.write_text.assert_called_once()
             content = mock_file.write_text.call_args[0][0]
             assert '"humidity_control": true' in content
+            assert "window.ramsesExtras.debug = true" in content
+            assert 'window.ramsesExtras.logLevel = "debug"' in content
+            assert "if (window.ramsesExtras.debug === true)" in content
 
     @pytest.mark.asyncio
     async def test_expose_feature_config_exception_handling(self, hass):

@@ -525,15 +525,40 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle advanced settings step."""
+        self._refresh_config_entry(self.hass)
+
         if user_input is not None:
-            # Handle advanced settings form submission
-            pass
+            new_options = dict(self._config_entry.options)
+            new_options["debug_mode"] = bool(user_input.get("debug_mode", False))
+
+            log_level = user_input.get("log_level")
+            if isinstance(log_level, str) and log_level:
+                new_options["log_level"] = log_level
+            else:
+                new_options["log_level"] = "info"
+
+            self.hass.config_entries.async_update_entry(
+                self._config_entry,
+                options=new_options,
+            )
+
+            return await self.async_step_main_menu()
+
+        current_options = dict(self._config_entry.options)
+        debug_default = bool(current_options.get("debug_mode", False))
+        log_default = str(current_options.get("log_level", "info"))
 
         # Show advanced settings form
         data_schema = vol.Schema(
             {
-                vol.Optional("debug_mode", default=False): selector.BooleanSelector(),
-                vol.Optional("log_level", default="info"): selector.SelectSelector(
+                vol.Optional(
+                    "debug_mode",
+                    default=debug_default,
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    "log_level",
+                    default=log_default,
+                ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
                             selector.SelectOptionDict(value="debug", label="Debug"),

@@ -44,6 +44,26 @@ INTEGRATION_DIR = Path(__file__).parent
 _setup_in_progress = False
 
 
+def _apply_log_level_from_entry(entry: ConfigEntry) -> None:
+    log_level_raw = entry.options.get("log_level")
+    if not isinstance(log_level_raw, str):
+        return
+
+    log_level = log_level_raw.lower().strip()
+    level_map = {
+        "debug": logging.DEBUG,
+        "info": logging.INFO,
+        "warning": logging.WARNING,
+        "error": logging.ERROR,
+    }
+
+    level = level_map.get(log_level)
+    if level is None:
+        return
+
+    logging.getLogger("custom_components.ramses_extras").setLevel(level)
+
+
 async def _async_get_integration_version(hass: HomeAssistant) -> str:
     data = hass.data.setdefault(DOMAIN, {})
     cached_version = data.get("_integration_version")
@@ -117,6 +137,8 @@ async def _cleanup_old_card_deployments(
 
         # Stable shim redirects to current version
         stable_shim_content = (
+            f'import "/local/ramses_extras/v{current_version}/helpers/'
+            'ramses-extras-features.js";\n'
             f'import "/local/ramses_extras/v{current_version}/helpers/main.js";\n'
         )
 
@@ -335,6 +357,8 @@ async def async_setup_yaml_config(hass: HomeAssistant, config: ConfigType) -> No
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up entry for Ramses Extras."""
     _LOGGER.info("Starting Ramses Extras integration setup...")
+
+    _apply_log_level_from_entry(entry)
 
     # Setup from UI (config entry)
     hass.data.setdefault(DOMAIN, {})
@@ -640,15 +664,22 @@ async def _expose_feature_config_to_frontend(
             or {}
         )
 
+        debug_mode = bool(entry.options.get("debug_mode", False))
+        log_level = entry.options.get("log_level")
+        if not isinstance(log_level, str) or not log_level:
+            log_level = "info"
+
         version = await _async_get_integration_version(hass)
 
         # Use json.dumps to properly convert Python values to JavaScript
         import json
 
         js_enabled_features = json.dumps(enabled_features, indent=2)
+        js_debug_mode = json.dumps(debug_mode)
+        js_log_level = json.dumps(log_level)
 
-        # Log feature configuration for debugging
         console_log = (
+            f"if (window.ramsesExtras.debug === true) "
             f"console.log('Ramses Extras features loaded (v{version}):', "
             "window.ramsesExtras.features);"
         )
@@ -658,6 +689,8 @@ async def _expose_feature_config_to_frontend(
 window.ramsesExtras = window.ramsesExtras || {{}};
 window.ramsesExtras.version = "{version}";
 window.ramsesExtras.features = {js_enabled_features};
+window.ramsesExtras.debug = {js_debug_mode};
+window.ramsesExtras.logLevel = {js_log_level};
 
 // Log feature configuration for debugging
 {console_log}
@@ -687,6 +720,8 @@ window.ramsesExtras.features = {js_enabled_features};
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     try:
         data = hass.data.setdefault(DOMAIN, {})
+
+        _apply_log_level_from_entry(entry)
 
         old_enabled_features_raw = data.get("enabled_features")
         new_enabled_features_raw = (

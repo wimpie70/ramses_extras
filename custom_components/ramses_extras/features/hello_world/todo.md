@@ -46,7 +46,7 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
 
 ## 3) Codebase-wide architecture follow-up (not just hello_world)
 
-- [ ] **Consolidate feature const structures**
+- [x] **Consolidate feature const structures**
   - Goal: one authoritative structure per feature for:
     - entity configs
     - device mapping
@@ -69,17 +69,17 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
   - This should be done consistently across all features + the framework.
   - **Checkpoint:** after each refactor chunk, run `ruff` and `make local-ci`.
 
-- [ ] **Next concrete migration steps**
-  - [ ] Move `humidity_control` automation off `HUMIDITY_CONTROL_CONST`
+- [x] **Next concrete migration steps**
+  - [x] Move `humidity_control` automation off `HUMIDITY_CONTROL_CONST`
     - Add `required_entities` + `entity_mappings` into `FEATURE_DEFINITION`
     - Update consumers to read from `FEATURE_DEFINITION`
     - Remove `HUMIDITY_CONTROL_CONST` exports + update tests
-  - [ ] Remove unused per-feature web/card blobs
+  - [x] Remove unused per-feature web/card blobs
     - `FEATURE_WEB_CONFIGS`, `HELLO_WORLD_CONFIG`, `HVAC_FAN_CARD_CARD_CONFIG`
     - Keep only `FEATURE_DEFINITION['card_config']` / `*_CARD_CONFIGS` if still needed
-  - [ ] Simplify `extras_registry` fallback paths once all features are migrated
+  - [x] Simplify `extras_registry` fallback paths once all features are migrated
     - Remove legacy scanning of `*_SENSOR_CONFIGS`, `*_CONST`, etc.
-  - [ ] **Checkpoint:** `mypy .` + `pytest .` (or `make local-ci`).
+  - [x] **Checkpoint:** `mypy .` + `pytest .` (or `make local-ci`).
 
 - [ ] **Debug flag configuration**
   - Keep using `window.ramsesExtras.debug` as the frontend switch.
