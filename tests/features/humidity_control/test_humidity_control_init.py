@@ -8,9 +8,6 @@ from homeassistant.core import HomeAssistant
 from custom_components.ramses_extras.features.humidity_control import (
     create_humidity_control_feature,
 )
-from custom_components.ramses_extras.features.humidity_control.const import (
-    HUMIDITY_CONTROL_CONST,
-)
 
 
 class TestCreateHumidityControlFeature:

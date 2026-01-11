@@ -74,13 +74,6 @@ DEFAULT_WEBSOCKET_COMMANDS = {
 }
 
 # Default feature constant configuration for EntityManager
-DEFAULT_CONST = {
-    "required_entities": {
-        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"]
-    },
-    "websocket_commands": DEFAULT_WEBSOCKET_COMMANDS,
-}
-
 FEATURE_DEFINITION = {
     "feature_id": FEATURE_ID,
     "sensor_configs": DEFAULT_SENSOR_CONFIGS,
@@ -89,6 +82,9 @@ FEATURE_DEFINITION = {
     "boolean_configs": DEFAULT_BOOLEAN_CONFIGS,
     "device_entity_mapping": DEFAULT_DEVICE_ENTITY_MAPPING,
     "websocket_commands": DEFAULT_WEBSOCKET_COMMANDS,
+    "required_entities": {
+        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+    },
 }
 
 
@@ -114,7 +110,6 @@ def load_feature() -> None:
 
 __all__ = [
     "FEATURE_ID",
-    "DEFAULT_CONST",
     "FEATURE_DEFINITION",
     "DEFAULT_SENSOR_CONFIGS",
     "DEFAULT_SWITCH_CONFIGS",

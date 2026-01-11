@@ -10,7 +10,6 @@ from .hello_world import (
     create_hello_world_feature,
 )
 from .humidity_control import (
-    HUMIDITY_CONTROL_CONST,
     HumidityAutomationManager,
     HumidityConfig,
     HumidityEntities,
@@ -31,7 +30,6 @@ __all__ = [
     "HumidityEntities",
     "HumidityServices",
     "HumidityConfig",
-    "HUMIDITY_CONTROL_CONST",
     "create_humidity_control_feature",
     # Hello World Card Feature
     "create_hello_world_feature",

@@ -97,15 +97,58 @@ def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
 
     feature_module = importlib.import_module(feature_module_path)
 
+    feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
+    feature_def: dict[str, Any] = (
+        feature_def_obj if isinstance(feature_def_obj, dict) else {}
+    )
+
+    required_entities = feature_def.get("required_entities")
+    if isinstance(required_entities, dict) and required_entities:
+        return required_entities
+
+    def _as_config_dict(value: Any) -> dict[str, Any]:
+        return value if isinstance(value, dict) else {}
+
+    def _is_optional_entity(config: Any) -> bool:
+        return isinstance(config, dict) and config.get("optional") is True
+
+    config_sources: dict[str, dict[str, Any]] = {
+        "sensor": _as_config_dict(feature_def.get("sensor_configs")),
+        "switch": _as_config_dict(feature_def.get("switch_configs")),
+        "number": _as_config_dict(feature_def.get("number_configs")),
+        "binary_sensor": _as_config_dict(feature_def.get("boolean_configs")),
+    }
+
+    derived_required: dict[str, list[str]] = {}
+    for platform, configs in config_sources.items():
+        entity_names = [
+            entity_name
+            for entity_name, config in configs.items()
+            if not _is_optional_entity(config)
+        ]
+        if entity_names:
+            derived_required[platform] = entity_names
+
+    if derived_required:
+        return derived_required
+
     # Get required_entities from the const data
     const_key = f"{feature_id.upper()}_CONST"
     if hasattr(feature_module, const_key):
         const_data = getattr(feature_module, const_key, {})
-        required_entities: dict[str, list[str]] = const_data.get(
-            "required_entities", {}
-        )
-        if required_entities:
-            return required_entities
+        if isinstance(const_data, dict):
+            required_entities_const = const_data.get("required_entities")
+            if isinstance(required_entities_const, dict) and required_entities_const:
+                validated: dict[str, list[str]] = {}
+                for entity_type, entity_names in required_entities_const.items():
+                    if not isinstance(entity_type, str) or not isinstance(
+                        entity_names, list
+                    ):
+                        continue
+                    if all(isinstance(name, str) for name in entity_names):
+                        validated[entity_type] = entity_names
+                if validated:
+                    return validated
 
     # Return empty dict if no required_entities found
     return {}

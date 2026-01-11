@@ -27,7 +27,7 @@ from ...framework.helpers.common import (
     _singularize_entity_type,
 )
 from .config import HumidityConfig
-from .const import HUMIDITY_CONTROL_CONST
+from .const import FEATURE_DEFINITION
 from .services import HumidityServices
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         """
         super().__init__(
             hass=hass,
-            feature_id=cast(str, HUMIDITY_CONTROL_CONST["feature_id"]),
+            feature_id=cast(str, FEATURE_DEFINITION["feature_id"]),
             binary_sensor=None,  # Will be set when entities are available
             debounce_seconds=0,  # No debouncing needed - event-driven approach
         )
@@ -222,14 +222,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Returns:
             True if all entities exist, False otherwise
         """
-        # Use humidity control specific entity mappings
-        from .const import HUMIDITY_CONTROL_CONST
-
         required_entities = cast(
-            dict[str, list[str]], HUMIDITY_CONTROL_CONST.get("required_entities", {})
+            dict[str, list[str]], FEATURE_DEFINITION.get("required_entities", {})
         )
         entity_mappings = cast(
-            dict[str, str], HUMIDITY_CONTROL_CONST.get("entity_mappings", {})
+            dict[str, str], FEATURE_DEFINITION.get("entity_mappings", {})
         )
         missing_entities = []
 
@@ -301,15 +298,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Raises:
             ValueError: If any entity is unavailable or has invalid values
         """
-        from .const import HUMIDITY_CONTROL_CONST
-
         states: dict[str, Any] = {}
 
         # Base mappings from humidity control constants; abs humidity entities
         # are now resolver-aware via the default feature and should be treated
         # as the canonical source for indoor_abs/outdoor_abs.
         state_mappings = cast(
-            dict[str, str], HUMIDITY_CONTROL_CONST.get("entity_mappings", {})
+            dict[str, str], FEATURE_DEFINITION.get("entity_mappings", {})
         ).copy()
 
         # Optional context from sensor_control via WebSocket helper to align

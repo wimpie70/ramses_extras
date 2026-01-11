@@ -54,10 +54,6 @@ async def create_humidity_sensor(
     Returns:
         List of sensor entities
     """
-    # Import entity configurations from management layer
-    from ..const import HUMIDITY_CONTROL_CONST
-    from ..entities import HumidityEntities
-
     sensor: list[Any] = []
 
     # Note: Absolute humidity sensors are now created by the default feature

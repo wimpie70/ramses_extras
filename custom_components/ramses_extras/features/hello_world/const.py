@@ -134,16 +134,6 @@ HELLO_WORLD_CARD_CONFIGS: list[dict[str, Any]] = [
 ]
 
 # Entity structure for SimpleEntityManager
-HELLO_WORLD_CONST = {
-    "required_entities": {
-        "switch": ["hello_world_switch"],
-        "binary_sensor": ["hello_world_status"],
-    },
-    # Cards that this feature manages
-    "cards": HELLO_WORLD_CARD_CONFIGS,
-    "websocket_commands": HELLO_WORLD_WEBSOCKET_COMMANDS,
-}
-
 FEATURE_DEFINITION = {
     "feature_id": FEATURE_ID,
     "sensor_configs": HELLO_WORLD_SENSOR_CONFIGS,
@@ -151,6 +141,7 @@ FEATURE_DEFINITION = {
     "boolean_configs": HELLO_WORLD_BINARY_SENSOR_CONFIGS,
     "device_entity_mapping": HELLO_WORLD_DEVICE_ENTITY_MAPPING,
     "websocket_commands": HELLO_WORLD_WEBSOCKET_COMMANDS,
+    # Cards that this feature manages
     "card_config": HELLO_WORLD_CARD_CONFIGS[0] if HELLO_WORLD_CARD_CONFIGS else {},
 }
 

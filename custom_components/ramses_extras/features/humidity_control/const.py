@@ -142,33 +142,6 @@ ENHANCED_HUMIDITY_BOOLEAN_CONFIGS = {
     for key, config in HUMIDITY_BOOLEAN_CONFIGS.items()
 }
 
-# Feature-specific constants for automation
-HUMIDITY_CONTROL_CONST = {
-    "feature_id": "humidity_control",
-    # Entities that this feature creates and manages
-    "required_entities": {
-        "number": [
-            "relative_humidity_minimum",
-            "relative_humidity_maximum",
-            "absolute_humidity_offset",
-        ],
-        "switch": ["dehumidify"],
-        "binary_sensor": ["dehumidifying_active"],
-    },
-    "websocket_commands": HUMIDITY_CONTROL_WEBSOCKET_COMMANDS,
-    # Entity mappings for automation logic
-    # Note: Sensor entities are maintained by ramses_rf, not created by this feature
-    "entity_mappings": {
-        "indoor_abs": "sensor.indoor_absolute_humidity_{device_id}",
-        "outdoor_abs": "sensor.outdoor_absolute_humidity_{device_id}",
-        "indoor_rh": "sensor.{device_id}_indoor_humidity",
-        "min_humidity": "number.relative_humidity_minimum_{device_id}",
-        "max_humidity": "number.relative_humidity_maximum_{device_id}",
-        "offset": "number.absolute_humidity_offset_{device_id}",
-        "dehumidify": "switch.dehumidify_{device_id}",
-    },
-}
-
 # Default configuration template for humidity control feature
 # This provides the baseline configuration that gets merged with user settings
 HUMIDITY_CONTROL_DEFAULTS = {
@@ -196,6 +169,24 @@ FEATURE_DEFINITION = {
     "boolean_configs": HUMIDITY_BOOLEAN_CONFIGS,
     "device_entity_mapping": HUMIDITY_DEVICE_ENTITY_MAPPING,
     "websocket_commands": HUMIDITY_CONTROL_WEBSOCKET_COMMANDS,
+    "required_entities": {
+        "number": [
+            "relative_humidity_minimum",
+            "relative_humidity_maximum",
+            "absolute_humidity_offset",
+        ],
+        "switch": ["dehumidify"],
+        "binary_sensor": ["dehumidifying_active"],
+    },
+    "entity_mappings": {
+        "indoor_abs": "sensor.indoor_absolute_humidity_{device_id}",
+        "outdoor_abs": "sensor.outdoor_absolute_humidity_{device_id}",
+        "indoor_rh": "sensor.{device_id}_indoor_humidity",
+        "min_humidity": "number.relative_humidity_minimum_{device_id}",
+        "max_humidity": "number.relative_humidity_maximum_{device_id}",
+        "offset": "number.absolute_humidity_offset_{device_id}",
+        "dehumidify": "switch.dehumidify_{device_id}",
+    },
 }
 
 
@@ -225,7 +216,6 @@ __all__ = [
     "HUMIDITY_BOOLEAN_CONFIGS",
     "HUMIDITY_DEVICE_ENTITY_MAPPING",
     "HUMIDITY_CONTROL_WEBSOCKET_COMMANDS",
-    "HUMIDITY_CONTROL_CONST",
     "HUMIDITY_CONTROL_DEFAULTS",
     "ORCON_DEVICE_MODELS",
     "ZEHNDER_DEVICE_MODELS",

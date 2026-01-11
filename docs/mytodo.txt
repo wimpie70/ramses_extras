@@ -15,3 +15,5 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 - remove ignore: brands from hacs-validate.yml
 
 - on startup, we should get the persisted  state for humidity control. now we can restart with the fan on high or low without knowing or control
+
+- config steps: toggle feature-debug mode

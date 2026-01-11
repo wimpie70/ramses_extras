@@ -80,14 +80,17 @@ HVAC_FAN_CARD_CONFIGS: list[dict[str, Any]] = [
 ]
 
 # Feature-specific constants for HVAC Fan Card management
-HVAC_FAN_CARD_CONST = {
-    "required_entities": {},  # No entities created by this feature
-    # Cards that this feature manages
-    "cards": HVAC_FAN_CARD_CONFIGS,
+
+FEATURE_DEFINITION = {
+    "feature_id": FEATURE_ID,
+    "sensor_configs": HVAC_FAN_CARD_SENSOR_CONFIGS,
+    "switch_configs": HVAC_FAN_CARD_SWITCH_CONFIGS,
+    "number_configs": HVAC_FAN_CARD_NUMBER_CONFIGS,
+    "boolean_configs": HVAC_FAN_CARD_BOOLEAN_CONFIGS,
+    "device_entity_mapping": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
     "websocket_commands": HVAC_FAN_CARD_WEBSOCKET_COMMANDS,
-    # Device mappings for the feature
-    "device_mappings": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
-    # Entity mappings for frontend cards
+    "card_config": HVAC_FAN_CARD_CONFIGS[0] if HVAC_FAN_CARD_CONFIGS else {},
+    "required_entities": {},
     "entity_mappings": {
         # Absolute humidity sensors provided by integration
         "indoor_abs_humid_entity": "sensor.indoor_absolute_humidity_{device_id}",
@@ -119,17 +122,6 @@ HVAC_FAN_CARD_CONST = {
     },
 }
 
-FEATURE_DEFINITION = {
-    "feature_id": FEATURE_ID,
-    "sensor_configs": HVAC_FAN_CARD_SENSOR_CONFIGS,
-    "switch_configs": HVAC_FAN_CARD_SWITCH_CONFIGS,
-    "number_configs": HVAC_FAN_CARD_NUMBER_CONFIGS,
-    "boolean_configs": HVAC_FAN_CARD_BOOLEAN_CONFIGS,
-    "device_entity_mapping": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
-    "websocket_commands": HVAC_FAN_CARD_WEBSOCKET_COMMANDS,
-    "card_config": HVAC_FAN_CARD_CONFIGS[0] if HVAC_FAN_CARD_CONFIGS else {},
-}
-
 
 def load_feature() -> None:
     """Load hvac_fan_card feature into the registry."""
@@ -158,7 +150,6 @@ __all__ = [
     "HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING",
     "HVAC_FAN_CARD_WEBSOCKET_COMMANDS",
     "HVAC_FAN_CARD_CONFIGS",
-    "HVAC_FAN_CARD_CONST",
     "FEATURE_DEFINITION",
     "FEATURE_WEB_CONFIGS",
     "HVAC_FAN_CARD_CARD_CONFIG",

@@ -39,11 +39,6 @@ SENSOR_CONTROL_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {}
 
 SENSOR_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {}
 
-SENSOR_CONTROL_CONST: dict[str, Any] = {
-    "feature_id": DOMAIN,
-    "required_entities": {},
-}
-
 FEATURE_DEFINITION: dict[str, Any] = {
     "feature_id": FEATURE_ID,
     "sensor_configs": SENSOR_CONTROL_SENSOR_CONFIGS,
@@ -75,6 +70,5 @@ __all__ = [
     "SENSOR_CONTROL_BOOLEAN_CONFIGS",
     "SENSOR_CONTROL_DEVICE_ENTITY_MAPPING",
     "SENSOR_CONTROL_WEBSOCKET_COMMANDS",
-    "SENSOR_CONTROL_CONST",
     "load_feature",
 ]
