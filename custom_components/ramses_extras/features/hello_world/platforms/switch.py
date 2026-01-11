@@ -45,6 +45,11 @@ async def async_setup_entry(
     """Set up Hello World switch platform."""
     from custom_components.ramses_extras.framework.helpers import platform
 
+    hass.data.setdefault("ramses_extras", {})
+    hass.data["ramses_extras"].setdefault(
+        "hello_world_entities", SimpleEntityManager(hass)
+    )
+
     await platform.PlatformSetup.async_create_and_add_platform_entities(
         platform="switch",
         hass=hass,
@@ -162,10 +167,17 @@ class HelloWorldSwitch(ExtrasSwitchEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         base_attrs = super().extra_state_attributes or {}
+
+        device_id_underscore = self.device_id.replace(":", "_")
         return {
             **base_attrs,
             "hello_world_active": self.is_on,
             "demo_feature": True,
+            "binary_sensor_entity": EntityHelpers.generate_entity_name_from_template(
+                "binary_sensor",
+                "hello_world_status_{device_id}",
+                device_id=device_id_underscore,
+            ),
         }
 
 

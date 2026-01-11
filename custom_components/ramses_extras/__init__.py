@@ -597,9 +597,9 @@ async def _register_services(hass: HomeAssistant) -> None:
     """Register custom services."""
     _LOGGER.info("Registering Ramses Extras services")
 
-    from .features.default.services import async_setup_services
+    from .services_integration import async_register_feature_services
 
-    await async_setup_services(hass)
+    await async_register_feature_services(hass)
 
 
 async def _setup_websocket_integration(hass: HomeAssistant) -> None:
@@ -1173,6 +1173,10 @@ async def _setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading Ramses Extras integration...")
+
+    from .services_integration import async_unload_feature_services
+
+    await async_unload_feature_services(hass)
 
     # Forward the unload to our platforms
     unload_ok = await hass.config_entries.async_unload_platforms(

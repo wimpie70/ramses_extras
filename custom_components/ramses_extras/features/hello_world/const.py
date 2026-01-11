@@ -51,23 +51,17 @@ HELLO_WORLD_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
     # Placeholder for sensor platform
 }
 
-HELLO_WORLD_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {
-    # Placeholder for number platform
-}
-
 # Device entity mapping
 HELLO_WORLD_DEVICE_ENTITY_MAPPING = {
     "HvacVentilator": {
         "switch": ["hello_world_switch"],
         "binary_sensor": ["hello_world_status"],
         "sensor": [],  # Placeholder
-        "number": [],  # Placeholder
     },
     "HgiController": {
         "switch": ["hello_world_switch"],
         "binary_sensor": ["hello_world_status"],
         "sensor": [],
-        "number": [],
     },
 }
 
@@ -137,7 +131,6 @@ FEATURE_DEFINITION = {
     "feature_id": FEATURE_ID,
     "sensor_configs": HELLO_WORLD_SENSOR_CONFIGS,
     "switch_configs": HELLO_WORLD_SWITCH_CONFIGS,
-    "number_configs": HELLO_WORLD_NUMBER_CONFIGS,
     "boolean_configs": HELLO_WORLD_BINARY_SENSOR_CONFIGS,
     "device_entity_mapping": HELLO_WORLD_DEVICE_ENTITY_MAPPING,
     "websocket_commands": HELLO_WORLD_WEBSOCKET_COMMANDS,
@@ -188,7 +181,6 @@ __all__ = [
     "HELLO_WORLD_SWITCH_CONFIGS",
     "HELLO_WORLD_BINARY_SENSOR_CONFIGS",
     "HELLO_WORLD_SENSOR_CONFIGS",
-    "HELLO_WORLD_NUMBER_CONFIGS",
     "HELLO_WORLD_DEVICE_ENTITY_MAPPING",
     "HELLO_WORLD_WEBSOCKET_COMMANDS",
     "DEFAULT_CONFIG",

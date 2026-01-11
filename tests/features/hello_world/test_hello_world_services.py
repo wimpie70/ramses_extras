@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.ramses_extras.features.hello_world.const import DOMAIN
+from custom_components.ramses_extras.const import DOMAIN as INTEGRATION_DOMAIN
 from custom_components.ramses_extras.features.hello_world.services import (
     SERVICE_BULK_TOGGLE,
     SERVICE_GET_SWITCH_STATE,
@@ -126,7 +126,9 @@ def test_get_service_info():
 
 def test_get_registered_services(hass):
     """Test get_registered_services list."""
-    hass.services.async_services.return_value = {DOMAIN: {SERVICE_TOGGLE_SWITCH: None}}
+    hass.services.async_services.return_value = {
+        INTEGRATION_DOMAIN: {SERVICE_TOGGLE_SWITCH: None}
+    }
     services = get_registered_services(hass)
     assert SERVICE_TOGGLE_SWITCH in services
 

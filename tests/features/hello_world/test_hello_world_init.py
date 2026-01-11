@@ -139,7 +139,6 @@ class TestCreateHelloWorldFeature:
         assert "switch" in platforms
         assert "binary_sensor" in platforms
         assert "sensor" in platforms
-        assert "number" in platforms
 
         # Verify platform functions are callable
         for platform_name, platform_func in platforms.items():

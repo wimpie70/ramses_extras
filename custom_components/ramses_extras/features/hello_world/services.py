@@ -12,45 +12,65 @@ feature, including toggle switch, get switch state, and bulk toggle services.
 :service_types: Toggle Switch, Get State, Bulk Operations
 """
 
+from __future__ import annotations
+
 import logging
-from typing import TYPE_CHECKING, Any
+from functools import partial
+from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+import voluptuous as vol
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv
 
+from custom_components.ramses_extras.const import DOMAIN as INTEGRATION_DOMAIN
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
-from .const import DOMAIN, HELLO_WORLD_BINARY_SENSOR_CONFIGS, HELLO_WORLD_SWITCH_CONFIGS
-
-if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
+from .const import HELLO_WORLD_BINARY_SENSOR_CONFIGS, HELLO_WORLD_SWITCH_CONFIGS
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _service_exists(hass: HomeAssistant, domain: str, service: str) -> bool:
+    services = hass.services
+    if hasattr(services, "async_service_exists"):
+        return bool(services.async_service_exists(domain, service))
+    return bool(services.has_service(domain, service))
+
+
 # Service definitions
-SERVICE_TOGGLE_SWITCH = "toggle_switch"
-SERVICE_GET_SWITCH_STATE = "get_switch_state"
-SERVICE_BULK_TOGGLE = "bulk_toggle"
+SERVICE_TOGGLE_SWITCH = "hello_world_toggle_switch"
+SERVICE_GET_SWITCH_STATE = "hello_world_get_switch_state"
+SERVICE_BULK_TOGGLE = "hello_world_bulk_toggle"
 
-SERVICE_SCHEMA_TOGGLE_SWITCH = {
-    "device_id": "str",
-    "state": "bool",
-    "entity_id": "str",
-}
+SERVICE_SCHEMA_TOGGLE_SWITCH = vol.Schema(
+    {
+        vol.Optional("device_id"): cv.string,
+        vol.Optional("entity_id"): cv.string,
+        vol.Required("state"): cv.boolean,
+    },
+    extra=vol.PREVENT_EXTRA,
+)
 
-SERVICE_SCHEMA_GET_SWITCH_STATE = {
-    "device_id": "str",
-    "entity_id": "str",
-}
+SERVICE_SCHEMA_GET_SWITCH_STATE = vol.Schema(
+    {
+        vol.Optional("device_id"): cv.string,
+        vol.Optional("entity_id"): cv.string,
+    },
+    extra=vol.PREVENT_EXTRA,
+)
 
-SERVICE_SCHEMA_BULK_TOGGLE = {
-    "entity_ids": ["str"],
-    "state": "bool",
-}
+SERVICE_SCHEMA_BULK_TOGGLE = vol.Schema(
+    {
+        vol.Required("entity_ids"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Required("state"): cv.boolean,
+    },
+    extra=vol.PREVENT_EXTRA,
+)
 
 
-async def async_setup_services(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+async def async_setup_services(
+    hass: HomeAssistant, config_entry: Any | None = None
+) -> None:
     """Set up Hello World services.
 
     This function registers all Hello World feature services with Home Assistant.
@@ -70,34 +90,46 @@ async def async_setup_services(hass: HomeAssistant, config_entry: ConfigEntry) -
     _LOGGER.info("Setting up Hello World services")
 
     # Register toggle switch service
-    if not hass.services.async_service_exists(DOMAIN, SERVICE_TOGGLE_SWITCH):
+    if not _service_exists(hass, INTEGRATION_DOMAIN, SERVICE_TOGGLE_SWITCH):
         hass.services.async_register(
-            DOMAIN,
+            INTEGRATION_DOMAIN,
             SERVICE_TOGGLE_SWITCH,
-            async_toggle_switch_service,
+            partial(async_toggle_switch_service, hass),
             schema=SERVICE_SCHEMA_TOGGLE_SWITCH,
         )
-        _LOGGER.info(f"Registered service: {DOMAIN}.{SERVICE_TOGGLE_SWITCH}")
+        _LOGGER.info(
+            "Registered service: %s.%s",
+            INTEGRATION_DOMAIN,
+            SERVICE_TOGGLE_SWITCH,
+        )
 
     # Register get switch state service
-    if not hass.services.async_service_exists(DOMAIN, SERVICE_GET_SWITCH_STATE):
+    if not _service_exists(hass, INTEGRATION_DOMAIN, SERVICE_GET_SWITCH_STATE):
         hass.services.async_register(
-            DOMAIN,
+            INTEGRATION_DOMAIN,
             SERVICE_GET_SWITCH_STATE,
-            async_get_switch_state_service,
+            partial(async_get_switch_state_service, hass),
             schema=SERVICE_SCHEMA_GET_SWITCH_STATE,
         )
-        _LOGGER.info(f"Registered service: {DOMAIN}.{SERVICE_GET_SWITCH_STATE}")
+        _LOGGER.info(
+            "Registered service: %s.%s",
+            INTEGRATION_DOMAIN,
+            SERVICE_GET_SWITCH_STATE,
+        )
 
     # Register bulk toggle service
-    if not hass.services.async_service_exists(DOMAIN, SERVICE_BULK_TOGGLE):
+    if not _service_exists(hass, INTEGRATION_DOMAIN, SERVICE_BULK_TOGGLE):
         hass.services.async_register(
-            DOMAIN,
+            INTEGRATION_DOMAIN,
             SERVICE_BULK_TOGGLE,
-            async_bulk_toggle_service,
+            partial(async_bulk_toggle_service, hass),
             schema=SERVICE_SCHEMA_BULK_TOGGLE,
         )
-        _LOGGER.info(f"Registered service: {DOMAIN}.{SERVICE_BULK_TOGGLE}")
+        _LOGGER.info(
+            "Registered service: %s.%s",
+            INTEGRATION_DOMAIN,
+            SERVICE_BULK_TOGGLE,
+        )
 
 
 async def async_unload_services(hass: HomeAssistant) -> None:
@@ -112,20 +144,26 @@ async def async_unload_services(hass: HomeAssistant) -> None:
     ]
 
     for service_name in services_to_remove:
-        if hass.services.async_service_exists(DOMAIN, service_name):
-            hass.services.async_remove(DOMAIN, service_name)
-            _LOGGER.info(f"Unregistered service: {DOMAIN}.{service_name}")
+        if _service_exists(hass, INTEGRATION_DOMAIN, service_name):
+            hass.services.async_remove(INTEGRATION_DOMAIN, service_name)
+            _LOGGER.info(
+                "Unregistered service: %s.%s",
+                INTEGRATION_DOMAIN,
+                service_name,
+            )
 
 
-async def async_toggle_switch_service(hass: HomeAssistant, call: Any) -> None:
+async def async_toggle_switch_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle toggle switch service call."""
     device_id = call.data.get("device_id")
     state = call.data.get("state")
     entity_id = call.data.get("entity_id")
 
     _LOGGER.info(
-        f"Toggle switch service called - device_id: {device_id}, "
-        f"entity_id: {entity_id}, state: {state}"
+        "Toggle switch service called - device_id: %s, entity_id: %s, state: %s",
+        device_id,
+        entity_id,
+        state,
     )
 
     try:
@@ -162,21 +200,26 @@ async def async_toggle_switch_service(hass: HomeAssistant, call: Any) -> None:
             )
 
         _LOGGER.info(
-            f"Switch {device_id} set to {'ON' if state else 'OFF'} via service"
+            "Switch %s set to %s via service",
+            device_id,
+            "ON" if state else "OFF",
         )
 
     except Exception as err:
-        _LOGGER.error(f"Failed to toggle switch via service: {err}")
+        _LOGGER.error("Failed to toggle switch via service: %s", err)
 
 
-async def async_get_switch_state_service(hass: HomeAssistant, call: Any) -> None:
+async def async_get_switch_state_service(
+    hass: HomeAssistant, call: ServiceCall
+) -> None:
     """Handle get switch state service call."""
     device_id = call.data.get("device_id")
     entity_id = call.data.get("entity_id")
 
     _LOGGER.info(
-        f"Get switch state service called - device_id: {device_id}, "
-        f"entity_id: {entity_id}"
+        "Get switch state service called - device_id: %s, entity_id: %s",
+        device_id,
+        entity_id,
     )
 
     try:
@@ -211,21 +254,25 @@ async def async_get_switch_state_service(hass: HomeAssistant, call: Any) -> None
         )
 
         _LOGGER.info(
-            f"Switch states for {device_id} - "
-            f"switch: {switch_is_on}, binary_sensor: {binary_sensor_is_on}"
+            "Switch states for %s - switch: %s, binary_sensor: %s",
+            device_id,
+            switch_is_on,
+            binary_sensor_is_on,
         )
 
     except Exception as err:
-        _LOGGER.error(f"Failed to get switch state via service: {err}")
+        _LOGGER.error("Failed to get switch state via service: %s", err)
 
 
-async def async_bulk_toggle_service(hass: HomeAssistant, call: Any) -> None:
+async def async_bulk_toggle_service(hass: HomeAssistant, call: ServiceCall) -> None:
     """Handle bulk toggle service call."""
     entity_ids = call.data.get("entity_ids", [])
     state = call.data.get("state")
 
     _LOGGER.info(
-        f"Bulk toggle service called - entity_ids: {entity_ids}, state: {state}"
+        "Bulk toggle service called - entity_ids: %s, state: %s",
+        entity_ids,
+        state,
     )
 
     if not entity_ids:
@@ -253,22 +300,24 @@ async def async_bulk_toggle_service(hass: HomeAssistant, call: Any) -> None:
                         )
 
                     success_count += 1
-                    _LOGGER.debug(f"Successfully toggled {entity_id}")
+                    _LOGGER.debug("Successfully toggled %s", entity_id)
 
                 else:
-                    _LOGGER.warning(f"Invalid entity_id format: {entity_id}")
+                    _LOGGER.warning("Invalid entity_id format: %s", entity_id)
                     error_count += 1
 
             except Exception as err:
-                _LOGGER.error(f"Failed to toggle {entity_id}: {err}")
+                _LOGGER.error("Failed to toggle %s: %s", entity_id, err)
                 error_count += 1
 
         _LOGGER.info(
-            f"Bulk toggle completed - success: {success_count}, errors: {error_count}"
+            "Bulk toggle completed - success: %d, errors: %d",
+            success_count,
+            error_count,
         )
 
     except Exception as err:
-        _LOGGER.error(f"Failed to execute bulk toggle service: {err}")
+        _LOGGER.error("Failed to execute bulk toggle service: %s", err)
 
 
 def get_service_info() -> dict[str, dict]:
@@ -281,7 +330,7 @@ def get_service_info() -> dict[str, dict]:
         SERVICE_TOGGLE_SWITCH: {
             "name": "Toggle Switch",
             "description": "Toggle a Hello World switch on or off",
-            "domain": DOMAIN,
+            "domain": INTEGRATION_DOMAIN,
             "parameters": {
                 "device_id": "Ramses RF device ID (e.g., '32:153289')",
                 "state": "True for ON, False for OFF (required)",
@@ -291,7 +340,7 @@ def get_service_info() -> dict[str, dict]:
         SERVICE_GET_SWITCH_STATE: {
             "name": "Get Switch State",
             "description": "Get current state of a Hello World switch",
-            "domain": DOMAIN,
+            "domain": INTEGRATION_DOMAIN,
             "parameters": {
                 "device_id": "Ramses RF device ID (e.g., '32:153289')",
                 "entity_id": "Switch entity ID (alternative to device_id)",
@@ -300,7 +349,7 @@ def get_service_info() -> dict[str, dict]:
         SERVICE_BULK_TOGGLE: {
             "name": "Bulk Toggle",
             "description": "Toggle multiple Hello World switches simultaneously",
-            "domain": DOMAIN,
+            "domain": INTEGRATION_DOMAIN,
             "parameters": {
                 "entity_ids": "List of switch entity IDs to toggle",
                 "state": "True for ON, False for OFF",
@@ -321,8 +370,8 @@ def get_registered_services(hass: HomeAssistant) -> list[str]:
     services = []
     service_domains = hass.services.async_services()
 
-    if DOMAIN in service_domains:
-        services.extend(service_domains[DOMAIN].keys())
+    if INTEGRATION_DOMAIN in service_domains:
+        services.extend(service_domains[INTEGRATION_DOMAIN].keys())
 
     return services
 

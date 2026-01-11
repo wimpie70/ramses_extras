@@ -379,7 +379,8 @@ class TestRegisterServices:
         from custom_components.ramses_extras import _register_services
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.async_setup_services"
+            "custom_components.ramses_extras.services_integration."
+            "async_register_feature_services"
         ) as mock_setup:
             mock_setup.return_value = None
             await _register_services(hass)
@@ -392,7 +393,8 @@ class TestRegisterServices:
         from custom_components.ramses_extras import _register_services
 
         with patch(
-            "custom_components.ramses_extras.features.default.services.async_setup_services",
+            "custom_components.ramses_extras.services_integration."
+            "async_register_feature_services",
             side_effect=Exception("Setup failed"),
         ):
             with pytest.raises(Exception, match="Setup failed"):

@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 import logging
 
 from ...framework.helpers.entity.simple_entity_manager import SimpleEntityManager
-from ...framework.helpers.platform import PlatformSetup
 from .automation import create_hello_world_automation
 from .const import DOMAIN as HELLO_WORLD_DOMAIN
 
@@ -30,7 +29,6 @@ from .const import DOMAIN as HELLO_WORLD_DOMAIN
 from .platforms.binary_sensor import (
     async_setup_entry as binary_sensor_async_setup_entry,
 )
-from .platforms.number import async_setup_entry as number_async_setup_entry
 from .platforms.sensor import async_setup_entry as sensor_async_setup_entry
 from .platforms.switch import async_setup_entry as switch_async_setup_entry
 
@@ -65,10 +63,7 @@ def create_hello_world_feature(
         hass.async_create_task(automation_manager.start())
 
     # Store in Home Assistant data for access by WebSocket commands
-    if not hasattr(hass, "data"):
-        hass.data = {}
-    if "ramses_extras" not in hass.data:
-        hass.data["ramses_extras"] = {}
+    hass.data.setdefault("ramses_extras", {})
     hass.data["ramses_extras"]["hello_world_entities"] = entities_manager
     hass.data["ramses_extras"]["hello_world_automation"] = automation_manager
 
@@ -84,7 +79,6 @@ def create_hello_world_feature(
             "switch": switch_async_setup_entry,
             "binary_sensor": binary_sensor_async_setup_entry,
             "sensor": sensor_async_setup_entry,  # Placeholder
-            "number": number_async_setup_entry,  # Placeholder
         },
         "feature_name": HELLO_WORLD_DOMAIN,
     }
