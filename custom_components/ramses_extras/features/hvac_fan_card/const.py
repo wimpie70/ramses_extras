@@ -14,28 +14,6 @@ HVAC_FAN_CARD_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {}
 HVAC_FAN_CARD_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {}
 HVAC_FAN_CARD_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
 
-# Feature web assets configuration for this feature
-FEATURE_WEB_CONFIGS = {
-    "hvac_fan_card": {
-        "web_folder": "hvac_fan_card",
-        "main_card": "hvac-fan-card.js",
-        "editor_card": "hvac-fan-card-editor.js",
-        "has_templates": True,
-        "has_translations": True,
-    },
-}
-
-# Feature deployment configuration
-HVAC_FAN_CARD_CARD_CONFIG = {
-    "hvac_fan_card": {
-        "card_path": "features/hvac_fan_card",  # Updated path
-        "main_js": "hvac-fan-card.js",
-        "editor_js": "hvac-fan-card-editor.js",
-        "templates_path": "templates/",
-        "translations_path": "translations/",
-    }
-}
-
 # WebSocket commands for the HVAC fan card feature
 # Note: Fan commands are now provided by the default feature for all cards to use
 HVAC_FAN_CARD_WEBSOCKET_COMMANDS: dict[str, str] = {}
@@ -151,7 +129,5 @@ __all__ = [
     "HVAC_FAN_CARD_WEBSOCKET_COMMANDS",
     "HVAC_FAN_CARD_CONFIGS",
     "FEATURE_DEFINITION",
-    "FEATURE_WEB_CONFIGS",
-    "HVAC_FAN_CARD_CARD_CONFIG",
     "load_feature",
 ]

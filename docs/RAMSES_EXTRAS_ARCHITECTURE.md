@@ -658,6 +658,21 @@ which entities are used as sensor inputs across features.
 
 ## 4.4. Feature Structure Pattern
 
+### Feature metadata: `FEATURE_DEFINITION` (single source of truth)
+
+Each feature must expose a `FEATURE_DEFINITION` dict in `features/<feature_id>/const.py`.
+This is the **only** supported source for feature metadata consumed by the framework.
+
+The registry (`extras_registry.py`) reads `FEATURE_DEFINITION` and registers:
+
+- entity configs: `sensor_configs`, `switch_configs`, `number_configs`, `boolean_configs`
+- device mapping: `device_entity_mapping`
+- WebSocket command metadata: `websocket_commands`
+- card metadata: `card_config`
+
+Legacy/parallel const structures are not used and should not be introduced
+(e.g. `FEATURE_WEB_CONFIGS`, `<FEATURE>_CONFIG`, `<FEATURE>_CARD_CONFIG`).
+
 ```python
 # features/humidity_control/__init__.py
 def create_humidity_control_feature(hass, config_entry):

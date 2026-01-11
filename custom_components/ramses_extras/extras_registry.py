@@ -110,129 +110,77 @@ class RamsesEntityRegistry:
                     "FEATURE_DEFINITION",
                     None,
                 )
-                if isinstance(feature_definition, dict):
-                    sensor_configs = feature_definition.get("sensor_configs", {})
-                    if isinstance(sensor_configs, dict):
-                        self._sensor_configs.update(sensor_configs)
-
-                    switch_configs = feature_definition.get("switch_configs", {})
-                    if isinstance(switch_configs, dict):
-                        self._switch_configs.update(switch_configs)
-
-                    number_configs = feature_definition.get("number_configs", {})
-                    if isinstance(number_configs, dict):
-                        self._number_configs.update(number_configs)
-
-                    boolean_configs = feature_definition.get("boolean_configs", {})
-                    if isinstance(boolean_configs, dict):
-                        self._boolean_configs.update(boolean_configs)
-
-                    device_mapping = feature_definition.get("device_entity_mapping")
-                    if isinstance(device_mapping, dict):
-                        self._device_mappings.update(device_mapping)
-
-                    card_config = feature_definition.get("card_config")
-                    if isinstance(card_config, dict):
-                        self._card_configs[feature_name] = card_config
-
-                    websocket_commands = feature_definition.get(
-                        "websocket_commands",
-                        {},
-                    )
-                    if isinstance(websocket_commands, dict):
-                        self._websocket_commands[feature_name] = dict(
-                            websocket_commands
-                        )
-                        _LOGGER.info(
-                            "Loaded %d WebSocket commands for '%s': %s",
-                            len(websocket_commands),
-                            feature_name,
-                            list(websocket_commands.keys()),
-                        )
-
-                    self._loaded_features.add(feature_name)
-                    total_time = time.time() - start_time
-                    _LOGGER.debug(
-                        "Successfully loaded feature '%s' in %.2fs",
-                        feature_name,
-                        total_time,
+                if not isinstance(feature_definition, dict):
+                    _LOGGER.error(
+                        "Feature '%s' has no valid FEATURE_DEFINITION", feature_name
                     )
                     return
 
-                # Load feature's sensor configurations
-                sensor_key = f"{feature_name.upper()}_SENSOR_CONFIGS"
-                if hasattr(feature_module, sensor_key):
-                    sensor_configs = getattr(feature_module, sensor_key)
+                sensor_configs = feature_definition.get("sensor_configs", {})
+                if isinstance(sensor_configs, dict):
                     self._sensor_configs.update(sensor_configs)
-                    _LOGGER.debug(
-                        f"Loaded {len(sensor_configs)} sensor configs "
-                        f"for '{feature_name}'"
-                    )
 
-                # Load feature's switch configurations
-                switch_key = f"{feature_name.upper()}_SWITCH_CONFIGS"
-                if hasattr(feature_module, switch_key):
-                    switch_configs = getattr(feature_module, switch_key)
+                switch_configs = feature_definition.get("switch_configs", {})
+                if isinstance(switch_configs, dict):
                     self._switch_configs.update(switch_configs)
-                    _LOGGER.debug(
-                        f"Loaded {len(switch_configs)} switch configs "
-                        f"for '{feature_name}'"
-                    )
 
-                # Load feature's number configurations
-                number_key = f"{feature_name.upper()}_NUMBER_CONFIGS"
-                if hasattr(feature_module, number_key):
-                    number_configs = getattr(feature_module, number_key)
+                number_configs = feature_definition.get("number_configs", {})
+                if isinstance(number_configs, dict):
                     self._number_configs.update(number_configs)
-                    _LOGGER.debug(
-                        f"Loaded {len(number_configs)} number configs "
-                        f"for '{feature_name}'"
-                    )
 
-                # Load feature's boolean configurations
-                boolean_key = f"{feature_name.upper()}_BOOLEAN_CONFIGS"
-                if hasattr(feature_module, boolean_key):
-                    boolean_configs = getattr(feature_module, boolean_key)
+                boolean_configs = feature_definition.get("boolean_configs", {})
+                if isinstance(boolean_configs, dict):
                     self._boolean_configs.update(boolean_configs)
-                    _LOGGER.debug(
-                        f"Loaded {len(boolean_configs)} boolean configs "
-                        f"for '{feature_name}'"
-                    )
 
-                # Load feature's device mappings
-                mapping_key = f"{feature_name.upper()}_DEVICE_ENTITY_MAPPING"
-                if hasattr(feature_module, mapping_key):
-                    device_mapping = getattr(feature_module, mapping_key)
-                    self._device_mappings.update(device_mapping)
-                    _LOGGER.debug(f"Loaded device mappings for '{feature_name}'")
+                device_mapping = feature_definition.get("device_entity_mapping")
+                if isinstance(device_mapping, dict):
+                    for device_type, entity_mapping in device_mapping.items():
+                        if not isinstance(entity_mapping, dict):
+                            continue
+                        if device_type not in self._device_mappings:
+                            copied_mapping = entity_mapping.copy()
+                            self._device_mappings[device_type] = copied_mapping
+                            continue
+                        existing_mapping = self._device_mappings[device_type]
+                        for entity_type, entities in entity_mapping.items():
+                            if not isinstance(entities, list):
+                                continue
+                            if entity_type not in existing_mapping:
+                                existing_mapping[entity_type] = list(entities)
+                                continue
+                            existing_entities = existing_mapping[entity_type]
+                            if not isinstance(existing_entities, list):
+                                existing_mapping[entity_type] = list(entities)
+                                continue
+                            for entity in entities:
+                                if entity not in existing_entities:
+                                    existing_entities.append(entity)
 
-                # Load feature's card configuration
-                card_config_key = f"{feature_name.upper()}_CARD_CONFIG"
-                if hasattr(feature_module, card_config_key):
-                    card_config = getattr(feature_module, card_config_key)
+                card_config = feature_definition.get("card_config")
+                if isinstance(card_config, dict):
                     self._card_configs[feature_name] = card_config
-                    _LOGGER.debug(f"Loaded card configuration for '{feature_name}'")
 
-                # Load feature's WebSocket commands
-                websocket_key = f"{feature_name.upper()}_WEBSOCKET_COMMANDS"
-                if hasattr(feature_module, websocket_key):
-                    websocket_commands = getattr(feature_module, websocket_key)
-                    self._websocket_commands[feature_name] = websocket_commands
+                websocket_commands = feature_definition.get(
+                    "websocket_commands",
+                    {},
+                )
+                if isinstance(websocket_commands, dict):
+                    self._websocket_commands[feature_name] = dict(websocket_commands)
                     _LOGGER.info(
-                        f"Loaded {len(websocket_commands)} WebSocket commands "
-                        f"for '{feature_name}': {list(websocket_commands.keys())}"
-                    )
-                else:
-                    _LOGGER.debug(
-                        f"No WebSocket commands found for '{feature_name}' "
-                        f"(key: {websocket_key})"
+                        "Loaded %d WebSocket commands for '%s': %s",
+                        len(websocket_commands),
+                        feature_name,
+                        list(websocket_commands.keys()),
                     )
 
                 self._loaded_features.add(feature_name)
                 total_time = time.time() - start_time
                 _LOGGER.debug(
-                    f"Successfully loaded feature '{feature_name}' in {total_time:.2f}s"
+                    "Successfully loaded feature '%s' in %.2fs",
+                    feature_name,
+                    total_time,
                 )
+                return
 
             except ImportError as e:
                 _LOGGER.warning(f"ImportError loading feature '{feature_name}': {e}")

@@ -89,28 +89,6 @@ HELLO_WORLD_WEBSOCKET_COMMANDS = {
     # Note: get_entity_mappings is provided by the default feature for all features
 }
 
-# Feature web assets configuration for this feature
-FEATURE_WEB_CONFIGS = {
-    "hello_world": {
-        "web_folder": "hello_world",
-        "main_card": "hello-world.js",
-        "editor_card": "hello-world-editor.js",
-        "has_templates": True,
-        "has_translations": True,
-    },
-}
-
-# Feature deployment configuration
-HELLO_WORLD_CONFIG = {
-    "hello_world": {
-        "card_path": "features/hello_world",
-        "main_js": "hello-world.js",
-        "editor_js": "hello-world-editor.js",
-        "templates_path": "templates/",
-        "translations_path": "translations/",
-    }
-}
-
 # Default configuration
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -196,7 +174,5 @@ __all__ = [
     "HELLO_WORLD_DEVICE_ENTITY_MAPPING",
     "HELLO_WORLD_WEBSOCKET_COMMANDS",
     "DEFAULT_CONFIG",
-    "FEATURE_WEB_CONFIGS",
-    "HELLO_WORLD_CONFIG",
     "load_feature",
 ]

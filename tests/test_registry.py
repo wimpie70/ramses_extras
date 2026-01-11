@@ -140,7 +140,10 @@ def test_load_feature_definitions_with_feature_definition_dict(registry):
 
 
 def test_load_feature_definitions_legacy_attributes(registry):
-    """Test loading feature definitions using legacy individual attributes."""
+    """Test legacy per-attribute fallbacks are ignored.
+
+    The registry now requires FEATURE_DEFINITION as the single source of truth.
+    """
     mock_module = MagicMock()
     mock_module.FEATURE_DEFINITION = None
     mock_module.TEST_FEATURE_SENSOR_CONFIGS = {"s1": {"name": "S1"}}
@@ -154,16 +157,14 @@ def test_load_feature_definitions_legacy_attributes(registry):
     with patch("importlib.import_module", return_value=mock_module):
         registry.load_feature_definitions("test_feature", "path")
 
-    assert "test_feature" in registry.get_loaded_features()
-    assert "s1" in registry.get_all_sensor_configs()
-    assert "sw1" in registry.get_all_switch_configs()
-    assert "n1" in registry.get_all_number_configs()
-    assert "b1" in registry.get_all_boolean_configs()
-    assert registry.get_all_device_mappings()["32"]["sensor"] == ["s1"]
-    assert registry.get_card_config("test_feature") == {"type": "card1"}
-    assert registry.get_websocket_commands_for_feature("test_feature") == {
-        "cmd1": "type1"
-    }
+    assert "test_feature" not in registry.get_loaded_features()
+    assert registry.get_all_sensor_configs() == {}
+    assert registry.get_all_switch_configs() == {}
+    assert registry.get_all_number_configs() == {}
+    assert registry.get_all_boolean_configs() == {}
+    assert registry.get_all_device_mappings() == {}
+    assert registry.get_card_config("test_feature") is None
+    assert registry.get_websocket_commands_for_feature("test_feature") == {}
 
 
 def test_load_feature_definitions_exception(registry):
