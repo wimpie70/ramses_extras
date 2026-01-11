@@ -10,7 +10,10 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
 - [x] Hello World editor logging is guarded by `window.ramsesExtras.debug`
 - [x] `GetEntityMappingsCommand` uses `FEATURE_DEFINITION` (no legacy *_CONST / attribute scanning)
 - [x] `SimpleEntityManager` uses `FEATURE_DEFINITION` for entity generation (mypy clean)
-- [ ] Run local checks and confirm no lint/type/test regressions
+- [x] Option B implemented: `optional: True` in `*_configs` is excluded from derived `required_entities`
+- [x] Automations required-entity resolution updated to use `FEATURE_DEFINITION` (fixes startup warnings)
+- [x] Legacy feature `*_CONST` dicts removed (single source of truth)
+- [x] Run local checks and confirm no lint/type/test regressions
 
 ## 1) Validate + CI checkpoint (do this before committing)
 
@@ -25,7 +28,7 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
 
 ## 2) Remaining `hello_world` cleanup (still worth doing)
 
-- [ ] **Fix entity mapping key mismatch between backend and card**
+- [x] **Fix entity mapping key mismatch between backend and card**
   - Current card expects `result.mappings.switch_state` / `sensor_state`.
   - Verify what `ramses_extras/get_entity_mappings` (default feature) actually returns for `feature_id="hello_world"`.
   - Update frontend or backend mapping keys to match.

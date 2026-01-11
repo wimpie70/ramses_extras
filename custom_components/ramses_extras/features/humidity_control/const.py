@@ -169,7 +169,7 @@ FEATURE_DEFINITION = {
     "boolean_configs": HUMIDITY_BOOLEAN_CONFIGS,
     "device_entity_mapping": HUMIDITY_DEVICE_ENTITY_MAPPING,
     "websocket_commands": HUMIDITY_CONTROL_WEBSOCKET_COMMANDS,
-    "required_entities": {
+    "required_entities": {  # created/owned by self
         "number": [
             "relative_humidity_minimum",
             "relative_humidity_maximum",
@@ -179,9 +179,12 @@ FEATURE_DEFINITION = {
         "binary_sensor": ["dehumidifying_active"],
     },
     "entity_mappings": {
+        # provided by default
         "indoor_abs": "sensor.indoor_absolute_humidity_{device_id}",
         "outdoor_abs": "sensor.outdoor_absolute_humidity_{device_id}",
+        # provided by ramses_cc
         "indoor_rh": "sensor.{device_id}_indoor_humidity",
+        # provided by humidity_control (self)
         "min_humidity": "number.relative_humidity_minimum_{device_id}",
         "max_humidity": "number.relative_humidity_maximum_{device_id}",
         "offset": "number.absolute_humidity_offset_{device_id}",

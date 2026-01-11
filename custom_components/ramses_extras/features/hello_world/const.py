@@ -141,6 +141,10 @@ FEATURE_DEFINITION = {
     "boolean_configs": HELLO_WORLD_BINARY_SENSOR_CONFIGS,
     "device_entity_mapping": HELLO_WORLD_DEVICE_ENTITY_MAPPING,
     "websocket_commands": HELLO_WORLD_WEBSOCKET_COMMANDS,
+    "entity_mappings": {
+        "switch_state": "switch.hello_world_switch_{device_id}",
+        "sensor_state": "binary_sensor.hello_world_status_{device_id}",
+    },
     # Cards that this feature manages
     "card_config": HELLO_WORLD_CARD_CONFIGS[0] if HELLO_WORLD_CARD_CONFIGS else {},
 }
