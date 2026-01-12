@@ -65,7 +65,11 @@
       },
       "advanced_settings": {
         "title": "Advanced Settings",
-        "description": "{info}"
+        "description": "Configure integration-level debug settings.\n\nFrontend log level controls browser console logging for Ramses Extras cards/editors.\nLog level controls the backend Python logging level for the Ramses Extras integration.",
+        "data": {
+          "frontend_log_level": "Frontend log level",
+          "log_level": "Log level (backend)"
+        }
       },
       "feature_config": {
         "title": "Feature Configuration",

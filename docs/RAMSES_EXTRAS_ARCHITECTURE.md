@@ -1258,6 +1258,30 @@ Frontend cards are gated by two backend-driven readiness mechanisms:
   - Broadcast via event: `ramses_extras_cards_enabled`
   - Used by the base card to avoid rendering cards before backend startup completes
 
+### Option Updates (Live Frontend Refresh)
+
+Some runtime UI behaviour depends on integration options (feature enablement, debug flags, etc.).
+To avoid polling or requiring a dashboard reload, Ramses Extras broadcasts all option updates:
+
+- **Options update event (`ramses_extras_options_updated`)**
+  - Fired by the integration on every config entry update (`_async_update_listener`)
+  - Payload includes:
+    - `enabled_features`
+    - `device_feature_matrix`
+    - `debug_mode`
+    - `frontend_log_level`
+    - `log_level`
+    - `cards_enabled`
+  - Consumed by the frontend base helper (`ramses-base-card.js`) via
+    `hass.connection.subscribeEvents(...)`
+  - Updates the following runtime globals:
+    - `window.ramsesExtras.features`
+    - `window.ramsesExtras.debug`
+    - `window.ramsesExtras.frontendLogLevel`
+    - `window.ramsesExtras.logLevel`
+    - `window.ramsesExtras.cardsEnabled`
+  - All card instances re-render after an update, so feature-disabled placeholders appear/disappear immediately.
+
 ### Deployment & Versioning Structure
 
 Home Assistant serves static assets from `/config/www`. To prevent browser caching issues during updates, Ramses Extras uses **versioned deployment paths**.
@@ -1666,6 +1690,9 @@ This comprehensive troubleshooting guide covers common issues, debugging tools, 
   ```
 - With the flag set, `RamsesBaseCard` (and subclasses that use `debugLog`) emit additional console output for WebSocket calls, entity validation, and message handling.
 
+This flag is normally set by the integration based on the **Advanced Settings** option `debug_mode`.
+Changes are pushed live to the browser via the `ramses_extras_options_updated` event.
+
 ## 11.3. Working Debug Tool Examples
 
 ### SimpleEntityManager Debug (Python)
@@ -1707,6 +1734,49 @@ logger:
     custom_components.ramses_extras.framework: debug
     custom_components.ramses_extras.features: debug
 ```
+
+### Integration Advanced Settings
+
+Ramses Extras provides integration-level settings (via the options flow) that affect both backend and frontend debugging:
+
+- **`debug_mode`**
+  - Stored in the config entry options for legacy compatibility
+  - Derived from `frontend_log_level == "debug"`
+  - Exposed to the frontend as `window.ramsesExtras.debug`
+
+- **`frontend_log_level`**
+  - Stored in the config entry options
+  - Exposed to the frontend as `window.ramsesExtras.frontendLogLevel`
+  - Controls browser console logging for Ramses Extras cards/editors (frontend)
+
+- **`log_level`**
+  - Stored in the config entry options
+  - Applied at runtime to the integration logger `custom_components.ramses_extras`
+
+These settings are pushed to the frontend via the HA event `ramses_extras_options_updated`.
+
+### Relationship to Home Assistant "Debug Logging"
+
+Home Assistant has a built-in logging system (configured via the `logger:` section in YAML, or via enabling debug logging for specific integrations).
+That mechanism controls **backend Python logging** and is the authoritative way to get full server-side debug output.
+
+Ramses Extras also has integration options that are related but distinct:
+
+- **`debug_mode` (Ramses Extras option)**
+  - Legacy boolean for frontend verbosity and is exposed as `window.ramsesExtras.debug`.
+  - Derived from `frontend_log_level`.
+  - Does *not* automatically change Home Assistant logger configuration.
+
+- **`frontend_log_level` (Ramses Extras option)**
+  - Controls **frontend verbosity** (e.g. `RamsesBaseCard` console logging) and is exposed as `window.ramsesExtras.frontendLogLevel`.
+
+- **`log_level` (Ramses Extras option)**
+  - Adjusts the runtime log level for `custom_components.ramses_extras`.
+  - This is a convenience for the integration but is still separate from HA's global `logger:` config.
+
+In practice:
+- Use HA `logger:` / integration debug logging when you need **backend diagnostics**.
+- Use `frontend_log_level` when you need **frontend diagnostics** (cards/editors).
 
 ### Debug Tools Summary
 

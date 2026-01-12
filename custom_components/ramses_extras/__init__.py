@@ -664,7 +664,16 @@ async def _expose_feature_config_to_frontend(
             or {}
         )
 
-        debug_mode = bool(entry.options.get("debug_mode", False))
+        frontend_log_level_raw = entry.options.get("frontend_log_level")
+        if isinstance(frontend_log_level_raw, str) and frontend_log_level_raw:
+            frontend_log_level = frontend_log_level_raw
+        else:
+            frontend_log_level = (
+                "debug" if bool(entry.options.get("debug_mode")) else "info"
+            )
+
+        debug_mode = frontend_log_level == "debug"
+
         log_level = entry.options.get("log_level")
         if not isinstance(log_level, str) or not log_level:
             log_level = "info"
@@ -677,6 +686,7 @@ async def _expose_feature_config_to_frontend(
         js_enabled_features = json.dumps(enabled_features, indent=2)
         js_debug_mode = json.dumps(debug_mode)
         js_log_level = json.dumps(log_level)
+        js_frontend_log_level = json.dumps(frontend_log_level)
 
         console_log = (
             f"if (window.ramsesExtras.debug === true) "
@@ -690,6 +700,7 @@ window.ramsesExtras = window.ramsesExtras || {{}};
 window.ramsesExtras.version = "{version}";
 window.ramsesExtras.features = {js_enabled_features};
 window.ramsesExtras.debug = {js_debug_mode};
+window.ramsesExtras.frontendLogLevel = {js_frontend_log_level};
 window.ramsesExtras.logLevel = {js_log_level};
 
 // Log feature configuration for debugging
@@ -723,6 +734,11 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
         _apply_log_level_from_entry(entry)
 
+        old_debug_mode_raw = data.get("debug_mode")
+        old_debug_mode = (
+            bool(old_debug_mode_raw) if old_debug_mode_raw is not None else None
+        )
+
         old_enabled_features_raw = data.get("enabled_features")
         new_enabled_features_raw = (
             entry.data.get("enabled_features")
@@ -755,6 +771,38 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
         data["device_feature_matrix"] = new_matrix_state
 
         await _expose_feature_config_to_frontend(hass, entry)
+
+        frontend_log_level_raw = entry.options.get("frontend_log_level")
+        if isinstance(frontend_log_level_raw, str) and frontend_log_level_raw:
+            frontend_log_level = frontend_log_level_raw
+        else:
+            frontend_log_level = (
+                "debug" if bool(entry.options.get("debug_mode")) else "info"
+            )
+
+        debug_mode = frontend_log_level == "debug"
+        log_level = entry.options.get("log_level")
+        if not isinstance(log_level, str) or not log_level:
+            log_level = "info"
+
+        data["debug_mode"] = debug_mode
+        data["frontend_log_level"] = frontend_log_level
+        data["log_level"] = log_level
+
+        if old_debug_mode is None or old_debug_mode != debug_mode:
+            _LOGGER.info("Debug mode changed: %s -> %s", old_debug_mode, debug_mode)
+
+        hass.bus.async_fire(
+            "ramses_extras_options_updated",
+            {
+                "enabled_features": new_enabled_features,
+                "device_feature_matrix": new_matrix_state,
+                "debug_mode": debug_mode,
+                "frontend_log_level": frontend_log_level,
+                "log_level": log_level,
+                "cards_enabled": data.get("cards_enabled") is True,
+            },
+        )
 
         enabled_features_changed = old_enabled_features != new_enabled_features
         matrix_changed = old_matrix_state != new_matrix_state

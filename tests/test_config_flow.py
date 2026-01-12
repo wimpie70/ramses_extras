@@ -151,11 +151,12 @@ class TestRamsesExtrasOptionsFlowHandler:
             patch.object(hass.config_entries, "async_update_entry") as mock_update,
         ):
             result = await options_flow.async_step_advanced_settings(
-                {"debug_mode": True, "log_level": "debug"}
+                {"frontend_log_level": "debug", "log_level": "debug"}
             )
             assert result["type"] == "menu"
 
             args, kwargs = mock_update.call_args
+            assert kwargs["options"]["frontend_log_level"] == "debug"
             assert kwargs["options"]["debug_mode"] is True
             assert kwargs["options"]["log_level"] == "debug"
 
@@ -163,7 +164,10 @@ class TestRamsesExtrasOptionsFlowHandler:
     async def test_advanced_settings_defaults_from_options(self, hass):
         mock_config_entry = MagicMock()
         mock_config_entry.data = {CONF_ENABLED_FEATURES: {"default": True}}
-        mock_config_entry.options = {"debug_mode": True, "log_level": "warning"}
+        mock_config_entry.options = {
+            "frontend_log_level": "warning",
+            "log_level": "warning",
+        }
 
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
         options_flow.hass = hass
@@ -175,9 +179,9 @@ class TestRamsesExtrasOptionsFlowHandler:
         schema = result["data_schema"]
         assert isinstance(schema, vol.Schema)
 
-        debug_key = vol.Optional("debug_mode", default=True)
+        frontend_key = vol.Optional("frontend_log_level", default="warning")
         log_key = vol.Optional("log_level", default="warning")
-        assert debug_key in schema.schema
+        assert frontend_key in schema.schema
         assert log_key in schema.schema
 
     @pytest.mark.asyncio

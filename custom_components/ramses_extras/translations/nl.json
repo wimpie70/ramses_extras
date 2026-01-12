@@ -65,7 +65,11 @@
       },
       "advanced_settings": {
         "title": "Geavanceerde Instellingen",
-        "description": "{info}"
+        "description": "Configureer integratie-brede debug instellingen.\n\nFrontend log level bepaalt browser console logging voor Ramses Extras kaarten/editors.\nLog level bepaalt het backend Python logging niveau voor de Ramses Extras integratie.",
+        "data": {
+          "frontend_log_level": "Frontend log level",
+          "log_level": "Log level (backend)"
+        }
       },
       "feature_config": {
         "title": "Functie Configuratie",

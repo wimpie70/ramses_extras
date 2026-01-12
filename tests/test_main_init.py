@@ -452,7 +452,11 @@ class TestExposeFeatureConfigToFrontend:
 
         mock_entry = MagicMock()
         mock_entry.data = {"enabled_features": {"humidity_control": True}}
-        mock_entry.options = {"debug_mode": True, "log_level": "debug"}
+        mock_entry.options = {
+            "frontend_log_level": "debug",
+            "debug_mode": True,
+            "log_level": "debug",
+        }
 
         with patch(
             "custom_components.ramses_extras.framework.helpers.paths.DEPLOYMENT_PATHS.get_destination_helpers_path"
@@ -468,6 +472,7 @@ class TestExposeFeatureConfigToFrontend:
             content = mock_file.write_text.call_args[0][0]
             assert '"humidity_control": true' in content
             assert "window.ramsesExtras.debug = true" in content
+            assert 'window.ramsesExtras.frontendLogLevel = "debug"' in content
             assert 'window.ramsesExtras.logLevel = "debug"' in content
             assert "if (window.ramsesExtras.debug === true)" in content
 
@@ -498,15 +503,38 @@ class TestAsyncUpdateListener:
 
         mock_entry = MagicMock()
         mock_entry.data = {"enabled_features": {"humidity_control": True}}
-        mock_entry.options = {}
+        mock_entry.options = {
+            "frontend_log_level": "debug",
+            "debug_mode": True,
+            "log_level": "debug",
+        }
+
+        captured_events = []
+
+        def _capture_event(event):
+            captured_events.append(event)
+
+        unsub = hass.bus.async_listen("ramses_extras_options_updated", _capture_event)
 
         with patch(
             "custom_components.ramses_extras._expose_feature_config_to_frontend"
         ) as mock_expose:
             await _async_update_listener(hass, mock_entry)
 
+            await hass.async_block_till_done()
+
             assert hass.data[DOMAIN]["enabled_features"] == {"humidity_control": True}
             mock_expose.assert_called_once_with(hass, mock_entry)
+
+        unsub()
+
+        assert len(captured_events) == 1
+        payload = captured_events[0].data
+        assert payload["enabled_features"] == {"humidity_control": True}
+        assert payload["debug_mode"] is True
+        assert payload["frontend_log_level"] == "debug"
+        assert payload["log_level"] == "debug"
+        assert payload["cards_enabled"] is False
 
     @pytest.mark.asyncio
     async def test_async_update_listener_exception_handling(self, hass):

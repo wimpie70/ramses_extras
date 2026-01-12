@@ -81,9 +81,9 @@ This file is a concrete checklist to keep `hello_world` a clean, minimal, *best-
     - Remove legacy scanning of `*_SENSOR_CONFIGS`, `*_CONST`, etc.
   - [x] **Checkpoint:** `mypy .` + `pytest .` (or `make local-ci`).
 
-- [ ] **Debug flag configuration**
+- [x] **Debug flag configuration**
   - Keep using `window.ramsesExtras.debug` as the frontend switch.
-  - Consider adding:
-    - a framework/global option to toggle it
-    - optional per-feature debug toggles
+  - [x] A framework/global option toggles it via config entry option `debug_mode`.
+  - [x] Changes are pushed to the frontend via the HA event `ramses_extras_options_updated`.
+  - Consider adding optional per-feature debug toggles.
   - **Checkpoint:** `make local-ci`.

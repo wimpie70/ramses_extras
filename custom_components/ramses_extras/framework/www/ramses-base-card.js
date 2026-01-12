@@ -13,10 +13,83 @@ import { getFeatureTranslationPath } from './paths.js';
  * window.ramsesExtras = window.ramsesExtras || {};
  * window.ramsesExtras.debug = true;
  */
-const isDebugEnabled = () => window.ramsesExtras?.debug === true;
+const _getFrontendLogLevel = () => {
+  const level = window.ramsesExtras?.frontendLogLevel;
+  if (typeof level === 'string' && level) {
+    return level;
+  }
+
+  return window.ramsesExtras?.debug === true ? 'debug' : 'info';
+};
+
+const _FRONTEND_LOG_LEVELS = {
+  error: 0,
+  warning: 1,
+  info: 2,
+  debug: 3,
+};
+
+const _shouldLog = (level) => {
+  const current = _FRONTEND_LOG_LEVELS[_getFrontendLogLevel()] ?? _FRONTEND_LOG_LEVELS.info;
+  const requested = _FRONTEND_LOG_LEVELS[level] ?? _FRONTEND_LOG_LEVELS.info;
+  return requested <= current;
+};
+
 const debugLog = (...args) => {
-  if (isDebugEnabled()) {
+  if (_shouldLog('debug')) {
     console.log(...args);
+  }
+};
+
+const _ensureOptionsUpdatesSubscribed = (hass) => {
+  if (!hass?.connection) {
+    return;
+  }
+
+  window.ramsesExtras = window.ramsesExtras || {};
+
+  if (typeof window.ramsesExtras._optionsUpdatesUnsub === 'function') {
+    return;
+  }
+
+  try {
+    window.ramsesExtras._optionsUpdatesUnsub = hass.connection.subscribeEvents((event) => {
+      const payload = event?.data || {};
+
+      window.ramsesExtras = window.ramsesExtras || {};
+      if (payload.enabled_features) {
+        window.ramsesExtras.features = payload.enabled_features;
+      }
+      if (payload.device_feature_matrix) {
+        window.ramsesExtras.deviceFeatureMatrix = payload.device_feature_matrix;
+      }
+      if (typeof payload.frontend_log_level === 'string' && payload.frontend_log_level) {
+        window.ramsesExtras.frontendLogLevel = payload.frontend_log_level;
+        window.ramsesExtras.debug = payload.frontend_log_level === 'debug';
+      } else if (typeof payload.debug_mode === 'boolean') {
+        window.ramsesExtras.debug = payload.debug_mode;
+        if (payload.debug_mode === true) {
+          window.ramsesExtras.frontendLogLevel = 'debug';
+        }
+      }
+      if (typeof payload.log_level === 'string' && payload.log_level) {
+        window.ramsesExtras.logLevel = payload.log_level;
+      }
+      if (typeof payload.cards_enabled === 'boolean') {
+        window.ramsesExtras.cardsEnabled = payload.cards_enabled;
+      }
+
+      try {
+        const event = document.createEvent('Event');
+        event.initEvent('ramses_extras_options_updated', false, false);
+        event.detail = payload;
+        window.dispatchEvent(event);
+      } catch (error) {
+        console.warn('⚠️ Failed to dispatch ramses_extras_options_updated event:', error);
+      }
+    }, 'ramses_extras_options_updated');
+  } catch (error) {
+    console.warn('⚠️ Failed to subscribe to options updated events:', error);
   }
 };
 
@@ -89,6 +162,9 @@ export class RamsesBaseCard extends HTMLElement {
 
     this._featureConfigLoadAttached = false;
     this._cachedEntities = null; // Cache for getRequiredEntities
+
+    this._optionsUpdatedListenerAttached = false;
+    this._optionsUpdatedListener = null;
 
     // Initialize translations
     this.initTranslations();
@@ -249,6 +325,28 @@ export class RamsesBaseCard extends HTMLElement {
       console.warn(`⚠️ Failed to initialize translations for ${this.constructor.name}:`, error);
       this._translationsLoaded = true; // Continue without translations
     }
+  }
+
+  _attachOptionsUpdatedListener() {
+    if (this._optionsUpdatedListenerAttached) {
+      return;
+    }
+
+    this._optionsUpdatedListener = () => {
+      try {
+        if (window.ramsesExtras?.cardsEnabled === true) {
+          this._cardsEnabled = true;
+        }
+
+        this.clearUpdateThrottle();
+        this.render();
+      } catch (error) {
+        console.warn('⚠️ Failed to update after options change:', error);
+      }
+    };
+
+    window.addEventListener('ramses_extras_options_updated', this._optionsUpdatedListener);
+    this._optionsUpdatedListenerAttached = true;
   }
 
   _isHomeAssistantRunning() {
@@ -469,6 +567,8 @@ export class RamsesBaseCard extends HTMLElement {
         this.renderHassInitializing();
         return;
       }
+
+      _ensureOptionsUpdatesSubscribed(hass);
 
       // Ensure we latch startup until HA websocket finishes initial sync.
       // Some restarts keep the same connection object, so don't rely solely on
@@ -843,6 +943,8 @@ export class RamsesBaseCard extends HTMLElement {
     } catch (error) {
       console.warn(`⚠️ ${this.constructor.name}: Error in _onConnected():`, error);
     }
+
+    this._attachOptionsUpdatedListener();
   }
 
   _onConnected() {}
@@ -886,6 +988,15 @@ export class RamsesBaseCard extends HTMLElement {
       this._featureReadyUnsub();
     }
     this._featureReadyUnsub = null;
+
+    if (this._optionsUpdatedListenerAttached && this._optionsUpdatedListener) {
+      window.removeEventListener(
+        'ramses_extras_options_updated',
+        this._optionsUpdatedListener
+      );
+    }
+    this._optionsUpdatedListenerAttached = false;
+    this._optionsUpdatedListener = null;
 
     // Reset state
     this._initialStateLoaded = false;

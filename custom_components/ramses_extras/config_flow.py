@@ -529,7 +529,15 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
         if user_input is not None:
             new_options = dict(self._config_entry.options)
-            new_options["debug_mode"] = bool(user_input.get("debug_mode", False))
+
+            frontend_log_level = user_input.get("frontend_log_level")
+            if isinstance(frontend_log_level, str) and frontend_log_level:
+                new_options["frontend_log_level"] = frontend_log_level
+            else:
+                new_options["frontend_log_level"] = "info"
+
+            # Keep legacy boolean for compatibility with older configs/tests.
+            new_options["debug_mode"] = new_options["frontend_log_level"] == "debug"
 
             log_level = user_input.get("log_level")
             if isinstance(log_level, str) and log_level:
@@ -545,16 +553,33 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             return await self.async_step_main_menu()
 
         current_options = dict(self._config_entry.options)
-        debug_default = bool(current_options.get("debug_mode", False))
+        frontend_log_default_raw = current_options.get("frontend_log_level")
+        if isinstance(frontend_log_default_raw, str) and frontend_log_default_raw:
+            frontend_log_default = frontend_log_default_raw
+        else:
+            # Migrate default from legacy boolean.
+            frontend_log_default = (
+                "debug" if bool(current_options.get("debug_mode", False)) else "info"
+            )
         log_default = str(current_options.get("log_level", "info"))
 
         # Show advanced settings form
         data_schema = vol.Schema(
             {
                 vol.Optional(
-                    "debug_mode",
-                    default=debug_default,
-                ): selector.BooleanSelector(),
+                    "frontend_log_level",
+                    default=frontend_log_default,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value="debug", label="Debug"),
+                            selector.SelectOptionDict(value="info", label="Info"),
+                            selector.SelectOptionDict(value="warning", label="Warning"),
+                            selector.SelectOptionDict(value="error", label="Error"),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 vol.Optional(
                     "log_level",
                     default=log_default,
@@ -575,7 +600,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         return self.async_show_form(
             step_id="advanced_settings",
             data_schema=data_schema,
-            description_placeholders={"info": "Configure advanced settings"},
         )
 
     async def async_step_confirm(
