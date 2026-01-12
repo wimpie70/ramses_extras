@@ -6,7 +6,7 @@
 - [x] Fix outstanding lint/type/test warnings (Python)
 - [x] Confirm service/websocket boundaries and entity creation rules
 - [x] Improve docstrings/types across humidity_control modules
-- [ ] Verify tests (humidity_control) then run `make local-ci`
+- [x] Verify tests (humidity_control) then run `make local-ci`
 
 ## Big-step workflow (each step should pass CI)
 

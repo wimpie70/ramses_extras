@@ -1,11 +1,51 @@
 """Resolver for Sensor Control feature.
 
 This module provides the sensor source resolution logic for the sensor_control
-feature, applying user-defined sensor source overrides with fail-closed behavior.
+feature.
+
+The resolver is a pure *mapping* component:
+
+- It does not create entities.
+- It reads overrides from the integration's config entry options.
+- It returns a deterministic mapping of metrics to entity IDs plus source
+  metadata.
+
+## Inputs
+
+- **Internal baseline**: per-device-type entity templates from
+  `INTERNAL_SENSOR_MAPPINGS`.
+- **User overrides**: stored under the `sensor_control` options tree, per
+  device key (a `device_id` with `:` replaced by `_`).
+
+## Precedence rules (per metric)
+
+For regular metrics (temperature, humidity, CO2, etc):
+
+1. Start from the internal baseline entity ID (may be `None`).
+2. Apply the override for the metric:
+   - `kind = "internal"`:
+     - Use the internal baseline entity ID.
+   - `kind in {"external", "external_entity"}`:
+     - Use the override `entity_id` only if it exists in HA.
+     - If it does not exist, **fail closed**: return `None` and mark the source
+       as invalid.
+   - `kind = "none"`:
+     - Explicitly disable the metric: return `None`.
+   - Any other kind:
+     - **Fail closed**: return `None` and mark the source as invalid.
+
+For absolute humidity metrics (`indoor_abs_humidity`, `outdoor_abs_humidity`):
+
+- These are driven by `abs_humidity_inputs` rather than direct per-metric
+  overrides.
+- If `abs_humidity_inputs` contains any configuration for the metric, the
+  resolver exposes it as `kind = "derived"` (with `entity_id = None`) so
+  consumers (e.g. cards) can display it as derived.
+- Otherwise it is exposed as `kind = "internal"`.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 
@@ -122,8 +162,10 @@ class SensorControlResolver:
             result["sources"][metric] = effective_source
 
         self._logger.debug(
-            f"Resolved sensor mappings for {device_id} ({device_type}): "
-            f"{result['mappings']}"
+            "Resolved sensor mappings for %s (%s): %s",
+            device_id,
+            device_type,
+            result["mappings"],
         )
 
         return result
@@ -141,7 +183,7 @@ class SensorControlResolver:
 
             return config_entry.options.get("sensor_control") or None
         except Exception as err:
-            self._logger.error(f"Failed to get sensor_control config: {err}")
+            self._logger.error("Failed to get sensor_control config: %s", err)
             return None
 
     def _get_internal_mappings(

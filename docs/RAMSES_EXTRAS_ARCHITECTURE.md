@@ -459,6 +459,35 @@ The `Hello World Card` feature can be used as a template to develop new function
   - the effective entity ID (or `None` for derived/disabled)
   - metadata describing the source kind and validity
 
+#### 4.3.1. Sensor Control resolver precedence and boundaries
+
+Sensor Control is intentionally limited to *choosing* which existing entities
+provide sensor inputs. It does not create new entities and it does not contain
+device-specific automation logic.
+
+The resolver applies a deterministic precedence order, per device and per
+metric:
+
+1. Compute an **internal baseline** entity ID from `INTERNAL_SENSOR_MAPPINGS`
+   (expanded from `{device_id}` templates).
+2. Apply the per-metric override from the `sensor_control` options tree:
+   - `kind = "internal"` uses the internal baseline.
+   - `kind in {"external", "external_entity"}` uses the configured `entity_id`
+     only if the entity exists in HA.
+   - `kind = "none"` disables the metric.
+3. Invalid kinds or missing external entities **fail closed**: the metric is
+   treated as unavailable (`entity_id = None`) and marked invalid in the source
+   metadata.
+
+Absolute humidity is handled differently:
+
+- `indoor_abs_humidity` and `outdoor_abs_humidity` are driven by the
+  `abs_humidity_inputs` option tree (temperature + humidity inputs, or a direct
+  absolute humidity entity).
+- The resolver reports those metrics as `kind = "derived"` when
+  `abs_humidity_inputs` is configured for that metric, otherwise as
+  `kind = "internal"`.
+
 This feature is intentionally **framework-level**. It does not create new
 entities of its own; instead it is consumed by other features.
 
