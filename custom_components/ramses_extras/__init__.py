@@ -500,6 +500,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # STEP: Post-creation validation with SimpleEntityManager
     await _validate_startup_entities_simple(hass, entry)
 
+    await _cleanup_orphaned_devices(hass, entry)
+
     # Explicitly create and start feature instances for
     #  enabled features (including default)
     features = hass.data[DOMAIN].setdefault("features", {})
@@ -1297,10 +1299,15 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # Remove devices created by ramses_extras (but not ramses_cc devices)
     device_registry = dr.async_get(hass)
     device_entries = list(device_registry.devices.values())
+    entry_id = getattr(entry, "entry_id", None)
+    if not isinstance(entry_id, str):
+        entry_id = getattr(entry, "id", None)
+    if not isinstance(entry_id, str):
+        entry_id = None
     for device_entry in device_entries:
         # Only remove devices that were created by ramses_extras
         # Check if the device has our integration as a config entry
-        if entry.id in device_entry.config_entries:
+        if entry_id and entry_id in device_entry.config_entries:
             device_registry.async_remove_device(device_entry.id)
 
 
@@ -1337,9 +1344,34 @@ async def _cleanup_orphaned_devices(
     # Find orphaned devices: devices that have no entities
     orphaned_devices = []
     for device_entry in ramses_devices:
-        # Check if this device has any entities
-        entities = entity_registry.entities.get(device_entry.id, [])
-        if not entities:
+        entities_obj = getattr(entity_registry, "entities", None)
+
+        if entities_obj is None:
+            continue
+
+        has_entities = False
+        if hasattr(entities_obj, "get"):
+            try:
+                device_entities = entities_obj.get(device_entry.id, [])
+                if isinstance(device_entities, list):
+                    has_entities = bool(device_entities)
+            except Exception:
+                has_entities = False
+
+        if not has_entities and hasattr(entities_obj, "values"):
+            try:
+                values = list(entities_obj.values())
+                if values and all(isinstance(v, list) for v in values):
+                    has_entities = bool(entities_obj.get(device_entry.id, []))
+                else:
+                    has_entities = any(
+                        getattr(entity_entry, "device_id", None) == device_entry.id
+                        for entity_entry in values
+                    )
+            except Exception:
+                has_entities = False
+
+        if not has_entities:
             # No entities found - this device is orphaned
             device_id = list(device_entry.identifiers)[0][1]  # Extract device ID
             orphaned_devices.append((device_id, device_entry))
@@ -1352,9 +1384,14 @@ async def _cleanup_orphaned_devices(
     _LOGGER.info(f"Removing {len(orphaned_devices)} orphaned devices")
 
     # Remove orphaned devices
+    entry_id = getattr(entry, "entry_id", None)
+    if not isinstance(entry_id, str):
+        entry_id = getattr(entry, "id", None)
+    if not isinstance(entry_id, str):
+        entry_id = None
     for device_id, device_entry in orphaned_devices:
         try:
-            if entry.entry_id in device_entry.config_entries:
+            if entry_id and entry_id in device_entry.config_entries:
                 device_registry.async_remove_device(device_entry.id)
                 _LOGGER.info(f"Removed orphaned device: {device_id}")
             else:

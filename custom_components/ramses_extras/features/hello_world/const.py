@@ -42,14 +42,14 @@ HELLO_WORLD_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {
         "name_template": "Hello World Switch {device_id}",
         "entity_template": "hello_world_switch_{device_id}",
         "icon": "mdi:lightbulb",
-        "device_types": ["HvacVentilator", "HgiController"],
+        "device_types": ["HvacVentilator", "HgiGateway", "HgiController"],
         # "default_enabled": True,
     },
     "hello_world_optional_switch": {  # optional example
         "name_template": "Hello World Optional Switch {device_id}",
         "entity_template": "hello_world_optional_switch_{device_id}",
         "icon": "mdi:toggle-switch-variant",
-        "device_types": ["HvacVentilator", "HgiController"],
+        "device_types": ["HvacVentilator", "HgiGateway", "HgiController"],
         "optional": True,
     },
 }
@@ -59,7 +59,7 @@ HELLO_WORLD_BINARY_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
         "name_template": "Hello World Status {device_id}",
         "entity_template": "hello_world_status_{device_id}",
         "device_class": "connectivity",
-        "device_types": ["HvacVentilator", "HgiController"],
+        "device_types": ["HvacVentilator", "HgiGateway", "HgiController"],
         # "default_enabled": True,
     }
 }
@@ -74,6 +74,11 @@ HELLO_WORLD_DEVICE_ENTITY_MAPPING = {
         "switch": ["hello_world_switch"],
         "binary_sensor": ["hello_world_status"],
         "sensor": [],  # Placeholder
+    },
+    "HgiGateway": {
+        "switch": ["hello_world_switch"],
+        "binary_sensor": ["hello_world_status"],
+        "sensor": [],
     },
     "HgiController": {
         "switch": ["hello_world_switch"],
@@ -106,7 +111,7 @@ HELLO_WORLD_CARD_CONFIGS: list[dict[str, Any]] = [
         "location": "hello_world",
         "preview": True,
         "documentation_url": "https://github.com/wimpie70/ramses_extras/wiki/Hello-World-Card",
-        "supported_device_types": ["HvacVentilator"],
+        "supported_device_types": ["HvacVentilator", "HgiGateway", "HgiController"],
         "javascript_file": "hello-world.js",
     },
 ]

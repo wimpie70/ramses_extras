@@ -52,20 +52,24 @@ def create_hello_world_feature(
     :return: Hello World card feature with card management capabilities
     :rtype: dict[str, Any]
     """
-    # Use framework's SimpleEntityManager instead of custom HelloWorldEntities
-    entities_manager = SimpleEntityManager(hass)
+    hass.data.setdefault("ramses_extras", {})
+    registry = hass.data["ramses_extras"]
 
-    # Create automation manager
-    automation_manager = create_hello_world_automation(hass, config_entry)
+    entities_manager = registry.get("hello_world_entities")
+    if entities_manager is None:
+        entities_manager = SimpleEntityManager(hass)
+        registry["hello_world_entities"] = entities_manager
+
+    automation_manager = registry.get("hello_world_automation")
+    automation_created = False
+    if automation_manager is None:
+        automation_manager = create_hello_world_automation(hass, config_entry)
+        registry["hello_world_automation"] = automation_manager
+        automation_created = True
 
     # Start the automation manager if not skipped
-    if not skip_automation_setup:
+    if not skip_automation_setup and automation_created:
         hass.async_create_task(automation_manager.start())
-
-    # Store in Home Assistant data for access by WebSocket commands
-    hass.data.setdefault("ramses_extras", {})
-    hass.data["ramses_extras"]["hello_world_entities"] = entities_manager
-    hass.data["ramses_extras"]["hello_world_automation"] = automation_manager
 
     _LOGGER.debug(
         "✅ Hello World feature created with framework entities manager and automation"

@@ -656,6 +656,16 @@ which entities are used as sensor inputs across features.
 - **Usage**: Can be copied and modified to create new features following established patterns
 - **Platforms**: sensor, switch, number, binary_sensor
 
+The `hello_world` feature is also the reference for keeping features **small and readable**:
+
+- **Single source of truth**: define entity templates and metadata in `features/<feature_id>/const.py` via `FEATURE_DEFINITION`.
+- **Prefer framework helpers**:
+  - Use `framework.helpers.platform.PlatformSetup` in `platforms/*.py` to avoid duplicating device iteration and entity creation patterns.
+  - Use `framework.helpers.device.core.find_ramses_device()` / `get_device_type()` for best-effort device type filtering.
+  - Use `framework.helpers.entity.core.EntityHelpers` to generate entity IDs from templates.
+- **Keep entities thin**: feature entities should mostly add feature-specific attributes/behavior; common state handling should live in framework base classes.
+- **Avoid parallel config structures**: do not introduce new ad-hoc `*_CONFIGS` / `*_CARD_CONFIG` registries outside `FEATURE_DEFINITION`.
+
 ## 4.4. Feature Structure Pattern
 
 ### Feature metadata: `FEATURE_DEFINITION` (single source of truth)

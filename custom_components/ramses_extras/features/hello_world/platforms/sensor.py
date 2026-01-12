@@ -33,14 +33,9 @@ async def async_setup_entry(
     3. Create and add sensor entities using the async_add_entities callback
     4. Define sensor configurations in const.py
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry for the integration
-        async_add_entities: Callback function to add entities to Home Assistant
-
-    Note:
-        This placeholder implementation allows the feature to be loaded without
-        errors while providing a clear extension point for future development.
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry for the integration
+    :param async_add_entities: Callback function to add entities to Home Assistant
     """
     # Placeholder implementation - not functional by default
     # Extend ExtrasSensorEntity when adding sensor functionality

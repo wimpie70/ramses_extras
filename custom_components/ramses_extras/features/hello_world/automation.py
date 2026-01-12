@@ -21,6 +21,9 @@ from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
+from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
+
+from .const import HELLO_WORLD_BINARY_SENSOR_CONFIGS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,9 +38,8 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
     def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
         """Initialize Hello World automation manager.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
         """
         super().__init__(
             hass=hass,
@@ -58,12 +60,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         feature is enabled. It looks for the feature in the 'enabled_features'
         dictionary within the config entry data.
 
-        Returns:
-            bool: True if the feature is enabled, False otherwise.
-
-        Note:
-            If there are any errors accessing the configuration data, the method
-            returns False as a safe default and logs a warning.
+        :return: True if the feature is enabled, False otherwise.
         """
         try:
             domain_data = self.hass.data.get(DOMAIN, {})
@@ -83,8 +80,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
     def _generate_entity_patterns(self) -> list[str]:
         """Generate entity patterns for Hello World automation.
 
-        Returns:
-            List of entity patterns to listen for
+        :return: List of entity patterns to listen for
         """
         patterns = [
             # Hello World switch entities
@@ -139,9 +135,8 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         and triggers binary sensor updates. In a real feature, this would
         contain the actual business logic.
 
-        Args:
-            device_id: Device identifier
-            entity_states: Entity state values
+        :param device_id: Device identifier
+        :param entity_states: Entity state values
         """
         if not self._automation_active or not self._is_feature_enabled():
             return
@@ -170,10 +165,9 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Handle state changes with Hello World automation-specific processing.
 
-        Args:
-            entity_id: Entity that changed state
-            old_state: Previous state (if any)
-            new_state: New state
+        :param entity_id: Entity that changed state
+        :param old_state: Previous state (if any)
+        :param new_state: New state
         """
         # Check if feature is still enabled first
         if not self._is_feature_enabled():
@@ -198,13 +192,17 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
 
         This updates the binary sensor state using the framework's helper method.
 
-        Args:
-            device_id: Device identifier
-            should_be_on: Whether binary sensor should be on
+        :param device_id: Device identifier
+        :param should_be_on: Whether binary sensor should be on
         """
         try:
-            # Generate the binary sensor entity ID
-            entity_id = f"binary_sensor.hello_world_status_{device_id}"
+            entity_id = EntityHelpers.generate_entity_name_from_template(
+                "binary_sensor",
+                HELLO_WORLD_BINARY_SENSOR_CONFIGS["hello_world_status"][
+                    "entity_template"
+                ],
+                device_id=device_id.replace(":", "_"),
+            )
 
             # Use framework base class helper to set binary sensor state
             success = await self.set_binary_sensor_state(entity_id, should_be_on)
@@ -224,12 +222,9 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
     async def async_trigger_binary_sensor(self, device_id: str, state: bool) -> bool:
         """Manually trigger binary sensor update via automation.
 
-        Args:
-            device_id: Device identifier
-            state: Desired binary sensor state
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :param state: Desired binary sensor state
+        :return: True if successful
         """
         try:
             if not self._automation_active:
@@ -245,8 +240,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
     def is_automation_active(self) -> bool:
         """Check if automation is currently active.
 
-        Returns:
-            True if automation is active
+        :return: True if automation is active
         """
         return self._automation_active
 
@@ -257,12 +251,9 @@ def create_hello_world_automation(
 ) -> HelloWorldAutomationManager:
     """Create Hello World automation instance.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-
-    Returns:
-        HelloWorldAutomationManager instance
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry
+    :return: HelloWorldAutomationManager instance
     """
     return HelloWorldAutomationManager(hass, config_entry)
 

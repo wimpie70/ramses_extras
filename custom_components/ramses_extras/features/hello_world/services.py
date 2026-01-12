@@ -79,13 +79,8 @@ async def async_setup_services(
 
     Services are only registered if they don't already exist to avoid conflicts.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry for the integration
-
-    Note:
-        This function should be called during feature initialization to make
-        the services available to users and automations.
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry for the integration
     """
     _LOGGER.info("Setting up Hello World services")
 
@@ -323,8 +318,7 @@ async def async_bulk_toggle_service(hass: HomeAssistant, call: ServiceCall) -> N
 def get_service_info() -> dict[str, dict]:
     """Get information about available services.
 
-    Returns:
-        Dictionary containing service information
+    :return: Dictionary containing service information
     """
     return {
         SERVICE_TOGGLE_SWITCH: {
@@ -361,11 +355,8 @@ def get_service_info() -> dict[str, dict]:
 def get_registered_services(hass: HomeAssistant) -> list[str]:
     """Get list of registered Hello World services.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        List of registered service names
+    :param hass: Home Assistant instance
+    :return: List of registered service names
     """
     services = []
     service_domains = hass.services.async_services()
@@ -379,12 +370,9 @@ def get_registered_services(hass: HomeAssistant) -> list[str]:
 def validate_service_call(service_name: str, data: dict[str, Any]) -> tuple[bool, str]:
     """Validate a service call before execution.
 
-    Args:
-        service_name: Name of the service being called
-        data: Service call data
-
-    Returns:
-        Tuple of (is_valid, error_message)
+    :param service_name: Name of the service being called
+    :param data: Service call data
+    :return: Tuple of (is_valid, error_message)
     """
     if service_name == SERVICE_TOGGLE_SWITCH:
         # Check that state is provided (required to avoid sync issues)

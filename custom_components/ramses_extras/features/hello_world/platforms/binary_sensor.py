@@ -14,7 +14,6 @@ demonstrating automation-driven binary sensor entities that respond to switch ch
 :pattern: Switch → Automation → Binary Sensor
 """
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -23,14 +22,16 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
     ExtrasBinarySensorEntity,
 )
+from custom_components.ramses_extras.framework.helpers.device.core import (
+    find_ramses_device,
+    get_device_type,
+)
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 
 from ..const import HELLO_WORLD_BINARY_SENSOR_CONFIGS
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -59,43 +60,25 @@ async def create_hello_world_binary_sensor(
     entity_configs: dict[str, Any],
     config_entry: ConfigEntry | None = None,
 ) -> list[ExtrasBinarySensorEntity]:
-    """Create Hello World binary sensor for a device.
+    """Create Hello World binary sensor entities for a device.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config_entry: Configuration entry
-
-    Returns:
-        List of binary sensor entities
+    :param hass: Home Assistant instance
+    :param device_id: Device identifier
+    :param entity_configs: Binary sensor entity configuration mapping
+    :param config_entry: Configuration entry
+    :return: List of binary sensor entities
     """
     sensor_list = []
 
     device_type: str | None = None
     try:
-        devices = hass.data.get("ramses_extras", {}).get("devices", [])
-        for device in devices:
-            if isinstance(device, dict):
-                raw_id = device.get("device_id")
-                dev_type = device.get("type")
-            else:
-                raw_id = device
-                dev_type = getattr(device, "type", None)
-
-            if raw_id is None:
-                continue
-            raw_str = str(raw_id)
-            if raw_str in {
-                device_id,
-                device_id.replace(":", "_"),
-                device_id.replace("_", ":"),
-            }:
-                device_type = str(dev_type) if dev_type is not None else None
-                break
+        device = find_ramses_device(hass, device_id)
+        if device is not None:
+            device_type = get_device_type(device)
     except Exception:
         device_type = None
 
-    for sensor_type, config in HELLO_WORLD_BINARY_SENSOR_CONFIGS.items():
+    for sensor_type, config in entity_configs.items():
         supported_types = config.get("device_types", [])
         if (
             supported_types
@@ -134,44 +117,6 @@ class HelloWorldBinarySensor(ExtrasBinarySensorEntity):
         calls the set_state() method to update the sensor state based on automation
          logic.
     """
-
-    def __init__(
-        self,
-        hass: "HomeAssistant",
-        device_id: str,
-        sensor_type: str,
-        config: dict[str, Any],
-    ):
-        """Initialize Hello World binary sensor entity."""
-        super().__init__(hass, device_id, sensor_type, config)
-
-        # Initialize state - will be updated by automation
-        self._is_on = False
-
-    async def async_added_to_hass(self) -> None:
-        """Initialize Hello World binary sensor."""
-        await super().async_added_to_hass()
-        _LOGGER.info("Hello World binary sensor %s added to hass", self._attr_name)
-
-        # Note: SimpleEntityManager handles state coordination automatically
-        # No custom entity storage needed - framework handles coordination
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Clean up when entity is removed."""
-        await super().async_will_remove_from_hass()
-
-        # Note: SimpleEntityManager handles cleanup automatically
-        # No custom cleanup needed - framework handles coordination
-
-    def set_state(self, is_on: bool) -> None:
-        """Set the binary sensor state (used by automation triggers)."""
-        self._is_on = is_on
-        self.async_write_ha_state()
-        _LOGGER.info(
-            "Binary sensor %s state set to %s by automation",
-            self._attr_name,
-            is_on,
-        )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

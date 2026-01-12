@@ -3,20 +3,44 @@
 import * as logger from './logger.js';
 
 function detectAssetBase() {
+  const fromPath = (path) => {
+    if (!path) {
+      return null;
+    }
+    const marker = '/helpers/main.js';
+    const idx = path.indexOf(marker);
+    if (idx === -1) {
+      return null;
+    }
+    return path.slice(0, idx);
+  };
+
+  try {
+    if (import.meta && import.meta.url) {
+      const URLCtor =
+        (typeof window !== 'undefined' && window.URL) ||
+        (typeof globalThis !== 'undefined' && globalThis.URL) ||
+        null;
+      if (!URLCtor) {
+        return null;
+      }
+
+      const url = new URLCtor(import.meta.url);
+      const base = fromPath(url.pathname);
+      if (base) {
+        return base;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
   if (typeof document === 'undefined') {
     return null;
   }
 
   const fromScript = (src) => {
-    if (!src) {
-      return null;
-    }
-    const marker = '/helpers/main.js';
-    const idx = src.indexOf(marker);
-    if (idx === -1) {
-      return null;
-    }
-    return src.slice(0, idx);
+    return fromPath(src);
   };
 
   if (document.currentScript?.src) {

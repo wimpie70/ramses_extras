@@ -44,15 +44,8 @@ def _get_entities_manager(hass: HomeAssistant) -> Any:
     The function first tries to retrieve the manager from the Home Assistant data
     registry. If not found, it creates a new instance as a fallback.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        SimpleEntityManager instance or None if not available
-
-    Note:
-        This is an internal helper function used by WebSocket command handlers
-        to access the shared entity management system.
+    :param hass: Home Assistant instance
+    :return: SimpleEntityManager instance or None if not available
     """
     try:
         # Try to get the global registry from Home Assistant data
