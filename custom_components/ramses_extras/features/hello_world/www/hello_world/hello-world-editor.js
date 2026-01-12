@@ -1,9 +1,10 @@
-/* eslint-disable no-console */
 // Hello World Card Editor - Configuration editor for the card
 // Part of the Ramses Extra integration
 // See https://github.com/wimpie70/ramses_extras for more information
 
 /* eslint-disable no-undef */
+
+import * as logger from '../../helpers/logger.js';
 
 // Import reusable helpers using environment-aware path constants
 import {
@@ -11,12 +12,7 @@ import {
   normalizeDeviceDescriptor,
 } from '../../helpers/card-services.js';
 
-const isDebugEnabled = () => window.ramsesExtras?.debug === true;
-const debugLog = (...args) => {
-  if (isDebugEnabled()) {
-    console.log(...args);
-  }
-};
+const debugLog = (...args) => logger.debug(...args);
 
 /**
  * Hello World Card Editor using HTMLElement pattern (like hvac_fan_card)
@@ -82,7 +78,7 @@ class HelloworldEditor extends HTMLElement {
         // Show the complete editor interface
         this._renderEditor(ramsesDevices);
       }).catch(error => {
-        console.error('❌ Error getting Ramses devices:', error);
+        logger.error('❌ Error getting Ramses devices:', error);
         // Render editor with empty device list - no fallback
         this._renderEditor([]);
       });
@@ -93,7 +89,7 @@ class HelloworldEditor extends HTMLElement {
       this._getRamsesDevices().then(ramsesDevices => {
         this._renderEditor(ramsesDevices);
       }).catch(error => {
-        console.error('❌ Error getting cached Ramses devices:', error);
+        logger.error('❌ Error getting cached Ramses devices:', error);
         this._renderEditor([]);
       });
     }
@@ -263,7 +259,7 @@ class HelloworldEditor extends HTMLElement {
       debugLog('🎯 Found', ramsesDevices.length, 'Ramses devices via WebSocket');
       return ramsesDevices;
     } else {
-      console.warn('⚠️ Invalid response format from WebSocket command');
+      logger.warn('⚠️ Invalid response format from WebSocket command');
       return [];
     }
   }
@@ -345,7 +341,7 @@ try {
   customElements.define('hello-world-editor', HelloworldEditor);
   debugLog('HelloworldEditor: ✅ Custom element registered successfully');
 } catch (error) {
-  console.error('HelloworldEditor: ❌ Failed to register custom element:', error);
+  logger.error('HelloworldEditor: ❌ Failed to register custom element:', error);
 }
 
 // Make editor globally available for Home Assistant

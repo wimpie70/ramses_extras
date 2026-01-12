@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /* global navigator */
 /* global fetch */
 
@@ -6,6 +5,8 @@
  * Simple Localization Support
  * Embedded translation system to avoid module import issues
  */
+
+import * as logger from './logger.js';
 
 // Helper to rewrite paths to versioned base if needed
 function rewritePathToVersioned(path) {
@@ -37,7 +38,7 @@ export class SimpleCardTranslator {
       await this.loadTranslations(cardPath);
       this.initialized = true;
     } catch (error) {
-      console.warn(`⚠️ Failed to load translations for ${this.cardName}:`, error);
+      logger.warn(`⚠️ Failed to load translations for ${this.cardName}:`, error);
       this.initialized = true; // Continue without translations
     }
   }
@@ -62,15 +63,20 @@ export class SimpleCardTranslator {
           const responseText = await response.text();
           this.translations = JSON.parse(responseText);
         } catch (jsonError) {
-          console.warn(`⚠️ Invalid JSON in translation file ${translationPath}:`, jsonError);
+          logger.warn(
+            `⚠️ Invalid JSON in translation file ${translationPath}:`,
+            jsonError
+          );
           await this.loadFallbackTranslations(cardPath);
         }
       } else {
-        console.warn(`⚠️ Translation file not found (${response.status}): ${translationPath}`);
+        logger.warn(
+          `⚠️ Translation file not found (${response.status}): ${translationPath}`
+        );
         await this.loadFallbackTranslations(cardPath);
       }
     } catch (error) {
-      console.warn(`⚠️ Could not load translations:`, error);
+      logger.warn(`⚠️ Could not load translations:`, error);
       await this.loadFallbackTranslations(cardPath);
     }
   }
@@ -86,15 +92,15 @@ export class SimpleCardTranslator {
           const responseText = await fallbackResponse.text();
           this.translations = JSON.parse(responseText);
         } catch (jsonError) {
-          console.warn(`⚠️ Invalid JSON in fallback translation file:`, jsonError);
+          logger.warn(`⚠️ Invalid JSON in fallback translation file:`, jsonError);
           this.translations = {};
         }
       } else {
-        console.warn(`⚠️ Fallback translation file not found: ${fallbackPath}`);
+        logger.warn(`⚠️ Fallback translation file not found: ${fallbackPath}`);
         this.translations = {};
       }
     } catch (error) {
-      console.warn(`⚠️ Could not load fallback translations:`, error);
+      logger.warn(`⚠️ Could not load fallback translations:`, error);
       this.translations = {};
     }
   }
@@ -170,14 +176,14 @@ export class CardTranslations {
       await this.loadTranslations(cardPath);
       this.initialized = true;
     } catch (error) {
-      console.error(`❌ Failed to load translations for ${this.cardName}:`, error);
+      logger.error(`❌ Failed to load translations for ${this.cardName}:`, error);
       // Fallback to default language
       this.currentLanguage = this.fallbackLanguage;
       try {
         await this.loadTranslations(cardPath, this.fallbackLanguage);
         this.initialized = true;
       } catch (fallbackError) {
-        console.error(`❌ Failed to load fallback translations:`, fallbackError);
+        logger.error(`❌ Failed to load fallback translations:`, fallbackError);
       }
     }
   }
@@ -220,7 +226,9 @@ export class CardTranslations {
     } catch (error) {
       // If current language fails, try fallback
       if (language !== this.fallbackLanguage) {
-        console.warn(`⚠️ ${language} translations not found, trying fallback: ${this.fallbackLanguage}`);
+        logger.warn(
+          `⚠️ ${language} translations not found, trying fallback: ${this.fallbackLanguage}`
+        );
         await this.loadTranslations(cardPath, this.fallbackLanguage);
       } else {
         throw error;
@@ -236,7 +244,7 @@ export class CardTranslations {
    */
   t(key, params = {}) {
     if (!this.initialized) {
-      console.warn(`⚠️ Translations not initialized for ${this.cardName}`);
+      logger.warn(`⚠️ Translations not initialized for ${this.cardName}`);
       return key;
     }
 
@@ -254,7 +262,7 @@ export class CardTranslations {
           if (value && typeof value === 'object' && k in value) {
             value = value[k];
           } else {
-            console.warn(`⚠️ Missing translation: ${key} for ${this.cardName}`);
+            logger.warn(`⚠️ Missing translation: ${key} for ${this.cardName}`);
             return key; // Return key if translation not found
           }
         }
@@ -263,7 +271,7 @@ export class CardTranslations {
     }
 
     if (typeof value !== 'string') {
-      console.warn(`⚠️ Translation value is not a string: ${key}`);
+      logger.warn(`⚠️ Translation value is not a string: ${key}`);
       return key;
     }
 
@@ -313,7 +321,7 @@ export class CardTranslations {
       await this.loadTranslations(cardPath, language);
       this.currentLanguage = language;
     } catch (error) {
-      console.error(`❌ Failed to switch to language ${language}:`, error);
+      logger.error(`❌ Failed to switch to language ${language}:`, error);
     }
   }
 

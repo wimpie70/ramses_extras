@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /* global URL */
 /* global process */
 /**
@@ -13,6 +12,8 @@
  * This file should be imported by any JavaScript file that needs to
  * reference helpers or feature-specific assets.
  */
+
+import * as logger from './logger.js';
 
 /**
  * File Location Detection
@@ -239,7 +240,9 @@ export function setEnvironment(environment) {
     }
     return true;
   }
-  console.warn(`Unknown environment: ${environment}. Valid environments: ${Object.keys(ENVIRONMENTS).join(', ')}`);
+  logger.warn(
+    `Unknown environment: ${environment}. Valid environments: ${Object.keys(ENVIRONMENTS).join(', ')}`
+  );
   return false;
 }
 
@@ -465,9 +468,7 @@ export function isValidPath(path) {
  * @param {string} context - Context where paths are being resolved
  */
 export function debugPathResolution(context = 'unknown') {
-  if (typeof console !== 'undefined' && console.debug) {
-    console.debug(`🔍 Ramses Extras Path Resolution [${context}]:`, getAllPaths());
-  }
+  logger.debug(`🔍 Ramses Extras Path Resolution [${context}]:`, getAllPaths());
 }
 
 /**
@@ -510,5 +511,5 @@ export default {
 // Log path resolution info in development
 if (typeof window !== 'undefined' && getCurrentEnvironment() === 'development') {
   const debugInfo = getEnvironmentDebugInfo();
-  console.debug(`🔍 Ramses Extras Path Resolution [module-load]:`, debugInfo);
+  logger.debug(`🔍 Ramses Extras Path Resolution [module-load]:`, debugInfo);
 }

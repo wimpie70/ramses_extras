@@ -1,5 +1,3 @@
-/* eslint-disable no-console */
-
 /**
  * Hello World - Simple demonstration card for Ramses Extras
  *
@@ -21,6 +19,8 @@
  * - The features automation will listen to this and be triggered and then update the sensor entity.
  * - The card listens to the sensor entity and will re-render when it changes.
  */
+
+import * as logger from '../../helpers/logger.js';
 
 // Import the base card class (matching working hvac_fan_card pattern)
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
@@ -58,12 +58,12 @@ class HelloWorld extends RamsesBaseCard {
   static getConfigElement() {
     try {
       if (typeof window.HelloworldEditor === 'undefined') {
-        console.error('HelloworldEditor is not defined on window');
+        logger.error('HelloworldEditor is not defined on window');
         return null;
       }
       return document.createElement('hello-world-editor');
     } catch (error) {
-      console.error('Error creating config element:', error);
+      logger.error('Error creating config element:', error);
       return null;
     }
   }
@@ -220,7 +220,7 @@ class HelloWorld extends RamsesBaseCard {
       // getRequiredEntities() has the correct entity IDs
       this.render();
     } catch (error) {
-      console.warn('HelloWorld: Failed to load entity mappings:', error);
+      logger.warn('HelloWorld: Failed to load entity mappings:', error);
       this.render();
     }
   }
@@ -249,7 +249,7 @@ class HelloWorld extends RamsesBaseCard {
         this._entityMappings = result.mappings;
       }
     } catch (error) {
-      console.warn('HelloWorld: Failed to load entity mappings:', error);
+      logger.warn('HelloWorld: Failed to load entity mappings:', error);
     }
   }
 
@@ -277,7 +277,7 @@ class HelloWorld extends RamsesBaseCard {
       // Send WebSocket command to toggle the switch state
       await this._sendSwitchCommand(newState);
     } catch (error) {
-      console.error('HelloWorld: Failed to handle button click:', error);
+      logger.error('HelloWorld: Failed to handle button click:', error);
       // Re-throw to let the framework handle it
       throw error;
     }
@@ -298,7 +298,7 @@ class HelloWorld extends RamsesBaseCard {
       });
 
       if (!result.success) {
-        console.error('HelloWorld: Command failed:', result);
+        logger.error('HelloWorld: Command failed:', result);
         this._revertSwitchToActualState();
       } else {
         // Clear update throttle and previous states to allow immediate updates when entity states change
@@ -313,7 +313,7 @@ class HelloWorld extends RamsesBaseCard {
         // when Home Assistant propagates the state change
       }
     } catch (error) {
-      console.error('HelloWorld: WebSocket command error:', error);
+      logger.error('HelloWorld: WebSocket command error:', error);
       this._revertSwitchToActualState();
     } finally {
       this._setCommandInProgress(false);

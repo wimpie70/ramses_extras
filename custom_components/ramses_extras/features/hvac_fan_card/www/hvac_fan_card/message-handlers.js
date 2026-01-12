@@ -1,6 +1,7 @@
-/* eslint-disable no-console */
 // HVAC Fan Card Message Handlers
 // Handles real-time 31DA and other ramses_cc messages for the HVAC fan card
+
+import * as logger from '../../helpers/logger.js';
 
 export class HvacFanCardHandlers {
 
@@ -13,7 +14,7 @@ export class HvacFanCardHandlers {
 
             const payload = messageData?.data?.payload;
             if (!payload) {
-                console.warn('31DA message missing payload');
+                logger.warn('31DA message missing payload');
                 return;
             }
 
@@ -26,7 +27,7 @@ export class HvacFanCardHandlers {
             // console.log('✅ 31DA data processed and card updated:', hvacData);
 
         } catch (error) {
-            console.error('Error handling 31DA message:', error);
+            logger.error('Error handling 31DA message:', error);
         }
     }
 
@@ -39,7 +40,7 @@ export class HvacFanCardHandlers {
 
             const payload = messageData?.data?.payload;
             if (!payload) {
-                console.warn('10D0 message missing payload');
+                logger.warn('10D0 message missing payload');
                 return;
             }
 
@@ -52,7 +53,7 @@ export class HvacFanCardHandlers {
             // console.log('✅ 10D0 data processed and card updated:', filterData);
 
         } catch (error) {
-            console.error('Error handling 10D0 message:', error);
+            logger.error('Error handling 10D0 message:', error);
         }
     }
 

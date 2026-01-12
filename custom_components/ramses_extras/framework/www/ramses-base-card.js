@@ -1,10 +1,10 @@
-/* eslint-disable no-console */
 /* global customElements */
 /* global HTMLElement */
 /* global setTimeout */
 /* global clearTimeout */
 
 // Import framework utilities
+import * as logger from './logger.js';
 import { SimpleCardTranslator } from './card-translations.js';
 import { callWebSocket, entityExists, getEntityState, buildEntityId } from './card-services.js';
 import { getRamsesMessageBroker } from './ramses-message-broker.js';
@@ -13,33 +13,7 @@ import { getFeatureTranslationPath } from './paths.js';
  * window.ramsesExtras = window.ramsesExtras || {};
  * window.ramsesExtras.debug = true;
  */
-const _getFrontendLogLevel = () => {
-  const level = window.ramsesExtras?.frontendLogLevel;
-  if (typeof level === 'string' && level) {
-    return level;
-  }
-
-  return window.ramsesExtras?.debug === true ? 'debug' : 'info';
-};
-
-const _FRONTEND_LOG_LEVELS = {
-  error: 0,
-  warning: 1,
-  info: 2,
-  debug: 3,
-};
-
-const _shouldLog = (level) => {
-  const current = _FRONTEND_LOG_LEVELS[_getFrontendLogLevel()] ?? _FRONTEND_LOG_LEVELS.info;
-  const requested = _FRONTEND_LOG_LEVELS[level] ?? _FRONTEND_LOG_LEVELS.info;
-  return requested <= current;
-};
-
-const debugLog = (...args) => {
-  if (_shouldLog('debug')) {
-    console.log(...args);
-  }
-};
+const debugLog = (...args) => logger.debug(...args);
 
 const _ensureOptionsUpdatesSubscribed = (hass) => {
   if (!hass?.connection) {
@@ -85,11 +59,11 @@ const _ensureOptionsUpdatesSubscribed = (hass) => {
         event.detail = payload;
         window.dispatchEvent(event);
       } catch (error) {
-        console.warn('⚠️ Failed to dispatch ramses_extras_options_updated event:', error);
+        logger.warn('⚠️ Failed to dispatch ramses_extras_options_updated event:', error);
       }
     }, 'ramses_extras_options_updated');
   } catch (error) {
-    console.warn('⚠️ Failed to subscribe to options updated events:', error);
+    logger.warn('⚠️ Failed to subscribe to options updated events:', error);
   }
 };
 
@@ -237,7 +211,9 @@ export class RamsesBaseCard extends HTMLElement {
     const deviceId = this._config?.device_id;
 
     if (!deviceId) {
-      console.warn(`${this.constructor.name}: getRequiredEntities - no device_id available`);
+      logger.warn(
+        `${this.constructor.name}: getRequiredEntities - no device_id available`
+      );
       return {};
     }
 
@@ -255,7 +231,10 @@ export class RamsesBaseCard extends HTMLElement {
         return result.mappings;
       }
     } catch (error) {
-      console.warn(`${this.constructor.name}: Failed to load entity mappings:`, error);
+      logger.warn(
+        `${this.constructor.name}: Failed to load entity mappings:`,
+        error
+      );
     }
 
     // Fallback to empty entities if loading fails
@@ -322,7 +301,10 @@ export class RamsesBaseCard extends HTMLElement {
         }
       }
     } catch (error) {
-      console.warn(`⚠️ Failed to initialize translations for ${this.constructor.name}:`, error);
+      logger.warn(
+        `⚠️ Failed to initialize translations for ${this.constructor.name}:`,
+        error
+      );
       this._translationsLoaded = true; // Continue without translations
     }
   }
@@ -341,7 +323,7 @@ export class RamsesBaseCard extends HTMLElement {
         this.clearUpdateThrottle();
         this.render();
       } catch (error) {
-        console.warn('⚠️ Failed to update after options change:', error);
+        logger.warn('⚠️ Failed to update after options change:', error);
       }
     };
 
@@ -428,7 +410,10 @@ export class RamsesBaseCard extends HTMLElement {
             window.ramsesExtras.features = result?.enabled_features || {};
           })
           .catch((error) => {
-            console.warn('⚠️ Failed to load Ramses Extras feature configuration via WebSocket:', error);
+            logger.warn(
+              '⚠️ Failed to load Ramses Extras feature configuration via WebSocket:',
+              error
+            );
           });
       }
     }
@@ -441,7 +426,7 @@ export class RamsesBaseCard extends HTMLElement {
             this.render();
           }
         } catch (error) {
-          console.warn('⚠️ Failed to re-render after feature config load:', error);
+          logger.warn('⚠️ Failed to re-render after feature config load:', error);
         }
       });
     }
@@ -518,7 +503,7 @@ export class RamsesBaseCard extends HTMLElement {
         }
       }
     } catch (error) {
-      console.error(`❌ ${this.constructor.name}: Configuration error:`, error);
+      logger.error(`❌ ${this.constructor.name}: Configuration error:`, error);
       // We don't throw here to allow the card to stay in a predictable state
       // and let render() show the config error if needed.
     }
@@ -741,7 +726,7 @@ export class RamsesBaseCard extends HTMLElement {
       // Default implementation - subclasses can override
       debugLog(`🔄 ${this.constructor.name}: Loading initial state for device:`, this._config.device_id);
     } catch (error) {
-      console.warn(`⚠️ ${this.constructor.name}: Failed to load initial state:`, error);
+      logger.warn(`⚠️ ${this.constructor.name}: Failed to load initial state:`, error);
     } finally {
       // Clear throttle after initial state loading to allow updates
       this.clearUpdateThrottle();
@@ -785,7 +770,7 @@ export class RamsesBaseCard extends HTMLElement {
     try {
       return await callWebSocket(this._hass, message);
     } catch (error) {
-      console.error(`❌ ${this.constructor.name}: WebSocket command failed:`, error);
+      logger.error(`❌ ${this.constructor.name}: WebSocket command failed:`, error);
       throw error;
     }
   }
@@ -941,7 +926,7 @@ export class RamsesBaseCard extends HTMLElement {
     try {
       this._onConnected();
     } catch (error) {
-      console.warn(`⚠️ ${this.constructor.name}: Error in _onConnected():`, error);
+      logger.warn(`⚠️ ${this.constructor.name}: Error in _onConnected():`, error);
     }
 
     this._attachOptionsUpdatedListener();
@@ -958,7 +943,7 @@ export class RamsesBaseCard extends HTMLElement {
     try {
       this._onDisconnected();
     } catch (error) {
-      console.warn(`⚠️ ${this.constructor.name}: Error in _onDisconnected():`, error);
+      logger.warn(`⚠️ ${this.constructor.name}: Error in _onDisconnected():`, error);
     }
 
     // Clean up message broker
@@ -1038,7 +1023,7 @@ export class RamsesBaseCard extends HTMLElement {
           }
         })
         .catch((error) => {
-          console.warn('⚠️ Failed to query cards_enabled:', error);
+          logger.warn('⚠️ Failed to query cards_enabled:', error);
           this._subscribeCardsEnabled();
         })
         .finally(() => {
@@ -1075,7 +1060,7 @@ export class RamsesBaseCard extends HTMLElement {
         this.render();
       }, 'ramses_extras_cards_enabled');
     } catch (error) {
-      console.warn('⚠️ Failed to subscribe to cards enabled events:', error);
+      logger.warn('⚠️ Failed to subscribe to cards enabled events:', error);
     }
   }
 
@@ -1093,7 +1078,7 @@ export class RamsesBaseCard extends HTMLElement {
       this._messageBroker.addListener(this, this._config.device_id, this._messageCodes);
       debugLog(`📡 ${this.constructor.name}: Registered for message codes:`, this._messageCodes);
     } catch (error) {
-      console.warn(`⚠️ ${this.constructor.name}: Failed to setup message broker:`, error);
+      logger.warn(`⚠️ ${this.constructor.name}: Failed to setup message broker:`, error);
     }
   }
 
@@ -1106,7 +1091,7 @@ export class RamsesBaseCard extends HTMLElement {
         this._messageBroker.removeListener(this, this._config.device_id);
         debugLog(`🧹 ${this.constructor.name}: Removed from message broker`);
       } catch (error) {
-        console.warn(`⚠️ ${this.constructor.name}: Error cleaning up message broker:`, error);
+        logger.warn(`⚠️ ${this.constructor.name}: Error cleaning up message broker:`, error);
       }
     }
     this._messageBroker = null;
@@ -1208,11 +1193,11 @@ export class RamsesBaseCard extends HTMLElement {
       if (verifiedCard) {
         debugLog(`✅ ${this.name}: Registration verified successfully for type: ${cardInfo.type}`);
       } else {
-        console.error(`❌ ${this.name}: Failed to verify registration for type: ${cardInfo.type}`);
+        logger.error(`❌ ${this.name}: Failed to verify registration for type: ${cardInfo.type}`);
       }
 
     } catch (error) {
-      console.error(`❌ ${this.name}: Error during registration verification:`, error);
+      logger.error(`❌ ${this.name}: Error during registration verification:`, error);
     }
   }
 

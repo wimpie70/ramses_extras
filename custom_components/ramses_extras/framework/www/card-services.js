@@ -1,10 +1,11 @@
-/* eslint-disable no-console */
 /**
  * Card Services - WebSocket and Service Call Utilities
  *
  * This module provides utility functions for cards to interact with Home Assistant
  * via WebSocket commands and service calls.
  */
+
+import * as logger from './logger.js';
 
 /**
  * Send a WebSocket command to Home Assistant
@@ -22,11 +23,11 @@ export async function callWebSocket(hass, message) {
           resolve(result);
         })
         .catch((error) => {
-          console.error('WebSocket message failed:', error);
+          logger.error('WebSocket message failed:', error);
           reject(error);
         });
     } catch (error) {
-      console.error('Error sending WebSocket message:', error);
+      logger.error('Error sending WebSocket message:', error);
       reject(error);
     }
   });
@@ -47,11 +48,11 @@ export async function sendPacket(hass, data) {
           resolve(result);
         })
         .catch((error) => {
-          console.error('Service call failed:', error);
+          logger.error('Service call failed:', error);
           reject(error);
         });
     } catch (error) {
-      console.error('Error calling service:', error);
+      logger.error('Error calling service:', error);
       reject(error);
     }
   });
@@ -88,11 +89,11 @@ export async function callService(hass, domain, service, data) {
           resolve(result);
         })
         .catch((error) => {
-          console.error('Service call failed:', error);
+          logger.error('Service call failed:', error);
           reject(error);
         });
     } catch (error) {
-      console.error('Error calling service:', error);
+      logger.error('Error calling service:', error);
       reject(error);
     }
   });
@@ -175,7 +176,7 @@ const CACHE_DURATION = 30000; // 30 seconds cache
  * Clear all caches (useful for debugging or hard refresh)
  */
 export function clearAllCaches() {
-  console.log(' Clearing all card services caches');
+  logger.debug(' Clearing all card services caches');
   _devicesCache = null;
   _devicesCacheTimestamp = 0;
 }
@@ -213,11 +214,11 @@ export async function getAvailableDevices(hass) {
 
   // Return cached data if still valid
   if (_devicesCache && (now - _devicesCacheTimestamp) < CACHE_DURATION) {
-    console.log('📦 Returning cached devices list');
+    logger.debug('📦 Returning cached devices list');
     return _devicesCache;
   }
 
-  console.log('🔄 Fetching fresh devices list from WebSocket');
+  logger.debug('🔄 Fetching fresh devices list from WebSocket');
   const response = await callWebSocket(hass, {
     type: 'ramses_extras/get_available_devices',
   });
@@ -226,7 +227,7 @@ export async function getAvailableDevices(hass) {
   _devicesCache = response.devices || [];
   _devicesCacheTimestamp = now;
 
-  console.log(`✅ Cached ${_devicesCache.length} devices for ${CACHE_DURATION}ms`);
+  logger.debug(`✅ Cached ${_devicesCache.length} devices for ${CACHE_DURATION}ms`);
   return _devicesCache;
 }
 

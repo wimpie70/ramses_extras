@@ -1,10 +1,11 @@
-/* eslint-disable no-console */
 // hvac-fan-card-editor.js
 
 /* global customElements */
 /* global setTimeout */
 /* global CustomEvent */
 /* global HTMLElement */
+
+import * as logger from '../../helpers/logger.js';
 
 import {
   getAvailableDevices,
@@ -67,7 +68,7 @@ class HvacFanCardEditor extends HTMLElement {
 
       this._renderEditor(normalized);
     } catch (error) {
-      console.error('HvacFanCardEditor: Failed to load devices', error);
+      logger.error('HvacFanCardEditor: Failed to load devices', error);
       this._renderEditor([]);
     }
   }

@@ -1,8 +1,9 @@
-/* eslint-disable no-console */
 /* global customElements */
 /* global setTimeout */
 /* global clearTimeout */
 /* global clearInterval */
+
+import * as logger from '../../helpers/logger.js';
 
 // Import the base card class
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
@@ -67,12 +68,12 @@ class HvacFanCard extends RamsesBaseCard {
   static getConfigElement() {
     try {
       if (typeof window.HvacFanCardEditor === 'undefined') {
-        console.error('HvacFanCardEditor is not defined on window');
+        logger.error('HvacFanCardEditor is not defined on window');
         return null;
       }
       return document.createElement('hvac-fan-card-editor');
     } catch (error) {
-      console.error('Error creating config element:', error);
+      logger.error('Error creating config element:', error);
       return null;
     }
   }
@@ -88,12 +89,12 @@ class HvacFanCard extends RamsesBaseCard {
     try {
       // Ensure the editor is available before creating it
       if (typeof window.HvacFanCardEditor === 'undefined') {
-        console.error('HvacFanCardEditor is not defined on window');
+        logger.error('HvacFanCardEditor is not defined on window');
         return null;
       }
       return document.createElement('hvac-fan-card-editor');
     } catch (error) {
-      console.error('Error creating config element:', error);
+      logger.error('Error creating config element:', error);
       return null;
     }
   }
@@ -179,7 +180,7 @@ class HvacFanCard extends RamsesBaseCard {
       await this._loadEntityMappings();
       this.render();
     } catch (error) {
-      console.warn('HvacFanCard: Failed to load initial state:', error);
+      logger.warn('HvacFanCard: Failed to load initial state:', error);
       this.render();
     } finally {
       this.clearUpdateThrottle();
@@ -234,7 +235,7 @@ class HvacFanCard extends RamsesBaseCard {
         this._entityMappings = { ...(this._entityMappings || {}), ...result.mappings };
       }
     } catch (error) {
-      console.warn('HvacFanCard: Failed to load entity mappings:', error);
+      logger.warn('HvacFanCard: Failed to load entity mappings:', error);
     } finally {
       this._entityMappingsLoading = false;
     }
@@ -539,7 +540,7 @@ class HvacFanCard extends RamsesBaseCard {
       // console.log('Parameter schema received:', Object.keys(result));
       return result;
     } catch (error) {
-      console.error('Failed to fetch parameter schema:', error);
+      logger.error('Failed to fetch parameter schema:', error);
       return {};
     }
   }
@@ -573,7 +574,9 @@ class HvacFanCard extends RamsesBaseCard {
           } else {
             // Fallback: try to create a readable description from the parameter key
             description = paramKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
-            console.log(`📋 No schema found for ${paramKey}, using fallback: ${description}`);
+            logger.debug(
+              `📋 No schema found for ${paramKey}, using fallback: ${description}`
+            );
           }
         }
 
@@ -635,7 +638,7 @@ class HvacFanCard extends RamsesBaseCard {
         }
       }
     } catch (error) {
-      console.error(`❌ Failed to update parameter ${paramKey}:`, error);
+      logger.error(`❌ Failed to update parameter ${paramKey}:`, error);
       if (paramItem) {
         paramItem.classList.remove('loading');
         paramItem.classList.add('error');
@@ -659,7 +662,7 @@ class HvacFanCard extends RamsesBaseCard {
         setTimeout(() => refreshBtn.classList.remove('success'), 2000);
       }
     } catch (error) {
-      console.error('❌ Failed to refresh parameters:', error);
+      logger.error('❌ Failed to refresh parameters:', error);
       if (refreshBtn) {
         refreshBtn.classList.remove('loading');
         refreshBtn.classList.add('error');
@@ -707,7 +710,7 @@ class HvacFanCard extends RamsesBaseCard {
   // Request initial data when card is fully loaded
   async requestInitialData() {
     if (!this._hass || !this._config?.device_id) {
-      console.warn('Cannot request initial data: missing hass or device_id');
+      logger.warn('Cannot request initial data: missing hass or device_id');
       return;
     }
 
@@ -717,7 +720,7 @@ class HvacFanCard extends RamsesBaseCard {
 
       window.send_command('fan_request10D0', this._config.device_id, tempButton);
     } catch (error) {
-      console.error('❌ Failed to request initial data:', error);
+      logger.error('❌ Failed to request initial data:', error);
     }
   }
 
@@ -811,7 +814,7 @@ class HvacFanCard extends RamsesBaseCard {
             if (onclick) {
               const fn = new Function(
                 'event',
-                `try { ${onclick} } catch(e) { console.error('Error in button handler:', e); }`
+                `try { ${onclick} } catch(e) { window.ramsesExtrasLogger?.error('Error in button handler:', e); }`
               );
               fn.call(button, e);
             }
@@ -860,7 +863,7 @@ class HvacFanCard extends RamsesBaseCard {
           if (paramKey && newValue !== undefined) {
             this.updateParameter(paramKey, newValue);
           } else {
-            console.error('❌ Missing paramKey or newValue:', { paramKey, newValue });
+            logger.error('❌ Missing paramKey or newValue:', { paramKey, newValue });
           }
         });
       });
@@ -929,10 +932,10 @@ window.updateHumidityControl = function (entityId, newValue, buttonElement) {
         }
       })
       .catch((error) => {
-        console.error(`❌ Failed to update humidity control ${entityId}:`, error);
+        logger.error(`❌ Failed to update humidity control ${entityId}:`, error);
       });
   } else {
-    console.error(`❌ Cannot update humidity control - missing card or hass:`, {
+    logger.error(`❌ Cannot update humidity control - missing card or hass:`, {
       element: !!element,
       hass: element?._hass,
     });
@@ -971,10 +974,10 @@ window.toggleDehumidify = function (entityId, buttonElement) {
         }, 100); // 100ms delay to ensure state is updated
       })
       .catch((error) => {
-        console.error(`❌ Failed to toggle dehumidify ${entityId}:`, error);
+        logger.error(`❌ Failed to toggle dehumidify ${entityId}:`, error);
       });
   } else {
-    console.error(`❌ Cannot toggle dehumidify - missing card or hass:`, {
+    logger.error(`❌ Cannot toggle dehumidify - missing card or hass:`, {
       element: !!element,
       hass: element?._hass,
     });
@@ -1002,13 +1005,13 @@ window.send_command = function (commandKey, deviceId, buttonElement) {
         // UI will update automatically when device state changes via WebSocket messages
         // console.log(`✅ Command '${commandKey}' queued for device ${deviceId}`);
       } catch (error) {
-        console.error('Error sending command:', error);
+        logger.error('Error sending command:', error);
       }
     })();
   } else {
-    console.error('Could not find HASS instance in host element');
-    console.log('Element found:', element);
-    console.log('Element _hass:', element?._hass);
+    logger.error('Could not find HASS instance in host element');
+    logger.debug('Element found:', element);
+    logger.debug('Element _hass:', element?._hass);
   }
 };
 

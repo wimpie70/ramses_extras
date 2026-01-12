@@ -1,8 +1,9 @@
-/* eslint-disable no-console */
 /* global setTimeout */
 
 // Ramses Message Broker - Global singleton for handling ramses_cc_message events
 // Provides real-time message routing for cards and features
+
+import * as logger from './logger.js';
 
 class RamsesMessageBroker {
     constructor() {
@@ -47,28 +48,28 @@ class RamsesMessageBroker {
                     ).then(() => {
                         // console.log('✅ RamsesMessageBroker: Successfully subscribed to ramses_cc_message events');
                     }).catch((error) => {
-                        console.error('❌ RamsesMessageBroker: Failed to subscribe:', error);
+                        logger.error('❌ RamsesMessageBroker: Failed to subscribe:', error);
                     });
                 } else {
-                    console.log('❌ RamsesMessageBroker: No subscribeEvents method available');
-                    console.log('🎯 RamsesMessageBroker: Trying fallback subscription methods...');
+                    logger.warn('❌ RamsesMessageBroker: No subscribeEvents method available');
+                    logger.warn('🎯 RamsesMessageBroker: Trying fallback subscription methods...');
 
                     // Try alternative subscription approaches
                     if (typeof actualConn.subscribe === 'function') {
-                        console.log('🎯 RamsesMessageBroker: Trying subscribe method');
+                        logger.debug('🎯 RamsesMessageBroker: Trying subscribe method');
                         actualConn.subscribe("ramses_cc_message", (event) => {
-                            console.log('🎯 RamsesMessageBroker: Received HA event via subscribe:', event);
+                            logger.debug('🎯 RamsesMessageBroker: Received HA event via subscribe:', event);
                             this.handleHAEvent(event);
                         });
                     }
                 }
             } else {
-                console.log('❌ RamsesMessageBroker: No hassConnection available, will retry later');
+                logger.warn('❌ RamsesMessageBroker: No hassConnection available, will retry later');
                 // Try again later
                 setTimeout(() => this.subscribeToHAEvents(), 2000);
             }
         } catch (error) {
-            console.error('❌ RamsesMessageBroker: Error setting up HA event subscription:', error);
+            logger.error('❌ RamsesMessageBroker: Error setting up HA event subscription:', error);
         }
     }
 
@@ -101,7 +102,7 @@ class RamsesMessageBroker {
                 }
             }
         } catch (error) {
-            console.error('Error in RamsesMessageBroker event handler:', error);
+            logger.error('Error in RamsesMessageBroker event handler:', error);
         }
     }
 
@@ -123,7 +124,7 @@ class RamsesMessageBroker {
                     try {
                         card[handlerMethod](messageData);
                     } catch (error) {
-                        console.error(`Error calling ${handlerMethod} on card:`, error);
+                        logger.error(`Error calling ${handlerMethod} on card:`, error);
                     }
                 }
             }

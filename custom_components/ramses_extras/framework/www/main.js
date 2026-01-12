@@ -1,33 +1,6 @@
-/* eslint-disable no-console */
 /* global MutationObserver */
 
-const _getFrontendLogLevel = () => {
-  const level = window.ramsesExtras?.frontendLogLevel;
-  if (typeof level === 'string' && level) {
-    return level;
-  }
-
-  return window.ramsesExtras?.debug === true ? 'debug' : 'info';
-};
-
-const _FRONTEND_LOG_LEVELS = {
-  error: 0,
-  warning: 1,
-  info: 2,
-  debug: 3,
-};
-
-const _shouldLog = (level) => {
-  const current = _FRONTEND_LOG_LEVELS[_getFrontendLogLevel()] ?? _FRONTEND_LOG_LEVELS.info;
-  const requested = _FRONTEND_LOG_LEVELS[level] ?? _FRONTEND_LOG_LEVELS.info;
-  return requested <= current;
-};
-
-const debugLog = (...args) => {
-  if (_shouldLog('debug')) {
-    console.log(...args);
-  }
-};
+import * as logger from './logger.js';
 
 function detectAssetBase() {
   if (typeof document === 'undefined') {
@@ -83,13 +56,13 @@ async function loadCardModule(cardDef) {
   }
 
   loaded.add(cardDef.tag);
-  debugLog('ramses_extras: loading card module for', cardDef.tag, cardDef.modulePath);
+  logger.debug('ramses_extras: loading card module for', cardDef.tag, cardDef.modulePath);
 
   try {
     await import(cardDef.modulePath);
-    debugLog('ramses_extras: loaded card module for', cardDef.tag);
+    logger.debug('ramses_extras: loaded card module for', cardDef.tag);
   } catch (err) {
-    console.warn('ramses_extras: failed to load card module', cardDef, err);
+    logger.warn('ramses_extras: failed to load card module', cardDef, err);
   }
 }
 
@@ -116,10 +89,10 @@ function scanAndLoad() {
     window.ramsesExtras.assetBase = assetBase;
   }
 
-  debugLog('ramses_extras: main.js bootstrap init');
+  logger.debug('ramses_extras: main.js bootstrap init');
 
   Promise.all(CARD_MODULES.map(loadCardModule)).catch((err) => {
-    console.warn('ramses_extras: failed to preload card modules', err);
+    logger.warn('ramses_extras: failed to preload card modules', err);
   });
 
   const observer = new MutationObserver(() => {

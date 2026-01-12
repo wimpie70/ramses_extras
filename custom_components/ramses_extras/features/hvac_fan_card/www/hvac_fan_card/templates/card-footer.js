@@ -37,7 +37,7 @@ export function createCardFooter() {
 
       <script>
         function updateTimerUI(minutes) {
-          console.log('Updating timer UI to:', minutes, 'minutes');
+          window.ramsesExtrasLogger?.debug('Updating timer UI to:', minutes, 'minutes');
           document.getElementById('timer').textContent = minutes + ' min';
 
           // Update active state
@@ -53,7 +53,7 @@ export function createCardFooter() {
 
         // Handle bypass button clicks with UI update and command sending
         async function setBypassMode(mode) {
-          console.log('Setting bypass to:', mode);
+          window.ramsesExtrasLogger?.debug('Setting bypass to:', mode);
           try {
             // Update UI using the card instance
             if (window.orconFanCardInstance) {
@@ -61,12 +61,12 @@ export function createCardFooter() {
               // Send command to device
               await window.orconFanCardInstance.sendBypassCommand(mode);
             } else {
-              console.error('Card instance not available for bypass mode');
+              window.ramsesExtrasLogger?.error('Card instance not available for bypass mode');
             }
           } catch (error) {
-            console.error('Error setting bypass mode to ' + mode + ':', error);
+            window.ramsesExtrasLogger?.error('Error setting bypass mode to ' + mode + ':', error);
             // Optionally show user feedback
-            console.warn('Bypass command may have failed - check Home Assistant logs');
+            window.ramsesExtrasLogger?.warn('Bypass command may have failed - check Home Assistant logs');
           }
         }
       </script>
