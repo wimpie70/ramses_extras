@@ -341,9 +341,11 @@ class HvacFanCard extends RamsesBaseCard {
       return '';
     }
 
+    const panelTitle = this.t?.('sensor.sources') || 'Sensor Sources';
+
     return `
       <div class="sensor-sources-panel">
-        <div class="sensor-sources-title">Sensor Sources</div>
+        <div class="sensor-sources-title">${panelTitle}</div>
         <div class="sensor-sources-grid">
           ${indicators.join('')}
         </div>
