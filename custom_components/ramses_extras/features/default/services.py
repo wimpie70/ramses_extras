@@ -1,7 +1,12 @@
+"""Home Assistant services exposed by the default feature.
+
+The default feature is always enabled, and hosts common services used by cards
+and other features (e.g. sending fan commands and managing 2411 parameters).
+"""
+
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall

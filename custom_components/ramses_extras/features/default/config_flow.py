@@ -43,11 +43,6 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.helpers import selector
 
-# Import using the full path to match test mocking
-from custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager import (  # noqa: E501
-    SimpleEntityManager,
-)
-
 from ...const import AVAILABLE_FEATURES
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,19 +65,20 @@ async def async_step_default_config(
 
     helper = flow._get_config_flow_helper()  # noqa: SLF001
 
-    _LOGGER.debug(f"Using step config flow for {feature_id}")
+    _LOGGER.debug("Using step config flow for %s", feature_id)
     # Restore matrix state so we can see which devices are currently enabled
     matrix_state = flow._config_entry.data.get("device_feature_matrix", {})
     if matrix_state:
         helper.restore_matrix_state(matrix_state)
         _LOGGER.debug(
-            f"Restored matrix state in config flow with {len(matrix_state)} devices"
+            "Restored matrix state in config flow with %s devices",
+            len(matrix_state),
         )
     else:
         _LOGGER.debug(
             "No matrix state found in config entry, starting with empty matrix"
         )
-    _LOGGER.debug(f"matrix state: {matrix_state}")
+    _LOGGER.debug("matrix state: %s", matrix_state)
     # Save the matrix state to be used for comparison to the flow
     # Use deepcopy, or helper.set_enabled_devices_for_feature will modify flow
     flow._old_matrix_state = deepcopy(matrix_state)
@@ -92,7 +88,9 @@ async def async_step_default_config(
     filtered_devices = helper.get_devices_for_feature_selection(feature_config, devices)
     current_enabled = helper.get_enabled_devices_for_feature(feature_id)
     _LOGGER.debug(
-        f"Devices: filtered: {filtered_devices} Current enabled: {current_enabled}"
+        "Devices: filtered: %s Current enabled: %s",
+        filtered_devices,
+        current_enabled,
     )
 
     if user_input is not None:  # POST processing
@@ -111,14 +109,14 @@ async def async_step_default_config(
         flow._selected_feature = feature_id
 
         # Log the matrix state for debugging
-        _LOGGER.debug(f"flow.temp matrix state: {flow._temp_matrix_state}")
-        _LOGGER.debug(f"flow.old_matrix_state: {flow._old_matrix_state}")
+        _LOGGER.debug("flow.temp matrix state: %s", flow._temp_matrix_state)
+        _LOGGER.debug("flow.old_matrix_state: %s", flow._old_matrix_state)
 
         # Log entity tracking attributes, check if they exist first
         entities_to_create = getattr(flow, "_matrix_entities_to_create", [])
         entities_to_remove = getattr(flow, "_matrix_entities_to_remove", [])
-        _LOGGER.debug(f"📝 Entities to create: {len(entities_to_create)}")
-        _LOGGER.debug(f"🗑️ Entities to remove: {len(entities_to_remove)}")
+        _LOGGER.debug("📝 Entities to create: %s", len(entities_to_create))
+        _LOGGER.debug("🗑️ Entities to remove: %s", len(entities_to_remove))
 
         # Route through the matrix-based confirm step so changes are summarized
         return await flow._show_matrix_based_confirmation()

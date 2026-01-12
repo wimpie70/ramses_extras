@@ -58,7 +58,9 @@ async def async_setup_entry(
     # Get devices from Home Assistant data
     devices = hass.data.get("ramses_extras", {}).get("devices", [])
     _LOGGER.debug(
-        f"Default feature sensor platform: found {len(devices)} devices: {devices}"
+        "Default feature sensor platform: found %s devices: %s",
+        len(devices),
+        devices,
     )
 
     # Get entity manager to check device_feature_matrix
@@ -76,7 +78,7 @@ async def async_setup_entry(
         matrix_state = config_entry.data.get("device_feature_matrix", {})
         if matrix_state:
             entity_manager.restore_device_feature_matrix_state(matrix_state)
-            _LOGGER.debug(f"Restored matrix state with {len(matrix_state)} devices")
+            _LOGGER.debug("Restored matrix state with %s devices", len(matrix_state))
 
     sensor: list[SensorEntity] = []
     for device_id in devices:
@@ -86,7 +88,8 @@ async def async_setup_entry(
             device_id_str, "default"
         ):
             _LOGGER.debug(
-                f"Skipping disabled device for default feature: {device_id_str}"
+                "Skipping disabled device for default feature: %s",
+                device_id_str,
             )
             continue
 
@@ -94,10 +97,12 @@ async def async_setup_entry(
         device_sensor = await create_default_sensor(hass, device_id, config_entry)
         sensor.extend(device_sensor)
         _LOGGER.debug(
-            f"Created {len(device_sensor)} default sensor for device {device_id}"
+            "Created %s default sensor for device %s",
+            len(device_sensor),
+            device_id,
         )
 
-    _LOGGER.debug(f"Total default sensor created: {len(sensor)}")
+    _LOGGER.debug("Total default sensor created: %s", len(sensor))
     async_add_entities(sensor, True)
 
 
@@ -145,8 +150,9 @@ async def create_default_sensor(
             )
             sensor_list.append(sensor_entity)
             _LOGGER.debug(
-                f"Created default {sensor_type} sensor with calculation logic "
-                f"for device {device_id_str}"
+                "Created default %s sensor with calculation logic for device %s",
+                sensor_type,
+                device_id_str,
             )
 
     return sensor_list
@@ -201,9 +207,12 @@ async def _check_underlying_entities_exist(
     exists = temp_entity_entry is not None and humidity_entity_entry is not None
     if not exists:
         _LOGGER.debug(
-            f"Underlying entities not found for {sensor_type}: {temp_entity}="
-            f"{temp_entity_entry is not None}, {humidity_entity}="
-            f"{humidity_entity_entry is not None}"
+            "Underlying entities not found for %s: %s=%s, %s=%s",
+            sensor_type,
+            temp_entity,
+            temp_entity_entry is not None,
+            humidity_entity,
+            humidity_entity_entry is not None,
         )
 
     return exists

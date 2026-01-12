@@ -145,9 +145,12 @@ async def ws_get_entity_mappings(
     const_module = msg.get("const_module")
     device_id = msg.get("device_id")
 
-    _LOGGER.info(
-        f"ws_get_entity_mappings called with: feature_id={feature_id}, "
-        f"const_module={const_module}, device_id={device_id}"
+    _LOGGER.debug(
+        "ws_get_entity_mappings called with: feature_id=%s, const_module=%s, "
+        "device_id=%s",
+        feature_id,
+        const_module,
+        device_id,
     )
 
     try:
@@ -164,15 +167,14 @@ async def ws_get_entity_mappings(
             )
             return
 
-        _LOGGER.info(f"Using feature_identifier: {feature_identifier}")
+        _LOGGER.debug("Using feature_identifier: %s", feature_identifier)
 
         # Create and execute the command
         cmd = GetEntityMappingsCommand(hass, feature_identifier)
         await cmd.execute(connection, msg)
 
     except Exception as err:
-        _LOGGER.error(f"Failed to get entity mappings: {err}")
-        _LOGGER.error(f"Exception details: {repr(err)}")
+        _LOGGER.error("Failed to get entity mappings: %s", err, exc_info=True)
         connection.send_error(msg["id"], "get_entity_mappings_failed", str(err))
 
 
@@ -223,7 +225,7 @@ async def ws_get_all_feature_entities(
         await cmd.execute(connection, msg)
 
     except Exception as err:
-        _LOGGER.error(f"Failed to get all feature entities: {err}")
+        _LOGGER.error("Failed to get all feature entities: %s", err, exc_info=True)
         connection.send_error(msg["id"], "get_all_feature_entities_failed", str(err))
 
 
@@ -355,8 +357,9 @@ def register_default_websocket_commands() -> dict[str, str]:
     Returns:
         Dictionary mapping command names to their WebSocket command types
     """
+    from .const import DEFAULT_WEBSOCKET_COMMANDS
+
     return {
+        **DEFAULT_WEBSOCKET_COMMANDS,
         "websocket_info": "ramses_extras/websocket_info",  # Utility for cmd discovery
-        "get_entity_mappings": "ramses_extras/get_entity_mappings",
-        "get_all_feature_entities": "ramses_extras/get_all_feature_entities",
     }
