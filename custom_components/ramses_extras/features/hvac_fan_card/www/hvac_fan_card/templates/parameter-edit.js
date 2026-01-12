@@ -58,7 +58,7 @@ export function createParameterEditSection(params) {
       <!-- Device Parameters Section -->
       <div class="param-section-header">
         <div class="header-content">
-          <h3>${tr('parameters.title', 'Device Parameters (2411)')}</h3>
+          <h3>${tr('parameters.device_parameters_title', 'Device Parameters (2411)')}</h3>
           <button class="refresh-params-btn" title="${tr('parameters.refresh_title', 'Refresh all parameters from device')}">
             <span class="refresh-icon">🔄</span> ${tr('parameters.refresh', 'Refresh')}
           </button>
@@ -114,11 +114,11 @@ function createHumidityControlItem(entity, hass, tr) {
   // Create a readable name from the entity ID
   let displayName = friendlyName;
   if (entityId.includes('minimum')) {
-    displayName = 'Minimum Relative Humidity';
+    displayName = tr('parameters.humidity_minimum_relative', 'Minimum Relative Humidity');
   } else if (entityId.includes('maximum')) {
-    displayName = 'Maximum Relative Humidity';
+    displayName = tr('parameters.humidity_maximum_relative', 'Maximum Relative Humidity');
   } else if (entityId.includes('absolute_humidity_offset')) {
-    displayName = 'Absolute Humidity Offset';
+    displayName = tr('parameters.humidity_absolute_offset', 'Absolute Humidity Offset');
   }
 
   return `

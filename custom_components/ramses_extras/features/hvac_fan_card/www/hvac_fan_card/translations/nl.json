@@ -31,6 +31,7 @@
   },
   "parameters": {
     "title": "Ventilatie Parameters",
+    "device_parameters_title": "Apparaat Parameters (2411)",
     "supply_temp": "Toevoer Temperatuur",
     "exhaust_temp": "Afvoer Temperatuur",
     "indoor_temp": "Binnen Temperatuur",
@@ -42,6 +43,12 @@
     "co2_level": "CO₂ Niveau",
     "supply_flow": "Toevoer Luchtstroom",
     "comfort_temp": "Comfort Temperatuur",
+    "humidity_control_settings": "Instellingen Luchtvochtigheid",
+    "humidity_minimum_relative": "Minimum Relatieve Luchtvochtigheid",
+    "humidity_maximum_relative": "Maximum Relatieve Luchtvochtigheid",
+    "humidity_absolute_offset": "Offset Absolute Luchtvochtigheid",
+    "refresh": "Vernieuwen",
+    "refresh_title": "Vernieuw alle parameters van het apparaat",
     "update": "Bijwerken",
     "updating": "Bijwerken...",
     "success": "Bijgewerkt!",
@@ -56,7 +63,8 @@
     "mode": "Modus",
     "level": "Niveau",
     "flow": "Stroom",
-    "unknown": "Onbekend"
+    "unknown": "Onbekend",
+    "unavailable": "niet beschikbaar"
   },
   "units": {
     "celsius": "°C",

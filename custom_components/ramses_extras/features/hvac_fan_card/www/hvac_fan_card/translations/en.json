@@ -31,6 +31,7 @@
   },
   "parameters": {
     "title": "Ventilation Parameters",
+    "device_parameters_title": "Device Parameters (2411)",
     "supply_temp": "Supply Temperature",
     "exhaust_temp": "Exhaust Temperature",
     "indoor_temp": "Indoor Temperature",
@@ -42,6 +43,12 @@
     "co2_level": "CO₂ Level",
     "supply_flow": "Supply Airflow",
     "comfort_temp": "Comfort Temperature",
+    "humidity_control_settings": "Humidity Control Settings",
+    "humidity_minimum_relative": "Minimum Relative Humidity",
+    "humidity_maximum_relative": "Maximum Relative Humidity",
+    "humidity_absolute_offset": "Absolute Humidity Offset",
+    "refresh": "Refresh",
+    "refresh_title": "Refresh all parameters from device",
     "update": "Update",
     "updating": "Updating...",
     "success": "Updated!",
@@ -56,7 +63,8 @@
     "mode": "Mode",
     "level": "Level",
     "flow": "Flow",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "unavailable": "unavailable"
   },
   "units": {
     "celsius": "°C",
