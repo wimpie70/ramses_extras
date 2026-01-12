@@ -38,6 +38,10 @@ import {
  *
  * Renders live ventilation data and exposes controls via service/WebSocket
  * helpers. Also provides a settings mode for editing 2411 parameters.
+ * Interacts with:
+ * - Humid Control feature (enable/disable), Edit settings
+ * - Default feature (absolute humidity)
+ * - Sensor Control (resolve mapped entities)
  */
 class HvacFanCard extends RamsesBaseCard {
   constructor() {
