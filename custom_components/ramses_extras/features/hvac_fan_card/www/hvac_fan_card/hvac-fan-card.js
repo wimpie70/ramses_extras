@@ -365,10 +365,13 @@ class HvacFanCard extends RamsesBaseCard {
     // Get available parameters based on entity existence
     this.availableParams = this.getAvailableParameters();
 
+    const humidityControlEntities = this._getHumidityControlEntities();
+    const parameterItems = this._createParameterItems(this.availableParams);
+
     const templateData = {
       device_id: this.config.device_id,
-      availableParams: this.availableParams,
-      hass: this._hass,
+      humidityControlEntities,
+      parameterItems,
       t: this.t?.bind(this),
     };
 
@@ -616,6 +619,90 @@ class HvacFanCard extends RamsesBaseCard {
     });
 
     return available;
+  }
+
+  _getHumidityControlEntities() {
+    const deviceId = this.config?.device_id;
+    if (!deviceId) return [];
+
+    const hass = this._hass;
+    if (!hass) return [];
+
+    const humidityControlEntities = [];
+    const deviceIdUnderscore = deviceId.replace(/:/g, '_');
+
+    const humidityEntities = [
+      `number.relative_humidity_minimum_${deviceIdUnderscore}`,
+      `number.relative_humidity_maximum_${deviceIdUnderscore}`,
+      `number.absolute_humidity_offset_${deviceIdUnderscore}`,
+    ];
+
+    humidityEntities.forEach((entityId) => {
+      const stateObj = hass.states?.[entityId];
+      if (!stateObj) return;
+
+      const attributes = stateObj.attributes || {};
+
+      let nameKey = null;
+      let nameFallback = null;
+
+      if (entityId.includes('minimum')) {
+        nameKey = 'parameters.humidity_minimum_relative';
+        nameFallback = 'Minimum Relative Humidity';
+      } else if (entityId.includes('maximum')) {
+        nameKey = 'parameters.humidity_maximum_relative';
+        nameFallback = 'Maximum Relative Humidity';
+      } else if (entityId.includes('absolute_humidity_offset')) {
+        nameKey = 'parameters.humidity_absolute_offset';
+        nameFallback = 'Absolute Humidity Offset';
+      }
+
+      humidityControlEntities.push({
+        entity_id: entityId,
+        state: stateObj.state,
+        attributes,
+        name_key: nameKey,
+        name_fallback: nameFallback,
+      });
+    });
+
+    return humidityControlEntities;
+  }
+
+  _createParameterItems(availableParams) {
+    const deviceId = this.config?.device_id;
+    if (!deviceId) return [];
+
+    const deviceIdUnderscore = deviceId.replace(/:/g, '_');
+
+    return Object.entries(availableParams || {})
+      .filter(([paramKey]) => paramKey.startsWith('param_'))
+      .map(([paramKey, paramInfo]) => {
+      const entityId = `number.${deviceIdUnderscore}_${paramKey}`;
+
+      const rawValue =
+        paramInfo?.current_value ??
+        paramInfo?.default_value ??
+        paramInfo?.min_value ??
+        0;
+
+      let value = rawValue;
+      if (Number.isInteger(paramInfo?.precision)) {
+        const parsed = parseFloat(String(rawValue));
+        value = Number.isNaN(parsed) ? rawValue : Math.round(parsed);
+      }
+
+      return {
+        paramKey,
+        entity_id: entityId,
+        description: paramInfo?.description,
+        unit: paramInfo?.unit || paramInfo?.data_unit || '',
+        min: paramInfo?.min_value,
+        max: paramInfo?.max_value,
+        step: paramInfo?.precision,
+        value,
+      };
+    });
   }
 
   // Update a parameter value

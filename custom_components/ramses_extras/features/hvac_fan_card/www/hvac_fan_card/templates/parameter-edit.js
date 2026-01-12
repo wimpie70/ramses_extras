@@ -6,8 +6,8 @@
 
 export function createParameterEditSection(params) {
   const deviceId = params.device_id;
-  const availableParams = params.availableParams || {};
-  const hass = params.hass; // Pass hass instance
+  const humidityControlEntities = params.humidityControlEntities || [];
+  const parameterItems = params.parameterItems || [];
   const t = params.t;
 
   const tr = (key, fallback, options = {}) => {
@@ -26,8 +26,8 @@ export function createParameterEditSection(params) {
 
   const settingsText = tr('card.settings', 'Settings');
 
-  // Check for humidity control entities
-  const humidityControlEntities = getHumidityControlEntities(deviceId, hass);
+  const humidityEntities = getHumidityControlEntities(humidityControlEntities);
+  const deviceParameters = getDeviceParameters(parameterItems);
 
   return `
     <div class="parameter-edit-section">
@@ -42,19 +42,19 @@ export function createParameterEditSection(params) {
         </div>
       </div>
 
-      ${humidityControlEntities.length > 0 ? `
+      ${humidityEntities.length > 0 ? `
       <!-- Humidity Control Settings Section -->
       <div class="param-section-header">
         <h3>${tr('parameters.humidity_control_settings', 'Humidity Control Settings')}</h3>
       </div>
       <div class="param-list" style="max-height: 200px; overflow-y: auto;">
-        ${humidityControlEntities.map(entity =>
-          createHumidityControlItem(entity, hass, tr)
+        ${humidityEntities.map(entity =>
+          createHumidityControlItem(entity, tr)
         ).join('')}
       </div>
       ` : ''}
 
-      ${Object.keys(availableParams).length > 0 ? `
+      ${deviceParameters.length > 0 ? `
       <!-- Device Parameters Section -->
       <div class="param-section-header">
         <div class="header-content">
@@ -65,8 +65,8 @@ export function createParameterEditSection(params) {
         </div>
       </div>
       <div class="param-list" style="max-height: 400px; overflow-y: auto;">
-        ${Object.entries(availableParams).map(([key, param]) =>
-          createParameterItem(key, param, deviceId, hass, tr)
+        ${deviceParameters.map((param) =>
+          createParameterItem(param, tr)
         ).join('')}
       </div>
       ` : ''}
@@ -74,51 +74,24 @@ export function createParameterEditSection(params) {
   `;
 }
 
-function getHumidityControlEntities(deviceId, hass) {
-  const humidityControlEntities = [];
-  const deviceIdUnderscore = deviceId.replace(/:/g, '_');
-
-  // Check for humidity control entities with full descriptive names
-  // Integration converts friendly names: "Relative Humidity Minimum" → "relative_humidity_minimum"
-  const humidityEntities = [
-    `number.relative_humidity_minimum_${deviceIdUnderscore}`,
-    `number.relative_humidity_maximum_${deviceIdUnderscore}`,
-    `number.absolute_humidity_offset_${deviceIdUnderscore}`
-  ];
-
-  // console.log('🔍 Looking for humidity control entities:', humidityEntities);
-
-  humidityEntities.forEach(entityId => {
-    if (hass.states[entityId]) {
-      // console.log('✅ Found humidity entity:', entityId);
-      humidityControlEntities.push({
-        entity_id: entityId,
-        state: hass.states[entityId].state,
-        attributes: hass.states[entityId].attributes || {}
-      });
-    } else {
-      // console.log('❌ Missing humidity entity:', entityId);
-    }
-  });
-
-  // console.log('🎯 Final humidity entities:', humidityControlEntities);
-  return humidityControlEntities;
+function getHumidityControlEntities(humidityControlEntities) {
+  return Array.isArray(humidityControlEntities) ? humidityControlEntities : [];
 }
 
-function createHumidityControlItem(entity, hass, tr) {
+function getDeviceParameters(parameterItems) {
+  return Array.isArray(parameterItems) ? parameterItems : [];
+}
+
+function createHumidityControlItem(entity, tr) {
   const entityId = entity.entity_id;
   const currentValue = entity.state;
-  const friendlyName = entity.attributes.friendly_name || entityId.split('_').pop().replace(/([A-Z])/g, ' $1').toLowerCase();
-  const unit = entity.attributes.unit_of_measurement || '%';
+  const friendlyName = entity.attributes?.friendly_name || entityId.split('_').pop().replace(/([A-Z])/g, ' $1').toLowerCase();
+  const unit = entity.attributes?.unit_of_measurement || '%';
 
   // Create a readable name from the entity ID
   let displayName = friendlyName;
-  if (entityId.includes('minimum')) {
-    displayName = tr('parameters.humidity_minimum_relative', 'Minimum Relative Humidity');
-  } else if (entityId.includes('maximum')) {
-    displayName = tr('parameters.humidity_maximum_relative', 'Maximum Relative Humidity');
-  } else if (entityId.includes('absolute_humidity_offset')) {
-    displayName = tr('parameters.humidity_absolute_offset', 'Absolute Humidity Offset');
+  if (entity.name_key) {
+    displayName = tr(entity.name_key, entity.name_fallback || friendlyName);
   }
 
   return `
@@ -130,9 +103,9 @@ function createHumidityControlItem(entity, hass, tr) {
       <div class="param-input-container">
         <input type="number"
                 class="param-input"
-                min="${entity.attributes.min || 0}"
-                max="${entity.attributes.max || 100}"
-                step="${entity.attributes.step || 1}"
+                min="${entity.attributes?.min || 0}"
+                max="${entity.attributes?.max || 100}"
+                step="${entity.attributes?.step || 1}"
                 value="${currentValue}"
                 data-entity="${entityId}">
         <button class="param-update-btn" onclick="updateHumidityControl('${entityId}', this.previousElementSibling.value, this)">${tr('parameters.update', 'Update')}</button>
@@ -142,28 +115,18 @@ function createHumidityControlItem(entity, hass, tr) {
   `;
 }
 
-function createParameterItem(paramKey, paramInfo, deviceId, hass, tr) {
-  const entityId = `number.${deviceId.replace(/:/g, '_')}_param_${paramKey}`;
-  const currentValue = hass.states[entityId]?.state || paramInfo.current_value || paramInfo.default_value || paramInfo.min_value || 0;
-  // console.log(`🔧 Creating parameter item for ${paramKey}: entity=${entityId}, currentValue=${currentValue}, paramInfo=`, paramInfo);
-
-  // The schema already comes pre-scaled from the backend, so we just use the values directly
-  // No additional scaling needed in the frontend
-  const displayMin = paramInfo.min_value;
-  const displayMax = paramInfo.max_value;
-  const displayStep = paramInfo.precision;
-  let displayValue = currentValue;
-
-  // Round the display value if precision is a whole number (integer parameters)
-  if (Number.isInteger(paramInfo.precision)) {
-    displayValue = Math.round(parseFloat(displayValue));
-  }
+function createParameterItem(param, tr) {
+  const paramKey = param.paramKey;
+  const displayMin = param.min;
+  const displayMax = param.max;
+  const displayStep = param.step;
+  const displayValue = param.value;
 
   return `
     <div class="param-item" data-param="${paramKey}">
       <div class="param-info">
-        <label class="param-label">${paramInfo.description}</label>
-        <span class="param-unit">${paramInfo.unit || paramInfo.data_unit || ''}</span>
+        <label class="param-label">${param.description}</label>
+        <span class="param-unit">${param.unit}</span>
       </div>
       <div class="param-input-container">
         <input type="number"
@@ -172,8 +135,8 @@ function createParameterItem(paramKey, paramInfo, deviceId, hass, tr) {
                 max="${displayMax}"
                 step="${displayStep}"
                 value="${displayValue}"
-                data-entity="${entityId}">
-        <button class="param-update-btn" data-param="${paramKey}" onclick="updateParameter('${paramKey}', this.previousElementSibling.value)">${tr('parameters.update', 'Update')}</button>
+                data-entity="${param.entity_id}">
+        <button class="param-update-btn" data-param="${paramKey}">${tr('parameters.update', 'Update')}</button>
         <span class="param-status"></span>
       </div>
     </div>
