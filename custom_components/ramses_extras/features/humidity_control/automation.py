@@ -72,7 +72,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._active_cycles = 0
 
         _LOGGER.info("Enhanced Humidity Control automation initialized")
-        _LOGGER.info(f"Feature enabled status: {self._is_feature_enabled()}")
+        _LOGGER.info("Feature enabled status: %s", self._is_feature_enabled())
 
     def _is_feature_enabled(self) -> bool:
         """Check if humidity_control feature is enabled in config."""
@@ -88,7 +88,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             return enabled_features.get("humidity_control", False) is True
         except Exception as e:
-            _LOGGER.warning(f"Could not check feature status: {e}")
+            _LOGGER.warning("Could not check feature status: %s", e)
             return False
 
     def _generate_entity_patterns(self) -> list[str]:
@@ -111,8 +111,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "sensor.*_indoor_humidity",
         ]
 
-        _LOGGER.debug(f"Generated {len(patterns)} entity patterns for humidity control")
-        _LOGGER.debug(f"Entity patterns: {patterns}")
+        _LOGGER.debug(
+            "Generated %s entity patterns for humidity control",
+            len(patterns),
+        )
+        _LOGGER.debug("Entity patterns: %s", patterns)
         return patterns
 
     async def _check_any_device_ready(self) -> bool:
@@ -278,8 +281,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             if already_logged != missing_entities:
                 _LOGGER.debug(
-                    f"Device {device_id}: Missing {self.feature_id} "
-                    f"entities - {missing_entities}"
+                    "Device %s: Missing %s entities - %s",
+                    device_id,
+                    self.feature_id,
+                    missing_entities,
                 )
                 self._logged_missing_entities[device_key] = missing_entities
             return False
@@ -469,7 +474,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             #  (it's already off)
             if not switch_is_on:
                 _LOGGER.debug(
-                    f"Switch is OFF for device {device_id} - automation disabled"
+                    "Switch is OFF for device %s - automation disabled",
+                    device_id,
                 )
                 if self._dehumidify_active:
                     # Stop dehumidification but don't touch the switch
@@ -481,8 +487,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         # Switch is ON - run automation
         _LOGGER.info(
-            f"Enhanced Humidity Control processing automation logic for "
-            f"device {device_id}"
+            "Enhanced Humidity Control processing automation logic for device %s",
+            device_id,
         )
 
         try:
@@ -518,7 +524,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             await self._update_automation_status(device_id, decision)
 
         except Exception as e:
-            _LOGGER.error(f"Automation logic error: {e}")
+            _LOGGER.error("Automation logic error: %s", e)
 
     async def _set_indicator_off(self, device_id: str) -> None:
         """Set indicator to OFF when switch is off or automation stops."""
@@ -532,13 +538,14 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             if binary_sensor_entity:
                 binary_sensor_entity.set_state(False)
-                _LOGGER.debug(f"Set indicator OFF for device {device_id}")
+                _LOGGER.debug("Set indicator OFF for device %s", device_id)
             else:
                 _LOGGER.warning(
-                    f"Binary sensor entity {entity_id} not found for setting off"
+                    "Binary sensor entity %s not found for setting off",
+                    entity_id,
                 )
         except Exception as e:
-            _LOGGER.error(f"Failed to set indicator off for {device_id}: {e}")
+            _LOGGER.error("Failed to set indicator off for %s: %s", device_id, e)
 
     async def _evaluate_humidity_conditions(
         self,
@@ -655,14 +662,17 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         # Always log the decision for debugging
         _LOGGER.info(
-            f"Decision for device {device_id}: {decision['action']} "
-            f"(confidence: {decision['confidence']:.2f}, "
-            f"diff: {decision['values']['adjusted_diff']:.2f}, "
-            f"indoor RH: {indoor_rh:.1f}%)"
+            "Decision for device %s: %s (confidence: %.2f, diff: %.2f, "
+            "indoor RH: %.1f%%)",
+            device_id,
+            decision["action"],
+            decision["confidence"],
+            decision["values"]["adjusted_diff"],
+            indoor_rh,
         )
         if decision["reasoning"]:
             reasoning = "; ".join(decision["reasoning"])
-            _LOGGER.info(f"Reasoning: {reasoning}")
+            _LOGGER.info("Reasoning: %s", reasoning)
 
         return decision
 
@@ -680,15 +690,17 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             new_state: New state
         """
         _LOGGER.info(
-            f"HumidityAutomationManager _async_handle_state_change called for "
-            f"entity_id={entity_id}"
+            "HumidityAutomationManager _async_handle_state_change called for "
+            "entity_id=%s",
+            entity_id,
         )
 
         # Check if feature is still enabled first
         if not self._is_feature_enabled():
             _LOGGER.debug(
-                f"Feature {self.feature_id} "
-                f"disabled, ignoring state change for {entity_id}"
+                "Feature %s disabled, ignoring state change for %s",
+                self.feature_id,
+                entity_id,
             )
             return
 
@@ -717,7 +729,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 self._dehumidify_active = True
             else:
                 _LOGGER.warning(
-                    f"Failed to set fan speed to high for device {device_id}"
+                    "Failed to set fan speed to high for device %s",
+                    device_id,
                 )
                 # Ensure switch is off if fan command failed
                 await self.services.async_deactivate_dehumidification(device_id)
@@ -727,10 +740,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             # Log activation
             reasoning = "; ".join(decision["reasoning"])
-            _LOGGER.info(f"Dehumidification activated: {reasoning}")
+            _LOGGER.info("Dehumidification activated: %s", reasoning)
 
         except Exception as e:
-            _LOGGER.error(f"Failed to activate dehumidification: {e}")
+            _LOGGER.error("Failed to activate dehumidification: %s", e)
 
     async def _deactivate_dehumidification(
         self, device_id: str, decision: dict[str, Any]
@@ -752,10 +765,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             # Log deactivation
             reasoning = "; ".join(decision["reasoning"])
-            _LOGGER.info(f"Dehumidification deactivated: {reasoning}")
+            _LOGGER.info("Dehumidification deactivated: %s", reasoning)
 
         except Exception as e:
-            _LOGGER.error(f"Failed to deactivate dehumidification: {e}")
+            _LOGGER.error("Failed to deactivate dehumidification: %s", e)
 
     async def _set_fan_low_and_binary_off(
         self, device_id: str, decision: dict[str, Any]
@@ -772,7 +785,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             success = result.success
             if not success:
                 _LOGGER.warning(
-                    f"Failed to set fan to auto mode for device {device_id}"
+                    "Failed to set fan to auto mode for device %s",
+                    device_id,
                 )
 
             # Binary sensor will be updated by _update_automation_status
@@ -781,11 +795,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             # Log the change
             reasoning = "; ".join(decision["reasoning"])
             _LOGGER.info(
-                f"Fan set to AUTO mode (dehumidification stopped): {reasoning}"
+                "Fan set to AUTO mode (dehumidification stopped): %s",
+                reasoning,
             )
 
         except Exception as e:
-            _LOGGER.error(f"Failed to set fan to auto mode: {e}")
+            _LOGGER.error("Failed to set fan to auto mode: %s", e)
 
     async def _stop_dehumidification_without_switch_change(
         self, device_id: str
@@ -808,18 +823,20 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             success = result.success
             if not success:
                 _LOGGER.warning(
-                    f"Failed to set fan to auto mode for device {device_id}"
+                    "Failed to set fan to auto mode for device %s",
+                    device_id,
                 )
 
             self._dehumidify_active = False
 
             _LOGGER.info(
-                f"Dehumidification stopped for {device_id} "
-                f"(switch already off, respecting user choice)"
+                "Dehumidification stopped for %s (switch already off, "
+                "respecting user choice)",
+                device_id,
             )
 
         except Exception as e:
-            _LOGGER.error(f"Failed to stop dehumidification: {e}")
+            _LOGGER.error("Failed to stop dehumidification: %s", e)
 
     async def _update_automation_status(
         self, device_id: str, decision: dict[str, Any]
@@ -845,14 +862,17 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             if binary_sensor_entity:
                 binary_sensor_entity.set_state(is_active)
                 _LOGGER.debug(
-                    f"Updated binary sensor {entity_id}: {'on' if is_active else 'off'}"
+                    "Updated binary sensor %s: %s",
+                    entity_id,
+                    "on" if is_active else "off",
                 )
             else:
                 _LOGGER.warning(
-                    f"Binary sensor entity {entity_id} not found in stored entities"
+                    "Binary sensor entity %s not found in stored entities",
+                    entity_id,
                 )
         except Exception as e:
-            _LOGGER.error(f"Failed to update binary sensor for {device_id}: {e}")
+            _LOGGER.error("Failed to update binary sensor for %s: %s", device_id, e)
 
     # Public API methods
     async def async_set_min_humidity(self, device_id: str, value: float) -> bool:
@@ -868,7 +888,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         try:
             return bool(await self.services.async_set_min_humidity(device_id, value))
         except Exception as e:
-            _LOGGER.error(f"Failed to set min humidity: {e}")
+            _LOGGER.error("Failed to set min humidity: %s", e)
             return False
 
     async def async_set_max_humidity(self, device_id: str, value: float) -> bool:
@@ -884,7 +904,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         try:
             return bool(await self.services.async_set_max_humidity(device_id, value))
         except Exception as e:
-            _LOGGER.error(f"Failed to set max humidity: {e}")
+            _LOGGER.error("Failed to set max humidity: %s", e)
             return False
 
     async def async_set_offset(self, device_id: str, value: float) -> bool:
@@ -900,7 +920,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         try:
             return bool(await self.services.async_set_offset(device_id, value))
         except Exception as e:
-            _LOGGER.error(f"Failed to set offset: {e}")
+            _LOGGER.error("Failed to set offset: %s", e)
             return False
 
     def is_automation_active(self) -> bool:

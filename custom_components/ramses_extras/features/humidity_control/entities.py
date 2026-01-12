@@ -7,16 +7,7 @@ including sensor, switch, number, and binary sensor for humidity management.
 import logging
 from typing import Any
 
-from homeassistant.const import (
-    STATE_OFF,
-    STATE_ON,
-)
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry
-from homeassistant.helpers.entity import Entity
-from homeassistant.helpers.entity_registry import async_get
-
-from custom_components.ramses_extras.framework.helpers.entity import EntityHelpers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -128,7 +119,7 @@ class HumidityEntities:
         Returns:
             Dictionary mapping entity types to created entity IDs
         """
-        _LOGGER.info(f"Setting up humidity entities for device {device_id}")
+        _LOGGER.info("Setting up humidity entities for device %s", device_id)
 
         created_entities: dict[str, list[str]] = {
             "sensor": [],
@@ -170,14 +161,15 @@ class HumidityEntities:
                 if binary_entity_id:
                     created_entities["binary_sensor"].append(binary_entity_id)
             _LOGGER.info(
-                f"Created {sum(len(entities) for entities in created_entities.values())} "  # noqa: E501
-                f"humidity entities for device {device_id}",
+                "Created %s humidity entities for device %s",
+                sum(len(entities) for entities in created_entities.values()),
+                device_id,
             )
 
             return created_entities
 
         except Exception as e:
-            _LOGGER.error(f"Failed to set up humidity entities: {e}")
+            _LOGGER.error("Failed to set up humidity entities: %s", e)
             return created_entities
 
     async def _create_sensor_entity(
@@ -198,7 +190,7 @@ class HumidityEntities:
 
             # This would register the entity with Home Assistant
             # For now, we'll just log the creation
-            _LOGGER.debug(f"Creating sensor: {entity_id}")
+            _LOGGER.debug("Creating sensor: %s", entity_id)
 
             # Store entity information
             self._entities[entity_id] = {
@@ -211,7 +203,7 @@ class HumidityEntities:
             return entity_id
 
         except Exception as e:
-            _LOGGER.error(f"Failed to create sensor entity: {e}")
+            _LOGGER.error("Failed to create sensor entity: %s", e)
             return None
 
     async def _create_switch_entity(
@@ -230,7 +222,7 @@ class HumidityEntities:
             config = self._entity_configs["switch"][switch_type]
             entity_id = f"switch.{switch_type}_{device_id}"
 
-            _LOGGER.debug(f"Creating switch: {entity_id}")
+            _LOGGER.debug("Creating switch: %s", entity_id)
 
             self._entities[entity_id] = {
                 "device_id": device_id,
@@ -242,7 +234,7 @@ class HumidityEntities:
             return entity_id
 
         except Exception as e:
-            _LOGGER.error(f"Failed to create switch entity: {e}")
+            _LOGGER.error("Failed to create switch entity: %s", e)
             return None
 
     async def _create_number_entity(
@@ -261,7 +253,7 @@ class HumidityEntities:
             config = self._entity_configs["number"][number_type]
             entity_id = f"number.{number_type}_{device_id}"
 
-            _LOGGER.debug(f"Creating number: {entity_id}")
+            _LOGGER.debug("Creating number: %s", entity_id)
 
             self._entities[entity_id] = {
                 "device_id": device_id,
@@ -273,7 +265,7 @@ class HumidityEntities:
             return entity_id
 
         except Exception as e:
-            _LOGGER.error(f"Failed to create number entity: {e}")
+            _LOGGER.error("Failed to create number entity: %s", e)
             return None
 
     async def _create_binary_sensor_entity(
@@ -292,7 +284,7 @@ class HumidityEntities:
             config = self._entity_configs["binary_sensor"][binary_type]
             entity_id = f"binary_sensor.{binary_type}_{device_id}"
 
-            _LOGGER.debug(f"Creating binary sensor: {entity_id}")
+            _LOGGER.debug("Creating binary sensor: %s", entity_id)
 
             self._entities[entity_id] = {
                 "device_id": device_id,
@@ -304,7 +296,7 @@ class HumidityEntities:
             return entity_id
 
         except Exception as e:
-            _LOGGER.error(f"Failed to create binary sensor entity: {e}")
+            _LOGGER.error("Failed to create binary sensor entity: %s", e)
             return None
 
     async def async_remove_entities(self, device_id: str) -> None:
@@ -313,7 +305,7 @@ class HumidityEntities:
         Args:
             device_id: Device identifier
         """
-        _LOGGER.info(f"Removing humidity entities for device {device_id}")
+        _LOGGER.info("Removing humidity entities for device %s", device_id)
 
         # Find entities for this device
         device_entities: list[str] = [
@@ -327,11 +319,11 @@ class HumidityEntities:
             try:
                 if entity_id in self._entities:
                     del self._entities[entity_id]
-                    _LOGGER.info(f"Removed entity: {entity_id}")
+                    _LOGGER.info("Removed entity: %s", entity_id)
             except Exception as e:
-                _LOGGER.error(f"Failed to remove entity {entity_id}: {e}")
+                _LOGGER.error("Failed to remove entity %s: %s", entity_id, e)
 
-        _LOGGER.info(f"Removed {len(device_entities)} humidity entities")
+        _LOGGER.info("Removed %s humidity entities", len(device_entities))
 
     def get_entity_config(
         self, entity_type: str, entity_subtype: str

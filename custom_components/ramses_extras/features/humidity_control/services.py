@@ -9,7 +9,6 @@ from typing import Any
 
 from homeassistant.const import SERVICE_TURN_OFF, SERVICE_TURN_ON
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry
 
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
@@ -61,13 +60,13 @@ class HumidityServices:
         Returns:
             True if successful
         """
-        _LOGGER.info(f"Activating dehumidification for device {device_id}")
+        _LOGGER.info("Activating dehumidification for device %s", device_id)
 
         try:
             # Find dehumidify switch entity
             dehumidify_entity = await self._find_dehumidify_entity(device_id)
             if not dehumidify_entity:
-                _LOGGER.error(f"Dehumidify switch not found for device {device_id}")
+                _LOGGER.error("Dehumidify switch not found for device %s", device_id)
                 return False
 
             # Turn on the switch
@@ -78,13 +77,13 @@ class HumidityServices:
             # Set fan speed to HIGH for dehumidification
             success = await self.async_set_fan_speed(device_id, "high")
             if not success:
-                _LOGGER.warning(f"Failed to set fan speed for device {device_id}")
+                _LOGGER.warning("Failed to set fan speed for device %s", device_id)
 
-            _LOGGER.info(f"Dehumidification activated: {dehumidify_entity}")
+            _LOGGER.info("Dehumidification activated: %s", dehumidify_entity)
             return True
 
         except Exception as e:
-            _LOGGER.error(f"Failed to activate dehumidification: {e}")
+            _LOGGER.error("Failed to activate dehumidification: %s", e)
             return False
 
     async def async_deactivate_dehumidification(self, device_id: str) -> bool:
@@ -96,13 +95,13 @@ class HumidityServices:
         Returns:
             True if successful
         """
-        _LOGGER.info(f"Deactivating dehumidification for device {device_id}")
+        _LOGGER.info("Deactivating dehumidification for device %s", device_id)
 
         try:
             # Find dehumidify switch entity
             dehumidify_entity = await self._find_dehumidify_entity(device_id)
             if not dehumidify_entity:
-                _LOGGER.error(f"Dehumidify switch not found for device {device_id}")
+                _LOGGER.error("Dehumidify switch not found for device %s", device_id)
                 return False
 
             # Turn off the switch
@@ -113,13 +112,13 @@ class HumidityServices:
             # Reset fan speed to AUTO/normal
             success = await self.async_set_fan_speed(device_id, "auto")
             if not success:
-                _LOGGER.warning(f"Failed to set fan auto speed for device {device_id}")
+                _LOGGER.warning("Failed to set fan auto speed for device %s", device_id)
 
-            _LOGGER.info(f"Dehumidification deactivated: {dehumidify_entity}")
+            _LOGGER.info("Dehumidification deactivated: %s", dehumidify_entity)
             return True
 
         except Exception as e:
-            _LOGGER.error(f"Failed to deactivate dehumidification: {e}")
+            _LOGGER.error("Failed to deactivate dehumidification: %s", e)
             return False
 
     async def async_set_fan_speed(self, device_id: str, speed: str) -> bool:
@@ -132,23 +131,29 @@ class HumidityServices:
         Returns:
             True if successful
         """
-        _LOGGER.info(f"Setting fan speed to {speed} for device {device_id}")
+        _LOGGER.info("Setting fan speed to %s for device %s", speed, device_id)
 
         try:
             # Send command using registry
             result = await self.ramses_commands.send_command(device_id, speed)
             success: bool = result.success
             if success:
-                _LOGGER.info(f"Fan speed set to {speed.upper()} for device {device_id}")
+                _LOGGER.info(
+                    "Fan speed set to %s for device %s",
+                    speed.upper(),
+                    device_id,
+                )
             else:
                 _LOGGER.warning(
-                    f"Failed to send fan speed command {speed} to device {device_id}"
+                    "Failed to send fan speed command %s to device %s",
+                    speed,
+                    device_id,
                 )
 
             return success
 
         except Exception as e:
-            _LOGGER.error(f"Failed to set fan speed to {speed}: {e}")
+            _LOGGER.error("Failed to set fan speed to %s: %s", speed, e)
             return False
 
     async def async_set_min_humidity(self, device_id: str, value: float) -> bool:
@@ -161,13 +166,13 @@ class HumidityServices:
         Returns:
             True if successful
         """
-        _LOGGER.info(f"Setting min humidity for device {device_id}: {value}%")
+        _LOGGER.info("Setting min humidity for device %s: %s%%", device_id, value)
 
         try:
             # Find minimum humidity number entity
             min_entity = await self._find_min_humidity_entity(device_id)
             if not min_entity:
-                _LOGGER.error(f"Min humidity entity not found for device {device_id}")
+                _LOGGER.error("Min humidity entity not found for device %s", device_id)
                 return False
 
             # Set the value
@@ -175,11 +180,11 @@ class HumidityServices:
                 "number", "set_value", {"entity_id": min_entity, "value": value}
             )
 
-            _LOGGER.info(f"Min humidity set: {min_entity} = {value}%")
+            _LOGGER.info("Min humidity set: %s = %s%%", min_entity, value)
             return True
 
         except Exception as e:
-            _LOGGER.error(f"Failed to set min humidity: {e}")
+            _LOGGER.error("Failed to set min humidity: %s", e)
             return False
 
     async def async_set_max_humidity(self, device_id: str, value: float) -> bool:
@@ -192,13 +197,13 @@ class HumidityServices:
         Returns:
             True if successful
         """
-        _LOGGER.info(f"Setting max humidity for device {device_id}: {value}%")
+        _LOGGER.info("Setting max humidity for device %s: %s%%", device_id, value)
 
         try:
             # Find maximum humidity number entity
             max_entity = await self._find_max_humidity_entity(device_id)
             if not max_entity:
-                _LOGGER.error(f"Max humidity entity not found for device {device_id}")
+                _LOGGER.error("Max humidity entity not found for device %s", device_id)
                 return False
 
             # Set the value
@@ -206,11 +211,11 @@ class HumidityServices:
                 "number", "set_value", {"entity_id": max_entity, "value": value}
             )
 
-            _LOGGER.info(f"Max humidity set: {max_entity} = {value}%")
+            _LOGGER.info("Max humidity set: %s = %s%%", max_entity, value)
             return True
 
         except Exception as e:
-            _LOGGER.error(f"Failed to set max humidity: {e}")
+            _LOGGER.error("Failed to set max humidity: %s", e)
             return False
 
     async def async_set_offset(self, device_id: str, value: float) -> bool:
@@ -223,13 +228,13 @@ class HumidityServices:
         Returns:
             True if successful
         """
-        _LOGGER.info(f"Setting humidity offset for device {device_id}: {value}")
+        _LOGGER.info("Setting humidity offset for device %s: %s", device_id, value)
 
         try:
             # Find offset number entity
             offset_entity = await self._find_offset_entity(device_id)
             if not offset_entity:
-                _LOGGER.error(f"Offset entity not found for device {device_id}")
+                _LOGGER.error("Offset entity not found for device %s", device_id)
                 return False
 
             # Set the value
@@ -237,11 +242,11 @@ class HumidityServices:
                 "number", "set_value", {"entity_id": offset_entity, "value": value}
             )
 
-            _LOGGER.info(f"Humidity offset set: {offset_entity} = {value}")
+            _LOGGER.info("Humidity offset set: %s = %s", offset_entity, value)
             return True
 
         except Exception as e:
-            _LOGGER.error(f"Failed to set humidity offset: {e}")
+            _LOGGER.error("Failed to set humidity offset: %s", e)
             return False
 
     async def async_get_status(self, device_id: str) -> dict[str, Any]:
@@ -299,7 +304,7 @@ class HumidityServices:
             return status
 
         except Exception as e:
-            _LOGGER.error(f"Failed to get humidity status: {e}")
+            _LOGGER.error("Failed to get humidity status: %s", e)
             return {"device_id": device_id, "error": str(e)}
 
     async def _find_dehumidify_entity(self, device_id: str) -> str | None:

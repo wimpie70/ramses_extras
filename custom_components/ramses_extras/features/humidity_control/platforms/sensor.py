@@ -54,13 +54,13 @@ async def create_humidity_sensor(
     Returns:
         List of sensor entities
     """
-    sensor: list[Any] = []
+    sensor: list[ExtrasSensorEntity] = []
 
     # Note: Absolute humidity sensors are now created by the default feature
     # This function is kept for compatibility but no longer creates sensors
     _LOGGER.debug(
-        f"Absolute humidity sensors for device {device_id} are now "
-        f"created by default feature"
+        "Absolute humidity sensors for device %s are now created by default feature",
+        device_id,
     )
 
     return sensor

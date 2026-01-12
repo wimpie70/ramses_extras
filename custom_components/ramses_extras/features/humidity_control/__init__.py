@@ -85,7 +85,7 @@ class OrconDeviceCustomizer:
         model_info = self._extract_orcon_model_info(device.model)
 
         if not model_info:
-            _LOGGER.warning(f"Unknown Orcon model: {device.model}")
+            _LOGGER.warning("Unknown Orcon model: %s", device.model)
             return event_data
 
         # Apply model-specific configuration
@@ -122,7 +122,7 @@ class OrconDeviceCustomizer:
                 return {"model_key": model_key, "model_string": model, **config}
 
         # Fallback for unknown models
-        _LOGGER.warning(f"Unknown Orcon model variant: {model}")
+        _LOGGER.warning("Unknown Orcon model variant: %s", model)
         return {
             "model_key": "unknown",
             "model_string": model,
@@ -175,7 +175,11 @@ class OrconDeviceCustomizer:
                 ]
             )
 
-        _LOGGER.info(f"Added {len(entities)} entities for Orcon device {device_id}")
+        _LOGGER.info(
+            "Added %s entities for Orcon device %s",
+            len(entities),
+            device_id,
+        )
 
     async def _configure_orcon_behaviors(
         self, device: Any, event_data: dict[str, Any], model_info: dict[str, Any]
@@ -284,7 +288,7 @@ class ZehnderDeviceCustomizer:
         model_info = self._extract_zehnder_model_info(device.model)
 
         if not model_info:
-            _LOGGER.warning(f"Unknown Zehnder model: {device.model}")
+            _LOGGER.warning("Unknown Zehnder model: %s", device.model)
             return event_data
 
         # Apply model-specific configuration
@@ -321,7 +325,7 @@ class ZehnderDeviceCustomizer:
                 return {"model_key": model_key, "model_string": model, **config}
 
         # Fallback for unknown models
-        _LOGGER.warning(f"Unknown Zehnder model variant: {model}")
+        _LOGGER.warning("Unknown Zehnder model variant: %s", model)
         return {
             "model_key": "unknown",
             "model_string": model,
@@ -376,7 +380,11 @@ class ZehnderDeviceCustomizer:
                 ]
             )
 
-        _LOGGER.info(f"Added {len(entities)} entities for Zehnder device {device_id}")
+        _LOGGER.info(
+            "Added %s entities for Zehnder device %s",
+            len(entities),
+            device_id,
+        )
 
     async def _configure_zehnder_behaviors(
         self, device: Any, event_data: dict[str, Any], model_info: dict[str, Any]
@@ -538,7 +546,7 @@ class EnhancedHumidityControl:
             return True
 
         except Exception as e:
-            _LOGGER.error(f"Failed to setup Enhanced Humidity Control feature: {e}")
+            _LOGGER.error("Failed to setup Enhanced Humidity Control feature: %s", e)
             return False
 
     async def _setup_event_listeners(self) -> None:
@@ -565,7 +573,7 @@ class EnhancedHumidityControl:
         if event_data["handled_by"] != "humidity_control":
             return
 
-        _LOGGER.info(f"Enhanced Humidity Control processing device {device_id}")
+        _LOGGER.info("Enhanced Humidity Control processing device %s", device_id)
 
         try:
             # Apply brand-specific logic
@@ -578,7 +586,9 @@ class EnhancedHumidityControl:
 
         except Exception as e:
             _LOGGER.error(
-                f"Failed to process device {device_id} for humidity control: {e}"
+                "Failed to process device %s for humidity control: %s",
+                device_id,
+                e,
             )
 
     async def _handle_orcon_device(self, event_data: dict[str, Any]) -> None:
@@ -590,7 +600,10 @@ class EnhancedHumidityControl:
         device = event_data["device_object"]
         orcon_customizer = cast(OrconDeviceCustomizer, self._brand_customizers["orcon"])
 
-        _LOGGER.info(f"Applying Orcon-specific customizations for device {device.id}")
+        _LOGGER.info(
+            "Applying Orcon-specific customizations for device %s",
+            device.id,
+        )
 
         # Apply Orcon customizations
         await orcon_customizer.customize_orcon_device(device, event_data)
@@ -609,7 +622,10 @@ class EnhancedHumidityControl:
             ZehnderDeviceCustomizer, self._brand_customizers["zehnder"]
         )
 
-        _LOGGER.info(f"Applying Zehnder-specific customizations for device {device.id}")
+        _LOGGER.info(
+            "Applying Zehnder-specific customizations for device %s",
+            device.id,
+        )
 
         # Apply Zehnder customizations
         await zehnder_customizer.customize_zehnder_device(device, event_data)
@@ -625,7 +641,7 @@ class EnhancedHumidityControl:
         """
         device = event_data["device_object"]
 
-        _LOGGER.info(f"Applying generic customizations for device {device.id}")
+        _LOGGER.info("Applying generic customizations for device %s", device.id)
 
         # Apply basic humidity customizations
         await self._apply_humidity_customizations(event_data, "generic")
@@ -698,8 +714,10 @@ class EnhancedHumidityControl:
         }
 
         _LOGGER.info(
-            f"Applied {brand} humidity customizations for device {device_id}: "
-            f"{len(humidity_entities)} additional entities"
+            "Applied %s humidity customizations for device %s: %s additional entities",
+            brand,
+            device_id,
+            len(humidity_entities),
         )
 
     def should_create_entity(
@@ -717,7 +735,7 @@ class EnhancedHumidityControl:
         """
         # Check if user has set explicit preferences
         device_modifications = self._entity_modifications.get(device_id, {})
-        _LOGGER.debug(f"device modifications: {device_modifications}")
+        _LOGGER.debug("device modifications: %s", device_modifications)
         # For now, return default behavior
         # This can be extended to check user preferences
         return default_enabled

@@ -80,7 +80,7 @@ class HumidityConfig(ExtrasConfigManager):
             return super().validate_config()
 
         except Exception as e:
-            _LOGGER.error(f"Configuration validation error: {e}")
+            _LOGGER.error("Configuration validation error: %s", e)
             return False
 
     def get_config_schema(self) -> dict[str, Any]:
