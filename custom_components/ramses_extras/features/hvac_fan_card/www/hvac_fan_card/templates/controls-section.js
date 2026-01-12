@@ -3,7 +3,21 @@
  * Contains the 4 rows of control buttons (fan modes, speeds, timer, bypass)
  */
 
-export function createControlsSection(dehumEntitiesAvailable = false, config = {}) {
+export function createControlsSection(dehumEntitiesAvailable = false, config = {}, t) {
+  const tr = (key, fallback, options = {}) => {
+    try {
+      if (typeof t === 'function') {
+        const result = t(key, options);
+        if (typeof result === 'string' && result !== key) {
+          return result;
+        }
+      }
+    } catch {
+      // ignore and fall back
+    }
+    return fallback;
+  };
+
   return `
     <!-- Control Buttons - 4 rows -->
     <div class="controls-container">
@@ -11,16 +25,16 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
       <div class="control-row">
         <div class="control-button" onclick="send_command('fan_away', '${config.device_id}', this)">
           <div class="control-icon">🏠</div>
-          <div class="control-label">Away</div>
+          <div class="control-label">${tr('status.away', 'Away')}</div>
         </div>
         <div class="control-button" onclick="send_command('fan_auto', '${config.device_id}', this)">
           <div class="control-icon">🌀</div>
-          <div class="control-label">Auto</div>
+          <div class="control-label">${tr('status.auto2', 'Auto')}</div>
         </div>
         ${dehumEntitiesAvailable ? `
         <div class="control-button" onclick="toggleDehumidify('${config.dehum_mode_entity || 'switch.dehumidify_' + config.device_id.replace(/:/g, '_')}', this)">
           <div class="control-icon">⚡</div>
-          <div class="control-label">Dehumidify</div>
+          <div class="control-label">${tr('controls.dehumidify', 'Dehumidify')}</div>
         </div>
         ` : ''}
       </div>
@@ -29,15 +43,15 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
       <div class="control-row">
         <div class="control-button" onclick="send_command('fan_low', '${config.device_id}', this)">
           <div class="control-icon">🌀</div>
-          <div class="control-label">Low</div>
+          <div class="control-label">${tr('status.low', 'Low')}</div>
         </div>
         <div class="control-button" onclick="send_command('fan_medium', '${config.device_id}', this)">
           <div class="control-icon">🌀</div>
-          <div class="control-label">Medium</div>
+          <div class="control-label">${tr('status.medium', 'Medium')}</div>
         </div>
         <div class="control-button" onclick="send_command('fan_high', '${config.device_id}', this)">
           <div class="control-icon">🌀</div>
-          <div class="control-label">High</div>
+          <div class="control-label">${tr('status.high', 'High')}</div>
         </div>
       </div>
 
@@ -45,15 +59,15 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
       <div class="control-row">
         <div class="control-button" onclick="send_command('fan_timer_15min', '${config.device_id}', this)">
           <div class="control-icon">⏱️</div>
-          <div class="control-label">15m</div>
+          <div class="control-label">${tr('controls.timer_15', '15m')}</div>
         </div>
         <div class="control-button" onclick="send_command('fan_timer_30min', '${config.device_id}', this)">
           <div class="control-icon">⏰</div>
-          <div class="control-label">30m</div>
+          <div class="control-label">${tr('controls.timer_30', '30m')}</div>
         </div>
         <div class="control-button" onclick="send_command('fan_timer_60min', '${config.device_id}', this)">
           <div class="control-icon">⏳</div>
-          <div class="control-label">60m</div>
+          <div class="control-label">${tr('controls.timer_60', '60m')}</div>
         </div>
       </div>
 
@@ -61,15 +75,15 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
       <div class="control-row">
         <div class="control-button" onclick="send_command('fan_bypass_auto', '${config.device_id}', this)">
           <div class="control-icon">🔄</div>
-          <div class="control-label">Bypass Auto</div>
+          <div class="control-label">${tr('controls.bypass_auto', 'Bypass Auto')}</div>
         </div>
         <div class="control-button" onclick="send_command('fan_bypass_close', '${config.device_id}', this)">
           <div class="control-icon">⊞</div>
-          <div class="control-label">Bypass Close</div>
+          <div class="control-label">${tr('controls.bypass_close', 'Bypass Close')}</div>
         </div>
         <div class="control-button" onclick="send_command('fan_bypass_open', '${config.device_id}', this)">
           <div class="control-icon">⊟</div>
-          <div class="control-label">Bypass Open</div>
+          <div class="control-label">${tr('controls.bypass_open', 'Bypass Open')}</div>
         </div>
       </div>
     </div>

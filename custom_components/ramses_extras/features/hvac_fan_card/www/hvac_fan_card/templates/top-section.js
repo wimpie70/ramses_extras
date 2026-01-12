@@ -3,7 +3,21 @@
  * Contains timer, corner values, airflow diagram, and center section
  */
 
-export function createTopSection(data) {
+export function createTopSection(data, t) {
+  const tr = (key, fallback, options = {}) => {
+    try {
+      if (typeof t === 'function') {
+        const result = t(key, options);
+        if (typeof result === 'string' && result !== key) {
+          return result;
+        }
+      }
+    } catch {
+      // ignore and fall back
+    }
+    return fallback;
+  };
+
   const {
     outdoorTemp, outdoorHumidity, outdoorAbsHumidity,
     indoorTemp, indoorHumidity, indoorAbsHumidity, comfortTemp, dehumMode, dehumActive,
@@ -32,11 +46,11 @@ export function createTopSection(data) {
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M12 6v6l4 2"></path>
           </svg>
-          <span id="timer">${timerMinutes} min</span>
+          <span id="timer">${timerMinutes} ${tr('time.minutes', 'min')}</span>
         </div>
 
         <div class="settings-container">
-          <button class="settings-icon" title="Edit device parameters">
+          <button class="settings-icon" title="${tr('card.edit_parameters', 'Edit Parameters')}">
             ⚙️
           </button>
         </div>
@@ -78,7 +92,7 @@ export function createTopSection(data) {
             <span id="indoorAbsHumidity">${formatHumidity(indoorAbsHumidity, ' g/m³')}</span>
           </div>
           <div class="info-stack">
-            <div>🌡️ Comfort: ${comfortTemp} °C</div>
+            <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temperature')}: ${comfortTemp} °C</div>
             ${dehumEntitiesAvailable ? `
             <div class="dehum-row">
               <span id="dehumMode">${dehumMode}</span>

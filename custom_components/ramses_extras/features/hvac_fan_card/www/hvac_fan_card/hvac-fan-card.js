@@ -369,6 +369,7 @@ class HvacFanCard extends RamsesBaseCard {
       device_id: this.config.device_id,
       availableParams: this.availableParams,
       hass: this._hass,
+      t: this.t?.bind(this),
     };
 
     // Generate HTML for parameter edit mode
@@ -482,8 +483,12 @@ class HvacFanCard extends RamsesBaseCard {
     // Generate HTML using template functions
     const cardHtml = [
       createCardHeader(CARD_STYLE),
-      createTopSection(templateData),
-      createControlsSection(dehumEntitiesAvailable, config), // Pass availability flag and config
+      createTopSection(templateData, this.t?.bind(this)),
+      createControlsSection(
+        dehumEntitiesAvailable,
+        config,
+        this.t?.bind(this)
+      ), // Pass availability flag and config
       createCardFooter(),
     ].join('');
 

@@ -8,21 +8,23 @@ export function createParameterEditSection(params) {
   const deviceId = params.device_id;
   const availableParams = params.availableParams || {};
   const hass = params.hass; // Pass hass instance
+  const t = params.t;
 
-  // Frontend card localization system
-  // Get language from Home Assistant configuration, fallback to English
-  const userLanguage = (hass?.language || 'en').toLowerCase();
+  const tr = (key, fallback, options = {}) => {
+    try {
+      if (typeof t === 'function') {
+        const result = t(key, options);
+        if (typeof result === 'string' && result !== key) {
+          return result;
+        }
+      }
+    } catch {
+      // ignore and fall back
+    }
+    return fallback;
+  };
 
-  // Simple language detection for card text
-  let settingsText = 'Settings for Device:';
-
-  if (userLanguage.startsWith('nl')) {
-    settingsText = 'Instellingen voor Apparaat:';
-  } else if (userLanguage.startsWith('de')) {
-    settingsText = 'Einstellungen für Gerät:';
-  } else if (userLanguage.startsWith('fr')) {
-    settingsText = 'Paramètres de l\'appareil:';
-  }
+  const settingsText = tr('card.settings', 'Settings');
 
   // Check for humidity control entities
   const humidityControlEntities = getHumidityControlEntities(deviceId, hass);
@@ -33,7 +35,7 @@ export function createParameterEditSection(params) {
       <div class="param-nav">
         <div class="nav-left">
           <span class="settings-icon" onclick="toggleParameterMode()">⚙️</span>
-          <span class="device-title">${settingsText} ${deviceId.replace(/_/g, ':')}</span>
+          <span class="device-title">${settingsText}: ${deviceId.replace(/_/g, ':')}</span>
         </div>
         <div class="nav-right">
           <span class="back-icon" onclick="toggleParameterMode()">↩️</span>
@@ -43,11 +45,11 @@ export function createParameterEditSection(params) {
       ${humidityControlEntities.length > 0 ? `
       <!-- Humidity Control Settings Section -->
       <div class="param-section-header">
-        <h3>Humidity Control Settings</h3>
+        <h3>${tr('parameters.humidity_control_settings', 'Humidity Control Settings')}</h3>
       </div>
       <div class="param-list" style="max-height: 200px; overflow-y: auto;">
         ${humidityControlEntities.map(entity =>
-          createHumidityControlItem(entity, hass)
+          createHumidityControlItem(entity, hass, tr)
         ).join('')}
       </div>
       ` : ''}
@@ -56,15 +58,15 @@ export function createParameterEditSection(params) {
       <!-- Device Parameters Section -->
       <div class="param-section-header">
         <div class="header-content">
-          <h3>Device Parameters (2411)</h3>
-          <button class="refresh-params-btn" title="Refresh all parameters from device">
-            <span class="refresh-icon">🔄</span> Refresh
+          <h3>${tr('parameters.title', 'Device Parameters (2411)')}</h3>
+          <button class="refresh-params-btn" title="${tr('parameters.refresh_title', 'Refresh all parameters from device')}">
+            <span class="refresh-icon">🔄</span> ${tr('parameters.refresh', 'Refresh')}
           </button>
         </div>
       </div>
       <div class="param-list" style="max-height: 400px; overflow-y: auto;">
         ${Object.entries(availableParams).map(([key, param]) =>
-          createParameterItem(key, param, deviceId, hass)
+          createParameterItem(key, param, deviceId, hass, tr)
         ).join('')}
       </div>
       ` : ''}
@@ -72,7 +74,7 @@ export function createParameterEditSection(params) {
   `;
 }
 
-function getHumidityControlEntities(deviceId, hass, config = {}) {
+function getHumidityControlEntities(deviceId, hass) {
   const humidityControlEntities = [];
   const deviceIdUnderscore = deviceId.replace(/:/g, '_');
 
@@ -103,8 +105,7 @@ function getHumidityControlEntities(deviceId, hass, config = {}) {
   return humidityControlEntities;
 }
 
-// eslint-disable-next-line no-unused-vars
-function createHumidityControlItem(entity, hass) {
+function createHumidityControlItem(entity, hass, tr) {
   const entityId = entity.entity_id;
   const currentValue = entity.state;
   const friendlyName = entity.attributes.friendly_name || entityId.split('_').pop().replace(/([A-Z])/g, ' $1').toLowerCase();
@@ -134,14 +135,14 @@ function createHumidityControlItem(entity, hass) {
                 step="${entity.attributes.step || 1}"
                 value="${currentValue}"
                 data-entity="${entityId}">
-        <button class="param-update-btn" onclick="updateHumidityControl('${entityId}', this.previousElementSibling.value, this)">Update</button>
+        <button class="param-update-btn" onclick="updateHumidityControl('${entityId}', this.previousElementSibling.value, this)">${tr('parameters.update', 'Update')}</button>
         <span class="param-status"></span>
       </div>
     </div>
   `;
 }
 
-function createParameterItem(paramKey, paramInfo, deviceId, hass) {
+function createParameterItem(paramKey, paramInfo, deviceId, hass, tr) {
   const entityId = `number.${deviceId.replace(/:/g, '_')}_param_${paramKey}`;
   const currentValue = hass.states[entityId]?.state || paramInfo.current_value || paramInfo.default_value || paramInfo.min_value || 0;
   // console.log(`🔧 Creating parameter item for ${paramKey}: entity=${entityId}, currentValue=${currentValue}, paramInfo=`, paramInfo);
@@ -172,7 +173,7 @@ function createParameterItem(paramKey, paramInfo, deviceId, hass) {
                 step="${displayStep}"
                 value="${displayValue}"
                 data-entity="${entityId}">
-        <button class="param-update-btn" data-param="${paramKey}" onclick="updateParameter('${paramKey}', this.previousElementSibling.value)">Update</button>
+        <button class="param-update-btn" data-param="${paramKey}" onclick="updateParameter('${paramKey}', this.previousElementSibling.value)">${tr('parameters.update', 'Update')}</button>
         <span class="param-status"></span>
       </div>
     </div>
