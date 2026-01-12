@@ -2,11 +2,12 @@
 
 ## Progress
 
-- [ ] Inspect existing hvac_fan_card implementation + tests
-- [ ] Fix outstanding lint/test warnings (JS + Python)
-- [ ] Align translations usage with framework translator (no hardcoded language strings)
-- [ ] Simplify card templates to accept translated labels (keep template functions pure)
-- [ ] Verify tests (hvac_fan_card) then run `make local-ci`
+- [x] Inspect existing hvac_fan_card implementation + tests
+- [x] Fix outstanding lint/test warnings (JS + Python)
+- [x] Align translations usage with framework translator (no hardcoded language strings)
+- [x] Simplify card templates to accept translated labels (keep template functions pure)
+- [x] Verify tests (hvac_fan_card) then run `make local-ci`
+- [x] Add/expand JSDoc docstrings in hvac_fan_card JS files
 
 ## Big-step workflow (each step should pass CI)
 

@@ -3,6 +3,14 @@
  * Contains the 4 rows of control buttons (fan modes, speeds, timer, bypass)
  */
 
+/**
+ * Render the card's controls section.
+ *
+ * @param {boolean} [dehumEntitiesAvailable=false] Whether dehumidify controls should be shown.
+ * @param {Object} [config={}] Card configuration.
+ * @param {Function} [t] Optional translation function.
+ * @returns {string} HTML string.
+ */
 export function createControlsSection(dehumEntitiesAvailable = false, config = {}, t) {
   const tr = (key, fallback, options = {}) => {
     try {

@@ -33,6 +33,12 @@ import {
   getEntityValidationReport,
 } from '../../helpers/card-validation.js';
 
+/**
+ * HVAC ventilation control card.
+ *
+ * Renders live ventilation data and exposes controls via service/WebSocket
+ * helpers. Also provides a settings mode for editing 2411 parameters.
+ */
 class HvacFanCard extends RamsesBaseCard {
   constructor() {
     super();
@@ -85,6 +91,10 @@ class HvacFanCard extends RamsesBaseCard {
     };
   }
 
+  /**
+   * Create the card editor element (instance method for HA UI).
+   * @returns {HTMLElement|null} The editor element.
+   */
   getConfigElement() {
     try {
       // Ensure the editor is available before creating it
@@ -187,6 +197,14 @@ class HvacFanCard extends RamsesBaseCard {
     }
   }
 
+  /**
+   * Load entity mappings and sensor sources for this device via WebSocket.
+   *
+   * Populates `_cachedEntities` for the base class required-entities logic and
+   * merges returned entity IDs into the config when not explicitly overridden.
+   *
+   * @returns {Promise<void>}
+   */
   async _loadEntityMappings() {
     if (!this._hass || !this._config?.device_id) {
       return;
@@ -353,7 +371,14 @@ class HvacFanCard extends RamsesBaseCard {
     `;
   }
 
-
+  /**
+   * Render settings mode (parameter edit view).
+   *
+   * Fetches parameter schema (if needed), builds a view-model for the template,
+   * and re-attaches listeners.
+   *
+   * @returns {Promise<void>}
+   */
   async renderParameterEditMode() {
     // Save scroll position before re-rendering
     const scrollContainer = this.shadowRoot?.querySelector('.param-list');
@@ -397,6 +422,12 @@ class HvacFanCard extends RamsesBaseCard {
     this.attachParameterEditListeners();
   }
 
+  /**
+   * Render normal mode (live dashboard).
+   *
+   * Collects state, builds template data, and wires normal-mode listeners.
+   * @returns {void}
+   */
   renderNormalMode() {
     if (!this._entityMappings && !this._entityMappingsLoading) {
       this._loadEntityMappings();
@@ -505,6 +536,11 @@ class HvacFanCard extends RamsesBaseCard {
 
 
   // Validate all required entities are available
+  /**
+   * Validate configured entities exist.
+   * Uses framework validation helpers; the report is currently informational.
+   * @returns {void}
+   */
   validateEntities() {
     // Note: config and hass are already validated in render() before this is called
     const config = this.config;
@@ -516,6 +552,10 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Check if dehumidify entities are available
+  /**
+   * Check whether the dehumidify related entities exist.
+   * @returns {boolean} True if dehumidify entities are available.
+   */
   checkDehumidifyEntities() {
     // Note: config and hass are already validated in render() before this is called
     const config = this.config;
@@ -527,6 +567,10 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Toggle between normal and parameter edit modes
+  /**
+   * Toggle between normal mode and parameter edit mode.
+   * @returns {Promise<void>}
+   */
   async toggleParameterMode() {
     this.parameterEditMode = !this.parameterEditMode;
 
@@ -541,6 +585,10 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Fetch parameter schema from WebSocket
+  /**
+   * Fetch the 2411 parameter schema via WebSocket.
+   * @returns {Promise<Object>} Schema mapping.
+   */
   async fetchParameterSchema() {
     try {
       const result = await callWebSocket(this._hass, {
@@ -556,6 +604,11 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Get available parameters based on entity existence
+  /**
+   * Build a map of available number entities for this device.
+   * Uses entity attributes and (if available) the 2411 schema.
+   * @returns {Object} Map of entityName -> paramInfo.
+   */
   getAvailableParameters() {
     // Check all possible number entities for this device
     const available = {};
@@ -623,6 +676,10 @@ class HvacFanCard extends RamsesBaseCard {
     return available;
   }
 
+  /**
+   * Build view-model items for humidity control number entities.
+   * @returns {Array<Object>} Items for the settings template.
+   */
   _getHumidityControlEntities() {
     const deviceId = this.config?.device_id;
     if (!deviceId) return [];
@@ -671,6 +728,11 @@ class HvacFanCard extends RamsesBaseCard {
     return humidityControlEntities;
   }
 
+  /**
+   * Build view-model items for 2411 `param_*` entities.
+   * @param {Object} availableParams Map from `getAvailableParameters()`.
+   * @returns {Array<Object>} Items for the settings template.
+   */
   _createParameterItems(availableParams) {
     const deviceId = this.config?.device_id;
     if (!deviceId) return [];
@@ -708,6 +770,12 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Update a parameter value
+  /**
+   * Update a 2411 parameter using the card WebSocket helper.
+   * @param {string} paramKey Parameter key (e.g. `param_31`).
+   * @param {string|number} newValue New value.
+   * @returns {Promise<void>}
+   */
   async updateParameter(paramKey, newValue) {
     // console.log(`🔄 Updating parameter ${paramKey} to ${newValue}`);
 
@@ -741,6 +809,10 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Refresh all parameters (2411 sequence)
+  /**
+   * Request a full parameter refresh sequence.
+   * @returns {Promise<void>}
+   */
   async refreshParameters() {
     const refreshBtn = this.shadowRoot?.querySelector('.refresh-params-btn');
     if (refreshBtn) {
@@ -765,12 +837,21 @@ class HvacFanCard extends RamsesBaseCard {
     }
   }
 
+  /**
+   * Connection lifecycle hook (called by base card).
+   * @returns {void}
+   */
   _onConnected() {
     if (this._config?.device_id) {
       this.requestInitialData();
     }
   }
 
+  /**
+   * Connection lifecycle hook (called by base card).
+   * Clears timers/intervals.
+   * @returns {void}
+   */
   _onDisconnected() {
     if (this._eventCheckTimer) {
       clearTimeout(this._eventCheckTimer);
@@ -802,6 +883,10 @@ class HvacFanCard extends RamsesBaseCard {
   // Update functions
 
   // Request initial data when card is fully loaded
+  /**
+   * Request initial 31DA/10D0 data from the device.
+   * @returns {Promise<void>}
+   */
   async requestInitialData() {
     if (!this._hass || !this._config?.device_id) {
       logger.warn('Cannot request initial data: missing hass or device_id');
@@ -819,6 +904,11 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Update the card with 31DA data
+  /**
+   * Update internal state from a 31DA message and re-render.
+   * @param {Object} hvacData Parsed 31DA data.
+   * @returns {void}
+   */
   updateFrom31DA(hvacData) {
     // Store the data for rendering
     this._31daData = hvacData;
@@ -830,6 +920,11 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Update the card with 10D0 data
+  /**
+   * Update internal state from a 10D0 message and re-render.
+   * @param {Object} filterData Parsed 10D0 data.
+   * @returns {void}
+   */
   updateFrom10D0(filterData) {
     // Store the filter data for rendering
     this._10d0Data = filterData;
@@ -841,11 +936,19 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Get 31DA data (if available) for template rendering
+  /**
+   * Get last received 31DA data.
+   * @returns {Object}
+   */
   get31DAData() {
     return this._31daData || {};
   }
 
   // Get 10D0 data (if available) for template rendering
+  /**
+   * Get last received 10D0 data.
+   * @returns {Object}
+   */
   get10D0Data() {
     return this._10d0Data || {};
   }
@@ -883,6 +986,10 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Attach event listeners for normal mode
+  /**
+   * Attach click handlers for the normal mode UI.
+   * @returns {void}
+   */
   attachNormalModeListeners() {
     // Settings icon in top section
     const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');
@@ -920,6 +1027,10 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   // Attach event listeners for parameter edit mode
+  /**
+   * Attach click handlers for the parameter edit UI.
+   * @returns {void}
+   */
   attachParameterEditListeners() {
     // Back/settings icons in parameter edit mode
     const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');

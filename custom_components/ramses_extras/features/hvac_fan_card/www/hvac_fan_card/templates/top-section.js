@@ -3,6 +3,13 @@
  * Contains timer, corner values, airflow diagram, and center section
  */
 
+/**
+ * Render the card's top section.
+ *
+ * @param {Object} data Precomputed template data for rendering.
+ * @param {Function} [t] Optional translation function.
+ * @returns {string} HTML string.
+ */
 export function createTopSection(data, t) {
   const tr = (key, fallback, options = {}) => {
     try {

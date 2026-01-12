@@ -4,6 +4,16 @@
  * Provides UI for editing 2411 device parameters
  */
 
+/**
+ * Render the parameter edit/settings view.
+ *
+ * @param {Object} params Template parameters.
+ * @param {string} params.device_id Device id (`32:123456` or `32_123456`).
+ * @param {Array<Object>} [params.humidityControlEntities] Humidity control view-model.
+ * @param {Array<Object>} [params.parameterItems] 2411 parameter view-model.
+ * @param {Function} [params.t] Optional translation function.
+ * @returns {string} HTML string.
+ */
 export function createParameterEditSection(params) {
   const deviceId = params.device_id;
   const humidityControlEntities = params.humidityControlEntities || [];
@@ -74,14 +84,30 @@ export function createParameterEditSection(params) {
   `;
 }
 
+/**
+ * Normalize humidity control list input.
+ * @param {Array<Object>} humidityControlEntities
+ * @returns {Array<Object>}
+ */
 function getHumidityControlEntities(humidityControlEntities) {
   return Array.isArray(humidityControlEntities) ? humidityControlEntities : [];
 }
 
+/**
+ * Normalize device parameter list input.
+ * @param {Array<Object>} parameterItems
+ * @returns {Array<Object>}
+ */
 function getDeviceParameters(parameterItems) {
   return Array.isArray(parameterItems) ? parameterItems : [];
 }
 
+/**
+ * Render a humidity control number entity row.
+ * @param {Object} entity View-model item.
+ * @param {Function} tr Translation helper.
+ * @returns {string}
+ */
 function createHumidityControlItem(entity, tr) {
   const entityId = entity.entity_id;
   const currentValue = entity.state;
@@ -115,6 +141,12 @@ function createHumidityControlItem(entity, tr) {
   `;
 }
 
+/**
+ * Render a single 2411 parameter item.
+ * @param {Object} param View-model item.
+ * @param {Function} tr Translation helper.
+ * @returns {string}
+ */
 function createParameterItem(param, tr) {
   const paramKey = param.paramKey;
   const displayMin = param.min;
