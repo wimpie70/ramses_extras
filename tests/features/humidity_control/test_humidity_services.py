@@ -98,6 +98,29 @@ class TestHumidityServices:
         assert result is True
         self.mock_ramses.send_command.assert_called_with(device_id, speed)
 
+    async def test_async_set_fan_speed_failure_result(self):
+        """Test setting fan speed when the command reports failure."""
+        device_id = "32_123456"
+        speed = "low"
+
+        self.mock_ramses.send_command.return_value = MagicMock(success=False)
+
+        result = await self.services.async_set_fan_speed(device_id, speed)
+
+        assert result is False
+        self.mock_ramses.send_command.assert_called_with(device_id, speed)
+
+    async def test_async_set_fan_speed_exception(self):
+        """Test setting fan speed when send_command raises."""
+        device_id = "32_123456"
+        speed = "low"
+
+        self.mock_ramses.send_command.side_effect = RuntimeError("boom")
+
+        result = await self.services.async_set_fan_speed(device_id, speed)
+
+        assert result is False
+
     @patch(
         "custom_components.ramses_extras.features.humidity_control.services.EntityHelpers"
     )
@@ -165,3 +188,76 @@ class TestHumidityServices:
         assert result["device_id"] == device_id
         assert "entities" in result
         assert result["automation_state"] == "manual"
+
+    @patch(
+        "custom_components.ramses_extras.features.humidity_control.services.EntityHelpers"
+    )
+    async def test_activate_dehumidification_missing_entity(self, mock_helpers):
+        """Test activating dehumidification when the switch entity cannot be found."""
+        device_id = "32_123456"
+        mock_helpers.generate_entity_name_from_template.return_value = (
+            "switch.dehumidify_32_123456"
+        )
+
+        self.hass.states.async_all.return_value = []
+        self.hass.services.async_call = AsyncMock()
+
+        result = await self.services.async_activate_dehumidification(device_id)
+
+        assert result is False
+        assert self.hass.services.async_call.call_count == 0
+
+    @patch(
+        "custom_components.ramses_extras.features.humidity_control.services.EntityHelpers"
+    )
+    async def test_deactivate_dehumidification_missing_entity(self, mock_helpers):
+        """Test deactivating dehumidification when the switch entity cannot be found."""
+        device_id = "32_123456"
+        mock_helpers.generate_entity_name_from_template.return_value = (
+            "switch.dehumidify_32_123456"
+        )
+
+        self.hass.states.async_all.return_value = []
+        self.hass.services.async_call = AsyncMock()
+
+        result = await self.services.async_deactivate_dehumidification(device_id)
+
+        assert result is False
+        assert self.hass.services.async_call.call_count == 0
+
+    @patch(
+        "custom_components.ramses_extras.features.humidity_control.services.EntityHelpers"
+    )
+    async def test_set_min_humidity_missing_entity(self, mock_helpers):
+        """Test setting min humidity when the number entity cannot be found."""
+        device_id = "32_123456"
+        mock_helpers.generate_entity_name_from_template.return_value = (
+            "number.relative_humidity_minimum_32_123456"
+        )
+
+        self.hass.states.async_all.return_value = []
+        self.hass.services.async_call = AsyncMock()
+
+        result = await self.services.async_set_min_humidity(device_id, 45.0)
+
+        assert result is False
+        assert self.hass.services.async_call.call_count == 0
+
+    @patch(
+        "custom_components.ramses_extras.features.humidity_control.services.EntityHelpers"
+    )
+    async def test_async_get_status_exception(self, mock_helpers):
+        """Test status call returns an error dict when an exception occurs."""
+        device_id = "32_123456"
+
+        mock_helpers.generate_entity_name_from_template.return_value = "sensor.any"
+
+        with patch.object(
+            self.services,
+            "_get_entity_state",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        ):
+            result = await self.services.async_get_status(device_id)
+
+        assert result["device_id"] == device_id
+        assert result["error"] == "boom"
