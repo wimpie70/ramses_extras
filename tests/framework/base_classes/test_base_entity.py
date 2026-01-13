@@ -1,13 +1,13 @@
 # tests/framework/base_classes/test_base_entity.py
 """Test base entity classes."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from custom_components.ramses_extras.framework.base_classes.base_entity import (
     ExtrasBaseEntity,
-    RamsesSensorEntity,
 )
 
 
@@ -51,174 +51,48 @@ class TestExtrasBaseEntity:
         entity._attr_unique_id = "test_unique_id"
         assert entity.unique_id == "test_unique_id"
 
+    def test_unique_id_from_entity_id(self, hass):
+        entity = ExtrasBaseEntity(hass, "32:153289")
+        entity.entity_id = "sensor.some_entity"
+        assert entity.unique_id == "some_entity"
 
-class TestRamsesSensorEntity:
-    """Test RamsesSensorEntity class."""
+    def test_unique_id_fallback_from_entity_type_and_device_id(self, hass):
+        entity = ExtrasBaseEntity(hass, "32:153289", "sensor")
+        assert entity.unique_id == "sensor_32_153289"
 
-    @patch(
-        "custom_components.ramses_extras.framework.base_classes.base_entity.EntityHelpers"
+    @pytest.mark.parametrize(
+        ("device", "expected"),
+        [
+            (SimpleNamespace(id="32:153289"), "32:153289"),
+            (SimpleNamespace(device_id="32:153289"), "32:153289"),
+            (SimpleNamespace(_id="32:153289"), "32:153289"),
+        ],
     )
-    def test_init_basic(self, mock_entity_helpers, hass):
-        """Test basic initialization of RamsesSensorEntity."""
-        device_id = "32:153289"
-        device_type = "HvacVentilator"
-        entity_name = "indoor_temperature"
-        config = {
-            "unit": "°C",
-            "icon": "mdi:thermometer",
-            "device_class": "temperature",
-            "entity_category": "diagnostic",
-        }
+    def test_get_device_id_str_variants(self, hass, device, expected):
+        entity = ExtrasBaseEntity(hass, device)
+        assert entity._get_device_id_str() == expected
 
-        mock_entity_helpers.generate_entity_name_from_template.return_value = (
-            "sensor.indoor_temperature_32_153289"
-        )
+    def test_device_info_fallback_when_attr_missing(self, hass):
+        entity = ExtrasBaseEntity(hass, "32:153289")
+        entity._attr_device_info = None
 
-        entity = RamsesSensorEntity(device_id, device_type, entity_name, config)
+        info = entity.device_info
+        assert ("ramses_extras", "32:153289") in info["identifiers"]
 
-        # Check initialization
-        assert entity._device_id == device_id
-        assert entity._device_type == device_type
-        assert entity._entity_name == entity_name
-        assert entity._config == config
-
-        # Check entity ID generation
-        mock_entity_helpers.generate_entity_name_from_template.assert_called_once_with(
-            "sensor",
-            entity_name + "_{device_id}",
-            device_id=device_id,
-        )
-        assert entity.entity_id == "sensor.indoor_temperature_32_153289"
-        assert entity._attr_unique_id == f"{device_id}_{entity_name}"
-
-        # Check attributes
-        assert entity._attr_unit_of_measurement == "°C"
-        assert entity._attr_icon == "mdi:thermometer"
-        assert entity._attr_device_class == "temperature"
-        assert entity._attr_native_value is None
-
-    @patch(
-        "custom_components.ramses_extras.framework.base_classes.base_entity.EntityHelpers"
-    )
-    def test_init_with_name_template(self, mock_entity_helpers, hass):
-        """Test initialization with name template."""
-        device_id = "32:153289"
-        device_type = "HvacVentilator"
-        entity_name = "indoor_temperature"
-        config = {
-            "name_template": "Temperature {device_id}",
-        }
-
-        mock_entity_helpers.generate_entity_name_from_template.return_value = (
-            "sensor.indoor_temperature_32_153289"
-        )
-
-        entity = RamsesSensorEntity(device_id, device_type, entity_name, config)
-
-        # Check name generation
-        assert entity._attr_name == "Temperature 32:153289"
-
-    @patch(
-        "custom_components.ramses_extras.framework.base_classes.base_entity.EntityHelpers"
-    )
-    def test_init_without_name_template(self, mock_entity_helpers, hass):
-        """Test initialization without name template."""
-        device_id = "32:153289"
-        device_type = "HvacVentilator"
-        entity_name = "indoor_temperature"
-        config = {}
-
-        mock_entity_helpers.generate_entity_name_from_template.return_value = (
-            "sensor.indoor_temperature_32_153289"
-        )
-
-        entity = RamsesSensorEntity(device_id, device_type, entity_name, config)
-
-        # Check default name generation
-        assert entity._attr_name == "Indoor Temperature 32:153289"
-
-    @patch(
-        "custom_components.ramses_extras.framework.base_classes.base_entity.EntityHelpers"
-    )
-    def test_init_entity_name_generation_failure(
-        self, mock_entity_helpers, hass, caplog
-    ):
-        """Test handling of entity name generation failure."""
-        device_id = "32:153289"
-        device_type = "HvacVentilator"
-        entity_name = "indoor_temperature"
-        config = {}
-
-        mock_entity_helpers.generate_entity_name_from_template.side_effect = Exception(
-            "Template error"
-        )
-
-        # Just create the entity, we don't need to use it since we're checking the log
-        RamsesSensorEntity(device_id, device_type, entity_name, config)
-
-        # Check that warning was logged
-        assert "Entity name generation failed" in caplog.text
-        assert "Template error" in caplog.text
-
-    def test_state_property(self, hass):
-        """Test state property."""
-        device_id = "32:153289"
-        device_type = "HvacVentilator"
-        entity_name = "indoor_temperature"
-        config = {}
-
-        with patch(
-            "custom_components.ramses_extras.framework.base_classes.base_entity.EntityHelpers"
+    def test_device_info_uses_detected_device_type(self, hass):
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.device.core.find_ramses_device"
+            ) as find_ramses_device,
+            patch(
+                "custom_components.ramses_extras.framework.helpers.device.core.get_device_type"
+            ) as get_device_type,
         ):
-            entity = RamsesSensorEntity(device_id, device_type, entity_name, config)
+            find_ramses_device.return_value = object()
+            get_device_type.return_value = "HvacVentilator"
 
-            # Initially None
-            assert entity.state is None
+            entity = ExtrasBaseEntity(hass, "32:153289")
+            info = entity.device_info
 
-            # Set value
-            entity._attr_native_value = 25.5
-            assert entity.state == 25.5
-
-    @pytest.mark.asyncio
-    async def test_async_update(self, hass):
-        """Test async_update method."""
-        device_id = "32:153289"
-        device_type = "HvacVentilator"
-        entity_name = "indoor_temperature"
-        config = {}
-
-        with patch(
-            "custom_components.ramses_extras.framework.base_classes.base_entity.EntityHelpers"
-        ):
-            entity = RamsesSensorEntity(device_id, device_type, entity_name, config)
-
-            # Initially None
-            assert entity._attr_native_value is None
-
-            # Update
-            await entity.async_update()
-
-            # Should set to 0.0 as placeholder
-            assert entity._attr_native_value == 0.0
-
-    @pytest.mark.asyncio
-    async def test_async_update_existing_value(self, hass):
-        """Test async_update when value already exists."""
-        device_id = "32:153289"
-        device_type = "HvacVentilator"
-        entity_name = "indoor_temperature"
-        config = {}
-
-        with patch(
-            "custom_components.ramses_extras.framework.base_classes.base_entity.EntityHelpers"
-        ):
-            entity = RamsesSensorEntity(device_id, device_type, entity_name, config)
-
-            # Set existing value
-            entity._attr_native_value = 23.5
-
-            # Update
-            await entity.async_update()
-
-            # Should not change existing value
-            assert entity._attr_native_value == 23.5
+            assert info["model"] == "HvacVentilator"
+            assert info["name"] == "HvacVentilator 32:153289"
