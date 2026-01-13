@@ -23,6 +23,29 @@ export async function callWebSocket(hass, message) {
           resolve(result);
         })
         .catch((error) => {
+          const code = error?.code || error?.error?.code;
+          const messageText =
+            error?.message ||
+            error?.error?.message ||
+            error?.toString?.() ||
+            '';
+
+          const isNotAvailable =
+            code === 'unknown_command' ||
+            code === 'not_found' ||
+            messageText.includes('unknown_command') ||
+            messageText.includes('Unknown command');
+
+          if (isNotAvailable) {
+            reject({
+              not_available: true,
+              code: code || 'unknown_command',
+              message: messageText,
+              original: error,
+            });
+            return;
+          }
+
           logger.error('WebSocket message failed:', error);
           reject(error);
         });

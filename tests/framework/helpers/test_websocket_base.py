@@ -73,7 +73,7 @@ class TestBaseWebSocketCommand:
         with patch.object(command._logger, "debug") as mock_debug:
             command._log_command("test_command")
 
-            mock_debug.assert_called_once_with("Executing test_command")
+            mock_debug.assert_called_once_with("Executing %s", "test_command")
 
     def test_log_command_with_device_id(self, hass):
         """Test logging command with device ID."""
@@ -83,7 +83,9 @@ class TestBaseWebSocketCommand:
             command._log_command("test_command", "32:153289")
 
             mock_debug.assert_called_once_with(
-                "Executing test_command for device 32:153289"
+                "Executing %s for device %s",
+                "test_command",
+                "32:153289",
             )
 
     def test_log_error_without_device_id(self, hass):
@@ -95,7 +97,9 @@ class TestBaseWebSocketCommand:
             command._log_error("test_command", error)
 
             mock_error.assert_called_once_with(
-                "Error executing test_command: Test error"
+                "Error executing %s: %s",
+                "test_command",
+                error,
             )
 
     def test_log_error_with_device_id(self, hass):
@@ -107,7 +111,10 @@ class TestBaseWebSocketCommand:
             command._log_error("test_command", error, "32:153289")
 
             mock_error.assert_called_once_with(
-                "Error executing test_command for device 32:153289: Test error"
+                "Error executing %s for device %s: %s",
+                "test_command",
+                "32:153289",
+                error,
             )
 
 
@@ -151,16 +158,13 @@ class TestGetEntityMappingsCommand:
     @patch(
         "custom_components.ramses_extras.framework.helpers.websocket_base.GetEntityMappingsCommand._get_entity_mappings_from_feature"
     )
-    @patch(
-        "custom_components.ramses_extras.framework.helpers.websocket_base.GetEntityMappingsCommand._is_sensor_control_enabled"
-    )
     @pytest.mark.asyncio
-    async def test_execute_success_no_device_id(
-        self, mock_sensor_enabled, mock_get_mappings, hass
-    ):
+    async def test_execute_success_no_device_id(self, mock_get_mappings, hass):
         """Test successful execution without device ID."""
-        mock_sensor_enabled.return_value = False
-        mock_get_mappings.return_value = {"sensor": {"temp": "temp_{device_id}"}}
+        mock_get_mappings.return_value = {
+            "temp_state": "sensor.temp_{device_id}",
+            "humidity_state": "sensor.humidity_{device_id}",
+        }
 
         command = GetEntityMappingsCommand(hass, "test_feature")
         mock_connection = MagicMock()
@@ -174,21 +178,18 @@ class TestGetEntityMappingsCommand:
         result = args[1]
 
         assert result["success"] is True
-        assert result["mappings"] == {"sensor": {"temp": "temp_{device_id}"}}
+        assert result["mappings"] == {
+            "temp_state": "sensor.temp_{device_id}",
+            "humidity_state": "sensor.humidity_{device_id}",
+        }
         assert result["device_id"] is None
 
     @patch(
         "custom_components.ramses_extras.framework.helpers.websocket_base.GetEntityMappingsCommand._get_entity_mappings_from_feature"
     )
-    @patch(
-        "custom_components.ramses_extras.framework.helpers.websocket_base.GetEntityMappingsCommand._is_sensor_control_enabled"
-    )
     @pytest.mark.asyncio
-    async def test_execute_success_with_device_id(
-        self, mock_sensor_enabled, mock_get_mappings, hass
-    ):
+    async def test_execute_success_with_device_id(self, mock_get_mappings, hass):
         """Test successful execution with device ID."""
-        mock_sensor_enabled.return_value = False
         mock_get_mappings.return_value = {
             "temp_state": "sensor.temp_{device_id}",
             "humidity_state": "sensor.humidity_{device_id}",
@@ -208,6 +209,75 @@ class TestGetEntityMappingsCommand:
         assert result["device_id"] == "32:153289"
         assert result["mappings"]["temp_state"] == "sensor.temp_32_153289"
         assert result["mappings"]["humidity_state"] == "sensor.humidity_32_153289"
+
+    @patch(
+        "custom_components.ramses_extras.framework.helpers.websocket_base.GetEntityMappingsCommand._get_entity_mappings_from_feature"
+    )
+    @pytest.mark.asyncio
+    async def test_execute_success_with_device_id_overlay_provider(
+        self, mock_get_mappings, hass
+    ):
+        """Test overlay_provider gets called and merges its results."""
+        mock_get_mappings.return_value = {
+            "temp_state": "sensor.temp_{device_id}",
+        }
+
+        overlay_provider = AsyncMock(
+            return_value={
+                "mappings": {"temp_state": "sensor.override_32_153289"},
+                "sources": {"temp_state": "external"},
+            }
+        )
+
+        command = GetEntityMappingsCommand(
+            hass,
+            "test_feature",
+            overlay_provider=overlay_provider,
+        )
+        mock_connection = MagicMock()
+        msg = {"id": 123, "type": "get_entity_mappings", "device_id": "32:153289"}
+
+        await command.execute(mock_connection, msg)
+
+        overlay_provider.assert_awaited_once_with(
+            "32:153289",
+            {"temp_state": "sensor.temp_32_153289"},
+        )
+
+        mock_connection.send_result.assert_called_once()
+        args, _ = mock_connection.send_result.call_args
+        result = args[1]
+
+        assert result["mappings"]["temp_state"] == "sensor.override_32_153289"
+        assert result["sources"] == {"temp_state": "external"}
+
+    @patch(
+        "custom_components.ramses_extras.framework.helpers.websocket_base.GetEntityMappingsCommand._get_entity_mappings_from_feature"
+    )
+    @pytest.mark.asyncio
+    async def test_execute_overlay_provider_exception(self, mock_get_mappings, hass):
+        """Test overlay_provider exceptions are handled by execute."""
+        mock_get_mappings.return_value = {
+            "temp_state": "sensor.temp_{device_id}",
+        }
+
+        overlay_provider = AsyncMock(side_effect=RuntimeError("overlay fail"))
+
+        command = GetEntityMappingsCommand(
+            hass,
+            "test_feature",
+            overlay_provider=overlay_provider,
+        )
+        mock_connection = MagicMock()
+        msg = {"id": 123, "type": "get_entity_mappings", "device_id": "32:153289"}
+
+        await command.execute(mock_connection, msg)
+
+        mock_connection.send_error.assert_called_once_with(
+            123,
+            "get_entity_mappings_failed",
+            "overlay fail",
+        )
 
     @patch(
         "custom_components.ramses_extras.framework.helpers.websocket_base.GetEntityMappingsCommand._get_entity_mappings_from_feature"
@@ -310,90 +380,8 @@ class TestGetEntityMappingsCommand:
             mappings = await command._get_entity_mappings_from_feature()
             assert mappings == {}
 
-    def test_is_sensor_control_enabled(self, hass):
-        """Test checking if sensor control is enabled."""
-        from custom_components.ramses_extras.const import DOMAIN
-
-        command = GetEntityMappingsCommand(hass, "test")
-        mock_entry = MagicMock()
-        mock_entry.data = {"enabled_features": {"sensor_control": True}}
-        hass.data = {DOMAIN: {"config_entry": mock_entry}}
-        assert command._is_sensor_control_enabled() is True
-
-    def test_is_sensor_control_enabled_no_entry(self, hass):
-        """Test when no config entry is in hass data."""
-        from custom_components.ramses_extras.const import DOMAIN
-
-        command = GetEntityMappingsCommand(hass, "test")
-        hass.data = {DOMAIN: {}}
-        assert command._is_sensor_control_enabled() is False
-
-    def test_is_sensor_control_enabled_exception(self, hass):
-        """Test exception in _is_sensor_control_enabled."""
-        # Create a fresh mock for this test
-        mock_hass = MagicMock()
-        command = GetEntityMappingsCommand(mock_hass, "test")
-        # Trigger exception by making hass.data access fail
-        type(mock_hass).data = PropertyMock(side_effect=RuntimeError)
-        assert command._is_sensor_control_enabled() is False
-
-    @pytest.mark.asyncio
-    async def test_apply_sensor_control_overrides_success(self, hass):
-        """Test successful application of sensor control overrides."""
-        command = GetEntityMappingsCommand(hass, "test_feature")
-        device_id = "32:153289"
-        base_mappings = {"indoor_humidity": "sensor.base_rh"}
-
-        with (
-            patch.object(command, "_get_device_type", return_value="FAN"),
-            patch(
-                "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
-            ) as mock_resolver_class,
-        ):
-            mock_resolver = mock_resolver_class.return_value
-            mock_resolver.resolve_entity_mappings = AsyncMock(
-                return_value={
-                    "mappings": {"indoor_humidity": "sensor.override_rh"},
-                    "sources": {"indoor_humidity": "external"},
-                }
-            )
-
-            result = await command._apply_sensor_control_overrides(
-                device_id, base_mappings
-            )
-            assert result["mappings"]["indoor_humidity"] == "sensor.override_rh"
-
-    @pytest.mark.asyncio
-    async def test_apply_sensor_control_overrides_exception(self, hass):
-        """Test exception handling in _apply_sensor_control_overrides."""
-        command = GetEntityMappingsCommand(hass, "test")
-        with patch.object(command, "_get_device_type", side_effect=RuntimeError):
-            result = await command._apply_sensor_control_overrides("id", {})
-            assert result == {}
-
-    def test_get_device_type(self, hass):
-        """Test getting device type."""
-        from custom_components.ramses_extras.const import DOMAIN
-
-        command = GetEntityMappingsCommand(hass, "test")
-        mock_dev = MagicMock()
-        mock_dev.device_id = "32:1"
-        mock_dev.type = "FAN"
-        hass.data = {DOMAIN: {"devices": [mock_dev]}}
-        with patch(
-            "custom_components.ramses_extras.framework.helpers.websocket_base.extract_device_id_as_string",
-            return_value="32:1",
-        ):
-            assert command._get_device_type("32:1") == "FAN"
-
-    def test_get_device_type_exception(self, hass):
-        """Test exception handling in _get_device_type."""
-        # Create a fresh mock for this test
-        mock_hass = MagicMock()
-        command = GetEntityMappingsCommand(mock_hass, "test")
-        # Trigger exception by making hass.data access fail
-        type(mock_hass).data = PropertyMock(side_effect=RuntimeError)
-        assert command._get_device_type("id") is None
+    # Note: sensor_control overlay logic and device type lookup were moved out of
+    # the framework and into the default feature WebSocket handler.
 
 
 class TestGetAllFeatureEntitiesCommand:
@@ -438,15 +426,11 @@ class TestGetAllFeatureEntitiesCommand:
         command = GetAllFeatureEntitiesCommand(hass, "test")
 
         mock_module = MagicMock()
-        mock_module.SENSOR_CONFIGS = {"s": {"entity_template": "t"}}
+        mock_module.FEATURE_DEFINITION = {
+            "sensor_configs": {"s": {"entity_template": "t"}},
+        }
 
-        with (
-            patch("importlib.import_module", return_value=mock_module),
-            patch(
-                "custom_components.ramses_extras.framework.helpers.websocket_base.dir",
-                return_value=["SENSOR_CONFIGS"],
-            ),
-        ):
+        with patch("importlib.import_module", return_value=mock_module):
             entities = await command._get_all_entities_from_feature()
             assert "sensor" in entities
 

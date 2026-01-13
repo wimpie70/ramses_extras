@@ -5,11 +5,7 @@ This module provides minimal WebSocket infrastructure for Ramses Extras features
 
 import importlib
 import logging
-from typing import TYPE_CHECKING, Any
-
-from custom_components.ramses_extras.framework.helpers.device.core import (
-    extract_device_id_as_string,
-)
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
@@ -75,9 +71,9 @@ class BaseWebSocketCommand:
             device_id: Device ID if applicable
         """
         if device_id:
-            self._logger.debug(f"Executing {command} for device {device_id}")
+            self._logger.debug("Executing %s for device %s", command, device_id)
         else:
-            self._logger.debug(f"Executing {command}")
+            self._logger.debug("Executing %s", command)
 
     def _log_error(
         self, command: str, error: Exception, device_id: str | None = None
@@ -91,10 +87,13 @@ class BaseWebSocketCommand:
         """
         if device_id:
             self._logger.error(
-                f"Error executing {command} for device {device_id}: {error}"
+                "Error executing %s for device %s: %s",
+                command,
+                device_id,
+                error,
             )
         else:
-            self._logger.error(f"Error executing {command}: {error}")
+            self._logger.error("Error executing %s: %s", command, error)
 
 
 class DeviceWebSocketCommand(BaseWebSocketCommand):
@@ -122,7 +121,13 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
     Supports both feature_id and direct const module references.
     """
 
-    def __init__(self, hass: Any, feature_identifier: str) -> None:
+    def __init__(
+        self,
+        hass: Any,
+        feature_identifier: str,
+        overlay_provider: Callable[[str, dict[str, str]], Awaitable[dict[str, Any]]]
+        | None = None,
+    ) -> None:
         """Initialize with feature identifier (feature_id or const module path).
 
         Args:
@@ -132,6 +137,7 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
         """
         super().__init__(hass, feature_identifier)
         self.feature_identifier = feature_identifier
+        self._overlay_provider = overlay_provider
 
     async def execute(self, connection: "WebSocket", msg: dict[str, Any]) -> None:
         """Execute the get_entity_mappings command.
@@ -166,14 +172,13 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
                     "device_id": device_id,
                 }
 
-                # Apply sensor_control overrides if enabled and device_id provided
-                if device_id and self._is_sensor_control_enabled():
-                    sensor_result = await self._apply_sensor_control_overrides(
-                        device_id, parsed_mappings
+                if device_id and self._overlay_provider is not None:
+                    overlay_result = await self._overlay_provider(
+                        device_id,
+                        parsed_mappings,
                     )
-                    if sensor_result:
-                        # Merge sensor control results
-                        result.update(sensor_result)
+                    if overlay_result:
+                        result.update(overlay_result)
 
                 # Return the complete result
                 self._send_success(connection, msg["id"], result)
@@ -213,7 +218,10 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             parsed_mappings[state_name] = parsed_entity
 
             self._logger.debug(
-                f"Parsed {state_name}: {entity_template} -> {parsed_entity}"
+                "Parsed %s: %s -> %s",
+                state_name,
+                entity_template,
+                parsed_entity,
             )
 
         return parsed_mappings
@@ -268,126 +276,19 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
                     )
 
             self._logger.debug(
-                f"Found entity mappings for {self.feature_identifier}: "
-                f"{entity_mappings}"
+                "Found entity mappings for %s: %s",
+                self.feature_identifier,
+                entity_mappings,
             )
             return entity_mappings
 
         except Exception as error:
             self._logger.error(
-                f"Failed to get entity mappings for {self.feature_identifier}: {error}"
+                "Failed to get entity mappings for %s: %s",
+                self.feature_identifier,
+                error,
             )
             return {}
-
-    def _is_sensor_control_enabled(self) -> bool:
-        """Check if sensor_control feature is enabled.
-
-        Returns:
-            True if sensor_control is enabled, False otherwise
-        """
-        try:
-            from ...const import DOMAIN
-
-            config_entry = self.hass.data.get(DOMAIN, {}).get("config_entry")
-            if not config_entry:
-                return False
-
-            enabled_features = (
-                config_entry.data.get("enabled_features")
-                or config_entry.options.get("enabled_features")
-                or {}
-            )
-
-            return bool(enabled_features.get("sensor_control", False))
-        except Exception:
-            return False
-
-    async def _apply_sensor_control_overrides(
-        self, device_id: str, base_mappings: dict[str, str]
-    ) -> dict[str, Any]:
-        """Apply sensor control overrides to base mappings.
-
-        Args:
-            device_id: Device ID
-            base_mappings: Base entity mappings from feature
-
-        Returns:
-            Dictionary with sensor control results to merge into main response
-        """
-        try:
-            # Import resolver to avoid circular imports
-            from ...features.sensor_control.resolver import SensorControlResolver
-
-            resolver = SensorControlResolver(self.hass)
-
-            # Determine device type from device registry or fallback
-            device_type = self._get_device_type(device_id)
-            if not device_type:
-                self._logger.warning(
-                    f"Could not determine device type for {device_id}, "
-                    "skipping sensor control overrides"
-                )
-                return {}
-
-            # Get sensor control resolution
-            sensor_result = await resolver.resolve_entity_mappings(
-                device_id, device_type
-            )
-
-            # Merge sensor control mappings with base mappings
-            # Sensor control takes precedence for supported metrics
-            merged_mappings = base_mappings.copy()
-            merged_mappings.update(sensor_result["mappings"])
-
-            return {
-                "mappings": merged_mappings,
-                "sources": sensor_result["sources"],
-                "raw_internal": sensor_result.get("raw_internal"),
-                "abs_humidity_inputs": sensor_result.get("abs_humidity_inputs", {}),
-            }
-
-        except Exception as err:
-            self._logger.error(f"Failed to apply sensor control overrides: {err}")
-            return {}
-
-    def _get_device_type(self, device_id: str) -> str | None:
-        """Get device type for a device ID.
-
-        This helper is resilient to different device ID formats used across the
-        codebase (e.g. "32:153289" vs "32_153289"). It normalizes both the
-        provided ID and stored IDs to a colon-based form before comparing.
-
-        Args:
-            device_id: Device ID as passed by the caller (may use ':' or '_')
-
-        Returns:
-            Device type (FAN, CO2, etc.) or None if not found
-        """
-        try:
-            from ...const import DOMAIN
-
-            devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
-
-            # Normalize incoming ID to colon form for comparison
-            target_colon = str(device_id).replace("_", ":")
-
-            for device in devices:
-                if isinstance(device, dict):
-                    raw_id = device.get("device_id")
-                    dev_type = device.get("type")
-                else:
-                    raw_id = device
-                    dev_type = getattr(device, "type", None)
-
-                dev_id_str = extract_device_id_as_string(raw_id)
-                dev_colon = dev_id_str.replace("_", ":")
-
-                if dev_colon == target_colon:
-                    return dev_type
-        except Exception as err:
-            self._logger.error(f"Failed to get device type for {device_id}: {err}")
-
-        return None
 
 
 class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
@@ -483,53 +384,34 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
             # Import the const module for this feature
             feature_module = importlib.import_module(const_module_path)
 
+            feature_definition = getattr(feature_module, "FEATURE_DEFINITION", None)
+            if not isinstance(feature_definition, dict):
+                feature_definition = {}
+
+            def _as_config_dict(value: Any) -> dict[str, dict[str, Any]]:
+                return value if isinstance(value, dict) else {}
+
             all_entities: dict[str, dict[str, Any]] = {
-                "switch": {},
-                "binary_sensor": {},
-                "sensor": {},
-                "number": {},
+                "switch": _as_config_dict(feature_definition.get("switch_configs")),
+                "binary_sensor": _as_config_dict(
+                    feature_definition.get("boolean_configs")
+                ),
+                "sensor": _as_config_dict(feature_definition.get("sensor_configs")),
+                "number": _as_config_dict(feature_definition.get("number_configs")),
             }
 
-            prefixes = (
-                "HELLO_WORLD_",
-                "HUMIDITY_CONTROL_",
-                "HVAC_FAN_CARD_",
-                "SENSOR_CONTROL_",
-                "",
-            )
-
-            # Collect configurations using suffix matching
-            for attr_name in dir(feature_module):
-                if attr_name.startswith("__"):
-                    continue
-
-                platform = None
-                for prefix in prefixes:
-                    if attr_name.startswith(prefix):
-                        suffix = attr_name[len(prefix) :]
-                        if suffix == "SWITCH_CONFIGS":
-                            platform = "switch"
-                        elif suffix in ("BINARY_SENSOR_CONFIGS", "BOOLEAN_CONFIGS"):
-                            platform = "binary_sensor"
-                        elif suffix == "SENSOR_CONFIGS":
-                            platform = "sensor"
-                        elif suffix == "NUMBER_CONFIGS":
-                            platform = "number"
-
-                        if platform:
-                            configs = getattr(feature_module, attr_name)
-                            if isinstance(configs, dict):
-                                all_entities[platform].update(configs)
-                            break
-
             self._logger.debug(
-                f"Found all entities for {self.feature_identifier}: {all_entities}"
+                "Found all entities for %s: %s",
+                self.feature_identifier,
+                all_entities,
             )
             return all_entities
 
         except Exception as error:
             self._logger.error(
-                f"Failed to get all entities for {self.feature_identifier}: {error}"
+                "Failed to get all entities for %s: %s",
+                self.feature_identifier,
+                error,
             )
             return {}
 
@@ -570,8 +452,11 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
                     parsed_entities[platform][entity_name] = parsed_config
 
                     self._logger.debug(
-                        f"Parsed {platform}.{entity_name}: {entity_template} -> "
-                        f"{parsed_entity_id}"
+                        "Parsed %s.%s: %s -> %s",
+                        platform,
+                        entity_name,
+                        entity_template,
+                        parsed_entity_id,
                     )
 
         return parsed_entities

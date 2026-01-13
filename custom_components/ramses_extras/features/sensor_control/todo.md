@@ -4,9 +4,9 @@
 
 - [x] Inspect existing sensor_control implementation + tests
 - [x] Fix outstanding lint/type/test warnings (Python)
-- [ ] Confirm resolver behavior and mapping precedence is well-defined
-- [ ] Improve docstrings/types across sensor_control modules
-- [ ] Verify tests (sensor_control) then run `make local-ci`
+- [x] Confirm resolver behavior and mapping precedence is well-defined
+- [x] Improve docstrings/types across sensor_control modules
+- [x] Verify tests (sensor_control) then run `make local-ci`
 
 ## Big-step workflow (each step should pass CI)
 

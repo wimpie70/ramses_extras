@@ -154,6 +154,96 @@ async def ws_get_entity_mappings(
     )
 
     try:
+
+        def _extract_device_id(raw: Any) -> str | None:
+            if raw is None:
+                return None
+            if isinstance(raw, str):
+                return raw
+            for attr in ("id", "device_id", "_id", "name"):
+                if hasattr(raw, attr):
+                    value = getattr(raw, attr)
+                    if value is not None:
+                        return str(value)
+            return str(raw)
+
+        def _get_device_type(device_id: str) -> str | None:
+            devices = hass.data.get(DOMAIN, {}).get("devices", [])
+            target_colon = str(device_id).replace("_", ":")
+
+            for device in devices:
+                if isinstance(device, dict):
+                    raw_id = device.get("device_id")
+                    dev_type = device.get("type")
+                else:
+                    raw_id = device
+                    dev_type = getattr(device, "type", None)
+
+                dev_id = _extract_device_id(raw_id)
+                if dev_id is None:
+                    continue
+
+                dev_id_str = dev_id.replace("_", ":")
+                if dev_id_str == target_colon:
+                    return dev_type
+            return None
+
+        def _is_feature_enabled(feature_name: str) -> bool:
+            enabled_features = hass.data.get(DOMAIN, {}).get("enabled_features")
+            if enabled_features is None:
+                config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+                if config_entry is not None:
+                    enabled_features = (
+                        config_entry.data.get("enabled_features")
+                        or config_entry.options.get("enabled_features")
+                        or {}
+                    )
+                else:
+                    enabled_features = {}
+
+            if isinstance(enabled_features, dict):
+                return enabled_features.get(feature_name) is True
+            if isinstance(enabled_features, list):
+                return feature_name in enabled_features
+            return False
+
+        async def _overlay_provider(
+            device_id: str,
+            base_mappings: dict[str, str],
+        ) -> dict[str, Any]:
+            if not _is_feature_enabled("sensor_control"):
+                return {}
+
+            try:
+                from ...features.sensor_control.resolver import SensorControlResolver
+
+                device_type = _get_device_type(device_id)
+                if not device_type:
+                    return {}
+
+                resolver = SensorControlResolver(hass)
+                sensor_result = await resolver.resolve_entity_mappings(
+                    device_id,
+                    device_type,
+                )
+
+                merged_mappings = base_mappings.copy()
+                merged_mappings.update(sensor_result["mappings"])
+
+                return {
+                    "mappings": merged_mappings,
+                    "sources": sensor_result["sources"],
+                    "raw_internal": sensor_result.get("raw_internal"),
+                    "abs_humidity_inputs": sensor_result.get("abs_humidity_inputs", {}),
+                }
+            except Exception as err:
+                _LOGGER.error(
+                    "Failed to apply sensor_control overlays: %s",
+                    err,
+                    exc_info=True,
+                )
+                return {}
+
         # Determine feature identifier
         if const_module:
             feature_identifier = const_module
@@ -170,7 +260,11 @@ async def ws_get_entity_mappings(
         _LOGGER.debug("Using feature_identifier: %s", feature_identifier)
 
         # Create and execute the command
-        cmd = GetEntityMappingsCommand(hass, feature_identifier)
+        cmd = GetEntityMappingsCommand(
+            hass,
+            feature_identifier,
+            overlay_provider=_overlay_provider,
+        )
         await cmd.execute(connection, msg)
 
     except Exception as err:
