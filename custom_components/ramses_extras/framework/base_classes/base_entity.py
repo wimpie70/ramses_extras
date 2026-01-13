@@ -5,18 +5,12 @@ entities inherit from. It provides common functionality that is shared
 across all features.
 """
 
-import logging
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity import EntityCategory
 
 from ...const import DOMAIN
-from ..helpers.entity.core import EntityHelpers
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class ExtrasBaseEntity:

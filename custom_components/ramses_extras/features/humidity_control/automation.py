@@ -7,6 +7,7 @@ feature-centric architecture.
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from typing import Any, cast
 
 from homeassistant.core import HomeAssistant, State
@@ -448,7 +449,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         _LOGGER.info("Humidity control automation stopped")
 
     async def _process_automation_logic(
-        self, device_id: str, entity_states: dict[str, Any]
+        self, device_id: str, entity_states: Mapping[str, float | bool]
     ) -> None:
         """Process humidity control automation logic for a device.
 

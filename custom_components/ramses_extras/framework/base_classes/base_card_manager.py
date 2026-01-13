@@ -6,7 +6,6 @@ cleanup, and management functionality.
 """
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry

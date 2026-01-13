@@ -13,6 +13,7 @@ how to implement automation-driven entity control patterns in Ramses Extras.
 """
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.core import HomeAssistant, State
@@ -128,7 +129,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         _LOGGER.info("Hello World automation stopped")
 
     async def _process_automation_logic(
-        self, device_id: str, entity_states: dict[str, Any]
+        self, device_id: str, entity_states: Mapping[str, float | bool]
     ) -> None:
         """Process Hello World automation logic for a device.
 
@@ -143,7 +144,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             return
 
         try:
-            switch_state = entity_states.get("hello_world_switch", False)
+            switch_state = bool(entity_states.get("hello_world_switch", False))
 
             # Simple automation logic: binary sensor follows switch state
             binary_sensor_should_be_on = switch_state

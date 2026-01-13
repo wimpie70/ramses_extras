@@ -10,10 +10,10 @@ Targets:
 ## Tasks
 
 - [x] Map responsibilities and dependencies of each base class (who calls what)
-- [ ] Identify duplication between `base_entity.py` and `platform_entities.py`
+- [x] Identify duplication between `base_entity.py` and `platform_entities.py`
 - [x] Check for over-complicated lifecycle flows in `base_automation.py` (simplify without behavior changes)
-- [ ] Verify type hints and reduce `Any` usage where safe
-- [ ] Confirm base classes have no feature-specific assumptions
+- [x] Verify type hints and reduce `Any` usage where safe
+- [x] Confirm base classes have no feature-specific assumptions
 
 ## Notes / responsibilities
 
@@ -82,6 +82,7 @@ Targets:
 - Option A (implemented): remove unused `RamsesSensorEntity`
   - Confirmed via grep that it was not referenced by active features.
   - This removes the duplicate “generic sensor base” path in favor of template-driven platform entities.
+  - Tests were updated to remove the obsolete test suite and add coverage for `ExtrasBaseEntity` branches.
 
 - Option B: move identity setup helper into `ExtrasBaseEntity`
   - Introduce a protected helper on `ExtrasBaseEntity` to set `entity_id` / `_attr_unique_id` / `_attr_name`.
@@ -127,6 +128,23 @@ Targets:
 - Logging style consistency:
   - There are several f-string logs in `base_automation.py` that could be converted to lazy formatting.
   - Not urgent, but reduces noise in future diffs.
+
+### Type-hints / Any reduction notes (safe)
+
+- `base_automation.py`:
+  - Tightened callback/timer surfaces (`_listeners`, `_change_timers`, periodic handle).
+  - Added a minimal protocol for the optional binary sensor hook (`set_state(bool)`).
+  - Clarified `entity_states` typing as `Mapping[str, float | bool]`.
+- `platform_entities.py`:
+  - Fixed an exception formatting bug in `_LOGGER.error(...)` (`%e` -> `%s`).
+  - Removed an unused import.
+- `base_entity.py`:
+  - Removed unused imports and an unused module logger.
+
+### Feature-specific assumptions check
+
+- No feature-specific imports or runtime logic were found in base classes.
+- Some docstrings/examples mention concrete feature names (e.g. "humidity_control", "hello_world") purely as illustrative examples.
 
 ### `base_card_manager.py` (`BaseCardManager`)
 

@@ -13,7 +13,7 @@ Common patterns extracted:
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Generic, TypeVar
+from typing import Any, Awaitable, Callable
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.number import NumberEntity
@@ -435,7 +435,7 @@ async def generic_platform_setup(
             )
         except Exception as e:
             _LOGGER.error(
-                "Failed to create %s entities for device %s: %e",
+                "Failed to create %s entities for device %s: %s",
                 platform_type,
                 device_id,
                 e,

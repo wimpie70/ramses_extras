@@ -25,3 +25,21 @@ This file tracks *big picture* cleanup and refactoring work across the integrati
   - `framework/helpers/websocket_base.py` no longer applies `sensor_control` overrides inside the framework.
   - `framework/helpers/websocket_base.py` no longer hardcodes feature constant prefixes when scraping const modules.
   - `framework/helpers/config/validation.py` no longer defines feature-specific validation rule constants.
+
+- Base classes cleanup:
+  - Removed unused legacy `RamsesSensorEntity` from `framework/base_classes/base_entity.py`.
+  - Updated tests to remove the obsolete `RamsesSensorEntity` test suite and add coverage for `ExtrasBaseEntity`.
+
+- Architecture review (initial findings):
+  - Enabled-feature resolution is duplicated across:
+    - `__init__.py` (entry setup + feature instance creation)
+    - `services_integration.py`
+    - `websocket_integration.py`
+    Consider centralizing this into a single helper (to avoid drift between modules).
+  - Integration boundaries are improving (feature-centric services/ws modules), but `__init__.py` remains the "god" orchestrator:
+    - It loads feature definitions, imports platforms, registers websocket/services, manages card deployment, creates feature instances, and starts automations.
+    Consider extracting orchestration into small, testable helpers (no behavior changes).
+  - Config validation appears split between:
+    - `framework/helpers/common/validation.py`
+    - `framework/helpers/config/validation.py`
+    This likely contains duplication; worth inventorying and consolidating patterns.

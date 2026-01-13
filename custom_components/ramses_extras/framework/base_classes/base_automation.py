@@ -12,12 +12,13 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from datetime import timedelta
+from collections.abc import Callable, Mapping
+from datetime import datetime, timedelta
 
 # Avoid circular imports by importing when needed in methods
-from typing import Any
+from typing import Any, Protocol
 
-from homeassistant.core import CoreState, HomeAssistant, State
+from homeassistant.core import CoreState, Event, HomeAssistant, State
 from homeassistant.helpers.event import async_track_state_change_event
 
 from ...const import DOMAIN
@@ -28,6 +29,10 @@ from ..helpers.entity.core import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class _BinarySensorLike(Protocol):
+    def set_state(self, is_on: bool) -> None: ...
 
 
 class ExtrasBaseAutomation(ABC):
@@ -49,7 +54,7 @@ class ExtrasBaseAutomation(ABC):
         self,
         hass: HomeAssistant,
         feature_id: str,
-        binary_sensor: Any = None,
+        binary_sensor: _BinarySensorLike | None = None,
         debounce_seconds: int = 45,
     ) -> None:
         """Initialize the base automation.
@@ -66,11 +71,11 @@ class ExtrasBaseAutomation(ABC):
         self.debounce_seconds = debounce_seconds
 
         # Generic automation state
-        self._listeners: list[Any] = []  # State change listeners
-        self._change_timers: dict[str, Any] = {}  # device_id -> timer for debouncing
+        self._listeners: list[Callable[[], None]] = []  # State change listeners
+        self._change_timers: dict[str, asyncio.Handle] = {}  # device_id -> timer
         self._active = False
         self._specific_entity_ids: set[str] = set()
-        self._periodic_check_handle: Any = None  # Handle for periodic entity checks
+        self._periodic_check_handle: Callable[[], None] | None = None
 
         # Cache for entity patterns
         self._entity_patterns: list[str] | None = None
@@ -128,7 +133,7 @@ class ExtrasBaseAutomation(ABC):
         _LOGGER.debug("%s automation registered for HA startup", self.feature_id)
         _LOGGER.debug("Will initialize when Home Assistant is ready")
 
-    async def _on_homeassistant_started(self, event: Any) -> None:
+    async def _on_homeassistant_started(self, event: Event | None) -> None:
         """Handle Home Assistant startup event."""
         _LOGGER.info(
             "Home Assistant started, initializing %s automation",
@@ -248,7 +253,7 @@ class ExtrasBaseAutomation(ABC):
                         _LOGGER.debug("Found entity: %s", entity.entity_id)
                         if entity.entity_id not in self._specific_entity_ids:
 
-                            def _handle_state_change_event(event: Any) -> None:
+                            def _handle_state_change_event(event: Event) -> None:
                                 self._handle_state_change(
                                     event.data.get("entity_id"),
                                     event.data.get("old_state"),
@@ -287,7 +292,7 @@ class ExtrasBaseAutomation(ABC):
     # ==================== STATE CHANGE HANDLING ====================
 
     def _handle_state_change(
-        self, entity_id: str, old_state: State | None, new_state: State | None
+        self, entity_id: str | None, old_state: State | None, new_state: State | None
     ) -> None:
         """Handle state changes using generic automation patterns.
 
@@ -299,6 +304,8 @@ class ExtrasBaseAutomation(ABC):
             old_state: Previous state (if any)
             new_state: New state
         """
+        if entity_id is None:
+            return
         _LOGGER.debug(
             f"State change: {entity_id} -> {new_state.state if new_state else 'None'}"
         )
@@ -414,7 +421,7 @@ class ExtrasBaseAutomation(ABC):
             timedelta(seconds=30),  # Check every 30 seconds
         )
 
-    async def _check_for_entities_periodically(self, now: Any) -> None:
+    async def _check_for_entities_periodically(self, now: datetime) -> None:
         """Periodic check for entities."""
         _LOGGER.debug(f"Periodic check for {self.feature_id} entities")
 
@@ -535,7 +542,7 @@ class ExtrasBaseAutomation(ABC):
             get_feature_entity_mappings,
         )
 
-        states = {}
+        states: dict[str, float | bool] = {}
 
         # Get dynamic state mappings from feature configuration
         state_mappings = await get_feature_entity_mappings(self.feature_id, device_id)
@@ -683,7 +690,7 @@ class ExtrasBaseAutomation(ABC):
 
     @abstractmethod
     async def _process_automation_logic(
-        self, device_id: str, entity_states: dict[str, Any]
+        self, device_id: str, entity_states: Mapping[str, float | bool]
     ) -> None:
         """Process automation logic specific to this feature.
 
