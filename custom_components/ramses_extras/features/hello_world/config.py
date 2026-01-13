@@ -82,7 +82,7 @@ class HelloWorldConfig(ExtrasConfigManager):
             default_config=DEFAULT_CONFIG,
         )
 
-        _LOGGER.info(f"Initialized {DOMAIN} configuration manager")
+        _LOGGER.info("Initialized %s configuration manager", DOMAIN)
 
     def validate_config(self) -> bool:
         """Validate Hello World feature configuration.
@@ -98,10 +98,10 @@ class HelloWorldConfig(ExtrasConfigManager):
             return super().validate_config()
 
         except vol.Invalid as err:
-            _LOGGER.error(f"Hello World configuration validation error: {err}")
+            _LOGGER.error("Hello World configuration validation error: %s", err)
             return False
         except Exception as e:
-            _LOGGER.error(f"Hello World configuration validation failed: {e}")
+            _LOGGER.error("Hello World configuration validation failed: %s", e)
             return False
 
     def get_config_schema(self) -> dict[str, Any]:
@@ -117,7 +117,7 @@ class HelloWorldConfig(ExtrasConfigManager):
         return {
             "type": "object",
             "properties": {
-                "default on/off": {
+                "enabled": {
                     "type": "boolean",
                     "title": "Default state for the Switch",
                     "description": "Example how to use configs in the submenu",

@@ -58,7 +58,7 @@ def _get_entities_manager(hass: HomeAssistant) -> Any:
         return SimpleEntityManager(hass)
 
     except Exception as err:
-        _LOGGER.error(f"Could not get shared entities manager: {err}")
+        _LOGGER.error("Could not get shared entities manager: %s", err)
         return None
 
 
@@ -74,11 +74,15 @@ async def ws_toggle_switch(
     hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
     """Toggle Hello World switch state via WebSocket."""
-    _LOGGER.info(f"WebSocket command received: {msg}")
+    _LOGGER.info("WebSocket command received: %s", msg)
     device_id = msg["device_id"]
     state = msg.get("state")
 
-    _LOGGER.info(f"Processing toggle_switch for device {device_id} with state {state}")
+    _LOGGER.info(
+        "Processing toggle_switch for device %s with state %s",
+        device_id,
+        state,
+    )
 
     try:
         # Generate entity ID using the template from const
@@ -135,7 +139,9 @@ async def ws_toggle_switch(
             return
 
         _LOGGER.info(
-            f"Entity {switch_entity_id} exists, calling service to set state to {state}"
+            "Entity %s exists, calling service to set state to %s",
+            switch_entity_id,
+            state,
         )
 
         # Use Home Assistant's switch service to control the entity
@@ -161,9 +167,10 @@ async def ws_toggle_switch(
             )
             return
 
-        _LOGGER.info(f"Set switch entity {switch_entity_id} to {state}")
+        _LOGGER.info("Set switch entity %s to %s", switch_entity_id, state)
         _LOGGER.info(
-            f"Automation will handle binary sensor coordination for device {device_id}"
+            "Automation will handle binary sensor coordination for device %s",
+            device_id,
         )
 
         # Send success response
@@ -183,17 +190,21 @@ async def ws_toggle_switch(
         )
 
         _LOGGER.info(
-            f"Successfully sent switch command for device {device_id} to {state}. "
-            f"Automation will handle binary sensor coordination."
+            "Successfully sent switch command for device %s to %s. "
+            "Automation will handle binary sensor coordination.",
+            device_id,
+            state,
         )
 
     except Exception as err:
         _LOGGER.error(
-            f"Failed to toggle Hello World switch for device {device_id}: {err}"
+            "Failed to toggle Hello World switch for device %s: %s",
+            device_id,
+            err,
         )
         import traceback
 
-        _LOGGER.error(f"Traceback: {traceback.format_exc()}")
+        _LOGGER.error("Traceback: %s", traceback.format_exc())
         connection.send_error(msg["id"], "toggle_failed", str(err))
 
 
@@ -249,6 +260,8 @@ async def ws_get_switch_state(
 
     except Exception as err:
         _LOGGER.error(
-            f"Failed to get Hello World switch state for device {device_id}: {err}"
+            "Failed to get Hello World switch state for device %s: %s",
+            device_id,
+            err,
         )
         connection.send_error(msg["id"], "get_state_failed", str(err))

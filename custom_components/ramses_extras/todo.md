@@ -14,14 +14,14 @@ This file tracks *big picture* cleanup and refactoring work across the integrati
 ## Big picture
 
 - [ ] Review integration boundaries (framework vs features vs top-level integration)
-- [ ] Identify feature-specific code currently living in the framework and propose moves
+- [x] Identify feature-specific code currently living in the framework and propose moves
 - [ ] Identify duplicate or over-complicated framework utilities and propose simplifications
 - [ ] Confirm service/websocket/entity/automation responsibility boundaries are consistent across the codebase
 
 ## Notes / findings
 
-- `hello_world` appears to be example code and still contains a TODO in its config schema.
-- Framework feature-specific leakage found:
-  - `framework/helpers/websocket_base.py` applies `sensor_control` overrides inside the framework (imports `features.sensor_control.resolver`).
-  - `framework/helpers/websocket_base.py` hardcodes feature constant prefixes (`HELLO_WORLD_`, `HUMIDITY_CONTROL_`, `HVAC_FAN_CARD_`, `SENSOR_CONTROL_`) when scraping const modules.
-  - `framework/helpers/config/validation.py` defines `HUMIDITY_CONTROL_VALIDATION_RULES` and `TEMPERATURE_CONTROL_VALIDATION_RULES` (likely should live in features).
+- `hello_world` is example/template code.
+- Resolved framework feature-specific leakage:
+  - `framework/helpers/websocket_base.py` no longer applies `sensor_control` overrides inside the framework.
+  - `framework/helpers/websocket_base.py` no longer hardcodes feature constant prefixes when scraping const modules.
+  - `framework/helpers/config/validation.py` no longer defines feature-specific validation rule constants.

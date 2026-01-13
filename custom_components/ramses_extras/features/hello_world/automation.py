@@ -74,7 +74,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
 
             return enabled_features.get("hello_world", False) is True
         except Exception as e:
-            _LOGGER.warning(f"Could not check feature status: {e}")
+            _LOGGER.warning("Could not check feature status: %s", e)
             return False
 
     def _generate_entity_patterns(self) -> list[str]:
@@ -88,7 +88,8 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         ]
 
         _LOGGER.debug(
-            f"Generated {len(patterns)} entity patterns for Hello World automation"
+            "Generated %s entity patterns for Hello World automation",
+            len(patterns),
         )
         return patterns
 
@@ -148,8 +149,11 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             binary_sensor_should_be_on = switch_state
 
             _LOGGER.debug(
-                f"Hello World automation processing for device {device_id}: "
-                f"switch={switch_state} → binary_sensor={binary_sensor_should_be_on}"
+                "Hello World automation processing for device %s: switch=%s -> "
+                "binary_sensor=%s",
+                device_id,
+                switch_state,
+                binary_sensor_should_be_on,
             )
 
             # Trigger binary sensor update via automation
@@ -158,7 +162,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             )
 
         except Exception as e:
-            _LOGGER.error(f"Automation logic error for device {device_id}: {e}")
+            _LOGGER.error("Automation logic error for device %s: %s", device_id, e)
 
     async def _async_handle_state_change(
         self, entity_id: str, old_state: State | None, new_state: State | None
@@ -172,14 +176,15 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
         # Check if feature is still enabled first
         if not self._is_feature_enabled():
             _LOGGER.debug(
-                f"Feature {self.feature_id} disabled, ignoring "
-                f"state change for {entity_id}"
+                "Feature %s disabled, ignoring state change for %s",
+                self.feature_id,
+                entity_id,
             )
             return
 
         # Only process Hello World switch changes
         if not entity_id.startswith("switch.hello_world_switch_"):
-            _LOGGER.debug(f"Ignoring non-Hello World switch: {entity_id}")
+            _LOGGER.debug("Ignoring non-Hello World switch: %s", entity_id)
             return
 
         # Call parent implementation
@@ -208,15 +213,17 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             success = await self.set_binary_sensor_state(entity_id, should_be_on)
 
             if not success:
-                _LOGGER.warning(f"Failed to update binary sensor {entity_id}")
+                _LOGGER.warning("Failed to update binary sensor %s", entity_id)
 
         except Exception as e:
             _LOGGER.error(
-                f"Failed to trigger binary sensor update for {device_id}: {e}"
+                "Failed to trigger binary sensor update for %s: %s",
+                device_id,
+                e,
             )
             import traceback
 
-            _LOGGER.debug(f"Traceback: {traceback.format_exc()}")
+            _LOGGER.debug("Traceback: %s", traceback.format_exc())
 
     # Public API methods for external control
     async def async_trigger_binary_sensor(self, device_id: str, state: bool) -> bool:
@@ -234,7 +241,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             await self._trigger_binary_sensor_update(device_id, state)
             return True
         except Exception as e:
-            _LOGGER.error(f"Failed to manually trigger binary sensor: {e}")
+            _LOGGER.error("Failed to manually trigger binary sensor: %s", e)
             return False
 
     def is_automation_active(self) -> bool:
