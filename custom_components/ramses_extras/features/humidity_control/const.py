@@ -161,6 +161,34 @@ HUMIDITY_CONTROL_DEFAULTS = {
     "cooldown_period_minutes": 15,
 }
 
+
+HUMIDITY_CONTROL_VALIDATION_RULES = {
+    "enabled": {"type": "boolean", "required": False},
+    "automation_enabled": {"type": "boolean", "required": False},
+    "default_min_humidity": {
+        "type": "numeric",
+        "min": 0,
+        "max": 100,
+        "required": False,
+        "range_relationship": {
+            "other_key": "default_max_humidity",
+            "allow_equal": False,
+        },
+    },
+    "default_max_humidity": {
+        "type": "numeric",
+        "min": 0,
+        "max": 100,
+        "required": False,
+    },
+    "automation_debounce_seconds": {
+        "type": "numeric",
+        "min": 1,
+        "max": 300,
+        "required": False,
+    },
+}
+
 FEATURE_DEFINITION = {
     "feature_id": FEATURE_ID,
     "sensor_configs": {},
@@ -220,6 +248,7 @@ __all__ = [
     "HUMIDITY_DEVICE_ENTITY_MAPPING",
     "HUMIDITY_CONTROL_WEBSOCKET_COMMANDS",
     "HUMIDITY_CONTROL_DEFAULTS",
+    "HUMIDITY_CONTROL_VALIDATION_RULES",
     "ORCON_DEVICE_MODELS",
     "ZEHNDER_DEVICE_MODELS",
     "ENHANCED_HUMIDITY_SWITCH_CONFIGS",

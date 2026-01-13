@@ -2,9 +2,10 @@
 
 import pytest
 
-from custom_components.ramses_extras.framework.helpers.config.validation import (
+from custom_components.ramses_extras.features.humidity_control.const import (
     HUMIDITY_CONTROL_VALIDATION_RULES,
-    TEMPERATURE_CONTROL_VALIDATION_RULES,
+)
+from custom_components.ramses_extras.framework.helpers.config.validation import (
     ConfigValidator,
 )
 
@@ -465,10 +466,3 @@ class TestValidationRules:
         assert "enabled" in HUMIDITY_CONTROL_VALIDATION_RULES
         assert "default_min_humidity" in HUMIDITY_CONTROL_VALIDATION_RULES
         assert "default_max_humidity" in HUMIDITY_CONTROL_VALIDATION_RULES
-
-    def test_temperature_control_validation_rules_structure(self):
-        """Test that temperature control validation rules have expected structure."""
-        assert isinstance(TEMPERATURE_CONTROL_VALIDATION_RULES, dict)
-        assert "enabled" in TEMPERATURE_CONTROL_VALIDATION_RULES
-        assert "default_min_temperature" in TEMPERATURE_CONTROL_VALIDATION_RULES
-        assert "default_max_temperature" in TEMPERATURE_CONTROL_VALIDATION_RULES

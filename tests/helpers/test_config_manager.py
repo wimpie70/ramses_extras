@@ -9,7 +9,6 @@ from custom_components.ramses_extras.framework.helpers.config.core import (
     ExtrasConfigManager,
 )
 from custom_components.ramses_extras.framework.helpers.config.validation import (
-    HUMIDITY_CONTROL_VALIDATION_RULES,
     ConfigValidator,
 )
 

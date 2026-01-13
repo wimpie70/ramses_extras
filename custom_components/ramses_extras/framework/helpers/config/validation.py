@@ -338,58 +338,6 @@ class ConfigValidator:
         return len(errors) == 0, errors
 
 
-# Common validation patterns for different feature types
-HUMIDITY_CONTROL_VALIDATION_RULES = {
-    "enabled": {"type": "boolean", "required": False},
-    "automation_enabled": {"type": "boolean", "required": False},
-    "default_min_humidity": {
-        "type": "numeric",
-        "min": 0,
-        "max": 100,
-        "required": False,
-        "range_relationship": {
-            "other_key": "default_max_humidity",
-            "allow_equal": False,
-        },
-    },
-    "default_max_humidity": {
-        "type": "numeric",
-        "min": 0,
-        "max": 100,
-        "required": False,
-    },
-    "automation_debounce_seconds": {
-        "type": "numeric",
-        "min": 1,
-        "max": 300,
-        "required": False,
-    },
-}
-
-TEMPERATURE_CONTROL_VALIDATION_RULES = {
-    "enabled": {"type": "boolean", "required": False},
-    "automation_enabled": {"type": "boolean", "required": False},
-    "default_min_temperature": {
-        "type": "numeric",
-        "min": 0,
-        "max": 50,
-        "required": False,
-        "range_relationship": {
-            "other_key": "default_max_temperature",
-            "allow_equal": False,
-        },
-    },
-    "default_max_temperature": {
-        "type": "numeric",
-        "min": 0,
-        "max": 50,
-        "required": False,
-    },
-}
-
-
 __all__ = [
     "ConfigValidator",
-    "HUMIDITY_CONTROL_VALIDATION_RULES",
-    "TEMPERATURE_CONTROL_VALIDATION_RULES",
 ]
