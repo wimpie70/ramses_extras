@@ -1,7 +1,7 @@
 """Device filtering utilities for feature-specific device selection."""
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,10 +47,12 @@ class DeviceFilter:
             device_slugs = DeviceFilter._get_device_slugs(device)
             if any(slug in device_slugs for slug in allowed_slugs):
                 filtered_devices.append(device)
-                _LOGGER.debug(f"Device {device} matches feature requirements")
+                _LOGGER.debug("Device %s matches feature requirements", device)
 
         _LOGGER.info(
-            f"Filtered {len(devices)} devices to {len(filtered_devices)} matching devices"  # noqa: E501
+            "Filtered %d devices to %d matching devices",
+            len(devices),
+            len(filtered_devices),
         )
         return filtered_devices
 
@@ -125,7 +127,7 @@ class DeviceFilter:
                 slugs.append(class_name)
 
         if not slugs:
-            _LOGGER.warning(f"Could not determine slugs for device: {device}")
+            _LOGGER.warning("Could not determine slugs for device: %s", device)
             return ["unknown"]
 
         # Deduplicate while preserving empty strings (required by a unit test)

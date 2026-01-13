@@ -92,10 +92,10 @@ def get_device_type(device: Any) -> str:
 
     try:
         device_type = device.__class__.__name__
-        _LOGGER.debug(f"Device type for {device}: {device_type}")
+        _LOGGER.debug("Device type for %s: %s", device, device_type)
         return str(device_type)
     except Exception as e:
-        _LOGGER.warning(f"Failed to get device type: {e}")
+        _LOGGER.warning("Failed to get device type: %s", e)
         return "Unknown"
 
 
@@ -115,7 +115,9 @@ def validate_device_for_service(
     device = find_ramses_device(hass, device_id)
     if not device:
         _LOGGER.warning(
-            f"Cannot validate service {service_name}: device {device_id} not found"
+            "Cannot validate service %s: device %s not found",
+            service_name,
+            device_id,
         )
         return False
 
@@ -123,7 +125,9 @@ def validate_device_for_service(
 
     # Service validation removed - services now handled by feature-based architecture
     _LOGGER.debug(
-        f"Device {device_id} ({device_type}) service validation delegated to features"
+        "Device %s (%s) service validation delegated to features",
+        device_id,
+        device_type,
     )
     return True
 
