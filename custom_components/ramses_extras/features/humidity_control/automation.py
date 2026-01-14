@@ -229,9 +229,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         required_entities = cast(
             dict[str, list[str]], FEATURE_DEFINITION.get("required_entities", {})
         )
-        entity_mappings = cast(
-            dict[str, str], FEATURE_DEFINITION.get("entity_mappings", {})
+        from custom_components.ramses_extras.framework.helpers.entity.core import (
+            get_feature_entity_mappings,
         )
+
+        entity_mappings = await get_feature_entity_mappings(self.feature_id, device_id)
         missing_entities = []
 
         # Get entity registry
@@ -258,9 +260,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     _LOGGER.debug("Found entity: %s", expected_entity_id)
 
         # Check entities from entity_mappings (created by default feature)
-        for state_name, entity_template in entity_mappings.items():
-            # Replace {device_id} placeholder in entity template
-            expected_entity_id = entity_template.format(device_id=device_id)
+        for state_name, expected_entity_id in entity_mappings.items():
             _LOGGER.debug("Checking for mapped entity: %s", expected_entity_id)
 
             # Check entity registry instead of states
@@ -306,12 +306,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         """
         states: dict[str, Any] = {}
 
-        # Base mappings from humidity control constants; abs humidity entities
-        # are now resolver-aware via the default feature and should be treated
-        # as the canonical source for indoor_abs/outdoor_abs.
-        state_mappings = cast(
-            dict[str, str], FEATURE_DEFINITION.get("entity_mappings", {})
-        ).copy()
+        from custom_components.ramses_extras.framework.helpers.entity.core import (
+            get_feature_entity_mappings,
+        )
+
+        # Base mappings from feature definition (centralized helper)
+        state_mappings = await get_feature_entity_mappings(self.feature_id, device_id)
 
         # Optional context from sensor_control via WebSocket helper to align
         # indoor_rh with the same indoor_humidity source used elsewhere.
@@ -323,18 +323,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 state_mappings["indoor_rh"] = indoor_humidity_entity
 
         for state_name, entity_id in state_mappings.items():
-            if "{device_id}" in entity_id:
-                actual_entity_id = entity_id.format(device_id=device_id)
-            else:
-                actual_entity_id = entity_id
-
-            state = self.hass.states.get(actual_entity_id)
+            state = self.hass.states.get(entity_id)
 
             if not state:
-                raise ValueError(f"Entity {actual_entity_id} not found")
+                raise ValueError(f"Entity {entity_id} not found")
 
             if state.state in ["unavailable", "unknown"]:
-                raise ValueError(f"Entity {actual_entity_id} state unavailable")
+                raise ValueError(f"Entity {entity_id} state unavailable")
 
             entity_type = self._extract_entity_type_from_id(entity_id)
             value = self._convert_entity_state(entity_type, state.state)

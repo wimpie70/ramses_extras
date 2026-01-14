@@ -68,6 +68,62 @@ async def _get_required_entities_from_feature(feature_id: str) -> dict[str, list
         return {}
 
 
+def build_entity_mapping_templates(
+    feature_definition: dict[str, Any],
+) -> dict[str, str]:
+    entity_mappings = feature_definition.get("entity_mappings")
+    if not isinstance(entity_mappings, dict):
+        return {}
+
+    cleaned: dict[str, str] = {}
+    for key, value in entity_mappings.items():
+        if isinstance(key, str) and isinstance(value, str):
+            cleaned[key] = value
+    return cleaned
+
+
+def build_frontend_entity_mapping_templates(
+    feature_definition: dict[str, Any],
+) -> dict[str, str]:
+    entity_mappings = build_entity_mapping_templates(feature_definition)
+
+    config_sources = (
+        ("switch", "switch_configs"),
+        ("binary_sensor", "boolean_configs"),
+        ("sensor", "sensor_configs"),
+        ("number", "number_configs"),
+    )
+
+    for platform, config_key in config_sources:
+        configs = feature_definition.get(config_key)
+        if not isinstance(configs, dict):
+            continue
+
+        for entity_name, config in configs.items():
+            if not isinstance(entity_name, str) or not isinstance(config, dict):
+                continue
+            template = config.get("entity_template")
+            if not isinstance(template, str):
+                continue
+            entity_mappings.setdefault(f"{entity_name}_state", f"{platform}.{template}")
+
+    return entity_mappings
+
+
+def parse_entity_mapping_templates_for_device(
+    entity_mappings: dict[str, str],
+    device_id: str,
+) -> dict[str, str]:
+    device_id_underscore = device_id.replace(":", "_")
+    parsed: dict[str, str] = {}
+    for state_name, entity_template in entity_mappings.items():
+        parsed[state_name] = entity_template.replace(
+            "{device_id}",
+            device_id_underscore,
+        )
+    return parsed
+
+
 async def get_required_entity_ids_for_feature_device(
     feature_id: str,
     device_id: str,
@@ -748,134 +804,38 @@ async def get_feature_entity_mappings(
     Returns:
         Dictionary mapping state names to entity IDs
     """
-    mappings: dict[str, str] = {}
-
-    # Get feature entity mappings from the feature's own module
-    feature_entity_mappings = await _get_entity_mappings_from_feature(
-        feature_id, device_id
-    )
-    mappings.update(feature_entity_mappings)
-
+    mappings = await _get_entity_mappings_from_feature(feature_id, device_id)
     _LOGGER.debug(f"Feature {feature_id} mappings for {device_id}: {mappings}")
     return mappings
 
 
 async def _get_entity_mappings_from_feature(
-    feature_id: str, device_id: str
+    feature_id: str,
+    device_id: str,
 ) -> dict[str, str]:
-    """Get entity mappings from the feature's own const.py module.
-
-    Args:
-        feature_id: Feature identifier
-        device_id: Device identifier (can contain colons like "32:153289")
-
-    Returns:
-        Dictionary mapping state names to entity IDs
-    """
     try:
-        # Run the blocking import operation in a thread pool
         loop = asyncio.get_event_loop()
-        mappings = await loop.run_in_executor(
-            None, _import_entity_mappings_sync, feature_id, device_id
+        templates = await loop.run_in_executor(
+            None,
+            _import_entity_mapping_templates_sync,
+            feature_id,
         )
-
-        _LOGGER.debug(
-            f"Found entity mappings for {feature_id}: {list(mappings.keys())}"
-        )
-        return mappings
     except Exception as e:
         _LOGGER.debug(f"Could not get entity mappings for {feature_id}: {e}")
-        return {}
+        templates = {}
+
+    return parse_entity_mapping_templates_for_device(templates, device_id)
 
 
-def _import_entity_mappings_sync(feature_id: str, device_id: str) -> dict[str, str]:
-    """Synchronous import of entity mappings (blocking operation).
-
-    Args:
-        feature_id: Feature identifier
-        device_id: Device identifier (can contain colons like "32:153289")
-
-    Returns:
-        Dictionary mapping state names to entity IDs
-    """
-    # Import the feature's const module
+def _import_entity_mapping_templates_sync(feature_id: str) -> dict[str, str]:
     feature_module_path = f"custom_components.ramses_extras.features.{feature_id}.const"
-
     feature_module = importlib.import_module(feature_module_path)
 
-    mappings: dict[str, str] = {}
-    device_id_underscore = device_id.replace(":", "_")
-
-    # First try to get entity mappings from the const data
-    const_key = f"{feature_id.upper()}_CONST"
-    if hasattr(feature_module, const_key):
-        const_data = getattr(feature_module, const_key, {})
-        entity_mappings = const_data.get("entity_mappings", {})
-        for state_key, entity_template in entity_mappings.items():
-            # Replace {device_id} placeholder with the actual device_id
-            entity_id = entity_template.replace("{device_id}", device_id_underscore)
-            mappings[state_key] = entity_id
-
-    # Check for feature-specific entity templates in various config types
-    # Try both with and without "_CARD" suffix for backwards compatibility
-    config_types = [
-        "SENSOR_CONFIGS",
-        "SWITCH_CONFIGS",
-        "NUMBER_CONFIGS",
-        "BINARY_SENSOR_CONFIGS",  # Also try without "BOOLEAN" alias
-        "BOOLEAN_CONFIGS",
-    ]
-
-    config_type_domains = {
-        "SENSOR_CONFIGS": "sensor",
-        "SWITCH_CONFIGS": "switch",
-        "NUMBER_CONFIGS": "number",
-        "BINARY_SENSOR_CONFIGS": "binary_sensor",
-        "BOOLEAN_CONFIGS": "binary_sensor",
-    }
-
-    for config_type in config_types:
-        domain = config_type_domains[config_type]
-        # Try with "_CARD" suffix first (for hello_world -> hello_world_SWITCH_CONFIGS)
-        config_key = f"{feature_id.upper()}_{config_type}"
-        if hasattr(feature_module, config_key):
-            configs = getattr(feature_module, config_key, {})
-
-            for entity_name, config in configs.items():
-                entity_template = config.get("entity_template", "")
-                if entity_template:
-                    # Replace {device_id} placeholder with the actual device_id
-                    entity_name_only = entity_template.replace(
-                        "{device_id}", device_id_underscore
-                    )
-                    # Use the entity_name as the state key
-                    if "." in entity_name_only:
-                        mappings[entity_name] = entity_name_only
-                    else:
-                        mappings[entity_name] = f"{domain}.{entity_name_only}"
-
-        # Also try without "_CARD" suffix
-        # (for hello_world -> HELLO_WORLD_SWITCH_CONFIGS)
-        if "_CARD" in feature_id:
-            base_feature_id = feature_id.replace("_CARD", "")
-            config_key = f"{base_feature_id.upper()}_{config_type}"
-            if hasattr(feature_module, config_key):
-                configs = getattr(feature_module, config_key, {})
-
-                for entity_name, config in configs.items():
-                    entity_template = config.get("entity_template", "")
-                    if entity_template:
-                        # Replace {device_id} placeholder with the actual device_id
-                        entity_name_only = entity_template.replace(
-                            "{device_id}", device_id_underscore
-                        )
-                        # Use the entity_name as the state key
-                        if "." in entity_name_only:
-                            mappings[entity_name] = entity_name_only
-                        else:
-                            mappings[entity_name] = f"{domain}.{entity_name_only}"
-
-    return mappings
+    feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
+    feature_definition: dict[str, Any] = (
+        feature_def_obj if isinstance(feature_def_obj, dict) else {}
+    )
+    return build_entity_mapping_templates(feature_definition)
 
 
 # Export all functions and classes

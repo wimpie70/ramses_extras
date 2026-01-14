@@ -19,3 +19,5 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 - config steps: toggle feature-debug mode
 
 - multi-zone support in hvac card or separate feature
+
+- feature: css overrides

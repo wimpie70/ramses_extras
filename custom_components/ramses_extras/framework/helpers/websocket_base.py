@@ -233,6 +233,10 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             Dictionary of state_name to entity template mappings
         """
         try:
+            from custom_components.ramses_extras.framework.helpers.entity.core import (
+                build_frontend_entity_mapping_templates,
+            )
+
             # Determine how to import the feature module
             if "." in self.feature_identifier:
                 # It's a const module path, use it directly
@@ -249,31 +253,9 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             if not isinstance(feature_definition, dict):
                 feature_definition = {}
 
-            entity_mappings = feature_definition.get("entity_mappings")
-            if not isinstance(entity_mappings, dict):
-                entity_mappings = {}
-            else:
-                entity_mappings = dict(entity_mappings)
-
-            config_sources = (
-                ("switch", "switch_configs"),
-                ("binary_sensor", "boolean_configs"),
-                ("sensor", "sensor_configs"),
-                ("number", "number_configs"),
+            entity_mappings = build_frontend_entity_mapping_templates(
+                feature_definition
             )
-
-            for platform, config_key in config_sources:
-                configs = feature_definition.get(config_key)
-                if not isinstance(configs, dict):
-                    continue
-
-                for entity_name, config in configs.items():
-                    if not isinstance(config, dict) or "entity_template" not in config:
-                        continue
-                    template = config["entity_template"]
-                    entity_mappings.setdefault(
-                        f"{entity_name}_state", f"{platform}.{template}"
-                    )
 
             self._logger.debug(
                 "Found entity mappings for %s: %s",
