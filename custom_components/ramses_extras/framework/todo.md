@@ -11,6 +11,6 @@ This file tracks refactoring and cleanup for the framework layer.
 ## Cross-cutting
 
 - [ ] Define/confirm framework public APIs (what features are allowed to call)
-- [ ] Reduce duplication across helpers (common patterns in entity/config/websocket)
+- [x] Reduce duplication across helpers (common patterns in entity/config/websocket)
 - [x] Ensure framework is feature-agnostic (no feature-specific naming, defaults, or logic)
 - [ ] Review typing, error handling, and logging patterns for consistency
