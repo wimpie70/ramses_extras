@@ -8,6 +8,43 @@
 
 import * as logger from './logger.js';
 
+// Global translation file cache (path -> parsed JSON)
+const translationFileCache = new Map();
+const translationFilePromiseCache = new Map();
+
+async function fetchTranslationFileJson(translationPath) {
+  if (translationFileCache.has(translationPath)) {
+    return translationFileCache.get(translationPath);
+  }
+
+  if (translationFilePromiseCache.has(translationPath)) {
+    return translationFilePromiseCache.get(translationPath);
+  }
+
+  const promise = (async () => {
+    const response = await fetch(translationPath);
+    if (!response.ok) {
+      throw new Error(`Translation file not found (${response.status}): ${translationPath}`);
+    }
+
+    const responseText = await response.text();
+    try {
+      return JSON.parse(responseText);
+    } catch (jsonError) {
+      throw new Error(`Invalid JSON in translation file: ${translationPath}`);
+    }
+  })();
+
+  translationFilePromiseCache.set(translationPath, promise);
+  try {
+    const json = await promise;
+    translationFileCache.set(translationPath, json);
+    return json;
+  } finally {
+    translationFilePromiseCache.delete(translationPath);
+  }
+}
+
 // Helper to rewrite paths to versioned base if needed
 function rewritePathToVersioned(path) {
   if (typeof window === 'undefined' || !window.ramsesExtras || !window.ramsesExtras.assetBase) {
@@ -57,24 +94,7 @@ export class SimpleCardTranslator {
     const versionedCardPath = rewritePathToVersioned(cardPath);
     const translationPath = `${versionedCardPath}/translations/${this.currentLanguage}.json`;
     try {
-      const response = await fetch(translationPath);
-      if (response.ok) {
-        try {
-          const responseText = await response.text();
-          this.translations = JSON.parse(responseText);
-        } catch (jsonError) {
-          logger.warn(
-            `⚠️ Invalid JSON in translation file ${translationPath}:`,
-            jsonError
-          );
-          await this.loadFallbackTranslations(cardPath);
-        }
-      } else {
-        logger.warn(
-          `⚠️ Translation file not found (${response.status}): ${translationPath}`
-        );
-        await this.loadFallbackTranslations(cardPath);
-      }
+      this.translations = await fetchTranslationFileJson(translationPath);
     } catch (error) {
       logger.warn(`⚠️ Could not load translations:`, error);
       await this.loadFallbackTranslations(cardPath);
@@ -85,20 +105,7 @@ export class SimpleCardTranslator {
     const versionedCardPath = rewritePathToVersioned(cardPath);
     const fallbackPath = `${versionedCardPath}/translations/en.json`;
     try {
-      const fallbackResponse = await fetch(fallbackPath);
-
-      if (fallbackResponse.ok) {
-        try {
-          const responseText = await fallbackResponse.text();
-          this.translations = JSON.parse(responseText);
-        } catch (jsonError) {
-          logger.warn(`⚠️ Invalid JSON in fallback translation file:`, jsonError);
-          this.translations = {};
-        }
-      } else {
-        logger.warn(`⚠️ Fallback translation file not found: ${fallbackPath}`);
-        this.translations = {};
-      }
+      this.translations = await fetchTranslationFileJson(fallbackPath);
     } catch (error) {
       logger.warn(`⚠️ Could not load fallback translations:`, error);
       this.translations = {};
@@ -216,13 +223,7 @@ export class CardTranslations {
     const translationPath = `${versionedCardPath}/translations/${language}.json`;
 
     try {
-      const response = await fetch(translationPath);
-      if (!response.ok) {
-        throw new Error(`Translation file not found: ${translationPath}`);
-      }
-
-      const translations = await response.json();
-      this.translations[language] = translations;
+      this.translations[language] = await fetchTranslationFileJson(translationPath);
     } catch (error) {
       // If current language fails, try fallback
       if (language !== this.fallbackLanguage) {
@@ -401,4 +402,6 @@ export async function getTranslator(cardName, cardPath) {
  */
 export function clearTranslationCache() {
   translationCache.clear();
+  translationFileCache.clear();
+  translationFilePromiseCache.clear();
 }

@@ -573,6 +573,8 @@ export class RamsesBaseCard extends HTMLElement {
 
       _ensureOptionsUpdatesSubscribed(hass);
 
+      this._ensureCardsEnabledLoaded();
+
       // Ensure we latch startup until HA websocket finishes initial sync.
       // Some restarts keep the same connection object, so don't rely solely on
       // connectionChanged to attach the ready listener.
@@ -1017,6 +1019,7 @@ export class RamsesBaseCard extends HTMLElement {
     this._commandInProgress = false;
     this._previousStates = {};
     this._hassLoaded = false;
+    this._cardsEnabled = false;
   }
 
   _ensureCardsEnabledLoaded() {
@@ -1043,6 +1046,16 @@ export class RamsesBaseCard extends HTMLElement {
           }
           if (enabled) {
             this._cardsEnabled = true;
+
+            try {
+              const event = document.createEvent('Event');
+              event.initEvent('ramses_extras_options_updated', false, false);
+              event.detail = { cards_enabled: true };
+              window.dispatchEvent(event);
+            } catch (error) {
+              logger.warn('⚠️ Failed to dispatch ramses_extras_options_updated event:', error);
+            }
+
             this.clearUpdateThrottle();
             this._checkAndLoadInitialState();
             this.render();
@@ -1081,6 +1094,15 @@ export class RamsesBaseCard extends HTMLElement {
 
         window.ramsesExtras = window.ramsesExtras || {};
         window.ramsesExtras.cardsEnabled = true;
+
+        try {
+          const event = document.createEvent('Event');
+          event.initEvent('ramses_extras_options_updated', false, false);
+          event.detail = { cards_enabled: true };
+          window.dispatchEvent(event);
+        } catch (error) {
+          logger.warn('⚠️ Failed to dispatch ramses_extras_options_updated event:', error);
+        }
 
         this._cardsEnabled = true;
         this.clearUpdateThrottle();
@@ -1304,6 +1326,17 @@ export class RamsesBaseCard extends HTMLElement {
     // Don't render until translations are loaded
     if (!this.hasTranslations()) {
       return;
+    }
+
+    if (window.ramsesExtras?.cardsEnabled === true) {
+      this._cardsEnabled = true;
+    }
+    if (!this._cardsEnabled) {
+      this._ensureCardsEnabledLoaded();
+      if (!this._cardsEnabled) {
+        this.renderFeatureInitializing();
+        return;
+      }
     }
 
     // Use feature-centric design to check if feature is enabled

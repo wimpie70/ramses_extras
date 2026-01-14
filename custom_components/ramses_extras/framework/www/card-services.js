@@ -130,7 +130,11 @@ export async function callService(hass, domain, service, data) {
  * @returns {boolean} True if entity exists
  */
 export function entityExists(hass, entityId) {
-  return hass.states[entityId] !== undefined;
+  if (!hass || !hass.states || !entityId) {
+    return false;
+  }
+  const entity = hass.states[entityId];
+  return entity !== undefined && entity !== null;
 }
 
 /**
@@ -141,6 +145,9 @@ export function entityExists(hass, entityId) {
  * @returns {Object|null} Entity state or null if not found
  */
 export function getEntityState(hass, entityId) {
+  if (!hass || !hass.states || !entityId) {
+    return null;
+  }
   return hass.states[entityId] || null;
 }
 
