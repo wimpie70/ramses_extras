@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.ramses_extras.const import DOMAIN
+from custom_components.ramses_extras.feature_utils import get_enabled_feature_names
 from custom_components.ramses_extras.services_integration import (
-    _get_enabled_feature_names,
     _import_services_module,
     async_register_feature_services,
     async_unload_feature_services,
@@ -26,7 +26,7 @@ def _make_hass(*, enabled_features=None, config_entry=None):
 
 def test_get_enabled_feature_names_from_dict_and_adds_default():
     hass = _make_hass(enabled_features={"hello_world": True, "humidity_control": False})
-    enabled = _get_enabled_feature_names(hass)
+    enabled = get_enabled_feature_names(hass)
     assert "hello_world" in enabled
     assert "humidity_control" not in enabled
     assert "default" in enabled
@@ -34,7 +34,7 @@ def test_get_enabled_feature_names_from_dict_and_adds_default():
 
 def test_get_enabled_feature_names_from_list_and_adds_default():
     hass = _make_hass(enabled_features=["hello_world"])
-    enabled = _get_enabled_feature_names(hass)
+    enabled = get_enabled_feature_names(hass)
     assert enabled.count("default") == 1
     assert "hello_world" in enabled
 
@@ -45,14 +45,14 @@ def test_get_enabled_feature_names_falls_back_to_config_entry_options():
     config_entry.options = {"enabled_features": {"hello_world": True}}
     hass = _make_hass(config_entry=config_entry)
 
-    enabled = _get_enabled_feature_names(hass)
+    enabled = get_enabled_feature_names(hass)
     assert "hello_world" in enabled
     assert "default" in enabled
 
 
 def test_get_enabled_feature_names_unknown_shape_returns_default_only():
     hass = _make_hass(enabled_features="invalid")
-    enabled = _get_enabled_feature_names(hass)
+    enabled = get_enabled_feature_names(hass)
     assert enabled == ["default"]
 
 

@@ -24,6 +24,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
+from .feature_utils import get_enabled_feature_names
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,37 +36,10 @@ def _import_services_module(feature_name: str) -> Any:
     return importlib.import_module(services_module_path)
 
 
-def _get_enabled_feature_names(hass: HomeAssistant) -> list[str]:
-    config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
-    enabled_features_raw = hass.data.get(DOMAIN, {}).get("enabled_features")
-
-    if enabled_features_raw is None and config_entry is not None:
-        enabled_features_raw = (
-            config_entry.data.get("enabled_features")
-            or config_entry.options.get("enabled_features")
-            or {}
-        )
-
-    enabled_feature_names: list[str]
-    if isinstance(enabled_features_raw, dict):
-        enabled_feature_names = [
-            name for name, enabled in enabled_features_raw.items() if enabled
-        ]
-    elif isinstance(enabled_features_raw, list):
-        enabled_feature_names = list(enabled_features_raw)
-    else:
-        enabled_feature_names = []
-
-    if "default" not in enabled_feature_names:
-        enabled_feature_names.append("default")
-
-    return enabled_feature_names
-
-
 async def async_register_feature_services(hass: HomeAssistant) -> None:
     """Register services for all enabled features."""
 
-    enabled_feature_names = _get_enabled_feature_names(hass)
+    enabled_feature_names = get_enabled_feature_names(hass)
     config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
     _LOGGER.info("Registering feature services for: %s", enabled_feature_names)
 
@@ -118,7 +92,7 @@ async def async_register_feature_services(hass: HomeAssistant) -> None:
 async def async_unload_feature_services(hass: HomeAssistant) -> None:
     """Unload services for all enabled features."""
 
-    enabled_feature_names = _get_enabled_feature_names(hass)
+    enabled_feature_names = get_enabled_feature_names(hass)
     config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
     _LOGGER.info("Unloading feature services for: %s", enabled_feature_names)
 

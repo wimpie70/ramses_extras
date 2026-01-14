@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 from .extras_registry import extras_registry
+from .feature_utils import get_enabled_feature_names
 
 
 def _import_websocket_module(feature_name: str) -> Any:
@@ -72,28 +73,7 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """
     _LOGGER.info("Registering Ramses Extras WebSocket commands")
 
-    config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
-    enabled_features_raw = hass.data.get(DOMAIN, {}).get("enabled_features")
-
-    if enabled_features_raw is None and config_entry is not None:
-        enabled_features_raw = (
-            config_entry.data.get("enabled_features")
-            or config_entry.options.get("enabled_features")
-            or {}
-        )
-
-    enabled_feature_names: list[str]
-    if isinstance(enabled_features_raw, dict):
-        enabled_feature_names = [
-            name for name, enabled in enabled_features_raw.items() if enabled
-        ]
-    elif isinstance(enabled_features_raw, list):
-        enabled_feature_names = list(enabled_features_raw)
-    else:
-        enabled_feature_names = []
-
-    if "default" not in enabled_feature_names:
-        enabled_feature_names.append("default")
+    enabled_feature_names = get_enabled_feature_names(hass)
 
     all_commands = extras_registry.get_all_websocket_commands()
     enabled_features_with_commands = [
@@ -159,28 +139,8 @@ def get_websocket_commands_info(hass: HomeAssistant) -> dict[str, Any]:
         Dictionary containing WebSocket commands information
     """
     all_commands = extras_registry.get_all_websocket_commands()
-    config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
-    enabled_features_raw = hass.data.get(DOMAIN, {}).get("enabled_features")
 
-    if enabled_features_raw is None and config_entry is not None:
-        enabled_features_raw = (
-            config_entry.data.get("enabled_features")
-            or config_entry.options.get("enabled_features")
-            or {}
-        )
-
-    enabled_feature_names: list[str]
-    if isinstance(enabled_features_raw, dict):
-        enabled_feature_names = [
-            name for name, enabled in enabled_features_raw.items() if enabled
-        ]
-    elif isinstance(enabled_features_raw, list):
-        enabled_feature_names = list(enabled_features_raw)
-    else:
-        enabled_feature_names = []
-
-    if "default" not in enabled_feature_names:
-        enabled_feature_names.append("default")
+    enabled_feature_names = get_enabled_feature_names(hass)
 
     # Build commands by feature
     commands_by_feature = {}

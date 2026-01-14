@@ -29,6 +29,7 @@ from .const import (
     PLATFORM_REGISTRY,
     register_feature_platform,
 )
+from .feature_utils import get_enabled_feature_names, get_enabled_features_dict
 
 # Import CardRegistry for simplified card registration
 from .framework.helpers.card_registry import CardRegistry
@@ -365,7 +366,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {}
     hass.data[DOMAIN]["entry_id"] = entry.entry_id
     hass.data[DOMAIN]["config_entry"] = entry  # Store for async_setup_platforms access
-    hass.data[DOMAIN]["enabled_features"] = entry.data.get("enabled_features", {})
+    hass.data[DOMAIN]["enabled_features"] = get_enabled_features_dict(
+        hass,
+        entry,
+        include_default=False,
+        prefer_hass_data=False,
+    )
     hass.data[DOMAIN]["PLATFORM_REGISTRY"] = (
         PLATFORM_REGISTRY  # Make registry available to platforms
     )
@@ -445,15 +451,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         register_default_commands()
 
-        # Load enabled feature definitions
-        enabled_features_dict = entry.data.get("enabled_features", {})
-        enabled_feature_names = [
-            name for name, enabled in enabled_features_dict.items() if enabled
-        ]
-
-        # Always include default
-        if "default" not in enabled_feature_names:
-            enabled_feature_names.append("default")
+        enabled_feature_names = get_enabled_feature_names(
+            hass,
+            entry,
+            prefer_hass_data=False,
+        )
 
         extras_registry.load_all_features(enabled_feature_names)
 
@@ -508,15 +510,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     feature_ready = hass.data[DOMAIN].setdefault("feature_ready", {})
     hass.data[DOMAIN].setdefault("cards_enabled", False)
     hass.data[DOMAIN]["cards_pending_features"] = set()
-    enabled_features = entry.data.get("enabled_features") or entry.options.get(
-        "enabled_features"
+    enabled_feature_names = get_enabled_feature_names(
+        hass,
+        entry,
+        prefer_hass_data=False,
     )
-    if not isinstance(enabled_features, dict):
-        enabled_features = {}
-    enabled_feature_names = [k for k, v in enabled_features.items() if v is True]
-    # Always include default
-    if "default" not in enabled_feature_names:
-        enabled_feature_names.append("default")
     import importlib
 
     automation_managers_to_start: list[Any] = []
@@ -659,11 +657,11 @@ async def _expose_feature_config_to_frontend(
     try:
         _LOGGER.info("Exposing feature configuration to frontend...")
 
-        # Get enabled features from the entry
-        enabled_features = (
-            entry.data.get("enabled_features")
-            or entry.options.get("enabled_features")
-            or {}
+        enabled_features = get_enabled_features_dict(
+            hass,
+            entry,
+            include_default=False,
+            prefer_hass_data=False,
         )
 
         frontend_log_level_raw = entry.options.get("frontend_log_level")
@@ -742,21 +740,15 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
         )
 
         old_enabled_features_raw = data.get("enabled_features")
-        new_enabled_features_raw = (
-            entry.data.get("enabled_features")
-            or entry.options.get("enabled_features")
-            or {}
-        )
-
-        old_enabled_features = (
-            old_enabled_features_raw
-            if isinstance(old_enabled_features_raw, dict)
-            else {}
-        )
-        new_enabled_features = (
-            new_enabled_features_raw
-            if isinstance(new_enabled_features_raw, dict)
-            else {}
+        if isinstance(old_enabled_features_raw, dict):
+            old_enabled_features = old_enabled_features_raw
+        else:
+            old_enabled_features = {}
+        new_enabled_features = get_enabled_features_dict(
+            hass,
+            entry,
+            include_default=False,
+            prefer_hass_data=False,
         )
 
         old_matrix_state_raw = data.get("device_feature_matrix")
@@ -817,7 +809,14 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
             async def _do_reload() -> None:
                 try:
-                    await hass.config_entries.async_reload(entry.entry_id)
+                    entry_id = getattr(entry, "entry_id", None)
+                    if not isinstance(entry_id, str) or not entry_id:
+                        return
+
+                    if hass.config_entries.async_get_entry(entry_id) is None:
+                        return
+
+                    await hass.config_entries.async_reload(entry_id)
                 finally:
                     hass.data.get(DOMAIN, {}).pop("_reload_pending", None)
 

@@ -13,10 +13,10 @@ This file tracks *big picture* cleanup and refactoring work across the integrati
 
 ## Big picture
 
-- [ ] Review integration boundaries (framework vs features vs top-level integration)
+- [x] Review integration boundaries (framework vs features vs top-level integration)
 - [x] Identify feature-specific code currently living in the framework and propose moves
-- [ ] Identify duplicate or over-complicated framework utilities and propose simplifications
-- [ ] Confirm service/websocket/entity/automation responsibility boundaries are consistent across the codebase
+- [x] Identify duplicate or over-complicated framework utilities and propose simplifications
+- [x] Confirm service/websocket/entity/automation responsibility boundaries are consistent across the codebase
 
 ## Notes / findings
 
@@ -43,3 +43,57 @@ This file tracks *big picture* cleanup and refactoring work across the integrati
     - `framework/helpers/common/validation.py`
     - `framework/helpers/config/validation.py`
     This likely contains duplication; worth inventorying and consolidating patterns.
+
+## Notes / findings (consolidated)
+
+- Boundaries (current state):
+  - `__init__.py` is the authoritative integration entrypoint and currently performs multiple roles:
+    - Resolves enabled features.
+    - Loads feature definitions (registry).
+    - Imports feature platform modules.
+    - Discovers devices.
+    - Forwards platform setups.
+    - Registers WebSocket and service integrations.
+    - Creates feature instances and starts automations.
+    - Manages card deployment + a cards_enabled latch.
+  - Framework responsibilities are mostly “shared primitives”, but there is some unavoidable orchestration bleed-through:
+    - Entity ID parsing/generation, device helpers, config-flow helpers, config validation.
+    - WebSocket base command utilities.
+  - Features own their own business logic:
+    - Entity configs, service handlers, websocket handlers, automation logic.
+
+- Enabled feature resolution (duplication risks):
+  - We currently resolve enabled features from multiple sources (`hass.data`, `entry.data`, `entry.options`) in multiple modules.
+  - Tests cover that disabled features should not expose their WebSocket/services surface area, so drift here is a correctness risk.
+
+- Config/UI schema split:
+  - Home Assistant UI uses `vol.Schema`/selectors.
+  - Some feature modules define JSON-schema-like structures (`get_config_schema`) that are not consumed by HA UI flows.
+  - This is a source of conceptual duplication and confusion (two schema representations).
+
+- Error handling policy (boundary implications):
+  - Orchestration paths are best-effort: errors in one feature should not prevent other features from loading.
+  - Core validation helpers raise typed exceptions for invalid inputs.
+
+## Proposed consolidation directions (low-risk, record now / implement later)
+
+- Single authority for enabled features:
+  - Introduce a single helper (module-level function) used by `__init__.py`, `services_integration.py`, and `websocket_integration.py`.
+  - Keep “default is always enabled” in exactly one place.
+
+- Extract orchestration helpers out of `__init__.py` (without changing behavior):
+  - Keep `async_setup_entry()` as the entrypoint but delegate into small internal helpers:
+    - load feature definitions
+    - import platform modules
+    - register websocket
+    - register services
+    - create/start feature instances
+    - card deployment + latch
+  - Goal: reduce “god function” pressure and make unit testing easier.
+
+- Clarify schema responsibilities:
+  - Treat `vol.Schema` (selectors) as the single representation for HA UI.
+  - If `get_config_schema()` remains, document it as non-HA consumer only (e.g. cards/external tooling), otherwise remove it.
+
+- Consolidate entity metadata derivation:
+  - Ensure there is exactly one authority for “what entities exist for a feature” (avoid duplication between helpers and config-flow manager).
