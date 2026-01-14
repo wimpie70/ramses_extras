@@ -446,4 +446,4 @@ class TestGetAllFeatureEntitiesCommand:
         command = GetAllFeatureEntitiesCommand(hass, "test")
         entities = {"sensor": {"t": {"entity_template": "t_{device_id}"}}}
         result = command._parse_all_entity_templates(entities, "32:1")
-        assert result["sensor"]["t"]["entity_id"] == "sensor.t_32:1"
+        assert result["sensor"]["t"]["entity_id"] == "sensor.t_32_1"

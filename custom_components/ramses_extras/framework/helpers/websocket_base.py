@@ -208,15 +208,17 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
         Returns:
             Dictionary of parsed entity mappings with actual entity IDs
         """
-        parsed_mappings = {}
+        from custom_components.ramses_extras.framework.helpers.entity.core import (
+            parse_entity_mapping_templates_for_device,
+        )
 
-        device_id_underscore = device_id.replace(":", "_")
+        parsed_mappings = parse_entity_mapping_templates_for_device(
+            entity_mappings,
+            device_id,
+        )
 
         for state_name, entity_template in entity_mappings.items():
-            # Replace {device_id} with actual device_id
-            parsed_entity = entity_template.replace("{device_id}", device_id_underscore)
-            parsed_mappings[state_name] = parsed_entity
-
+            parsed_entity = parsed_mappings.get(state_name)
             self._logger.debug(
                 "Parsed %s: %s -> %s",
                 state_name,
@@ -416,29 +418,46 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
             "number": {},
         }
 
+        from custom_components.ramses_extras.framework.helpers.entity.core import (
+            parse_entity_mapping_templates_for_device,
+        )
+
         for platform, entities in all_entities.items():
+            if not isinstance(platform, str) or not isinstance(entities, dict):
+                continue
             for entity_name, config in entities.items():
-                if "entity_template" in config:
-                    # Create parsed entity configuration
-                    parsed_config = config.copy()
+                if not isinstance(entity_name, str) or not isinstance(config, dict):
+                    continue
 
-                    # Parse the entity template
-                    entity_template = config["entity_template"]
-                    parsed_entity_id = entity_template.replace("{device_id}", device_id)
+                entity_template = config.get("entity_template")
+                if not isinstance(entity_template, str):
+                    continue
 
-                    # Update the configuration with parsed entity ID
-                    parsed_config["entity_id"] = f"{platform}.{parsed_entity_id}"
-                    parsed_config["parsed_entity_template"] = parsed_entity_id
+                # Create parsed entity configuration
+                parsed_config = config.copy()
 
-                    # Add to parsed entities
-                    parsed_entities[platform][entity_name] = parsed_config
+                parsed_entity_template = parse_entity_mapping_templates_for_device(
+                    {"_": entity_template},
+                    device_id,
+                )["_"]
 
-                    self._logger.debug(
-                        "Parsed %s.%s: %s -> %s",
-                        platform,
-                        entity_name,
-                        entity_template,
-                        parsed_entity_id,
-                    )
+                entity_id = parsed_entity_template
+                if not entity_id.startswith(f"{platform}."):
+                    entity_id = f"{platform}.{entity_id}"
+
+                # Update the configuration with parsed entity ID
+                parsed_config["entity_id"] = entity_id
+                parsed_config["parsed_entity_template"] = parsed_entity_template
+
+                # Add to parsed entities
+                parsed_entities[platform][entity_name] = parsed_config
+
+                self._logger.debug(
+                    "Parsed %s.%s: %s -> %s",
+                    platform,
+                    entity_name,
+                    entity_template,
+                    parsed_entity_template,
+                )
 
         return parsed_entities
