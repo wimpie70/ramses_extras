@@ -1,3 +1,65 @@
+"""Card setup and deployment for Ramses Extras Lovelace cards.
+
+This module provides functionality for discovering, copying, registering,
+and managing Lovelace custom cards for Ramses Extras features.
+
+Card Management Flow (Called from entry.py):
+These functions are called from run_entry_setup_pipeline() and
+async_update_listener() in entry.py:
+
+1. setup_card_files_and_config (called in run_entry_setup_pipeline step 2):
+   - Orchestrates the complete card setup process
+   - Discovers card features from feature directories
+   - Copies helper files to versioned deployment directory
+   - Registers cards with Home Assistant's Lovelace system
+   - Cleans up old card deployments and creates stable shims
+   - Copies all card files to versioned deployment directories
+   - Exposes feature configuration to frontend
+
+2. expose_feature_config_to_frontend (called in async_update_listener):
+   - Updates frontend configuration when config entry changes
+   - Creates JavaScript file with feature configuration and debug settings
+   - Provides version information to Lovelace cards
+   - Ensures frontend stays in sync with backend configuration
+
+Pipeline Context:
+In run_entry_setup_pipeline():
+- load_feature_definitions_and_platforms (step 1)
+- setup_card_files_and_config (step 2)
+- register_services (step 3)
+- async_setup_platforms (step 4)
+- validate_startup_entities_simple (step 5)
+- cleanup_orphaned_devices (step 6)
+- create_and_start_feature_instances (step 7)
+
+In async_update_listener():
+- Called after configuration changes
+- Updates frontend configuration to match new settings
+
+Card Deployment Strategy:
+1. Version-based deployment: Each integration version gets its own www directory
+2. Stable shims: Create redirect files for backward compatibility
+3. Helper files: Shared JavaScript utilities copied to helpers directory
+4. Feature cards: Individual card files copied to feature-specific paths
+5. Configuration exposure: Feature settings exposed via JavaScript
+
+Card Discovery Process:
+1. Scan features directory for subdirectories with www folders
+2. Look for JavaScript files (.js) in those www directories
+3. Create feature information dictionaries with paths and metadata
+4. Filter for valid card features only
+
+Key Functions:
+- async_get_integration_version: Version management with caching
+- discover_card_features: Feature discovery and validation
+- cleanup_old_card_deployments: Version cleanup and shims
+- copy_all_card_files: Card file deployment
+- copy_helper_files: Shared utilities deployment
+- register_cards: Home Assistant Lovelace registration
+- expose_feature_config_to_frontend: Configuration synchronization
+- setup_card_files_and_config: Complete setup orchestration
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -21,6 +83,12 @@ INTEGRATION_DIR = Path(__file__).resolve().parents[2]
 
 
 async def async_get_integration_version(hass: HomeAssistant) -> str:
+    """Get the integration version with caching.
+
+    :param hass: Home Assistant instance
+
+    :return: Integration version string (e.g., "0.11.3")
+    """
     data = hass.data.setdefault(DOMAIN, {})
     cached_version = data.get("_integration_version")
     if isinstance(cached_version, str) and cached_version:
@@ -40,6 +108,13 @@ async def async_get_integration_version(hass: HomeAssistant) -> str:
 
 
 async def discover_card_features() -> list[dict[str, Any]]:
+    """Discover features that have Lovelace cards.
+
+    Scans the features directory for subdirectories containing www folders
+    with JavaScript files for Lovelace cards.
+
+    :return: List of dictionaries containing feature information and file paths
+    """
     features_dir = INTEGRATION_DIR / "features"
     card_features: list[dict[str, Any]] = []
 
@@ -76,6 +151,16 @@ async def cleanup_old_card_deployments(
     current_version: str,
     card_features: list[dict[str, Any]],
 ) -> None:
+    """Clean up old card deployments and create stable shims.
+
+    Removes old versioned deployments and creates stable shims that
+    redirect to the current version. Also creates tombstone files for
+    old versions to show restart warnings.
+
+    :param hass: Home Assistant instance
+    :param current_version: Current integration version
+    :param card_features: List of discovered card features
+    """
     root_dir = Path(hass.config.config_dir) / "www" / "ramses_extras"
     if not root_dir.exists():
         return
@@ -185,6 +270,14 @@ async def cleanup_old_card_deployments(
 async def copy_all_card_files(
     hass: HomeAssistant, card_features: list[dict[str, Any]]
 ) -> None:
+    """Copy all card files to versioned deployment directories.
+
+    Copies JavaScript files for all discovered card features to the
+    versioned www directory structure.
+
+    :param hass: Home Assistant instance
+    :param card_features: List of discovered card features
+    """
     try:
         _LOGGER.info("Starting unconditional card files copy process...")
 
@@ -222,6 +315,13 @@ async def copy_all_card_files(
 
 
 async def copy_helper_files(hass: HomeAssistant) -> None:
+    """Copy helper files to the versioned deployment directory.
+
+    Copies shared helper JavaScript files that are used by all cards
+    to the versioned helpers directory.
+
+    :param hass: Home Assistant instance
+    """
     try:
         _LOGGER.info("Starting helper files copy process...")
 
@@ -260,6 +360,13 @@ async def copy_helper_files(hass: HomeAssistant) -> None:
 
 
 async def register_cards(hass: HomeAssistant) -> None:
+    """Register cards with Home Assistant's Lovelace system.
+
+    Uses the CardRegistry to register the bootstrap resource that
+    enables dynamic card loading.
+
+    :param hass: Home Assistant instance
+    """
     try:
         _LOGGER.info("Starting feature-centric CardRegistry registration")
 
@@ -279,6 +386,14 @@ async def expose_feature_config_to_frontend(
     hass: HomeAssistant,
     entry: ConfigEntry,
 ) -> None:
+    """Expose feature configuration to the frontend.
+
+    Creates a JavaScript file with feature configuration, debug settings,
+    and version information that can be accessed by Lovelace cards.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry
+    """
     try:
         _LOGGER.info("Exposing feature configuration to frontend...")
 
@@ -351,6 +466,21 @@ window.ramsesExtras.logLevel = {js_log_level};
 
 
 async def setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Set up all card files and configuration.
+
+    Orchestrates the complete card setup process:
+    1. Discover card features
+    2. Copy helper files
+    3. Register cards
+    4. Clean up old deployments
+    5. Copy card files
+    6. Expose configuration to frontend
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry
+
+    :raises Exception: If card setup fails
+    """
     try:
         _LOGGER.info("Setting up card files and configuration")
 

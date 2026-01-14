@@ -1,3 +1,45 @@
+"""Feature setup and management for Ramses Extras integration.
+
+This module provides functionality for loading, setting up, and managing
+feature instances including platform imports, WebSocket integration,
+and automation lifecycle management.
+
+Feature Setup Flow (Called from entry.py):
+These functions are called from run_entry_setup_pipeline() in entry.py:
+
+1. load_feature_definitions_and_platforms (called early in pipeline):
+   - Registers default commands from features/default/commands.py
+   - Determines enabled features from config entry
+   - Imports platform modules (sensor, switch, binary_sensor, number)
+     for each enabled feature
+   - Discovers Ramses devices and stores them in hass.data
+   - Sets up platforms for device integration
+   - Initializes WebSocket integration for real-time communication
+
+2. create_and_start_feature_instances (called late in pipeline):
+   - Dynamically creates feature instances using feature-specific creation functions
+   - Manages automation lifecycle for each feature
+   - Handles feature readiness events for card coordination
+   - Sets up feature-specific automations and entities
+   - Called after platforms, services, and validation are complete
+
+Pipeline Context:
+In run_entry_setup_pipeline(), the order is:
+- load_feature_definitions_and_platforms (step 1)
+- setup_card_files_and_config (step 2)
+- register_services (step 3)
+- async_setup_platforms (step 4)
+- validate_startup_entities_simple (step 5)
+- cleanup_orphaned_devices (step 6)
+- create_and_start_feature_instances (step 7)
+
+Key Functions:
+- import_feature_platform_modules: Dynamic platform module importing
+- setup_websocket_integration: Real-time communication setup
+- load_feature_definitions_and_platforms: Main feature loading pipeline
+- create_and_start_feature_instances: Feature instance management
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +58,13 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def import_feature_platform_modules(feature_names: list[str]) -> None:
+    """Import platform modules for enabled features.
+
+    Dynamically imports platform modules (sensor, switch, binary_sensor, number)
+    for each enabled feature to make them available for Home Assistant.
+
+    :param feature_names: List of feature names to import platforms for
+    """
     platform_module_names = {
         Platform.SENSOR: "sensor",
         Platform.SWITCH: "switch",
@@ -49,6 +98,13 @@ async def import_feature_platform_modules(feature_names: list[str]) -> None:
 
 
 async def setup_websocket_integration(hass: HomeAssistant) -> None:
+    """Set up WebSocket integration for Ramses Extras.
+
+    Initializes WebSocket commands and integration for real-time
+    communication with the frontend.
+
+    :param hass: Home Assistant instance
+    """
     try:
         from ...websocket_integration import async_setup_websocket_integration
 
@@ -68,6 +124,16 @@ async def load_feature_definitions_and_platforms(
     *,
     discover_and_store_devices_fn: Any,
 ) -> None:
+    """Load feature definitions and set up platforms.
+
+    Registers default commands, loads enabled features, imports platform
+    modules, discovers devices, sets up platforms, and initializes
+    WebSocket integration.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry
+    :param discover_and_store_devices_fn: Function to discover and store devices
+    """
     from ...extras_registry import extras_registry
     from ...features.default.commands import register_default_commands
 
@@ -109,6 +175,15 @@ async def create_and_start_feature_instances(
     hass: HomeAssistant,
     entry: ConfigEntry,
 ) -> None:
+    """Create and start feature instances for enabled features.
+
+    Dynamically creates feature instances using feature-specific creation
+    functions, manages automation lifecycle, and handles feature readiness
+    events for card coordination.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry
+    """
     features = hass.data[DOMAIN].setdefault("features", {})
     feature_ready = hass.data[DOMAIN].setdefault("feature_ready", {})
     hass.data[DOMAIN].setdefault("cards_enabled", False)

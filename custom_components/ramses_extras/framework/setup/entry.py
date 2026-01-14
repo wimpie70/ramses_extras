@@ -1,3 +1,16 @@
+"""Entry point setup and lifecycle management for Ramses Extras integration.
+
+This module provides the main setup functions for the Ramses Extras Home Assistant
+integration, including entry setup, configuration management, and cleanup operations.
+
+Key functions:
+- async_setup_entry: Main integration setup, calls run_entry_setup_pipeline to setup all
+features
+- async_unload_entry: Integration cleanup
+- async_update_listener: Configuration updates
+- initialize_entry_data: Data structure initialization
+"""
+
 from __future__ import annotations
 
 import logging
@@ -26,6 +39,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def apply_log_level_from_entry(entry: ConfigEntry) -> None:
+    """Apply logging level configuration from config entry.
+
+    :param entry: Configuration entry containing log level settings
+    """
     log_level_raw = entry.options.get("log_level")
     if not isinstance(log_level_raw, str):
         return
@@ -46,6 +63,14 @@ def apply_log_level_from_entry(entry: ConfigEntry) -> None:
 
 
 def initialize_entry_data(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Initialize hass.data structure for Ramses Extras integration.
+
+    Sets up the data structure in hass.data to store integration state,
+    configuration, and enabled features.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry for the integration
+    """
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {}
     hass.data[DOMAIN]["entry_id"] = entry.entry_id
@@ -60,6 +85,10 @@ def initialize_entry_data(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def register_services(hass: HomeAssistant) -> None:
+    """Register Ramses Extras services with Home Assistant.
+
+    :param hass: Home Assistant instance
+    """
     _LOGGER.info("Registering Ramses Extras services")
 
     from ...services_integration import async_register_feature_services
@@ -70,6 +99,14 @@ async def register_services(hass: HomeAssistant) -> None:
 async def validate_startup_entities_simple(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> None:
+    """Validate entities on startup using SimpleEntityManager.
+
+    Restores device feature matrix state and validates all entities
+    to ensure they are properly configured and available.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry containing device feature matrix
+    """
     try:
         from ..helpers.entity.simple_entity_manager import SimpleEntityManager
 
@@ -92,6 +129,20 @@ async def validate_startup_entities_simple(
 
 
 async def run_entry_setup_pipeline(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Run the complete setup pipeline for Ramses Extras integration.
+
+    Executes all setup steps in the correct order:
+    1. Load feature definitions and platforms
+    2. Setup card files and configuration
+    3. Register services
+    4. Setup platforms
+    5. Validate startup entities
+    6. Cleanup orphaned devices
+    7. Create and start feature instances
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry for the integration
+    """
     await load_feature_definitions_and_platforms(
         hass,
         entry,
@@ -114,6 +165,15 @@ async def run_entry_setup_pipeline(hass: HomeAssistant, entry: ConfigEntry) -> N
 
 
 async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle configuration updates for the integration.
+
+    Called when the configuration entry is updated. Manages changes to
+    enabled features, device feature matrix, and debug settings.
+    Triggers reload when significant changes occur.
+
+    :param hass: Home Assistant instance
+    :param entry: Updated configuration entry
+    """
     try:
         data = hass.data.setdefault(DOMAIN, {})
 
@@ -214,6 +274,16 @@ async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Ramses Extras integration from a config entry.
+
+    This is the main setup function that initializes the entire integration,
+    including data structures, platforms, services, and features.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry for the integration
+
+    :return: True if setup was successful, False otherwise
+    """
     _LOGGER.info("Starting Ramses Extras integration setup...")
 
     apply_log_level_from_entry(entry)
@@ -236,6 +306,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload Ramses Extras integration.
+
+    Cleans up all integration resources including platforms, services,
+    and data structures when the integration is unloaded.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry to unload
+
+    :return: True if unload was successful, False otherwise
+    """
     _LOGGER.info("Unloading Ramses Extras integration...")
 
     from ...services_integration import async_unload_feature_services
@@ -259,6 +339,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove Ramses Extras integration and clean up all related data.
+
+    Removes all entities and devices associated with this integration
+    from the Home Assistant registries.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry being removed
+    """
     entity_registry = er.async_get(hass)
     entity_entries = list(entity_registry.entities.values())
     for entity_entry in entity_entries:

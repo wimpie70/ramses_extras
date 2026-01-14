@@ -1,3 +1,61 @@
+"""Device discovery and management for Ramses Extras integration.
+
+This module provides functionality for discovering Ramses devices from various
+sources, managing device lifecycle, and cleaning up orphaned devices.
+
+Device Management Flow (Called from entry.py):
+These functions are called from async_setup_entry() and
+run_entry_setup_pipeline() in entry.py:
+
+1. setup_entity_registry_device_refresh (called during async_setup_entry):
+   - Monitors entity registry updates for new ramses_cc entities
+   - Schedules device discovery when new entities are created
+   - Uses debouncing to prevent excessive discovery calls
+   - Provides real-time device refresh capability
+
+2. discover_and_store_devices (passed as callback to features):
+   - Called by load_feature_definitions_and_platforms() in features.py
+   - Discovers Ramses devices from multiple sources (broker, gateway, registry)
+   - Stores devices in hass.data for platform access
+   - Sets device_discovery_complete flag
+
+3. async_setup_platforms (called in run_entry_setup_pipeline step 4):
+   - Coordinates device discovery with ramses_cc integration
+   - Handles retry logic when ramses_cc is not yet loaded
+   - Prevents concurrent setup attempts with global flag
+   - Calls discover_and_store_devices internally
+
+4. cleanup_orphaned_devices (called in run_entry_setup_pipeline step 6):
+   - Removes devices with no associated entities from device registry
+   - Prevents registry bloat from removed/disabled features
+   - Uses both device and entity registries for cleanup
+   - Called after validation but before feature instances
+
+Pipeline Context:
+In async_setup_entry():
+- initialize_entry_data (step 1)
+- setup_entity_registry_device_refresh (step 2)
+
+In run_entry_setup_pipeline():
+- load_feature_definitions_and_platforms (step 1) → calls discover_and_store_devices
+- async_setup_platforms (step 4)
+- cleanup_orphaned_devices (step 6)
+
+Device Discovery Strategy:
+1. Try direct broker access via hass.data
+2. Try entry broker access
+3. Try integration registry
+4. Try direct gateway access
+5. Fallback to entity registry extraction
+
+Key Functions:
+- setup_entity_registry_device_refresh: Real-time device monitoring
+- discover_and_store_devices: Core device discovery and storage
+- async_setup_platforms: Platform coordination with retry logic
+- discover_ramses_devices: Multi-source device discovery
+- cleanup_orphaned_devices: Registry cleanup and maintenance
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -24,6 +82,15 @@ async def setup_entity_registry_device_refresh(
     *,
     discover_and_store_devices_fn: Any,
 ) -> None:
+    """Set up entity registry device refresh mechanism.
+
+    Monitors entity registry updates and schedules device discovery
+    when new ramses_cc entities are created.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry
+    :param discover_and_store_devices_fn: Function to discover and store devices
+    """
     device_refresh_task: asyncio.Task[None] | None = None
     device_refresh_lock: asyncio.Lock = hass.data[DOMAIN].setdefault(
         "_devices_refresh_lock",
@@ -80,6 +147,10 @@ async def setup_entity_registry_device_refresh(
 
 
 async def discover_and_store_devices(hass: HomeAssistant) -> None:
+    """Discover Ramses devices and store them in hass.data.
+
+    :param hass: Home Assistant instance
+    """
     devices = await discover_ramses_devices(hass)
 
     data = hass.data.setdefault(DOMAIN, {})
@@ -95,6 +166,13 @@ async def discover_and_store_devices(hass: HomeAssistant) -> None:
 
 
 async def async_setup_platforms(hass: HomeAssistant) -> None:
+    """Set up platforms by discovering Ramses devices.
+
+    Coordinates device discovery with ramses_cc integration and handles
+    retry logic when ramses_cc is not yet loaded.
+
+    :param hass: Home Assistant instance
+    """
     global _setup_in_progress
 
     if _setup_in_progress:
@@ -156,6 +234,19 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
 
 
 async def discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
+    """Discover Ramses devices from multiple sources.
+
+    Attempts to find devices through various methods:
+    1. Direct broker access via hass.data
+    2. Entry broker access
+    3. Integration registry
+    4. Direct gateway access
+    5. Fallback to entity registry
+
+    :param hass: Home Assistant instance
+
+    :return: List of discovered device objects
+    """
     ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
     if not ramses_cc_entries:
         _LOGGER.warning("No ramses_cc entries found")
@@ -241,6 +332,15 @@ async def discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
 
 
 async def _discover_devices_from_entity_registry(hass: HomeAssistant) -> list[str]:
+    """Discover devices from entity registry as fallback method.
+
+    Extracts device IDs from ramses_cc entities in the entity registry
+    when direct broker access is not available.
+
+    :param hass: Home Assistant instance
+
+    :return: List of device IDs found in entity registry
+    """
     try:
         entity_registry = er.async_get(hass)
         device_ids: list[str] = []
@@ -286,6 +386,16 @@ async def cleanup_orphaned_devices(
     device_registry: Any | None = None,
     entity_registry: Any | None = None,
 ) -> None:
+    """Clean up orphaned devices that have no associated entities.
+
+    Removes devices from the device registry if they no longer have any
+    entities associated with them, preventing registry bloat.
+
+    :param hass: Home Assistant instance
+    :param entry: Configuration entry
+    :param device_registry: Device registry instance (optional)
+    :param entity_registry: Entity registry instance (optional)
+    """
     device_registry = cast(Any, device_registry or dr.async_get(hass))
     entity_registry = cast(Any, entity_registry or er.async_get(hass))
 
