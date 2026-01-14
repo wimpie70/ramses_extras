@@ -10,11 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from custom_components.ramses_extras import (
-    _validate_startup_entities_simple,
-    async_setup_entry,
-)
 from custom_components.ramses_extras.const import AVAILABLE_FEATURES
+from custom_components.ramses_extras.framework.setup.entry import (
+    async_setup_entry,
+    validate_startup_entities_simple,
+)
 
 # Removed import of old EntityManager - using SimpleEntityManager instead
 
@@ -47,23 +47,23 @@ class TestStartupFlow:
         # Mock all the startup steps
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._validate_startup_entities_simple",
+                "custom_components.ramses_extras.framework.setup.entry.validate_startup_entities_simple",
                 new_callable=AsyncMock,
             ) as mock_validate,
         ):
@@ -89,19 +89,19 @@ class TestStartupFlow:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -127,19 +127,19 @@ class TestStartupFlow:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -161,26 +161,28 @@ class TestStartupFlow:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 new_callable=AsyncMock,
             ),
             patch(
                 "custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager.SimpleEntityManager",
                 return_value=mock_entity_manager,
             ),
-            patch("custom_components.ramses_extras._LOGGER") as mock_logger,
+            patch(
+                "custom_components.ramses_extras.framework.setup.entry._LOGGER"
+            ) as mock_logger,
         ):
             await async_setup_entry(self.mock_hass, self.mock_entry)
 
@@ -205,26 +207,28 @@ class TestStartupFlow:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 new_callable=AsyncMock,
             ),
             patch(
                 "custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager.SimpleEntityManager",
                 return_value=mock_entity_manager,
             ),
-            patch("custom_components.ramses_extras._LOGGER") as mock_logger,
+            patch(
+                "custom_components.ramses_extras.framework.setup.entry._LOGGER"
+            ) as mock_logger,
         ):
             # Startup should NOT fail due to validation error
             result = await async_setup_entry(self.mock_hass, self.mock_entry)
@@ -248,9 +252,11 @@ class TestStartupFlow:
                 "custom_components.ramses_extras.framework.helpers.entity.simple_entity_manager.SimpleEntityManager",
                 return_value=mock_entity_manager,
             ),
-            patch("custom_components.ramses_extras._LOGGER") as mock_logger,
+            patch(
+                "custom_components.ramses_extras.framework.setup.entry._LOGGER"
+            ) as mock_logger,
         ):
-            await _validate_startup_entities_simple(self.mock_hass, self.mock_entry)
+            await validate_startup_entities_simple(self.mock_hass, self.mock_entry)
 
             # Verify SimpleEntityManager was called correctly
             mock_entity_manager.validate_entities_on_startup.assert_called_once()
@@ -278,19 +284,19 @@ class TestStartupFlow:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -320,19 +326,19 @@ class TestStartupFlow:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -365,23 +371,23 @@ class TestStartupFlow:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 mock_register_services,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 mock_discover_devices,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 mock_platform_setup,
             ),
             patch(
-                "custom_components.ramses_extras._validate_startup_entities_simple",
+                "custom_components.ramses_extras.framework.setup.entry.validate_startup_entities_simple",
                 mock_validate_startup,
             ),
         ):
@@ -412,19 +418,19 @@ class TestStartupFlow:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -468,19 +474,19 @@ class TestStartupEntityCreationVsValidation:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 new_callable=AsyncMock,
             ),
         ):
@@ -522,19 +528,19 @@ class TestStartupEntityCreationVsValidation:
 
         with (
             patch(
-                "custom_components.ramses_extras._setup_card_files_and_config",
+                "custom_components.ramses_extras.framework.setup.entry.setup_card_files_and_config",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._register_services",
+                "custom_components.ramses_extras.framework.setup.entry.register_services",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras._discover_and_store_devices",
+                "custom_components.ramses_extras.framework.setup.entry.discover_and_store_devices",
                 new_callable=AsyncMock,
             ),
             patch(
-                "custom_components.ramses_extras.async_setup_platforms",
+                "custom_components.ramses_extras.framework.setup.entry.async_setup_platforms",
                 mock_platform_setup,
             ),
             patch(

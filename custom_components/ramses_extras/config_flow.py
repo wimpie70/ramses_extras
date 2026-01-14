@@ -659,9 +659,9 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 await _manage_cards_config_flow(self.hass, staged_enabled_features)
 
                 # Clean up orphaned devices after feature changes
-                from . import _cleanup_orphaned_devices
+                from .framework.setup.devices import cleanup_orphaned_devices
 
-                await _cleanup_orphaned_devices(self.hass, self._config_entry)
+                await cleanup_orphaned_devices(self.hass, self._config_entry)
 
             # Reset pending state and return to main menu
             self._pending_data = {}
@@ -1514,9 +1514,9 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                             )
 
                     # Clean up devices that no longer have any features enabled
-                    from . import _cleanup_orphaned_devices
+                    from .framework.setup.devices import cleanup_orphaned_devices
 
-                    await _cleanup_orphaned_devices(self.hass, self._config_entry)
+                    await cleanup_orphaned_devices(self.hass, self._config_entry)
 
                     # Reload the config entry to trigger platform setup for new entities
                     # This must happen AFTER entity creation so platforms

@@ -222,7 +222,9 @@ class TestRamsesExtrasOptionsFlowHandler:
             patch(
                 "custom_components.ramses_extras.config_flow._manage_cards_config_flow"
             ),
-            patch("custom_components.ramses_extras._cleanup_orphaned_devices"),
+            patch(
+                "custom_components.ramses_extras.framework.setup.devices.cleanup_orphaned_devices"
+            ),
         ):
             await options_flow.async_step_confirm({"confirm": True})
             args, kwargs = mock_update.call_args
@@ -619,7 +621,7 @@ class TestRamsesExtrasOptionsFlowHandler:
                 "custom_components.ramses_extras.config_flow.SimpleEntityManager"
             ) as mock_em_cls,
             patch(
-                "custom_components.ramses_extras._cleanup_orphaned_devices",
+                "custom_components.ramses_extras.framework.setup.devices.cleanup_orphaned_devices",
                 new=AsyncMock(),
             ),
             patch.object(hass.config_entries, "async_reload", new=AsyncMock()),

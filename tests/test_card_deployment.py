@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.ramses_extras import (
-    _cleanup_old_card_deployments,
-    _copy_all_card_files,
+from custom_components.ramses_extras.framework.setup.cards import (
+    cleanup_old_card_deployments,
+    copy_all_card_files,
 )
 
 
@@ -55,7 +55,7 @@ async def test_cleanup_old_card_deployments(mock_hass):
         }
     ]
 
-    await _cleanup_old_card_deployments(mock_hass, current_version, card_features)
+    await cleanup_old_card_deployments(mock_hass, current_version, card_features)
 
     # Old versions should NOT be gone, but JS files should be poisoned
     # Actually, in our new logic, we iterate over v* dirs and poison JS files.
@@ -84,7 +84,9 @@ async def test_copy_all_card_files(mock_hass):
     mock_hass.data["ramses_extras"] = {"_integration_version": current_version}
 
     # Use a simpler side effect for Path that just returns string-like mocks
-    with patch("custom_components.ramses_extras.Path") as mock_path:
+    with patch(
+        "custom_components.ramses_extras.framework.setup.cards.Path"
+    ) as mock_path:
 
         def create_mock_path(path_input=""):
             m = MagicMock()
@@ -114,7 +116,7 @@ async def test_copy_all_card_files(mock_hass):
         ]
 
         with patch("shutil.copytree") as mock_copy:
-            await _copy_all_card_files(mock_hass, card_features)
+            await copy_all_card_files(mock_hass, card_features)
 
             # Check if copytree was called for each card
             assert mock_copy.call_count == 2

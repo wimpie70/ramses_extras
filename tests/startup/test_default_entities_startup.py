@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.ramses_extras import async_setup_entry
 from custom_components.ramses_extras.const import AVAILABLE_FEATURES, DOMAIN
+from custom_components.ramses_extras.framework.setup.entry import async_setup_entry
 
 
 class TestDefaultEntitiesStartup:

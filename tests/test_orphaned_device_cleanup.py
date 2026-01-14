@@ -8,8 +8,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.ramses_extras import _cleanup_orphaned_devices
 from custom_components.ramses_extras.const import DOMAIN
+from custom_components.ramses_extras.framework.setup.devices import (
+    cleanup_orphaned_devices,
+)
 
 
 class TestOrphanedDeviceCleanup:
@@ -70,7 +72,7 @@ class TestOrphanedDeviceCleanup:
         mock_entity_registry.entities.get.return_value = []  # No entities
         mock_device_registry.async_remove_device = AsyncMock()
 
-        await _cleanup_orphaned_devices(
+        await cleanup_orphaned_devices(
             mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
         )
 
@@ -100,7 +102,7 @@ class TestOrphanedDeviceCleanup:
         ]  # Has entities
         mock_device_registry.async_remove_device = AsyncMock()
 
-        await _cleanup_orphaned_devices(
+        await cleanup_orphaned_devices(
             mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
         )
 
@@ -122,7 +124,7 @@ class TestOrphanedDeviceCleanup:
         mock_entity_registry.entities.get.return_value = []  # No entities
         mock_device_registry.async_remove_device = AsyncMock()
 
-        await _cleanup_orphaned_devices(
+        await cleanup_orphaned_devices(
             mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
         )
 
@@ -145,7 +147,7 @@ class TestOrphanedDeviceCleanup:
         mock_entity_registry.entities.get.return_value = []  # No entities
         mock_device_registry.async_remove_device = AsyncMock()
 
-        await _cleanup_orphaned_devices(
+        await cleanup_orphaned_devices(
             mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
         )
 
@@ -190,7 +192,7 @@ class TestOrphanedDeviceCleanup:
         mock_entity_registry.entities.get.side_effect = mock_entities_get
         mock_device_registry.async_remove_device = AsyncMock()
 
-        await _cleanup_orphaned_devices(
+        await cleanup_orphaned_devices(
             mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
         )
 
@@ -223,8 +225,10 @@ class TestOrphanedDeviceCleanup:
             "Removal failed"
         )
 
-        with patch("custom_components.ramses_extras._LOGGER.warning") as mock_logger:
-            await _cleanup_orphaned_devices(
+        with patch(
+            "custom_components.ramses_extras.framework.setup.devices._LOGGER.warning"
+        ) as mock_logger:
+            await cleanup_orphaned_devices(
                 mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
             )
 
@@ -243,7 +247,7 @@ class TestOrphanedDeviceCleanup:
         mock_device_registry.devices.values.return_value = []
         mock_device_registry.async_remove_device = AsyncMock()
 
-        await _cleanup_orphaned_devices(
+        await cleanup_orphaned_devices(
             mock_hass, mock_config_entry, mock_device_registry, mock_entity_registry
         )
 
