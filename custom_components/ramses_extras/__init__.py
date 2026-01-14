@@ -355,27 +355,10 @@ async def async_setup_yaml_config(hass: HomeAssistant, config: ConfigType) -> No
         _LOGGER.exception("Failed to set up Ramses Extras from YAML")
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up entry for Ramses Extras."""
-    _LOGGER.info("Starting Ramses Extras integration setup...")
-
-    _apply_log_level_from_entry(entry)
-
-    # Setup from UI (config entry)
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {}
-    hass.data[DOMAIN]["entry_id"] = entry.entry_id
-    hass.data[DOMAIN]["config_entry"] = entry  # Store for async_setup_platforms access
-    hass.data[DOMAIN]["enabled_features"] = get_enabled_features_dict(
-        hass,
-        entry,
-        include_default=False,
-        prefer_hass_data=False,
-    )
-    hass.data[DOMAIN]["PLATFORM_REGISTRY"] = (
-        PLATFORM_REGISTRY  # Make registry available to platforms
-    )
-
+async def _setup_entity_registry_device_refresh(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
     device_refresh_task: asyncio.Task[None] | None = None
     device_refresh_lock: asyncio.Lock = hass.data[DOMAIN].setdefault(
         "_devices_refresh_lock",
@@ -430,82 +413,66 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     )
 
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    _LOGGER.debug("Enabled features: %s", entry.data.get("enabled_features", {}))
+async def _load_feature_definitions_and_platforms(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
+    """Load feature definitions, platforms, and WebSocket modules.
 
-    async def _load_feature_definitions_and_platforms(
-        hass: HomeAssistant, entry: ConfigEntry
-    ) -> None:
-        """Load feature definitions, platforms, and WebSocket modules.
+    This is the single authoritative place for loading:
+    - Feature definitions (via load_feature)
+    - Platform registrations (via async_forward_entry_setups)
+    - WebSocket integration (via async_setup_websocket_integration)
+    """
 
-        This is the single authoritative place for loading:
-        - Feature definitions (via load_feature)
-        - Platform registrations (via async_forward_entry_setups)
-        - WebSocket integration (via async_setup_websocket_integration)
-        """
-        from .extras_registry import extras_registry
+    from .extras_registry import extras_registry
 
-        # Load default feature definitions
-        from .features.default.commands import register_default_commands
+    # Load default feature definitions
+    from .features.default.commands import register_default_commands
 
-        register_default_commands()
+    register_default_commands()
 
-        enabled_feature_names = get_enabled_feature_names(
-            hass,
-            entry,
-            prefer_hass_data=False,
-        )
+    enabled_feature_names = get_enabled_feature_names(
+        hass,
+        entry,
+        prefer_hass_data=False,
+    )
 
-        extras_registry.load_all_features(enabled_feature_names)
+    extras_registry.load_all_features(enabled_feature_names)
 
-        await _import_feature_platform_modules(enabled_feature_names)
+    await _import_feature_platform_modules(enabled_feature_names)
 
-        # CRITICAL: Discover devices BEFORE setting up platforms
-        await _discover_and_store_devices(hass)
+    # CRITICAL: Discover devices BEFORE setting up platforms
+    await _discover_and_store_devices(hass)
 
-        # Forward the setup to the sensor, switch, etc. platforms
-        await hass.config_entries.async_forward_entry_setups(
-            entry,
-            [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.NUMBER],
-        )
+    # Forward the setup to the sensor, switch, etc. platforms
+    await hass.config_entries.async_forward_entry_setups(
+        entry,
+        [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.NUMBER],
+    )
 
-        # Register WebSocket commands for features
-        await _setup_websocket_integration(hass)
+    # Register WebSocket commands for features
+    await _setup_websocket_integration(hass)
 
-        # Log loaded definitions for verification
-        sensor_count = len(extras_registry.get_all_sensor_configs())
-        switch_count = len(extras_registry.get_all_switch_configs())
-        number_count = len(extras_registry.get_all_number_configs())
-        boolean_count = len(extras_registry.get_all_boolean_configs())
-        _LOGGER.info(
-            "Entity registry loaded: %d sensor, %d switch, %d number, %d binary sensor",
-            sensor_count,
-            switch_count,
-            number_count,
-            boolean_count,
-        )
+    # Log loaded definitions for verification
+    sensor_count = len(extras_registry.get_all_sensor_configs())
+    switch_count = len(extras_registry.get_all_switch_configs())
+    number_count = len(extras_registry.get_all_number_configs())
+    boolean_count = len(extras_registry.get_all_boolean_configs())
+    _LOGGER.info(
+        "Entity registry loaded: %d sensor, %d switch, %d number, %d binary sensor",
+        sensor_count,
+        switch_count,
+        number_count,
+        boolean_count,
+    )
 
-    await _load_feature_definitions_and_platforms(hass, entry)
 
-    _LOGGER.debug("WebSocket functionality uses feature-centric architecture")
-
-    # Copy helper files, register/clean Lovelace resources, deploy card assets.
-    await _setup_card_files_and_config(hass, entry)
-
-    # Register services before setting up platforms
-    await _register_services(hass)
-
-    # Continue with additional platform setup if needed
-    await async_setup_platforms(hass)
-
-    # STEP: Post-creation validation with SimpleEntityManager
-    await _validate_startup_entities_simple(hass, entry)
-
-    await _cleanup_orphaned_devices(hass, entry)
-
-    # Explicitly create and start feature instances for
-    #  enabled features (including default)
+async def _create_and_start_feature_instances(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
     features = hass.data[DOMAIN].setdefault("features", {})
     feature_ready = hass.data[DOMAIN].setdefault("feature_ready", {})
     hass.data[DOMAIN].setdefault("cards_enabled", False)
@@ -613,6 +580,61 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     for automation_manager in automation_managers_to_start:
         hass.async_create_task(automation_manager.start())
+
+
+def _initialize_entry_data(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {}
+    hass.data[DOMAIN]["entry_id"] = entry.entry_id
+    hass.data[DOMAIN]["config_entry"] = entry  # Store for async_setup_platforms access
+    hass.data[DOMAIN]["enabled_features"] = get_enabled_features_dict(
+        hass,
+        entry,
+        include_default=False,
+        prefer_hass_data=False,
+    )
+    hass.data[DOMAIN]["PLATFORM_REGISTRY"] = (
+        PLATFORM_REGISTRY  # Make registry available to platforms
+    )
+
+
+async def _run_entry_setup_pipeline(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await _load_feature_definitions_and_platforms(hass, entry)
+
+    _LOGGER.debug("WebSocket functionality uses feature-centric architecture")
+
+    # Copy helper files, register/clean Lovelace resources, deploy card assets.
+    await _setup_card_files_and_config(hass, entry)
+
+    # Register services before setting up platforms
+    await _register_services(hass)
+
+    # Continue with additional platform setup if needed
+    await async_setup_platforms(hass)
+
+    # STEP: Post-creation validation with SimpleEntityManager
+    await _validate_startup_entities_simple(hass, entry)
+
+    await _cleanup_orphaned_devices(hass, entry)
+
+    await _create_and_start_feature_instances(hass, entry)
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up entry for Ramses Extras."""
+    _LOGGER.info("Starting Ramses Extras integration setup...")
+
+    _apply_log_level_from_entry(entry)
+
+    _initialize_entry_data(hass, entry)
+
+    await _setup_entity_registry_device_refresh(hass, entry)
+
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
+    _LOGGER.debug("Enabled features: %s", entry.data.get("enabled_features", {}))
+
+    await _run_entry_setup_pipeline(hass, entry)
 
     return True
 

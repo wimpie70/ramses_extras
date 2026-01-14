@@ -68,6 +68,87 @@ async def _get_required_entities_from_feature(feature_id: str) -> dict[str, list
         return {}
 
 
+async def get_required_entity_ids_for_feature_device(
+    feature_id: str,
+    device_id: str,
+) -> list[str]:
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            _get_required_entity_ids_for_feature_device_sync,
+            feature_id,
+            device_id,
+        )
+    except Exception:
+        return []
+
+
+def _get_required_entity_ids_for_feature_device_sync(
+    feature_id: str,
+    device_id: str,
+) -> list[str]:
+    feature_module_path = f"custom_components.ramses_extras.features.{feature_id}.const"
+    feature_module = importlib.import_module(feature_module_path)
+
+    feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
+    feature_def: dict[str, Any] = (
+        feature_def_obj if isinstance(feature_def_obj, dict) else {}
+    )
+
+    required_entities = feature_def.get("required_entities")
+    if not isinstance(required_entities, dict):
+        required_entities = {}
+
+    def _as_config_dict(value: Any) -> dict[str, Any]:
+        return value if isinstance(value, dict) else {}
+
+    def _is_optional_entity(config: Any) -> bool:
+        return isinstance(config, dict) and config.get("optional") is True
+
+    config_sources: dict[str, dict[str, Any]] = {
+        "sensor": _as_config_dict(feature_def.get("sensor_configs")),
+        "switch": _as_config_dict(feature_def.get("switch_configs")),
+        "number": _as_config_dict(feature_def.get("number_configs")),
+        "binary_sensor": _as_config_dict(feature_def.get("boolean_configs")),
+    }
+
+    if not required_entities:
+        derived_required: dict[str, list[str]] = {}
+        for platform, configs in config_sources.items():
+            entity_names = [
+                entity_name
+                for entity_name, config in configs.items()
+                if not _is_optional_entity(config)
+            ]
+            if entity_names:
+                derived_required[platform] = entity_names
+        required_entities = derived_required
+
+    entity_ids: list[str] = []
+    device_id_underscore = device_id.replace(":", "_")
+
+    for platform, entity_names in required_entities.items():
+        if not isinstance(platform, str) or not isinstance(entity_names, list):
+            continue
+        platform_configs = config_sources.get(platform, {})
+        for entity_name in entity_names:
+            config = platform_configs.get(entity_name, {})
+            template = (
+                config.get("entity_template") if isinstance(config, dict) else None
+            )
+            if not isinstance(template, str) or not template:
+                template = f"{entity_name}_{{device_id}}"
+            entity_id = EntityHelpers.generate_entity_name_from_template(
+                platform,
+                template,
+                device_id=device_id_underscore,
+            )
+            entity_ids.append(entity_id)
+
+    return entity_ids
+
+
 def get_required_entities_from_feature_sync(feature_id: str) -> dict[str, list[str]]:
     """Synchronous wrapper for _get_required_entities_from_feature.
 

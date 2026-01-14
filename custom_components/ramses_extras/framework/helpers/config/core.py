@@ -226,15 +226,7 @@ class ExtrasConfigManager:
         _LOGGER.info(f"Resetting {self.feature_id} configuration to defaults")
         self._config = self._default_config.copy()
 
-    def get_config_schema(self) -> dict[str, Any]:
-        """Get configuration schema for UI.
-
-        Features should override this method to provide feature-specific schemas.
-        The base implementation provides a generic schema.
-
-        Returns:
-            Configuration schema dictionary
-        """
+    def get_config_schema_dict(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -245,6 +237,17 @@ class ExtrasConfigManager:
                 },
             },
         }
+
+    def get_config_schema(self) -> dict[str, Any]:
+        """Get configuration schema for UI.
+
+        Features should override this method to provide feature-specific schemas.
+        The base implementation provides a generic schema.
+
+        Returns:
+            Configuration schema dictionary
+        """
+        return self.get_config_schema_dict()
 
     def get_numeric_validation(self, key: str, min_val: float, max_val: float) -> bool:
         """Validate a numeric configuration value is within range.

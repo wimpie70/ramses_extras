@@ -58,7 +58,7 @@ class TestHumidityConfig:
 
     def test_get_config_schema(self):
         """Test generating config schema."""
-        schema = self.config.get_config_schema()
+        schema = self.config.get_config_schema_dict()
         assert schema["type"] == "object"
         assert "enabled" in schema["properties"]
         assert "automation_enabled" in schema["properties"]

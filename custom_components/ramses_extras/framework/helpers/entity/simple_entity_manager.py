@@ -5,7 +5,6 @@ the complex EntityManager with direct entity creation/removal based on
 config flow decisions.
 """
 
-import importlib
 import logging
 from typing import Any, TypedDict
 from unittest.mock import Mock
@@ -47,7 +46,7 @@ class SimpleEntityManager:
             hass: Home Assistant instance
         """
         self.hass = hass
-        self.device_feature_matrix = DeviceFeatureMatrix()
+        self.device_feature_matrix: DeviceFeatureMatrix = DeviceFeatureMatrix()
         self._enabled_features = enabled_features
 
     def _get_enabled_features(self) -> dict[str, bool]:
@@ -318,83 +317,9 @@ class SimpleEntityManager:
         Returns:
             List of entity IDs for this combination
         """
-        entity_ids = []
-        from .core import EntityHelpers
+        from .core import get_required_entity_ids_for_feature_device
 
-        # For other features, try to get entity configurations
-        try:
-            feature_module_path = (
-                f"custom_components.ramses_extras.features.{feature_id}.const"
-            )
-            feature_module = importlib.import_module(feature_module_path)
-
-            def _as_config_dict(value: Any) -> dict[str, Any]:
-                if isinstance(value, dict):
-                    return value
-                return {}
-
-            def _is_optional_entity(config: Any) -> bool:
-                return isinstance(config, dict) and config.get("optional") is True
-
-            feature_def_obj = getattr(feature_module, "FEATURE_DEFINITION", None)
-            feature_def: dict[str, Any] = (
-                feature_def_obj if isinstance(feature_def_obj, dict) else {}
-            )
-
-            required_entities = feature_def.get("required_entities")
-            if not isinstance(required_entities, dict):
-                required_entities = {}
-
-            config_sources: dict[str, dict[str, Any]] = {
-                "sensor": _as_config_dict(feature_def.get("sensor_configs")),
-                "switch": _as_config_dict(feature_def.get("switch_configs")),
-                "number": _as_config_dict(feature_def.get("number_configs")),
-                "binary_sensor": _as_config_dict(feature_def.get("boolean_configs")),
-            }
-
-            if not required_entities:
-                required_entities = {}
-                for platform, configs in config_sources.items():
-                    entity_names = [
-                        entity_name
-                        for entity_name, config in configs.items()
-                        if not _is_optional_entity(config)
-                    ]
-                    if entity_names:
-                        required_entities[platform] = entity_names
-
-            _LOGGER.debug(
-                "Found required_entities for %s: %s", feature_id, required_entities
-            )
-
-            device_id_underscore = device_id.replace(":", "_")
-
-            for platform, entity_names in required_entities.items():
-                platform_configs = config_sources.get(platform, {})
-
-                for entity_name in entity_names:
-                    # Get template from config if available, otherwise use default
-                    config = platform_configs.get(entity_name, {})
-                    template = config.get(
-                        "entity_template", f"{entity_name}_{{device_id}}"
-                    )
-
-                    try:
-                        entity_id = EntityHelpers.generate_entity_name_from_template(
-                            platform, template, device_id=device_id_underscore
-                        )
-                        entity_ids.append(entity_id)
-                    except Exception as e:
-                        _LOGGER.warning(
-                            "Failed to generate entity ID for %s: %s", entity_name, e
-                        )
-
-        except Exception as e:
-            _LOGGER.debug(
-                f"Could not get required entities for feature {feature_id}: {e}"
-            )
-
-        return entity_ids
+        return await get_required_entity_ids_for_feature_device(feature_id, device_id)
 
     async def _create_feature_entities(
         self, feature_id: str, device_id: str
@@ -622,7 +547,9 @@ class SimpleEntityManager:
         Returns:
             List of device IDs with the feature enabled
         """
-        return self.device_feature_matrix.get_enabled_devices_for_feature(feature_id)
+        return list(
+            self.device_feature_matrix.get_enabled_devices_for_feature(feature_id)
+        )
 
     def is_device_enabled_for_feature(self, device_id: str, feature_id: str) -> bool:
         """Check if a device has a specific feature enabled.
@@ -634,8 +561,11 @@ class SimpleEntityManager:
         Returns:
             True if device has feature enabled, False otherwise
         """
-        return self.device_feature_matrix.is_device_enabled_for_feature(
-            device_id, feature_id
+        return bool(
+            self.device_feature_matrix.is_device_enabled_for_feature(
+                device_id,
+                feature_id,
+            )
         )
 
     def get_all_enabled_combinations(self) -> list[tuple[str, str]]:
@@ -644,7 +574,7 @@ class SimpleEntityManager:
         Returns:
             List of (device_id, feature_id) tuples
         """
-        return self.device_feature_matrix.get_all_enabled_combinations()
+        return list(self.device_feature_matrix.get_all_enabled_combinations())
 
     def get_device_feature_matrix_state(self) -> dict[str, dict[str, bool]]:
         """Get the current device/feature matrix state.
@@ -652,7 +582,7 @@ class SimpleEntityManager:
         Returns:
             Dictionary representing the current matrix state
         """
-        return self.device_feature_matrix.get_matrix_state()
+        return dict(self.device_feature_matrix.get_matrix_state())
 
     def restore_device_feature_matrix_state(
         self, state: dict[str, dict[str, bool]]

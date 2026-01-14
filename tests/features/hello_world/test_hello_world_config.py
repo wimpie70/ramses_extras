@@ -56,7 +56,7 @@ def test_validate_config_invalid(hass, config_entry):
 def test_get_config_schema(hass, config_entry):
     """Test get_config_schema returns expected structure."""
     config = HelloWorldConfig(hass, config_entry)
-    schema = config.get_config_schema()
+    schema = config.get_config_schema_dict()
     assert "properties" in schema
     assert "auto_discovery" in schema["properties"]
 

@@ -114,6 +114,9 @@ class HelloWorldConfig(ExtrasConfigManager):
         :return: Configuration schema dictionary
         :rtype: dict[str, Any]
         """
+        return self.get_config_schema_dict()
+
+    def get_config_schema_dict(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {

@@ -210,6 +210,14 @@ class TestExtrasConfigManager:
         assert result == test_config
         assert result is not manager._config  # Should return a copy
 
+    def test_get_config_schema_dict(self):
+        manager = ExtrasConfigManager(
+            self.hass, self.config_entry, self.feature_id, self.default_config
+        )
+        schema = manager.get_config_schema_dict()
+        assert schema["type"] == "object"
+        assert "enabled" in schema["properties"]
+
     def test_update_method(self):
         """Test update method."""
         manager = ExtrasConfigManager(
