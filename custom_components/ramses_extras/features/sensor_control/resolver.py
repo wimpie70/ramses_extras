@@ -198,16 +198,29 @@ class SensorControlResolver:
         Returns:
             Dictionary mapping metric to internal entity ID
         """
-        device_key = device_id.replace(":", "_")
         internal_mappings = INTERNAL_SENSOR_MAPPINGS.get(device_type, {})
         # INTERNAL_SENSOR_MAPPINGS.get() always returns a dict, so no need for
         # isinstance check
 
-        result: dict[str, str | None] = {}
+        from custom_components.ramses_extras.framework.helpers.entity.core import (
+            parse_entity_mapping_templates_for_device,
+        )
+
+        templates: dict[str, str] = {
+            metric: template
+            for metric, template in internal_mappings.items()
+            if isinstance(metric, str) and isinstance(template, str)
+        }
+        parsed = parse_entity_mapping_templates_for_device(templates, device_id)
+
+        result: dict[str, str | None] = {
+            metric: parsed.get(metric)
+            for metric, template in internal_mappings.items()
+            if isinstance(metric, str) and template
+        }
+
         for metric, template in internal_mappings.items():
-            if template:
-                result[metric] = template.replace("{device_id}", device_key)
-            else:
+            if isinstance(metric, str) and not template:
                 result[metric] = None
 
         # Ensure all supported metrics are present

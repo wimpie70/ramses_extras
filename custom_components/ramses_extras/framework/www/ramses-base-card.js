@@ -136,6 +136,7 @@ export class RamsesBaseCard extends HTMLElement {
 
     this._featureConfigLoadAttached = false;
     this._cachedEntities = null; // Cache for getRequiredEntities
+    this._requiredEntitiesPromise = null;
 
     this._optionsUpdatedListenerAttached = false;
     this._optionsUpdatedListener = null;
@@ -200,25 +201,39 @@ export class RamsesBaseCard extends HTMLElement {
    * Override this method for custom entity logic
    * @returns {Object} Required entities mapping
    */
-  async getRequiredEntities() {
-    // Use cached entities if available to avoid unnecessary recalculation
+  getRequiredEntities() {
     if (this._cachedEntities) {
       return this._cachedEntities;
     }
+    this._ensureRequiredEntitiesLoaded();
+    return {};
+  }
 
-    // Use feature-centric design to construct entity IDs
-    // This ensures we always have valid entity IDs to monitor
+  _ensureRequiredEntitiesLoaded() {
+    if (this._cachedEntities) {
+      return;
+    }
+    if (this._requiredEntitiesPromise) {
+      return;
+    }
+    if (!this._hass || !this._config?.device_id) {
+      return;
+    }
+
+    this._requiredEntitiesPromise = this._loadRequiredEntities()
+      .catch(() => {})
+      .finally(() => {
+        this._requiredEntitiesPromise = null;
+      });
+  }
+
+  async _loadRequiredEntities() {
     const deviceId = this._config?.device_id;
-
     if (!deviceId) {
-      logger.warn(
-        `${this.constructor.name}: getRequiredEntities - no device_id available`
-      );
-      return {};
+      return;
     }
 
     try {
-      // Load entity mappings from backend feature constants
       const result = await this._sendWebSocketCommand({
         type: 'ramses_extras/get_entity_mappings',
         device_id: deviceId,
@@ -226,9 +241,15 @@ export class RamsesBaseCard extends HTMLElement {
       }, `entity_mappings_${deviceId}`);
 
       if (result.mappings) {
-        // Cache the entities for future calls
         this._cachedEntities = result.mappings;
-        return result.mappings;
+
+        // Now that we have entity IDs, reset state tracking and re-render.
+        // This ensures shouldUpdate() will start using entity-based change detection.
+        this.clearPreviousStates();
+        this.clearUpdateThrottle();
+        if (this.isConnected) {
+          this.render();
+        }
       }
     } catch (error) {
       logger.warn(
@@ -236,9 +257,6 @@ export class RamsesBaseCard extends HTMLElement {
         error
       );
     }
-
-    // Fallback to empty entities if loading fails
-    return {};
   }
 
   /**
@@ -667,6 +685,15 @@ export class RamsesBaseCard extends HTMLElement {
     const requiredEntities = this.getRequiredEntities();
 
     if (Object.keys(requiredEntities).length === 0) {
+      // If we're using the base implementation and entities haven't loaded yet,
+      // avoid treating this as "no entities" (which would cause render thrash).
+      if (
+        this.getRequiredEntities === RamsesBaseCard.prototype.getRequiredEntities &&
+        !this._cachedEntities
+      ) {
+        return false;
+      }
+
       // No specific entities to monitor, always update
       debugLog(`🔍 ${this.constructor.name}: shouldUpdate - no required entities, always update`);
       return true;
@@ -710,6 +737,7 @@ export class RamsesBaseCard extends HTMLElement {
    */
   _checkAndLoadInitialState() {
     if (this._hass && this._config && !this._initialStateLoaded) {
+      this._ensureRequiredEntitiesLoaded();
       this._loadInitialState();
       this._initialStateLoaded = true;
     }
