@@ -25,7 +25,6 @@ from custom_components.ramses_extras.framework.helpers.ramses_commands import (
 
 from ...framework.helpers.common import (
     RamsesValidator,
-    _singularize_entity_type,
 )
 from .config import HumidityConfig
 from .const import FEATURE_DEFINITION
@@ -226,14 +225,16 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Returns:
             True if all entities exist, False otherwise
         """
-        required_entities = cast(
-            dict[str, list[str]], FEATURE_DEFINITION.get("required_entities", {})
-        )
         from custom_components.ramses_extras.framework.helpers.entity.core import (
             get_feature_entity_mappings,
+            get_required_entity_ids_for_feature_device,
         )
 
         entity_mappings = await get_feature_entity_mappings(self.feature_id, device_id)
+        required_entity_ids = await get_required_entity_ids_for_feature_device(
+            self.feature_id,
+            device_id,
+        )
         missing_entities = []
 
         # Get entity registry
@@ -242,22 +243,16 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         _LOGGER.debug("Validating entities for device_id=%s", device_id)
 
         # Check entities from required_entities (created by humidity_control feature)
-        for entity_type, entity_names in required_entities.items():
-            # Convert plural to singular using the common helper
-            entity_base_type = _singularize_entity_type(entity_type)
+        for expected_entity_id in required_entity_ids:
+            _LOGGER.debug("Checking for entity: %s", expected_entity_id)
 
-            for entity_name in entity_names:
-                # Generate expected entity ID using humidity control patterns
-                expected_entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
-                _LOGGER.debug("Checking for entity: %s", expected_entity_id)
-
-                # Check entity registry instead of states
-                entity_entry = registry.async_get(expected_entity_id)
-                if not entity_entry:
-                    _LOGGER.warning("Missing entity: %s", expected_entity_id)
-                    missing_entities.append(expected_entity_id)
-                else:
-                    _LOGGER.debug("Found entity: %s", expected_entity_id)
+            # Check entity registry instead of states
+            entity_entry = registry.async_get(expected_entity_id)
+            if not entity_entry:
+                _LOGGER.warning("Missing entity: %s", expected_entity_id)
+                missing_entities.append(expected_entity_id)
+            else:
+                _LOGGER.debug("Found entity: %s", expected_entity_id)
 
         # Check entities from entity_mappings (created by default feature)
         for state_name, expected_entity_id in entity_mappings.items():

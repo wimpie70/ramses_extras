@@ -14,18 +14,17 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
-
-# Avoid circular imports by importing when needed in methods
 from typing import Any, Protocol
 
 from homeassistant.core import CoreState, Event, HomeAssistant, State
 from homeassistant.helpers.event import async_track_state_change_event
 
+# Avoid circular imports by importing when needed in methods
 from ...const import DOMAIN
 from ..helpers.common.utils import _singularize_entity_type
 from ..helpers.entity.core import (
-    _get_required_entities_from_feature,
     get_required_entities_from_feature_sync,
+    get_required_entity_ids_for_feature_device,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -469,27 +468,21 @@ class ExtrasBaseAutomation(ABC):
         Returns:
             True if all entities exist, False otherwise
         """
-        # Get required entities from the feature's const module
-        required_entities = await _get_required_entities_from_feature(self.feature_id)
-        if not required_entities:
+        required_entity_ids = await get_required_entity_ids_for_feature_device(
+            self.feature_id,
+            device_id,
+        )
+        if not required_entity_ids:
             _LOGGER.warning(
                 f"No required entities found for feature: {self.feature_id}"
             )
             return False
 
-        missing_entities = []
-
-        for entity_type, entity_names in required_entities.items():
-            entity_base_type = _singularize_entity_type(entity_type)
-
-            for entity_name in entity_names:
-                # Generate expected entity ID using the pattern
-                #  from the humidity automation
-                expected_entity_id = f"{entity_base_type}.{entity_name}_{device_id}"
-
-                entity_exists = self.hass.states.get(expected_entity_id)
-                if not entity_exists:
-                    missing_entities.append(expected_entity_id)
+        missing_entities: list[str] = []
+        for entity_id in required_entity_ids:
+            entity_exists = self.hass.states.get(entity_id)
+            if not entity_exists:
+                missing_entities.append(entity_id)
 
         if missing_entities:
             _LOGGER.debug(

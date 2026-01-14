@@ -360,9 +360,9 @@ class TestExtrasBaseAutomation:
 
         with patch(
             "custom_components.ramses_extras.framework.base_classes."
-            "base_automation._get_required_entities_from_feature"
+            "base_automation.get_required_entity_ids_for_feature_device"
         ) as mock_get:
-            mock_get.return_value = {"sensors": ["temperature"]}
+            mock_get.return_value = ["sensor.temperature_32_153289"]
 
             result = await automation._validate_device_entities("32_153289")
 
@@ -379,15 +379,10 @@ class TestExtrasBaseAutomation:
         with (
             patch(
                 "custom_components.ramses_extras.framework.base_classes."
-                "base_automation._get_required_entities_from_feature"
+                "base_automation.get_required_entity_ids_for_feature_device"
             ) as mock_get,
-            patch(
-                "custom_components.ramses_extras.framework.base_classes."
-                "base_automation._singularize_entity_type"
-            ) as mock_singularize,
         ):
-            mock_get.return_value = {"sensors": ["temperature"]}
-            mock_singularize.return_value = "sensor"
+            mock_get.return_value = ["sensor.temperature_32_153289"]
 
             result = await automation._validate_device_entities("32_153289")
 
