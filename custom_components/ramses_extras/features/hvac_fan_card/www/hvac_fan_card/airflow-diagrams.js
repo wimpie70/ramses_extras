@@ -59,7 +59,7 @@ export const AIRFLOW_DIAGRAMS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" vie
   transform="translate(0,-70) translate(400,400) scale(1.3) translate(-400,-400)">
   <path d="M212 212 Q374 307 400 400 Q455 569 588 588" marker-end="url(#marker1)"></path>
 </g>
-<g stroke-width="29" stroke="white" fill="none" stroke-linecap="round" stroke-linejoin="round"
+<g stroke-width="29" stroke="var(--secondary-background-color)" fill="none" stroke-linecap="round" stroke-linejoin="round"
   transform="translate(0,-70) scale(-1,1) translate(-800,0) translate(400,400) scale(1.35) translate(-400,-400)">
   <path d="M212 212 Q374 307 400 400 Q455 569 588 588"></path>
 </g>
@@ -172,7 +172,7 @@ export const NORMAL_SVG = `
     </g>
 
     <!-- Mirrored arrow shadow -->
-    <g stroke-width="29" stroke="white" fill="none" stroke-linecap="round" stroke-linejoin="round"
+    <g stroke-width="29" stroke="var(--secondary-background-color)" fill="none" stroke-linecap="round" stroke-linejoin="round"
       transform="translate(0,-70) scale(-1,1) translate(-800,0) translate(400,400) scale(1.35) translate(-400,-400)">
       <path d="M212 212 Q374 307 400 400 Q455 569 588 588"></path>
     </g>

@@ -2,11 +2,18 @@ export const CARD_STYLE = `
 
 /* ====== ROOT CONTAINER ====== */
 .ventilation-card {
-  background: #1c1c1c;
-  border-radius: 12px;
+  background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+  border-radius: var(--ha-card-border-radius, 12px);
   padding: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #ffffff;
+  font-family: var(
+    --primary-font-family,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif
+  );
+  color: var(--primary-text-color);
   width: 100%;
   height: auto;
   min-height: 440px;
@@ -17,17 +24,17 @@ export const CARD_STYLE = `
 
 /* ====== SENSOR SOURCES PANEL ====== */
 .sensor-sources-panel {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--secondary-background-color);
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--divider-color);
 }
 
 .sensor-sources-title {
   font-size: 12px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--primary-text-color);
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -55,32 +62,32 @@ export const CARD_STYLE = `
 
 .sensor-source-indicator:hover {
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.2));
 }
 
 /* Sensor source status styles */
 .sensor-source-external.valid {
-  background: rgba(76, 175, 80, 0.2);
-  border: 1px solid rgba(76, 175, 80, 0.3);
-  color: #a5d6a7;
+  background: var(--secondary-background-color);
+  border: 1px solid var(--success-color, #4caf50);
+  color: var(--success-color, #4caf50);
 }
 
 .sensor-source-external.invalid {
-  background: rgba(244, 67, 54, 0.2);
-  border: 1px solid rgba(244, 67, 54, 0.3);
-  color: #ef9a9a;
+  background: var(--secondary-background-color);
+  border: 1px solid var(--error-color, #f44336);
+  color: var(--error-color, #f44336);
 }
 
 .sensor-source-derived {
-  background: rgba(33, 150, 243, 0.2);
-  border: 1px solid rgba(33, 150, 243, 0.3);
-  color: #90caf9;
+  background: var(--secondary-background-color);
+  border: 1px solid var(--info-color, var(--primary-color));
+  color: var(--info-color, var(--primary-color));
 }
 
 .sensor-source-disabled {
-  background: rgba(158, 158, 158, 0.2);
-  border: 1px solid rgba(158, 158, 158, 0.3);
-  color: #e0e0e0;
+  background: var(--secondary-background-color);
+  border: 1px solid var(--divider-color);
+  color: var(--secondary-text-color);
 }
 
 .sensor-source-icon {
@@ -112,10 +119,15 @@ export const CARD_STYLE = `
   margin-left: 4px;
 }
 
+.value-unavailable {
+  color: var(--secondary-text-color);
+  font-style: italic;
+}
+
 /* ====== MAIN CONTENT SECTIONS ====== */
 .top-section, .parameter-edit-section {
-  background: #f5f5f5;
-  border-radius: 12px;
+  background: var(--secondary-background-color);
+  border-radius: var(--ha-card-border-radius, 12px);
   padding: 12px;
   margin-bottom: 16px;
   position: relative;
@@ -124,14 +136,14 @@ export const CARD_STYLE = `
   flex-direction: column;
   justify-content: space-between;
   font-size: 13px;
-  color: #333;
+  color: var(--primary-text-color);
   font-weight: 500;
   transition: all 0.3s ease;
   overflow: hidden;
 }
 
 .parameter-edit-section {
-  background: linear-gradient(135deg, #e8f4fd 0%, #d1ecf1 100%);
+  background: var(--secondary-background-color);
 }
 
 /* ====== LAYOUT HELPERS ====== */
@@ -149,9 +161,9 @@ export const CARD_STYLE = `
   gap: 4px;
   padding: 3px;
   z-index: 20;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: var(--ha-card-background, var(--card-background-color));
+  border: 1px solid var(--divider-color);
+  box-shadow: var(--ha-card-box-shadow, 0 4px 12px rgba(0, 0, 0, 0.1));
   border-radius: 10px;
 }
 .timer-icon {
@@ -180,8 +192,8 @@ export const CARD_STYLE = `
   align-items: center;
   gap: 4px;
   z-index: 20;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--ha-card-background, var(--card-background-color));
+  border: 1px solid var(--divider-color);
   padding: 6px 16px;
   border-radius: 15px;
   min-width: 180px;
@@ -191,7 +203,7 @@ export const CARD_STYLE = `
   width: 100%;
   display: flex;
   justify-content: center;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid var(--divider-color);
   padding-bottom: 2px;
 }
 
@@ -215,11 +227,11 @@ export const CARD_STYLE = `
   flex-direction: column;
   gap: 6px;
   z-index: 15;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--ha-card-background, var(--card-background-color));
   padding: 3px;
   border-radius: 14px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: var(--ha-card-box-shadow, 0 4px 12px rgba(0, 0, 0, 0.1));
+  border: 1px solid var(--divider-color);
   width: 33%;
 }
 
@@ -235,7 +247,7 @@ export const CARD_STYLE = `
 
 .outside-edge {
   font-weight: 800;
-  color: #333;
+  color: var(--primary-text-color);
 }
 
 .info-stack {
@@ -243,9 +255,9 @@ export const CARD_STYLE = `
   flex-direction: column;
   gap: 4px;
   font-size: 11px;
-  color: #666;
+  color: var(--secondary-text-color);
   padding-top: 6px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid var(--divider-color);
 }
 
 .corner-value.top-left { top: 15px; left: 10px; text-align: left; }
@@ -264,13 +276,13 @@ export const CARD_STYLE = `
 }
 
 .arrow {
-  color: #888;
+  color: var(--secondary-text-color);
   font-weight: bold;
   margin: 0 4px;
 }
 
-.fanmode { font-size: 13px; text-transform: uppercase; font-weight: 700; color: #333; }
-.speed-display { font-size: 13px; font-weight: 900; color: #4a90e2; }
+.fanmode { font-size: 13px; text-transform: uppercase; font-weight: 700; color: var(--primary-text-color); }
+.speed-display { font-size: 13px; font-weight: 900; color: var(--primary-color); }
 
 /* ====== ICONS ====== */
 .icon-circle {
@@ -282,14 +294,14 @@ export const CARD_STYLE = `
   align-items: center;
   font-size: 20px;
   flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-  background-color: #4a90e2;
-  color: white;
+  box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0, 0, 0, 0.15));
+  background-color: var(--primary-color);
+  color: var(--text-primary-color, #fff);
 }
 .icon-circle.red {
   margin-left: 0;
   margin-right: auto;
-  background-color: #e57373;
+  background-color: var(--error-color, #e57373);
 }
 .icon-circle.blue {
   margin-left: auto;
@@ -322,8 +334,8 @@ export const CARD_STYLE = `
 }
 
 .control-button {
-  background: #2a2a2a;
-  border: 2px solid #3a3a3a;
+  background: var(--secondary-background-color);
+  border: 1px solid var(--divider-color);
   border-radius: 12px;
   padding: 1px;
   display: flex;
@@ -336,17 +348,16 @@ export const CARD_STYLE = `
 }
 
 .control-button:hover, .control-button.active {
-  background: #353535;
-  border-color: #4a90e2;
+  border-color: var(--primary-color);
 }
 
 .control-icon {
   font-size: 32px;
-  color: #4a90e2;
+  color: var(--primary-color);
 }
 
 .control-label {
-  color: #ffffff;
+  color: var(--primary-text-color);
   font-size: 13px;
   text-align: center;
 }
@@ -358,7 +369,7 @@ export const CARD_STYLE = `
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 2px solid #b8daff;
+  border-bottom: 1px solid var(--divider-color);
 }
 
 .nav-left, .nav-right {
@@ -370,14 +381,14 @@ export const CARD_STYLE = `
 .device-title {
   font-size: 16px;
   font-weight: 600;
-  color: #1e3a8a;
+  color: var(--primary-text-color);
 }
 
 /* ====== PARAMETER SECTIONS ====== */
 .param-section-header {
   margin: 16px 0 12px 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(30, 58, 138, 0.2);
+  border-bottom: 1px solid var(--divider-color);
 }
 
 .param-section-header .header-content {
@@ -387,8 +398,8 @@ export const CARD_STYLE = `
 }
 
 .refresh-params-btn {
-  background: #4a90e2;
-  color: white;
+  background: var(--primary-color);
+  color: var(--text-primary-color, #fff);
   border: none;
   border-radius: 6px;
   padding: 6px 12px;
@@ -400,13 +411,13 @@ export const CARD_STYLE = `
   align-items: center;
   gap: 6px;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
 .refresh-params-btn:hover {
-  background: #357abd;
+  filter: brightness(0.9);
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--ha-card-box-shadow, 0 4px 8px rgba(0, 0, 0, 0.15));
 }
 
 .refresh-params-btn:active {
@@ -418,18 +429,18 @@ export const CARD_STYLE = `
 }
 
 .refresh-params-btn.success {
-  background: #28a745;
+  background: var(--success-color, #28a745);
 }
 
 .refresh-params-btn.error {
-  background: #dc3545;
+  background: var(--error-color, #dc3545);
 }
 
 .param-section-header h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #1e3a8a;
+  color: var(--primary-text-color);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -447,8 +458,8 @@ export const CARD_STYLE = `
 }
 
 .param-list::-webkit-scrollbar { width: 6px; }
-.param-list::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
-.param-list::-webkit-scrollbar-thumb { background: rgba(30, 58, 138, 0.3); border-radius: 3px; }
+.param-list::-webkit-scrollbar-track { background: var(--secondary-background-color); border-radius: 3px; }
+.param-list::-webkit-scrollbar-thumb { background: var(--divider-color); border-radius: 3px; }
 
 /* ====== PARAMETER ITEMS ====== */
 .param-item {
@@ -456,20 +467,19 @@ export const CARD_STYLE = `
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--ha-card-background, var(--card-background-color));
   border-radius: 8px;
-  border: 1px solid #b8daff;
+  border: 1px solid var(--divider-color);
   transition: all 0.3s ease;
 }
 
 .param-item:hover {
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.1));
 }
 
-.param-item.loading { border-color: #ffc107; background: #fff3cd; }
-.param-item.success { border-color: #28a745; background: #d4edda; }
-.param-item.error { border-color: #dc3545; background: #f8d7da; }
+.param-item.loading { border-color: var(--warning-color, #ffc107); }
+.param-item.success { border-color: var(--success-color, #28a745); }
+.param-item.error { border-color: var(--error-color, #dc3545); }
 
 .param-info {
   flex: 1;
@@ -480,13 +490,13 @@ export const CARD_STYLE = `
 
 .param-label {
   font-weight: 500;
-  color: #333;
+  color: var(--primary-text-color);
   line-height: 1.3;
 }
 
 .param-unit {
   font-size: 12px;
-  color: #666;
+  color: var(--secondary-text-color);
   font-weight: 400;
 }
 
@@ -499,30 +509,30 @@ export const CARD_STYLE = `
 .param-input {
   width: 80px;
   padding: 8px 12px;
-  border: 2px solid #b8daff;
+  border: 1px solid var(--divider-color);
   border-radius: 6px;
   text-align: center;
-  background: white;
-  color: #333;
+  background: var(--ha-card-background, var(--card-background-color));
+  color: var(--primary-text-color);
   font-weight: 500;
   transition: all 0.3s ease;
 }
 
 .param-input:focus {
   outline: none;
-  border-color: #4a90e2;
-  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.12);
 }
 
 .param-input:disabled {
-  background: #f8f9fa;
-  color: #6c757d;
+  background: var(--secondary-background-color);
+  color: var(--secondary-text-color);
   cursor: not-allowed;
 }
 
 .param-update-btn {
-  background: #4a90e2;
-  color: white;
+  background: var(--primary-color);
+  color: var(--text-primary-color, #fff);
   border: none;
   border-radius: 6px;
   padding: 8px 12px;
@@ -533,19 +543,19 @@ export const CARD_STYLE = `
 }
 
 .param-update-btn:hover {
-  background: #357abd;
+  filter: brightness(0.9);
 }
 
 .param-item.loading .param-update-btn {
-  background: #ffc107;
+  background: var(--warning-color, #ffc107);
 }
 
 .param-item.success .param-update-btn {
-  background: #28a745;
+  background: var(--success-color, #28a745);
 }
 
 .param-item.error .param-update-btn {
-  background: #dc3545;
+  background: var(--error-color, #dc3545);
 }
 
 .param-status {
@@ -555,8 +565,8 @@ export const CARD_STYLE = `
 }
 
 .param-status.loading::after { content: "⏳"; animation: spin 1s linear infinite; }
-.param-status.success::after { content: "✅"; color: #28a745; }
-.param-status.error::after { content: "❌"; color: #dc3545; }
+.param-status.success::after { content: "✅"; color: var(--success-color, #28a745); }
+.param-status.error::after { content: "❌"; color: var(--error-color, #dc3545); }
 
 @keyframes spin {
   0% { transform: rotate(0deg); }

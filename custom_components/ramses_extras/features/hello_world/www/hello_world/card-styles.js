@@ -2,6 +2,8 @@ export const CARD_STYLE = `
 /* ====== ROOT CONTAINER ====== */
 ha-card {
   padding: 16px;
+  background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+  border-radius: var(--ha-card-border-radius, 12px);
 }
 
 /* ====== HEADER ====== */
@@ -20,7 +22,7 @@ ha-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  text-align: centre;
+  text-align: center;
   justify-content: center;
 }
 
@@ -41,7 +43,7 @@ ha-card {
 /* ====== TOGGLE BUTTON ====== */
 .toggle-button {
   --mdc-theme-primary: var(--primary-color);
-  --mdc-theme-on-primary: white;
+  --mdc-theme-on-primary: var(--text-primary-color, #fff);
   min-width: 120px;
   height: 40px;
   font-weight: 500;
@@ -59,8 +61,8 @@ ha-card {
 
 .toggle-button.on {
   background-color: var(--primary-color);
-  color: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  color: var(--text-primary-color, #fff);
+  box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 .toggle-button.off {
@@ -71,12 +73,12 @@ ha-card {
 
 .toggle-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ha-card-box-shadow, 0 4px 8px rgba(0, 0, 0, 0.3));
 }
 
 .toggle-button:active {
   transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 /* ====== STATUS ELEMENTS ====== */
@@ -91,7 +93,7 @@ ha-card {
   color: var(--secondary-text-color);
   margin-top: 8px;
   padding: 8px;
-  background-color: var(--card-background-color);
+  background-color: var(--ha-card-background, var(--card-background-color));
   border-radius: 6px;
 }
 

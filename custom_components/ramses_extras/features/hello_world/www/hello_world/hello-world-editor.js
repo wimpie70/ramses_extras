@@ -154,7 +154,7 @@ class HelloworldEditor extends HTMLElement {
       <style>
         .card-config {
           padding: 16px;
-          background: var(--card-background-color, #fff);
+          background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
           border-radius: 8px;
         }
 
@@ -210,13 +210,13 @@ class HelloworldEditor extends HTMLElement {
         .form-note {
           margin-top: 4px;
           font-size: 12px;
-          color: var(--primary-text-color, #333);
+          color: var(--primary-text-color);
         }
 
         .device-info {
           margin-top: 12px;
           padding: 8px;
-          background: var(--divider-color, #f0f0f0);
+          background: var(--secondary-background-color);
           border-radius: 4px;
           font-size: 12px;
         }

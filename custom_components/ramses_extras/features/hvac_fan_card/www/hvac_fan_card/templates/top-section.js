@@ -38,7 +38,7 @@ export function createTopSection(data, t) {
   // Helper function to format humidity values
   const formatHumidity = (value, unit) => {
     if (value === 'unavailable' || value === '?' || value === null || value === undefined) {
-      return `<span style="color: #999; font-style: italic;">${tr('sensor.unavailable', 'unavailable')}</span>`;
+      return `<span class="value-unavailable">${tr('sensor.unavailable', 'unavailable')}</span>`;
     }
     return `${value}${unit}`;
   };

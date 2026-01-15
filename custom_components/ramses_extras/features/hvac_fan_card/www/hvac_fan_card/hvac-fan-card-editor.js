@@ -99,7 +99,7 @@ class HvacFanCardEditor extends HTMLElement {
       <style>
         .card-config {
           padding: 16px;
-          background: var(--card-background-color, #fff);
+          background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
           border-radius: 8px;
         }
 
@@ -138,7 +138,7 @@ class HvacFanCardEditor extends HTMLElement {
         .form-note {
           margin-top: 4px;
           font-size: 12px;
-          color: var(--primary-text-color, #333);
+          color: var(--primary-text-color);
         }
       </style>
     `;
