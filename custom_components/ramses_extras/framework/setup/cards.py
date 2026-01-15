@@ -151,11 +151,10 @@ async def cleanup_old_card_deployments(
     current_version: str,
     card_features: list[dict[str, Any]],
 ) -> None:
-    """Clean up old card deployments and create stable shims.
+    """Clean up old card deployments.
 
-    Removes old versioned deployments and creates stable shims that
-    redirect to the current version. Also creates tombstone files for
-    old versions to show restart warnings.
+    Removes legacy unversioned directories and old versioned deployments,
+    keeping only the current version.
 
     :param hass: Home Assistant instance
     :param current_version: Current integration version
@@ -167,87 +166,10 @@ async def cleanup_old_card_deployments(
 
     current_dirname = f"v{current_version}"
 
-    legacy_helpers = root_dir / "helpers"
-    legacy_features = root_dir / "features"
-
     def _do_cleanup() -> None:
-        legacy_helpers.mkdir(parents=True, exist_ok=True)
-        legacy_features.mkdir(parents=True, exist_ok=True)
-
-        stable_shim_content = (
-            f'import "/local/ramses_extras/v{current_version}/helpers/'
-            'ramses-extras-features.js";\n'
-            f'import "/local/ramses_extras/v{current_version}/helpers/main.js";\n'
-        )
-
-        tombstone_template = """
-/*
- * Ramses Extras - Restart Required
- * This version of the integration has been upgraded.
- * Please restart Home Assistant to use the new version.
- */
-(function() {
-    const warning = "Ramses Extras: Upgrade detected. " +
-                    "A Home Assistant restart is required.";
-    console["warn"](
-        "%c Ramses Extras %c " + warning,
-        "background: #df4b37; color: #fff; padding: 2px 4px; " +
-        "border-radius: 3px; font-weight: bold;",
-        "color: #df4b37; font-weight: bold;"
-    );
-
-    // Define a dummy card to show the warning in the UI
-    class RestartRequiredCard extends HTMLElement {
-        setConfig(config) { this._config = config; }
-        set hass(hass) {
-            if (!this.content) {
-                this.innerHTML = `
-                    <ha-card header="Ramses Extras - Restart Required">
-                        <div class="card-content" style="color: #df4b37; ` +
-                        `font-weight: bold; padding: 16px;">
-                            ${warning}<br><br>
-                            Please restart Home Assistant to complete the upgrade.
-                        </div>
-                    </ha-card>
-                `;
-                this.content = true;
-            }
-        }
-        getCardSize() { return 2; }
-    }
-
-    // Register discovered tags as restart-required cards
-    const tags = TAGS_PLACEHOLDER;
-    tags.forEach(tag => {
-        if (!customElements.get(tag)) {
-            customElements.define(tag, RestartRequiredCard);
-        }
-    });
-})();
-"""
-
-        legacy_shims: list[Path] = [
-            legacy_helpers / "main.js",
-        ]
-
-        discovered_tags: set[str] = set()
-        for feature in card_features:
-            for js_file in feature["js_files"]:
-                if js_file.endswith(".js") and not js_file.endswith("-editor.js"):
-                    tag = js_file.replace(".js", "")
-                    discovered_tags.add(tag)
-
-        tags_js = str(list(discovered_tags))
-        tombstone_content = tombstone_template.replace("TAGS_PLACEHOLDER", tags_js)
-
-        for feature in card_features:
-            feature_name = feature["feature_name"]
-            for js_file in feature["js_files"]:
-                legacy_shims.append(legacy_features / feature_name / js_file)
-
-        for shim_path in legacy_shims:
-            shim_path.parent.mkdir(parents=True, exist_ok=True)
-            shim_path.write_text(stable_shim_content)
+        for legacy_dir in (root_dir / "helpers", root_dir / "features"):
+            if legacy_dir.exists():
+                shutil.rmtree(legacy_dir, ignore_errors=True)
 
         for entry in root_dir.iterdir():
             if not entry.is_dir():
@@ -257,12 +179,7 @@ async def cleanup_old_card_deployments(
             if entry.name == current_dirname:
                 continue
 
-            _LOGGER.debug("Poisoning old version deployment: %s", entry.name)
-            try:
-                for sub_file in entry.rglob("*.js"):
-                    sub_file.write_text(tombstone_content)
-            except Exception as e:
-                _LOGGER.warning("Failed to poison old version %s: %s", entry.name, e)
+            shutil.rmtree(entry, ignore_errors=True)
 
     await asyncio.to_thread(_do_cleanup)
 

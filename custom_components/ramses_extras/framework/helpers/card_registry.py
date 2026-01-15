@@ -80,14 +80,14 @@ class CardRegistry:
 
         With the MutationObserver-based loader, we register only a tiny bootstrap
         module (`main.js`) and let it dynamically import feature cards/editors.
-        We use the stable (unversioned) path for the resource URL in HA's database
-        to avoid resource churn on upgrade, while the shim redirects to the
-        actual versioned file.
+
+        The resource URL is versioned to make it easier to diagnose user issues
+        (reported URLs include the integration version).
         """
 
         return LovelaceCard(
             type="ramses-extras",
-            resource_path="/local/ramses_extras/helpers/main.js",
+            resource_path=f"/local/ramses_extras/v{version}/helpers/main.js",
             name="Ramses Extras (bootstrap)",
         )
 

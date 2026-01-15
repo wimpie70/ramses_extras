@@ -24,7 +24,7 @@ def mock_hass(tmp_path):
 
 @pytest.mark.asyncio
 async def test_cleanup_old_card_deployments(mock_hass):
-    """Test that old versioned directories are removed and legacy shims are created."""
+    """Test that old versioned directories and legacy dirs are removed."""
     config_dir = Path(mock_hass.config.config_dir)
     www_dir = config_dir / "www" / "ramses_extras"
     www_dir.mkdir(parents=True)
@@ -46,35 +46,18 @@ async def test_cleanup_old_card_deployments(mock_hass):
     legacy_features = www_dir / "features" / "hello_world"
     legacy_features.mkdir(parents=True)
 
-    # Mock card features
-    card_features = [
-        {
-            "feature_name": "hello_world",
-            "source_dir": Path("/fake/source"),
-            "js_files": ["hello-world.js"],
-        }
-    ]
-
-    await cleanup_old_card_deployments(mock_hass, current_version, card_features)
-
-    # Old versions should NOT be gone, but JS files should be poisoned
-    # Actually, in our new logic, we iterate over v* dirs and poison JS files.
-    # The test needs to check for poisoning or existence if we changed that.
-    # Our new logic:
-    # 1. Creates legacy shims for discovered features
-    # 2. Poison old version files
-    # 3. Does NOT delete them (shutil.rmtree is commented out)
+    await cleanup_old_card_deployments(mock_hass, current_version, [])
 
     # Current version should remain
     assert v3_dir.exists()
 
-    # Legacy shims should be created
-    assert (legacy_helpers / "main.js").exists()
-    assert (legacy_features / "hello-world.js").exists()
+    # Old versions should be removed
+    assert not v1_dir.exists()
+    assert not v2_dir.exists()
 
-    shim_content = (legacy_helpers / "main.js").read_text()
-    expected_shim = f'import "/local/ramses_extras/v{current_version}/helpers/main.js";'
-    assert expected_shim in shim_content
+    # Legacy unversioned directories should be removed
+    assert not legacy_helpers.exists()
+    assert not legacy_features.exists()
 
 
 @pytest.mark.asyncio

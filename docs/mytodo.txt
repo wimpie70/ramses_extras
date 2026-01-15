@@ -21,3 +21,5 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 - multi-zone support in hvac card or separate feature
 
 - feature: css overrides
+
+- check shims refactoring, test whole system, bump version, create PR on https://github.com/hacs/default/compare/master...wimpie70:default:patch-1
