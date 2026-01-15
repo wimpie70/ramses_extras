@@ -1,4 +1,4 @@
-**Document Version:** 0.11.3
+**Document Version:** 0.12.0
 
 # 1. Table of Contents
 - [1. Table of Contents](#1-table-of-contents)
@@ -22,10 +22,11 @@
   - [4.6. Adding New Features](#46-adding-new-features)
 - [5. Framework Foundation](#5-framework-foundation)
   - [5.1. 🏗️ Framework Architecture Overview](#51-️-framework-architecture-overview)
-  - [5.2. 📚 Base Classes](#52--base-classes)
-  - [5.3. 🧩 Helper Modules](#53--helper-modules)
-  - [5.4. 🛠️ Framework Services](#54-️-framework-services)
-  - [5.5. 📖 Framework Usage Examples](#55--framework-usage-examples)
+  - [5.2. 🔧 Setup Framework](#52-️-setup-framework)
+  - [5.3. 📚 Base Classes](#53--base-classes)
+  - [5.4. 🧩 Helper Modules](#54--helper-modules)
+  - [5.5. 🛠️ Framework Services](#55-️-framework-services)
+  - [5.6. 📖 Framework Usage Examples](#56--framework-usage-examples)
 - [6. Device Feature Management](#6-device-feature-management)
   - [6.1. Device Filtering](#61-device-filtering)
   - [6.2. DeviceFeatureMatrix](#62-devicefeaturematrix)
@@ -234,6 +235,15 @@ custom_components/ramses_extras/
 │           └── sensor.py
 │
 ├── 🏛️ Framework (Reusable Foundation)
+│   ├── setup/                   # Setup and orchestration framework
+│   │   ├── __init__.py
+│   │   ├── entry.py              # Main entry point and setup pipeline
+│   │   ├── features.py           # Feature loading and management
+│   │   ├── devices.py            # Device discovery and management
+│   │   ├── cards.py              # Lovelace card deployment
+│   │   ├── utils.py              # Setup utilities
+│   │   └── yaml.py               # YAML-to-config-flow bridge
+│   │
 │   ├── base_classes/            # Base classes for inheritance
 │   │   ├── __init__.py
 │   │   ├── base_automation.py          # Automation base
@@ -307,13 +317,85 @@ custom_components/ramses_extras/
 
 ## 3.4. Integration Flow
 
-- **Step 1:** **HA Integration Loads** - `__init__.py` handles integration setup
-- **Step 2:** **ramses_cc Readiness Check** - Integration waits for ramses_cc to be loaded
-- **Step 3:** **Device Enumeration** - Access devices already discovered by ramses_cc broker
-- **Step 4:** **Feature Creation** - Feature factories create feature instances
-- **Step 5:** **Platform Forwarding** - Root platforms forward to feature platforms
-- **Step 6:** **Entity Registration** - Entities register with HA via feature platforms
-- **Step 7:** **Asset Deployment & Registration** - JavaScript assets are deployed to versioned directories (e.g., `/local/ramses_extras/vX.Y.Z/`). A single bootstrap resource (`main.js`) is registered with Home Assistant's Lovelace resources. This loader uses a `MutationObserver` to dynamically `import()` feature cards only when their custom elements are present on the dashboard, ensuring optimal performance and cache reliability.
+### Primary Setup Method: Config Flow
+Ramses Extras uses **config flow as the primary setup method** with optional YAML-to-config-flow bridge support.
+
+### Complete Setup Pipeline
+
+The integration follows a detailed setup pipeline orchestrated by `run_entry_setup_pipeline()` in `framework/setup/entry.py`:
+
+#### Phase 1: Entry Setup (async_setup_entry)
+1. **initialize_entry_data** - Sets up hass.data structure for integration state
+2. **setup_entity_registry_device_refresh** - Monitors entity registry for new ramses_cc entities
+
+#### Phase 2: Main Setup Pipeline (run_entry_setup_pipeline)
+1. **load_feature_definitions_and_platforms** (framework/setup/features.py)
+   - Registers default commands from features/default/commands.py
+   - Determines enabled features from config entry
+   - Imports platform modules (sensor, switch, binary_sensor, number) for each enabled feature
+   - Discovers Ramses devices and stores them in hass.data
+   - Sets up platforms for device integration
+   - Initializes WebSocket integration for real-time communication
+
+2. **setup_card_files_and_config** (framework/setup/cards.py)
+   - Discovers card features from feature directories
+   - Copies helper files to versioned deployment directory
+   - Registers cards with Home Assistant's Lovelace system
+   - Cleans up old card deployments and creates stable shims
+   - Copies all card files to versioned deployment directories
+   - Exposes feature configuration to frontend
+
+3. **register_services** (framework/setup/entry.py)
+   - Calls async_register_feature_services from services_integration.py
+   - Imports services modules for each enabled feature
+   - Registers feature-specific services under the ramses_extras domain
+
+4. **async_setup_platforms** (framework/setup/devices.py)
+   - Coordinates device discovery with ramses_cc integration
+   - Handles retry logic when ramses_cc is not yet loaded
+   - Prevents concurrent setup attempts with global flag
+   - Calls discover_and_store_devices internally
+
+5. **validate_startup_entities_simple** (framework/setup/entry.py)
+   - Restores device feature matrix state
+   - Validates all entities are properly configured and available
+
+6. **cleanup_orphaned_devices** (framework/setup/devices.py)
+   - Removes devices with no associated entities from device registry
+   - Prevents registry bloat from removed/disabled features
+
+7. **create_and_start_feature_instances** (framework/setup/features.py)
+   - Dynamically creates feature instances using feature-specific creation functions
+   - Manages automation lifecycle for each feature
+   - Handles feature readiness events for card coordination
+   - Sets up feature-specific automations and entities
+
+### Configuration Update Flow (async_update_listener)
+When configuration entry is updated:
+1. **apply_log_level_from_entry** - Updates logging configuration
+2. **get_enabled_features_dict** - Gets new feature configuration
+3. **expose_feature_config_to_frontend** - Updates frontend configuration
+4. **Triggers reload** - If significant changes occur
+
+### YAML Support (Secondary Method)
+YAML configuration is supported as a **bridge to config flow**:
+1. **async_setup** - Registers startup event listener
+2. **_handle_startup_event** - Creates config flow entry from YAML data
+3. **Configuration Priority** - Once config flow is modified via UI, those settings take precedence over original YAML
+
+### Asset Deployment Strategy
+- **Version-based deployment**: Each integration version gets its own www directory
+- **Stable shims**: Create redirect files for backward compatibility
+- **Helper files**: Shared JavaScript utilities copied to helpers directory
+- **Feature cards**: Individual card files copied to feature-specific paths
+- **Configuration exposure**: Feature settings exposed via JavaScript
+
+### Device Discovery Strategy
+1. Try direct broker access via hass.data
+2. Try entry broker access
+3. Try integration registry
+4. Try direct gateway access
+5. Fallback to entity registry extraction
 
 ### ramses_cc Readiness and Dependency Management
 
@@ -812,7 +894,85 @@ The framework follows a **layered architecture** approach:
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 5.2. 📚 Base Classes
+## 5.2. 🔧 Setup Framework
+
+The setup framework provides orchestrated initialization and lifecycle management for the entire integration. Located in `framework/setup/`, it coordinates all setup phases and ensures proper dependency management.
+
+### Setup Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Setup Framework                              │
+├─────────────────────────────────────────────────────────────────┤
+│  🚀 Entry Point (entry.py)                                     │
+│  - async_setup_entry (main HA entry point)                     │
+│  - run_entry_setup_pipeline (orchestrates all setup)           │
+│  - async_update_listener (handles config changes)               │
+├─────────────────────────────────────────────────────────────────┤
+│  🎯 Feature Management (features.py)                            │
+│  - load_feature_definitions_and_platforms (early setup)        │
+│  - create_and_start_feature_instances (late setup)             │
+│  - Platform module importing and WebSocket setup               │
+├─────────────────────────────────────────────────────────────────┤
+│  🔌 Device Management (devices.py)                             │
+│  - setup_entity_registry_device_refresh (monitoring)          │
+│  - discover_and_store_devices (discovery)                      │
+│  - async_setup_platforms (coordination)                       │
+│  - cleanup_orphaned_devices (maintenance)                      │
+├─────────────────────────────────────────────────────────────────┤
+│  🎴 Card Deployment (cards.py)                                 │
+│  - setup_card_files_and_config (orchestration)                 │
+│  - Version-based deployment and stable shims                   │
+│  - Helper file management and frontend configuration           │
+├─────────────────────────────────────────────────────────────────┤
+│  🛠️ Utilities (utils.py, yaml.py)                              │
+│  - Module importing utilities                                  │
+│  - YAML-to-config-flow bridge (secondary setup method)         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Setup Pipeline Phases
+
+#### Phase 1: Entry Setup (async_setup_entry)
+1. **initialize_entry_data** - Sets up hass.data structure
+2. **setup_entity_registry_device_refresh** - Monitors for new entities
+
+#### Phase 2: Main Setup Pipeline (run_entry_setup_pipeline)
+1. **Feature Loading** - Load definitions, import platforms, discover devices
+2. **Card Deployment** - Deploy Lovelace cards and frontend resources
+3. **Service Registration** - Register feature services
+4. **Platform Setup** - Coordinate with ramses_cc integration
+5. **Entity Validation** - Validate all entities are properly configured
+6. **Device Cleanup** - Remove orphaned devices
+7. **Feature Instances** - Create and start feature instances
+
+#### Phase 3: Configuration Updates (async_update_listener)
+- Handles configuration changes
+- Updates frontend configuration
+- Triggers reload when needed
+
+### Key Design Principles
+
+**Orchestration**: The setup framework orchestrates all initialization phases in the correct order with proper dependency management.
+
+**Modularity**: Each setup module handles a specific domain (features, devices, cards) while maintaining clear interfaces.
+
+**Robustness**: Includes retry logic, error handling, and cleanup mechanisms for reliable initialization.
+
+**Flexibility**: Supports both primary config flow setup and secondary YAML-to-config-flow bridge.
+
+**Real-time**: Provides ongoing monitoring and updates through entity registry refresh and configuration listeners.
+
+### Configuration Priority
+
+The framework establishes clear configuration priority:
+1. **Runtime data** (highest priority)
+2. **Config entry** (data/options)
+3. **YAML** (only for initial entry creation)
+
+This ensures that once users start using the config flow UI, their manual changes take precedence over any initial YAML configuration.
+
+## 5.3. 📚 Base Classes
 
 The framework provides reusable base classes that all features can inherit from:
 
@@ -1341,7 +1501,7 @@ custom_components/ramses_extras/
 Assets are deployed to `/config/www/ramses_extras/v{version}/`.
 
 ```
-hass/config/www/ramses_extras/v0.11.3/
+hass/config/www/ramses_extras/v0.12.0/
 ├── helpers/                         # Shared utilities
 │   ├── main.js                      # Bootstrap loader (Registered Resource)
 │   ├── ramses-base-card.js
@@ -1354,7 +1514,7 @@ hass/config/www/ramses_extras/v0.11.3/
 
 **Resource Registration:**
 Only one entry is added to Home Assistant's `lovelace_resources`:
-- **URL**: `/local/ramses_extras/v0.11.3/helpers/main.js`
+- **URL**: `/local/ramses_extras/v0.12.0/helpers/main.js`
 - **Type**: `module`
 
 ### Legacy Support & Shims

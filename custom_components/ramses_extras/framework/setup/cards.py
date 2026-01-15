@@ -87,7 +87,7 @@ async def async_get_integration_version(hass: HomeAssistant) -> str:
 
     :param hass: Home Assistant instance
 
-    :return: Integration version string (e.g., "0.11.3")
+    :return: Integration version string (e.g., "0.12.0")
     """
     data = hass.data.setdefault(DOMAIN, {})
     cached_version = data.get("_integration_version")

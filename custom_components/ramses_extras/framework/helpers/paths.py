@@ -126,7 +126,7 @@ class DeploymentPaths:
 
         Args:
             hass_config_dir: Home Assistant config directory (can be string or Path)
-            version: Integration version string (e.g. "0.11.3")
+            version: Integration version string (e.g. "0.12.0")
 
         Returns:
             Destination root path for this version.
