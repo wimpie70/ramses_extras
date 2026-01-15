@@ -21,6 +21,13 @@ Ramses Extras provides additional features, entities, automation, and UI compone
 - **Custom Cards**: JavaScript cards available as custom card types in dashboards
 - **Framework Foundation**: Reusable components for easy feature development
 
+Ramses Extras registers Lovelace cards via a single, versioned bootstrap resource:
+
+- **Lovelace resource URL**: `/local/ramses_extras/v{version}/helpers/main.js`
+- **Purpose**: loads card/editor modules on-demand using dynamic imports
+
+Frontend cards and editors are **theme-adaptive** and use Home Assistant theme variables (e.g., `--primary-text-color`, `--ha-card-background`, `--divider-color`) instead of hardcoded colors.
+
 ## ✨ **Current Features**
 
 note: the following are tested with an Orcon WTW

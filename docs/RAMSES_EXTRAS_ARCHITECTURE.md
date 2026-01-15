@@ -341,7 +341,7 @@ The integration follows a detailed setup pipeline orchestrated by `run_entry_set
    - Discovers card features from feature directories
    - Copies helper files to versioned deployment directory
    - Registers cards with Home Assistant's Lovelace system
-   - Cleans up old card deployments and creates stable shims
+   - Cleans up old card deployments
    - Copies all card files to versioned deployment directories
    - Exposes feature configuration to frontend
 
@@ -385,7 +385,7 @@ YAML configuration is supported as a **bridge to config flow**:
 
 ### Asset Deployment Strategy
 - **Version-based deployment**: Each integration version gets its own www directory
-- **Stable shims**: Create redirect files for backward compatibility
+- **Cleanup**: Removes legacy unversioned deployments and older versions
 - **Helper files**: Shared JavaScript utilities copied to helpers directory
 - **Feature cards**: Individual card files copied to feature-specific paths
 - **Configuration exposure**: Feature settings exposed via JavaScript
@@ -922,7 +922,7 @@ The setup framework provides orchestrated initialization and lifecycle managemen
 ├─────────────────────────────────────────────────────────────────┤
 │  🎴 Card Deployment (cards.py)                                 │
 │  - setup_card_files_and_config (orchestration)                 │
-│  - Version-based deployment and stable shims                   │
+│  - Version-based deployment and cleanup                        │
 │  - Helper file management and frontend configuration           │
 ├─────────────────────────────────────────────────────────────────┤
 │  🛠️ Utilities (utils.py, yaml.py)                              │
@@ -997,7 +997,7 @@ The framework provides reusable base classes that all features can inherit from:
 
 ### RamsesBaseCard
 - **Purpose**: Shared base class for all Lovelace cards shipped with Ramses Extras
-- **Location**: `framework/www/ramses-base-card.js` (deployed as `/local/ramses_extras/helpers/ramses-base-card.js`)
+- **Location**: `framework/www/ramses-base-card.js` (deployed as `/local/ramses_extras/v{version}/helpers/ramses-base-card.js`)
 - **Features**:
   - Centralized lifecycle hooks (`connectedCallback`/`disconnectedCallback`) that call optional `_onConnected()` / `_onDisconnected()` overrides
   - Common `render()` implementation that gates on HASS availability, translations, card config validation, feature enablement, and the `cards_enabled` latch before delegating to `_renderContent()`
@@ -1425,7 +1425,7 @@ Instead of registering every custom card individually with Home Assistant, the i
 All Ramses Extras Lovelace cards extend the shared base class:
 
 - **Source**: `custom_components/ramses_extras/framework/www/ramses-base-card.js`
-- **Deployed**: `/local/ramses_extras/helpers/ramses-base-card.js`
+- **Deployed**: `/local/ramses_extras/v{version}/helpers/ramses-base-card.js`
 
 The base card centralizes:
 
@@ -1517,8 +1517,11 @@ Only one entry is added to Home Assistant's `lovelace_resources`:
 - **URL**: `/local/ramses_extras/v0.12.0/helpers/main.js`
 - **Type**: `module`
 
-### Legacy Support & Shims
-For backward compatibility with hardcoded dashboard entries, the integration maintains "shim" files at stable legacy paths (e.g., `/local/ramses_extras/helpers/main.js`). These shims are tiny wrappers that simply `import` the current versioned file.
+### Theme-Adaptive Styling
+Ramses Extras frontend cards and editors are designed to adapt to Home Assistant themes:
+
+- CSS is written using Home Assistant theme variables (e.g., `--primary-text-color`, `--secondary-text-color`, `--divider-color`, `--ha-card-background`).
+- SVG assets used by cards may also reference theme variables (e.g., airflow diagram elements using `--secondary-background-color`) so diagrams remain readable in light/dark themes.
 
 ### Visual Editor Registration Requirements
 
@@ -1540,7 +1543,7 @@ import {
   getAvailableDevices,
   normalizeDeviceDescriptor,
   filterDevicesBySlugs,
-} from '/local/ramses_extras/helpers/card-services.js';
+} from '../../helpers/card-services.js';
 ```
 
 - `getAvailableDevices()` calls the `ramses_extras/get_available_devices` WebSocket (which now returns `device_type`, `slugs`, and `slug_label` for each device).
