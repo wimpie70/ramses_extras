@@ -14,3 +14,6 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 - on startup, we should get the persisted  state for humidity control. now we can restart with the fan on high or low without knowing or control
 
 - multi-zone support in hvac card or separate feature
+
+- msg log analyzer: read the log (with filters) or live msg parser
+- configuration analyzer ? does it exist ?
