@@ -64,8 +64,8 @@ This feature provides multiple Lovelace cards:
 
 ## Backend design
 ### Configuration (config flow)
-- HA log file path
-- Future: packet log file path
+- HA log file path -> we may get this from ha configuration ?
+- Future: packet log file path -> we can get this from ramses_cc configuration
 
 Notes:
 - Support choosing a rotated log file from the card (e.g. current vs previous)
@@ -88,6 +88,7 @@ Notes:
 
 ### Log Explorer implementation approach
 - WebSocket command receives filter request
+- Filter block: starting time-end time
 - Backend reads log file on-demand and returns:
   - context blocks (merged)
   - rendered plain text + markdown
@@ -148,16 +149,105 @@ No retention is required; the backend can always re-read the file.
 - Parse/visualize raw packets from `ramses_log`
 - Filter by src/dst/code/verb and correlate with Traffic Analyser
 
-## Milestones
-- [ ] Update this TODO as requirements evolve
-- [ ] Create feature skeleton based on hello_world (factory, const, websocket stubs, www stubs)
-- [ ] Implement backend: traffic collector + in-memory stats
-- [ ] Implement backend: log file search + context extraction
-- [ ] Implement websocket commands + tests
-- [ ] Implement cards: Traffic Analyser + Log Explorer + zoom dialogs
-- [ ] Implement cross-filtering (Traffic -> Logs)
-- [ ] Add reset/export UX
-- [ ] CI: `make local-ci`
+## Workflow recipe (testable, incremental commits)
+Each larger step should result in a commit that is:
+- small enough to review
+- testable (unit tests and/or a simple live check)
+- keeps CI green
+
+Suggested workflow per step:
+- implement
+- add/adjust tests
+- run the next tests depending on what was changed (py/.js...)
+- run a focused local test
+- run a pytest . to check if other tests don't fail
+- run mypy . ruff format --check, ruff check (--fix)
+- run .js linter tests
+- run `pre-commit run -a`  and/or `make local-ci` when the change is bigger or touches multiple areas
+- commit
+
+### Step 1: Feature skeleton (no behaviour changes)
+- [ ] **Deliverable**
+  - Create `features/ramses_debugger/` feature scaffold based on `hello_world`
+  - Add feature definition + register feature with extras registry
+  - Add websocket registration stubs (no-op)
+  - Add `www/` stubs for both cards
+- [ ] **Tests**
+  - run existing unit tests (no new tests required yet)
+- [ ] **Commit**
+  - `feat(ramses_debugger): scaffold feature with websocket + www stubs`
+
+### Step 2: Traffic backend (collector + aggregation)
+- [ ] **Deliverable**
+  - Subscribe to `ramses_cc_message`
+  - Maintain aggregation data structures
+  - Add `traffic/get_stats` + `traffic/reset_stats` websocket commands
+- [ ] **Tests**
+  - unit tests for aggregation logic (pure python)
+  - unit tests for websocket handlers (mock hass bus + sample events)
+- [ ] **Commit**
+  - `feat(ramses_debugger): traffic collector + websocket stats API`
+
+### Step 3: Traffic card (MVP UI)
+- [ ] **Deliverable**
+  - Table rendering + basic filters + polling websocket
+  - Zoom dialog
+- [ ] **Tests**
+  - keep python tests passing
+  - manual live check in HA (card loads, table renders)
+- [ ] **Commit**
+  - `feat(ramses_debugger): traffic analyser card MVP`
+
+### Step 4: Log backend (file discovery + tail + search)
+- [ ] **Deliverable**
+  - Config option for HA log file path
+  - `log/list_files`, `log/get_tail`, `log/search`
+  - Context extraction (±N lines) + merge overlap
+  - Output formatting: plain + markdown
+- [ ] **Tests**
+  - unit tests for log scanning + context merge (use temp files)
+  - unit tests for rotated file discovery
+- [ ] **Commit**
+  - `feat(ramses_debugger): log explorer websocket API (tail/search/context)`
+
+### Step 5: Log Explorer card (MVP UI)
+- [ ] **Deliverable**
+  - File picker + filter form + results pane
+  - Wrap/nowrap toggle + copy-as-markdown
+  - Zoom dialog
+- [ ] **Tests**
+  - keep python tests passing
+  - manual live check in HA (filters return expected chunks)
+- [ ] **Commit**
+  - `feat(ramses_debugger): log explorer card MVP`
+
+### Step 6: Cross-filtering Traffic → Logs
+- [ ] **Deliverable**
+  - Traffic row click opens Log Explorer prefilled (src/dst, optional codes)
+- [ ] **Tests**
+  - manual live check
+- [ ] **Commit**
+  - `feat(ramses_debugger): cross-filter traffic to log explorer`
+
+### Step 7: Hardening + limits + UX polish
+- [ ] **Deliverable**
+  - enforce `max_matches`, `max_chars`, safe defaults
+  - traceback block extraction (if enabled)
+  - better empty/error states
+- [ ] **Tests**
+  - add tests for max limits
+  - `make local-ci`
+- [ ] **Commit**
+  - `refactor(ramses_debugger): harden log search + add limits`
+
+### Step 8: CI + documentation ready
+- [ ] **Deliverable**
+  - ensure `make local-ci` passes
+  - update this TODO if new learnings arise
+- [ ] **Tests**
+  - `make local-ci`
+- [ ] **Commit**
+  - `chore(ramses_debugger): local-ci green`
 
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing

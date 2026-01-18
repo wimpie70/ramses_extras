@@ -17,3 +17,6 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 
 - msg log analyzer: read the log (with filters) or live msg parser
 - configuration analyzer ? does it exist ?
+- warning card: is there a warning or error event on HA, so we could notify the cards ? This could be a 4th card, very small, but capable of filtering reoccurring warnings, warning source and show status.
+
+- dehumidify does not work on  62%>58, 5.77 > 2.9
