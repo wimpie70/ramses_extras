@@ -70,6 +70,14 @@ const CARD_MODULES = [
     tag: 'hello-world',
     modulePath: '../features/hello_world/hello-world.js',
   },
+  {
+    tag: 'ramses-traffic-analyser',
+    modulePath: '../features/ramses_debugger/ramses-traffic-analyser.js',
+  },
+  {
+    tag: 'ramses-log-explorer',
+    modulePath: '../features/ramses_debugger/ramses-log-explorer.js',
+  },
 ];
 
 const loaded = new Set();

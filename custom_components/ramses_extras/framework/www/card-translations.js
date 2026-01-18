@@ -30,7 +30,7 @@ async function fetchTranslationFileJson(translationPath) {
     const responseText = await response.text();
     try {
       return JSON.parse(responseText);
-    } catch (jsonError) {
+    } catch (jsonError) { // eslint-disable-line no-unused-vars
       throw new Error(`Invalid JSON in translation file: ${translationPath}`);
     }
   })();
