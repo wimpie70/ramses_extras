@@ -1,4 +1,6 @@
 import logging
+from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -11,7 +13,6 @@ from .const import DOMAIN as RAMSES_DEBUGGER_DOMAIN
 from .log_backend import (
     discover_log_files,
     get_configured_log_path,
-    resolve_file_id,
     search_with_context,
     tail_text,
 )
@@ -21,6 +22,23 @@ if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _resolve_log_file(base: Path, file_id: str) -> Path | None:
+    allowed = {f.path.name: f.path for f in discover_log_files(base)}
+    p = allowed.get(file_id)
+    if p is None:
+        return None
+
+    try:
+        resolved = p.resolve()
+        base_dir = base.expanduser().resolve().parent
+        if base_dir not in resolved.parents and resolved != base_dir:
+            return None
+    except OSError:
+        return None
+
+    return p
 
 
 def _get_traffic_collector(hass: HomeAssistant) -> TrafficCollector | None:
@@ -209,7 +227,7 @@ async def ws_log_list_files(
     msg: dict[str, Any],
 ) -> None:
     base = get_configured_log_path(hass)
-    files = discover_log_files(base)
+    files = await hass.async_add_executor_job(discover_log_files, base)
     connection.send_result(
         msg["id"],
         {
@@ -251,7 +269,8 @@ async def ws_log_get_tail(
         connection.send_error(msg["id"], "invalid_file_id", "Missing file_id")
         return
 
-    path = resolve_file_id(hass, file_id)
+    base = get_configured_log_path(hass)
+    path = await hass.async_add_executor_job(_resolve_log_file, base, file_id)
     if path is None:
         connection.send_error(
             msg["id"],
@@ -260,10 +279,10 @@ async def ws_log_get_tail(
         )
         return
 
-    text = tail_text(
-        path,
-        max_lines=msg.get("max_lines", 200),
-        max_chars=msg.get("max_chars", 200_000),
+    max_lines = msg.get("max_lines", 200)
+    max_chars = msg.get("max_chars", 200_000)
+    text = await hass.async_add_executor_job(
+        partial(tail_text, path, max_lines=max_lines, max_chars=max_chars)
     )
     connection.send_result(
         msg["id"],
@@ -303,7 +322,8 @@ async def ws_log_search(
         connection.send_error(msg["id"], "invalid_file_id", "Missing file_id")
         return
 
-    path = resolve_file_id(hass, file_id)
+    base = get_configured_log_path(hass)
+    path = await hass.async_add_executor_job(_resolve_log_file, base, file_id)
     if path is None:
         connection.send_error(
             msg["id"],
@@ -317,14 +337,22 @@ async def ws_log_search(
         connection.send_error(msg["id"], "invalid_query", "Missing query")
         return
 
-    result = search_with_context(
-        path,
-        query=query,
-        before=msg.get("before", 3),
-        after=msg.get("after", 3),
-        max_matches=msg.get("max_matches", 200),
-        max_chars=msg.get("max_chars", 400_000),
-        case_sensitive=bool(msg.get("case_sensitive", False)),
+    before = msg.get("before", 3)
+    after = msg.get("after", 3)
+    max_matches = msg.get("max_matches", 200)
+    max_chars = msg.get("max_chars", 400_000)
+    case_sensitive = bool(msg.get("case_sensitive", False))
+    result = await hass.async_add_executor_job(
+        partial(
+            search_with_context,
+            path,
+            query=query,
+            before=before,
+            after=after,
+            max_matches=max_matches,
+            max_chars=max_chars,
+            case_sensitive=case_sensitive,
+        )
     )
 
     connection.send_result(

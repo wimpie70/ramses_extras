@@ -199,19 +199,19 @@ Suggested workflow per step:
   - `feat(ramses_debugger): traffic analyser card MVP`
 
 ### Step 4: Log backend (file discovery + tail + search)
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - Config option for HA log file path
   - `log/list_files`, `log/get_tail`, `log/search`
   - Context extraction (±N lines) + merge overlap
   - Output formatting: plain + markdown
-- [ ] **Tests**
+- [x] **Tests**
   - unit tests for log scanning + context merge (use temp files)
   - unit tests for rotated file discovery
 - [ ] **Commit**
   - `feat(ramses_debugger): log explorer websocket API (tail/search/context)`
 
 ### Step 5: Log Explorer card (MVP UI)
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - File picker + filter form + results pane
   - Wrap/nowrap toggle + copy-as-markdown
   - Zoom dialog

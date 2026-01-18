@@ -13,6 +13,31 @@
       "reset": "Reset",
       "close": "Close"
     },
+    "log": {
+      "base": "base",
+      "files": "files",
+      "loading": "Loading...",
+      "actions": {
+        "refresh": "Refresh",
+        "tail": "Tail",
+        "search": "Search",
+        "zoom": "Zoom",
+        "wrap": "Wrap",
+        "copy_plain": "Copy plain",
+        "copy_markdown": "Copy markdown"
+      },
+      "tail": {
+        "title": "tail"
+      },
+      "search": {
+        "title": "search",
+        "query": "query",
+        "before": "before",
+        "after": "after",
+        "matches": "matches",
+        "truncated": "truncated"
+      }
+    },
     "table": {
       "no_data": "No data",
       "count": "count",

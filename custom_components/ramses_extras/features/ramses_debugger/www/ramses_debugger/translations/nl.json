@@ -13,6 +13,31 @@
       "reset": "Reset",
       "close": "Sluiten"
     },
+    "log": {
+      "base": "basis",
+      "files": "bestanden",
+      "loading": "Laden...",
+      "actions": {
+        "refresh": "Verversen",
+        "tail": "Tail",
+        "search": "Zoeken",
+        "zoom": "Zoom",
+        "wrap": "Regelafbreking",
+        "copy_plain": "Kopieer tekst",
+        "copy_markdown": "Kopieer markdown"
+      },
+      "tail": {
+        "title": "tail"
+      },
+      "search": {
+        "title": "zoeken",
+        "query": "zoekterm",
+        "before": "voor",
+        "after": "na",
+        "matches": "matches",
+        "truncated": "afgekapt"
+      }
+    },
     "table": {
       "no_data": "Geen gegevens",
       "count": "aantal",
