@@ -545,6 +545,10 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             else:
                 new_options["log_level"] = "info"
 
+            log_path = user_input.get("ramses_debugger_log_path")
+            if isinstance(log_path, str):
+                new_options["ramses_debugger_log_path"] = log_path.strip()
+
             self.hass.config_entries.async_update_entry(
                 self._config_entry,
                 options=new_options,
@@ -563,6 +567,12 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             )
         log_default = str(current_options.get("log_level", "info"))
 
+        log_path_default_raw = current_options.get("ramses_debugger_log_path")
+        if isinstance(log_path_default_raw, str) and log_path_default_raw.strip():
+            log_path_default = log_path_default_raw.strip()
+        else:
+            log_path_default = self.hass.config.path("home-assistant.log")
+
         # Show advanced settings form
         data_schema = vol.Schema(
             {
@@ -580,6 +590,10 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Optional(
+                    "ramses_debugger_log_path",
+                    default=log_path_default,
+                ): str,
                 vol.Optional(
                     "log_level",
                     default=log_default,

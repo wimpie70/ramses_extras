@@ -8,6 +8,13 @@ from homeassistant.core import Event, HomeAssistant
 from custom_components.ramses_extras.const import DOMAIN
 
 from .const import DOMAIN as RAMSES_DEBUGGER_DOMAIN
+from .log_backend import (
+    discover_log_files,
+    get_configured_log_path,
+    resolve_file_id,
+    search_with_context,
+    tail_text,
+)
 from .traffic_collector import TrafficCollector
 
 if TYPE_CHECKING:
@@ -188,3 +195,142 @@ async def ws_traffic_subscribe_stats(
 
     connection.send_result(msg["id"], {"success": True})
     _send_snapshot()
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/log/list_files",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_log_list_files(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    base = get_configured_log_path(hass)
+    files = discover_log_files(base)
+    connection.send_result(
+        msg["id"],
+        {
+            "base": str(base),
+            "files": [
+                {
+                    "file_id": f.file_id,
+                    "size": f.size,
+                    "modified_at": f.modified_at,
+                }
+                for f in files
+            ],
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/log/get_tail",
+        vol.Required("file_id"): str,
+        vol.Optional("max_lines", default=200): vol.All(
+            int,
+            vol.Range(min=0, max=10_000),
+        ),
+        vol.Optional("max_chars", default=200_000): vol.All(
+            int,
+            vol.Range(min=0, max=2_000_000),
+        ),
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_log_get_tail(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    file_id = msg.get("file_id")
+    if not isinstance(file_id, str) or not file_id:
+        connection.send_error(msg["id"], "invalid_file_id", "Missing file_id")
+        return
+
+    path = resolve_file_id(hass, file_id)
+    if path is None:
+        connection.send_error(
+            msg["id"],
+            "file_not_allowed",
+            "Requested file_id is not available",
+        )
+        return
+
+    text = tail_text(
+        path,
+        max_lines=msg.get("max_lines", 200),
+        max_chars=msg.get("max_chars", 200_000),
+    )
+    connection.send_result(
+        msg["id"],
+        {
+            "file_id": path.name,
+            "text": text,
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/log/search",
+        vol.Required("file_id"): str,
+        vol.Required("query"): str,
+        vol.Optional("before", default=3): vol.All(int, vol.Range(min=0, max=200)),
+        vol.Optional("after", default=3): vol.All(int, vol.Range(min=0, max=200)),
+        vol.Optional("max_matches", default=200): vol.All(
+            int,
+            vol.Range(min=0, max=5000),
+        ),
+        vol.Optional("max_chars", default=400_000): vol.All(
+            int,
+            vol.Range(min=0, max=2_000_000),
+        ),
+        vol.Optional("case_sensitive", default=False): bool,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_log_search(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    file_id = msg.get("file_id")
+    if not isinstance(file_id, str) or not file_id:
+        connection.send_error(msg["id"], "invalid_file_id", "Missing file_id")
+        return
+
+    path = resolve_file_id(hass, file_id)
+    if path is None:
+        connection.send_error(
+            msg["id"],
+            "file_not_allowed",
+            "Requested file_id is not available",
+        )
+        return
+
+    query = msg.get("query")
+    if not isinstance(query, str) or not query:
+        connection.send_error(msg["id"], "invalid_query", "Missing query")
+        return
+
+    result = search_with_context(
+        path,
+        query=query,
+        before=msg.get("before", 3),
+        after=msg.get("after", 3),
+        max_matches=msg.get("max_matches", 200),
+        max_chars=msg.get("max_chars", 400_000),
+        case_sensitive=bool(msg.get("case_sensitive", False)),
+    )
+
+    connection.send_result(
+        msg["id"],
+        {
+            "file_id": path.name,
+            **result,
+        },
+    )

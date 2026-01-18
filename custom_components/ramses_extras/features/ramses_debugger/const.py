@@ -13,6 +13,9 @@ RAMSES_DEBUGGER_WEBSOCKET_COMMANDS: dict[str, str] = {
     "traffic_get_stats": "ramses_extras/ramses_debugger/traffic/get_stats",
     "traffic_reset_stats": "ramses_extras/ramses_debugger/traffic/reset_stats",
     "traffic_subscribe_stats": "ramses_extras/ramses_debugger/traffic/subscribe_stats",
+    "log_list_files": "ramses_extras/ramses_debugger/log/list_files",
+    "log_get_tail": "ramses_extras/ramses_debugger/log/get_tail",
+    "log_search": "ramses_extras/ramses_debugger/log/search",
 }
 
 RAMSES_DEBUGGER_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {

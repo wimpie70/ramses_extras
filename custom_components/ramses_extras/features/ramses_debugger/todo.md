@@ -189,13 +189,13 @@ Suggested workflow per step:
   - `feat(ramses_debugger): traffic collector + websocket stats API`
 
 ### Step 3: Traffic card (MVP UI)
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - Table rendering + basic filters + polling websocket
   - Zoom dialog
-- [ ] **Tests**
+- [x] **Tests**
   - keep python tests passing
   - manual live check in HA (card loads, table renders)
-- [ ] **Commit**
+- [x] **Commit**
   - `feat(ramses_debugger): traffic analyser card MVP`
 
 ### Step 4: Log backend (file discovery + tail + search)

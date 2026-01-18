@@ -151,7 +151,11 @@ class TestRamsesExtrasOptionsFlowHandler:
             patch.object(hass.config_entries, "async_update_entry") as mock_update,
         ):
             result = await options_flow.async_step_advanced_settings(
-                {"frontend_log_level": "debug", "log_level": "debug"}
+                {
+                    "frontend_log_level": "debug",
+                    "log_level": "debug",
+                    "ramses_debugger_log_path": "/tmp/home-assistant.log",
+                }
             )
             assert result["type"] == "menu"
 
@@ -159,6 +163,10 @@ class TestRamsesExtrasOptionsFlowHandler:
             assert kwargs["options"]["frontend_log_level"] == "debug"
             assert kwargs["options"]["debug_mode"] is True
             assert kwargs["options"]["log_level"] == "debug"
+            assert (
+                kwargs["options"]["ramses_debugger_log_path"]
+                == "/tmp/home-assistant.log"
+            )
 
     @pytest.mark.asyncio
     async def test_advanced_settings_defaults_from_options(self, hass):
@@ -167,6 +175,7 @@ class TestRamsesExtrasOptionsFlowHandler:
         mock_config_entry.options = {
             "frontend_log_level": "warning",
             "log_level": "warning",
+            "ramses_debugger_log_path": "/var/log/home-assistant.log",
         }
 
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
@@ -180,8 +189,13 @@ class TestRamsesExtrasOptionsFlowHandler:
         assert isinstance(schema, vol.Schema)
 
         frontend_key = vol.Optional("frontend_log_level", default="warning")
+        log_path_key = vol.Optional(
+            "ramses_debugger_log_path",
+            default="/var/log/home-assistant.log",
+        )
         log_key = vol.Optional("log_level", default="warning")
         assert frontend_key in schema.schema
+        assert log_path_key in schema.schema
         assert log_key in schema.schema
 
     @pytest.mark.asyncio
@@ -555,7 +569,7 @@ class TestRamsesExtrasOptionsFlowHandler:
             "custom_components.ramses_extras.features.sensor_control.config_flow"
         )
         feature_module = ModuleType("feature_module")
-        feature_module.async_step_sensor_control_config = _feature_async
+        feature_module.__dict__["async_step_sensor_control_config"] = _feature_async
 
         original_import = builtins.__import__
 
