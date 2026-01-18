@@ -167,25 +167,25 @@ Suggested workflow per step:
 - commit
 
 ### Step 1: Feature skeleton (no behaviour changes)
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - Create `features/ramses_debugger/` feature scaffold based on `hello_world`
   - Add feature definition + register feature with extras registry
   - Add websocket registration stubs (no-op)
   - Add `www/` stubs for both cards
-- [ ] **Tests**
+- [x] **Tests**
   - run existing unit tests (no new tests required yet)
-- [ ] **Commit**
+- [x] **Commit**
   - `feat(ramses_debugger): scaffold feature with websocket + www stubs`
 
 ### Step 2: Traffic backend (collector + aggregation)
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - Subscribe to `ramses_cc_message`
   - Maintain aggregation data structures
   - Add `traffic/get_stats` + `traffic/reset_stats` websocket commands
-- [ ] **Tests**
+- [x] **Tests**
   - unit tests for aggregation logic (pure python)
   - unit tests for websocket handlers (mock hass bus + sample events)
-- [ ] **Commit**
+- [x] **Commit**
   - `feat(ramses_debugger): traffic collector + websocket stats API`
 
 ### Step 3: Traffic card (MVP UI)
