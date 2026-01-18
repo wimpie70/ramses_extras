@@ -243,8 +243,9 @@ async def create_and_start_feature_instances(
         if feature_name in features:
             continue
         try:
-            feature_module_name = "custom_components.ramses_extras.features."
-            f"{feature_name}"
+            feature_module_name = (
+                "custom_components.ramses_extras.features.{feature_name}"  # noqa: E501
+            )
             feature_module = await asyncio.to_thread(
                 importlib.import_module, feature_module_name
             )
