@@ -1,0 +1,25 @@
+{
+  "card": {
+    "title": "Ramses Traffic Analyser",
+    "filters": {
+      "src": "src",
+      "dst": "dst",
+      "code": "code",
+      "verb": "verb",
+      "limit": "limiet"
+    },
+    "actions": {
+      "apply": "Toepassen",
+      "reset": "Reset",
+      "close": "Sluiten"
+    },
+    "table": {
+      "no_data": "Geen gegevens",
+      "count": "aantal",
+      "last_seen": "laatst_gezien"
+    },
+    "details": {
+      "title": "Flow details"
+    }
+  }
+}

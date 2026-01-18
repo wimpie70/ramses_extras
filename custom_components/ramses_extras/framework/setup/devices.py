@@ -59,6 +59,7 @@ Key Functions:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from typing import Any, cast
 
@@ -463,7 +464,9 @@ async def cleanup_orphaned_devices(
             continue
 
         try:
-            await device_registry.async_remove_device(device_entry.id)
+            result = device_registry.async_remove_device(device_entry.id)
+            if inspect.isawaitable(result):
+                await result
             _LOGGER.info("Removed orphaned device: %s", device_id)
         except Exception as e:
             _LOGGER.warning(f"Failed to remove device {device_id}: {e}")

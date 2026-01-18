@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,6 +69,7 @@ class TrafficCollector:
     def get_stats(
         self,
         *,
+        device_id: str | None = None,
         src: str | None = None,
         dst: str | None = None,
         code: str | None = None,
@@ -77,6 +78,8 @@ class TrafficCollector:
     ) -> dict[str, Any]:
         flows: list[TrafficFlowStats] = []
         for flow in self._flows.values():
+            if device_id and device_id not in (flow.src, flow.dst):
+                continue
             if src and flow.src != src:
                 continue
             if dst and flow.dst != dst:
@@ -107,7 +110,6 @@ class TrafficCollector:
             ],
         }
 
-    # @callback # deprecated
     def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
         data = event.data or {}
 

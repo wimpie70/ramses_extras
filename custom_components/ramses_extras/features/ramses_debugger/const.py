@@ -12,6 +12,7 @@ RAMSES_DEBUGGER_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
 RAMSES_DEBUGGER_WEBSOCKET_COMMANDS: dict[str, str] = {
     "traffic_get_stats": "ramses_extras/ramses_debugger/traffic/get_stats",
     "traffic_reset_stats": "ramses_extras/ramses_debugger/traffic/reset_stats",
+    "traffic_subscribe_stats": "ramses_extras/ramses_debugger/traffic/subscribe_stats",
 }
 
 RAMSES_DEBUGGER_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {
