@@ -132,3 +132,66 @@ async def test_ws_log_rejects_unknown_file_id(hass, tmp_path: Path) -> None:
     assert conn.errors
     assert conn.errors[-1][0] == 1
     assert conn.errors[-1][1] == "file_not_allowed"
+
+
+@pytest.mark.asyncio
+async def test_ws_log_search_truncated_by_max_matches(hass, tmp_path: Path) -> None:
+    base = tmp_path / "home-assistant.log"
+    base.write_text(
+        "\n".join(["ERROR one", "ERROR two", "ERROR three"]) + "\n",
+        encoding="utf-8",
+    )
+
+    _setup_config_entry(hass, log_path=base)
+    conn = _FakeConnection()
+
+    await ws_log_search(
+        hass,
+        conn,
+        {
+            "id": 1,
+            "type": "ramses_extras/ramses_debugger/log/search",
+            "file_id": base.name,
+            "query": "ERROR",
+            "before": 0,
+            "after": 0,
+            "max_matches": 1,
+        },
+    )
+
+    payload = conn.results[-1][1]
+    assert payload["matches"] == 1
+    assert payload["truncated"] is True
+    assert payload.get("truncated_by_max_matches") is True
+
+
+@pytest.mark.asyncio
+async def test_ws_log_search_truncated_by_max_chars(hass, tmp_path: Path) -> None:
+    base = tmp_path / "home-assistant.log"
+    base.write_text(
+        "INFO start\n" + "ERROR " + ("x" * 200) + "\n" + "INFO end\n",
+        encoding="utf-8",
+    )
+
+    _setup_config_entry(hass, log_path=base)
+    conn = _FakeConnection()
+
+    await ws_log_search(
+        hass,
+        conn,
+        {
+            "id": 1,
+            "type": "ramses_extras/ramses_debugger/log/search",
+            "file_id": base.name,
+            "query": "ERROR",
+            "before": 1,
+            "after": 1,
+            "max_chars": 50,
+        },
+    )
+
+    payload = conn.results[-1][1]
+    assert payload["matches"] == 1
+    assert payload["truncated"] is True
+    assert payload.get("truncated_by_max_chars") is True
+    assert len(payload["plain"]) <= 50

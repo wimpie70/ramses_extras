@@ -222,11 +222,11 @@ Suggested workflow per step:
   - `feat(ramses_debugger): log explorer card MVP`
 
 ### Step 6: Cross-filtering Traffic → Logs
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - Traffic row click opens Log Explorer prefilled (src/dst, optional codes)
-- [ ] **Tests**
+- [x] **Tests**
   - manual live check
-- [ ] **Commit**
+- [x] **Commit**
   - `feat(ramses_debugger): cross-filter traffic to log explorer`
 
 ### Step 7: Hardening + limits + UX polish

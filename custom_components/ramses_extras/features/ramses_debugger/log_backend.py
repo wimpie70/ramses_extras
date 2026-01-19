@@ -183,12 +183,15 @@ def search_with_context(
             "matches": 0,
             "blocks": [],
             "truncated": False,
+            "truncated_by_max_chars": False,
+            "truncated_by_max_matches": False,
         }
 
     needle = query if case_sensitive else query.lower()
 
     match_lines: list[int] = []
     ranges: list[tuple[int, int]] = []
+    truncated_by_max_matches = False
 
     for idx, line in enumerate(_open_text(path), start=1):
         hay = line if case_sensitive else line.lower()
@@ -196,6 +199,7 @@ def search_with_context(
             match_lines.append(idx)
             ranges.append((max(1, idx - before), idx + after))
             if len(match_lines) >= max_matches:
+                truncated_by_max_matches = True
                 break
 
     merged = _merge_ranges(ranges)
@@ -204,6 +208,8 @@ def search_with_context(
             "matches": 0,
             "blocks": [],
             "truncated": False,
+            "truncated_by_max_chars": False,
+            "truncated_by_max_matches": False,
         }
 
     blocks: list[LogBlock] = []
@@ -214,6 +220,7 @@ def search_with_context(
 
     total_chars = 0
     truncated = False
+    truncated_by_max_chars = False
 
     for idx, line in enumerate(_open_text(path), start=1):
         while idx > end:
@@ -239,6 +246,7 @@ def search_with_context(
             total_chars += len(s) + 1
             if total_chars > max_chars:
                 truncated = True
+                truncated_by_max_chars = True
                 break
             current_lines.append(s)
 
@@ -257,6 +265,8 @@ def search_with_context(
     ).strip("\n")
     markdown = f"```text\n{plain}\n```" if plain else ""
 
+    truncated = truncated or truncated_by_max_matches
+
     return {
         "matches": len(match_lines),
         "match_lines": match_lines,
@@ -272,6 +282,8 @@ def search_with_context(
         "plain": plain,
         "markdown": markdown,
         "truncated": truncated,
+        "truncated_by_max_chars": truncated_by_max_chars,
+        "truncated_by_max_matches": truncated_by_max_matches,
     }
 
 
