@@ -1,4 +1,5 @@
 /* global navigator */
+/* global setTimeout */
 
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
@@ -14,10 +15,30 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
 
     this._tailText = '';
     this._searchResult = null;
+    this._searchQuery = '';
+    this._autoLoaded = false;
 
     this._wrap = true;
     this._loading = false;
     this._lastError = null;
+  }
+
+  set hass(hass) {
+    super.hass = hass;
+
+    if (this._autoLoaded) {
+      return;
+    }
+    if (!this._hass || !this._config) {
+      return;
+    }
+
+    this._autoLoaded = true;
+    void this._refreshFilesAndTail().then(() => {
+      if (this._config?.auto_search === true && this._searchQuery) {
+        void this._runSearch();
+      }
+    });
   }
 
   getCardSize() {
@@ -30,6 +51,10 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
 
   getRequiredEntities() {
     return {};
+  }
+
+  hasValidConfig() {
+    return true;
   }
 
   _checkAndLoadInitialState() {
@@ -56,8 +81,23 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     return 'ramses_debugger';
   }
 
+  setConfig(config) {
+    super.setConfig(config);
+
+    const prefill = this._config?.prefill_query;
+    if (typeof prefill === 'string') {
+      this._searchQuery = prefill;
+    }
+  }
+
   _onConnected() {
     void this._refreshFilesAndTail();
+
+    if (this._config?.auto_search === true && this._searchQuery) {
+      setTimeout(() => {
+        void this._runSearch();
+      }, 0);
+    }
   }
 
   async _refreshFilesAndTail() {
@@ -116,7 +156,11 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
 
     const qEl = this.shadowRoot.getElementById('searchQuery');
-    const query = qEl && typeof qEl.value === 'string' ? qEl.value.trim() : '';
+    let query = qEl && typeof qEl.value === 'string' ? qEl.value.trim() : '';
+    if (!query && this._searchQuery) {
+      query = String(this._searchQuery).trim();
+    }
+    this._searchQuery = query;
     if (!query) {
       this._searchResult = null;
       this.render();
@@ -202,6 +246,11 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     });
     bind('runSearch', 'click', () => {
       void this._runSearch();
+    });
+
+    bind('searchQuery', 'input', (ev) => {
+      const val = ev?.target?.value;
+      this._searchQuery = typeof val === 'string' ? val : '';
     });
     bind('wrapToggle', 'change', (ev) => {
       this._wrap = Boolean(ev?.target?.checked);
@@ -289,7 +338,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
 
           <div class="row" style="margin-top: 12px;">
             <label>${this.t('card.log.search.query') || 'query'}:</label>
-            <input id="searchQuery" type="text" placeholder="ERROR" />
+            <input id="searchQuery" type="text" placeholder="ERROR" value="${this._searchQuery || ''}" />
             <label>${this.t('card.log.search.before') || 'before'}:</label>
             <input class="small" type="number" value="${Number(this._config?.before || 3)}" disabled />
             <label>${this.t('card.log.search.after') || 'after'}:</label>

@@ -207,7 +207,7 @@ Suggested workflow per step:
 - [x] **Tests**
   - unit tests for log scanning + context merge (use temp files)
   - unit tests for rotated file discovery
-- [ ] **Commit**
+- [x] **Commit**
   - `feat(ramses_debugger): log explorer websocket API (tail/search/context)`
 
 ### Step 5: Log Explorer card (MVP UI)
@@ -215,10 +215,10 @@ Suggested workflow per step:
   - File picker + filter form + results pane
   - Wrap/nowrap toggle + copy-as-markdown
   - Zoom dialog
-- [ ] **Tests**
+- [x] **Tests**
   - keep python tests passing
   - manual live check in HA (filters return expected chunks)
-- [ ] **Commit**
+- [x] **Commit**
   - `feat(ramses_debugger): log explorer card MVP`
 
 ### Step 6: Cross-filtering Traffic → Logs

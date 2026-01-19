@@ -5,6 +5,8 @@ import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocket } from '../../helpers/card-services.js';
 
+import './ramses-log-explorer.js';
+
 class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   constructor() {
     super();
@@ -18,14 +20,27 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     this._detailsDialogOpen = false;
     this._detailsFlow = null;
 
+    this._dialogOpen = false;
+    this._pendingRender = false;
+
     this._boundOnFilterApply = null;
     this._boundOnReset = null;
     this._boundOnRowClick = null;
     this._boundOnDialogClose = null;
+    this._boundOnDialogClosed = null;
   }
 
   getCardSize() {
     return 3;
+  }
+
+  render() {
+    if (this._dialogOpen) {
+      this._pendingRender = true;
+      return;
+    }
+
+    super.render();
   }
 
   static getTagName() {
@@ -305,6 +320,16 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
               </div>
             </form>
           </dialog>
+
+          <dialog id="logDialog">
+            <form method="dialog">
+              <h3>Log Explorer</h3>
+              <div id="logContainer"></div>
+              <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 12px;">
+                <button id="closeLogDialog">Close</button>
+              </div>
+            </form>
+          </dialog>
         </div>
       </ha-card>
     `;
@@ -319,8 +344,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
     const applyBtn = this.shadowRoot.getElementById('applyFilters');
     const resetBtn = this.shadowRoot.getElementById('resetStats');
-    const dialog = this.shadowRoot.getElementById('detailsDialog');
     const closeBtn = this.shadowRoot.getElementById('closeDialog');
+    const closeLogBtn = this.shadowRoot.getElementById('closeLogDialog');
 
     if (!this._boundOnFilterApply) {
       this._boundOnFilterApply = () => this._applyFiltersFromForm();
@@ -340,12 +365,46 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
         try {
           const flow = JSON.parse(decodeURIComponent(encoded));
-          const pre = this.shadowRoot.getElementById('detailsPre');
-          if (pre) {
-            pre.textContent = JSON.stringify(flow, null, 2);
+
+          const logDialog = this.shadowRoot?.getElementById('logDialog');
+          const detailsDialog = this.shadowRoot?.getElementById('detailsDialog');
+
+          const src = flow?.src || '';
+          const dst = flow?.dst || '';
+          const query = src && dst ? `${src} ${dst}` : src || dst;
+
+          const container = this.shadowRoot?.getElementById('logContainer');
+          if (container) {
+            container.innerHTML = '';
+            const el = document.createElement('ramses-log-explorer');
+            container.appendChild(el);
+
+            try {
+              el.setConfig({
+                name: 'Ramses Log Explorer',
+                prefill_query: query,
+                auto_search: true,
+              });
+
+              if (this._hass) {
+                el.hass = this._hass;
+              }
+            } catch (error) {
+              logger.warn('Failed to init embedded log explorer:', error);
+            }
           }
-          if (dialog && typeof dialog.showModal === 'function') {
-            dialog.showModal();
+
+          if (logDialog && typeof logDialog.showModal === 'function') {
+            this._dialogOpen = true;
+            logDialog.showModal();
+          } else if (detailsDialog && typeof detailsDialog.showModal === 'function') {
+            const pre = this.shadowRoot?.getElementById('detailsPre');
+            if (pre) {
+              pre.textContent = JSON.stringify(flow, null, 2);
+            }
+
+            this._dialogOpen = true;
+            detailsDialog.showModal();
           }
         } catch (error) {
           logger.warn('Failed to open flow details dialog:', error);
@@ -355,8 +414,21 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     if (!this._boundOnDialogClose) {
       this._boundOnDialogClose = () => {
         try {
-          if (dialog && dialog.open) {
-            dialog.close();
+          const detailsDialog = this.shadowRoot?.getElementById('detailsDialog');
+          const logDialog = this.shadowRoot?.getElementById('logDialog');
+
+          if (detailsDialog && detailsDialog.open) {
+            detailsDialog.close();
+          }
+          if (logDialog && logDialog.open) {
+            logDialog.close();
+          }
+
+          this._dialogOpen = false;
+
+          if (this._pendingRender) {
+            this._pendingRender = false;
+            this.render();
           }
         } catch (error) {
           logger.warn('Failed to close dialog:', error);
@@ -364,19 +436,41 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       };
     }
 
+    if (!this._boundOnDialogClosed) {
+      this._boundOnDialogClosed = () => {
+        this._dialogOpen = false;
+        if (this._pendingRender) {
+          this._pendingRender = false;
+          this.render();
+        }
+      };
+    }
+
     if (applyBtn) {
-      applyBtn.addEventListener('click', this._boundOnFilterApply);
+      applyBtn.onclick = this._boundOnFilterApply;
     }
     if (resetBtn) {
-      resetBtn.addEventListener('click', this._boundOnReset);
+      resetBtn.onclick = this._boundOnReset;
     }
     if (closeBtn) {
-      closeBtn.addEventListener('click', this._boundOnDialogClose);
+      closeBtn.onclick = this._boundOnDialogClose;
+    }
+    if (closeLogBtn) {
+      closeLogBtn.onclick = this._boundOnDialogClose;
     }
 
     const tbody = this.shadowRoot.querySelector('tbody');
     if (tbody) {
-      tbody.addEventListener('click', this._boundOnRowClick);
+      tbody.onclick = this._boundOnRowClick;
+    }
+
+    const detailsDialog = this.shadowRoot.getElementById('detailsDialog');
+    if (detailsDialog) {
+      detailsDialog.onclose = this._boundOnDialogClosed;
+    }
+    const logDialog = this.shadowRoot.getElementById('logDialog');
+    if (logDialog) {
+      logDialog.onclose = this._boundOnDialogClosed;
     }
   }
 
