@@ -230,29 +230,117 @@ Suggested workflow per step:
   - `feat(ramses_debugger): cross-filter traffic to log explorer`
 
 ### Step 7: Hardening + limits + UX polish
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - enforce `max_matches`, `max_chars`, safe defaults
   - traceback block extraction (if enabled)
   - better empty/error states
-- [ ] **Tests**
+- [x] **Tests**
   - add tests for max limits
   - `make local-ci`
-- [ ] **Commit**
+- [x] **Commit**
   - `refactor(ramses_debugger): harden log search + add limits`
 
 ### Step 8: CI + documentation ready
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - ensure `make local-ci` passes
   - update this TODO if new learnings arise
-- [ ] **Tests**
+- [x] **Tests**
   - `make local-ci`
 - [ ] **Commit**
   - `chore(ramses_debugger): local-ci green`
 
+### Step 9: UI/UX improvements
+- [ ] **Deliverable**
+  - cards render full width
+  - no `device_id` required while editing
+  - bounded, scrollable output panes
+  - working copy buttons
+  - Traffic → Logs popup full width + resizable
+  - highlighting for matches and WARNING/ERROR lines
+  - default case-insensitive search
+  - Traffic table improvements
+    - show all verbs + counts
+    - show codes + counts
+    - deterministic per-device cell background colors (no background for HGI `18:`)
+    - show device alias (if known) and always show slug (`:xxxxxx`)
+    - prefer action buttons over row-click
+      - Logs (opens embedded Log Explorer)
+      - Details (raw flow JSON)
+      - Messages (placeholder)
+- [ ] **Tests**
+  - manual check in HA
+  - `make local-ci`
+- [ ] **Commit**
+  - `feat(ramses_debugger): UI/UX polish for traffic + log cards`
+
+### Step 10: Messages list (Traffic Analyser → Messages)
+- [ ] **Deliverable**
+  - Backend
+    - extend TrafficCollector to retain a bounded ring-buffer of raw `ramses_cc_message` events
+      - store globally (latest N messages)
+      - and per-flow key `(src,dst)` (latest N messages)
+      - message fields to retain (at minimum)
+        - dtm, src, dst, verb, code
+        - payload (raw)
+        - packet (raw)
+    - add websocket command(s)
+      - `traffic/get_messages` (one-shot)
+        - filters: src, dst, code, verb, since, limit
+      - (optional) `traffic/subscribe_messages` (stream)
+        - throttle + filters
+  - UI
+    - Traffic Analyser: wire up the Messages button to open a dialog listing messages for that flow
+      - table view: dtm, verb, code, src, dst, payload/packet (collapsed)
+      - pagination or bounded list + “Load more” (optional)
+    - add a second-level “Message details” drill-down (placeholder)
+- [ ] **Tests**
+  - unit tests for buffering and filtering
+  - websocket handler tests
+- [ ] **Commit**
+  - `feat(ramses_debugger): message listing API (traffic) + UI dialog`
+
+### Step 11: Packet Log Explorer (future card)
+- [ ] **Deliverable**
+  - Backend
+    - new packet log backend (separate from HA log)
+      - source: configured `ramses_log` path
+      - parse packet/message log lines into structured records
+    - websocket commands
+      - `packet_log/list_files` (optional, if rotated)
+      - `packet_log/search`
+        - filters: src, dst, verb, code, payload contains
+        - time range / last N lines
+      - `packet_log/get_messages` (normalized output, aligned with Traffic messages)
+  - UI
+    - new Lovelace card: Packet Log Explorer
+      - file selection + search filters
+      - results list of messages
+      - message detail drill-down
+- [ ] **Tests**
+  - unit tests for parsing + search limits
+- [ ] **Commit**
+  - `feat(ramses_debugger): packet log explorer (backend + card)`
+
+### Step 12: Cross-linking between views (Traffic / Packet Log / HA Log)
+- [ ] **Deliverable**
+  - From Traffic Analyser
+    - Messages list entry → open Message details
+    - Message details → open Packet Log Explorer prefilled
+  - From Packet Log Explorer
+    - Message details → open Log Explorer prefilled (when a matching HA log line exists)
+  - From Log Explorer
+    - selecting a log line that contains a ramses message → open Message details (same component)
+- [ ] **Tests**
+  - manual end-to-end in HA
+- [ ] **Commit**
+  - `feat(ramses_debugger): cross-link messages across cards`
+
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing
-- Traffic filters work (src/dst/code/verb)
 - Log Explorer can filter HA logs and return ±N context around matches
 - Log Explorer output is easy to copy/paste (plain + markdown)
 - Zoom dialogs work for both cards
 - Reset clears Traffic Analyser stats immediately
+ - Traffic Analyser shows codes and verbs counters per flow
+ - Traffic Analyser can open Log Explorer via action button
+ - Message listing (when implemented) allows drilling down to raw + parsed message details

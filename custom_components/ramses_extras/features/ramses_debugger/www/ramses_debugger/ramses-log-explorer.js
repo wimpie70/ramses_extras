@@ -5,6 +5,8 @@ import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocket } from '../../helpers/card-services.js';
 
+import { logExplorerCardStyle } from './card-styles.js';
+
 class RamsesLogExplorerCard extends RamsesBaseCard {
   constructor() {
     super();
@@ -21,6 +23,52 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._wrap = true;
     this._loading = false;
     this._lastError = null;
+  }
+
+  _escapeHtml(value) {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  _escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  _renderHighlightedLog(text, query) {
+    const lines = String(text || '').split('\n');
+    const q = String(query || '').trim();
+
+    let re = null;
+    if (q) {
+      try {
+        re = new RegExp(this._escapeRegExp(q), 'gi');
+      } catch {
+        re = null;
+      }
+    }
+
+    return lines
+      .map((line) => {
+        let html = this._escapeHtml(line);
+        if (re) {
+          html = html.replace(re, (m) => `<span class="hl-match">${this._escapeHtml(m)}</span>`);
+        }
+
+        const level = String(line).match(/\b(error|warning|critical)\b/i);
+        const lvl = typeof level?.[1] === 'string' ? level[1].toUpperCase() : '';
+        if (lvl === 'ERROR' || lvl === 'CRITICAL') {
+          return `<span class="hl-line hl-error">${html}</span>`;
+        }
+        if (lvl === 'WARNING') {
+          return `<span class="hl-line hl-warning">${html}</span>`;
+        }
+        return html;
+      })
+      .join('\n');
   }
 
   set hass(hass) {
@@ -42,7 +90,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
   }
 
   getCardSize() {
-    return 4;
+    return 12;
   }
 
   static getTagName() {
@@ -55,6 +103,13 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
 
   hasValidConfig() {
     return true;
+  }
+
+  validateConfig() {
+    return {
+      valid: true,
+      errors: [],
+    };
   }
 
   _checkAndLoadInitialState() {
@@ -199,7 +254,22 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       }
       if (navigator?.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
+        return;
       }
+
+      const textarea = document.createElement('textarea');
+      textarea.value = String(text);
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.top = '0';
+      textarea.style.left = '0';
+      textarea.style.width = '1px';
+      textarea.style.height = '1px';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
     } catch (error) {
       logger.warn('Copy to clipboard failed:', error);
     }
@@ -305,30 +375,34 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     const matches = this._searchResult?.matches;
     const truncated = Boolean(this._searchResult?.truncated);
 
+    const tailHtml = this._renderHighlightedLog(this._tailText, this._searchQuery);
+    const resultHtml = this._renderHighlightedLog(resultPlain, this._searchQuery);
+
     this.shadowRoot.innerHTML = `
       <style>
-        .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .row input[type="text"] { min-width: 220px; }
-        .row input.small { width: 70px; }
-        .row select { min-width: 260px; }
-        .muted { font-size: 12px; opacity: 0.8; }
-        .error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
-        .grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
-        pre { margin: 0; padding: 10px; border: 1px solid var(--divider-color); border-radius: 6px; overflow: auto; white-space: ${wrapCss}; }
-        dialog { width: min(1100px, 92vw); }
-        dialog pre { max-height: 70vh; }
-        button { cursor: pointer; }
+        ${logExplorerCardStyle({ wrapCss })}
       </style>
       <ha-card header="${title}">
         <div style="padding: 16px;">
           <div class="row">
             <label>${this.t('card.log.files') || 'files'}:</label>
-            <select id="fileSelect">${fileOptions}</select>
-            <button id="refreshFiles">${this.t('card.log.actions.refresh') || 'Refresh'}</button>
-            <button id="refreshTail">${this.t('card.log.actions.tail') || 'Tail'}</button>
-            <button id="zoomTail">${this.t('card.log.actions.zoom') || 'Zoom'}</button>
+            <select id="fileSelect" title="Select which log file to view">${fileOptions}</select>
+            <button id="refreshFiles" title="Reload the list of available log files">
+              ${this.t('card.log.actions.refresh') || 'Refresh'}
+            </button>
+            <button id="refreshTail" title="Fetch the latest tail from the selected file">
+              ${this.t('card.log.actions.tail') || 'Tail'}
+            </button>
+            <button id="zoomTail" title="Open the tail in a large, resizable popup">
+              ${this.t('card.log.actions.zoom') || 'Zoom'}
+            </button>
             <label style="display:flex; gap:6px; align-items:center;">
-              <input id="wrapToggle" type="checkbox" ${this._wrap ? 'checked' : ''} />
+              <input
+                id="wrapToggle"
+                type="checkbox"
+                title="Toggle line wrapping in the output"
+                ${this._wrap ? 'checked' : ''}
+              />
               ${this.t('card.log.actions.wrap') || 'Wrap'}
             </label>
           </div>
@@ -338,24 +412,54 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
 
           <div class="row" style="margin-top: 12px;">
             <label>${this.t('card.log.search.query') || 'query'}:</label>
-            <input id="searchQuery" type="text" placeholder="ERROR" value="${this._searchQuery || ''}" />
+            <input
+              id="searchQuery"
+              type="text"
+              placeholder="ERROR"
+              value="${this._searchQuery || ''}"
+              title="Search query (case-insensitive by default)"
+            />
             <label>${this.t('card.log.search.before') || 'before'}:</label>
-            <input class="small" type="number" value="${Number(this._config?.before || 3)}" disabled />
+            <input
+              class="small"
+              type="number"
+              value="${Number(this._config?.before || 3)}"
+              title="Context lines before each match (configured in YAML)"
+              disabled
+            />
             <label>${this.t('card.log.search.after') || 'after'}:</label>
-            <input class="small" type="number" value="${Number(this._config?.after || 3)}" disabled />
-            <button id="runSearch">${this.t('card.log.actions.search') || 'Search'}</button>
-            <button id="zoomResult">${this.t('card.log.actions.zoom') || 'Zoom'}</button>
-            <button id="copyPlain">${this.t('card.log.actions.copy_plain') || 'Copy plain'}</button>
-            <button id="copyMarkdown">${this.t('card.log.actions.copy_markdown') || 'Copy markdown'}</button>
+            <input
+              class="small"
+              type="number"
+              value="${Number(this._config?.after || 3)}"
+              title="Context lines after each match (configured in YAML)"
+              disabled
+            />
+            <button id="runSearch" title="Run search on the selected file">
+              ${this.t('card.log.actions.search') || 'Search'}
+            </button>
+            <button id="zoomResult" title="Open search results in a large, resizable popup">
+              ${this.t('card.log.actions.zoom') || 'Zoom'}
+            </button>
+            <button id="copyPlain" title="Copy the plain-text search results to clipboard">
+              ${this.t('card.log.actions.copy_plain') || 'Copy plain'}
+            </button>
+            <button id="copyMarkdown" title="Copy the markdown-formatted search results to clipboard">
+              ${this.t('card.log.actions.copy_markdown') || 'Copy markdown'}
+            </button>
           </div>
 
           ${this._loading ? `<div class="muted" style="margin-top: 8px;">${this.t('card.log.loading') || 'Loading...'}</div>` : ''}
           ${errorText ? `<div class="error">${errorText}</div>` : ''}
 
+          <div class="muted" style="margin-top: 6px;">
+            Search scans the full file; the tail is shown separately.
+          </div>
+
           <div class="grid">
             <div>
               <div class="muted">${this.t('card.log.tail.title') || 'tail'}</div>
-              <pre>${this._tailText || ''}</pre>
+              <pre>${tailHtml || ''}</pre>
             </div>
             <div>
               <div class="muted">
@@ -363,7 +467,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
                 ${typeof matches === 'number' ? ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}` : ''}
                 ${truncated ? ` • ${this.t('card.log.search.truncated') || 'truncated'}` : ''}
               </div>
-              <pre>${resultPlain}</pre>
+              <pre>${resultHtml || ''}</pre>
             </div>
           </div>
 
@@ -372,7 +476,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               <h3 id="zoomTitle"></h3>
               <pre id="zoomPre"></pre>
               <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 12px;">
-                <button id="closeDialog">${this.t('card.actions.close') || 'Close'}</button>
+                <button id="closeDialog" title="Close this dialog">${this.t('card.actions.close') || 'Close'}</button>
               </div>
             </form>
           </dialog>
@@ -387,7 +491,8 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     return {
       type: 'ramses-log-explorer',
       name: 'Ramses Log Explorer',
-      description: 'Filter and extract context from the HA log file',
+      description:
+        'Filter and extract context from the HA log file. Best viewed in full-width or 2+ column layouts.',
       preview: true,
       documentationURL: 'https://github.com/wimpie70/ramses_extras',
     };
