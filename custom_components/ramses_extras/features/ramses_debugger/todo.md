@@ -262,7 +262,7 @@ Suggested workflow per step:
     - show all verbs + counts
     - show codes + counts
     - deterministic per-device cell background colors (no background for HGI `18:`)
-    - show device alias (if known) and always show slug (`:xxxxxx`)
+    - show device alias (if known) and always show device type slug (`FAN`, `REM`, `HGI`, ...)
     - prefer action buttons over row-click
       - Logs (opens embedded Log Explorer)
       - Details (raw flow JSON)
@@ -273,44 +273,54 @@ Suggested workflow per step:
 - [ ] **Commit**
   - `feat(ramses_debugger): UI/UX polish for traffic + log cards`
 
-### Step 10: Messages list (Traffic Analyser → Messages)
+### Step 10: Unified Messages API (HA log / packet log / live traffic)
 - [ ] **Deliverable**
   - Backend
-    - extend TrafficCollector to retain a bounded ring-buffer of raw `ramses_cc_message` events
-      - store globally (latest N messages)
-      - and per-flow key `(src,dst)` (latest N messages)
-      - message fields to retain (at minimum)
-        - dtm, src, dst, verb, code
-        - payload (raw)
-        - packet (raw)
-    - add websocket command(s)
-      - `traffic/get_messages` (one-shot)
-        - filters: src, dst, code, verb, since, limit
-      - (optional) `traffic/subscribe_messages` (stream)
-        - throttle + filters
+    - add a single websocket command that can query multiple sources
+      - `messages/get_messages` (one-shot)
+        - params
+          - `sources`: list of sources to query, in priority order
+            - `traffic_buffer` (in-memory, from `ramses_cc_message` events)
+            - `packet_log` (ramses packet/message log, e.g. `ramses_log`)
+            - `ha_log` (Home Assistant log file)
+          - filters: src, dst, verb, code, since, until, limit
+          - `dedupe`: bool (optional; on by default)
+        - response
+          - list of normalized messages
+            - dtm, src, dst, verb, code
+            - payload (raw)
+            - packet (raw)
+            - source (`traffic_buffer` | `packet_log` | `ha_log`)
+            - raw_line (when source is a log file)
+            - parse_warnings (optional)
+    - implement providers
+      - TrafficCollector ring buffers
+        - bounded global and per-flow buffers
+        - store raw event fields (dtm/src/dst/verb/code/payload/packet)
+      - Packet log provider
+        - parse actual traffic records from `ramses_log`
+      - HA log provider
+        - parse messages from HA log lines (note: will include duplicates from multiple loggers)
+        - use dedupe key (dtm+src+dst+verb+code+packet/payload) when possible
   - UI
-    - Traffic Analyser: wire up the Messages button to open a dialog listing messages for that flow
-      - table view: dtm, verb, code, src, dst, payload/packet (collapsed)
-      - pagination or bounded list + “Load more” (optional)
-    - add a second-level “Message details” drill-down (placeholder)
+    - Traffic Analyser: wire Messages button to call `messages/get_messages`
+      - default `sources`: [`traffic_buffer`, `packet_log`, `ha_log`]
+      - list view: dtm, verb, code, src, dst, payload/packet (collapsed)
+      - drill-down placeholder: “Message details”
+    - Packet Log Explorer + Log Explorer (later): reuse the same normalized message UI
 - [ ] **Tests**
-  - unit tests for buffering and filtering
-  - websocket handler tests
+  - unit tests for buffering/filtering and dedupe
+  - websocket handler tests (each provider)
 - [ ] **Commit**
-  - `feat(ramses_debugger): message listing API (traffic) + UI dialog`
+  - `feat(ramses_debugger): unified messages API (traffic/packet/ha log)`
 
 ### Step 11: Packet Log Explorer (future card)
 - [ ] **Deliverable**
   - Backend
-    - new packet log backend (separate from HA log)
-      - source: configured `ramses_log` path
-      - parse packet/message log lines into structured records
-    - websocket commands
-      - `packet_log/list_files` (optional, if rotated)
-      - `packet_log/search`
-        - filters: src, dst, verb, code, payload contains
-        - time range / last N lines
-      - `packet_log/get_messages` (normalized output, aligned with Traffic messages)
+    - packet log parsing should be implemented as a provider for Step 10 (`sources: packet_log`)
+    - add optional packet-log specific commands only if needed for UX
+      - file selection / rotated files
+      - faster indexed search
   - UI
     - new Lovelace card: Packet Log Explorer
       - file selection + search filters

@@ -36,6 +36,9 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
     this._deviceNameMap = null;
     this._deviceNameMapTs = 0;
+
+    this._deviceSlugMap = null;
+    this._deviceSlugMapTs = 0;
   }
 
   getCardSize() {
@@ -77,6 +80,42 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     }
   }
 
+  async _loadDeviceSlugMap() {
+    if (!this._hass) {
+      return;
+    }
+
+    const now = Date.now();
+    if (this._deviceSlugMap && (now - this._deviceSlugMapTs) < 30_000) {
+      return;
+    }
+
+    try {
+      const res = await callWebSocket(this._hass, { type: 'ramses_extras/get_available_devices' });
+      const devices = Array.isArray(res?.devices) ? res.devices : [];
+      const map = new Map();
+
+      for (const dev of devices) {
+        const id = String(dev?.device_id ?? '');
+        if (!id) {
+          continue;
+        }
+        const slugLabel = String(dev?.slug_label ?? '').trim();
+        const slugs = Array.isArray(dev?.slugs) ? dev.slugs.map((s) => String(s)).filter(Boolean) : [];
+        const label = slugLabel || (slugs.length ? slugs.join(', ') : '');
+        if (label) {
+          map.set(id, label);
+        }
+      }
+
+      this._deviceSlugMap = map;
+      this._deviceSlugMapTs = now;
+      this.render();
+    } catch {
+      // Ignore - this call depends on Ramses Extras integration state.
+    }
+  }
+
   getDefaultConfig() {
     return {
       name: 'Ramses Traffic Analyser',
@@ -97,6 +136,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
   _onConnected() {
     void this._loadDeviceNameMap();
+    void this._loadDeviceSlugMap();
     this._startUpdates();
   }
 
@@ -258,6 +298,21 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     return parts[1];
   }
 
+  _deviceSlugLabel(deviceId) {
+    const id = String(deviceId || '');
+    const label = this._deviceSlugMap?.get(id);
+    if (label) {
+      return String(label);
+    }
+
+    // Fallback: show a readable default for well-known prefixes.
+    const prefix = id.split(':')[0] || '';
+    if (prefix === '18') {
+      return 'HGI';
+    }
+    return '';
+  }
+
   _deviceAlias(deviceId) {
     const id = String(deviceId || '');
     const key = `ramses_extras:${id}`;
@@ -281,15 +336,25 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     const slugInt = Number.parseInt(slugHex, 16);
     const slugVar = Number.isFinite(slugInt) ? slugInt : 0;
 
-    // Make the base color strongly dependent on the xx: prefix,
-    // with smaller variations per :xxxxxx suffix.
-    const baseHue = (typeInt * 67) % 360;
-    const hue = (baseHue + (slugVar % 24) - 12 + 360) % 360;
+    // Map xx: to hue (0–360)
+    const hue = (typeInt * 137) % 360;
 
-    const baseLightness = typeInt === 0x32 ? 88 : 84;
-    const lightness = Math.max(74, Math.min(92, baseLightness + ((slugVar % 8) - 4)));
+    // Map :xxxxxx to saturation (15–85)
+    const satMin = 15;
+    const satMax = 85;
+    const saturation = satMin + ((slugVar % 256) / 255) * (satMax - satMin);
 
-    return `hsla(${hue}, 82%, ${lightness}%, 0.28)`;
+    // Map :xxxxxx to lightness (20–75)
+    const lightMin = 20;
+    const lightMax = 75;
+    const lightness = lightMin + ((slugVar % 256) / 255) * (lightMax - lightMin);
+
+    // Map :xxxxxx to alpha (0.35–0.85)
+    const alphaMin = 0.35;
+    const alphaMax = 0.85;
+    const alpha = alphaMin + ((slugVar % 256) / 255) * (alphaMax - alphaMin);
+
+    return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
   }
 
   _formatCounter(counterObj) {
@@ -385,8 +450,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         const srcAlias = this._deviceAlias(src);
         const dstAlias = this._deviceAlias(dst);
 
-        const srcSlug = this._deviceSlug(src);
-        const dstSlug = this._deviceSlug(dst);
+        const srcSlugLabel = this._deviceSlugLabel(src);
+        const dstSlugLabel = this._deviceSlugLabel(dst);
 
         return `
           <tr class="flow-row" data-flow="${data}">
@@ -394,14 +459,14 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
               <div class="dev">
                 <span class="id">${src}</span>
                 ${srcAlias ? `<span class="alias">${srcAlias}</span>` : ''}
-                <span class="slug">${srcSlug}</span>
+                ${srcSlugLabel ? `<span class="slug">${srcSlugLabel}</span>` : ''}
               </div>
             </td>
             <td class="device-cell" style="--dev-bg: ${dstBg};" title="Destination device">
               <div class="dev">
                 <span class="id">${dst}</span>
                 ${dstAlias ? `<span class="alias">${dstAlias}</span>` : ''}
-                <span class="slug">${dstSlug}</span>
+                ${dstSlugLabel ? `<span class="slug">${dstSlugLabel}</span>` : ''}
               </div>
             </td>
             <td class="verbs" title="Verbs observed for this flow">${verbs}</td>
