@@ -16,6 +16,7 @@ from .log_backend import (
     search_with_context,
     tail_text,
 )
+from .messages_provider import get_messages_from_sources
 from .traffic_collector import TrafficCollector
 
 if TYPE_CHECKING:
@@ -291,6 +292,58 @@ async def ws_log_get_tail(
             "text": text,
         },
     )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/messages/get_messages",
+        vol.Optional(
+            "sources",
+            default=["traffic_buffer", "packet_log", "ha_log"],
+        ): [str],
+        vol.Optional("src"): str,
+        vol.Optional("dst"): str,
+        vol.Optional("verb"): str,
+        vol.Optional("code"): str,
+        vol.Optional("since"): str,
+        vol.Optional("until"): str,
+        vol.Optional("limit", default=200): vol.All(int, vol.Range(min=0, max=5000)),
+        vol.Optional("dedupe", default=True): bool,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_messages_get_messages(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    sources = msg.get("sources", ["traffic_buffer", "packet_log", "ha_log"])
+    src = msg.get("src")
+    dst = msg.get("dst")
+    verb = msg.get("verb")
+    code = msg.get("code")
+    since = msg.get("since")
+    until = msg.get("until")
+    limit = msg.get("limit", 200)
+    dedupe = msg.get("dedupe", True)
+
+    try:
+        messages = await get_messages_from_sources(
+            hass,
+            sources,
+            src=src,
+            dst=dst,
+            verb=verb,
+            code=code,
+            since=since,
+            until=until,
+            limit=limit,
+            dedupe=dedupe,
+        )
+        connection.send_result(msg["id"], {"messages": messages})
+    except Exception as exc:
+        _LOGGER.warning("Error in messages/get_messages: %s", exc)
+        connection.send_error(msg["id"], "error", str(exc))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

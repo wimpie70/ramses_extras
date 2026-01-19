@@ -250,7 +250,7 @@ Suggested workflow per step:
   - `chore(ramses_debugger): local-ci green`
 
 ### Step 9: UI/UX improvements
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - cards render full width
   - no `device_id` required while editing
   - bounded, scrollable output panes
@@ -267,14 +267,14 @@ Suggested workflow per step:
       - Logs (opens embedded Log Explorer)
       - Details (raw flow JSON)
       - Messages (placeholder)
-- [ ] **Tests**
+- [x] **Tests**
   - manual check in HA
   - `make local-ci`
-- [ ] **Commit**
+- [x] **Commit**
   - `feat(ramses_debugger): UI/UX polish for traffic + log cards`
 
 ### Step 10: Unified Messages API (HA log / packet log / live traffic)
-- [ ] **Deliverable**
+- [x] **Deliverable**
   - Backend
     - add a single websocket command that can query multiple sources
       - `messages/get_messages` (one-shot)
@@ -293,7 +293,8 @@ Suggested workflow per step:
             - source (`traffic_buffer` | `packet_log` | `ha_log`)
             - raw_line (when source is a log file)
             - parse_warnings (optional)
-    - implement providers
+- [ ] **Deliverable (continued)**
+  - implement providers
       - TrafficCollector ring buffers
         - bounded global and per-flow buffers
         - store raw event fields (dtm/src/dst/verb/code/payload/packet)

@@ -476,7 +476,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             <td class="actions" title="Actions">
               <button class="action-log" title="Open Log Explorer for this flow">Logs</button>
               <button class="action-details" title="Show flow details">Details</button>
-              <button class="action-messages" title="List raw messages for this flow (coming soon)">Messages</button>
+              <button class="action-messages" title="List raw messages for this flow">Messages</button>
             </td>
           </tr>
         `;
@@ -541,12 +541,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
           <dialog id="messagesDialog">
             <form method="dialog">
-              <h3>Messages (coming soon)</h3>
-              <div class="muted" style="margin-top: 6px;">
-                This will list the actual ramses_cc messages for the selected flow (src/dst),
-                with a later drill-down to parsed fields.
-              </div>
-              <pre id="messagesPre"></pre>
+              <h3>Messages</h3>
+              <div id="messagesContainer"></div>
               <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 12px;">
                 <button id="closeMessagesDialog" title="Close this dialog">Close</button>
               </div>
@@ -646,17 +642,70 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
           if (btn.classList.contains('action-messages')) {
             const messagesDialog = this.shadowRoot?.getElementById('messagesDialog');
-            const pre = this.shadowRoot?.getElementById('messagesPre');
-            if (pre) {
-              pre.textContent = JSON.stringify(
-                {
-                  src: flow?.src,
-                  dst: flow?.dst,
-                  note: 'TODO: implement message listing backend + UI',
-                },
-                null,
-                2,
-              );
+            const container = this.shadowRoot?.getElementById('messagesContainer');
+            if (container) {
+              container.innerHTML = '';
+              const el = document.createElement('div');
+              el.className = 'messages-list';
+              container.appendChild(el);
+
+              const src = flow?.src || '';
+              const dst = flow?.dst || '';
+              const filters = {};
+              if (src) filters.src = src;
+              if (dst) filters.dst = dst;
+
+              this._hass?.callWS({
+                type: 'ramses_extras/ramses_debugger/messages/get_messages',
+                sources: ['traffic_buffer', 'packet_log', 'ha_log'],
+                limit: 200,
+                dedupe: true,
+                ...filters,
+              })
+                .then((response) => {
+                  const messages = response?.messages || [];
+                  el.innerHTML = `
+                    <div class="messages-header">
+                      <strong>Messages (${messages.length})</strong>
+                      ${src ? ` from <code>${src}</code>` : ''}
+                      ${dst ? ` to <code>${dst}</code>` : ''}
+                    </div>
+                    <div class="messages-table-wrapper">
+                      <table class="messages-table">
+                        <thead>
+                          <tr>
+                            <th>Time</th>
+                            <th>Verb</th>
+                            <th>Code</th>
+                            <th>Src</th>
+                            <th>Dst</th>
+                            <th>Payload/Packet</th>
+                            <th>Source</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${messages.map((msg) => `
+                            <tr>
+                              <td>${msg.dtm || ''}</td>
+                              <td>${msg.verb || ''}</td>
+                              <td>${msg.code || ''}</td>
+                              <td>${msg.src || ''}</td>
+                              <td>${msg.dst || ''}</td>
+                              <td class="payload-cell">
+                                ${(msg.payload || msg.packet || '').slice(0, 80)}
+                                ${(msg.payload || msg.packet || '').length > 80 ? '…' : ''}
+                              </td>
+                              <td class="source-cell">${msg.source || ''}</td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+                  `;
+                })
+                .catch((err) => {
+                  el.innerHTML = `<div class="error">Failed to load messages: ${err.message || err}</div>`;
+                });
             }
             if (messagesDialog && typeof messagesDialog.showModal === 'function') {
               this._dialogOpen = true;

@@ -74,5 +74,14 @@ export function trafficAnalyserCardStyle({ compact }) {
     dialog form { display: flex; flex-direction: column; height: 100%; }
     dialog pre { white-space: pre-wrap; word-break: break-word; overflow: auto; max-height: 70vh; }
     #logContainer { width: 100%; flex: 1; min-height: 0; }
+    #messagesContainer { width: 100%; flex: 1; min-height: 0; overflow: auto; }
+    .messages-list { display: flex; flex-direction: column; height: 100%; }
+    .messages-header { padding: 8px 0; border-bottom: 1px solid var(--divider-color); margin-bottom: 8px; }
+    .messages-table-wrapper { overflow: auto; flex: 1; }
+    .messages-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .messages-table th, .messages-table td { padding: 4px 6px; border: 1px solid var(--divider-color); vertical-align: top; }
+    .messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; }
+    .payload-cell { font-family: monospace; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .source-cell { font-weight: bold; }
   `;
 }
