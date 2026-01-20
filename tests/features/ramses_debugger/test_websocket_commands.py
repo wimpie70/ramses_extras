@@ -8,6 +8,11 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras.features.ramses_debugger import websocket_commands
 
+# Import the handler function directly, bypassing decorator
+from custom_components.ramses_extras.features.ramses_debugger.messages_provider import (
+    get_messages_from_sources,
+)
+
 
 @pytest.fixture
 def hass() -> HomeAssistant:
