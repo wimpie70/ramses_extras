@@ -155,6 +155,7 @@ class TestRamsesExtrasOptionsFlowHandler:
                     "frontend_log_level": "debug",
                     "log_level": "debug",
                     "ramses_debugger_log_path": "/tmp/home-assistant.log",
+                    "ramses_debugger_packet_log_path": "/tmp/ramses_log",
                 }
             )
             assert result["type"] == "menu"
@@ -167,6 +168,10 @@ class TestRamsesExtrasOptionsFlowHandler:
                 kwargs["options"]["ramses_debugger_log_path"]
                 == "/tmp/home-assistant.log"
             )
+            assert (
+                kwargs["options"]["ramses_debugger_packet_log_path"]
+                == "/tmp/ramses_log"
+            )
 
     @pytest.mark.asyncio
     async def test_advanced_settings_defaults_from_options(self, hass):
@@ -176,6 +181,7 @@ class TestRamsesExtrasOptionsFlowHandler:
             "frontend_log_level": "warning",
             "log_level": "warning",
             "ramses_debugger_log_path": "/var/log/home-assistant.log",
+            "ramses_debugger_packet_log_path": "/var/log/ramses_log",
         }
 
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
@@ -194,8 +200,13 @@ class TestRamsesExtrasOptionsFlowHandler:
             default="/var/log/home-assistant.log",
         )
         log_key = vol.Optional("log_level", default="warning")
+        packet_log_path_key = vol.Optional(
+            "ramses_debugger_packet_log_path",
+            default="/var/log/ramses_log",
+        )
         assert frontend_key in schema.schema
         assert log_path_key in schema.schema
+        assert packet_log_path_key in schema.schema
         assert log_key in schema.schema
 
     @pytest.mark.asyncio

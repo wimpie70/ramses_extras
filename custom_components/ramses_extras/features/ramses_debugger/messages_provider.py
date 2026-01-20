@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections import deque
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from .log_backend import get_configured_log_path
+from .log_backend import get_configured_log_path, get_configured_packet_log_path
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,6 +24,7 @@ class PacketLogParser:
     @staticmethod
     async def get_messages(
         hass: HomeAssistant,
+        log_path: Path | None = None,
         src: str | None = None,
         dst: str | None = None,
         verb: str | None = None,
@@ -29,14 +34,15 @@ class PacketLogParser:
         limit: int = 1000,
     ) -> list[NormalizedMessage]:
         """Parse traffic records from ramses_log."""
-        log_path = get_configured_log_path(hass)
-        if not log_path:
+        if log_path is None:
+            log_path = get_configured_packet_log_path(hass)
+        if log_path is None:
             return []
 
         try:
             # Simple file reading approach
             content = await hass.async_add_executor_job(
-                log_path.read_text, encoding="utf-8"
+                partial(log_path.read_text, encoding="utf-8")
             )
             lines = content.splitlines()
 
@@ -66,24 +72,86 @@ class PacketLogParser:
 
 def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
     """Parse a single ramses packet log line into a normalized message."""
-    # Expected format: timestamp verb src dst filler code payload_len payload_hex
-    # Example: 2026-01-20T09:58:48.263427 I 32:153289 32:153289 --:------
-    # 31DA 030 00EF007F...
-    parts = line.strip().split()
+    # Common ramses_log formats:
+    # - With RSSI + extra fields:
+    #   2026-01-20T13:31:43.693075 000 RQ --- 18:149488 01:000000 --:------ 0006 001 00
+    #   2026-01-20T13:31:43.070025 036 I --- 32:153289 --:------ 32:153289 31DA
+    #   030
+    #   00EF...
+    # - Older/shorter format (kept for compatibility):
+    #   2026-01-20T09:58:48.263427 I 32:153289 37:123456 --:------ 31DA 003 010203
+    line_no_comment = line.split("#", 1)[0]
+    parts = line_no_comment.strip().split()
     if len(parts) < 7:
         return None
 
+    def _is_addr(token: str) -> bool:
+        return bool(re.match(r"^(--:------|\d{2}:\d{6})$", token))
+
+    def _is_code(token: str) -> bool:
+        return bool(re.match(r"^[0-9A-F]{4}$", token))
+
+    def _is_len(token: str) -> bool:
+        return bool(re.match(r"^\d{3}$", token))
+
+    def _is_rssi(token: str) -> bool:
+        return bool(re.match(r"^(\d{3}|---|\.\.\.)$", token))
+
+    def _is_seqn(token: str) -> bool:
+        return _is_rssi(token)
+
     try:
         dtm = parts[0]
-        verb = parts[1]
-        src = parts[2]
-        dst = parts[3]
-        # parts[4] is filler (e.g., --:------)
-        code = parts[5]
-        payload_len = parts[6]
-        payload_hex = " ".join(parts[7:]) if len(parts) > 7 else ""
+        i = 1
 
-        packet = " ".join(parts[1:])  # Full packet string
+        if i >= len(parts):
+            return None
+
+        # ramses_log uses: "..." (or "063" etc.) before verb
+        if _is_rssi(parts[i]):
+            i += 1
+
+        if i >= len(parts):
+            return None
+
+        verb = parts[i]
+        i += 1
+
+        # ramses_log has a seqn token ("---" or digits like "245") after verb
+        if i < len(parts) and _is_seqn(parts[i]):
+            i += 1
+
+        rest = parts[i:]
+
+        addrs = [t for t in rest if _is_addr(t)]
+        if len(addrs) < 2:
+            return None
+
+        src, dst = addrs[0], addrs[1]
+
+        code_idx: int | None = None
+        for idx, token in enumerate(rest):
+            if _is_code(token):
+                code_idx = idx
+                break
+        if code_idx is None:
+            return None
+
+        code = rest[code_idx]
+
+        payload_len: str | None = None
+        payload_hex = ""
+        for idx in range(code_idx + 1, len(rest)):
+            token = rest[idx]
+            if _is_len(token):
+                payload_len = token
+                payload_hex = " ".join(rest[idx + 1 :])
+                break
+
+        if payload_len is None:
+            return None
+
+        packet = " ".join(parts[1:])
         payload = f"{payload_len} {payload_hex}" if payload_hex else payload_len
 
         return NormalizedMessage(
@@ -100,6 +168,113 @@ def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
         )
     except Exception:
         return None
+
+
+@contextmanager
+def _silence_loggers(logger_names: list[str]) -> Iterator[None]:
+    old: list[tuple[logging.Logger, bool, int]] = []
+    try:
+        for name in logger_names:
+            logger = logging.getLogger(name)
+            old.append((logger, logger.disabled, logger.level))
+            logger.disabled = True
+            logger.setLevel(logging.CRITICAL + 1)
+        yield
+    finally:
+        for logger, disabled, level in old:
+            logger.disabled = disabled
+            logger.setLevel(level)
+
+
+def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
+    """Decode a message using ramses_rf (ramses_tx) without side effects.
+
+    Returns None if ramses_tx is not installed or if decoding fails.
+    """
+
+    try:
+        from ramses_tx.message import Message
+        from ramses_tx.packet import Packet
+    except ModuleNotFoundError:
+        return None
+
+    dtm_raw = msg.get("dtm")
+    if not isinstance(dtm_raw, str):
+        return None
+    src_raw = msg.get("src")
+    if not isinstance(src_raw, str):
+        return None
+    dst_raw = msg.get("dst")
+    if not isinstance(dst_raw, str):
+        return None
+    verb_raw = msg.get("verb")
+    if not isinstance(verb_raw, str):
+        return None
+    code_raw = msg.get("code")
+    if not isinstance(code_raw, str):
+        return None
+    payload_raw = msg.get("payload")
+    if not isinstance(payload_raw, str):
+        return None
+
+    dtm = dtm_raw
+    src = src_raw
+    dst = dst_raw
+    verb = verb_raw
+    code = code_raw
+    payload = payload_raw
+
+    payload_parts = payload.split()
+    if not payload_parts:
+        return None
+
+    payload_len = payload_parts[0]
+    if not re.match(r"^\d{3}$", payload_len):
+        return None
+
+    payload_hex = "".join(payload_parts[1:]).replace("-", "")
+
+    verb2 = verb if len(verb) == 2 else f" {verb}"
+    seqn = "---"
+    addrs = [src, dst, src]
+
+    frame = (
+        f"--- {verb2} {seqn} {addrs[0]} {addrs[1]} {addrs[2]} "
+        f"{code} {payload_len} {payload_hex}"
+    )
+
+    try:
+        dt_obj = datetime.fromisoformat(dtm)
+    except ValueError:
+        return None
+
+    with _silence_loggers(
+        [
+            "ramses_tx.packet_log",
+            "ramses_tx.packet",
+            "ramses_tx.message",
+            "ramses_tx.parsers",
+        ]
+    ):
+        try:
+            pkt = Packet(dt_obj, frame)
+            m = Message._from_pkt(pkt)
+        except Exception:
+            return None
+
+    try:
+        payload_decoded = m.payload
+    except Exception:
+        return None
+
+    return {
+        "dtm": m.dtm.isoformat(timespec="microseconds"),
+        "src": m.src.id,
+        "dst": m.dst.id,
+        "verb": m.verb.strip(),
+        "code": str(m.code),
+        "payload": payload_decoded,
+    }
 
 
 @dataclass

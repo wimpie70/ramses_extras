@@ -11,7 +11,7 @@ logo: see https://github.com/home-assistant/brands/pull/5118
 https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_cc
 
 
-- on startup, we should get the persisted  state for humidity control. now we can restart with the fan on high or low without knowing or control
+- on startup, we should get the persisted  state for humidity control. or maybe better: start by setting it to off, and sending the auto command. now we can restart with the fan on high or low without knowing or control
 
 - multi-zone support in hvac card or separate feature
 
@@ -23,10 +23,15 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 
 - extras: remove 'configure devices for features', 'available features configurations' section
 
+- ramses_rf:
+    - create PR for silent (no loggers) parsing. A wrapper or an optional parse_silent parameter
+
 - messages
     - colors on top: messages
     - list all selected messages
     - add toggle for parsed values
+    - fix dest/src/broadcast
+    - make the columns sortable and default on time: earliest first
 
 - traffic analyzer
     - select all: doesn't toggle all select boxes

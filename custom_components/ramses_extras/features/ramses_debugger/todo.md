@@ -246,7 +246,7 @@ Suggested workflow per step:
   - update this TODO if new learnings arise
 - [x] **Tests**
   - `make local-ci`
-- [ ] **Commit**
+- [x] **Commit**
   - `chore(ramses_debugger): local-ci green`
 
 ### Step 9: UI/UX improvements
@@ -293,7 +293,7 @@ Suggested workflow per step:
             - source (`traffic_buffer` | `packet_log` | `ha_log`)
             - raw_line (when source is a log file)
             - parse_warnings (optional)
-- [ ] **Deliverable (continued)**
+- [x] **Deliverable (continued)**
   - implement providers
       - TrafficCollector ring buffers
         - bounded global and per-flow buffers
@@ -309,10 +309,10 @@ Suggested workflow per step:
       - list view: dtm, verb, code, src, dst, payload/packet (collapsed)
       - drill-down placeholder: “Message details”
     - Packet Log Explorer + Log Explorer (later): reuse the same normalized message UI
-- [ ] **Tests**
+- [x] **Tests**
   - unit tests for buffering/filtering and dedupe
   - websocket handler tests (each provider)
-- [ ] **Commit**
+- [x] **Commit**
   - `feat(ramses_debugger): unified messages API (traffic/packet/ha log)`
 
 ### Step 11: Packet Log Explorer (future card)

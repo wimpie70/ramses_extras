@@ -16,6 +16,9 @@ RAMSES_DEBUGGER_WEBSOCKET_COMMANDS: dict[str, str] = {
     "log_list_files": "ramses_extras/ramses_debugger/log/list_files",
     "log_get_tail": "ramses_extras/ramses_debugger/log/get_tail",
     "log_search": "ramses_extras/ramses_debugger/log/search",
+    "packet_log_list_files": "ramses_extras/ramses_debugger/packet_log/list_files",
+    "packet_log_get_messages": "ramses_extras/ramses_debugger/packet_log/get_messages",
+    "messages_get_messages": "ramses_extras/ramses_debugger/messages/get_messages",
 }
 
 RAMSES_DEBUGGER_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {
@@ -47,6 +50,16 @@ RAMSES_DEBUGGER_CARD_CONFIGS: list[dict[str, Any]] = [
         "documentation_url": "",
         "supported_device_types": ["HvacVentilator"],
         "javascript_file": "ramses-log-explorer.js",
+    },
+    {
+        "card_id": "ramses-packet-log-explorer",
+        "card_name": "Ramses Packet Log Explorer",
+        "description": "Explore the ramses packet/message log file",
+        "location": "ramses_debugger",
+        "preview": True,
+        "documentation_url": "",
+        "supported_device_types": ["HvacVentilator"],
+        "javascript_file": "ramses-packet-log-explorer.js",
     },
 ]
 

@@ -38,6 +38,29 @@ def get_configured_log_path(hass: HomeAssistant) -> Path:
     return Path(hass.config.path("home-assistant.log"))
 
 
+def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
+    entry = _get_config_entry(hass)
+    options = getattr(entry, "options", {}) if entry else {}
+
+    raw_override = options.get("ramses_debugger_packet_log_path")
+    if isinstance(raw_override, str) and raw_override.strip():
+        return Path(raw_override.strip())
+
+    try:
+        entries = hass.config_entries.async_entries("ramses_cc")
+        for cc_entry in entries:
+            packet_log = getattr(cc_entry, "options", {}).get("packet_log")
+            if not isinstance(packet_log, dict):
+                continue
+            raw = packet_log.get("file_name")
+            if isinstance(raw, str) and raw.strip():
+                return Path(raw.strip())
+    except Exception:
+        return None
+
+    return None
+
+
 def discover_log_files(base_path: Path) -> list[LogFileInfo]:
     base_path = base_path.expanduser()
 

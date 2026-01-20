@@ -15,6 +15,8 @@ from custom_components.ramses_extras.features.ramses_debugger import websocket_c
 ws_log_list_files = websocket_commands.ws_log_list_files.__wrapped__
 ws_log_get_tail = websocket_commands.ws_log_get_tail.__wrapped__
 ws_log_search = websocket_commands.ws_log_search.__wrapped__
+ws_packet_log_list_files = websocket_commands.ws_packet_log_list_files.__wrapped__
+ws_packet_log_get_messages = websocket_commands.ws_packet_log_get_messages.__wrapped__
 
 
 class _FakeConnection:
@@ -29,10 +31,16 @@ class _FakeConnection:
         self.results.append((msg_id, payload))
 
 
-def _setup_config_entry(hass, *, log_path: Path) -> None:
-    hass.data.setdefault(DOMAIN, {})["config_entry"] = MagicMock(
-        options={"ramses_debugger_log_path": str(log_path)}
-    )
+def _setup_config_entry(
+    hass, *, log_path: Path | None = None, packet_log_path: Path | None = None
+) -> None:
+    options: dict[str, Any] = {}
+    if log_path is not None:
+        options["ramses_debugger_log_path"] = str(log_path)
+    if packet_log_path is not None:
+        options["ramses_debugger_packet_log_path"] = str(packet_log_path)
+
+    hass.data.setdefault(DOMAIN, {})["config_entry"] = MagicMock(options=options)
 
 
 @pytest.mark.asyncio
@@ -108,6 +116,76 @@ async def test_ws_log_list_tail_and_search(hass, tmp_path: Path) -> None:
     assert payload["matches"] == 2
     assert payload["blocks"]
     assert "ERROR first" in payload["plain"]
+
+
+@pytest.mark.asyncio
+async def test_ws_packet_log_list_and_get_messages(hass, tmp_path: Path) -> None:
+    base = tmp_path / "ramses_log"
+    base.write_text(
+        "2026-01-20T09:58:48.263427 I 32:153289 37:123456 --:------ 31DA 003 010203\n"
+        "2026-01-20T09:58:49.263427 RQ 32:153289 37:123456 --:------ 3150 000\n",
+        encoding="utf-8",
+    )
+
+    rotated = tmp_path / "ramses_log.1"
+    rotated.write_text(
+        "2026-01-20T09:50:00.000000 I 01:111111 02:222222 --:------ 10E0 000\n",
+        encoding="utf-8",
+    )
+
+    _setup_config_entry(hass, packet_log_path=base)
+    conn = _FakeConnection()
+
+    await ws_packet_log_list_files(
+        hass,
+        conn,
+        {"id": 1, "type": "ramses_extras/ramses_debugger/packet_log/list_files"},
+    )
+
+    assert not conn.errors
+    assert conn.results and conn.results[-1][0] == 1
+    files = conn.results[-1][1]["files"]
+    file_ids = {f["file_id"] for f in files}
+    assert base.name in file_ids
+    assert rotated.name in file_ids
+
+    await ws_packet_log_get_messages(
+        hass,
+        conn,
+        {
+            "id": 2,
+            "type": "ramses_extras/ramses_debugger/packet_log/get_messages",
+            "file_id": base.name,
+            "limit": 50,
+            "src": "32:153289",
+        },
+    )
+
+    assert not conn.errors
+    assert conn.results[-1][0] == 2
+    payload = conn.results[-1][1]
+    assert payload["file_id"] == base.name
+    assert payload["messages"]
+    assert payload["messages"][0]["source"] == "packet_log"
+
+
+@pytest.mark.asyncio
+async def test_ws_packet_log_not_configured(hass) -> None:
+    conn = _FakeConnection()
+
+    await ws_packet_log_get_messages(
+        hass,
+        conn,
+        {
+            "id": 1,
+            "type": "ramses_extras/ramses_debugger/packet_log/get_messages",
+            "file_id": "ramses_log",
+        },
+    )
+
+    assert conn.errors
+    assert conn.errors[-1][0] == 1
+    assert conn.errors[-1][1] == "packet_log_not_configured"
 
 
 @pytest.mark.asyncio

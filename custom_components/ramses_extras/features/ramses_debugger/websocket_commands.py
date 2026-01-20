@@ -13,6 +13,7 @@ from .const import DOMAIN as RAMSES_DEBUGGER_DOMAIN
 from .log_backend import (
     discover_log_files,
     get_configured_log_path,
+    get_configured_packet_log_path,
     search_with_context,
     tail_text,
 )
@@ -26,6 +27,23 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _resolve_log_file(base: Path, file_id: str) -> Path | None:
+    allowed = {f.path.name: f.path for f in discover_log_files(base)}
+    p = allowed.get(file_id)
+    if p is None:
+        return None
+
+    try:
+        resolved = p.resolve()
+        base_dir = base.expanduser().resolve().parent
+        if base_dir not in resolved.parents and resolved != base_dir:
+            return None
+    except OSError:
+        return None
+
+    return p
+
+
+def _resolve_packet_log_file(base: Path, file_id: str) -> Path | None:
     allowed = {f.path.name: f.path for f in discover_log_files(base)}
     p = allowed.get(file_id)
     if p is None:
@@ -247,6 +265,102 @@ async def ws_log_list_files(
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
+        vol.Required("type"): "ramses_extras/ramses_debugger/packet_log/list_files",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_packet_log_list_files(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    base = get_configured_packet_log_path(hass)
+    if base is None:
+        connection.send_result(msg["id"], {"base": None, "files": []})
+        return
+
+    files = await hass.async_add_executor_job(discover_log_files, base)
+    connection.send_result(
+        msg["id"],
+        {
+            "base": str(base),
+            "files": [
+                {
+                    "file_id": f.file_id,
+                    "size": f.size,
+                    "modified_at": f.modified_at,
+                }
+                for f in files
+            ],
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/packet_log/get_messages",
+        vol.Required("file_id"): str,
+        vol.Optional("src"): str,
+        vol.Optional("dst"): str,
+        vol.Optional("verb"): str,
+        vol.Optional("code"): str,
+        vol.Optional("since"): str,
+        vol.Optional("until"): str,
+        vol.Optional("limit", default=200): vol.All(int, vol.Range(min=0, max=5000)),
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_packet_log_get_messages(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    file_id = msg.get("file_id")
+    if not isinstance(file_id, str) or not file_id:
+        connection.send_error(msg["id"], "invalid_file_id", "Missing file_id")
+        return
+
+    base = get_configured_packet_log_path(hass)
+    if base is None:
+        connection.send_error(
+            msg["id"], "packet_log_not_configured", "No packet log configured"
+        )
+        return
+
+    path = await hass.async_add_executor_job(_resolve_packet_log_file, base, file_id)
+    if path is None:
+        connection.send_error(
+            msg["id"],
+            "file_not_allowed",
+            "Requested file_id is not available",
+        )
+        return
+
+    from .messages_provider import PacketLogParser
+
+    messages = await PacketLogParser.get_messages(
+        hass,
+        log_path=path,
+        src=msg.get("src"),
+        dst=msg.get("dst"),
+        verb=msg.get("verb"),
+        code=msg.get("code"),
+        since=msg.get("since"),
+        until=msg.get("until"),
+        limit=msg.get("limit", 200),
+    )
+
+    connection.send_result(
+        msg["id"],
+        {
+            "file_id": path.name,
+            "messages": [m.__dict__ for m in messages],
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
         vol.Required("type"): "ramses_extras/ramses_debugger/log/get_tail",
         vol.Required("file_id"): str,
         vol.Optional("max_lines", default=200): vol.All(
@@ -309,6 +423,7 @@ async def ws_log_get_tail(
         vol.Optional("until"): str,
         vol.Optional("limit", default=200): vol.All(int, vol.Range(min=0, max=5000)),
         vol.Optional("dedupe", default=True): bool,
+        vol.Optional("decode", default=False): bool,
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -326,6 +441,7 @@ async def ws_messages_get_messages(
     until = msg.get("until")
     limit = msg.get("limit", 200)
     dedupe = msg.get("dedupe", True)
+    decode = bool(msg.get("decode", False))
 
     try:
         messages = await get_messages_from_sources(
@@ -340,6 +456,15 @@ async def ws_messages_get_messages(
             limit=limit,
             dedupe=dedupe,
         )
+
+        if decode:
+            from .messages_provider import decode_message_with_ramses_rf
+
+            for m in messages:
+                decoded = decode_message_with_ramses_rf(m)
+                if decoded is not None:
+                    m["decoded"] = decoded
+
         connection.send_result(msg["id"], {"messages": messages})
     except Exception as exc:
         _LOGGER.warning("Error in messages/get_messages: %s", exc)

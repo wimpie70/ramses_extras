@@ -78,6 +78,10 @@ const CARD_MODULES = [
     tag: 'ramses-log-explorer',
     modulePath: '../features/ramses_debugger/ramses-log-explorer.js',
   },
+  {
+    tag: 'ramses-packet-log-explorer',
+    modulePath: '../features/ramses_debugger/ramses-packet-log-explorer.js',
+  },
 ];
 
 const loaded = new Set();

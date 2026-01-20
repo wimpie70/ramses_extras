@@ -131,6 +131,63 @@ class TestPacketLogParser:
         assert msg is None
 
     @pytest.mark.asyncio
+    async def test_parse_packet_log_line_broadcast(self):
+        line = (
+            "2026-01-20T13:55:54.869729 I 31DA 32:153289 --:------ Y 030 "
+            "00EF007FFF3C39028A03B603B603B602756800001814140000EFEF033E033E00"
+        )
+        msg = _parse_packet_log_line(line)
+        assert msg is not None
+        assert msg.dtm == "2026-01-20T13:55:54.869729"
+        assert msg.verb == "I"
+        assert msg.src == "32:153289"
+        assert msg.dst == "--:------"
+        assert msg.code == "31DA"
+        assert isinstance(msg.payload, str)
+        assert msg.payload.startswith("030 ")
+
+    @pytest.mark.asyncio
+    async def test_parse_packet_log_line_compact_malformed(self):
+        # Missing destination address ("---" instead of an address)
+        line = "2026-01-20T13:56:38.130940 RQ 0418 18:149488 01:000000 003 000000"
+        msg = _parse_packet_log_line(line)
+        assert msg is not None
+        assert msg.verb == "RQ"
+        assert msg.src == "18:149488"
+        assert msg.dst == "01:000000"
+        assert msg.code == "0418"
+        assert msg.payload == "003 000000"
+
+    @pytest.mark.asyncio
+    async def test_parse_ramses_log_line_with_ellipsis_rssi(self):
+        line = (
+            "2026-01-20T13:27:05.670350 ... RP --- 32:153289 18:149488 --:------ "
+            "10D0 006 0038B43E0000 # 10D0|RP|32:153289"
+        )
+        msg = _parse_packet_log_line(line)
+        assert msg is not None
+        assert msg.verb == "RP"
+        assert msg.src == "32:153289"
+        assert msg.dst == "18:149488"
+        assert msg.code == "10D0"
+        assert msg.payload == "006 0038B43E0000"
+
+    @pytest.mark.asyncio
+    async def test_parse_ramses_log_line_with_seqn_digits(self):
+        line = (
+            "2026-01-20T13:27:05.672863 ... I 245 32:153289 --:------ 32:153289 "
+            "31D9 017 000A050020202020202020202020202008"
+        )
+        msg = _parse_packet_log_line(line)
+        assert msg is not None
+        assert msg.verb == "I"
+        assert msg.src == "32:153289"
+        assert msg.dst == "--:------"
+        assert msg.code == "31D9"
+        assert isinstance(msg.payload, str)
+        assert msg.payload.startswith("017 ")
+
+    @pytest.mark.asyncio
     async def test_get_messages_simple(self, hass, sample_packet_log_lines):  # noqa: E501
         """Test packet log parsing with simple mock."""
         # Mock the entire get_messages function to just test parsing
