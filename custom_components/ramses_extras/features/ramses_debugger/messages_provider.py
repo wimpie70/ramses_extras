@@ -14,6 +14,94 @@ from .log_backend import get_configured_log_path
 _LOGGER = logging.getLogger(__name__)
 
 
+class PacketLogParser:
+    """Provider for parsing traffic records from ramses packet/message log."""
+
+    @staticmethod
+    async def get_messages(
+        hass: HomeAssistant,
+        src: str | None = None,
+        dst: str | None = None,
+        verb: str | None = None,
+        code: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int = 1000,
+    ) -> list[NormalizedMessage]:
+        """Parse traffic records from ramses_log."""
+        log_path = get_configured_log_path(hass)
+        if not log_path:
+            return []
+
+        try:
+            # Simple file reading approach
+            content = await hass.async_add_executor_job(
+                log_path.read_text, encoding="utf-8"
+            )
+            lines = content.splitlines()
+
+            # Apply filters
+            messages: list[NormalizedMessage] = []
+            for line in lines:
+                msg = _parse_packet_log_line(line)
+                if msg:
+                    # Apply filters
+                    if src and msg.src != src:
+                        continue
+                    if dst and msg.dst != dst:
+                        continue
+                    if verb and msg.verb != verb:
+                        continue
+                    if code and msg.code != code:
+                        continue
+                    messages.append(msg)
+                    if len(messages) >= limit:
+                        break
+
+            return messages
+        except Exception as exc:
+            _LOGGER.warning("PacketLogProvider error: %s", exc)
+            return []
+
+
+def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
+    """Parse a single ramses packet log line into a normalized message."""
+    # Expected format: timestamp verb src dst filler code payload_len payload_hex
+    # Example: 2026-01-20T09:58:48.263427 I 32:153289 32:153289 --:------
+    # 31DA 030 00EF007F...
+    parts = line.strip().split()
+    if len(parts) < 7:
+        return None
+
+    try:
+        dtm = parts[0]
+        verb = parts[1]
+        src = parts[2]
+        dst = parts[3]
+        # parts[4] is filler (e.g., --:------)
+        code = parts[5]
+        payload_len = parts[6]
+        payload_hex = " ".join(parts[7:]) if len(parts) > 7 else ""
+
+        packet = " ".join(parts[1:])  # Full packet string
+        payload = f"{payload_len} {payload_hex}" if payload_hex else payload_len
+
+        return NormalizedMessage(
+            dtm=dtm,
+            src=src,
+            dst=dst,
+            verb=verb,
+            code=code,
+            payload=payload,
+            packet=packet,
+            source="packet_log",
+            raw_line=line,
+            parse_warnings=[],
+        )
+    except Exception:
+        return None
+
+
 @dataclass
 class NormalizedMessage:
     dtm: str
@@ -121,43 +209,17 @@ class PacketLogProvider(MessagesProvider):
         until: str | None = None,
         limit: int = 200,
     ) -> list[NormalizedMessage]:
-        messages: list[NormalizedMessage] = []
-        base = get_configured_log_path(hass)
-        if not base:
-            return messages
-
-        log_path = base.parent / "ramses_log"
-        if not log_path.is_file():
-            return messages
-
-        try:
-            content = await hass.async_add_executor_job(
-                log_path.read_text, encoding="utf-8"
-            )
-            for line in content.splitlines():
-                # Very naive parsing for now; refine later
-                if "RAMSES RF" not in line:
-                    continue
-                # TODO: extract dtm, src, dst, verb, code, payload/packet
-                # For now, return a placeholder to indicate the line matched
-                msg = NormalizedMessage(
-                    dtm="",
-                    src="",
-                    dst="",
-                    verb=None,
-                    code=None,
-                    payload=None,
-                    packet=None,
-                    source="packet_log",
-                    raw_line=line,
-                    parse_warnings=["packet log parser not yet implemented"],
-                )
-                messages.append(msg)
-                if len(messages) >= limit:
-                    break
-        except Exception as exc:
-            _LOGGER.debug("Failed to read packet log %s: %s", log_path, exc)
-        return messages
+        # Delegate to the static implementation added earlier
+        return await PacketLogParser.get_messages(
+            hass,
+            src=src,
+            dst=dst,
+            verb=verb,
+            code=code,
+            since=since,
+            until=until,
+            limit=limit,
+        )
 
 
 class HALogProvider(MessagesProvider):
@@ -175,41 +237,84 @@ class HALogProvider(MessagesProvider):
         until: str | None = None,
         limit: int = 200,
     ) -> list[NormalizedMessage]:
-        messages: list[NormalizedMessage] = []
-        base = get_configured_log_path(hass)
-        if not base:
-            return messages
-        if not base.is_file():
-            return messages
+        """Parse HA log lines for ramses_cc messages."""
+        log_path = get_configured_log_path(hass)
+        if not log_path:
+            return []
 
         try:
+            # Simple file reading approach
             content = await hass.async_add_executor_job(
-                base.read_text, encoding="utf-8"
+                log_path.read_text, encoding="utf-8"
             )
-            for line in content.splitlines():
-                # Look for lines that look like ramses_cc messages
+            lines = content.splitlines()
+
+            messages: list[NormalizedMessage] = []
+            for line in lines:
+                # Look for lines that contain ramses_cc
                 if "ramses_cc" not in line:
                     continue
-                # TODO: extract dtm, src, dst, verb, code, payload/packet
-                # For now, return a placeholder to indicate the line matched
-                msg = NormalizedMessage(
-                    dtm="",
-                    src="",
-                    dst="",
-                    verb=None,
-                    code=None,
-                    payload=None,
-                    packet=None,
-                    source="ha_log",
-                    raw_line=line,
-                    parse_warnings=["ha log parser not yet implemented"],
-                )
-                messages.append(msg)
-                if len(messages) >= limit:
-                    break
+                msg = _parse_ha_log_line(line)
+                if msg:
+                    # Apply filters
+                    if src and msg.src != src:
+                        continue
+                    if dst and msg.dst != dst:
+                        continue
+                    if verb and msg.verb != verb:
+                        continue
+                    if code and msg.code != code:
+                        continue
+                    messages.append(msg)
+                    if len(messages) >= limit:
+                        break
+            return messages
         except Exception as exc:
-            _LOGGER.debug("Failed to read HA log %s: %s", base, exc)
-        return messages
+            _LOGGER.warning("HALogProvider error: %s", exc)
+            return []
+
+
+def _parse_ha_log_line(line: str) -> NormalizedMessage | None:
+    """Parse a HA log line containing a ramses_cc message."""
+    # Expected HA log format with JSON payload:
+    # 2026-01-20 09:58:48 DEBUG (MainThread) [custom_components.ramses_cc] ...
+    # {"src": "...", "dst": "...", "verb": "...", ...}
+    # We'll try to extract JSON from the line and parse it.
+    import json
+    import re
+
+    # Look for JSON-like structure in the line
+    json_match = re.search(r"\{.*\}", line)
+    if not json_match:
+        return None
+
+    try:
+        data = json.loads(json_match.group())
+        src = data.get("src")
+        dst = data.get("dst")
+        verb = data.get("verb")
+        code = data.get("code")
+        payload = data.get("payload")
+        packet = data.get("packet")
+
+        # Extract timestamp from the beginning of the line
+        dtm_match = re.match(r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[^\s]*)", line)
+        dtm = dtm_match.group(1) if dtm_match else ""
+
+        return NormalizedMessage(
+            dtm=dtm,
+            src=src or "",
+            dst=dst or "",
+            verb=verb,
+            code=code,
+            payload=str(payload) if payload is not None else None,
+            packet=str(packet) if packet is not None else None,
+            source="ha_log",
+            raw_line=line,
+            parse_warnings=[],
+        )
+    except Exception:
+        return None
 
 
 async def get_messages_from_sources(
