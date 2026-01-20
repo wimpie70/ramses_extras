@@ -22,3 +22,17 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 - dehumidify does not work on  62%>58, 5.77 > 2.9
 
 - extras: remove 'configure devices for features', 'available features configurations' section
+
+- messages
+    - colors on top: messages
+    - list all selected messages
+    - add toggle for parsed values
+
+- traffic analyzer
+    - select all: doesn't toggle all select boxes
+
+- log explorer:
+    - when not wrap: auto hor scrollbar
+    - edit before and after
+    - move search part after tail
+    - bg colors on id's

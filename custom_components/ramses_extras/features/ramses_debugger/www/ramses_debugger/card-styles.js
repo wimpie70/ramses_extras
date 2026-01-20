@@ -63,7 +63,8 @@ export function trafficAnalyserCardStyle({ compact }) {
     .dev .id { font-family: var(--code-font-family, monospace); font-size: 12px; }
     .alias { font-size: 12px; opacity: 0.9; }
     .slug { font-size: 11px; opacity: 0.75; }
-    .verbs { font-family: var(--code-font-family, monospace); font-size: 12px; white-space: normal; word-break: break-word; }
+    .select-cell { text-align: center; width: 40px; }
+    .select-cell input[type="checkbox"] { cursor: pointer; }
     .codes { font-family: var(--code-font-family, monospace); font-size: 12px; white-space: normal; word-break: break-word; }
     .actions { white-space: nowrap; }
     .actions button { cursor: pointer; margin-right: 6px; }
@@ -78,10 +79,15 @@ export function trafficAnalyserCardStyle({ compact }) {
     .messages-list { display: flex; flex-direction: column; height: 100%; }
     .messages-header { padding: 8px 0; border-bottom: 1px solid var(--divider-color); margin-bottom: 8px; }
     .messages-table-wrapper { overflow: auto; flex: 1; }
-    .messages-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .messages-table th, .messages-table td { padding: 4px 6px; border: 1px solid var(--divider-color); vertical-align: top; }
+    .messages-table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px; }
+    .messages-table th, .messages-table td { padding: 4px 6px; border: 1px solid var(--divider-color); vertical-align: top; white-space: nowrap; overflow: hidden; }
     .messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; }
-    .payload-cell { font-family: monospace; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .source-cell { font-weight: bold; }
+    .messages-table .col-time { width: 140px; font-size: 11px; }
+    .messages-table .col-verb { width: 40px; text-align: center; }
+    .messages-table .col-code { width: 50px; text-align: center; }
+    .messages-table .col-src { width: 110px; background: var(--dev-bg); color: var(--dev-fg); }
+    .messages-table .col-dst { width: 110px; background: var(--dev-bg); color: var(--dev-fg); }
+    .messages-table .col-bcast { width: 60px; text-align: center; }
+    .messages-table .col-payload { width: auto; min-width: 300px; white-space: pre; overflow-x: auto; }
   `;
 }

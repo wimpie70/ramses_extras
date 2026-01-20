@@ -10,7 +10,6 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 
 from .log_backend import get_configured_log_path
-from .traffic_collector import TrafficCollector
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -230,8 +229,19 @@ async def get_messages_from_sources(
     providers: dict[str, MessagesProvider] = {}
     # Initialize providers (TODO: cache/reuse instances)
     if "traffic_buffer" in sources:
-        # For now, we don't have a shared buffer instance; placeholder
-        providers["traffic_buffer"] = TrafficBufferProvider()
+        # Use the shared buffer provider from TrafficCollector if available
+        try:
+            from .traffic_collector import TrafficCollector
+
+            domain_data = hass.data.setdefault("ramses_extras", {})
+            feature_data = domain_data.setdefault("ramses_debugger", {})
+            collector = feature_data.get("traffic_collector")
+            if isinstance(collector, TrafficCollector):
+                providers["traffic_buffer"] = collector.get_buffer_provider()
+            else:
+                providers["traffic_buffer"] = TrafficBufferProvider()
+        except Exception:
+            providers["traffic_buffer"] = TrafficBufferProvider()
     if "packet_log" in sources:
         providers["packet_log"] = PacketLogProvider()
     if "ha_log" in sources:

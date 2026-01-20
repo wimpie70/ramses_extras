@@ -8,6 +8,8 @@ from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 
+from .messages_provider import TrafficBufferProvider
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -42,6 +44,8 @@ class TrafficCollector:
         self._by_code: Counter[str] = Counter()
         self._by_verb: Counter[str] = Counter()
         self._started_at: str = datetime.now().isoformat(timespec="seconds")
+
+        self._buffer_provider = TrafficBufferProvider()
 
     def start(self) -> None:
         if self._unsub is not None:
@@ -110,6 +114,10 @@ class TrafficCollector:
             ],
         }
 
+    def get_buffer_provider(self) -> TrafficBufferProvider:
+        """Return the TrafficBufferProvider for message queries."""
+        return self._buffer_provider
+
     def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
         data = event.data or {}
 
@@ -129,6 +137,9 @@ class TrafficCollector:
         dtm = data.get("dtm")
         if not isinstance(dtm, str):
             dtm = None
+
+        # Ingest into buffer provider for message queries
+        self._buffer_provider.ingest_event(data)
 
         self._total_count += 1
         if code:

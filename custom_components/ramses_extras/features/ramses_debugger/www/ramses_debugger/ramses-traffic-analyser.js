@@ -39,6 +39,9 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
     this._deviceSlugMap = null;
     this._deviceSlugMapTs = 0;
+
+    this._checkedRows = new Map(); // src|dst -> checked
+    this._flows = []; // Initialize to avoid undefined errors
   }
 
   getCardSize() {
@@ -455,6 +458,9 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
         return `
           <tr class="flow-row" data-flow="${data}">
+            <td class="select-cell">
+              <input type="checkbox" class="row-select" data-src="${src}" data-dst="${dst}" ${this._checkedRows.get(`${src}|${dst}`) ? 'checked' : ''}>
+            </td>
             <td class="device-cell" style="--dev-bg: ${srcBg};" title="Source device">
               <div class="dev">
                 <span class="id">${src}</span>
@@ -474,9 +480,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             <td style="text-align: right;">${count}</td>
             <td>${lastSeen}</td>
             <td class="actions" title="Actions">
-              <button class="action-log" title="Open Log Explorer for this flow">Logs</button>
               <button class="action-details" title="Show flow details">Details</button>
-              <button class="action-messages" title="List raw messages for this flow">Messages</button>
             </td>
           </tr>
         `;
@@ -493,7 +497,9 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             <div><strong>Device</strong>: ${deviceDisplay}</div>
             <div><strong>Total</strong>: ${typeof totalCount === 'number' ? totalCount : '-'}</div>
             <div><strong>Since</strong>: ${startedAt || '-'}</div>
-            <div style="margin-left:auto;">
+            <div style="margin-left:auto; display: flex; gap: 8px;">
+              <button id="bulkLogs" title="Open Log Explorer for selected flows">Logs</button>
+              <button id="bulkMessages" title="List raw messages for selected flows">Messages</button>
               <button id="resetStats" title="Reset the traffic counters">Reset</button>
             </div>
           </div>
@@ -504,6 +510,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             <table>
               <thead>
                 <tr>
+                  <th class="select-cell"><input type="checkbox" id="selectAll" title="Select all flows" ${this._flows && this._flows.length && this._checkedRows.size === this._flows.length ? 'checked' : ''}></th>
                   <th class="sortable" data-sort="src" title="Sort by source">src${sortArrow('src')}</th>
                   <th class="sortable" data-sort="dst" title="Sort by destination">dst${sortArrow('dst')}</th>
                   <th title="Verbs observed for this flow">verbs</th>
@@ -514,7 +521,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
                 </tr>
               </thead>
               <tbody>
-                ${rowsHtml || '<tr><td colspan="7">No data</td></tr>'}
+                ${rowsHtml || '<tr><td colspan="8">No data</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -555,6 +562,128 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     this._attachEventListeners();
   }
 
+  _getSelectedFlows() {
+    const checkboxes = this.shadowRoot.querySelectorAll('.row-select:checked');
+    return Array.from(checkboxes).map((cb) => ({
+      src: cb.getAttribute('data-src'),
+      dst: cb.getAttribute('data-dst'),
+    }));
+  }
+
+  _openLogDialog(query) {
+    const logDialog = this.shadowRoot?.getElementById('logDialog');
+    const container = this.shadowRoot?.getElementById('logContainer');
+    if (container) {
+      container.innerHTML = '';
+      const el = document.createElement('ramses-log-explorer');
+      container.appendChild(el);
+
+      try {
+        el.setConfig({
+          name: 'Ramses Log Explorer',
+          prefill_query: query,
+          auto_search: true,
+        });
+
+        if (this._hass) {
+          el.hass = this._hass;
+        }
+      } catch (error) {
+        logger.warn('Failed to init embedded log explorer:', error);
+      }
+    }
+
+    if (logDialog && typeof logDialog.showModal === 'function') {
+      this._dialogOpen = true;
+      logDialog.showModal();
+    }
+  }
+
+  _openMessagesDialog(selected) {
+    const messagesDialog = this.shadowRoot?.getElementById('messagesDialog');
+    const container = this.shadowRoot?.getElementById('messagesContainer');
+    if (container) {
+      container.innerHTML = '';
+      const el = document.createElement('div');
+      el.className = 'messages-list';
+      container.appendChild(el);
+
+      // Build filters for multiple src/dst pairs
+      const filters = {};
+      const srcList = [];
+      const dstList = [];
+      for (const { src, dst } of selected) {
+        if (src) srcList.push(src);
+        if (dst) dstList.push(dst);
+      }
+      // For now, only support single src/dst filters; extend backend later
+      if (srcList.length === 1) filters.src = srcList[0];
+      if (dstList.length === 1) filters.dst = dstList[0];
+      // If multiple, don't filter by src/dst to show all traffic between selected pairs
+
+      this._hass?.callWS({
+        type: 'ramses_extras/ramses_debugger/messages/get_messages',
+        sources: ['traffic_buffer', 'packet_log', 'ha_log'],
+        limit: 200,
+        dedupe: true,
+        ...filters,
+      })
+        .then((response) => {
+          const messages = response?.messages || [];
+          el.innerHTML = `
+            <div class="messages-header">
+              <strong>Messages (${messages.length})</strong>
+              ${srcList.length ? ` from <code>${srcList.join(', ')}</code>` : ''}
+              ${dstList.length ? ` to <code>${dstList.join(', ')}</code>` : ''}
+              ${messages.length && messages[0].source ? ` (Source: <code>${messages[0].source}</code>)` : ''}
+            </div>
+            <div class="messages-table-wrapper">
+              <table class="messages-table">
+                <thead>
+                  <tr>
+                    <th class="col-time">Time</th>
+                    <th class="col-verb">Verb</th>
+                    <th class="col-code">Code</th>
+                    <th class="col-src">Src</th>
+                    <th class="col-dst">Dst</th>
+                    <th class="col-bcast">Broadcast</th>
+                    <th class="col-payload">Payload</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${messages.map((msg) => {
+                    const parts = (msg.packet || '').split(' ');
+                    const payload = parts.length >= 6 ? `${parts[parts.length - 2]} ${parts[parts.length - 1]}` : '';
+                    const isBroadcast = msg.dst && msg.dst.includes('--:------');
+                    const srcBg = msg.src ? this._deviceBg(msg.src) : '';
+                    const dstBg = msg.dst ? this._deviceBg(msg.dst) : '';
+                    return `
+                    <tr>
+                      <td class="col-time">${msg.dtm || ''}</td>
+                      <td class="col-verb">${msg.verb || ''}</td>
+                      <td class="col-code">${msg.code || ''}</td>
+                      <td class="col-src" style="--dev-bg: ${srcBg};">${msg.src || ''}</td>
+                      <td class="col-dst" style="--dev-bg: ${dstBg};">${msg.dst || ''}</td>
+                      <td class="col-bcast">${isBroadcast ? 'Y' : ''}</td>
+                      <td class="col-payload">${payload}</td>
+                    </tr>
+                  `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+        })
+        .catch((err) => {
+          el.innerHTML = `<div class="error">Failed to load messages: ${err.message || err}</div>`;
+        });
+    }
+    if (messagesDialog && typeof messagesDialog.showModal === 'function') {
+      this._dialogOpen = true;
+      messagesDialog.showModal();
+    }
+  }
+
   _attachEventListeners() {
     if (!this.shadowRoot) {
       return;
@@ -563,6 +692,9 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     const closeBtn = this.shadowRoot.getElementById('closeDialog');
     const closeLogBtn = this.shadowRoot.getElementById('closeLogDialog');
     const closeMessagesBtn = this.shadowRoot.getElementById('closeMessagesDialog');
+    const selectAllCb = this.shadowRoot.getElementById('selectAll');
+    const bulkLogsBtn = this.shadowRoot.getElementById('bulkLogs');
+    const bulkMessagesBtn = this.shadowRoot.getElementById('bulkMessages');
 
     const thead = this.shadowRoot.querySelector('thead');
 
@@ -591,42 +723,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
         try {
           const flow = JSON.parse(decodeURIComponent(encoded));
-          const isLog = btn.classList.contains('action-log');
           const isDetails = btn.classList.contains('action-details');
-
-          if (isLog) {
-            const logDialog = this.shadowRoot?.getElementById('logDialog');
-            const src = flow?.src || '';
-            const dst = flow?.dst || '';
-            const query = src && dst ? `${src} ${dst}` : src || dst;
-
-            const container = this.shadowRoot?.getElementById('logContainer');
-            if (container) {
-              container.innerHTML = '';
-              const el = document.createElement('ramses-log-explorer');
-              container.appendChild(el);
-
-              try {
-                el.setConfig({
-                  name: 'Ramses Log Explorer',
-                  prefill_query: query,
-                  auto_search: true,
-                });
-
-                if (this._hass) {
-                  el.hass = this._hass;
-                }
-              } catch (error) {
-                logger.warn('Failed to init embedded log explorer:', error);
-              }
-            }
-
-            if (logDialog && typeof logDialog.showModal === 'function') {
-              this._dialogOpen = true;
-              logDialog.showModal();
-            }
-            return;
-          }
 
           if (isDetails) {
             const detailsDialog = this.shadowRoot?.getElementById('detailsDialog');
@@ -637,79 +734,6 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             if (detailsDialog && typeof detailsDialog.showModal === 'function') {
               this._dialogOpen = true;
               detailsDialog.showModal();
-            }
-          }
-
-          if (btn.classList.contains('action-messages')) {
-            const messagesDialog = this.shadowRoot?.getElementById('messagesDialog');
-            const container = this.shadowRoot?.getElementById('messagesContainer');
-            if (container) {
-              container.innerHTML = '';
-              const el = document.createElement('div');
-              el.className = 'messages-list';
-              container.appendChild(el);
-
-              const src = flow?.src || '';
-              const dst = flow?.dst || '';
-              const filters = {};
-              if (src) filters.src = src;
-              if (dst) filters.dst = dst;
-
-              this._hass?.callWS({
-                type: 'ramses_extras/ramses_debugger/messages/get_messages',
-                sources: ['traffic_buffer', 'packet_log', 'ha_log'],
-                limit: 200,
-                dedupe: true,
-                ...filters,
-              })
-                .then((response) => {
-                  const messages = response?.messages || [];
-                  el.innerHTML = `
-                    <div class="messages-header">
-                      <strong>Messages (${messages.length})</strong>
-                      ${src ? ` from <code>${src}</code>` : ''}
-                      ${dst ? ` to <code>${dst}</code>` : ''}
-                    </div>
-                    <div class="messages-table-wrapper">
-                      <table class="messages-table">
-                        <thead>
-                          <tr>
-                            <th>Time</th>
-                            <th>Verb</th>
-                            <th>Code</th>
-                            <th>Src</th>
-                            <th>Dst</th>
-                            <th>Payload/Packet</th>
-                            <th>Source</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          ${messages.map((msg) => `
-                            <tr>
-                              <td>${msg.dtm || ''}</td>
-                              <td>${msg.verb || ''}</td>
-                              <td>${msg.code || ''}</td>
-                              <td>${msg.src || ''}</td>
-                              <td>${msg.dst || ''}</td>
-                              <td class="payload-cell">
-                                ${(msg.payload || msg.packet || '').slice(0, 80)}
-                                ${(msg.payload || msg.packet || '').length > 80 ? '…' : ''}
-                              </td>
-                              <td class="source-cell">${msg.source || ''}</td>
-                            </tr>
-                          `).join('')}
-                        </tbody>
-                      </table>
-                    </div>
-                  `;
-                })
-                .catch((err) => {
-                  el.innerHTML = `<div class="error">Failed to load messages: ${err.message || err}</div>`;
-                });
-            }
-            if (messagesDialog && typeof messagesDialog.showModal === 'function') {
-              this._dialogOpen = true;
-              messagesDialog.showModal();
             }
           }
         } catch (error) {
@@ -779,6 +803,54 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     }
     if (closeMessagesBtn) {
       closeMessagesBtn.onclick = this._boundOnDialogClose;
+    }
+    if (selectAllCb && !this._boundOnSelectAll) {
+      this._boundOnSelectAll = (ev) => {
+        const checked = ev.target.checked;
+        this._checkedRows.clear();
+        if (checked && this._flows) {
+          this._flows.forEach(({ src, dst }) => {
+            this._checkedRows.set(`${src}|${dst}`, true);
+          });
+        }
+        const checkboxes = this.shadowRoot.querySelectorAll('.row-select');
+        checkboxes.forEach((cb) => (cb.checked = checked));
+      };
+      selectAllCb.addEventListener('change', this._boundOnSelectAll);
+    }
+
+    // Add per-row checkbox listeners
+    const rowCheckboxes = this.shadowRoot.querySelectorAll('.row-select');
+    rowCheckboxes.forEach((cb) => {
+      const src = cb.getAttribute('data-src');
+      const dst = cb.getAttribute('data-dst');
+      cb.addEventListener('change', (ev) => {
+        if (ev.target.checked) {
+          this._checkedRows.set(`${src}|${dst}`, true);
+        } else {
+          this._checkedRows.delete(`${src}|${dst}`);
+        }
+        // Update select all checkbox state
+        const selectAll = this.shadowRoot.getElementById('selectAll');
+        if (selectAll && this._flows) {
+          selectAll.checked = this._checkedRows.size === this._flows.length;
+        }
+      });
+    });
+    if (bulkLogsBtn) {
+      bulkLogsBtn.onclick = this._boundOnBulkLogs || (() => {
+        const selected = this._getSelectedFlows();
+        if (selected.length === 0) return;
+        const query = selected.map(({ src, dst }) => src && dst ? `${src} ${dst}` : src || dst).join(' ');
+        this._openLogDialog(query);
+      });
+    }
+    if (bulkMessagesBtn) {
+      bulkMessagesBtn.onclick = this._boundOnBulkMessages || (() => {
+        const selected = this._getSelectedFlows();
+        if (selected.length === 0) return;
+        this._openMessagesDialog(selected);
+      });
     }
 
     if (thead) {
