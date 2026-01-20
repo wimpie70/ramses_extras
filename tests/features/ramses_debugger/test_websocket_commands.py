@@ -8,10 +8,8 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras.features.ramses_debugger import websocket_commands
 
-# Import the handler function directly, bypassing decorator
-from custom_components.ramses_extras.features.ramses_debugger.messages_provider import (
-    get_messages_from_sources,
-)
+# Unwrap decorator for testing (same approach as other features)
+ws_messages_get_messages = websocket_commands.ws_messages_get_messages.__wrapped__
 
 
 @pytest.fixture
@@ -26,7 +24,8 @@ def conn() -> ActiveConnection:
     conn = MagicMock(spec=ActiveConnection)
     conn.user = MagicMock()
     conn.context = MagicMock()
-    conn.send_message = MagicMock()
+    conn.send_result = MagicMock()
+    conn.send_error = MagicMock()
     return conn
 
 
@@ -56,7 +55,7 @@ class TestWsGetMessages:
         ]
 
         # Call the handler
-        await websocket_commands.ws_messages_get_messages(
+        await ws_messages_get_messages(
             hass,
             conn,
             {
@@ -72,7 +71,7 @@ class TestWsGetMessages:
         # Verify the backend was called with correct parameters
         mock_get_messages.assert_called_once_with(
             hass,
-            sources=["traffic_buffer"],
+            ["traffic_buffer"],
             src="32:153289",
             dst=None,
             verb=None,
@@ -84,11 +83,9 @@ class TestWsGetMessages:
         )
 
         # Verify response was sent
-        conn.send_message.assert_called_once()
-        response = conn.send_message.call_args[0][0]
-        assert "messages" in response
-        assert len(response["messages"]) == 1
-        assert response["messages"][0]["source"] == "traffic_buffer"
+        conn.send_result.assert_called_once_with(
+            "test-id", {"messages": mock_get_messages.return_value}
+        )
 
     @pytest.mark.asyncio
     @patch(
@@ -98,7 +95,7 @@ class TestWsGetMessages:
         """Test messages retrieval with all filters."""
         mock_get_messages.return_value = []
 
-        await websocket_commands.ws_messages_get_messages(
+        await ws_messages_get_messages(
             hass,
             conn,
             {
@@ -118,7 +115,7 @@ class TestWsGetMessages:
 
         mock_get_messages.assert_called_once_with(
             hass,
-            sources=["traffic_buffer", "packet_log"],
+            ["traffic_buffer", "packet_log"],
             src="32:153289",
             dst="37:169161",
             verb="RQ",
@@ -138,7 +135,7 @@ class TestWsGetMessages:
         # Mock an exception
         mock_get_messages.side_effect = Exception("Test error")
 
-        await websocket_commands.ws_messages_get_messages(
+        await ws_messages_get_messages(
             hass,
             conn,
             {
@@ -149,10 +146,7 @@ class TestWsGetMessages:
         )
 
         # Verify error response was sent
-        conn.send_message.assert_called_once()
-        response = conn.send_message.call_args[0][0]
-        assert "error" in response
-        assert "Test error" in response["error"]
+        conn.send_error.assert_called_once_with("test-id", "error", "Test error")
 
     @pytest.mark.asyncio
     @patch(
@@ -162,7 +156,7 @@ class TestWsGetMessages:
         """Test default sources when not specified."""
         mock_get_messages.return_value = []
 
-        await websocket_commands.ws_messages_get_messages(
+        await ws_messages_get_messages(
             hass,
             conn,
             {
@@ -174,15 +168,15 @@ class TestWsGetMessages:
         # Should use default sources
         mock_get_messages.assert_called_once_with(
             hass,
-            sources=["traffic_buffer", "packet_log", "ha_log"],
+            ["traffic_buffer", "packet_log", "ha_log"],
             src=None,
             dst=None,
             verb=None,
             code=None,
             since=None,
             until=None,
-            limit=1000,  # Default limit
-            dedupe=True,  # Default dedupe
+            limit=200,  # default in schema
+            dedupe=True,
         )
 
     @pytest.mark.asyncio
@@ -206,7 +200,7 @@ class TestWsGetMessages:
             }
         ]
 
-        await websocket_commands.ws_messages_get_messages(
+        await ws_messages_get_messages(
             hass,
             conn,
             {
@@ -216,13 +210,13 @@ class TestWsGetMessages:
             },
         )
 
-        conn.send_message.assert_called_once()
-        response = conn.send_message.call_args[0][0]
-        assert "messages" in response
-        assert isinstance(response["messages"], list)
-        assert len(response["messages"]) == 1
+        conn.send_result.assert_called_once()
+        result_payload = conn.send_result.call_args[0][1]
+        assert "messages" in result_payload
+        assert isinstance(result_payload["messages"], list)
+        assert len(result_payload["messages"]) == 1
 
-        msg = response["messages"][0]
+        msg = result_payload["messages"][0]
         required_fields = [
             "dtm",
             "src",

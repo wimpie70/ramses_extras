@@ -209,14 +209,12 @@ class TestGetMessagesFromSources:
 
     @pytest.mark.asyncio
     @patch(
-        "custom_components.ramses_extras.features.ramses_debugger.messages_provider.TrafficCollector"
+        "custom_components.ramses_extras.features.ramses_debugger.traffic_collector.TrafficCollector"
     )
     async def test_aggregate_sources(
         self, mock_collector_class, hass, sample_traffic_buffer
     ):  # noqa: E501
         """Test aggregating messages from multiple sources."""
-        # Import locally to avoid circular import
-
         # Mock traffic buffer provider
         mock_provider = MagicMock()
         mock_provider.get_messages = AsyncMock(
@@ -310,7 +308,7 @@ class TestGetMessagesFromSources:
         )
 
         with patch(
-            "custom_components.ramses_extras.features.ramses_debugger.messages_provider.TrafficCollector"
+            "custom_components.ramses_extras.features.ramses_debugger.traffic_collector.TrafficCollector"
         ) as mock_collector_class:  # noqa: E501
             mock_provider = MagicMock()
             mock_provider.get_messages = AsyncMock(return_value=[duplicate_msg])
@@ -343,10 +341,10 @@ class TestGetMessagesFromSources:
                 assert len(msgs) == 1
                 assert msgs[0]["source"] == "traffic_buffer"  # First source wins
 
-            # Test without deduplication
-            msgs = await get_messages_from_sources(
-                hass,
-                sources=["traffic_buffer", "packet_log"],
-                dedupe=False,
-            )
-            assert len(msgs) == 2
+                # Test without deduplication
+                msgs = await get_messages_from_sources(
+                    hass,
+                    sources=["traffic_buffer", "packet_log"],
+                    dedupe=False,
+                )
+                assert len(msgs) == 2

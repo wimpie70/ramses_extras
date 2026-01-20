@@ -336,12 +336,10 @@ async def get_messages_from_sources(
     if "traffic_buffer" in sources:
         # Use the shared buffer provider from TrafficCollector if available
         try:
-            from .traffic_collector import TrafficCollector
-
             domain_data = hass.data.setdefault("ramses_extras", {})
             feature_data = domain_data.setdefault("ramses_debugger", {})
             collector = feature_data.get("traffic_collector")
-            if isinstance(collector, TrafficCollector):
+            if collector is not None and hasattr(collector, "get_buffer_provider"):
                 providers["traffic_buffer"] = collector.get_buffer_provider()
             else:
                 providers["traffic_buffer"] = TrafficBufferProvider()
