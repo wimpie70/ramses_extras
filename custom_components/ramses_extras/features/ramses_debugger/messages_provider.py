@@ -420,7 +420,7 @@ class HALogProvider(MessagesProvider):
         try:
             # Simple file reading approach
             content = await hass.async_add_executor_job(
-                log_path.read_text, encoding="utf-8"
+                partial(log_path.read_text, encoding="utf-8")
             )
             lines = content.splitlines()
 

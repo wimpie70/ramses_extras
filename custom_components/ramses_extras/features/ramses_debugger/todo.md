@@ -332,19 +332,40 @@ Suggested workflow per step:
 - [ ] **Commit**
   - `feat(ramses_debugger): packet log explorer (backend + card)`
 
-### Step 12: Cross-linking between views (Traffic / Packet Log / HA Log)
-- [ ] **Deliverable**
-  - From Traffic Analyser
-    - Messages list entry → open Message details
-    - Message details → open Packet Log Explorer prefilled
-  - From Packet Log Explorer
-    - Message details → open Log Explorer prefilled (when a matching HA log line exists)
-  - From Log Explorer
-    - selecting a log line that contains a ramses message → open Message details (same component)
-- [ ] **Tests**
-  - manual end-to-end in HA
-- [ ] **Commit**
-  - `feat(ramses_debugger): cross-link messages across cards`
+## Ramses debugger improvements
+
+### Traffic analyzer
+- [ ] what is the source of the traffic, can we choose between a ha logfile, ramses.log or 'live' ?
+- [ ] select all: doesn't toggle all select boxes
+- [ ] details: I don't think this adds value, we can remove this.
+- [ ] logs button: i think it's better to change this into 'copy selection' so the user can paste this in another card.
+- [ ] reset: what does it do ? it takes a while before the results field is cleared.
+
+### Messages (from traffic analyzer)
+- [ ] colors on top id's (selection)
+- [ ] list all selected messages: what is the source ? in traffic analyzer i see a total of 4 msgs, but in 'Messages' I see a lot more. This should be the same source
+- [ ] add toggle for parsed values
+- [ ] add auto hor scrollbar on Payload
+- [ ] fix dest/src/broadcast
+- [ ] make the columns sortable and default on time: earliest first
+
+### Log explorer
+- [ ] auto hor scrollbar on tail result (without wrap we go outside the window)
+- [ ] editable before and after
+- [ ] move search options after tail result
+- [ ] horizontal line between search blocks (instead of newline)
+- [ ] bg colors on id's
+- [ ] font color: log source between [] : green
+
+### Packet explorer
+- [ ] the details button is out of the window scope.
+- [ ] When clicking on details, i would expect to see parsed message, but maybe use 1 toggle button to switch to parsed values instead of payload
+- [ ] In the result field, we cannot copy/past text, this would be very handy
+- [ ] the search (or filter) doesn't work, remove it ?
+- [ ] make the columns sortable and default on time: earliest first
+- [ ] instead of wrap set a auto hor. scrollbar on payload
+- [ ] bg colors on id's
+- [ ] broadcast still not working
 
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing
