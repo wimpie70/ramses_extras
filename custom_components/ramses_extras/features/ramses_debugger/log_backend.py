@@ -210,7 +210,17 @@ def search_with_context(
             "truncated_by_max_matches": False,
         }
 
-    needle = query if case_sensitive else query.lower()
+    terms = [t.strip() for t in query.splitlines() if t.strip()]
+    if not terms:
+        return {
+            "matches": 0,
+            "blocks": [],
+            "truncated": False,
+            "truncated_by_max_chars": False,
+            "truncated_by_max_matches": False,
+        }
+
+    needles = terms if case_sensitive else [t.lower() for t in terms]
 
     match_lines: list[int] = []
     ranges: list[tuple[int, int]] = []
@@ -218,7 +228,7 @@ def search_with_context(
 
     for idx, line in enumerate(_open_text(path), start=1):
         hay = line if case_sensitive else line.lower()
-        if needle in hay:
+        if any(needle in hay for needle in needles):
             match_lines.append(idx)
             ranges.append((max(1, idx - before), idx + after))
             if len(match_lines) >= max_matches:

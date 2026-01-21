@@ -1,5 +1,6 @@
 /* global setInterval */
 /* global clearInterval */
+/* global navigator */
 
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
@@ -42,6 +43,9 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
     this._checkedRows = new Map(); // src|dst -> checked
     this._flows = []; // Initialize to avoid undefined errors
+
+    this._trafficSource = 'live';
+    this._boundOnTrafficSourceChange = null;
   }
 
   getCardSize() {
@@ -80,6 +84,34 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     if (this._hass && this._config && !this._initialStateLoaded) {
       this._loadInitialState();
       this._initialStateLoaded = true;
+    }
+  }
+
+  async _copyToClipboard(text) {
+    try {
+      if (!text) {
+        return;
+      }
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const textarea = document.createElement('textarea');
+      textarea.value = String(text);
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.top = '0';
+      textarea.style.left = '0';
+      textarea.style.width = '1px';
+      textarea.style.height = '1px';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    } catch (error) {
+      logger.warn('Copy to clipboard failed:', error);
     }
   }
 
@@ -172,6 +204,11 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
     this._stopUpdates();
 
+    if (this._trafficSource !== 'live') {
+      this._startPolling();
+      return;
+    }
+
     if (this._config.enable_polling === true) {
       this._startPolling();
       return;
@@ -180,10 +217,14 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     this._startSubscription();
   }
 
-  _buildFiltersFromConfig() {
+  _buildFiltersFromConfig({ includeTrafficSource = true } = {}) {
     const filters = {
       limit: this._config?.limit || 200,
     };
+
+    if (includeTrafficSource && this._trafficSource) {
+      filters.traffic_source = this._trafficSource;
+    }
 
     const deviceId = this._config?.device_id;
     if (deviceId) {
@@ -202,7 +243,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         this._lastError = null;
         const result = await callWebSocket(this._hass, {
           type: 'ramses_extras/ramses_debugger/traffic/get_stats',
-          ...this._buildFiltersFromConfig(),
+          ...this._buildFiltersFromConfig({ includeTrafficSource: true }),
         });
         this._stats = result;
       } catch (error) {
@@ -227,7 +268,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
     const payload = {
       type: 'ramses_extras/ramses_debugger/traffic/subscribe_stats',
-      ...this._buildFiltersFromConfig(),
+      ...this._buildFiltersFromConfig({ includeTrafficSource: false }),
       throttle_ms: safeThrottleMs,
     };
 
@@ -405,9 +446,29 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       return;
     }
 
+    if (this._trafficSource !== 'live') {
+      return;
+    }
+
+    // Clear UI immediately so reset feels responsive.
+    this._lastError = null;
+    this._stats = {
+      flows: [],
+      total_count: 0,
+      started_at: '',
+    };
+    this._checkedRows.clear();
+    this.render();
+
     try {
       await callWebSocket(this._hass, {
         type: 'ramses_extras/ramses_debugger/traffic/reset_stats',
+      });
+
+      // Refresh after reset so the "since" timestamp reflects the new window.
+      this._stats = await callWebSocket(this._hass, {
+        type: 'ramses_extras/ramses_debugger/traffic/get_stats',
+        ...this._buildFiltersFromConfig(),
       });
     } catch (error) {
       this._lastError = error;
@@ -420,6 +481,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     const title = this._config?.name || 'Ramses Traffic Analyser';
     const deviceDisplay = this._config?.device_id ? this.getDeviceDisplayName() : '-';
 
+    const trafficSource = this._trafficSource || 'live';
+
     const width = this.offsetWidth || 0;
     const compact = width > 0 && width < 900;
 
@@ -427,6 +490,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     const flows = Array.isArray(stats?.flows) ? stats.flows : [];
     const totalCount = stats?.total_count;
     const startedAt = stats?.started_at;
+
+    const resetDisabled = trafficSource !== 'live';
 
     const errorText = this._lastError ? String(this._lastError?.message || this._lastError) : '';
 
@@ -436,6 +501,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     };
 
     const sortedFlows = this._sortFlows([...flows]);
+
+    this._flows = sortedFlows;
 
     const rowsHtml = sortedFlows
       .map((flow) => {
@@ -479,9 +546,6 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             <td class="codes" title="Codes observed for this flow">${codes}</td>
             <td style="text-align: right;">${count}</td>
             <td>${lastSeen}</td>
-            <td class="actions" title="Actions">
-              <button class="action-details" title="Show flow details">Details</button>
-            </td>
           </tr>
         `;
       })
@@ -495,12 +559,20 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         <div style="padding: 16px;">
           <div class="meta">
             <div><strong>Device</strong>: ${deviceDisplay}</div>
+            <div>
+              <strong>Source</strong>:
+              <select id="trafficSource" title="Select traffic source">
+                <option value="live" ${trafficSource === 'live' ? 'selected' : ''}>live</option>
+                <option value="packet_log" ${trafficSource === 'packet_log' ? 'selected' : ''}>packet_log</option>
+                <option value="ha_log" ${trafficSource === 'ha_log' ? 'selected' : ''}>ha_log</option>
+              </select>
+            </div>
             <div><strong>Total</strong>: ${typeof totalCount === 'number' ? totalCount : '-'}</div>
             <div><strong>Since</strong>: ${startedAt || '-'}</div>
             <div style="margin-left:auto; display: flex; gap: 8px;">
-              <button id="bulkLogs" title="Open Log Explorer for selected flows">Logs</button>
+              <button id="bulkLogs" title="Copy selected flows to clipboard">Copy selection</button>
               <button id="bulkMessages" title="List raw messages for selected flows">Messages</button>
-              <button id="resetStats" title="Reset the traffic counters">Reset</button>
+              <button id="resetStats" title="Reset the traffic counters" ${resetDisabled ? 'disabled' : ''}>Reset</button>
             </div>
           </div>
 
@@ -517,24 +589,13 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
                   <th title="Codes observed for this flow">codes</th>
                   <th class="sortable" data-sort="count_total" title="Sort by total count" style="text-align: right;">count${sortArrow('count_total')}</th>
                   <th class="sortable" data-sort="last_seen" title="Sort by last seen">last_seen${sortArrow('last_seen')}</th>
-                  <th title="Actions">actions</th>
                 </tr>
               </thead>
               <tbody>
-                ${rowsHtml || '<tr><td colspan="8">No data</td></tr>'}
+                ${rowsHtml || '<tr><td colspan="7">No data</td></tr>'}
               </tbody>
             </table>
           </div>
-
-          <dialog id="detailsDialog">
-            <form method="dialog">
-              <h3>Flow details</h3>
-              <pre id="detailsPre"></pre>
-              <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 12px;">
-                <button id="closeDialog" title="Close this dialog">Close</button>
-              </div>
-            </form>
-          </dialog>
 
           <dialog id="logDialog">
             <form method="dialog">
@@ -621,9 +682,16 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       if (dstList.length === 1) filters.dst = dstList[0];
       // If multiple, don't filter by src/dst to show all traffic between selected pairs
 
+      let sources = ['traffic_buffer'];
+      if (this._trafficSource === 'packet_log') {
+        sources = ['packet_log'];
+      } else if (this._trafficSource === 'ha_log') {
+        sources = ['ha_log'];
+      }
+
       this._hass?.callWS({
         type: 'ramses_extras/ramses_debugger/messages/get_messages',
-        sources: ['traffic_buffer', 'packet_log', 'ha_log'],
+        sources,
         limit: 200,
         dedupe: true,
         ...filters,
@@ -689,7 +757,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       return;
     }
     const resetBtn = this.shadowRoot.getElementById('resetStats');
-    const closeBtn = this.shadowRoot.getElementById('closeDialog');
+    const trafficSourceSel = this.shadowRoot.getElementById('trafficSource');
     const closeLogBtn = this.shadowRoot.getElementById('closeLogDialog');
     const closeMessagesBtn = this.shadowRoot.getElementById('closeMessagesDialog');
     const selectAllCb = this.shadowRoot.getElementById('selectAll');
@@ -703,54 +771,11 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         void this._resetStats();
       };
     }
-    if (!this._boundOnActionClick) {
-      this._boundOnActionClick = (ev) => {
-        const target = ev?.target;
-        const btn = target?.closest?.('button');
-        if (!btn) {
-          return;
-        }
-
-        const row = btn.closest?.('tr.flow-row');
-        if (!row) {
-          return;
-        }
-
-        const encoded = row.getAttribute('data-flow');
-        if (!encoded) {
-          return;
-        }
-
-        try {
-          const flow = JSON.parse(decodeURIComponent(encoded));
-          const isDetails = btn.classList.contains('action-details');
-
-          if (isDetails) {
-            const detailsDialog = this.shadowRoot?.getElementById('detailsDialog');
-            const pre = this.shadowRoot?.getElementById('detailsPre');
-            if (pre) {
-              pre.textContent = JSON.stringify(flow, null, 2);
-            }
-            if (detailsDialog && typeof detailsDialog.showModal === 'function') {
-              this._dialogOpen = true;
-              detailsDialog.showModal();
-            }
-          }
-        } catch (error) {
-          logger.warn('Failed to handle row action:', error);
-        }
-      };
-    }
     if (!this._boundOnDialogClose) {
       this._boundOnDialogClose = () => {
         try {
-          const detailsDialog = this.shadowRoot?.getElementById('detailsDialog');
           const logDialog = this.shadowRoot?.getElementById('logDialog');
           const messagesDialog = this.shadowRoot?.getElementById('messagesDialog');
-
-          if (detailsDialog && detailsDialog.open) {
-            detailsDialog.close();
-          }
           if (logDialog && logDialog.open) {
             logDialog.close();
           }
@@ -795,8 +820,25 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     if (resetBtn) {
       resetBtn.onclick = this._boundOnReset;
     }
-    if (closeBtn) {
-      closeBtn.onclick = this._boundOnDialogClose;
+
+    if (!this._boundOnTrafficSourceChange) {
+      this._boundOnTrafficSourceChange = (ev) => {
+        const val = ev?.target?.value;
+        if (typeof val !== 'string' || !val) {
+          return;
+        }
+
+        this._trafficSource = val;
+        this._checkedRows.clear();
+        this._lastError = null;
+        this._stats = null;
+        this.render();
+
+        this._startUpdates();
+      };
+    }
+    if (trafficSourceSel) {
+      trafficSourceSel.onchange = this._boundOnTrafficSourceChange;
     }
     if (closeLogBtn) {
       closeLogBtn.onclick = this._boundOnDialogClose;
@@ -804,19 +846,22 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     if (closeMessagesBtn) {
       closeMessagesBtn.onclick = this._boundOnDialogClose;
     }
-    if (selectAllCb && !this._boundOnSelectAll) {
+    if (!this._boundOnSelectAll) {
       this._boundOnSelectAll = (ev) => {
-        const checked = ev.target.checked;
+        const checked = Boolean(ev?.target?.checked);
+
         this._checkedRows.clear();
         if (checked && this._flows) {
           this._flows.forEach(({ src, dst }) => {
             this._checkedRows.set(`${src}|${dst}`, true);
           });
         }
-        const checkboxes = this.shadowRoot.querySelectorAll('.row-select');
-        checkboxes.forEach((cb) => (cb.checked = checked));
+
+        this.render();
       };
-      selectAllCb.addEventListener('change', this._boundOnSelectAll);
+    }
+    if (selectAllCb) {
+      selectAllCb.onchange = this._boundOnSelectAll;
     }
 
     // Add per-row checkbox listeners
@@ -841,8 +886,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       bulkLogsBtn.onclick = this._boundOnBulkLogs || (() => {
         const selected = this._getSelectedFlows();
         if (selected.length === 0) return;
-        const query = selected.map(({ src, dst }) => src && dst ? `${src} ${dst}` : src || dst).join(' ');
-        this._openLogDialog(query);
+        const lines = selected.map(({ src, dst }) => (src && dst ? `${src} ${dst}` : src || dst)).filter(Boolean);
+        void this._copyToClipboard(lines.join('\n'));
       });
     }
     if (bulkMessagesBtn) {
@@ -857,15 +902,6 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       thead.onclick = this._boundOnSortClick;
     }
 
-    const tbody = this.shadowRoot.querySelector('tbody');
-    if (tbody) {
-      tbody.onclick = this._boundOnActionClick;
-    }
-
-    const detailsDialog = this.shadowRoot.getElementById('detailsDialog');
-    if (detailsDialog) {
-      detailsDialog.onclose = this._boundOnDialogClosed;
-    }
     const logDialog = this.shadowRoot.getElementById('logDialog');
     if (logDialog) {
       logDialog.onclose = this._boundOnDialogClosed;

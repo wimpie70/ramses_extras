@@ -1,4 +1,5 @@
 import logging
+from collections import Counter
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -79,6 +80,9 @@ def _get_traffic_collector(hass: HomeAssistant) -> TrafficCollector | None:
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
         vol.Required("type"): "ramses_extras/ramses_debugger/traffic/get_stats",
+        vol.Optional("traffic_source", default="live"): vol.In(
+            ["live", "packet_log", "ha_log"]
+        ),
         vol.Optional("device_id"): str,
         vol.Optional("src"): str,
         vol.Optional("dst"): str,
@@ -102,16 +106,110 @@ async def ws_traffic_get_stats(
         )
         return
 
-    stats = collector.get_stats(
-        device_id=msg.get("device_id"),
+    traffic_source = msg.get("traffic_source", "live")
+    limit = msg.get("limit", 200)
+
+    if traffic_source == "live":
+        stats = collector.get_stats(
+            device_id=msg.get("device_id"),
+            src=msg.get("src"),
+            dst=msg.get("dst"),
+            code=msg.get("code"),
+            verb=msg.get("verb"),
+            limit=limit,
+        )
+        connection.send_result(msg["id"], stats)
+        return
+
+    if traffic_source == "packet_log":
+        sources = ["packet_log"]
+    elif traffic_source == "ha_log":
+        sources = ["ha_log"]
+    else:
+        sources = ["traffic_buffer"]
+
+    messages = await get_messages_from_sources(
+        hass,
+        sources,
         src=msg.get("src"),
         dst=msg.get("dst"),
-        code=msg.get("code"),
         verb=msg.get("verb"),
-        limit=msg.get("limit", 200),
+        code=msg.get("code"),
+        limit=max(0, min(5000, int(limit))),
+        dedupe=True,
     )
 
-    connection.send_result(msg["id"], stats)
+    by_code: Counter[str] = Counter()
+    by_verb: Counter[str] = Counter()
+    flows: dict[tuple[str, str], dict[str, Any]] = {}
+    started_at: str | None = None
+
+    for m in messages:
+        src = m.get("src")
+        dst = m.get("dst")
+        if not isinstance(src, str) or not isinstance(dst, str):
+            continue
+
+        dtm = m.get("dtm")
+        if isinstance(dtm, str) and dtm:
+            started_at = dtm if started_at is None else min(started_at, dtm)
+
+        code = m.get("code")
+        if isinstance(code, str) and code:
+            by_code[code] += 1
+
+        verb = m.get("verb")
+        if isinstance(verb, str) and verb:
+            by_verb[verb] += 1
+
+        key = (src, dst)
+        flow = flows.get(key)
+        if flow is None:
+            flow = {
+                "src": src,
+                "dst": dst,
+                "count_total": 0,
+                "last_seen": None,
+                "verbs": Counter(),
+                "codes": Counter(),
+            }
+            flows[key] = flow
+
+        flow["count_total"] += 1
+
+        if isinstance(dtm, str) and dtm:
+            last_seen = flow.get("last_seen")
+            if not isinstance(last_seen, str) or dtm > last_seen:
+                flow["last_seen"] = dtm
+
+        if isinstance(verb, str) and verb:
+            flow["verbs"][verb] += 1
+        if isinstance(code, str) and code:
+            flow["codes"][code] += 1
+
+    flow_list = list(flows.values())
+    flow_list.sort(key=lambda f: int(f.get("count_total", 0)), reverse=True)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "started_at": started_at or "",
+            "total_count": sum(by_code.values()) or sum(by_verb.values()) or 0,
+            "by_code": dict(by_code),
+            "by_verb": dict(by_verb),
+            "flows": [
+                {
+                    "src": f.get("src", ""),
+                    "dst": f.get("dst", ""),
+                    "count_total": f.get("count_total", 0),
+                    "last_seen": f.get("last_seen"),
+                    "verbs": dict(f.get("verbs", {})),
+                    "codes": dict(f.get("codes", {})),
+                }
+                for f in flow_list[: max(0, int(limit))]
+            ],
+        },
+    )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

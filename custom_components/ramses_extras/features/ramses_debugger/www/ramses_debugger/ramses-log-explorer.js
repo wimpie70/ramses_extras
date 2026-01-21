@@ -45,7 +45,14 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     let re = null;
     if (q) {
       try {
-        re = new RegExp(this._escapeRegExp(q), 'gi');
+        const terms = q
+          .split(/\r?\n/)
+          .map((t) => String(t).trim())
+          .filter(Boolean);
+        const pattern = terms.length > 1
+          ? terms.map((t) => this._escapeRegExp(t)).join('|')
+          : this._escapeRegExp(q);
+        re = new RegExp(pattern, 'gi');
       } catch {
         re = null;
       }

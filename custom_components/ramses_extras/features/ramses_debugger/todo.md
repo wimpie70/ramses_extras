@@ -335,11 +335,12 @@ Suggested workflow per step:
 ## Ramses debugger improvements
 
 ### Traffic analyzer
-- [ ] what is the source of the traffic, can we choose between a ha logfile, ramses.log or 'live' ?
-- [ ] select all: doesn't toggle all select boxes
-- [ ] details: I don't think this adds value, we can remove this.
-- [ ] logs button: i think it's better to change this into 'copy selection' so the user can paste this in another card.
-- [ ] reset: what does it do ? it takes a while before the results field is cleared.
+- [x] what is the source of the traffic, can we choose between a ha logfile, packet_log or 'live' ?
+- [x] select all: doesn't toggle all select boxes
+- [x] details: I don't think this adds value, we can remove this.
+- [x] logs button: i think it's better to change this into 'copy selection' so the user can paste this in another card.
+- [x] reset: what does it do ? it takes a while before the results field is cleared.
+- [ ] fix: ha_log doesn't give any results yet
 
 ### Messages (from traffic analyzer)
 - [ ] colors on top id's (selection)
@@ -350,6 +351,7 @@ Suggested workflow per step:
 - [ ] make the columns sortable and default on time: earliest first
 
 ### Log explorer
+- [x] allow multi-line paste to act as OR search
 - [ ] auto hor scrollbar on tail result (without wrap we go outside the window)
 - [ ] editable before and after
 - [ ] move search options after tail result
