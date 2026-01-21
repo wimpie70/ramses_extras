@@ -13,7 +13,11 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from .log_backend import get_configured_log_path, get_configured_packet_log_path
+from .log_backend import (
+    get_configured_log_path,
+    get_configured_packet_log_path,
+    tail_text,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -128,6 +132,8 @@ def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
             return None
 
         src, dst = addrs[0], addrs[1]
+        if dst == "--:------" and len(addrs) >= 3:
+            dst = addrs[2]
 
         code_idx: int | None = None
         for idx, token in enumerate(rest):
@@ -418,31 +424,39 @@ class HALogProvider(MessagesProvider):
             return []
 
         try:
-            # Simple file reading approach
-            content = await hass.async_add_executor_job(
-                partial(log_path.read_text, encoding="utf-8")
+            text = await hass.async_add_executor_job(
+                partial(tail_text, log_path, max_lines=200_000, max_chars=10_000_000)
             )
-            lines = content.splitlines()
+            lines = text.splitlines()
 
             messages: list[NormalizedMessage] = []
-            for line in lines:
-                # Look for lines that contain ramses_cc
-                if "ramses_cc" not in line:
+            for line in reversed(lines):
+                if not line:
                     continue
+
+                if "ramses" not in line.lower():
+                    continue
+
+                if "{" not in line and "--:------" not in line and ":" not in line:
+                    continue
+
                 msg = _parse_ha_log_line(line)
-                if msg:
-                    # Apply filters
-                    if src and msg.src != src:
-                        continue
-                    if dst and msg.dst != dst:
-                        continue
-                    if verb and msg.verb != verb:
-                        continue
-                    if code and msg.code != code:
-                        continue
-                    messages.append(msg)
-                    if len(messages) >= limit:
-                        break
+                if msg is None:
+                    continue
+
+                if src and msg.src != src:
+                    continue
+                if dst and msg.dst != dst:
+                    continue
+                if verb and msg.verb != verb:
+                    continue
+                if code and msg.code != code:
+                    continue
+
+                messages.append(msg)
+                if len(messages) >= limit:
+                    break
+
             return messages
         except Exception as exc:
             _LOGGER.warning("HALogProvider error: %s", exc)
@@ -486,7 +500,23 @@ def _parse_ha_log_line(line: str) -> NormalizedMessage | None:
                     data = None
 
         if data is None:
-            return None
+            raise ValueError("No JSON/dict payload found")
+
+        # Sometimes the dict is nested, e.g. {"message": {...}} or {"msg": {...}}
+        if not ("src" in data and "dst" in data):
+            nested = None
+            for key in ("msg", "message", "data"):
+                v = data.get(key)
+                if isinstance(v, dict) and "src" in v and "dst" in v:
+                    nested = v
+                    break
+            if nested is None:
+                for v in data.values():
+                    if isinstance(v, dict) and "src" in v and "dst" in v:
+                        nested = v
+                        break
+            if isinstance(nested, dict):
+                data = nested
 
         src = data.get("src")
         dst = data.get("dst")
@@ -494,6 +524,9 @@ def _parse_ha_log_line(line: str) -> NormalizedMessage | None:
         code = data.get("code")
         payload = data.get("payload")
         packet = data.get("packet")
+
+        # Keep dst as-is for broadcast; the UI can derive any effective target
+        # from the packet/via fields if needed.
 
         # Extract timestamp from the beginning of the line
         dtm_match = re.match(r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[^\s]*)", line)
@@ -512,7 +545,89 @@ def _parse_ha_log_line(line: str) -> NormalizedMessage | None:
             parse_warnings=[],
         )
     except Exception:
+        pass
+
+    msg = _parse_ha_log_line_as_packet(line)
+    if msg is not None:
+        return msg
+
+    return None
+
+
+def _parse_ha_log_line_as_packet(line: str) -> NormalizedMessage | None:
+    raw_tokens = line.split()
+    tokens = [t.strip('[](),;"') for t in raw_tokens]
+    if not tokens:
         return None
+
+    # Try to derive a timestamp from the start of the line
+    dtm = ""
+    if len(tokens) >= 2 and re.match(r"^\d{4}-\d{2}-\d{2}$", tokens[0]):
+        if re.match(r"^\d{2}:\d{2}:\d{2}(?:\.\d+)?$", tokens[1]):
+            dtm = f"{tokens[0]} {tokens[1]}"
+    if not dtm and re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", tokens[0]):
+        dtm = tokens[0]
+
+    verbs = {"RQ", "RP", "I", "W"}
+    addr_re = re.compile(r"^(--:------|\d{2}:\d{6})$")
+    code_re = re.compile(r"^[0-9A-F]{4}$")
+    len_re = re.compile(r"^\d{3}$")
+
+    verb_idx: int | None = None
+    verb: str | None = None
+    for i, tok in enumerate(tokens):
+        if tok in verbs:
+            verb_idx = i
+            verb = tok
+            break
+    if verb_idx is None or verb is None:
+        return None
+
+    rest = tokens[verb_idx + 1 :]
+
+    addrs = [t for t in rest if addr_re.match(t)]
+    if len(addrs) < 2:
+        return None
+    src = addrs[0]
+    dst_raw = addrs[1]
+    dst = dst_raw
+
+    code: str | None = None
+    code_idx: int | None = None
+    for idx, tok in enumerate(rest):
+        if code_re.match(tok):
+            code = tok
+            code_idx = idx
+            break
+    if code is None or code_idx is None:
+        return None
+
+    length: str | None = None
+    payload_hex = ""
+    for idx in range(code_idx + 1, len(rest)):
+        tok = rest[idx]
+        if len_re.match(tok):
+            length = tok
+            payload_hex = " ".join(rest[idx + 1 :])
+            break
+    if length is None:
+        return None
+
+    payload = f"{length} {payload_hex}".strip()
+    packet = " ".join(tokens[verb_idx:])
+
+    return NormalizedMessage(
+        dtm=dtm,
+        src=src,
+        dst=dst,
+        verb=verb,
+        code=code,
+        payload=payload,
+        packet=packet,
+        source="ha_log",
+        raw_line=line,
+        parse_warnings=[],
+    )
 
 
 async def get_messages_from_sources(

@@ -2,7 +2,7 @@ export function logExplorerCardStyle({ wrapCss }) {
   const gridCols = '1fr';
 
   return `
-    :host { display: block; width: 100%; min-width: 1200px; max-width: none; }
+    :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
     ha-card { width: 100%; }
 
     .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -14,6 +14,7 @@ export function logExplorerCardStyle({ wrapCss }) {
     .error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
 
     .grid { display: grid; grid-template-columns: ${gridCols}; gap: 12px; margin-top: 12px; }
+    .grid > div { min-width: 0; }
 
     pre {
       margin: 0;
@@ -21,6 +22,7 @@ export function logExplorerCardStyle({ wrapCss }) {
       border: 1px solid var(--divider-color);
       border-radius: 6px;
       overflow: auto;
+      max-width: 100%;
       white-space: ${wrapCss};
       max-height: 320px;
     }

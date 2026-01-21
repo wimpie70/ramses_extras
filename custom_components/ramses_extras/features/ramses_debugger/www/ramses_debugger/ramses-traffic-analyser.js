@@ -574,6 +574,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
               </select>
             </div>
             <div><strong>Total</strong>: ${typeof totalCount === 'number' ? totalCount : '-'}</div>
+            <div><strong>Flows</strong>: ${flows.length}</div>
             <div><strong>Since</strong>: ${startedAt || '-'}</div>
             <div style="margin-left:auto; display: flex; gap: 8px;">
               <button id="bulkLogs" title="Copy selected flows to clipboard">Copy selection</button>
@@ -679,9 +680,14 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       const filters = {};
       const srcList = [];
       const dstList = [];
+      const selectedPairs = new Set();
       for (const { src, dst } of selected) {
         if (src) srcList.push(src);
         if (dst) dstList.push(dst);
+        if (src && dst) {
+          selectedPairs.add(`${src}|${dst}`);
+          selectedPairs.add(`${dst}|${src}`);
+        }
       }
       // For now, only support single src/dst filters; extend backend later
       if (srcList.length === 1) filters.src = srcList[0];
@@ -705,11 +711,85 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       });
 
       const renderMessages = (messages) => {
+        const parsePacketAddrs = (pkt) => {
+          if (typeof pkt !== 'string' || !pkt) return null;
+          const parts = pkt.split(' ');
+          const addrs = [];
+          for (const p of parts) {
+            if (/^\d{2}:\d{6}$|^--:------$/.test(p)) {
+              addrs.push(p);
+              if (addrs.length >= 3) break;
+            }
+          }
+          if (addrs.length < 2) return null;
+          return { src: addrs[0], dstRaw: addrs[1], via: addrs[2] || '' };
+        };
+
+        const normalizeMessage = (m) => {
+          const info = parsePacketAddrs(m?.packet);
+          const dstRaw = info?.dstRaw;
+          const via = info?.via;
+
+          const dstEffective = (dstRaw && dstRaw !== '--:------')
+            ? dstRaw
+            : (via && via !== '--:------')
+              ? via
+              : (m?.dst || '');
+
+          const dstDisplay = dstRaw || m?.dst || '';
+          const viaDisplay = (dstRaw === '--:------' && via && via !== '--:------')
+            ? via
+            : (via && via !== '--:------')
+              ? via
+              : '';
+
+          let payloadVal = this._messagesDecode && m?.decoded?.payload
+            ? m.decoded.payload
+            : m?.payload;
+          if (payloadVal == null) payloadVal = '';
+          const payloadStr = (typeof payloadVal === 'string')
+            ? payloadVal
+            : JSON.stringify(payloadVal);
+
+          return {
+            ...m,
+            __dstRaw: dstRaw || '',
+            __via: via || '',
+            __dstDisplay: String(dstDisplay),
+            __dstEffective: String(dstEffective),
+            __viaDisplay: String(viaDisplay),
+            __payloadStr: String(payloadStr),
+          };
+        };
+
+        let filtered = Array.isArray(messages) ? messages.map(normalizeMessage) : [];
+        if (selectedPairs.size) {
+          filtered = filtered.filter((m) => {
+            const src = m?.src;
+            const dst = m?.__dstEffective;
+            if (typeof src !== 'string' || typeof dst !== 'string') return false;
+
+            if (selectedPairs.has(`${src}|${dst}`)) return true;
+            if (selectedPairs.has(`${src}|--:------`)) {
+              return m?.__dstRaw === '--:------' || m?.dst === '--:------';
+            }
+            return false;
+          });
+        }
+
         const sortKey = this._messagesSortKey || 'dtm';
         const mul = this._messagesSortDir === 'desc' ? -1 : 1;
-        const sorted = [...(Array.isArray(messages) ? messages : [])].sort((a, b) => {
-          const av = a?.[sortKey];
-          const bv = b?.[sortKey];
+
+        const sortValue = (m, key) => {
+          if (key === 'dst') return m?.__dstDisplay ?? '';
+          if (key === 'broadcast') return m?.__viaDisplay ?? '';
+          if (key === 'payload') return m?.__payloadStr ?? '';
+          return m?.[key];
+        };
+
+        const sorted = [...filtered].sort((a, b) => {
+          const av = sortValue(a, sortKey);
+          const bv = sortValue(b, sortKey);
           const as = String(av ?? '');
           const bs = String(bv ?? '');
           return as.localeCompare(bs) * mul;
@@ -748,26 +828,26 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
                   <th class="col-code sortable" data-sort="code">Code${sortArrow('code')}</th>
                   <th class="col-src sortable" data-sort="src">Src${sortArrow('src')}</th>
                   <th class="col-dst sortable" data-sort="dst">Dst${sortArrow('dst')}</th>
-                  <th class="col-bcast">Broadcast</th>
-                  <th class="col-payload">Payload</th>
+                  <th class="col-bcast sortable" data-sort="broadcast">Broadcast${sortArrow('broadcast')}</th>
+                  <th class="col-payload sortable" data-sort="payload">Payload${sortArrow('payload')}</th>
                 </tr>
               </thead>
               <tbody>
                 ${sorted.map((msg) => {
-                  const payload = this._messagesDecode && msg.decoded?.payload
-                    ? JSON.stringify(msg.decoded.payload)
-                    : (msg.payload || '');
-                  const isBroadcast = msg.dst === '--:------';
+                  const payload = msg.__payloadStr || '';
+                  const dstEffective = msg.__dstEffective || '';
+                  const dstDisplay = msg.__dstDisplay || '';
+                  const viaDisplay = msg.__viaDisplay || '';
                   const srcBg = msg.src ? this._deviceBg(msg.src) : '';
-                  const dstBg = msg.dst ? this._deviceBg(msg.dst) : '';
+                  const dstBg = dstEffective ? this._deviceBg(dstEffective) : '';
                   return `
                   <tr>
                     <td class="col-time">${msg.dtm || ''}</td>
                     <td class="col-verb">${msg.verb || ''}</td>
                     <td class="col-code">${msg.code || ''}</td>
                     <td class="col-src" style="--dev-bg: ${srcBg};">${msg.src || ''}</td>
-                    <td class="col-dst" style="--dev-bg: ${dstBg};">${msg.dst || ''}</td>
-                    <td class="col-bcast">${isBroadcast ? 'Y' : ''}</td>
+                    <td class="col-dst" style="--dev-bg: ${dstBg};">${dstDisplay}</td>
+                    <td class="col-bcast">${viaDisplay}</td>
                     <td class="col-payload">${payload}</td>
                   </tr>
                 `;

@@ -108,6 +108,7 @@ async def ws_traffic_get_stats(
 
     traffic_source = msg.get("traffic_source", "live")
     limit = msg.get("limit", 200)
+    device_id = msg.get("device_id")
 
     if traffic_source == "live":
         stats = collector.get_stats(
@@ -128,6 +129,9 @@ async def ws_traffic_get_stats(
     else:
         sources = ["traffic_buffer"]
 
+    # For log sources, `limit` is the number of flows to return, not how many
+    # messages we should scan to build the stats.
+    message_limit = 20_000
     messages = await get_messages_from_sources(
         hass,
         sources,
@@ -135,7 +139,7 @@ async def ws_traffic_get_stats(
         dst=msg.get("dst"),
         verb=msg.get("verb"),
         code=msg.get("code"),
-        limit=max(0, min(5000, int(limit))),
+        limit=message_limit,
         dedupe=True,
     )
 
@@ -143,12 +147,18 @@ async def ws_traffic_get_stats(
     by_verb: Counter[str] = Counter()
     flows: dict[tuple[str, str], dict[str, Any]] = {}
     started_at: str | None = None
+    total_count = 0
 
     for m in messages:
         src = m.get("src")
         dst = m.get("dst")
         if not isinstance(src, str) or not isinstance(dst, str):
             continue
+
+        if isinstance(device_id, str) and device_id and device_id not in (src, dst):
+            continue
+
+        total_count += 1
 
         dtm = m.get("dtm")
         if isinstance(dtm, str) and dtm:
@@ -194,7 +204,7 @@ async def ws_traffic_get_stats(
         msg["id"],
         {
             "started_at": started_at or "",
-            "total_count": sum(by_code.values()) or sum(by_verb.values()) or 0,
+            "total_count": total_count,
             "by_code": dict(by_code),
             "by_verb": dict(by_verb),
             "flows": [
