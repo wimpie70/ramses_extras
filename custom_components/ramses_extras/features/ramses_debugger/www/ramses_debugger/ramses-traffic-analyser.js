@@ -806,13 +806,29 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             .messages-table td.col-payload { white-space: nowrap; font-family: monospace; }
             .messages-table th.sortable { cursor: pointer; }
             .messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
+            .messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+            .messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+            .messages-chip .dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, transparent); }
           </style>
           <div class="messages-header">
             <strong>Messages (${sorted.length})</strong>
-            ${srcList.length ? ` from <code>${srcList.join(', ')}</code>` : ''}
-            ${dstList.length ? ` to <code>${dstList.join(', ')}</code>` : ''}
             ${sorted.length && sorted[0].source ? ` (Source: <code>${sorted[0].source}</code>)` : ''}
           </div>
+          ${selected.length ? `
+            <div class="messages-selected">
+              ${selected.map(({ src, dst }) => {
+                const srcBg = src ? this._deviceBg(src) : '';
+                const dstBg = dst ? this._deviceBg(dst) : '';
+                return `
+                  <span class="messages-chip">
+                    <span class="dev" style="--dev-bg: ${srcBg};">${src || ''}</span>
+                    →
+                    <span class="dev" style="--dev-bg: ${dstBg};">${dst || ''}</span>
+                  </span>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
           <div class="messages-controls">
             <label>
               <input type="checkbox" id="messagesDecode" ${this._messagesDecode ? 'checked' : ''}>
@@ -880,7 +896,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         if (!this._boundOnMessagesDecodeToggle) {
           this._boundOnMessagesDecodeToggle = (ev) => {
             this._messagesDecode = Boolean(ev?.target?.checked);
-            void fetchAndRender();
+            renderMessages(messages);
           };
         }
         if (decodeCb) {

@@ -334,6 +334,11 @@ Suggested workflow per step:
 
 ## Ramses debugger improvements
 
+### All cards:
+- [ ] selective re-render...when something changes we loose focus/position on where we were and scroll back to the top. This is for all cards/popups
+- [ ] we cannot select text from the results, we need this for copy/paste. Is there a z-index problem ?
+
+
 ### Traffic analyzer
 - [x] what is the source of the traffic, can we choose between a ha logfile, packet_log or 'live' ?
 - [x] select all: doesn't toggle all select boxes
@@ -343,22 +348,26 @@ Suggested workflow per step:
 - [x] fix: ha_log doesn't give any results yet, add some ha logs so you can see what goes on
 
 ### Messages (from traffic analyzer)
-- [ ] colors on top id's (selection)
+- [x] colors on top id's (selection)
+- [ ] on top id's: add selection boxes so we can hide id-pairs from the result
 - [ ] list all selected messages: what is the source ? in traffic analyzer i see a total of 4 msgs, but in 'Messages' I see a lot more. This should be the same source
- - [x] improve multi-select filtering (only show messages for selected flows, both directions)
-- [x] add toggle for parsed values
+- [x] improve multi-select filtering (only show messages for selected flows, both directions)
+- [ ] add toggle for parsed values, and make it switch between payload and parsed values
 - [x] add auto hor scrollbar on Payload
 - [x] fix dest/src/broadcast, still shows 2026-01-21T08:30:14.883783 	I 	1298 	37:126776 	--:------ 	Y 	003 0001D7
 - [x] make ALL the columns sortable and default on time: earliest first
 
 ### Log explorer
 - [x] allow multi-line paste to act as OR search
-- [ ] auto hor scrollbar on tail result (without wrap we go outside the window)
-- [ ] editable before and after
-- [ ] move search options after tail result
+- [ ] auto hor scrollbar on tail result (wrap or no wrap)
+- [x] editable before and after
+- [ ] move 'Search scans the full file....' behind the tail (with the search section)
 - [ ] horizontal line between search blocks (instead of newline)
-- [ ] bg colors on id's
-- [ ] font color: log source between [] : green
+- [x] bg colors on id's
+- [ ] font color: log source between [] : green, but only on the source, not other lists:
+- [x] what's the diff between refresh and Tail. Seems they both refresh. If so, we can remove refresh button
+- [ ] add 50 lines up and 50 lines down buttons, so we can scroll thru the whole file without loading the whole log file. Now we make the block (200 lines) bigger or smaller. I want to move focus: EOF -200 till EOF -> EOF-250 till EOF-50, etc...
+- [ ] on Zoom we want the same bg colors / fontcolors
 
 ### Packet explorer
 - [ ] the details button is out of the window scope.

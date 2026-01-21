@@ -23,6 +23,9 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._wrap = true;
     this._loading = false;
     this._lastError = null;
+    this._before = null;
+    this._after = null;
+    this._tailLines = null;
   }
 
   _escapeHtml(value) {
@@ -36,6 +39,48 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
 
   _escapeRegExp(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  _deviceSlug(deviceId) {
+    const s = String(deviceId || '');
+    const parts = s.split(':');
+    if (parts.length !== 2) {
+      return s;
+    }
+    return parts[1];
+  }
+
+  _deviceBg(deviceId) {
+    const s = String(deviceId || '');
+    const typeHex = s.split(':')[0] || '';
+    const typeInt = Number.parseInt(typeHex, 16);
+    if (!Number.isFinite(typeInt)) {
+      return 'transparent';
+    }
+
+    if (typeInt === 0x18) {
+      return 'transparent';
+    }
+
+    const slugHex = this._deviceSlug(s);
+    const slugInt = Number.parseInt(slugHex, 16);
+    const slugVar = Number.isFinite(slugInt) ? slugInt : 0;
+
+    const hue = (typeInt * 137) % 360;
+
+    const satMin = 15;
+    const satMax = 85;
+    const saturation = satMin + ((slugVar % 256) / 255) * (satMax - satMin);
+
+    const lightMin = 20;
+    const lightMax = 75;
+    const lightness = lightMin + ((slugVar % 256) / 255) * (lightMax - lightMin);
+
+    const alphaMin = 0.35;
+    const alphaMax = 0.85;
+    const alpha = alphaMin + ((slugVar % 256) / 255) * (alphaMax - alphaMin);
+
+    return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
   }
 
   _renderHighlightedLog(text, query) {
@@ -64,6 +109,12 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         if (re) {
           html = html.replace(re, (m) => `<span class="hl-match">${this._escapeHtml(m)}</span>`);
         }
+
+        html = html.replace(/\[[a-z0-9_.:-]+\]/i, (m) => `<span class="hl-source">${m}</span>`);
+        html = html.replace(/\b\d{2}:\d{6}\b/g, (m) => {
+          const bg = this._deviceBg(m);
+          return `<span class="hl-id" style="--dev-bg: ${bg};">${m}</span>`;
+        });
 
         const level = String(line).match(/\b(error|warning|critical)\b/i);
         const lvl = typeof level?.[1] === 'string' ? level[1].toUpperCase() : '';
@@ -150,6 +201,13 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     if (typeof prefill === 'string') {
       this._searchQuery = prefill;
     }
+
+    if (Number.isFinite(this._config?.before)) {
+      this._before = Number(this._config?.before);
+    }
+    if (Number.isFinite(this._config?.after)) {
+      this._after = Number(this._config?.after);
+    }
   }
 
   _onConnected() {
@@ -199,10 +257,13 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
 
     try {
+      const maxLines = Number.isFinite(this._tailLines)
+        ? this._tailLines
+        : Number(this._config?.max_tail_lines || 200);
       const res = await callWebSocket(this._hass, {
         type: 'ramses_extras/ramses_debugger/log/get_tail',
         file_id: this._selectedFileId,
-        max_lines: Number(this._config?.max_tail_lines || 200),
+        max_lines: maxLines,
         max_chars: Number(this._config?.max_tail_chars || 200000),
       });
 
@@ -234,12 +295,14 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this.render();
 
     try {
+      const before = Number.isFinite(this._before) ? this._before : Number(this._config?.before || 3);
+      const after = Number.isFinite(this._after) ? this._after : Number(this._config?.after || 3);
       const res = await callWebSocket(this._hass, {
         type: 'ramses_extras/ramses_debugger/log/search',
         file_id: this._selectedFileId,
         query,
-        before: Number(this._config?.before || 3),
-        after: Number(this._config?.after || 3),
+        before,
+        after,
         max_matches: Number(this._config?.max_matches || 200),
         max_chars: Number(this._config?.max_chars || 400000),
         case_sensitive: Boolean(this._config?.case_sensitive),
@@ -321,6 +384,20 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     bind('refreshTail', 'click', () => {
       void this._refreshTail().then(() => this.render());
     });
+    bind('tailUp', 'click', () => {
+      const baseLines = Number.isFinite(this._tailLines)
+        ? this._tailLines
+        : Number(this._config?.max_tail_lines || 200);
+      this._tailLines = Math.min(10_000, baseLines + 50);
+      void this._refreshTail().then(() => this.render());
+    });
+    bind('tailDown', 'click', () => {
+      const baseLines = Number.isFinite(this._tailLines)
+        ? this._tailLines
+        : Number(this._config?.max_tail_lines || 200);
+      this._tailLines = Math.max(50, baseLines - 50);
+      void this._refreshTail().then(() => this.render());
+    });
     bind('runSearch', 'click', () => {
       void this._runSearch();
     });
@@ -328,6 +405,14 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     bind('searchQuery', 'input', (ev) => {
       const val = ev?.target?.value;
       this._searchQuery = typeof val === 'string' ? val : '';
+    });
+    bind('beforeInput', 'input', (ev) => {
+      const val = Number(ev?.target?.value);
+      this._before = Number.isFinite(val) ? val : null;
+    });
+    bind('afterInput', 'input', (ev) => {
+      const val = Number(ev?.target?.value);
+      this._after = Number.isFinite(val) ? val : null;
     });
     bind('wrapToggle', 'change', (ev) => {
       this._wrap = Boolean(ev?.target?.checked);
@@ -382,8 +467,18 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     const matches = this._searchResult?.matches;
     const truncated = Boolean(this._searchResult?.truncated);
 
+    const beforeVal = Number.isFinite(this._before)
+      ? this._before
+      : Number(this._config?.before || 3);
+    const afterVal = Number.isFinite(this._after)
+      ? this._after
+      : Number(this._config?.after || 3);
+
     const tailHtml = this._renderHighlightedLog(this._tailText, this._searchQuery);
     const resultHtml = this._renderHighlightedLog(resultPlain, this._searchQuery);
+    const tailLines = Number.isFinite(this._tailLines)
+      ? this._tailLines
+      : Number(this._config?.max_tail_lines || 200);
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -395,7 +490,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             <label>${this.t('card.log.files') || 'files'}:</label>
             <select id="fileSelect" title="Select which log file to view">${fileOptions}</select>
             <button id="refreshFiles" title="Reload the list of available log files">
-              ${this.t('card.log.actions.refresh') || 'Refresh'}
+              ${this.t('card.log.actions.refresh') || 'Refresh files'}
             </button>
             <button id="refreshTail" title="Fetch the latest tail from the selected file">
               ${this.t('card.log.actions.tail') || 'Tail'}
@@ -417,6 +512,26 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             ${this._basePath ? `${this.t('card.log.base') || 'base'}: ${this._basePath}` : ''}
           </div>
 
+          ${this._loading ? `<div class="muted" style="margin-top: 8px;">${this.t('card.log.loading') || 'Loading...'}</div>` : ''}
+          ${errorText ? `<div class="error">${errorText}</div>` : ''}
+
+          <div class="muted" style="margin-top: 6px;">
+            Search scans the full file; the tail is shown separately.
+          </div>
+
+          <div class="section" style="margin-top: 12px;">
+            <div class="muted" style="display:flex; align-items:center; justify-content: space-between; gap: 12px;">
+              <span>${this.t('card.log.tail.title') || 'tail'} (${tailLines} lines)</span>
+              <span style="display:flex; gap: 6px;">
+                <button id="tailUp" title="Show 50 more lines">+50 lines up</button>
+                <button id="tailDown" title="Show 50 fewer lines">-50 lines down</button>
+              </span>
+            </div>
+            <pre>${tailHtml || ''}</pre>
+          </div>
+
+          <hr class="separator" />
+
           <div class="row" style="margin-top: 12px;">
             <label>${this.t('card.log.search.query') || 'query'}:</label>
             <input
@@ -428,19 +543,19 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             />
             <label>${this.t('card.log.search.before') || 'before'}:</label>
             <input
+              id="beforeInput"
               class="small"
               type="number"
-              value="${Number(this._config?.before || 3)}"
-              title="Context lines before each match (configured in YAML)"
-              disabled
+              value="${beforeVal}"
+              title="Context lines before each match"
             />
             <label>${this.t('card.log.search.after') || 'after'}:</label>
             <input
+              id="afterInput"
               class="small"
               type="number"
-              value="${Number(this._config?.after || 3)}"
-              title="Context lines after each match (configured in YAML)"
-              disabled
+              value="${afterVal}"
+              title="Context lines after each match"
             />
             <button id="runSearch" title="Run search on the selected file">
               ${this.t('card.log.actions.search') || 'Search'}
@@ -456,26 +571,13 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             </button>
           </div>
 
-          ${this._loading ? `<div class="muted" style="margin-top: 8px;">${this.t('card.log.loading') || 'Loading...'}</div>` : ''}
-          ${errorText ? `<div class="error">${errorText}</div>` : ''}
-
-          <div class="muted" style="margin-top: 6px;">
-            Search scans the full file; the tail is shown separately.
-          </div>
-
-          <div class="grid">
-            <div>
-              <div class="muted">${this.t('card.log.tail.title') || 'tail'}</div>
-              <pre>${tailHtml || ''}</pre>
+          <div class="section" style="margin-top: 10px;">
+            <div class="muted">
+              ${this.t('card.log.search.title') || 'search'}
+              ${typeof matches === 'number' ? ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}` : ''}
+              ${truncated ? ` • ${this.t('card.log.search.truncated') || 'truncated'}` : ''}
             </div>
-            <div>
-              <div class="muted">
-                ${this.t('card.log.search.title') || 'search'}
-                ${typeof matches === 'number' ? ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}` : ''}
-                ${truncated ? ` • ${this.t('card.log.search.truncated') || 'truncated'}` : ''}
-              </div>
-              <pre>${resultHtml || ''}</pre>
-            </div>
+            <pre>${resultHtml || ''}</pre>
           </div>
 
           <dialog id="zoomDialog">
