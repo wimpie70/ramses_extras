@@ -680,13 +680,16 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       const filters = {};
       const srcList = [];
       const dstList = [];
-      const selectedPairs = new Set();
+      const pairGroups = [];
       for (const { src, dst } of selected) {
         if (src) srcList.push(src);
         if (dst) dstList.push(dst);
         if (src && dst) {
-          selectedPairs.add(`${src}|${dst}`);
-          selectedPairs.add(`${dst}|${src}`);
+          pairGroups.push({
+            src,
+            dst,
+            key: `${src}|${dst}`,
+          });
         }
       }
       // For now, only support single src/dst filters; extend backend later
@@ -710,6 +713,13 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         ...filters,
       });
 
+      const activePairs = new Set(pairGroups.map((pair) => pair.key));
+      let activeVerbs = new Set();
+      let activeCodes = new Set();
+      let lastVerbsKey = '';
+      let lastCodesKey = '';
+      let verbFilterTouched = false;
+      let codeFilterTouched = false;
       const renderMessages = (messages) => {
         const parsePacketAddrs = (pkt) => {
           if (typeof pkt !== 'string' || !pkt) return null;
@@ -723,6 +733,22 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
           }
           if (addrs.length < 2) return null;
           return { src: addrs[0], dstRaw: addrs[1], via: addrs[2] || '' };
+        };
+
+        const extractPayloadFromPacket = (pkt) => {
+          if (typeof pkt !== 'string' || !pkt) return '';
+          const tokens = pkt.split(' ').filter(Boolean);
+          let lenIdx = -1;
+          for (let i = 0; i < tokens.length; i += 1) {
+            if (/^\d{3}$/.test(tokens[i])) {
+              lenIdx = i;
+              break;
+            }
+          }
+          if (lenIdx === -1) return '';
+          const len = tokens[lenIdx];
+          const payload = tokens.slice(lenIdx + 1).join(' ');
+          return payload ? `${len} ${payload}` : len;
         };
 
         const normalizeMessage = (m) => {
@@ -743,9 +769,14 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
               ? via
               : '';
 
+          const payloadRaw = extractPayloadFromPacket(m?.packet);
           let payloadVal = this._messagesDecode && m?.decoded?.payload
             ? m.decoded.payload
-            : m?.payload;
+            : (!this._messagesDecode && payloadRaw
+              ? payloadRaw
+              : (!this._messagesDecode && typeof m?.payload === 'string'
+                ? m.payload
+                : (!this._messagesDecode ? m?.packet : m?.payload)));
           if (payloadVal == null) payloadVal = '';
           const payloadStr = (typeof payloadVal === 'string')
             ? payloadVal
@@ -763,18 +794,66 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         };
 
         let filtered = Array.isArray(messages) ? messages.map(normalizeMessage) : [];
-        if (selectedPairs.size) {
+        if (activePairs.size) {
           filtered = filtered.filter((m) => {
             const src = m?.src;
             const dst = m?.__dstEffective;
             if (typeof src !== 'string' || typeof dst !== 'string') return false;
 
-            if (selectedPairs.has(`${src}|${dst}`)) return true;
-            if (selectedPairs.has(`${src}|--:------`)) {
-              return m?.__dstRaw === '--:------' || m?.dst === '--:------';
+            for (const pair of pairGroups) {
+              if (!activePairs.has(pair.key)) {
+                continue;
+              }
+              if (pair.dst === '--:------') {
+                const srcMatch = src === pair.src;
+                if (srcMatch && (m?.__dstRaw === '--:------' || m?.dst === '--:------')) {
+                  return true;
+                }
+                continue;
+              }
+              if (`${src}|${dst}` === pair.key) {
+                return true;
+              }
             }
             return false;
           });
+        }
+
+        const baseFiltered = filtered;
+        const availableVerbs = new Set(
+          baseFiltered
+            .map((m) => (typeof m?.verb === 'string' ? m.verb : ''))
+            .filter((v) => v)
+        );
+        const verbsKey = [...availableVerbs].sort().join('|');
+        if (verbsKey !== lastVerbsKey) {
+          if (verbFilterTouched) {
+            activeVerbs = new Set([...activeVerbs].filter((v) => availableVerbs.has(v)));
+          } else {
+            activeVerbs = new Set(availableVerbs);
+          }
+          lastVerbsKey = verbsKey;
+        }
+        if (verbFilterTouched) {
+          filtered = filtered.filter((m) => activeVerbs.has(String(m?.verb || '')));
+        }
+
+        const availableCodes = new Set(
+          filtered
+            .map((m) => (typeof m?.code === 'string' ? m.code : ''))
+            .filter((c) => c)
+        );
+        const codesKey = [...availableCodes].sort().join('|');
+        if (codesKey !== lastCodesKey) {
+          if (codeFilterTouched) {
+            activeCodes = new Set([...activeCodes].filter((c) => availableCodes.has(c)));
+          } else {
+            activeCodes = new Set(availableCodes);
+          }
+          lastCodesKey = codesKey;
+        }
+        if (codeFilterTouched) {
+          filtered = filtered.filter((m) => activeCodes.has(String(m?.code || '')));
         }
 
         const sortKey = this._messagesSortKey || 'dtm';
@@ -809,6 +888,10 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             .messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
             .messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
             .messages-chip .dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, transparent); }
+            .messages-verbs { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+            .messages-verb-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+            .messages-codes { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+            .messages-code-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
           </style>
           <div class="messages-header">
             <strong>Messages (${sorted.length})</strong>
@@ -816,14 +899,43 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
           </div>
           ${selected.length ? `
             <div class="messages-selected">
-              ${selected.map(({ src, dst }) => {
+              ${pairGroups.map(({ src, dst, key }) => {
+                const pairKey = `${src}|${dst}`;
+                const checked = activePairs.has(key);
                 const srcBg = src ? this._deviceBg(src) : '';
                 const dstBg = dst ? this._deviceBg(dst) : '';
                 return `
                   <span class="messages-chip">
+                    <input type="checkbox" class="pair-toggle" data-pair="${pairKey}" ${checked ? 'checked' : ''} />
                     <span class="dev" style="--dev-bg: ${srcBg};">${src || ''}</span>
                     →
                     <span class="dev" style="--dev-bg: ${dstBg};">${dst || ''}</span>
+                  </span>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
+          ${availableCodes.size ? `
+            <div class="messages-codes">
+              ${[...availableCodes].sort().map((code) => {
+                const checked = activeCodes.has(code);
+                return `
+                  <span class="messages-code-chip">
+                    <input type="checkbox" class="code-toggle" data-code="${code}" ${checked ? 'checked' : ''} />
+                    <span>${code}</span>
+                  </span>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
+          ${availableVerbs.size ? `
+            <div class="messages-verbs">
+              ${[...availableVerbs].sort().map((verb) => {
+                const checked = activeVerbs.has(verb);
+                return `
+                  <span class="messages-verb-chip">
+                    <input type="checkbox" class="verb-toggle" data-verb="${verb}" ${checked ? 'checked' : ''} />
+                    <span>${verb}</span>
                   </span>
                 `;
               }).join('')}
@@ -896,12 +1008,63 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         if (!this._boundOnMessagesDecodeToggle) {
           this._boundOnMessagesDecodeToggle = (ev) => {
             this._messagesDecode = Boolean(ev?.target?.checked);
+            const needsDecode = this._messagesDecode
+              && Array.isArray(messages)
+              && messages.some((m) => !m?.decoded?.payload);
+            if (needsDecode) {
+              void fetchAndRender();
+              return;
+            }
             renderMessages(messages);
           };
         }
         if (decodeCb) {
           decodeCb.onchange = this._boundOnMessagesDecodeToggle;
         }
+
+        const toggles = el.querySelectorAll('.pair-toggle');
+        toggles.forEach((toggle) => {
+          toggle.onchange = (ev) => {
+            const key = ev?.target?.getAttribute?.('data-pair');
+            if (!key) return;
+            if (ev?.target?.checked) {
+              activePairs.add(key);
+            } else {
+              activePairs.delete(key);
+            }
+            renderMessages(messages);
+          };
+        });
+
+        const verbToggles = el.querySelectorAll('.verb-toggle');
+        verbToggles.forEach((toggle) => {
+          toggle.onchange = (ev) => {
+            const verb = ev?.target?.getAttribute?.('data-verb');
+            if (!verb) return;
+            verbFilterTouched = true;
+            if (ev?.target?.checked) {
+              activeVerbs.add(verb);
+            } else {
+              activeVerbs.delete(verb);
+            }
+            renderMessages(messages);
+          };
+        });
+
+        const codeToggles = el.querySelectorAll('.code-toggle');
+        codeToggles.forEach((toggle) => {
+          toggle.onchange = (ev) => {
+            const code = ev?.target?.getAttribute?.('data-code');
+            if (!code) return;
+            codeFilterTouched = true;
+            if (ev?.target?.checked) {
+              activeCodes.add(code);
+            } else {
+              activeCodes.delete(code);
+            }
+            renderMessages(messages);
+          };
+        });
       };
 
       const fetchAndRender = async () => {

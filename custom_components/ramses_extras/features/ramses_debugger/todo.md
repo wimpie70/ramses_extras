@@ -335,7 +335,7 @@ Suggested workflow per step:
 ## Ramses debugger improvements
 
 ### All cards:
-- [ ] selective re-render...when something changes we loose focus/position on where we were and scroll back to the top. This is for all cards/popups
+- [ ] selective re-render...when something changes we loose focus/position on where we were and scroll back to the top. This is for all cards/popups.
 - [ ] we cannot select text from the results, we need this for copy/paste. Is there a z-index problem ?
 
 
@@ -349,10 +349,11 @@ Suggested workflow per step:
 
 ### Messages (from traffic analyzer)
 - [x] colors on top id's (selection)
-- [ ] on top id's: add selection boxes so we can hide id-pairs from the result
-- [ ] list all selected messages: what is the source ? in traffic analyzer i see a total of 4 msgs, but in 'Messages' I see a lot more. This should be the same source
+- [x] on top id's: add selection boxes so we can hide id-pairs from the result (only select/deselect 1 way)
+- [x] on top: add selection boxes for the verbs as we did for the id-pairs so we can hide/show them from the result
+- [x] on top next to verbs: add selection boxes for the codes as we did for the id-pairs so we can hide/show them from the result
 - [x] improve multi-select filtering (only show messages for selected flows, both directions)
-- [ ] add toggle for parsed values, and make it switch between payload and parsed values
+- [x] add toggle for parsed values, and make it switch between payload and parsed values (toggle is there, but not working yet)
 - [x] add auto hor scrollbar on Payload
 - [x] fix dest/src/broadcast, still shows 2026-01-21T08:30:14.883783 	I 	1298 	37:126776 	--:------ 	Y 	003 0001D7
 - [x] make ALL the columns sortable and default on time: earliest first
@@ -361,8 +362,8 @@ Suggested workflow per step:
 - [x] allow multi-line paste to act as OR search
 - [ ] auto hor scrollbar on tail result (wrap or no wrap)
 - [x] editable before and after
-- [ ] move 'Search scans the full file....' behind the tail (with the search section)
-- [ ] horizontal line between search blocks (instead of newline)
+- [x] move 'Search scans the full file....' behind the tail (with the search section)
+- [-] horizontal line between search blocks (instead of newline)
 - [x] bg colors on id's
 - [ ] font color: log source between [] : green, but only on the source, not other lists:
 - [x] what's the diff between refresh and Tail. Seems they both refresh. If so, we can remove refresh button

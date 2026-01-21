@@ -415,6 +415,7 @@ async def ws_packet_log_list_files(
         vol.Optional("since"): str,
         vol.Optional("until"): str,
         vol.Optional("limit", default=200): vol.All(int, vol.Range(min=0, max=5000)),
+        vol.Optional("decode", default=False): bool,
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -458,11 +459,20 @@ async def ws_packet_log_get_messages(
         limit=msg.get("limit", 200),
     )
 
+    message_dicts = [m.__dict__ for m in messages]
+    if msg.get("decode"):
+        from .messages_provider import decode_message_with_ramses_rf
+
+        for message in message_dicts:
+            decoded = decode_message_with_ramses_rf(message)
+            if decoded is not None:
+                message["decoded"] = decoded
+
     connection.send_result(
         msg["id"],
         {
             "file_id": path.name,
-            "messages": [m.__dict__ for m in messages],
+            "messages": message_dicts,
         },
     )
 
@@ -474,6 +484,10 @@ async def ws_packet_log_get_messages(
         vol.Optional("max_lines", default=200): vol.All(
             int,
             vol.Range(min=0, max=10_000),
+        ),
+        vol.Optional("offset_lines", default=0): vol.All(
+            int,
+            vol.Range(min=0, max=100_000),
         ),
         vol.Optional("max_chars", default=200_000): vol.All(
             int,
@@ -503,10 +517,26 @@ async def ws_log_get_tail(
         return
 
     max_lines = msg.get("max_lines", 200)
+    offset_lines = msg.get("offset_lines", 0)
     max_chars = msg.get("max_chars", 200_000)
-    text = await hass.async_add_executor_job(
-        partial(tail_text, path, max_lines=max_lines, max_chars=max_chars)
-    )
+    if offset_lines:
+        text = await hass.async_add_executor_job(
+            partial(
+                tail_text,
+                path,
+                max_lines=max_lines + offset_lines,
+                max_chars=max_chars,
+            )
+        )
+        lines = text.splitlines(keepends=True)
+        if offset_lines >= len(lines):
+            text = ""
+        else:
+            text = "".join(lines[:-offset_lines])
+    else:
+        text = await hass.async_add_executor_job(
+            partial(tail_text, path, max_lines=max_lines, max_chars=max_chars)
+        )
     connection.send_result(
         msg["id"],
         {

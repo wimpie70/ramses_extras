@@ -20,6 +20,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
 
     this._messages = [];
     this._wrap = false;
+    this._decode = false;
 
     this._loading = false;
     this._lastError = null;
@@ -126,6 +127,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
       since: getVal('sinceFilter') || undefined,
       until: getVal('untilFilter') || undefined,
       limit: Number(getVal('limitFilter') || 200),
+      decode: Boolean(this._decode),
     };
 
     this._loading = true;
@@ -158,7 +160,10 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     lines.push(`dst: ${msg?.dst || ''}`);
     lines.push(`verb: ${msg?.verb || ''}`);
     lines.push(`code: ${msg?.code || ''}`);
-    lines.push(`payload: ${msg?.payload || ''}`);
+    const payload = this._decode && msg?.decoded?.payload != null
+      ? msg.decoded.payload
+      : msg?.payload || '';
+    lines.push(`payload: ${payload}`);
     lines.push(`packet: ${msg?.packet || ''}`);
     lines.push(`raw_line: ${msg?.raw_line || ''}`);
     if (Array.isArray(msg?.parse_warnings) && msg.parse_warnings.length) {
@@ -208,6 +213,11 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
       this.render();
     });
 
+    bind('decodeToggle', 'change', (ev) => {
+      this._decode = Boolean(ev?.target?.checked);
+      void this._loadMessages();
+    });
+
     bind('closeDetails', 'click', () => {
       const dialog = this.shadowRoot?.getElementById('detailsDialog');
       if (dialog?.open) {
@@ -247,7 +257,9 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
         const src = msg?.src || '';
         const dst = msg?.dst || '';
         const isBroadcast = dst && String(dst).includes('--:------');
-        const payload = msg?.payload || '';
+        const payload = this._decode && msg?.decoded?.payload != null
+          ? msg.decoded.payload
+          : (msg?.payload || '');
 
         return `
           <tr>
@@ -307,6 +319,10 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
             <label style="display:flex; gap:6px; align-items:center;">
               <input id="wrapToggle" type="checkbox" ${this._wrap ? 'checked' : ''} />
               Wrap
+            </label>
+            <label style="display:flex; gap:6px; align-items:center;">
+              <input id="decodeToggle" type="checkbox" ${this._decode ? 'checked' : ''} />
+              Parsed values
             </label>
           </div>
 

@@ -26,6 +26,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._before = null;
     this._after = null;
     this._tailLines = null;
+    this._tailOffset = 0;
   }
 
   _escapeHtml(value) {
@@ -264,6 +265,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         type: 'ramses_extras/ramses_debugger/log/get_tail',
         file_id: this._selectedFileId,
         max_lines: maxLines,
+        offset_lines: this._tailOffset,
         max_chars: Number(this._config?.max_tail_chars || 200000),
       });
 
@@ -345,7 +347,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
   }
 
-  _openDialog(title, text) {
+  _openDialog(title, text, { html = false } = {}) {
     const dialog = this.shadowRoot?.getElementById('zoomDialog');
     const dialogTitle = this.shadowRoot?.getElementById('zoomTitle');
     const pre = this.shadowRoot?.getElementById('zoomPre');
@@ -354,7 +356,11 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
 
     dialogTitle.textContent = title;
-    pre.textContent = text || '';
+    if (html) {
+      pre.innerHTML = text || '';
+    } else {
+      pre.textContent = text || '';
+    }
 
     try {
       if (typeof dialog.showModal === 'function') {
@@ -385,17 +391,11 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       void this._refreshTail().then(() => this.render());
     });
     bind('tailUp', 'click', () => {
-      const baseLines = Number.isFinite(this._tailLines)
-        ? this._tailLines
-        : Number(this._config?.max_tail_lines || 200);
-      this._tailLines = Math.min(10_000, baseLines + 50);
+      this._tailOffset = Math.min(100_000, this._tailOffset + 50);
       void this._refreshTail().then(() => this.render());
     });
     bind('tailDown', 'click', () => {
-      const baseLines = Number.isFinite(this._tailLines)
-        ? this._tailLines
-        : Number(this._config?.max_tail_lines || 200);
-      this._tailLines = Math.max(50, baseLines - 50);
+      this._tailOffset = Math.max(0, this._tailOffset - 50);
       void this._refreshTail().then(() => this.render());
     });
     bind('runSearch', 'click', () => {
@@ -422,6 +422,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     bind('fileSelect', 'change', (ev) => {
       const val = ev?.target?.value;
       this._selectedFileId = typeof val === 'string' && val ? val : null;
+      this._tailOffset = 0;
       void this._refreshTail().then(() => this.render());
     });
 
@@ -432,10 +433,10 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       void this._copyToClipboard(this._searchResult?.markdown || '');
     });
     bind('zoomTail', 'click', () => {
-      this._openDialog('Tail', this._tailText);
+      this._openDialog('Tail', this._renderHighlightedLog(this._tailText, this._searchQuery), { html: true });
     });
     bind('zoomResult', 'click', () => {
-      this._openDialog('Search result', this._searchResult?.plain || '');
+      this._openDialog('Search result', this._renderHighlightedLog(this._searchResult?.plain || '', this._searchQuery), { html: true });
     });
     bind('closeDialog', 'click', () => {
       const dialog = this.shadowRoot?.getElementById('zoomDialog');
@@ -479,6 +480,10 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     const tailLines = Number.isFinite(this._tailLines)
       ? this._tailLines
       : Number(this._config?.max_tail_lines || 200);
+    const tailOffset = this._tailOffset || 0;
+    const tailWindowLabel = tailOffset
+      ? `EOF-${tailLines + tailOffset} … EOF-${tailOffset}`
+      : `EOF-${tailLines} … EOF`;
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -515,22 +520,22 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
           ${this._loading ? `<div class="muted" style="margin-top: 8px;">${this.t('card.log.loading') || 'Loading...'}</div>` : ''}
           ${errorText ? `<div class="error">${errorText}</div>` : ''}
 
-          <div class="muted" style="margin-top: 6px;">
-            Search scans the full file; the tail is shown separately.
-          </div>
-
           <div class="section" style="margin-top: 12px;">
             <div class="muted" style="display:flex; align-items:center; justify-content: space-between; gap: 12px;">
-              <span>${this.t('card.log.tail.title') || 'tail'} (${tailLines} lines)</span>
+              <span>${this.t('card.log.tail.title') || 'tail'} (${tailWindowLabel})</span>
               <span style="display:flex; gap: 6px;">
-                <button id="tailUp" title="Show 50 more lines">+50 lines up</button>
-                <button id="tailDown" title="Show 50 fewer lines">-50 lines down</button>
+                <button id="tailUp" title="Move window 50 lines earlier">+50 lines up</button>
+                <button id="tailDown" title="Move window 50 lines later">-50 lines down</button>
               </span>
             </div>
             <pre>${tailHtml || ''}</pre>
           </div>
 
-          <hr class="separator" />
+          <div class="separator"></div>
+
+          <div class="muted" style="margin-top: 6px;">
+            Search scans the full file; the tail is shown separately.
+          </div>
 
           <div class="row" style="margin-top: 12px;">
             <label>${this.t('card.log.search.query') || 'query'}:</label>

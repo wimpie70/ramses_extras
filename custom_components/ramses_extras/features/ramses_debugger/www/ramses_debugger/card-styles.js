@@ -28,7 +28,7 @@ export function logExplorerCardStyle({ wrapCss }) {
     }
 
     dialog { width: 98vw; max-width: 98vw; height: 90vh; max-height: 90vh; resize: both; overflow: auto; }
-    dialog pre { max-height: 70vh; }
+    dialog pre { max-height: 70vh; white-space: pre-wrap; }
 
     button { cursor: pointer; }
 
@@ -38,6 +38,14 @@ export function logExplorerCardStyle({ wrapCss }) {
     .hl-error { color: var(--error-color); }
     .hl-source { color: #1f7a1f; font-weight: 600; }
     .hl-id { background: var(--dev-bg, rgba(33, 150, 243, 0.18)); border-radius: 4px; padding: 0 2px; }
+    .separator {
+      height: 2px;
+      width: 100%;
+      background: var(--divider-color, #9e9e9e);
+      opacity: 0.7;
+      border-radius: 1px;
+      margin: 12px 0;
+    }
   `;
 }
 
