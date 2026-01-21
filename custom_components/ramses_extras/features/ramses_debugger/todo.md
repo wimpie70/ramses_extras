@@ -340,15 +340,15 @@ Suggested workflow per step:
 - [x] details: I don't think this adds value, we can remove this.
 - [x] logs button: i think it's better to change this into 'copy selection' so the user can paste this in another card.
 - [x] reset: what does it do ? it takes a while before the results field is cleared.
-- [ ] fix: ha_log doesn't give any results yet
+- [x] fix: ha_log doesn't give any results yet
 
 ### Messages (from traffic analyzer)
 - [ ] colors on top id's (selection)
 - [ ] list all selected messages: what is the source ? in traffic analyzer i see a total of 4 msgs, but in 'Messages' I see a lot more. This should be the same source
-- [ ] add toggle for parsed values
-- [ ] add auto hor scrollbar on Payload
-- [ ] fix dest/src/broadcast
-- [ ] make the columns sortable and default on time: earliest first
+- [x] add toggle for parsed values
+- [x] add auto hor scrollbar on Payload
+- [ ] fix dest/src/broadcast, still shows 2026-01-21T08:30:14.883783 	I 	1298 	37:126776 	--:------ 	Y 	003 0001D7
+- [x] make the columns sortable and default on time: earliest first
 
 ### Log explorer
 - [x] allow multi-line paste to act as OR search

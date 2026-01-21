@@ -46,6 +46,12 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
     this._trafficSource = 'live';
     this._boundOnTrafficSourceChange = null;
+
+    this._messagesSortKey = 'dtm';
+    this._messagesSortDir = 'asc';
+    this._messagesDecode = false;
+    this._boundOnMessagesSortClick = null;
+    this._boundOnMessagesDecodeToggle = null;
   }
 
   getCardSize() {
@@ -689,62 +695,129 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         sources = ['ha_log'];
       }
 
-      this._hass?.callWS({
+      const doFetch = () => this._hass?.callWS({
         type: 'ramses_extras/ramses_debugger/messages/get_messages',
         sources,
         limit: 200,
         dedupe: true,
+        decode: Boolean(this._messagesDecode),
         ...filters,
-      })
-        .then((response) => {
-          const messages = response?.messages || [];
-          el.innerHTML = `
-            <div class="messages-header">
-              <strong>Messages (${messages.length})</strong>
-              ${srcList.length ? ` from <code>${srcList.join(', ')}</code>` : ''}
-              ${dstList.length ? ` to <code>${dstList.join(', ')}</code>` : ''}
-              ${messages.length && messages[0].source ? ` (Source: <code>${messages[0].source}</code>)` : ''}
-            </div>
-            <div class="messages-table-wrapper">
-              <table class="messages-table">
-                <thead>
-                  <tr>
-                    <th class="col-time">Time</th>
-                    <th class="col-verb">Verb</th>
-                    <th class="col-code">Code</th>
-                    <th class="col-src">Src</th>
-                    <th class="col-dst">Dst</th>
-                    <th class="col-bcast">Broadcast</th>
-                    <th class="col-payload">Payload</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${messages.map((msg) => {
-                    const parts = (msg.packet || '').split(' ');
-                    const payload = parts.length >= 6 ? `${parts[parts.length - 2]} ${parts[parts.length - 1]}` : '';
-                    const isBroadcast = msg.dst && msg.dst.includes('--:------');
-                    const srcBg = msg.src ? this._deviceBg(msg.src) : '';
-                    const dstBg = msg.dst ? this._deviceBg(msg.dst) : '';
-                    return `
-                    <tr>
-                      <td class="col-time">${msg.dtm || ''}</td>
-                      <td class="col-verb">${msg.verb || ''}</td>
-                      <td class="col-code">${msg.code || ''}</td>
-                      <td class="col-src" style="--dev-bg: ${srcBg};">${msg.src || ''}</td>
-                      <td class="col-dst" style="--dev-bg: ${dstBg};">${msg.dst || ''}</td>
-                      <td class="col-bcast">${isBroadcast ? 'Y' : ''}</td>
-                      <td class="col-payload">${payload}</td>
-                    </tr>
-                  `;
-                  }).join('')}
-                </tbody>
-              </table>
-            </div>
-          `;
-        })
-        .catch((err) => {
-          el.innerHTML = `<div class="error">Failed to load messages: ${err.message || err}</div>`;
+      });
+
+      const renderMessages = (messages) => {
+        const sortKey = this._messagesSortKey || 'dtm';
+        const mul = this._messagesSortDir === 'desc' ? -1 : 1;
+        const sorted = [...(Array.isArray(messages) ? messages : [])].sort((a, b) => {
+          const av = a?.[sortKey];
+          const bv = b?.[sortKey];
+          const as = String(av ?? '');
+          const bs = String(bv ?? '');
+          return as.localeCompare(bs) * mul;
         });
+
+        const sortArrow = (key) => {
+          if (this._messagesSortKey !== key) return '';
+          return this._messagesSortDir === 'asc' ? ' ▲' : ' ▼';
+        };
+
+        el.innerHTML = `
+          <style>
+            .messages-table-wrapper { overflow-x: auto; }
+            .messages-table td.col-payload { white-space: nowrap; font-family: monospace; }
+            .messages-table th.sortable { cursor: pointer; }
+            .messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
+          </style>
+          <div class="messages-header">
+            <strong>Messages (${sorted.length})</strong>
+            ${srcList.length ? ` from <code>${srcList.join(', ')}</code>` : ''}
+            ${dstList.length ? ` to <code>${dstList.join(', ')}</code>` : ''}
+            ${sorted.length && sorted[0].source ? ` (Source: <code>${sorted[0].source}</code>)` : ''}
+          </div>
+          <div class="messages-controls">
+            <label>
+              <input type="checkbox" id="messagesDecode" ${this._messagesDecode ? 'checked' : ''}>
+              Parsed values
+            </label>
+          </div>
+          <div class="messages-table-wrapper">
+            <table class="messages-table">
+              <thead>
+                <tr>
+                  <th class="col-time sortable" data-sort="dtm">Time${sortArrow('dtm')}</th>
+                  <th class="col-verb sortable" data-sort="verb">Verb${sortArrow('verb')}</th>
+                  <th class="col-code sortable" data-sort="code">Code${sortArrow('code')}</th>
+                  <th class="col-src sortable" data-sort="src">Src${sortArrow('src')}</th>
+                  <th class="col-dst sortable" data-sort="dst">Dst${sortArrow('dst')}</th>
+                  <th class="col-bcast">Broadcast</th>
+                  <th class="col-payload">Payload</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sorted.map((msg) => {
+                  const payload = this._messagesDecode && msg.decoded?.payload
+                    ? JSON.stringify(msg.decoded.payload)
+                    : (msg.payload || '');
+                  const isBroadcast = msg.dst === '--:------';
+                  const srcBg = msg.src ? this._deviceBg(msg.src) : '';
+                  const dstBg = msg.dst ? this._deviceBg(msg.dst) : '';
+                  return `
+                  <tr>
+                    <td class="col-time">${msg.dtm || ''}</td>
+                    <td class="col-verb">${msg.verb || ''}</td>
+                    <td class="col-code">${msg.code || ''}</td>
+                    <td class="col-src" style="--dev-bg: ${srcBg};">${msg.src || ''}</td>
+                    <td class="col-dst" style="--dev-bg: ${dstBg};">${msg.dst || ''}</td>
+                    <td class="col-bcast">${isBroadcast ? 'Y' : ''}</td>
+                    <td class="col-payload">${payload}</td>
+                  </tr>
+                `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        const thead = el.querySelector('thead');
+        if (!this._boundOnMessagesSortClick) {
+          this._boundOnMessagesSortClick = (ev) => {
+            const th = ev.target?.closest?.('th');
+            const key = th?.getAttribute?.('data-sort');
+            if (!key) return;
+            if (this._messagesSortKey === key) {
+              this._messagesSortDir = this._messagesSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+              this._messagesSortKey = key;
+              this._messagesSortDir = 'asc';
+            }
+            renderMessages(messages);
+          };
+        }
+        if (thead) {
+          thead.onclick = this._boundOnMessagesSortClick;
+        }
+
+        const decodeCb = el.querySelector('#messagesDecode');
+        if (!this._boundOnMessagesDecodeToggle) {
+          this._boundOnMessagesDecodeToggle = (ev) => {
+            this._messagesDecode = Boolean(ev?.target?.checked);
+            void fetchAndRender();
+          };
+        }
+        if (decodeCb) {
+          decodeCb.onchange = this._boundOnMessagesDecodeToggle;
+        }
+      };
+
+      const fetchAndRender = async () => {
+        try {
+          const response = await doFetch();
+          renderMessages(response?.messages || []);
+        } catch (err) {
+          el.innerHTML = `<div class="error">Failed to load messages: ${err.message || err}</div>`;
+        }
+      };
+
+      void fetchAndRender();
     }
     if (messagesDialog && typeof messagesDialog.showModal === 'function') {
       this._dialogOpen = true;

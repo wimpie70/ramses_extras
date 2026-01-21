@@ -455,16 +455,39 @@ def _parse_ha_log_line(line: str) -> NormalizedMessage | None:
     # 2026-01-20 09:58:48 DEBUG (MainThread) [custom_components.ramses_cc] ...
     # {"src": "...", "dst": "...", "verb": "...", ...}
     # We'll try to extract JSON from the line and parse it.
-    import json
-    import re
-
-    # Look for JSON-like structure in the line
-    json_match = re.search(r"\{.*\}", line)
-    if not json_match:
-        return None
-
     try:
-        data = json.loads(json_match.group())
+        import ast
+        import json
+        import re
+
+        data: dict[str, Any] | None = None
+
+        decoder = json.JSONDecoder()
+        for idx, ch in enumerate(line):
+            if ch != "{":
+                continue
+            try:
+                obj, _end = decoder.raw_decode(line[idx:])
+            except Exception:
+                continue
+            if isinstance(obj, dict):
+                data = obj
+                break
+
+        if data is None:
+            start = line.find("{")
+            end = line.rfind("}")
+            if start >= 0 and end > start:
+                try:
+                    obj = ast.literal_eval(line[start : end + 1])
+                    if isinstance(obj, dict):
+                        data = obj
+                except Exception:
+                    data = None
+
+        if data is None:
+            return None
+
         src = data.get("src")
         dst = data.get("dst")
         verb = data.get("verb")
