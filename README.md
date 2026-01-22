@@ -174,6 +174,19 @@ features/automations and UI:
 
 ### **Configuration**
 
+Ramses RF - bound REM
+
+When using FAN related features, make sure Ramses RF has the 'bound' trait defined for your FAN.
+example:
+
+```
+"37:168270":
+  class: REM
+"32:153289":
+  bound: "37:168270"
+  class: FAN
+```
+
 1. Go to **Settings → Devices & Services**
 2. Click **"Add Integration"**
 3. Search for **"Ramses Extras"**
