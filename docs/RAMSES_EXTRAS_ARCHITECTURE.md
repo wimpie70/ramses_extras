@@ -24,9 +24,9 @@
   - [5.1. 🏗️ Framework Architecture Overview](#51-️-framework-architecture-overview)
   - [5.2. 🔧 Setup Framework](#52--setup-framework)
   - [5.3. 📚 Base Classes](#53--base-classes)
-  - [5.3. 🧩 Helper Modules](#53--helper-modules)
-  - [5.4. 🛠️ Framework Services](#54-️-framework-services)
-  - [5.5. 📖 Framework Usage Examples](#55--framework-usage-examples)
+  - [5.4. 🧩 Helper Modules](#54--helper-modules)
+  - [5.5. 🛠️ Framework Services](#55-️-framework-services)
+  - [5.6. 📖 Framework Usage Examples](#56--framework-usage-examples)
 - [6. Device Feature Management](#6-device-feature-management)
   - [6.1. Device Filtering](#61-device-filtering)
   - [6.2. DeviceFeatureMatrix](#62-devicefeaturematrix)
@@ -1063,7 +1063,7 @@ The framework provides reusable base classes that all features can inherit from:
   - WebSocket + message-bus convenience helpers, entity ID resolution via `getRequiredEntities()` and caching
   - Translation + throttling utilities so feature cards only focus on UI specifics
 
-## 5.3. 🧩 Helper Modules
+## 5.4. 🧩 Helper Modules
 
 ### Configuration Management (`framework/helpers/config/`)
 - **Purpose**: Reusable configuration management patterns
@@ -1121,7 +1121,7 @@ Note: Framework exists but limited implementation
   - Standard platform integration patterns
   - Integration with Home Assistant platform system
 
-## 5.4. 🛠️ Framework Services
+## 5.5. 🛠️ Framework Services
 
 ### Path Management
 - **Python Paths**: `framework/helpers/paths.py` - Shared path constants
@@ -1133,7 +1133,7 @@ Note: Framework exists but limited implementation
 - **Message Listeners**: Real-time ramses_cc message handling
 - **Event System**: Framework-level event handling for inter-feature communication
 
-## 5.5. 📖 Framework Usage Examples
+## 5.6. 📖 Framework Usage Examples
 
 ### Configuration Management Usage
 ```python
