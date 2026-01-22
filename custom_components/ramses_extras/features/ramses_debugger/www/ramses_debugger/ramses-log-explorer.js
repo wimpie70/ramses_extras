@@ -104,8 +104,29 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       }
     }
 
+    const isLogHeader = (line) => /^\d{4}-\d{2}-\d{2}[ T]/.test(String(line || ''));
+    const isTracebackHeader = (line) => String(line || '').startsWith('Traceback (most recent call last):');
+    const isBlockingCallWarning = (line) => String(line || '').includes('Detected blocking call');
+
+    const tbFlags = new Array(lines.length).fill(false);
+    let tbActive = false;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (isTracebackHeader(line)) {
+        tbActive = true;
+      } else if (tbActive && isLogHeader(line)) {
+        tbActive = false;
+      }
+      tbFlags[i] = tbActive;
+    }
+    for (let i = 0; i < lines.length; i += 1) {
+      if (isTracebackHeader(lines[i]) && i > 0 && isBlockingCallWarning(lines[i - 1])) {
+        tbFlags[i - 1] = true;
+      }
+    }
+
     return lines
-      .map((line) => {
+      .map((line, idx) => {
         let html = this._escapeHtml(line);
         if (re) {
           html = html.replace(re, (m) => `<span class="hl-match">${this._escapeHtml(m)}</span>`);
@@ -117,13 +138,27 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
           return `<span class="hl-id" style="--dev-bg: ${bg};">${m}</span>`;
         });
 
+        const classes = [];
         const level = String(line).match(/\b(error|warning|critical)\b/i);
         const lvl = typeof level?.[1] === 'string' ? level[1].toUpperCase() : '';
         if (lvl === 'ERROR' || lvl === 'CRITICAL') {
-          return `<span class="hl-line hl-error">${html}</span>`;
+          classes.push('hl-error');
+        } else if (lvl === 'WARNING') {
+          classes.push('hl-warning');
         }
-        if (lvl === 'WARNING') {
-          return `<span class="hl-line hl-warning">${html}</span>`;
+
+        if (tbFlags[idx]) {
+          classes.push('hl-traceback');
+          if (isTracebackHeader(line)) {
+            classes.push('hl-traceback-header');
+          }
+          if (String(line || '').startsWith('  File ')) {
+            classes.push('hl-traceback-file');
+          }
+        }
+
+        if (classes.length) {
+          return `<span class="hl-line ${classes.join(' ')}">${html}</span>`;
         }
         return html;
       })

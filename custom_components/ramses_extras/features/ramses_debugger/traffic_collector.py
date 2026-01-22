@@ -119,7 +119,9 @@ class TrafficCollector:
         return self._buffer_provider
 
     def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
-        data = event.data or {}
+        raw = event.data or {}
+        data = dict(raw)
+        data["time_fired"] = event.time_fired.isoformat(timespec="microseconds")
 
         src = data.get("src")
         dst = data.get("dst")
@@ -134,9 +136,11 @@ class TrafficCollector:
         if not isinstance(code, str):
             code = None
 
-        dtm = data.get("dtm")
+        dtm = data.get("time_fired")
         if not isinstance(dtm, str):
-            dtm = None
+            dtm = data.get("dtm")
+            if not isinstance(dtm, str):
+                dtm = None
 
         # Ingest into buffer provider for message queries
         self._buffer_provider.ingest_event(data)

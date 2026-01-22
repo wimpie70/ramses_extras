@@ -145,7 +145,7 @@ async def load_feature_definitions_and_platforms(
         prefer_hass_data=False,
     )
 
-    extras_registry.load_all_features(enabled_feature_names)
+    await asyncio.to_thread(extras_registry.load_all_features, enabled_feature_names)
 
     await import_feature_platform_modules(enabled_feature_names)
 

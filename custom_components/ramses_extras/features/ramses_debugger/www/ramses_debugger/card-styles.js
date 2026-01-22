@@ -38,6 +38,9 @@ export function logExplorerCardStyle({ wrapCss }) {
     .hl-error { color: var(--error-color); }
     .hl-source { color: #1f7a1f; font-weight: 600; }
     .hl-id { background: var(--dev-bg, rgba(33, 150, 243, 0.18)); border-radius: 4px; padding: 0 2px; }
+    .hl-traceback { background: rgba(244, 67, 54, 0.08); }
+    .hl-traceback-header { font-weight: 700; }
+    .hl-traceback-file { text-decoration: underline; text-decoration-style: dotted; }
     .separator {
       height: 2px;
       width: 100%;

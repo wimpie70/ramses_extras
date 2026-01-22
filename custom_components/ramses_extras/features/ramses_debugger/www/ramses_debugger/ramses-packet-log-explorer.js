@@ -2,6 +2,8 @@ import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocket } from '../../helpers/card-services.js';
 
+import './ramses-messages-viewer.js';
+
 class RamsesPacketLogExplorerCard extends RamsesBaseCard {
   constructor() {
     super();
@@ -10,17 +12,10 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     this._basePath = null;
     this._selectedFileId = null;
 
-    this._src = '';
-    this._dst = '';
-    this._verb = '';
-    this._code = '';
-    this._since = '';
-    this._until = '';
     this._limit = 200;
 
-    this._messages = [];
-    this._wrap = false;
-    this._decode = false;
+    this._loadMode = 'manual';
+    this._autoLoadedFileId = null;
 
     this._loading = false;
     this._lastError = null;
@@ -107,80 +102,6 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     }
   }
 
-  async _loadMessages() {
-    if (!this._hass || !this.shadowRoot || !this._selectedFileId) {
-      return;
-    }
-
-    const getVal = (id) => {
-      const el = this.shadowRoot.getElementById(id);
-      return el && typeof el.value === 'string' ? el.value.trim() : '';
-    };
-
-    const payload = {
-      type: 'ramses_extras/ramses_debugger/packet_log/get_messages',
-      file_id: this._selectedFileId,
-      src: getVal('srcFilter') || undefined,
-      dst: getVal('dstFilter') || undefined,
-      verb: getVal('verbFilter') || undefined,
-      code: getVal('codeFilter') || undefined,
-      since: getVal('sinceFilter') || undefined,
-      until: getVal('untilFilter') || undefined,
-      limit: Number(getVal('limitFilter') || 200),
-      decode: Boolean(this._decode),
-    };
-
-    this._loading = true;
-    this._lastError = null;
-    this.render();
-
-    try {
-      const res = await callWebSocket(this._hass, payload);
-      const messages = Array.isArray(res?.messages) ? res.messages : [];
-      this._messages = messages;
-    } catch (error) {
-      this._lastError = error;
-      this._messages = [];
-    } finally {
-      this._loading = false;
-      this.render();
-    }
-  }
-
-  _openDetailsDialog(msg) {
-    const dialog = this.shadowRoot?.getElementById('detailsDialog');
-    const pre = this.shadowRoot?.getElementById('detailsPre');
-    if (!dialog || !pre) {
-      return;
-    }
-
-    const lines = [];
-    lines.push(`dtm: ${msg?.dtm || ''}`);
-    lines.push(`src: ${msg?.src || ''}`);
-    lines.push(`dst: ${msg?.dst || ''}`);
-    lines.push(`verb: ${msg?.verb || ''}`);
-    lines.push(`code: ${msg?.code || ''}`);
-    const payload = this._decode && msg?.decoded?.payload != null
-      ? msg.decoded.payload
-      : msg?.payload || '';
-    lines.push(`payload: ${payload}`);
-    lines.push(`packet: ${msg?.packet || ''}`);
-    lines.push(`raw_line: ${msg?.raw_line || ''}`);
-    if (Array.isArray(msg?.parse_warnings) && msg.parse_warnings.length) {
-      lines.push(`parse_warnings: ${msg.parse_warnings.join(', ')}`);
-    }
-
-    pre.textContent = lines.join('\n');
-
-    try {
-      if (typeof dialog.showModal === 'function') {
-        dialog.showModal();
-      }
-    } catch (error) {
-      logger.warn('Failed to open dialog:', error);
-    }
-  }
-
   _attachEventListeners() {
     if (!this.shadowRoot) {
       return;
@@ -201,38 +122,50 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     bind('fileSelect', 'change', (ev) => {
       const val = ev?.target?.value;
       this._selectedFileId = typeof val === 'string' && val ? val : null;
+      this._autoLoadedFileId = null;
       this.render();
-    });
 
-    bind('loadMessages', 'click', () => {
-      void this._loadMessages();
-    });
-
-    bind('wrapToggle', 'change', (ev) => {
-      this._wrap = Boolean(ev?.target?.checked);
-      this.render();
-    });
-
-    bind('decodeToggle', 'change', (ev) => {
-      this._decode = Boolean(ev?.target?.checked);
-      void this._loadMessages();
-    });
-
-    bind('closeDetails', 'click', () => {
-      const dialog = this.shadowRoot?.getElementById('detailsDialog');
-      if (dialog?.open) {
-        dialog.close();
+      if (this._loadMode === 'auto') {
+        const viewer = this.shadowRoot.getElementById('messagesViewer');
+        if (viewer && typeof viewer.refresh === 'function') {
+          void viewer.refresh();
+        }
       }
     });
 
-    this.shadowRoot.querySelectorAll('[data-action="details"]').forEach((btn) => {
-      btn.addEventListener('click', (ev) => {
-        const idx = Number(ev?.currentTarget?.getAttribute('data-idx'));
-        const msg = this._messages?.[idx];
-        if (msg) {
-          this._openDetailsDialog(msg);
+    bind('loadMessages', 'click', () => {
+      const viewer = this.shadowRoot.getElementById('messagesViewer');
+      if (viewer && typeof viewer.refresh === 'function') {
+        void viewer.refresh();
+      }
+    });
+
+    bind('loadMode', 'change', (ev) => {
+      const val = ev?.target?.value;
+      this._loadMode = typeof val === 'string' && val ? val : 'manual';
+      this._autoLoadedFileId = null;
+      this.render();
+
+      if (this._loadMode === 'auto') {
+        const viewer = this.shadowRoot.getElementById('messagesViewer');
+        if (viewer && typeof viewer.refresh === 'function') {
+          void viewer.refresh();
         }
-      });
+      }
+    });
+
+    bind('limitFilter', 'change', (ev) => {
+      const val = Number(ev?.target?.value || 200);
+      this._limit = Number.isFinite(val) ? val : 200;
+      const viewer = this.shadowRoot.getElementById('messagesViewer');
+      if (viewer && typeof viewer.setConfig === 'function') {
+        viewer.setConfig({ limit: this._limit });
+      }
+      if (this._loadMode === 'auto') {
+        if (viewer && typeof viewer.refresh === 'function') {
+          void viewer.refresh();
+        }
+      }
     });
   }
 
@@ -250,31 +183,8 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
       .join('');
 
     const errorText = this._lastError ? String(this._lastError?.message || this._lastError) : '';
-
-    const wrapCss = this._wrap ? 'pre-wrap' : 'pre';
-    const msgRows = (Array.isArray(this._messages) ? this._messages : [])
-      .map((msg, idx) => {
-        const src = msg?.src || '';
-        const dst = msg?.dst || '';
-        const isBroadcast = dst && String(dst).includes('--:------');
-        const payload = this._decode && msg?.decoded?.payload != null
-          ? msg.decoded.payload
-          : (msg?.payload || '');
-
-        return `
-          <tr>
-            <td class="col-time">${msg?.dtm || ''}</td>
-            <td class="col-verb">${msg?.verb || ''}</td>
-            <td class="col-code">${msg?.code || ''}</td>
-            <td class="col-src">${src}</td>
-            <td class="col-dst">${dst}</td>
-            <td class="col-bcast">${isBroadcast ? 'Y' : ''}</td>
-            <td class="col-payload" style="white-space:${wrapCss};">${payload}</td>
-            <td class="col-actions"><button data-action="details" data-idx="${idx}">Details</button></td>
-          </tr>
-        `;
-      })
-      .join('');
+    const mode = String(this._loadMode || 'manual');
+    const showLoadBtn = mode === 'manual';
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -289,23 +199,6 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
         .muted { font-size: 12px; opacity: 0.8; }
         .error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
 
-        .table-wrap { width: 100%; max-height: 520px; overflow: auto; margin-top: 12px; border: 1px solid var(--divider-color); border-radius: 6px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 4px 6px; border: 1px solid var(--divider-color); vertical-align: top; }
-        th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; text-align: left; }
-        td { font-family: monospace; font-size: 12px; }
-
-        .col-time { width: 160px; font-size: 11px; }
-        .col-verb { width: 40px; text-align: center; }
-        .col-code { width: 60px; text-align: center; }
-        .col-src { width: 110px; }
-        .col-dst { width: 110px; }
-        .col-bcast { width: 60px; text-align: center; }
-        .col-actions { width: 90px; white-space: nowrap; }
-        .col-payload { min-width: 400px; overflow-x: auto; }
-
-        dialog { width: 98vw; max-width: 98vw; height: 90vh; max-height: 90vh; resize: both; overflow: auto; }
-        dialog pre { white-space: pre-wrap; word-break: break-word; overflow: auto; max-height: 70vh; }
         button { cursor: pointer; }
       </style>
 
@@ -315,15 +208,12 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
             <label>files:</label>
             <select id="fileSelect" title="Select which packet log file to view">${fileOptions}</select>
             <button id="refreshFiles" title="Reload the list of available packet log files">Refresh</button>
-            <button id="loadMessages" title="Load messages from selected file">Load</button>
-            <label style="display:flex; gap:6px; align-items:center;">
-              <input id="wrapToggle" type="checkbox" ${this._wrap ? 'checked' : ''} />
-              Wrap
-            </label>
-            <label style="display:flex; gap:6px; align-items:center;">
-              <input id="decodeToggle" type="checkbox" ${this._decode ? 'checked' : ''} />
-              Parsed values
-            </label>
+            <label>mode:</label>
+            <select id="loadMode" title="Auto-load refreshes when the file changes">
+              <option value="manual" ${mode === 'manual' ? 'selected' : ''}>manual</option>
+              <option value="auto" ${mode === 'auto' ? 'selected' : ''}>auto</option>
+            </select>
+            ${showLoadBtn ? '<button id="loadMessages" title="Load messages from selected file">Load</button>' : ''}
           </div>
 
           <div class="muted" style="margin-top: 6px;">
@@ -331,18 +221,6 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
           </div>
 
           <div class="row" style="margin-top: 12px;">
-            <label>src:</label>
-            <input id="srcFilter" type="text" value="${this._src}" placeholder="32:123456" />
-            <label>dst:</label>
-            <input id="dstFilter" type="text" value="${this._dst}" placeholder="37:654321" />
-            <label>verb:</label>
-            <input id="verbFilter" class="small" type="text" value="${this._verb}" placeholder="RQ" />
-            <label>code:</label>
-            <input id="codeFilter" class="small" type="text" value="${this._code}" placeholder="31DA" />
-            <label>since:</label>
-            <input id="sinceFilter" type="text" value="${this._since}" placeholder="2026-01-20T09:00:00" />
-            <label>until:</label>
-            <input id="untilFilter" type="text" value="${this._until}" placeholder="2026-01-20T11:00:00" />
             <label>limit:</label>
             <input id="limitFilter" class="small" type="number" value="${Number(this._limit || 200)}" />
           </div>
@@ -350,40 +228,46 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
           ${this._loading ? `<div class="muted" style="margin-top: 8px;">Loading...</div>` : ''}
           ${errorText ? `<div class="error">${errorText}</div>` : ''}
 
-          <div class="muted" style="margin-top: 6px;">Messages: ${Array.isArray(this._messages) ? this._messages.length : 0}</div>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th class="col-time">Time</th>
-                  <th class="col-verb">Verb</th>
-                  <th class="col-code">Code</th>
-                  <th class="col-src">Src</th>
-                  <th class="col-dst">Dst</th>
-                  <th class="col-bcast">Broadcast</th>
-                  <th class="col-payload">Payload</th>
-                  <th class="col-actions">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${msgRows}
-              </tbody>
-            </table>
-          </div>
-
-          <dialog id="detailsDialog">
-            <form method="dialog">
-              <h3>Message details</h3>
-              <pre id="detailsPre"></pre>
-              <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 12px;">
-                <button id="closeDetails">Close</button>
-              </div>
-            </form>
-          </dialog>
+          <ramses-messages-viewer id="messagesViewer"></ramses-messages-viewer>
         </div>
       </ha-card>
     `;
+
+    const viewer = this.shadowRoot.getElementById('messagesViewer');
+    if (viewer) {
+      viewer.fetchMessages = ({ hass, decode, limit }) => {
+        if (!this._selectedFileId) {
+          return { messages: [] };
+        }
+        return callWebSocket(hass, {
+          type: 'ramses_extras/ramses_debugger/packet_log/get_messages',
+          file_id: this._selectedFileId,
+          limit: Number(limit || this._limit || 200),
+          decode: Boolean(decode),
+        });
+      };
+
+      try {
+        viewer.setConfig({
+          pair_mode: 'derived',
+          limit: Number(this._limit || 200),
+          sort_key: 'dtm',
+          sort_dir: 'desc',
+        });
+        if (this._hass) {
+          viewer.hass = this._hass;
+        }
+      } catch (error) {
+        logger.warn('Failed to init embedded messages viewer:', error);
+      }
+
+      if (this._loadMode === 'auto'
+        && this._selectedFileId
+        && this._selectedFileId !== this._autoLoadedFileId) {
+        this._autoLoadedFileId = this._selectedFileId;
+        void viewer.refresh();
+      }
+    }
 
     this._attachEventListeners();
   }

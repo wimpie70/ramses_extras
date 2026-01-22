@@ -44,29 +44,37 @@ class PacketLogParser:
             return []
 
         try:
-            # Simple file reading approach
+            # Tail reading approach: prefer newest messages.
+            # We tail more than `limit` lines to allow for filtering.
+            max_lines = max(int(limit) * 50, 2000)
             content = await hass.async_add_executor_job(
-                partial(log_path.read_text, encoding="utf-8")
+                partial(tail_text, log_path, max_lines=max_lines, max_chars=2_000_000)
             )
             lines = content.splitlines()
 
-            # Apply filters
             messages: list[NormalizedMessage] = []
-            for line in lines:
+            for line in reversed(lines):
                 msg = _parse_packet_log_line(line)
-                if msg:
-                    # Apply filters
-                    if src and msg.src != src:
-                        continue
-                    if dst and msg.dst != dst:
-                        continue
-                    if verb and msg.verb != verb:
-                        continue
-                    if code and msg.code != code:
-                        continue
-                    messages.append(msg)
-                    if len(messages) >= limit:
-                        break
+                if not msg:
+                    continue
+
+                # Apply filters
+                if src and msg.src != src:
+                    continue
+                if dst and msg.dst != dst:
+                    continue
+                if verb and msg.verb != verb:
+                    continue
+                if code and msg.code != code:
+                    continue
+                if until and msg.dtm > until:
+                    continue
+                if since and msg.dtm < since:
+                    break
+
+                messages.append(msg)
+                if len(messages) >= limit:
+                    break
 
             return messages
         except Exception as exc:
@@ -132,8 +140,6 @@ def _parse_packet_log_line(line: str) -> NormalizedMessage | None:
             return None
 
         src, dst = addrs[0], addrs[1]
-        if dst == "--:------" and len(addrs) >= 3:
-            dst = addrs[2]
 
         code_idx: int | None = None
         for idx, token in enumerate(rest):
@@ -240,33 +246,36 @@ def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
 
     payload_hex = "".join(payload_parts[1:]).replace("-", "")
 
+    via = src if dst == "--:------" else "--:------"
+    packet_raw = msg.get("packet")
+    if isinstance(packet_raw, str) and packet_raw.strip():
+        pkt_tokens = packet_raw.split()
+        addrs = [t for t in pkt_tokens if re.match(r"^(--:------|\d{2}:\d{6})$", t)]
+        if len(addrs) >= 3:
+            via = addrs[2]
+
     verb2 = verb if len(verb) == 2 else f" {verb}"
     seqn = "---"
-    addrs = [src, dst, src]
-
-    frame = (
-        f"--- {verb2} {seqn} {addrs[0]} {addrs[1]} {addrs[2]} "
-        f"{code} {payload_len} {payload_hex}"
-    )
+    frame = f"000 {verb2} {seqn} {src} {dst} {via} {code} {payload_len} {payload_hex}"
 
     try:
         dt_obj = datetime.fromisoformat(dtm)
     except ValueError:
         return None
 
-    with _silence_loggers(
-        [
-            "ramses_tx.packet_log",
-            "ramses_tx.packet",
-            "ramses_tx.message",
-            "ramses_tx.parsers",
-        ]
-    ):
-        try:
+    try:
+        with _silence_loggers(
+            [
+                "ramses_tx.packet_log",
+                "ramses_tx.packet",
+                "ramses_tx.message",
+                "ramses_tx.parsers",
+            ]
+        ):
             pkt = Packet(dt_obj, frame)
             m = Message._from_pkt(pkt)
-        except Exception:
-            return None
+    except Exception:
+        return None
 
     try:
         payload_decoded = m.payload
@@ -359,8 +368,13 @@ class TrafficBufferProvider(MessagesProvider):
             if code and raw.get("code") != code:
                 continue
             # TODO: since/until filtering by dtm if needed
+            dtm = (
+                raw.get("time_fired")
+                if isinstance(raw.get("time_fired"), str)
+                else raw.get("dtm")
+            )
             msg = NormalizedMessage(
-                dtm=raw.get("dtm", ""),
+                dtm=dtm if isinstance(dtm, str) else "",
                 src=raw.get("src", ""),
                 dst=raw.get("dst", ""),
                 verb=raw.get("verb"),

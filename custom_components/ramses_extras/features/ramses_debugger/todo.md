@@ -166,177 +166,11 @@ Suggested workflow per step:
 - run `pre-commit run -a`  and/or `make local-ci` when the change is bigger or touches multiple areas
 - commit
 
-### Step 1: Feature skeleton (no behaviour changes)
-- [x] **Deliverable**
-  - Create `features/ramses_debugger/` feature scaffold based on `hello_world`
-  - Add feature definition + register feature with extras registry
-  - Add websocket registration stubs (no-op)
-  - Add `www/` stubs for both cards
-- [x] **Tests**
-  - run existing unit tests (no new tests required yet)
-- [x] **Commit**
-  - `feat(ramses_debugger): scaffold feature with websocket + www stubs`
-
-### Step 2: Traffic backend (collector + aggregation)
-- [x] **Deliverable**
-  - Subscribe to `ramses_cc_message`
-  - Maintain aggregation data structures
-  - Add `traffic/get_stats` + `traffic/reset_stats` websocket commands
-- [x] **Tests**
-  - unit tests for aggregation logic (pure python)
-  - unit tests for websocket handlers (mock hass bus + sample events)
-- [x] **Commit**
-  - `feat(ramses_debugger): traffic collector + websocket stats API`
-
-### Step 3: Traffic card (MVP UI)
-- [x] **Deliverable**
-  - Table rendering + basic filters + polling websocket
-  - Zoom dialog
-- [x] **Tests**
-  - keep python tests passing
-  - manual live check in HA (card loads, table renders)
-- [x] **Commit**
-  - `feat(ramses_debugger): traffic analyser card MVP`
-
-### Step 4: Log backend (file discovery + tail + search)
-- [x] **Deliverable**
-  - Config option for HA log file path
-  - `log/list_files`, `log/get_tail`, `log/search`
-  - Context extraction (±N lines) + merge overlap
-  - Output formatting: plain + markdown
-- [x] **Tests**
-  - unit tests for log scanning + context merge (use temp files)
-  - unit tests for rotated file discovery
-- [x] **Commit**
-  - `feat(ramses_debugger): log explorer websocket API (tail/search/context)`
-
-### Step 5: Log Explorer card (MVP UI)
-- [x] **Deliverable**
-  - File picker + filter form + results pane
-  - Wrap/nowrap toggle + copy-as-markdown
-  - Zoom dialog
-- [x] **Tests**
-  - keep python tests passing
-  - manual live check in HA (filters return expected chunks)
-- [x] **Commit**
-  - `feat(ramses_debugger): log explorer card MVP`
-
-### Step 6: Cross-filtering Traffic → Logs
-- [x] **Deliverable**
-  - Traffic row click opens Log Explorer prefilled (src/dst, optional codes)
-- [x] **Tests**
-  - manual live check
-- [x] **Commit**
-  - `feat(ramses_debugger): cross-filter traffic to log explorer`
-
-### Step 7: Hardening + limits + UX polish
-- [x] **Deliverable**
-  - enforce `max_matches`, `max_chars`, safe defaults
-  - traceback block extraction (if enabled)
-  - better empty/error states
-- [x] **Tests**
-  - add tests for max limits
-  - `make local-ci`
-- [x] **Commit**
-  - `refactor(ramses_debugger): harden log search + add limits`
-
-### Step 8: CI + documentation ready
-- [x] **Deliverable**
-  - ensure `make local-ci` passes
-  - update this TODO if new learnings arise
-- [x] **Tests**
-  - `make local-ci`
-- [x] **Commit**
-  - `chore(ramses_debugger): local-ci green`
-
-### Step 9: UI/UX improvements
-- [x] **Deliverable**
-  - cards render full width
-  - no `device_id` required while editing
-  - bounded, scrollable output panes
-  - working copy buttons
-  - Traffic → Logs popup full width + resizable
-  - highlighting for matches and WARNING/ERROR lines
-  - default case-insensitive search
-  - Traffic table improvements
-    - show all verbs + counts
-    - show codes + counts
-    - deterministic per-device cell background colors (no background for HGI `18:`)
-    - show device alias (if known) and always show device type slug (`FAN`, `REM`, `HGI`, ...)
-    - prefer action buttons over row-click
-      - Logs (opens embedded Log Explorer)
-      - Details (raw flow JSON)
-      - Messages (placeholder)
-- [x] **Tests**
-  - manual check in HA
-  - `make local-ci`
-- [x] **Commit**
-  - `feat(ramses_debugger): UI/UX polish for traffic + log cards`
-
-### Step 10: Unified Messages API (HA log / packet log / live traffic)
-- [x] **Deliverable**
-  - Backend
-    - add a single websocket command that can query multiple sources
-      - `messages/get_messages` (one-shot)
-        - params
-          - `sources`: list of sources to query, in priority order
-            - `traffic_buffer` (in-memory, from `ramses_cc_message` events)
-            - `packet_log` (ramses packet/message log, e.g. `ramses_log`)
-            - `ha_log` (Home Assistant log file)
-          - filters: src, dst, verb, code, since, until, limit
-          - `dedupe`: bool (optional; on by default)
-        - response
-          - list of normalized messages
-            - dtm, src, dst, verb, code
-            - payload (raw)
-            - packet (raw)
-            - source (`traffic_buffer` | `packet_log` | `ha_log`)
-            - raw_line (when source is a log file)
-            - parse_warnings (optional)
-- [x] **Deliverable (continued)**
-  - implement providers
-      - TrafficCollector ring buffers
-        - bounded global and per-flow buffers
-        - store raw event fields (dtm/src/dst/verb/code/payload/packet)
-      - Packet log provider
-        - parse actual traffic records from `ramses_log`
-      - HA log provider
-        - parse messages from HA log lines (note: will include duplicates from multiple loggers)
-        - use dedupe key (dtm+src+dst+verb+code+packet/payload) when possible
-  - UI
-    - Traffic Analyser: wire Messages button to call `messages/get_messages`
-      - default `sources`: [`traffic_buffer`, `packet_log`, `ha_log`]
-      - list view: dtm, verb, code, src, dst, payload/packet (collapsed)
-      - drill-down placeholder: “Message details”
-    - Packet Log Explorer + Log Explorer (later): reuse the same normalized message UI
-- [x] **Tests**
-  - unit tests for buffering/filtering and dedupe
-  - websocket handler tests (each provider)
-- [x] **Commit**
-  - `feat(ramses_debugger): unified messages API (traffic/packet/ha log)`
-
-### Step 11: Packet Log Explorer (future card)
-- [ ] **Deliverable**
-  - Backend
-    - packet log parsing should be implemented as a provider for Step 10 (`sources: packet_log`)
-    - add optional packet-log specific commands only if needed for UX
-      - file selection / rotated files
-      - faster indexed search
-  - UI
-    - new Lovelace card: Packet Log Explorer
-      - file selection + search filters
-      - results list of messages
-      - message detail drill-down
-- [ ] **Tests**
-  - unit tests for parsing + search limits
-- [ ] **Commit**
-  - `feat(ramses_debugger): packet log explorer (backend + card)`
-
 ## Ramses debugger improvements
 
 ### All cards:
 - [ ] selective re-render...when something changes we loose focus/position on where we were and scroll back to the top. This is for all cards/popups.
-- [ ] we cannot select text from the results, we need this for copy/paste. Is there a z-index problem ?
+- [ ] we cannot select text from the results, we need this for copy/paste. Is there a z-index problem ? This goes for all cards/popups
 
 
 ### Traffic analyzer
@@ -360,25 +194,24 @@ Suggested workflow per step:
 
 ### Log explorer
 - [x] allow multi-line paste to act as OR search
-- [ ] auto hor scrollbar on tail result (wrap or no wrap)
+- [x] auto hor scrollbar on tail result (wrap or no wrap)
 - [x] editable before and after
 - [x] move 'Search scans the full file....' behind the tail (with the search section)
-- [-] horizontal line between search blocks (instead of newline)
+- [-] horizontal line between search blocks (instead of newline) (skip for now)
 - [x] bg colors on id's
-- [ ] font color: log source between [] : green, but only on the source, not other lists:
+- [x] font color: log source between [] : green, but only on the source, not other lists:
 - [x] what's the diff between refresh and Tail. Seems they both refresh. If so, we can remove refresh button
-- [ ] add 50 lines up and 50 lines down buttons, so we can scroll thru the whole file without loading the whole log file. Now we make the block (200 lines) bigger or smaller. I want to move focus: EOF -200 till EOF -> EOF-250 till EOF-50, etc...
-- [ ] on Zoom we want the same bg colors / fontcolors
+- [x] add 50 lines up and 50 lines down buttons, so we can scroll thru the whole file without loading the whole log file. Now we make the block (200 lines) bigger or smaller. I want to move focus: EOF -200 till EOF -> EOF-250 till EOF-50, etc...
+- [x] on Zoom we want the same bg colors / fontcolors
 
 ### Packet explorer
-- [ ] the details button is out of the window scope.
-- [ ] When clicking on details, i would expect to see parsed message, but maybe use 1 toggle button to switch to parsed values instead of payload
-- [ ] In the result field, we cannot copy/past text, this would be very handy
-- [ ] the search (or filter) doesn't work, remove it ?
-- [ ] make the columns sortable and default on time: earliest first
-- [ ] instead of wrap set a auto hor. scrollbar on payload
-- [ ] bg colors on id's
-- [ ] broadcast still not working
+
+### Refactor plan (Option A)
+- [x] Strategy agreed: Packet Log Explorer should reuse the same UI as the Traffic Analyzer Messages dialog (with file selector + load mode)
+- [x] Extract Messages UI into shared component (chips: pairs/verbs/codes, sort, payload/parsed toggle)
+- [x] Traffic Analyzer: Messages dialog uses shared component (no behavioral change)
+- [x] Packet Log Explorer: switch to shared component UI
+- [x] Packet Log Explorer: add selectbox for load mode (auto-load vs manual Load button)
 
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing

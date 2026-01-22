@@ -7,6 +7,7 @@ import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocket } from '../../helpers/card-services.js';
 
 import './ramses-log-explorer.js';
+import './ramses-messages-viewer.js';
 
 import { trafficAnalyserCardStyle } from './card-styles.js';
 
@@ -672,30 +673,18 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     const container = this.shadowRoot?.getElementById('messagesContainer');
     if (container) {
       container.innerHTML = '';
-      const el = document.createElement('div');
-      el.className = 'messages-list';
-      container.appendChild(el);
+      const viewer = document.createElement('ramses-messages-viewer');
+      container.appendChild(viewer);
 
-      // Build filters for multiple src/dst pairs
       const filters = {};
       const srcList = [];
       const dstList = [];
-      const pairGroups = [];
       for (const { src, dst } of selected) {
         if (src) srcList.push(src);
         if (dst) dstList.push(dst);
-        if (src && dst) {
-          pairGroups.push({
-            src,
-            dst,
-            key: `${src}|${dst}`,
-          });
-        }
       }
-      // For now, only support single src/dst filters; extend backend later
       if (srcList.length === 1) filters.src = srcList[0];
       if (dstList.length === 1) filters.dst = dstList[0];
-      // If multiple, don't filter by src/dst to show all traffic between selected pairs
 
       let sources = ['traffic_buffer'];
       if (this._trafficSource === 'packet_log') {
@@ -704,379 +693,30 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         sources = ['ha_log'];
       }
 
-      const doFetch = () => this._hass?.callWS({
+      viewer.fetchMessages = ({ hass, decode, limit }) => hass?.callWS({
         type: 'ramses_extras/ramses_debugger/messages/get_messages',
         sources,
-        limit: 200,
+        limit: Number(limit || 200),
         dedupe: true,
-        decode: Boolean(this._messagesDecode),
+        decode: Boolean(decode),
         ...filters,
       });
 
-      const activePairs = new Set(pairGroups.map((pair) => pair.key));
-      let activeVerbs = new Set();
-      let activeCodes = new Set();
-      let lastVerbsKey = '';
-      let lastCodesKey = '';
-      let verbFilterTouched = false;
-      let codeFilterTouched = false;
-      const renderMessages = (messages) => {
-        const parsePacketAddrs = (pkt) => {
-          if (typeof pkt !== 'string' || !pkt) return null;
-          const parts = pkt.split(' ');
-          const addrs = [];
-          for (const p of parts) {
-            if (/^\d{2}:\d{6}$|^--:------$/.test(p)) {
-              addrs.push(p);
-              if (addrs.length >= 3) break;
-            }
-          }
-          if (addrs.length < 2) return null;
-          return { src: addrs[0], dstRaw: addrs[1], via: addrs[2] || '' };
-        };
-
-        const extractPayloadFromPacket = (pkt) => {
-          if (typeof pkt !== 'string' || !pkt) return '';
-          const tokens = pkt.split(' ').filter(Boolean);
-          let lenIdx = -1;
-          for (let i = 0; i < tokens.length; i += 1) {
-            if (/^\d{3}$/.test(tokens[i])) {
-              lenIdx = i;
-              break;
-            }
-          }
-          if (lenIdx === -1) return '';
-          const len = tokens[lenIdx];
-          const payload = tokens.slice(lenIdx + 1).join(' ');
-          return payload ? `${len} ${payload}` : len;
-        };
-
-        const normalizeMessage = (m) => {
-          const info = parsePacketAddrs(m?.packet);
-          const dstRaw = info?.dstRaw;
-          const via = info?.via;
-
-          const dstEffective = (dstRaw && dstRaw !== '--:------')
-            ? dstRaw
-            : (via && via !== '--:------')
-              ? via
-              : (m?.dst || '');
-
-          const dstDisplay = dstRaw || m?.dst || '';
-          const viaDisplay = (dstRaw === '--:------' && via && via !== '--:------')
-            ? via
-            : (via && via !== '--:------')
-              ? via
-              : '';
-
-          const payloadRaw = extractPayloadFromPacket(m?.packet);
-          let payloadVal = this._messagesDecode && m?.decoded?.payload
-            ? m.decoded.payload
-            : (!this._messagesDecode && payloadRaw
-              ? payloadRaw
-              : (!this._messagesDecode && typeof m?.payload === 'string'
-                ? m.payload
-                : (!this._messagesDecode ? m?.packet : m?.payload)));
-          if (payloadVal == null) payloadVal = '';
-          const payloadStr = (typeof payloadVal === 'string')
-            ? payloadVal
-            : JSON.stringify(payloadVal);
-
-          return {
-            ...m,
-            __dstRaw: dstRaw || '',
-            __via: via || '',
-            __dstDisplay: String(dstDisplay),
-            __dstEffective: String(dstEffective),
-            __viaDisplay: String(viaDisplay),
-            __payloadStr: String(payloadStr),
-          };
-        };
-
-        let filtered = Array.isArray(messages) ? messages.map(normalizeMessage) : [];
-        if (activePairs.size) {
-          filtered = filtered.filter((m) => {
-            const src = m?.src;
-            const dst = m?.__dstEffective;
-            if (typeof src !== 'string' || typeof dst !== 'string') return false;
-
-            for (const pair of pairGroups) {
-              if (!activePairs.has(pair.key)) {
-                continue;
-              }
-              if (pair.dst === '--:------') {
-                const srcMatch = src === pair.src;
-                if (srcMatch && (m?.__dstRaw === '--:------' || m?.dst === '--:------')) {
-                  return true;
-                }
-                continue;
-              }
-              if (`${src}|${dst}` === pair.key) {
-                return true;
-              }
-            }
-            return false;
-          });
-        }
-
-        const baseFiltered = filtered;
-        const availableVerbs = new Set(
-          baseFiltered
-            .map((m) => (typeof m?.verb === 'string' ? m.verb : ''))
-            .filter((v) => v)
-        );
-        const verbsKey = [...availableVerbs].sort().join('|');
-        if (verbsKey !== lastVerbsKey) {
-          if (verbFilterTouched) {
-            activeVerbs = new Set([...activeVerbs].filter((v) => availableVerbs.has(v)));
-          } else {
-            activeVerbs = new Set(availableVerbs);
-          }
-          lastVerbsKey = verbsKey;
-        }
-        if (verbFilterTouched) {
-          filtered = filtered.filter((m) => activeVerbs.has(String(m?.verb || '')));
-        }
-
-        const availableCodes = new Set(
-          filtered
-            .map((m) => (typeof m?.code === 'string' ? m.code : ''))
-            .filter((c) => c)
-        );
-        const codesKey = [...availableCodes].sort().join('|');
-        if (codesKey !== lastCodesKey) {
-          if (codeFilterTouched) {
-            activeCodes = new Set([...activeCodes].filter((c) => availableCodes.has(c)));
-          } else {
-            activeCodes = new Set(availableCodes);
-          }
-          lastCodesKey = codesKey;
-        }
-        if (codeFilterTouched) {
-          filtered = filtered.filter((m) => activeCodes.has(String(m?.code || '')));
-        }
-
-        const sortKey = this._messagesSortKey || 'dtm';
-        const mul = this._messagesSortDir === 'desc' ? -1 : 1;
-
-        const sortValue = (m, key) => {
-          if (key === 'dst') return m?.__dstDisplay ?? '';
-          if (key === 'broadcast') return m?.__viaDisplay ?? '';
-          if (key === 'payload') return m?.__payloadStr ?? '';
-          return m?.[key];
-        };
-
-        const sorted = [...filtered].sort((a, b) => {
-          const av = sortValue(a, sortKey);
-          const bv = sortValue(b, sortKey);
-          const as = String(av ?? '');
-          const bs = String(bv ?? '');
-          return as.localeCompare(bs) * mul;
+      try {
+        viewer.setConfig({
+          pairs: selected,
+          pair_mode: 'selected',
+          limit: 200,
+          sort_key: 'dtm',
+          sort_dir: 'desc',
         });
-
-        const sortArrow = (key) => {
-          if (this._messagesSortKey !== key) return '';
-          return this._messagesSortDir === 'asc' ? ' ▲' : ' ▼';
-        };
-
-        el.innerHTML = `
-          <style>
-            .messages-table-wrapper { overflow-x: auto; }
-            .messages-table td.col-payload { white-space: nowrap; font-family: monospace; }
-            .messages-table th.sortable { cursor: pointer; }
-            .messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
-            .messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-            .messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-            .messages-chip .dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, transparent); }
-            .messages-verbs { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-            .messages-verb-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-            .messages-codes { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-            .messages-code-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-          </style>
-          <div class="messages-header">
-            <strong>Messages (${sorted.length})</strong>
-            ${sorted.length && sorted[0].source ? ` (Source: <code>${sorted[0].source}</code>)` : ''}
-          </div>
-          ${selected.length ? `
-            <div class="messages-selected">
-              ${pairGroups.map(({ src, dst, key }) => {
-                const pairKey = `${src}|${dst}`;
-                const checked = activePairs.has(key);
-                const srcBg = src ? this._deviceBg(src) : '';
-                const dstBg = dst ? this._deviceBg(dst) : '';
-                return `
-                  <span class="messages-chip">
-                    <input type="checkbox" class="pair-toggle" data-pair="${pairKey}" ${checked ? 'checked' : ''} />
-                    <span class="dev" style="--dev-bg: ${srcBg};">${src || ''}</span>
-                    →
-                    <span class="dev" style="--dev-bg: ${dstBg};">${dst || ''}</span>
-                  </span>
-                `;
-              }).join('')}
-            </div>
-          ` : ''}
-          ${availableCodes.size ? `
-            <div class="messages-codes">
-              ${[...availableCodes].sort().map((code) => {
-                const checked = activeCodes.has(code);
-                return `
-                  <span class="messages-code-chip">
-                    <input type="checkbox" class="code-toggle" data-code="${code}" ${checked ? 'checked' : ''} />
-                    <span>${code}</span>
-                  </span>
-                `;
-              }).join('')}
-            </div>
-          ` : ''}
-          ${availableVerbs.size ? `
-            <div class="messages-verbs">
-              ${[...availableVerbs].sort().map((verb) => {
-                const checked = activeVerbs.has(verb);
-                return `
-                  <span class="messages-verb-chip">
-                    <input type="checkbox" class="verb-toggle" data-verb="${verb}" ${checked ? 'checked' : ''} />
-                    <span>${verb}</span>
-                  </span>
-                `;
-              }).join('')}
-            </div>
-          ` : ''}
-          <div class="messages-controls">
-            <label>
-              <input type="checkbox" id="messagesDecode" ${this._messagesDecode ? 'checked' : ''}>
-              Parsed values
-            </label>
-          </div>
-          <div class="messages-table-wrapper">
-            <table class="messages-table">
-              <thead>
-                <tr>
-                  <th class="col-time sortable" data-sort="dtm">Time${sortArrow('dtm')}</th>
-                  <th class="col-verb sortable" data-sort="verb">Verb${sortArrow('verb')}</th>
-                  <th class="col-code sortable" data-sort="code">Code${sortArrow('code')}</th>
-                  <th class="col-src sortable" data-sort="src">Src${sortArrow('src')}</th>
-                  <th class="col-dst sortable" data-sort="dst">Dst${sortArrow('dst')}</th>
-                  <th class="col-bcast sortable" data-sort="broadcast">Broadcast${sortArrow('broadcast')}</th>
-                  <th class="col-payload sortable" data-sort="payload">Payload${sortArrow('payload')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${sorted.map((msg) => {
-                  const payload = msg.__payloadStr || '';
-                  const dstEffective = msg.__dstEffective || '';
-                  const dstDisplay = msg.__dstDisplay || '';
-                  const viaDisplay = msg.__viaDisplay || '';
-                  const srcBg = msg.src ? this._deviceBg(msg.src) : '';
-                  const dstBg = dstEffective ? this._deviceBg(dstEffective) : '';
-                  return `
-                  <tr>
-                    <td class="col-time">${msg.dtm || ''}</td>
-                    <td class="col-verb">${msg.verb || ''}</td>
-                    <td class="col-code">${msg.code || ''}</td>
-                    <td class="col-src" style="--dev-bg: ${srcBg};">${msg.src || ''}</td>
-                    <td class="col-dst" style="--dev-bg: ${dstBg};">${dstDisplay}</td>
-                    <td class="col-bcast">${viaDisplay}</td>
-                    <td class="col-payload">${payload}</td>
-                  </tr>
-                `;
-                }).join('')}
-              </tbody>
-            </table>
-          </div>
-        `;
-
-        const thead = el.querySelector('thead');
-        if (!this._boundOnMessagesSortClick) {
-          this._boundOnMessagesSortClick = (ev) => {
-            const th = ev.target?.closest?.('th');
-            const key = th?.getAttribute?.('data-sort');
-            if (!key) return;
-            if (this._messagesSortKey === key) {
-              this._messagesSortDir = this._messagesSortDir === 'asc' ? 'desc' : 'asc';
-            } else {
-              this._messagesSortKey = key;
-              this._messagesSortDir = 'asc';
-            }
-            renderMessages(messages);
-          };
+        if (this._hass) {
+          viewer.hass = this._hass;
         }
-        if (thead) {
-          thead.onclick = this._boundOnMessagesSortClick;
-        }
-
-        const decodeCb = el.querySelector('#messagesDecode');
-        if (!this._boundOnMessagesDecodeToggle) {
-          this._boundOnMessagesDecodeToggle = (ev) => {
-            this._messagesDecode = Boolean(ev?.target?.checked);
-            const needsDecode = this._messagesDecode
-              && Array.isArray(messages)
-              && messages.some((m) => !m?.decoded?.payload);
-            if (needsDecode) {
-              void fetchAndRender();
-              return;
-            }
-            renderMessages(messages);
-          };
-        }
-        if (decodeCb) {
-          decodeCb.onchange = this._boundOnMessagesDecodeToggle;
-        }
-
-        const toggles = el.querySelectorAll('.pair-toggle');
-        toggles.forEach((toggle) => {
-          toggle.onchange = (ev) => {
-            const key = ev?.target?.getAttribute?.('data-pair');
-            if (!key) return;
-            if (ev?.target?.checked) {
-              activePairs.add(key);
-            } else {
-              activePairs.delete(key);
-            }
-            renderMessages(messages);
-          };
-        });
-
-        const verbToggles = el.querySelectorAll('.verb-toggle');
-        verbToggles.forEach((toggle) => {
-          toggle.onchange = (ev) => {
-            const verb = ev?.target?.getAttribute?.('data-verb');
-            if (!verb) return;
-            verbFilterTouched = true;
-            if (ev?.target?.checked) {
-              activeVerbs.add(verb);
-            } else {
-              activeVerbs.delete(verb);
-            }
-            renderMessages(messages);
-          };
-        });
-
-        const codeToggles = el.querySelectorAll('.code-toggle');
-        codeToggles.forEach((toggle) => {
-          toggle.onchange = (ev) => {
-            const code = ev?.target?.getAttribute?.('data-code');
-            if (!code) return;
-            codeFilterTouched = true;
-            if (ev?.target?.checked) {
-              activeCodes.add(code);
-            } else {
-              activeCodes.delete(code);
-            }
-            renderMessages(messages);
-          };
-        });
-      };
-
-      const fetchAndRender = async () => {
-        try {
-          const response = await doFetch();
-          renderMessages(response?.messages || []);
-        } catch (err) {
-          el.innerHTML = `<div class="error">Failed to load messages: ${err.message || err}</div>`;
-        }
-      };
-
-      void fetchAndRender();
+        void viewer.refresh();
+      } catch (error) {
+        logger.warn('Failed to init embedded messages viewer:', error);
+      }
     }
     if (messagesDialog && typeof messagesDialog.showModal === 'function') {
       this._dialogOpen = true;
