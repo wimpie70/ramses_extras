@@ -5,12 +5,15 @@ from __future__ import annotations
 import gzip
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.features.ramses_debugger import websocket_commands
+from custom_components.ramses_extras.features.ramses_debugger.messages_provider import (
+    NormalizedMessage,
+)
 
 ws_log_list_files = websocket_commands.ws_log_list_files.__wrapped__
 ws_log_get_tail = websocket_commands.ws_log_get_tail.__wrapped__
@@ -186,6 +189,95 @@ async def test_ws_packet_log_not_configured(hass) -> None:
     assert conn.errors
     assert conn.errors[-1][0] == 1
     assert conn.errors[-1][1] == "packet_log_not_configured"
+
+
+@pytest.mark.asyncio
+async def test_ws_packet_log_list_files_not_configured(hass) -> None:
+    conn = _FakeConnection()
+
+    await ws_packet_log_list_files(
+        hass,
+        conn,
+        {"id": 1, "type": "ramses_extras/ramses_debugger/packet_log/list_files"},
+    )
+
+    assert not conn.errors
+    assert conn.results[-1] == (1, {"base": None, "files": []})
+
+
+@pytest.mark.asyncio
+async def test_ws_packet_log_get_messages_rejects_unknown_file_id(
+    hass,
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "ramses_log"
+    base.write_text("test\n", encoding="utf-8")
+    _setup_config_entry(hass, packet_log_path=base)
+
+    conn = _FakeConnection()
+
+    await ws_packet_log_get_messages(
+        hass,
+        conn,
+        {
+            "id": 1,
+            "type": "ramses_extras/ramses_debugger/packet_log/get_messages",
+            "file_id": "not-allowed.log",
+        },
+    )
+
+    assert conn.errors
+    assert conn.errors[-1][0] == 1
+    assert conn.errors[-1][1] == "file_not_allowed"
+
+
+@pytest.mark.asyncio
+async def test_ws_packet_log_get_messages_decode(hass, tmp_path: Path) -> None:
+    base = tmp_path / "ramses_log"
+    base.write_text("test\n", encoding="utf-8")
+    _setup_config_entry(hass, packet_log_path=base)
+
+    conn = _FakeConnection()
+
+    messages = [
+        NormalizedMessage(
+            dtm="2026-01-20T10:00:00.000000",
+            src="01:111111",
+            dst="02:222222",
+            verb="RQ",
+            code="31DA",
+            payload="003 010203",
+            packet="RQ 01:111111 02:222222 --:------ 31DA 003 010203",
+            source="packet_log",
+        )
+    ]
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.ramses_debugger.messages_provider.PacketLogParser.get_messages",
+            new=AsyncMock(return_value=messages),
+        ),
+        patch(
+            "custom_components.ramses_extras.features.ramses_debugger.messages_provider.decode_message_with_ramses_rf",
+            return_value={"decoded": True},
+        ),
+    ):
+        await ws_packet_log_get_messages(
+            hass,
+            conn,
+            {
+                "id": 1,
+                "type": "ramses_extras/ramses_debugger/packet_log/get_messages",
+                "file_id": base.name,
+                "decode": True,
+                "limit": 50,
+            },
+        )
+
+    assert not conn.errors
+    payload = conn.results[-1][1]
+    assert payload["file_id"] == base.name
+    assert payload["messages"][0]["decoded"] == {"decoded": True}
 
 
 @pytest.mark.asyncio

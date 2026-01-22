@@ -1,5 +1,12 @@
 """Tests for ramses_debugger messages providers."""
 
+from __future__ import annotations
+
+import logging
+import sys
+import types
+from datetime import datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +20,8 @@ from custom_components.ramses_extras.features.ramses_debugger.messages_provider 
     TrafficBufferProvider,
     _parse_ha_log_line,
     _parse_packet_log_line,
+    _silence_loggers,
+    decode_message_with_ramses_rf,
     get_messages_from_sources,
 )
 
@@ -211,6 +220,226 @@ class TestPacketLogParser:
         # Test filtering
         filtered = [m for m in msgs if m.src == "32:153289"]
         assert len(filtered) == 2
+
+    @pytest.mark.asyncio
+    async def test_packet_log_parser_get_messages_filters_and_since(self):
+        hass = MagicMock(spec=HomeAssistant)
+
+        async def _run_executor(fn):
+            return fn()
+
+        hass.async_add_executor_job = AsyncMock(side_effect=_run_executor)
+
+        log_content = "\n".join(
+            [
+                "2026-01-20T10:00:00.000000 RQ 01:111111 02:222222 --:------ "
+                "31DA 003 010203",
+                "2026-01-20T10:00:01.000000 RP 02:222222 01:111111 --:------ "
+                "31DA 003 010203",
+                "2026-01-20T10:00:02.000000 I 245 01:111111 --:------ 01:111111 "
+                "313F 000",
+                "invalid line",
+            ]
+        )
+
+        with patch(
+            "custom_components.ramses_extras.features.ramses_debugger.messages_provider.tail_text",
+            return_value=log_content,
+        ):
+            msgs = await PacketLogParser.get_messages(
+                hass,
+                log_path=Path("/tmp/ramses_log"),
+                limit=10,
+            )
+
+        # Newest-first
+        assert [m.dtm for m in msgs][:2] == [
+            "2026-01-20T10:00:02.000000",
+            "2026-01-20T10:00:01.000000",
+        ]
+
+        with patch(
+            "custom_components.ramses_extras.features.ramses_debugger.messages_provider.tail_text",
+            return_value=log_content,
+        ):
+            msgs_since = await PacketLogParser.get_messages(
+                hass,
+                log_path=Path("/tmp/ramses_log"),
+                since="2026-01-20T10:00:01.000000",
+                limit=10,
+            )
+
+        assert [m.dtm for m in msgs_since] == [
+            "2026-01-20T10:00:02.000000",
+            "2026-01-20T10:00:01.000000",
+        ]
+
+        only_src = [m for m in msgs if m.src == "01:111111"]
+        assert only_src
+
+
+def test_silence_loggers_restores_state() -> None:
+    name = "custom_components.ramses_extras.tests.silence"
+    log = logging.getLogger(name)
+    log.disabled = False
+    log.setLevel(logging.INFO)
+
+    with _silence_loggers([name]):
+        assert log.disabled is True
+        assert log.level > logging.CRITICAL
+
+    assert log.disabled is False
+    assert log.level == logging.INFO
+
+
+def test_decode_message_with_ramses_rf_missing_module(monkeypatch) -> None:
+    # Ensure import fails
+    monkeypatch.setitem(sys.modules, "ramses_tx", None)
+    monkeypatch.setitem(sys.modules, "ramses_tx.message", None)
+    monkeypatch.setitem(sys.modules, "ramses_tx.packet", None)
+
+    msg = {
+        "dtm": "2026-01-20T10:00:00.000000",
+        "src": "01:111111",
+        "dst": "02:222222",
+        "verb": "RQ",
+        "code": "31DA",
+        "payload": "003 010203",
+        "packet": "RQ 01:111111 02:222222 --:------ 31DA 003 010203",
+    }
+    assert decode_message_with_ramses_rf(msg) is None
+
+
+@pytest.mark.parametrize(
+    "msg",
+    [
+        {
+            "dtm": 123,
+            "src": "01:111111",
+            "dst": "02:222222",
+            "verb": "RQ",
+            "code": "31DA",
+            "payload": "003 010203",
+            "packet": "RQ 01:111111 02:222222 --:------ 31DA 003 010203",
+        },
+        {
+            "dtm": "2026-01-20T10:00:00.000000",
+            "src": "01:111111",
+            "dst": "02:222222",
+            "verb": "RQ",
+            "code": "31DA",
+            "payload": "",
+            "packet": "RQ 01:111111 02:222222 --:------ 31DA 003 010203",
+        },
+        {
+            "dtm": "2026-01-20T10:00:00.000000",
+            "src": "01:111111",
+            "dst": "02:222222",
+            "verb": "RQ",
+            "code": "31DA",
+            "payload": "XX 010203",
+            "packet": "RQ 01:111111 02:222222 --:------ 31DA 003 010203",
+        },
+        {
+            "dtm": "not-a-datetime",
+            "src": "01:111111",
+            "dst": "02:222222",
+            "verb": "RQ",
+            "code": "31DA",
+            "payload": "003 010203",
+            "packet": "RQ 01:111111 02:222222 --:------ 31DA 003 010203",
+        },
+    ],
+)
+def test_decode_message_with_ramses_rf_validation_returns_none(
+    monkeypatch,
+    msg,
+) -> None:
+    # Provide minimal modules so the function can get past the import stage.
+    mod_packet = types.ModuleType("ramses_tx.packet")
+    mod_message = types.ModuleType("ramses_tx.message")
+
+    class DummyPacket:  # pragma: no cover
+        def __init__(self, dtm: datetime, frame: str) -> None:
+            self.dtm = dtm
+            self.frame = frame
+
+    class DummyMessage:  # pragma: no cover
+        @staticmethod
+        def _from_pkt(pkt: DummyPacket):
+            return None
+
+    mod_packet.__dict__["Packet"] = DummyPacket
+    mod_message.__dict__["Message"] = DummyMessage
+
+    monkeypatch.setitem(sys.modules, "ramses_tx.packet", mod_packet)
+    monkeypatch.setitem(sys.modules, "ramses_tx.message", mod_message)
+
+    assert decode_message_with_ramses_rf(msg) is None
+
+
+def test_decode_message_with_ramses_rf_success(monkeypatch) -> None:
+    mod_packet = types.ModuleType("ramses_tx.packet")
+    mod_message = types.ModuleType("ramses_tx.message")
+
+    class DummyPacket:
+        def __init__(self, dtm: datetime, frame: str) -> None:
+            self.dtm = dtm
+            self.frame = frame
+
+    class DummyMessage:
+        def __init__(
+            self,
+            *,
+            dtm: datetime,
+            src: str,
+            dst: str,
+            verb: str,
+            code: str,
+        ) -> None:
+            self.dtm = dtm
+            self.src = types.SimpleNamespace(id=src)
+            self.dst = types.SimpleNamespace(id=dst)
+            self.verb = verb
+            self.code = code
+
+        @property
+        def payload(self):
+            return {"ok": True}
+
+        @staticmethod
+        def _from_pkt(pkt: DummyPacket) -> DummyMessage:
+            tokens = pkt.frame.split()
+            # 000 VERB SEQN SRC DST VIA CODE LEN HEX
+            verb = tokens[1]
+            src = tokens[3]
+            dst = tokens[4]
+            code = tokens[6]
+            return DummyMessage(dtm=pkt.dtm, src=src, dst=dst, verb=verb, code=code)
+
+    mod_packet.__dict__["Packet"] = DummyPacket
+    mod_message.__dict__["Message"] = DummyMessage
+
+    monkeypatch.setitem(sys.modules, "ramses_tx.packet", mod_packet)
+    monkeypatch.setitem(sys.modules, "ramses_tx.message", mod_message)
+
+    msg = {
+        "dtm": "2026-01-20T10:00:00.000000",
+        "src": "01:111111",
+        "dst": "02:222222",
+        "verb": "RQ",
+        "code": "31DA",
+        "payload": "003 010203",
+        "packet": "RQ 01:111111 02:222222 --:------ 31DA 003 010203",
+    }
+
+    decoded = decode_message_with_ramses_rf(msg)
+    assert isinstance(decoded, dict)
+    assert decoded["src"] == "01:111111"
+    assert decoded["dst"] == "02:222222"
+    assert decoded["verb"] == "RQ"
+    assert decoded["code"] == "31DA"
+    assert decoded["payload"] == {"ok": True}
 
 
 class TestHALogProvider:

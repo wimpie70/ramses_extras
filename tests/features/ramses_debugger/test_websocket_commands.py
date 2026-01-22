@@ -229,3 +229,42 @@ class TestWsGetMessages:
         ]
         for field in required_fields:
             assert field in msg
+
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.get_messages_from_sources"
+    )
+    async def test_get_messages_decode_success(self, mock_get_messages, hass, conn):
+        mock_get_messages.return_value = [
+            {
+                "dtm": "2026-01-20T10:00:00.000000",
+                "src": "32:153289",
+                "dst": "37:169161",
+                "verb": "RQ",
+                "code": "31DA",
+                "payload": "003 123",
+                "packet": "RQ 32:153289 37:169161 --:------ 31DA 003 123",
+                "source": "traffic_buffer",
+                "raw_line": None,
+                "parse_warnings": [],
+            }
+        ]
+
+        with patch(
+            "custom_components.ramses_extras.features.ramses_debugger.messages_provider.decode_message_with_ramses_rf",
+            return_value={"decoded": True},
+        ):
+            await ws_messages_get_messages(
+                hass,
+                conn,
+                {
+                    "id": "test-id",
+                    "type": "ramses_debugger/messages/get_messages",
+                    "sources": ["traffic_buffer"],
+                    "decode": True,
+                },
+            )
+
+        conn.send_result.assert_called_once()
+        result_payload = conn.send_result.call_args[0][1]
+        assert result_payload["messages"][0]["decoded"] == {"decoded": True}

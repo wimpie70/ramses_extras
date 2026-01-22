@@ -168,7 +168,7 @@ Suggested workflow per step:
 
 ## Ramses debugger improvements
 
-### All cards:
+### All cards/dialogs:
 - [ ] selective re-render...when something changes we loose focus/position on where we were and scroll back to the top. This is for all cards/popups.
 - [ ] we cannot select text from the results, we need this for copy/paste. Is there a z-index problem ? This goes for all cards/popups
 
@@ -216,6 +216,18 @@ Suggested workflow per step:
 
 ### Backend
 - [x] avoid blocking imports (importlib.import_module) in the HA event loop during feature setup
+
+### other
+
+- [] fix automation not sending fan speed commands:2026-01-22 12:23:59.592 DEBUG (MainThread) [custom_components.ramses_extras.features.humidity_control.platforms.switch] simulating set_device_fan_speed
+2026-01-22 12:23:59.593 INFO (MainThread) [custom_components.ramses_extras.features.humidity_control.services] Setting fan speed to high for device 32_153289
+2026-01-22 12:23:59.593 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.ramses_commands] Send Command - Command definition: None
+2026-01-22 12:23:59.593 WARNING (MainThread) [custom_components.ramses_extras.features.humidity_control.services] Failed to send fan speed command high to device 32_153289
+2026-01-22 12:23:59.593 WARNING (MainThread) [custom_components.ramses_extras.features.humidity_control.services] Failed to set fan speed for device 32_153289
+2026-01-22 12:23:59.593 INFO (MainThread) [custom_components.ramses_extras.features.humidity_control.services] Dehumidification activated: switch.dehumidify_32_153289
+2026-01-22 12:23:59.593 INFO (MainThread) [custom_components.ramses_extras.features.humidity_control.automation] Dehumidification activated: High indoor RH: 58.0% > 57.0% with indoor abs (5.28) > outdoor abs (2.33) + offset (0.10)
+2026-01-22 12:23:59.593 DEBUG (MainThread) [custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor] Binary sensor Dehumidifying Active 32_153289 state set to True
+
 
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing

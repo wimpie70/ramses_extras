@@ -31,35 +31,8 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 
 *** ramses debugger improvements ***
 
-- traffic analyzer
-    - what is the source of the traffic, can we choose between a ha logfile, ramses.log or 'live' ?
-    - select all: doesn't toggle all select boxes
-    - details: I don't think this adds value, we can remove this.
-    - logs button: i think it's better to change this into 'copy selection' so the user can paste this in another card.
-    - reset: what does it do ? it takes a while before the results field is cleared.
-
-- messages (from traffic analyzer)
-    - colors on top id's (selection)
-    - list all selected messages: what is the source ? in traffic analyzer i see a total of 4 msgs, but in 'Messages' I see a lot more. This should be the same source
-    - add toggle for parsed values
-    - add auto hor scrollbar on Payload
-    - fix dest/src/broadcast
-    - make the columns sortable and default on time: earliest first
-
 - log explorer:
-    - auto hor scrollbar on tail result (without wrap we go outside the window)
-    - editable before and after
-    - move search options after tail result
     - horizontal line between search blocks (instead of newline)
-    - bg colors on id's
-    - font color: log source between [] : green
 
 - packetexplorer:
-    - the details button is out of the window scope.
-    - When clicking on details, i would expect to see parsed message, but maybe use 1 toggle button to switch to parsed values instead of payload
     - In the result field, we cannot copy/past text, this would be very handy
-    - the search (or filter) doesn't work, remove it ?
-    - make the columns sortable and default on time: earliest first
-    - instead of wrap set a auto hor. scrollbar on payload
-    - bg colors on id's
-    - broadcast still not working
