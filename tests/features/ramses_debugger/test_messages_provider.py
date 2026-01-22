@@ -310,6 +310,175 @@ def test_decode_message_with_ramses_rf_missing_module(monkeypatch) -> None:
     assert decode_message_with_ramses_rf(msg) is None
 
 
+@pytest.mark.asyncio
+async def test_ha_log_provider_no_log_path(hass) -> None:
+    with patch(
+        "custom_components.ramses_extras.features.ramses_debugger.messages_provider.get_configured_log_path",
+        return_value=None,
+    ):
+        provider = HALogProvider()
+        msgs = await provider.get_messages(hass)
+        assert msgs == []
+
+
+@pytest.mark.asyncio
+async def test_ha_log_provider_handles_exception(hass) -> None:
+    hass.async_add_executor_job = AsyncMock(side_effect=RuntimeError("fail"))
+    with patch(
+        "custom_components.ramses_extras.features.ramses_debugger.messages_provider.get_configured_log_path",
+        return_value=Path("/tmp/home-assistant.log"),
+    ):
+        provider = HALogProvider()
+        msgs = await provider.get_messages(hass)
+        assert msgs == []
+
+
+def test_parse_ha_log_line_nested_payload():
+    line = " ".join(
+        [
+            "2026-01-20 10:00:00 DEBUG (MainThread) [custom_components.ramses_cc]",
+            (
+                '{"message": {"src": "32:153289", "dst": "37:169161", '
+                '"verb": "RQ", "code": "31DA"}}'
+            ),
+        ]
+    )
+    msg = _parse_ha_log_line(line)
+    assert msg is not None
+    assert msg.src == "32:153289"
+    assert msg.dst == "37:169161"
+    assert msg.verb == "RQ"
+    assert msg.code == "31DA"
+
+
+def test_parse_ha_log_line_no_json():
+    line = (
+        "2026-01-20 10:00:00 DEBUG (MainThread) [custom_components.ramses_cc] "
+        "not json here"
+    )
+    assert _parse_ha_log_line(line) is None
+
+
+def test_parse_ha_log_line_nested_generic():
+    line = " ".join(
+        [
+            "2026-01-20 10:00:00 DEBUG (MainThread) [custom_components.ramses_cc]",
+            (
+                '{"outer": {"src": "11:111111", "dst": "22:222222", '
+                '"verb": "I", "code": "000A"}}'
+            ),
+        ]
+    )
+    msg = _parse_ha_log_line(line)
+    assert msg is not None
+    assert msg.src == "11:111111"
+    assert msg.dst == "22:222222"
+    assert msg.verb == "I"
+    assert msg.code == "000A"
+
+
+@pytest.mark.asyncio
+async def test_ha_log_provider_filters_by_src(hass) -> None:
+    log_content = "\n".join(
+        [
+            (
+                "2026-01-20 10:00:00 DEBUG (MainThread) [custom_components.ramses_cc] "
+                '{"src": "32:AAAAAA", "dst": "37:BBBBBB", "verb": "RQ", "code": "31DA"}'
+            ),
+            (
+                "2026-01-20 10:00:01 DEBUG (MainThread) [custom_components.ramses_cc] "
+                '{"src": "99:ZZZZZZ", "dst": "37:BBBBBB", "verb": "RQ", "code": "31DA"}'
+            ),
+        ]
+    )
+
+    hass.async_add_executor_job = AsyncMock(return_value=log_content)
+
+    with patch(
+        "custom_components.ramses_extras.features.ramses_debugger.messages_provider.get_configured_log_path",
+        return_value=Path("/tmp/home-assistant.log"),
+    ):
+        provider = HALogProvider()
+        msgs = await provider.get_messages(hass, src="32:AAAAAA", limit=5)
+
+    assert len(msgs) == 1
+    assert msgs[0].src == "32:AAAAAA"
+
+
+def test_decode_message_with_ramses_rf_payload_length_mismatch(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "ramses_tx", None)
+    msg = {
+        "dtm": "2026-01-20T10:00:00.000000",
+        "src": "01:111111",
+        "dst": "02:222222",
+        "verb": "RQ",
+        "code": "31DA",
+        "payload": "003 0102",  # len=3 but hex only 2 bytes
+        "packet": "RQ 01:111111 02:222222 --:------ 31DA 003 0102",
+    }
+    assert decode_message_with_ramses_rf(msg) is None
+
+
+def test_decode_message_with_ramses_rf_invalid_hex(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "ramses_tx", None)
+    msg = {
+        "dtm": "2026-01-20T10:00:00.000000",
+        "src": "01:111111",
+        "dst": "02:222222",
+        "verb": "RQ",
+        "code": "31DA",
+        "payload": "003 ZZYY",
+        "packet": "RQ 01:111111 02:222222 --:------ 31DA 003 ZZYY",
+    }
+    assert decode_message_with_ramses_rf(msg) is None
+
+
+def test_decode_message_with_ramses_rf_packet_ctor_failure(monkeypatch) -> None:
+    # Packet constructor raises -> function returns None
+    class DummyPacket:
+        def __init__(self, dtm: datetime, frame: str) -> None:
+            raise ValueError("bad frame")
+
+    class DummyMessage:
+        @staticmethod
+        def _from_pkt(pkt: DummyPacket):
+            return None
+
+    mod_packet = types.ModuleType("ramses_tx.packet")
+    mod_message = types.ModuleType("ramses_tx.message")
+    mod_packet.__dict__["Packet"] = DummyPacket
+    mod_message.__dict__["Message"] = DummyMessage
+
+    monkeypatch.setitem(sys.modules, "ramses_tx.packet", mod_packet)
+    monkeypatch.setitem(sys.modules, "ramses_tx.message", mod_message)
+
+    msg = {
+        "dtm": "2026-01-20T10:00:00.000000",
+        "src": "01:111111",
+        "dst": "02:222222",
+        "verb": "RQ",
+        "code": "31DA",
+        "payload": "003 010203",
+        "packet": "RQ 01:111111 02:222222 --:------ 31DA 003 010203",
+    }
+
+    assert decode_message_with_ramses_rf(msg) is None
+
+
+def test_decode_message_with_ramses_rf_missing_packet(monkeypatch) -> None:
+    """If packet is missing or not a str, decoder returns None early."""
+    monkeypatch.setitem(sys.modules, "ramses_tx", None)
+    msg = {
+        "dtm": "2026-01-20T10:00:00.000000",
+        "src": "01:111111",
+        "dst": "02:222222",
+        "verb": "RQ",
+        "code": "31DA",
+        "payload": "003 010203",
+    }
+    assert decode_message_with_ramses_rf(msg) is None
+
+
 @pytest.mark.parametrize(
     "msg",
     [

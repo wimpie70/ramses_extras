@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -241,3 +243,45 @@ async def test_ws_returns_error_when_collector_missing(hass) -> None:
 
     assert conn.errors[-1][0] == 2
     assert conn.errors[-1][1] == "collector_not_ready"
+
+
+@pytest.mark.asyncio
+async def test_collector_ignores_invalid_event(hass) -> None:
+    collector = TrafficCollector(hass)
+    collector.start()
+
+    hass.bus.async_fire(
+        "ramses_cc_message",
+        {
+            "dtm": "2026-01-18T12:00:00",
+            "src": 123,  # invalid
+            "dst": "02:222222",
+            "verb": "RQ",
+            "code": "000A",
+        },
+    )
+    await hass.async_block_till_done()
+
+    stats = collector.get_stats()
+    assert stats["total_count"] == 0
+    assert stats["flows"] == []
+
+
+def test_collector_time_fired_used_when_missing_dtm(hass) -> None:
+    collector = TrafficCollector(hass)
+
+    event = MagicMock()
+    event.data = {
+        "src": "01:111111",
+        "dst": "02:222222",
+        "verb": "RQ",
+        "code": "000A",
+    }
+    event.time_fired = datetime(2026, 1, 20, 12, 0, 0)
+
+    collector._handle_ramses_cc_message(event)
+
+    stats = collector.get_stats()
+    assert stats["total_count"] == 1
+    flow = stats["flows"][0]
+    assert flow["last_seen"].startswith("2026-01-20T12:00:00")
