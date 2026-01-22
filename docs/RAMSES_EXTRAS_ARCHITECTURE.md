@@ -22,11 +22,11 @@
   - [4.6. Adding New Features](#46-adding-new-features)
 - [5. Framework Foundation](#5-framework-foundation)
   - [5.1. 🏗️ Framework Architecture Overview](#51-️-framework-architecture-overview)
-  - [5.2. 🔧 Setup Framework](#52-️-setup-framework)
+  - [5.2. 🔧 Setup Framework](#52--setup-framework)
   - [5.3. 📚 Base Classes](#53--base-classes)
-  - [5.4. 🧩 Helper Modules](#54--helper-modules)
-  - [5.5. 🛠️ Framework Services](#55-️-framework-services)
-  - [5.6. 📖 Framework Usage Examples](#56--framework-usage-examples)
+  - [5.3. 🧩 Helper Modules](#53--helper-modules)
+  - [5.4. 🛠️ Framework Services](#54-️-framework-services)
+  - [5.5. 📖 Framework Usage Examples](#55--framework-usage-examples)
 - [6. Device Feature Management](#6-device-feature-management)
   - [6.1. Device Filtering](#61-device-filtering)
   - [6.2. DeviceFeatureMatrix](#62-devicefeaturematrix)
@@ -460,6 +460,25 @@ self.hass.bus.async_listen("ramses_device_ready_for_entities", self._on_device_r
 - **Parameter Schemas**: Leverage ramses_cc parameter schemas for device configuration
 - **Message Codes**: Integrate with ramses_cc message code definitions
 - **Error Handling**: Use ramses_cc error patterns and handling
+
+### Device Binding Requirements
+
+**FAN Device 'bound' Trait**: When using FAN-related features, Ramses Extras requires the 'bound' trait to be defined for FAN devices in the Ramses RF configuration:
+
+```yaml
+# Example Known device IDs configuration with bound trait
+"37:168270":
+  class: REM
+"32:153289":
+  bound: "37:168270"  # FAN device bound to REM
+  class: FAN
+```
+
+**Why This Matters:**
+- **Feature Compatibility**: FAN-related features (Humidity Control, HVAC Fan Card) require properly bound devices
+- **Device Communication**: The 'bound' trait establishes the communication link between FAN and REM devices
+- **Command Execution**: Proper binding ensures commands can be sent to the correct device hierarchy
+- **State Synchronization**: Bound devices provide accurate state information for automation logic
 
 ### Initialization Dependencies
 
