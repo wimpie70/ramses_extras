@@ -36,6 +36,7 @@ note: the following are tested with an Orcon WTW
 - **HVAC Fan Card** – advanced Lovelace card for FAN monitoring and control
 - **Humidity Control** – advanced humidity-based automation and entities
 - **Sensor Control** – central sensor mapping for Humidity Control + HVAC Fan Card
+- **Ramses Debugger** – advanced debugging tools for Ramses RF protocol analysis
 - **Default feature** - Common/reusable websockets, entities, etc to be used by other features
 
 ### **✅ HVAC Fan Card**
@@ -145,6 +146,29 @@ features/automations and UI:
 - The second FAN can point individual metrics to external HA sensors located in
   better positions (or on other devices).
 
+### **✅ Ramses Debugger**
+
+This feature works best with a dedicated dashboard page.
+
+**Advanced debugging tools for Ramses RF protocol analysis:**
+
+- **Traffic Analyzer**: Real-time monitoring and analysis of Ramses RF message traffic
+- **Log Explorer**: Search and analyze Home Assistant and packet logs with advanced filtering
+- **Packet Log Explorer**: Deep dive into packet-level communication details
+- **Cross-Filtering**: Navigate between traffic data and log entries seamlessly
+- **Message Viewer**: Unified view of messages from multiple sources with filtering and sorting
+
+![Traffic Analyzer](docs/TrafficAnalyser.png)
+![HA Log Explorer](docs/HALogExplorer.png)
+![Packet Log Explorer](docs/PacketLogExplorer.png)
+
+The debugger provides comprehensive tools for troubleshooting Ramses RF communication:
+
+- Real-time traffic monitoring with device pair filtering
+- Advanced log search with context extraction and traceback highlighting
+- Packet-level analysis with parsed payload display
+- Cross-referencing between traffic events and log entries
+
 ### **🏛️ Framework Foundation**
 
 **Reusable architecture for easy feature development:**
@@ -195,6 +219,7 @@ example:
 4. Select which features to enable:
    - ✅ **Humidity Control** (works together with the hvac Fan Card)
    - ✅ **Sensor Control** (shared sensor mapping for Humidity Control + HVAC Fan Card)
+   - ✅ **Ramses Debugger** (advanced debugging tools for protocol analysis)
    - 🟡 **HVAC Fan Card**
 
 ### **Basic Usage**

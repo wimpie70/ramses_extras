@@ -201,6 +201,20 @@ custom_components/ramses_extras/
 │   │           ├── message-handlers.js
 │   │           └── translations/
 │   │
+│   ├── ramses_debugger/          # Advanced debugging tools feature
+│   │   ├── __init__.py
+│   │   ├── const.py
+│   │   ├── traffic_collector.py  # Real-time traffic monitoring
+│   │   ├── log_providers.py      # Log file parsing and search
+│   │   ├── websocket_commands.py # Unified message API
+│   │   └── www/                  # Debugger web assets
+│   │       └── ramses_debugger/
+│   │           ├── traffic-analyser.js
+│   │           ├── log-explorer.js
+│   │           ├── packet-log-explorer.js
+│   │           ├── ramses-messages-viewer.js
+│   │           └── card-styles.js
+│   │
 │   ├── hello_world/         # Hello World template feature
 │   │   ├── __init__.py
 │   │   ├── automation.py
@@ -795,6 +809,31 @@ The `hello_world` feature is also the reference for keeping features **small and
   - Use `framework.helpers.entity.core.EntityHelpers` to generate entity IDs from templates.
 - **Keep entities thin**: feature entities should mostly add feature-specific attributes/behavior; common state handling should live in framework base classes.
 - **Avoid parallel config structures**: do not introduce new ad-hoc `*_CONFIGS` / `*_CARD_CONFIG` registries outside `FEATURE_DEFINITION`.
+
+### ✅ Ramses Debugger
+
+This works best with a dedicated dashboard page.
+
+
+- **Purpose**: Advanced debugging tools for Ramses RF protocol analysis and troubleshooting
+- **Components**: Multiple specialized Lovelace cards with WebSocket-based real-time communication
+- **Architecture**: Event-driven backend with TrafficCollector, log parsing providers, and unified message API
+- **Features**:
+  - **Traffic Analyzer**: Real-time monitoring of ramses_cc_message events with device pair filtering, verb/code filtering, and cross-referencing to log entries
+  - **Log Explorer**: Advanced search and context extraction from Home Assistant logs with traceback highlighting and configurable context windows
+  - **Packet Log Explorer**: Deep packet-level analysis with parsed payload display and message normalization
+  - **Unified Messages API**: Single WebSocket endpoint (`messages/get_messages`) that aggregates data from traffic buffer, packet logs, and HA logs with deduplication
+- **WebSocket Commands**:
+  - `traffic/get_stats`, `traffic/reset_stats` - Real-time traffic aggregation
+  - `log/list_files`, `log/get_tail`, `log/search` - Log file exploration
+  - `messages/get_messages` - Unified message retrieval from multiple sources
+- **Platforms**: No direct entities (debugging-focused feature with UI cards only)
+- **Key Capabilities**:
+  - Real-time traffic monitoring with bounded ring buffers for performance
+  - Advanced log search with regex support, context extraction, and size limits
+  - Cross-filtering between traffic events and log entries
+  - Message normalization and deduplication across multiple data sources
+  - Theme-adaptive UI with color-coded device identification and syntax highlighting
 
 ## 4.4. Feature Structure Pattern
 
