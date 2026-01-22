@@ -44,6 +44,16 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     return 'ramses-packet-log-explorer';
   }
 
+  static getStubConfig() {
+    return {
+      type: `custom:${this.getTagName()}`,
+      ...this.prototype.getDefaultConfig(),
+      layout_options: {
+        grid_columns: 200,
+      },
+    };
+  }
+
   getRequiredEntities() {
     return {};
   }
@@ -188,7 +198,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
 
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display: block; width: 100%; min-width: 1200px; max-width: none; }
+        :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
         ha-card { width: 100%; }
 
         .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

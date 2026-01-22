@@ -56,7 +56,7 @@ class TestHumidityServices:
         self.hass.services.async_call.assert_called_with(
             "switch", SERVICE_TURN_ON, {"entity_id": entity_id}
         )
-        self.mock_ramses.send_command.assert_called_with(device_id, "high")
+        self.mock_ramses.send_command.assert_called_with(device_id, "fan_high")
 
     @patch(
         "custom_components.ramses_extras.features.humidity_control.services.EntityHelpers"
@@ -84,7 +84,7 @@ class TestHumidityServices:
         self.hass.services.async_call.assert_called_with(
             "switch", SERVICE_TURN_OFF, {"entity_id": entity_id}
         )
-        self.mock_ramses.send_command.assert_called_with(device_id, "auto")
+        self.mock_ramses.send_command.assert_called_with(device_id, "fan_auto")
 
     async def test_async_set_fan_speed(self):
         """Test setting fan speed."""
@@ -96,7 +96,7 @@ class TestHumidityServices:
         result = await self.services.async_set_fan_speed(device_id, speed)
 
         assert result is True
-        self.mock_ramses.send_command.assert_called_with(device_id, speed)
+        self.mock_ramses.send_command.assert_called_with(device_id, "fan_low")
 
     async def test_async_set_fan_speed_failure_result(self):
         """Test setting fan speed when the command reports failure."""
@@ -108,7 +108,7 @@ class TestHumidityServices:
         result = await self.services.async_set_fan_speed(device_id, speed)
 
         assert result is False
-        self.mock_ramses.send_command.assert_called_with(device_id, speed)
+        self.mock_ramses.send_command.assert_called_with(device_id, "fan_low")
 
     async def test_async_set_fan_speed_exception(self):
         """Test setting fan speed when send_command raises."""

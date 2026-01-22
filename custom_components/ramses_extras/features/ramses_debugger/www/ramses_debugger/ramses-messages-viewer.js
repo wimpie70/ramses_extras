@@ -116,6 +116,10 @@ class RamsesMessagesViewer extends HTMLElement {
       return;
     }
 
+    const prevWrapper = this.shadowRoot.querySelector('.messages-table-wrapper');
+    const prevScrollTop = prevWrapper ? prevWrapper.scrollTop : 0;
+    const prevScrollLeft = prevWrapper ? prevWrapper.scrollLeft : 0;
+
     const deviceBg = (deviceId) => {
       const s = String(deviceId || '');
       if (!s) return 'rgba(0,0,0,0.04)';
@@ -313,9 +317,9 @@ class RamsesMessagesViewer extends HTMLElement {
         .messages-table { width: 100%; border-collapse: collapse; }
         .messages-table th, .messages-table td { border: 1px solid var(--divider-color); padding: 4px 6px; vertical-align: top; }
         .messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; text-align: left; }
-        .messages-table td { font-family: monospace; font-size: 12px; }
+        .messages-table td { font-family: monospace; font-size: 12px; user-select: text; -webkit-user-select: text; }
         .messages-table td.col-payload { white-space: nowrap; }
-        .messages-table th.sortable { cursor: pointer; }
+        .messages-table th.sortable { cursor: pointer; user-select: none; }
         .messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
         .messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
         .messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
@@ -416,6 +420,12 @@ class RamsesMessagesViewer extends HTMLElement {
         </table>
       </div>
     `;
+
+    const wrapper = this.shadowRoot.querySelector('.messages-table-wrapper');
+    if (wrapper) {
+      wrapper.scrollTop = prevScrollTop;
+      wrapper.scrollLeft = prevScrollLeft;
+    }
 
     const thead = this.shadowRoot.querySelector('thead');
     if (thead) {

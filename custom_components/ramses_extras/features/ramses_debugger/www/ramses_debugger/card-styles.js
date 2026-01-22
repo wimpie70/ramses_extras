@@ -2,7 +2,7 @@ export function logExplorerCardStyle({ wrapCss }) {
   const gridCols = '1fr';
 
   return `
-    :host { display: block; width: 100%; min-width: 1200px; max-width: none; }
+    :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
     ha-card { width: 100%; }
 
     .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -25,6 +25,8 @@ export function logExplorerCardStyle({ wrapCss }) {
       max-width: 100%;
       white-space: ${wrapCss};
       max-height: 320px;
+      user-select: text;
+      -webkit-user-select: text;
     }
 
     dialog { width: 98vw; max-width: 98vw; height: 90vh; max-height: 90vh; resize: both; overflow: auto; }
@@ -56,7 +58,7 @@ export function trafficAnalyserCardStyle({ compact }) {
   const metaWrap = compact ? 'wrap' : 'nowrap';
 
   return `
-    :host { display: block; width: 100%; min-width: 1200px; max-width: none; }
+    :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
     ha-card { width: 100%; }
 
     .meta { display: flex; gap: 12px; font-size: 12px; opacity: 0.8; flex-wrap: ${metaWrap}; }
@@ -95,7 +97,7 @@ export function trafficAnalyserCardStyle({ compact }) {
     .messages-header { padding: 8px 0; border-bottom: 1px solid var(--divider-color); margin-bottom: 8px; }
     .messages-table-wrapper { overflow: auto; flex: 1; }
     .messages-table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px; }
-    .messages-table th, .messages-table td { padding: 4px 6px; border: 1px solid var(--divider-color); vertical-align: top; white-space: nowrap; overflow: hidden; }
+    .messages-table th, .messages-table td { padding: 4px 6px; border: 1px solid var(--divider-color); vertical-align: top; white-space: nowrap; }
     .messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; }
     .messages-table .col-time { width: 140px; font-size: 11px; }
     .messages-table .col-verb { width: 40px; text-align: center; }
@@ -103,6 +105,8 @@ export function trafficAnalyserCardStyle({ compact }) {
     .messages-table .col-src { width: 110px; background: var(--dev-bg); color: var(--dev-fg); }
     .messages-table .col-dst { width: 110px; background: var(--dev-bg); color: var(--dev-fg); }
     .messages-table .col-bcast { width: 60px; text-align: center; }
-    .messages-table .col-payload { width: auto; min-width: 300px; white-space: pre; overflow-x: auto; }
+    .messages-table .col-payload { width: auto; min-width: 300px; white-space: pre; overflow-x: auto; user-select: text; -webkit-user-select: text; }
+    .messages-table td { user-select: text; -webkit-user-select: text; }
+    dialog pre { user-select: text; -webkit-user-select: text; }
   `;
 }

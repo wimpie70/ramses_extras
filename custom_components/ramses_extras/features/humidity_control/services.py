@@ -134,19 +134,30 @@ class HumidityServices:
         _LOGGER.info("Setting fan speed to %s for device %s", speed, device_id)
 
         try:
-            # Send command using registry
-            result = await self.ramses_commands.send_command(device_id, speed)
+            cmd = str(speed or "").strip().lower()
+            if not cmd:
+                _LOGGER.warning(
+                    "Failed to set fan speed for device %s: empty speed",
+                    device_id,
+                )
+                return False
+
+            # Map human-friendly values ("high", "auto", etc.) to registry commands.
+            # Default commands register names like "fan_high", "fan_auto", ...
+            command_name = cmd if cmd.startswith("fan_") else f"fan_{cmd}"
+
+            result = await self.ramses_commands.send_command(device_id, command_name)
             success: bool = result.success
             if success:
                 _LOGGER.info(
                     "Fan speed set to %s for device %s",
-                    speed.upper(),
+                    cmd.upper(),
                     device_id,
                 )
             else:
                 _LOGGER.warning(
                     "Failed to send fan speed command %s to device %s",
-                    speed,
+                    command_name,
                     device_id,
                 )
 

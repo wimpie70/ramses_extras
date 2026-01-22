@@ -169,8 +169,9 @@ Suggested workflow per step:
 ## Ramses debugger improvements
 
 ### All cards/dialogs:
-- [ ] selective re-render...when something changes we loose focus/position on where we were and scroll back to the top. This is for all cards/popups.
-- [ ] we cannot select text from the results, we need this for copy/paste. Is there a z-index problem ? This goes for all cards/popups
+- [x] selective re-render...when something changes we loose focus/position on where we were and scroll back to the top. This is for all cards/popups.
+- [x] we cannot select text from the results, we need this for copy/paste. Is there a z-index problem ? This goes for all cards/popups
+- [ ] we don't have the maximum width for the cards. Should we set base-column-count to 1 ? or adapt column-size ?
 
 
 ### Traffic analyzer
@@ -226,7 +227,7 @@ Suggested workflow per step:
 2026-01-22 12:23:59.593 WARNING (MainThread) [custom_components.ramses_extras.features.humidity_control.services] Failed to set fan speed for device 32_153289
 2026-01-22 12:23:59.593 INFO (MainThread) [custom_components.ramses_extras.features.humidity_control.services] Dehumidification activated: switch.dehumidify_32_153289
 2026-01-22 12:23:59.593 INFO (MainThread) [custom_components.ramses_extras.features.humidity_control.automation] Dehumidification activated: High indoor RH: 58.0% > 57.0% with indoor abs (5.28) > outdoor abs (2.33) + offset (0.10)
-2026-01-22 12:23:59.593 DEBUG (MainThread) [custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor] Binary sensor Dehumidifying Active 32_153289 state set to True
+2026-01-22 12:23:59.593 DEBUG (MainThread) [custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor] Binary sensor Dehumidifying Active 32_153289 state set to True /// we get this warning, but on the card, the speed IS set to high...
 
 
 ## Acceptance criteria

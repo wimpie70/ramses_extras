@@ -27,6 +27,64 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._after = null;
     this._tailLines = null;
     this._tailOffset = 0;
+
+    this._uiState = null;
+  }
+
+  render() {
+    if (this.shadowRoot) {
+      const active = this.shadowRoot.activeElement;
+      const focusedId = active?.id || null;
+      const selStart = typeof active?.selectionStart === 'number' ? active.selectionStart : null;
+      const selEnd = typeof active?.selectionEnd === 'number' ? active.selectionEnd : null;
+
+      const tailPre = this.shadowRoot.getElementById('tailPre');
+      const resultPre = this.shadowRoot.getElementById('resultPre');
+      this._uiState = {
+        focusedId,
+        selStart,
+        selEnd,
+        tailScrollTop: tailPre ? tailPre.scrollTop : 0,
+        tailScrollLeft: tailPre ? tailPre.scrollLeft : 0,
+        resultScrollTop: resultPre ? resultPre.scrollTop : 0,
+        resultScrollLeft: resultPre ? resultPre.scrollLeft : 0,
+      };
+    }
+
+    super.render();
+
+    if (!this.shadowRoot || !this._uiState) {
+      return;
+    }
+
+    const tailPre = this.shadowRoot.getElementById('tailPre');
+    const resultPre = this.shadowRoot.getElementById('resultPre');
+    if (tailPre) {
+      tailPre.scrollTop = this._uiState.tailScrollTop;
+      tailPre.scrollLeft = this._uiState.tailScrollLeft;
+    }
+    if (resultPre) {
+      resultPre.scrollTop = this._uiState.resultScrollTop;
+      resultPre.scrollLeft = this._uiState.resultScrollLeft;
+    }
+
+    if (this._uiState.focusedId) {
+      const el = this.shadowRoot.getElementById(this._uiState.focusedId);
+      if (el && typeof el.focus === 'function') {
+        el.focus();
+        if (
+          typeof el.setSelectionRange === 'function'
+          && typeof this._uiState.selStart === 'number'
+          && typeof this._uiState.selEnd === 'number'
+        ) {
+          try {
+            el.setSelectionRange(this._uiState.selStart, this._uiState.selEnd);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
   }
 
   _escapeHtml(value) {
@@ -189,6 +247,16 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
 
   static getTagName() {
     return 'ramses-log-explorer';
+  }
+
+  static getStubConfig() {
+    return {
+      type: `custom:${this.getTagName()}`,
+      ...this.prototype.getDefaultConfig(),
+      layout_options: {
+        grid_columns: 200,
+      },
+    };
   }
 
   getRequiredEntities() {
@@ -563,7 +631,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
                 <button id="tailDown" title="Move window 50 lines later">-50 lines down</button>
               </span>
             </div>
-            <pre>${tailHtml || ''}</pre>
+            <pre id="tailPre">${tailHtml || ''}</pre>
           </div>
 
           <div class="separator"></div>
@@ -617,7 +685,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               ${typeof matches === 'number' ? ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}` : ''}
               ${truncated ? ` • ${this.t('card.log.search.truncated') || 'truncated'}` : ''}
             </div>
-            <pre>${resultHtml || ''}</pre>
+            <pre id="resultPre">${resultHtml || ''}</pre>
           </div>
 
           <dialog id="zoomDialog">

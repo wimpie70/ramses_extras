@@ -65,11 +65,31 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       return;
     }
 
+    const tableWrap = this.shadowRoot?.querySelector?.('.table-wrap');
+    const prevScrollTop = tableWrap ? tableWrap.scrollTop : 0;
+    const prevScrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
+
     super.render();
+
+    const nextWrap = this.shadowRoot?.querySelector?.('.table-wrap');
+    if (nextWrap) {
+      nextWrap.scrollTop = prevScrollTop;
+      nextWrap.scrollLeft = prevScrollLeft;
+    }
   }
 
   static getTagName() {
     return 'ramses-traffic-analyser';
+  }
+
+  static getStubConfig() {
+    return {
+      type: `custom:${this.getTagName()}`,
+      ...this.prototype.getDefaultConfig(),
+      layout_options: {
+        grid_columns: 200,
+      },
+    };
   }
 
   getRequiredEntities() {
