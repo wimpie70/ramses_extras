@@ -203,6 +203,7 @@ Suggested workflow per step:
 - [x] what's the diff between refresh and Tail. Seems they both refresh. If so, we can remove refresh button
 - [x] add 50 lines up and 50 lines down buttons, so we can scroll thru the whole file without loading the whole log file. Now we make the block (200 lines) bigger or smaller. I want to move focus: EOF -200 till EOF -> EOF-250 till EOF-50, etc...
 - [x] on Zoom we want the same bg colors / fontcolors
+- [x] detect and highlight Traceback blocks (include preceding "Detected blocking call" line)
 
 ### Packet explorer
 
@@ -212,6 +213,9 @@ Suggested workflow per step:
 - [x] Traffic Analyzer: Messages dialog uses shared component (no behavioral change)
 - [x] Packet Log Explorer: switch to shared component UI
 - [x] Packet Log Explorer: add selectbox for load mode (auto-load vs manual Load button)
+
+### Backend
+- [x] avoid blocking imports (importlib.import_module) in the HA event loop during feature setup
 
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing

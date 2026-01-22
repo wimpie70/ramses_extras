@@ -133,7 +133,8 @@ class TestConfigFlowHelper:
             assert "D1" in info
             assert "Default" not in info
 
-    def test_discover_feature_config_flows_no_class(self, hass, config_entry):
+    @pytest.mark.asyncio
+    async def test_discover_feature_config_flows_no_class(self, hass, config_entry):
         """Test discovery when no valid class is found in module."""
         mock_features = {"test_f": {"has_device_config": True}}
         patch_path = "custom_components.ramses_extras.const.AVAILABLE_FEATURES"
@@ -144,7 +145,7 @@ class TestConfigFlowHelper:
             mock_module = MagicMock()
 
             with patch("importlib.import_module", return_value=mock_module):
-                flows = helper.discover_feature_config_flows()
+                flows = await helper.discover_feature_config_flows()
                 assert flows == {}
 
     def test_extract_device_id(self, hass, config_entry):
@@ -224,7 +225,8 @@ class TestConfigFlowHelper:
             assert "Hello World" in summary
             assert "1 devices" in summary
 
-    def test_discover_feature_config_flows(self, hass, config_entry):
+    @pytest.mark.asyncio
+    async def test_discover_feature_config_flows(self, hass, config_entry):
         """Test discovery of feature config flows."""
         mock_features = {
             "test_f": {"has_device_config": True, "name": "Test Feature"},
@@ -241,7 +243,7 @@ class TestConfigFlowHelper:
             with patch.object(importlib, "import_module", return_value=mock_module):
                 mock_module.MockConfigFlow = MockConfigFlow
 
-                flows = helper.discover_feature_config_flows()
+                flows = await helper.discover_feature_config_flows()
                 assert "test_f" in flows
                 assert flows["test_f"] is MockConfigFlow
                 assert "no_config" not in flows
@@ -249,14 +251,14 @@ class TestConfigFlowHelper:
 
                 # Test ImportError
                 with patch.object(importlib, "import_module", side_effect=ImportError):
-                    flows_err = helper.discover_feature_config_flows()
+                    flows_err = await helper.discover_feature_config_flows()
                     assert flows_err == {}
 
                 # Test generic Exception
                 with patch.object(
                     importlib, "import_module", side_effect=ValueError("test error")
                 ):
-                    flows_ex = helper.discover_feature_config_flows()
+                    flows_ex = await helper.discover_feature_config_flows()
                     assert flows_ex == {}
 
     def test_additional_normalization_and_extraction(self, hass, config_entry):

@@ -3,6 +3,7 @@
 This module provides minimal WebSocket infrastructure for Ramses Extras features.
 """
 
+import asyncio
 import importlib
 import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
@@ -249,7 +250,16 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
                 const_module_path += f"{self.feature_identifier}.const"
 
             # Import the const module for this feature
-            feature_module = importlib.import_module(const_module_path)
+            if hasattr(self.hass, "async_add_executor_job"):
+                feature_module = await self.hass.async_add_executor_job(
+                    importlib.import_module,
+                    const_module_path,
+                )
+            else:
+                feature_module = await asyncio.to_thread(
+                    importlib.import_module,
+                    const_module_path,
+                )
 
             feature_definition = getattr(feature_module, "FEATURE_DEFINITION", None)
             if not isinstance(feature_definition, dict):
@@ -366,7 +376,16 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
                 const_module_path += f"{self.feature_identifier}.const"
 
             # Import the const module for this feature
-            feature_module = importlib.import_module(const_module_path)
+            if hasattr(self.hass, "async_add_executor_job"):
+                feature_module = await self.hass.async_add_executor_job(
+                    importlib.import_module,
+                    const_module_path,
+                )
+            else:
+                feature_module = await asyncio.to_thread(
+                    importlib.import_module,
+                    const_module_path,
+                )
 
             feature_definition = getattr(feature_module, "FEATURE_DEFINITION", None)
             if not isinstance(feature_definition, dict):

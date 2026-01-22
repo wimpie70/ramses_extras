@@ -1,5 +1,6 @@
 """Config flow utilities for Ramses Extras feature configuration."""
 
+import asyncio
 import importlib
 import inspect
 import logging
@@ -368,7 +369,7 @@ class ConfigFlowHelper:
 
         return "Feature/Device Configuration:\n• " + "\n• ".join(summary_parts)
 
-    def discover_feature_config_flows(self) -> dict[str, Any]:
+    async def discover_feature_config_flows(self) -> dict[str, Any]:
         """Discover feature-specific config flow implementations
          (only for features that need them).
 
@@ -391,7 +392,7 @@ class ConfigFlowHelper:
                 module_path = (
                     f"custom_components.ramses_extras.features.{feature_id}.config_flow"
                 )
-                module = importlib.import_module(module_path)
+                module = await asyncio.to_thread(importlib.import_module, module_path)
 
                 # Look for the config flow class
                 config_flow_class = None

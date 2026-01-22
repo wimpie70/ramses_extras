@@ -107,6 +107,7 @@ class ExtrasBaseAutomation(ABC):
             "Starting %s automation (HA event-based startup)",
             self.feature_id,
         )
+        await self._load_entity_patterns()
         _LOGGER.debug("Entity patterns: %s", self.entity_patterns)
 
         # Mark as active immediately
@@ -194,6 +195,11 @@ class ExtrasBaseAutomation(ABC):
             self._entity_patterns = self._generate_entity_patterns()
         return self._entity_patterns
 
+    async def _load_entity_patterns(self) -> None:
+        if self._entity_patterns is not None:
+            return
+        self._entity_patterns = await asyncio.to_thread(self._generate_entity_patterns)
+
     def _generate_entity_patterns_default(self) -> list[str]:
         """Generate default entity patterns based on feature configuration.
 
@@ -236,6 +242,7 @@ class ExtrasBaseAutomation(ABC):
         handle entity availability. No complex validation cycles.
         """
         _LOGGER.debug("Registering listeners for %s", self.feature_id)
+        await self._load_entity_patterns()
         _LOGGER.debug("Entity patterns: %s", self.entity_patterns)
 
         listeners_registered = 0
