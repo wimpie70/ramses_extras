@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -327,11 +327,44 @@ class MessagesProvider:
 class TrafficBufferProvider(MessagesProvider):
     """Provider for in-memory traffic buffer from TrafficCollector."""
 
-    def __init__(self, max_global: int = 5000, max_per_flow: int = 500) -> None:
+    def __init__(
+        self,
+        max_global: int = 5000,
+        max_per_flow: int = 500,
+        max_flows: int = 2000,
+    ) -> None:
         self._max_global = max_global
         self._max_per_flow = max_per_flow
+        self._max_flows = max_flows
         self._global_buffer: deque[dict[str, Any]] = deque(maxlen=max_global)
-        self._per_flow_buffers: dict[tuple[str, str], deque[dict[str, Any]]] = {}
+        self._per_flow_buffers: OrderedDict[tuple[str, str], deque[dict[str, Any]]] = (
+            OrderedDict()
+        )
+
+    def configure(
+        self,
+        *,
+        max_global: int | None = None,
+        max_per_flow: int | None = None,
+        max_flows: int | None = None,
+    ) -> None:
+        if max_global is not None:
+            self._max_global = max(1, int(max_global))
+            self._global_buffer = deque(self._global_buffer, maxlen=self._max_global)
+
+        if max_per_flow is not None:
+            self._max_per_flow = max(1, int(max_per_flow))
+            for k, buf in list(self._per_flow_buffers.items()):
+                self._per_flow_buffers[k] = deque(buf, maxlen=self._max_per_flow)
+
+        if max_flows is not None:
+            self._max_flows = max(1, int(max_flows))
+
+        while len(self._per_flow_buffers) > self._max_flows:
+            self._per_flow_buffers.popitem(last=False)
+
+    def evict_flow(self, key: tuple[str, str]) -> None:
+        self._per_flow_buffers.pop(key, None)
 
     def ingest_event(self, event_data: dict[str, Any]) -> None:
         """Ingest a ramses_cc_message event into buffers."""
@@ -340,9 +373,16 @@ class TrafficBufferProvider(MessagesProvider):
         dst = event_data.get("dst")
         if isinstance(src, str) and isinstance(dst, str):
             key = (src, dst)
-            buf = self._per_flow_buffers.setdefault(
-                key, deque(maxlen=self._max_per_flow)
-            )
+
+            buf = self._per_flow_buffers.get(key)
+            if buf is None:
+                while len(self._per_flow_buffers) >= self._max_flows:
+                    self._per_flow_buffers.popitem(last=False)
+                buf = deque(maxlen=self._max_per_flow)
+                self._per_flow_buffers[key] = buf
+            else:
+                self._per_flow_buffers.move_to_end(key)
+
             buf.append(event_data)
 
     async def get_messages(

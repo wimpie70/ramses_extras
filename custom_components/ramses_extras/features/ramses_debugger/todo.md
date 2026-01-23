@@ -186,11 +186,11 @@ Suggested workflow per step:
 
 ### 3) Traffic collector: cap flows + explain what a flow is
 - [ ] Define "flow": a unique `(src, dst)` pair observed in `ramses_cc_message` events
-- [ ] Add configurable caps:
+- [x] Add configurable caps:
   - max flows (unique `(src, dst)` pairs)
   - max global message buffer (for message browsing)
   - max messages per flow
-- [ ] Eviction policy for flows when max is reached (drop oldest by last_seen/first_seen)
+- [x] Eviction policy for flows when max is reached (drop oldest by last_seen/first_seen)
 
 ### 4) Config flow (Advanced settings)
 - [ ] Add debugger options:

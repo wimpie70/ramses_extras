@@ -40,12 +40,59 @@ class TrafficCollector:
         self._unsub: CALLBACK_TYPE | None = None
 
         self._flows: dict[tuple[str, str], TrafficFlowStats] = {}
+        self._max_flows: int = 2000
         self._total_count = 0
         self._by_code: Counter[str] = Counter()
         self._by_verb: Counter[str] = Counter()
         self._started_at: str = datetime.now().isoformat(timespec="seconds")
 
         self._buffer_provider = TrafficBufferProvider()
+
+    def configure(
+        self,
+        *,
+        max_flows: int | None = None,
+        buffer_max_global: int | None = None,
+        buffer_max_per_flow: int | None = None,
+        buffer_max_flows: int | None = None,
+    ) -> None:
+        if max_flows is not None:
+            self._max_flows = max(1, int(max_flows))
+
+        self._buffer_provider.configure(
+            max_global=buffer_max_global,
+            max_per_flow=buffer_max_per_flow,
+            max_flows=buffer_max_flows,
+        )
+
+        self._evict_flows_if_needed()
+
+    def _evict_flows_if_needed(self) -> None:
+        while len(self._flows) > self._max_flows:
+            oldest_key: tuple[str, str] | None = None
+            oldest_dtm: str | None = None
+            for k, flow in self._flows.items():
+                if oldest_key is None:
+                    oldest_key = k
+                    oldest_dtm = flow.last_seen
+                    continue
+
+                dtm = flow.last_seen
+                if oldest_dtm is None:
+                    if dtm is not None:
+                        oldest_key = k
+                        oldest_dtm = dtm
+                    continue
+
+                if dtm is None or dtm < oldest_dtm:
+                    oldest_key = k
+                    oldest_dtm = dtm
+
+            if oldest_key is None:
+                break
+
+            self._flows.pop(oldest_key, None)
+            self._buffer_provider.evict_flow(oldest_key)
 
     def start(self) -> None:
         if self._unsub is not None:
@@ -158,3 +205,5 @@ class TrafficCollector:
             self._flows[key] = flow
 
         flow.add_message(verb=verb, code=code, dtm=dtm)
+
+        self._evict_flows_if_needed()

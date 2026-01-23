@@ -553,6 +553,40 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             if isinstance(packet_log_path, str):
                 new_options["ramses_debugger_packet_log_path"] = packet_log_path.strip()
 
+            cache_max_entries = user_input.get("ramses_debugger_cache_max_entries")
+            if isinstance(cache_max_entries, int):
+                new_options["ramses_debugger_cache_max_entries"] = int(
+                    cache_max_entries
+                )
+
+            cache_ttl_ms = user_input.get("ramses_debugger_cache_ttl_ms")
+            if isinstance(cache_ttl_ms, int):
+                new_options["ramses_debugger_cache_ttl_ms"] = int(cache_ttl_ms)
+
+            max_flows = user_input.get("ramses_debugger_max_flows")
+            if isinstance(max_flows, int):
+                new_options["ramses_debugger_max_flows"] = int(max_flows)
+
+            buffer_max_global = user_input.get("ramses_debugger_buffer_max_global")
+            if isinstance(buffer_max_global, int):
+                new_options["ramses_debugger_buffer_max_global"] = int(
+                    buffer_max_global
+                )
+
+            buffer_max_per_flow = user_input.get("ramses_debugger_buffer_max_per_flow")
+            if isinstance(buffer_max_per_flow, int):
+                new_options["ramses_debugger_buffer_max_per_flow"] = int(
+                    buffer_max_per_flow
+                )
+
+            buffer_max_flows = user_input.get("ramses_debugger_buffer_max_flows")
+            if isinstance(buffer_max_flows, int):
+                new_options["ramses_debugger_buffer_max_flows"] = int(buffer_max_flows)
+
+            default_poll_ms = user_input.get("ramses_debugger_default_poll_ms")
+            if isinstance(default_poll_ms, int):
+                new_options["ramses_debugger_default_poll_ms"] = int(default_poll_ms)
+
             self.hass.config_entries.async_update_entry(
                 self._config_entry,
                 options=new_options,
@@ -588,6 +622,65 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         else:
             packet_log_path_default = ""
 
+        cache_max_entries_default_raw = current_options.get(
+            "ramses_debugger_cache_max_entries"
+        )
+        cache_max_entries_default = (
+            int(cache_max_entries_default_raw)
+            if isinstance(cache_max_entries_default_raw, int)
+            else 256
+        )
+
+        cache_ttl_ms_default_raw = current_options.get("ramses_debugger_cache_ttl_ms")
+        cache_ttl_ms_default = (
+            int(cache_ttl_ms_default_raw)
+            if isinstance(cache_ttl_ms_default_raw, int)
+            else 1000
+        )
+
+        max_flows_default_raw = current_options.get("ramses_debugger_max_flows")
+        max_flows_default = (
+            int(max_flows_default_raw)
+            if isinstance(max_flows_default_raw, int)
+            else 2000
+        )
+
+        buffer_max_global_default_raw = current_options.get(
+            "ramses_debugger_buffer_max_global"
+        )
+        buffer_max_global_default = (
+            int(buffer_max_global_default_raw)
+            if isinstance(buffer_max_global_default_raw, int)
+            else 5000
+        )
+
+        buffer_max_per_flow_default_raw = current_options.get(
+            "ramses_debugger_buffer_max_per_flow"
+        )
+        buffer_max_per_flow_default = (
+            int(buffer_max_per_flow_default_raw)
+            if isinstance(buffer_max_per_flow_default_raw, int)
+            else 500
+        )
+
+        buffer_max_flows_default_raw = current_options.get(
+            "ramses_debugger_buffer_max_flows"
+        )
+        buffer_max_flows_default = (
+            int(buffer_max_flows_default_raw)
+            if isinstance(buffer_max_flows_default_raw, int)
+            else 2000
+        )
+
+        default_poll_ms_default_raw = current_options.get(
+            "ramses_debugger_default_poll_ms"
+        )
+        default_poll_ms_default = (
+            int(default_poll_ms_default_raw)
+            if isinstance(default_poll_ms_default_raw, int)
+            else 1000
+        )
+
         # Show advanced settings form
         data_schema = vol.Schema(
             {
@@ -613,6 +706,34 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                     "ramses_debugger_packet_log_path",
                     default=packet_log_path_default,
                 ): str,
+                vol.Optional(
+                    "ramses_debugger_cache_ttl_ms",
+                    default=cache_ttl_ms_default,
+                ): vol.All(int, vol.Range(min=0, max=30_000)),
+                vol.Optional(
+                    "ramses_debugger_cache_max_entries",
+                    default=cache_max_entries_default,
+                ): vol.All(int, vol.Range(min=1, max=10_000)),
+                vol.Optional(
+                    "ramses_debugger_max_flows",
+                    default=max_flows_default,
+                ): vol.All(int, vol.Range(min=1, max=50_000)),
+                vol.Optional(
+                    "ramses_debugger_buffer_max_global",
+                    default=buffer_max_global_default,
+                ): vol.All(int, vol.Range(min=1, max=200_000)),
+                vol.Optional(
+                    "ramses_debugger_buffer_max_per_flow",
+                    default=buffer_max_per_flow_default,
+                ): vol.All(int, vol.Range(min=1, max=50_000)),
+                vol.Optional(
+                    "ramses_debugger_buffer_max_flows",
+                    default=buffer_max_flows_default,
+                ): vol.All(int, vol.Range(min=1, max=50_000)),
+                vol.Optional(
+                    "ramses_debugger_default_poll_ms",
+                    default=default_poll_ms_default,
+                ): vol.All(int, vol.Range(min=250, max=60_000)),
                 vol.Optional(
                     "log_level",
                     default=log_default,

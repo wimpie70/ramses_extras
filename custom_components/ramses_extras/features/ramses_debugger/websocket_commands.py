@@ -44,6 +44,20 @@ def _get_cache(hass: HomeAssistant) -> DebuggerCache | None:
     return cache
 
 
+def _get_cache_ttl_s(hass: HomeAssistant) -> float:
+    domain_data = hass.data.get(DOMAIN)
+    if not isinstance(domain_data, dict):
+        return 1.0
+
+    entry = domain_data.get("config_entry")
+    options = getattr(entry, "options", {}) if entry else {}
+    ttl_ms = options.get("ramses_debugger_cache_ttl_ms")
+    if isinstance(ttl_ms, int):
+        return max(0.0, float(ttl_ms) / 1000.0)
+
+    return 1.0
+
+
 def _file_state(path: Path) -> tuple[int, int] | None:
     try:
         st = path.stat()
@@ -276,7 +290,12 @@ async def ws_traffic_get_stats(
     )
 
     if cache is not None and state is not None:
-        stats = await cache.get_or_create(cache_key, ttl_s=1.0, create_fn=_build_stats)
+        ttl_s = _get_cache_ttl_s(hass)
+        stats = await cache.get_or_create(
+            cache_key,
+            ttl_s=ttl_s,
+            create_fn=_build_stats,
+        )
     else:
         stats = await _build_stats()
 
@@ -555,7 +574,12 @@ async def ws_packet_log_get_messages(
     )
 
     if cache is not None and state is not None:
-        result = await cache.get_or_create(cache_key, ttl_s=2.0, create_fn=_load_result)
+        ttl_s = _get_cache_ttl_s(hass)
+        result = await cache.get_or_create(
+            cache_key,
+            ttl_s=ttl_s,
+            create_fn=_load_result,
+        )
     else:
         result = await _load_result()
 
@@ -647,7 +671,8 @@ async def ws_log_get_tail(
     )
 
     if cache is not None and state is not None:
-        text = await cache.get_or_create(cache_key, ttl_s=1.0, create_fn=_read_tail)
+        ttl_s = _get_cache_ttl_s(hass)
+        text = await cache.get_or_create(cache_key, ttl_s=ttl_s, create_fn=_read_tail)
     else:
         text = await _read_tail()
     connection.send_result(
@@ -809,7 +834,8 @@ async def ws_log_search(
     )
 
     if cache is not None and state is not None:
-        result = await cache.get_or_create(cache_key, ttl_s=2.0, create_fn=_do_search)
+        ttl_s = _get_cache_ttl_s(hass)
+        result = await cache.get_or_create(cache_key, ttl_s=ttl_s, create_fn=_do_search)
     else:
         result = await _do_search()
 

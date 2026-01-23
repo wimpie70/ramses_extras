@@ -30,12 +30,26 @@ def create_ramses_debugger_feature(
     cache = debugger_data.get("cache")
     if not isinstance(cache, DebuggerCache):
         debugger_data["cache"] = DebuggerCache()
+        cache = debugger_data.get("cache")
+
+    cache_max_entries = config_entry.options.get("ramses_debugger_cache_max_entries")
+    if isinstance(cache_max_entries, int) and cache_max_entries > 0:
+        debugger_data["cache"] = DebuggerCache(max_entries=cache_max_entries)
 
     traffic_collector = debugger_data.get("traffic_collector")
     if not isinstance(traffic_collector, TrafficCollector):
         traffic_collector = TrafficCollector(hass)
         debugger_data["traffic_collector"] = traffic_collector
         config_entry.async_on_unload(traffic_collector.stop)
+
+    traffic_collector.configure(
+        max_flows=config_entry.options.get("ramses_debugger_max_flows"),
+        buffer_max_global=config_entry.options.get("ramses_debugger_buffer_max_global"),
+        buffer_max_per_flow=config_entry.options.get(
+            "ramses_debugger_buffer_max_per_flow"
+        ),
+        buffer_max_flows=config_entry.options.get("ramses_debugger_buffer_max_flows"),
+    )
 
     traffic_collector.start()
 
