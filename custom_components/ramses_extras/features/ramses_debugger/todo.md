@@ -185,7 +185,7 @@ Suggested workflow per step:
 - [ ] Consider incremental tail (only read new bytes) as a later optimization (optional)
 
 ### 3) Traffic collector: cap flows + explain what a flow is
-- [ ] Define "flow": a unique `(src, dst)` pair observed in `ramses_cc_message` events
+- [x] Define "flow": a unique `(src, dst)` pair observed in `ramses_cc_message` events
 - [x] Add configurable caps:
   - max flows (unique `(src, dst)` pairs)
   - max global message buffer (for message browsing)
@@ -203,19 +203,20 @@ Suggested workflow per step:
   - what a flow is
   - why caching exists (multi-card pages)
   - trade-offs of lower/higher polling intervals
-- [ ] Move ramses_debugger options to the feature's config flow step (leave debug levels on advanced). This belongs to the feature, and can be dis/enabled.
+- [x] Move ramses_debugger options to the feature's config flow step (leave debug levels on advanced). This belongs to the feature, and can be dis/enabled.
 
 ### 5) Frontend: reduce redundant polling across multiple instances
-- [ ] Use a shared per-feature JS cache (e.g. `window.ramsesExtras.ramsesDebugger`) for:
+- [x] Use a shared per-feature JS cache (e.g. `window.ramsesExtras.ramsesDebugger`) for:
   - last results per request key
   - in-flight requests per request key (promise de-dup)
-- [ ] Make polling interval consistent across cards by default:
+- [x] Make polling interval consistent across cards by default:
   - read from config-flow options via the existing `ramses_extras_options_updated` mechanism
   - allow per-card override only when explicitly set
-- [ ] Ensure multiple Log Explorers with different offsets do not block each other
+- [x] Ensure multiple Log Explorers with different offsets do not block each other
+- [x] On search results, add a horizontal line divider after each block
 
 ### 6) Documentation
-- [ ] Add Sphinx-style docstrings to the main backend modules:
+- [x] Add Sphinx-style docstrings to the main backend modules:
   - [traffic_collector.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/traffic_collector.py:0:0-0:0)
   - [messages_provider.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/messages_provider.py:0:0-0:0)
   - [log_backend.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/log_backend.py:0:0-0:0)

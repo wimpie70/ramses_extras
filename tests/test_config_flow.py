@@ -154,8 +154,6 @@ class TestRamsesExtrasOptionsFlowHandler:
                 {
                     "frontend_log_level": "debug",
                     "log_level": "debug",
-                    "ramses_debugger_log_path": "/tmp/home-assistant.log",
-                    "ramses_debugger_packet_log_path": "/tmp/ramses_log",
                 }
             )
             assert result["type"] == "menu"
@@ -164,14 +162,6 @@ class TestRamsesExtrasOptionsFlowHandler:
             assert kwargs["options"]["frontend_log_level"] == "debug"
             assert kwargs["options"]["debug_mode"] is True
             assert kwargs["options"]["log_level"] == "debug"
-            assert (
-                kwargs["options"]["ramses_debugger_log_path"]
-                == "/tmp/home-assistant.log"
-            )
-            assert (
-                kwargs["options"]["ramses_debugger_packet_log_path"]
-                == "/tmp/ramses_log"
-            )
 
     @pytest.mark.asyncio
     async def test_advanced_settings_defaults_from_options(self, hass):
@@ -180,8 +170,6 @@ class TestRamsesExtrasOptionsFlowHandler:
         mock_config_entry.options = {
             "frontend_log_level": "warning",
             "log_level": "warning",
-            "ramses_debugger_log_path": "/var/log/home-assistant.log",
-            "ramses_debugger_packet_log_path": "/var/log/ramses_log",
         }
 
         options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
@@ -195,19 +183,38 @@ class TestRamsesExtrasOptionsFlowHandler:
         assert isinstance(schema, vol.Schema)
 
         frontend_key = vol.Optional("frontend_log_level", default="warning")
-        log_path_key = vol.Optional(
-            "ramses_debugger_log_path",
-            default="/var/log/home-assistant.log",
-        )
         log_key = vol.Optional("log_level", default="warning")
-        packet_log_path_key = vol.Optional(
-            "ramses_debugger_packet_log_path",
-            default="/var/log/ramses_log",
-        )
         assert frontend_key in schema.schema
-        assert log_path_key in schema.schema
-        assert packet_log_path_key in schema.schema
         assert log_key in schema.schema
+
+    @pytest.mark.asyncio
+    async def test_feature_ramses_debugger_step(self, hass):
+        mock_config_entry = MagicMock()
+        mock_config_entry.data = {
+            CONF_ENABLED_FEATURES: {"default": True, "ramses_debugger": True}
+        }
+        mock_config_entry.options = {
+            "ramses_debugger_cache_ttl_ms": 1000,
+            "ramses_debugger_cache_max_entries": 256,
+        }
+
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+        options_flow.hass = hass
+
+        with patch.object(options_flow, "_refresh_config_entry"):
+            result = await options_flow.async_step_feature_ramses_debugger(None)
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "feature_ramses_debugger"
+        schema = result["data_schema"]
+        assert isinstance(schema, vol.Schema)
+        assert (
+            vol.Optional("ramses_debugger_cache_ttl_ms", default=1000) in schema.schema
+        )
+        assert (
+            vol.Optional("ramses_debugger_cache_max_entries", default=256)
+            in schema.schema
+        )
 
     @pytest.mark.asyncio
     async def test_confirm_step_branches(self, hass):

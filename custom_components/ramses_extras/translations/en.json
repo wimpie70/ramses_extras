@@ -48,7 +48,8 @@
           "feature_humidity_control": "Feature: Humidity Control",
           "feature_hvac_fan_card": "Feature: Hvac Fan Card",
           "feature_hello_world": "Feature: Hello World",
-          "feature_sensor_control": "Feature: Sensor Control"
+          "feature_sensor_control": "Feature: Sensor Control",
+          "feature_ramses_debugger": "Feature: Ramses Debugger"
         }
       },
       "enable_features": {
@@ -65,19 +66,26 @@
       },
       "advanced_settings": {
         "title": "Advanced Settings",
-        "description": "Configure integration-level debug settings.\n\nFrontend log level controls browser console logging for Ramses Extras cards/editors.\nLog level controls the backend Python logging level for the Ramses Extras integration.\n\nRamses Debugger:\n- A flow is a unique (src, dst) pair observed in ramses_cc message events.\n- Cache TTL/max entries reduce duplicate work when multiple debugger cards poll at the same time.\n- Buffer limits cap in-memory message retention for browsing.",
+        "description": "Configure integration-level debug settings.\n\nFrontend log level controls browser console logging for Ramses Extras cards/editors.\nLog level controls the backend Python logging level for the Ramses Extras integration.",
         "data": {
           "frontend_log_level": "Frontend log level",
-          "ramses_debugger_log_path": "Ramses Debugger: Home Assistant log path",
-          "ramses_debugger_packet_log_path": "Ramses Debugger: Packet log path (optional)",
-          "ramses_debugger_cache_ttl_ms": "Ramses Debugger: Cache TTL (ms)",
-          "ramses_debugger_cache_max_entries": "Ramses Debugger: Cache max entries",
-          "ramses_debugger_max_flows": "Ramses Debugger: Max traffic flows",
-          "ramses_debugger_buffer_max_global": "Ramses Debugger: Buffer max messages (global)",
-          "ramses_debugger_buffer_max_per_flow": "Ramses Debugger: Buffer max messages (per flow)",
-          "ramses_debugger_buffer_max_flows": "Ramses Debugger: Buffer max flows",
-          "ramses_debugger_default_poll_ms": "Ramses Debugger: Default polling interval (ms)",
           "log_level": "Log level (backend)"
+        }
+      },
+
+      "feature_ramses_debugger": {
+        "title": "Ramses Debugger Configuration",
+        "description": "{info}",
+        "data": {
+          "ramses_debugger_log_path": "Home Assistant log path",
+          "ramses_debugger_packet_log_path": "Packet log path (optional)",
+          "ramses_debugger_cache_ttl_ms": "Cache TTL (ms)",
+          "ramses_debugger_cache_max_entries": "Cache max entries",
+          "ramses_debugger_max_flows": "Max traffic flows",
+          "ramses_debugger_buffer_max_global": "Buffer max messages (global)",
+          "ramses_debugger_buffer_max_per_flow": "Buffer max messages (per flow)",
+          "ramses_debugger_buffer_max_flows": "Buffer max flows",
+          "ramses_debugger_default_poll_ms": "Default polling interval (ms)"
         }
       },
       "feature_config": {

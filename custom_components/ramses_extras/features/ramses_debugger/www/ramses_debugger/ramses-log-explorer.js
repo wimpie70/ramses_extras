@@ -580,6 +580,20 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
 
     const tailHtml = this._renderHighlightedLog(this._tailText, this._searchQuery);
     const resultHtml = this._renderHighlightedLog(resultPlain, this._searchQuery);
+    const blocks = Array.isArray(this._searchResult?.blocks)
+      ? this._searchResult.blocks
+      : [];
+    const resultBlocksHtml = blocks.length
+      ? blocks
+        .map((b, idx) => {
+          const lines = Array.isArray(b?.lines) ? b.lines : [];
+          const text = lines.map((l) => String(l)).join('\n');
+          const blockHtml = this._renderHighlightedLog(text, this._searchQuery);
+          const sep = idx < blocks.length - 1 ? '<div class="separator"></div>' : '';
+          return `<pre class="result-pre">${blockHtml || ''}</pre>${sep}`;
+        })
+        .join('')
+      : '';
     const tailLines = Number.isFinite(this._tailLines)
       ? this._tailLines
       : Number(this._config?.max_tail_lines || 200);
@@ -685,7 +699,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               ${typeof matches === 'number' ? ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}` : ''}
               ${truncated ? ` • ${this.t('card.log.search.truncated') || 'truncated'}` : ''}
             </div>
-            <pre id="resultPre">${resultHtml || ''}</pre>
+            ${resultBlocksHtml || `<pre id="resultPre">${resultHtml || ''}</pre>`}
           </div>
 
           <dialog id="zoomDialog">
