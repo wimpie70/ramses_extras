@@ -228,8 +228,8 @@ Suggested workflow per step:
   - cache keying and TTL behavior
   - file resolution allowlisting
   - flow eviction behavior
-- [ ] Run focused pytest for debugger feature
-- [ ] Run `make local-ci` for final validation
+- [x] Run focused pytest for debugger feature
+- [x] Run `make local-ci` for final validation
 
 
 ## Acceptance criteria
