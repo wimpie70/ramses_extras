@@ -6,10 +6,29 @@
 - The `ramses_cc` integration installed and working (device communication).
 - `ramses_extras` installed (typically via HACS or manual install).
 
-## Enable Ramses Extras
+## Ramses RF prerequisite: bound REM (for FAN-related features)
 
-- Add/configure the integration in Home Assistant.
-- Enable the features you want (features are modular; you only enable what you use).
+When using FAN-related features, make sure Ramses RF has the **bound** trait defined for your FAN.
+
+Example:
+
+```
+"37:168270":
+  class: REM
+"32:153289":
+  bound: "37:168270"
+  class: FAN
+```
+
+## Enable Ramses Extras (UI)
+
+1. Go to:
+   - **Settings → Devices & Services**
+2. Click:
+   - **Add Integration**
+3. Search for:
+   - **Ramses Extras**
+4. Select which features to enable.
 
 ## Verify it is working
 

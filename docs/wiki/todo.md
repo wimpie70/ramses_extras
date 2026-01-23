@@ -91,12 +91,12 @@ Split the current single-page documentation (`docs/RAMSES_EXTRAS_ARCHITECTURE.md
   - [x] Developers → `Getting-Started-Devs.md`
 
 ## Milestone 3 — Extract and split content from RAMSES_EXTRAS_ARCHITECTURE.md
-- [ ] Populate `Overview.md`
-- [ ] Populate `Getting-Started-Users.md`
-- [ ] Populate `Getting-Started-Devs.md`
-- [ ] Populate `System-Architecture.md`
-- [ ] Populate `Feature-System.md`
-- [ ] Populate `Framework-Foundation.md`
+- [x] Populate `Overview.md`
+- [x] Populate `Getting-Started-Users.md` -> include the configuration bit about the bound Rem trait I added to README.md
+- [x] Populate `Getting-Started-Devs.md`
+- [x] Populate `System-Architecture.md`
+- [x] Populate `Feature-System.md`
+- [x] Populate `Framework-Foundation.md`
 - [ ] Populate `Device-Feature-Management.md`
 - [ ] Populate `Entity-Management.md`
 - [ ] Populate `Home-Assistant-Integration.md`
@@ -128,6 +128,7 @@ Split the current single-page documentation (`docs/RAMSES_EXTRAS_ARCHITECTURE.md
 ---
 
 # Notes / open questions
-- [ ] Do we want “users” getting started to include YAML examples and UI steps, or only UI steps?
-- [ ] Do we want a separate “Feature catalog” page listing each feature and what it provides?
-- [ ] Should API reference be trimmed to only stable public interfaces (WebSocket/service calls), and keep internals in the repo docs?
+- [x] Do we want “users” getting started to include YAML examples and UI steps, or only UI steps? -> only UI steps
+- [x] Do we want a separate “Feature catalog” page listing each feature and what it provides? -> Yes, Including pictures, Configuration
+- [x] Should API reference be trimmed to only stable public interfaces (WebSocket/service calls), and keep internals in the repo docs? -> For now yes, we can later create docs from the sphinx docstrings we already created.
+- [ ] Don't remove docs/RAMSES_EXTRAS_ARCHITECTURE.md, keep it for now so we can check if we have everything covered
