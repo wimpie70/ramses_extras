@@ -1,3 +1,15 @@
+/**
+ * Ramses Packet Log Explorer card.
+ *
+ * This card explores ramses_cc packet logs (ramses_log) via debugger WebSocket
+ * endpoints. It is primarily for browsing / debugging and does not poll by
+ * default.
+ *
+ * Performance:
+ * - Uses `callWebSocketShared()` so multiple explorers can share in-flight
+ *   requests and short-lived cached results.
+ */
+
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocketShared } from '../../helpers/card-services.js';
@@ -87,6 +99,9 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     if (!this._hass) {
       return;
     }
+
+    // File listing is cached briefly to reduce duplicated requests when
+    // multiple instances are present.
 
     this._loading = true;
     this._lastError = null;

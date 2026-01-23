@@ -1,3 +1,12 @@
+"""Collect and summarize ramses_cc traffic for the Ramses Debugger.
+
+The :class:`~TrafficCollector` listens for Home Assistant ``ramses_cc_message``
+events and aggregates message counts into *flows*.
+
+A *flow* is a unique ``(src, dst)`` pair observed in the incoming message
+stream.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +24,14 @@ _LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class TrafficFlowStats:
+    """Aggregated counters for a single traffic flow.
+
+    A flow is identified by ``(src, dst)``.
+
+    :param src: Source device id.
+    :param dst: Destination device id.
+    """
+
     src: str
     dst: str
     count_total: int = 0
@@ -25,6 +42,13 @@ class TrafficFlowStats:
     def add_message(
         self, *, verb: str | None, code: str | None, dtm: str | None
     ) -> None:
+        """Update counters for an observed message.
+
+        :param verb: Ramses verb (e.g. ``RQ`` / ``RP`` / ``I``).
+        :param code: Ramses code (e.g. ``1F09``).
+        :param dtm: Timestamp string (ISO-ish) used for flow recency.
+        """
+
         self.count_total += 1
         if verb:
             self.verbs_counter[verb] += 1
@@ -35,6 +59,14 @@ class TrafficFlowStats:
 
 
 class TrafficCollector:
+    """Collect traffic statistics from ``ramses_cc_message`` events.
+
+    The collector maintains aggregated counters across all messages as well as
+    per-flow counters. It also feeds a shared
+    :class:`~custom_components.ramses_extras.features.ramses_debugger.messages_provider.TrafficBufferProvider`
+    so the debugger can query recent messages.
+    """
+
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
         self._unsub: CALLBACK_TYPE | None = None
@@ -56,6 +88,14 @@ class TrafficCollector:
         buffer_max_per_flow: int | None = None,
         buffer_max_flows: int | None = None,
     ) -> None:
+        """Update flow and buffer caps.
+
+        :param max_flows: Maximum number of unique ``(src, dst)`` flow entries.
+        :param buffer_max_global: Maximum retained messages across all flows.
+        :param buffer_max_per_flow: Maximum retained messages per flow.
+        :param buffer_max_flows: Maximum flows tracked by the message buffer.
+        """
+
         if max_flows is not None:
             self._max_flows = max(1, int(max_flows))
 
@@ -95,6 +135,7 @@ class TrafficCollector:
             self._buffer_provider.evict_flow(oldest_key)
 
     def start(self) -> None:
+        """Start listening for ``ramses_cc_message`` events."""
         if self._unsub is not None:
             return
         self._unsub = self._hass.bus.async_listen(
@@ -104,6 +145,7 @@ class TrafficCollector:
         _LOGGER.debug("TrafficCollector started (listening for ramses_cc_message)")
 
     def stop(self) -> None:
+        """Stop listening for ``ramses_cc_message`` events."""
         if self._unsub is None:
             return
         self._unsub()
@@ -111,6 +153,7 @@ class TrafficCollector:
         _LOGGER.debug("TrafficCollector stopped")
 
     def reset(self) -> None:
+        """Clear all collected counters and restart the session start time."""
         self._flows.clear()
         self._total_count = 0
         self._by_code.clear()
@@ -127,6 +170,17 @@ class TrafficCollector:
         verb: str | None = None,
         limit: int = 200,
     ) -> dict[str, Any]:
+        """Return aggregated counters and a list of per-flow stats.
+
+        :param device_id: Filter flows where this device is src or dst.
+        :param src: Filter for a specific src.
+        :param dst: Filter for a specific dst.
+        :param code: Filter flows that have observed this code.
+        :param verb: Filter flows that have observed this verb.
+        :param limit: Maximum flows returned (sorted by total count).
+        :return: Stats payload suitable for WebSocket responses.
+        """
+
         flows: list[TrafficFlowStats] = []
         for flow in self._flows.values():
             if device_id and device_id not in (flow.src, flow.dst):

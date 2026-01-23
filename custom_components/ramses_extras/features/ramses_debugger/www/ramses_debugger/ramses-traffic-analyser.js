@@ -2,6 +2,20 @@
 /* global clearInterval */
 /* global navigator */
 
+/**
+ * Ramses Traffic Analyser card.
+ *
+ * A "flow" is a unique (src, dst) pair observed in ramses_cc message events.
+ * This card can show live flows via subscription, or log-backed flows by
+ * polling packet_log / ha_log sources.
+ *
+ * Performance:
+ * - Uses `callWebSocketShared()` to de-duplicate in-flight requests across
+ *   multiple cards on the same dashboard.
+ * - When using the default poll interval, it prefers the integration option
+ *   `ramses_debugger_default_poll_ms` so all cards stay in sync.
+ */
+
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocketShared } from '../../helpers/card-services.js';
@@ -266,6 +280,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   }
 
   _startPolling() {
+    // Polling is used for log-backed traffic sources and for users that prefer
+    // predictable periodic updates over WebSocket subscriptions.
     let pollInterval = Number(this._config?.poll_interval || 5000);
     const globalDefault = Number(window?.ramsesExtras?.options?.ramses_debugger_default_poll_ms);
     if (pollInterval === 5000 && Number.isFinite(globalDefault) && globalDefault > 0) {
@@ -294,6 +310,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   }
 
   _startSubscription() {
+    // Subscription is preferred for live traffic to reduce periodic polling
+    // overhead. If subscription fails, users can enable polling as a fallback.
     if (!this._hass?.connection) {
       return;
     }

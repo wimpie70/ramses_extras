@@ -1,6 +1,19 @@
 /* global navigator */
 /* global setTimeout */
 
+/**
+ * Ramses Log Explorer card.
+ *
+ * Purpose:
+ * - Browse HA log files (base + rotated variants) exposed by the debugger backend.
+ * - Show a tail window plus search results with +/- context.
+ *
+ * Notes:
+ * - Uses `callWebSocketShared()` to de-duplicate requests across multiple cards.
+ * - Search results may be returned as structured blocks; we render blocks with
+ *   separators so copy/paste is still straightforward.
+ */
+
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocketShared } from '../../helpers/card-services.js';
@@ -31,6 +44,12 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._uiState = null;
   }
 
+  /**
+   * Preserve cursor/scroll positions across renders.
+   *
+   * This card re-renders often (tail/search). Preserving UI state keeps typing
+   * in the query box and scrolling through results pleasant.
+   */
   render() {
     if (this.shadowRoot) {
       const active = this.shadowRoot.activeElement;
@@ -329,6 +348,9 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       return;
     }
 
+    // List files then refresh tail. File listing is cached briefly to reduce
+    // duplicate network requests when multiple cards load.
+
     this._loading = true;
     this._lastError = null;
     this.render();
@@ -382,6 +404,9 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     if (!this._hass || !this._selectedFileId || !this.shadowRoot) {
       return;
     }
+
+    // Search scans the full file server-side and returns both a combined plain
+    // string and structured blocks (for better UI rendering).
 
     const qEl = this.shadowRoot.getElementById('searchQuery');
     let query = qEl && typeof qEl.value === 'string' ? qEl.value.trim() : '';

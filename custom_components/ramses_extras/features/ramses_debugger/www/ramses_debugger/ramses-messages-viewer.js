@@ -1,5 +1,15 @@
 /* global HTMLElement */
 /* global customElements */
+
+/**
+ * Ramses Messages Viewer.
+ *
+ * A reusable UI component used by debugger cards to display a list of messages
+ * (traffic_buffer / packet_log / ha_log) with sorting and filtering.
+ *
+ * Data loading is delegated to the parent via `fetchMessages`, which should
+ * return either `{ messages: [...] }` or a plain array.
+ */
 import * as logger from '../../helpers/logger.js';
 
 class RamsesMessagesViewer extends HTMLElement {
@@ -66,6 +76,8 @@ class RamsesMessagesViewer extends HTMLElement {
   }
 
   async refresh() {
+    // Explicit refresh is used so parents can control when messages are loaded
+    // (e.g. button click, selection change, or auto mode).
     if (!this._fetchMessages) {
       this.render();
       return;

@@ -1,3 +1,15 @@
+"""Log file helpers for the Ramses Debugger.
+
+This module provides:
+
+- Discovery of log files (base file + rotated variants).
+- Allowlisted resolution of a user-provided ``file_id`` to an on-disk path.
+- Efficient tail reading for plain text and gzip files.
+- Best-effort search with context blocks.
+
+All public helpers are designed for use by WebSocket handlers.
+"""
+
 from __future__ import annotations
 
 import gzip
@@ -15,6 +27,8 @@ from custom_components.ramses_extras.const import DOMAIN
 
 @dataclass(frozen=True)
 class LogFileInfo:
+    """Metadata about a discovered log file."""
+
     file_id: str
     path: Path
     size: int
@@ -29,6 +43,12 @@ def _get_config_entry(hass: HomeAssistant) -> Any | None:
 
 
 def get_configured_log_path(hass: HomeAssistant) -> Path:
+    """Return the configured Home Assistant log path.
+
+    The configured path comes from the Ramses Debugger options if set,
+    otherwise it falls back to ``hass.config.path('home-assistant.log')``.
+    """
+
     entry = _get_config_entry(hass)
     options = getattr(entry, "options", {}) if entry else {}
     raw = options.get("ramses_debugger_log_path")
@@ -39,6 +59,13 @@ def get_configured_log_path(hass: HomeAssistant) -> Path:
 
 
 def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
+    """Return the configured ramses_cc packet log path.
+
+    This is resolved from the Ramses Debugger options if set. Otherwise it is
+    derived from the active ``ramses_cc`` config entry (``packet_log.file_name``)
+    when available.
+    """
+
     entry = _get_config_entry(hass)
     options = getattr(entry, "options", {}) if entry else {}
 
@@ -62,6 +89,15 @@ def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
 
 
 def discover_log_files(base_path: Path) -> list[LogFileInfo]:
+    """Discover the base log file and rotated variants.
+
+    Rotated variants are discovered by matching ``<base>.X`` and
+    ``<base>.X.gz`` siblings in the same directory.
+
+    :param base_path: Path to the base log file.
+    :return: Sorted list (newest first) of discovered files.
+    """
+
     base_path = base_path.expanduser()
 
     candidates: list[Path] = []
@@ -145,6 +181,18 @@ def _open_text(path: Path) -> Iterable[str]:
 
 
 def tail_text(path: Path, *, max_lines: int = 200, max_chars: int = 200_000) -> str:
+    """Read the tail of a log file.
+
+    For plain text files this seeks backwards from EOF to limit reads.
+    For gzip files it falls back to streaming and retaining the last
+    ``max_lines``.
+
+    :param path: Log file path.
+    :param max_lines: Maximum lines returned.
+    :param max_chars: Maximum characters returned.
+    :return: Tail content.
+    """
+
     max_lines = max(0, min(int(max_lines), 10_000))
     max_chars = max(0, min(int(max_chars), 2_000_000))
 
@@ -189,6 +237,8 @@ def tail_text(path: Path, *, max_lines: int = 200, max_chars: int = 200_000) -> 
 
 @dataclass(frozen=True)
 class LogBlock:
+    """A contiguous block of log lines returned from search."""
+
     file_id: str
     start_line: int
     end_line: int
@@ -220,6 +270,18 @@ def search_with_context(
     max_chars: int = 400_000,
     case_sensitive: bool = False,
 ) -> dict[str, Any]:
+    """Search for one or more terms and return surrounding context blocks.
+
+    :param path: Log file path.
+    :param query: Search query. Multiple lines are treated as OR terms.
+    :param before: Context lines before each match.
+    :param after: Context lines after each match.
+    :param max_matches: Maximum matches considered.
+    :param max_chars: Maximum returned output size.
+    :param case_sensitive: Whether matching is case sensitive.
+    :return: A dict containing plain/markdown content plus structured blocks.
+    """
+
     before = max(0, min(int(before), 200))
     after = max(0, min(int(after), 200))
     max_matches = max(0, min(int(max_matches), 5000))

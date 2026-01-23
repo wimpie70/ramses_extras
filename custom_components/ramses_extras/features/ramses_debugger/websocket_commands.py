@@ -1,3 +1,17 @@
+"""WebSocket commands for the Ramses Debugger feature.
+
+This module implements websocket endpoints used by the debugger cards, e.g.:
+
+- traffic statistics (live + log-backed)
+- log file listing/tail/search
+- packet log file listing/message parsing
+- debugger cache diagnostics
+
+Some endpoints use a shared
+:class:`~custom_components.ramses_extras.features.ramses_debugger.debugger_cache.DebuggerCache`
+to de-duplicate expensive work across multiple card instances.
+"""
+
 import logging
 from collections import Counter
 from functools import partial
@@ -30,6 +44,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _get_cache(hass: HomeAssistant) -> DebuggerCache | None:
+    """Return the shared debugger cache instance, if configured."""
     domain_data = hass.data.get(DOMAIN)
     if not isinstance(domain_data, dict):
         return None
@@ -46,6 +61,7 @@ def _get_cache(hass: HomeAssistant) -> DebuggerCache | None:
 
 
 def _get_cache_ttl_s(hass: HomeAssistant) -> float:
+    """Return cache TTL in seconds from config entry options."""
     domain_data = hass.data.get(DOMAIN)
     if not isinstance(domain_data, dict):
         return 1.0
@@ -60,6 +76,10 @@ def _get_cache_ttl_s(hass: HomeAssistant) -> float:
 
 
 def _file_state(path: Path) -> tuple[int, int] | None:
+    """Return a stable file state tuple for cache keying.
+
+    :return: ``(mtime_ns, size)`` if the file exists, otherwise ``None``.
+    """
     try:
         st = path.stat()
     except OSError:
@@ -68,6 +88,7 @@ def _file_state(path: Path) -> tuple[int, int] | None:
 
 
 def _get_traffic_collector(hass: HomeAssistant) -> TrafficCollector | None:
+    """Return the active :class:`~TrafficCollector` instance if available."""
     domain_data = hass.data.get(DOMAIN)
     if not isinstance(domain_data, dict):
         return None
@@ -103,6 +124,7 @@ async def ws_traffic_get_stats(
     connection: "WebSocket",
     msg: dict[str, Any],
 ) -> None:
+    """Return traffic statistics for live or log-backed sources."""
     collector = _get_traffic_collector(hass)
     if collector is None:
         connection.send_error(

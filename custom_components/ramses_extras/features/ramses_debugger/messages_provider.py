@@ -1,3 +1,16 @@
+"""Message providers for the Ramses Debugger.
+
+This module normalizes messages from multiple sources into a consistent
+dictionary payload for WebSocket consumers.
+
+Sources:
+
+- ``traffic_buffer``: in-memory buffer populated by :class:`~TrafficCollector`.
+- ``packet_log``: parsed messages from the ramses_cc packet log (``ramses_log``).
+- ``ha_log``: best-effort extraction of message details from
+  Home Assistant's ``home-assistant.log``.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -294,6 +307,23 @@ def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
 
 @dataclass
 class NormalizedMessage:
+    """A normalized representation of a Ramses message.
+
+    The debugger uses this as an intermediate representation that can be
+    derived from multiple sources.
+
+    :param dtm: Timestamp string (best-effort).
+    :param src: Source device id.
+    :param dst: Destination device id.
+    :param verb: Ramses verb (``RQ`` / ``RP`` / ``I`` / ``W``).
+    :param code: Ramses code (e.g. ``1F09``).
+    :param payload: Payload in a user-friendly representation.
+    :param packet: Raw packet string, if available.
+    :param source: Data source identifier.
+    :param raw_line: Raw line used for parsing (log sources).
+    :param parse_warnings: Any parsing warnings (best-effort).
+    """
+
     dtm: str
     src: str
     dst: str
@@ -325,7 +355,13 @@ class MessagesProvider:
 
 
 class TrafficBufferProvider(MessagesProvider):
-    """Provider for in-memory traffic buffer from TrafficCollector."""
+    """Provider for the in-memory traffic buffer.
+
+    This buffer is populated by
+    :class:`~custom_components.ramses_extras.features.ramses_debugger.traffic_collector.TrafficCollector`
+    and is intended for lightweight message browsing without hitting the log
+    files.
+    """
 
     def __init__(
         self,
@@ -697,7 +733,20 @@ async def get_messages_from_sources(
     limit: int = 200,
     dedupe: bool = True,
 ) -> list[dict[str, Any]]:
-    """Fetch normalized messages from multiple sources with optional deduplication."""
+    """Fetch normalized messages from multiple sources.
+
+    :param hass: Home Assistant instance.
+    :param sources: Ordered list of source identifiers.
+    :param src: Optional filter by ``src``.
+    :param dst: Optional filter by ``dst``.
+    :param verb: Optional filter by verb.
+    :param code: Optional filter by code.
+    :param since: Optional lower bound timestamp filter (best-effort).
+    :param until: Optional upper bound timestamp filter (best-effort).
+    :param limit: Maximum messages returned.
+    :param dedupe: If true, removes duplicates across sources.
+    :return: List of JSON-serializable dicts.
+    """
     providers: dict[str, MessagesProvider] = {}
     # Initialize providers (TODO: cache/reuse instances)
     if "traffic_buffer" in sources:

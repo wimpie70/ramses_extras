@@ -7,6 +7,15 @@
 
 import * as logger from './logger.js';
 
+/**
+ * Stable stringify for WebSocket cache keys.
+ *
+ * This produces a deterministic string representation for plain objects so
+ * multiple card instances can share the same cache key for equivalent requests.
+ *
+ * @param {any} value
+ * @returns {string}
+ */
 function _stableStringify(value) {
   const t = typeof value;
   if (value == null || t === 'string' || t === 'number' || t === 'boolean') {
@@ -81,6 +90,26 @@ export async function callWebSocket(hass, message) {
   });
 }
 
+/**
+ * Shared WebSocket helper with short-lived caching and in-flight de-dup.
+ *
+ * Rationale:
+ * - Multiple Ramses Debugger cards can poll the same backend endpoint.
+ * - For expensive operations (tail/search/stats), we want to avoid doing
+ *   duplicate work in the frontend and backend.
+ *
+ * Behavior:
+ * - Computes a stable cache key from the message (or explicit `key`).
+ * - If there is an in-flight request for that key, returns the same Promise.
+ * - Optionally caches successful results for `cacheMs`.
+ *
+ * @param {Object} hass
+ * @param {Object} message
+ * @param {Object} options
+ * @param {number} options.cacheMs
+ * @param {string|null} options.key
+ * @returns {Promise<any>}
+ */
 export async function callWebSocketShared(hass, message, { cacheMs = 0, key = null } = {}) {
   const state = _getSharedWsState();
   const now = Date.now();
