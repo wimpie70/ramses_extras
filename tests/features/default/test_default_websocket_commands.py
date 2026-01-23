@@ -61,7 +61,11 @@ async def test_ws_get_enabled_features(hass, connection):
     msg = {"id": 1, "type": "ramses_extras/default/get_enabled_features"}
     await ws_get_enabled_features(hass, connection, msg)
     connection.send_result.assert_called_once_with(
-        1, {"enabled_features": {"humidity_control": True}}
+        1,
+        {
+            "enabled_features": {"humidity_control": True},
+            "options": {},
+        },
     )
 
     # Test error path
@@ -76,7 +80,10 @@ async def test_ws_get_enabled_features_config_entry_fallback(connection):
         DOMAIN: {
             "config_entry": MagicMock(
                 data={},
-                options={"enabled_features": {"default": True}},
+                options={
+                    "enabled_features": {"default": True},
+                    "ramses_debugger_default_poll_ms": 1234,
+                },
             )
         }
     }
@@ -84,7 +91,11 @@ async def test_ws_get_enabled_features_config_entry_fallback(connection):
     msg = {"id": 1, "type": "ramses_extras/default/get_enabled_features"}
     await ws_get_enabled_features(hass, connection, msg)
     connection.send_result.assert_called_with(
-        1, {"enabled_features": {"default": True}}
+        1,
+        {
+            "enabled_features": {"default": True},
+            "options": {"ramses_debugger_default_poll_ms": 1234},
+        },
     )
 
 
@@ -95,7 +106,11 @@ async def test_ws_get_enabled_features_list_enabled(connection):
     msg = {"id": 1, "type": "ramses_extras/default/get_enabled_features"}
     await ws_get_enabled_features(hass, connection, msg)
     connection.send_result.assert_called_with(
-        1, {"enabled_features": ["default", "debug"]}
+        1,
+        {
+            "enabled_features": ["default", "debug"],
+            "options": {},
+        },
     )
 
 
@@ -105,7 +120,13 @@ async def test_ws_get_enabled_features_no_config_entry(connection):
 
     msg = {"id": 1, "type": "ramses_extras/default/get_enabled_features"}
     await ws_get_enabled_features(hass, connection, msg)
-    connection.send_result.assert_called_with(1, {"enabled_features": {}})
+    connection.send_result.assert_called_with(
+        1,
+        {
+            "enabled_features": {},
+            "options": {},
+        },
+    )
 
 
 async def test_ws_get_cards_enabled(hass, connection):
