@@ -163,3 +163,52 @@ async def test_discover_devices_from_entity_registry_error(hass, caplog) -> None
         "Error discovering devices from entity registry" in msg
         for msg in caplog.text.splitlines()
     )
+
+
+@pytest.mark.asyncio
+async def test_discover_devices_from_entity_registry_success(hass) -> None:
+    entity = MagicMock()
+    entity.domain = "sensor"
+    entity.platform = "ramses_cc"
+    entity.device_id = "dev1"
+
+    registry = MagicMock()
+    registry.entities = {"e1": entity}
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.devices.er.async_get",
+        return_value=registry,
+    ):
+        result = await devices._discover_devices_from_entity_registry(hass)
+
+    assert result == ["dev1"]
+
+
+@pytest.mark.asyncio
+async def test_discover_ramses_devices_broker_dict(hass) -> None:
+    class Broker:
+        def __init__(self) -> None:
+            self._devices = {"a": MagicMock(id="a")}
+
+    entry = MagicMock(entry_id="1")
+    hass.config_entries.async_entries = MagicMock(return_value=[entry])
+    hass.data.setdefault("ramses_cc", {})["1"] = Broker()
+
+    result = await devices.discover_ramses_devices(hass)
+
+    assert [getattr(d, "id", d) for d in result] == ["a"]
+
+
+@pytest.mark.asyncio
+async def test_discover_ramses_devices_broker_list(hass) -> None:
+    class Broker:
+        def __init__(self) -> None:
+            self._devices = [MagicMock(id="b")]
+
+    entry = MagicMock(entry_id="1")
+    hass.config_entries.async_entries = MagicMock(return_value=[entry])
+    hass.data.setdefault("ramses_cc", {})["1"] = Broker()
+
+    result = await devices.discover_ramses_devices(hass)
+
+    assert [getattr(d, "id", d) for d in result] == ["b"]

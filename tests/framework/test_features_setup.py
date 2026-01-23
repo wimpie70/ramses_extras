@@ -83,3 +83,88 @@ async def test_create_and_start_feature_instances_skips_existing(hass) -> None:
     get_names.assert_called_once()
     # cards_enabled should be set because no pending automations
     assert hass.data[DOMAIN]["cards_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_import_feature_platform_modules_warns_on_unexpected_error(
+    caplog,
+) -> None:
+    caplog.set_level("WARNING")
+
+    with patch(
+        "asyncio.to_thread",
+        side_effect=ModuleNotFoundError(
+            "custom_components.ramses_extras.features.foo.platforms.sensor"
+        ),
+    ):
+        await features.import_feature_platform_modules(["foo"])
+
+    assert any("Unexpected import error" in msg for msg in caplog.text.splitlines())
+
+
+@pytest.mark.asyncio
+async def test_import_feature_platform_modules_warns_on_generic_error(caplog) -> None:
+    caplog.set_level("WARNING")
+
+    with patch("asyncio.to_thread", side_effect=RuntimeError("boom")):
+        await features.import_feature_platform_modules(["foo"])
+
+    assert any(
+        "Error importing platform module" in msg for msg in caplog.text.splitlines()
+    )
+
+
+@pytest.mark.asyncio
+async def test_setup_websocket_integration_logs_error(caplog) -> None:
+    caplog.set_level("ERROR")
+
+    with patch(
+        "custom_components.ramses_extras.websocket_integration.async_setup_websocket_integration",
+        new=AsyncMock(side_effect=RuntimeError("fail")),
+    ):
+        await features.setup_websocket_integration(MagicMock())
+
+    assert any(
+        "Error setting up WebSocket integration" in msg
+        for msg in caplog.text.splitlines()
+    )
+
+
+@pytest.mark.asyncio
+async def test_setup_websocket_integration_warns_on_false(caplog) -> None:
+    caplog.set_level("WARNING")
+
+    with patch(
+        "custom_components.ramses_extras.websocket_integration.async_setup_websocket_integration",
+        new=AsyncMock(return_value=False),
+    ):
+        await features.setup_websocket_integration(MagicMock())
+
+    assert any(
+        "WebSocket integration setup failed" in msg for msg in caplog.text.splitlines()
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_and_start_feature_instances_logs_warning_on_error(
+    caplog, hass
+) -> None:  # noqa: E501
+    caplog.set_level("WARNING")
+
+    hass.data.setdefault(DOMAIN, {})
+
+    with (
+        patch(
+            "custom_components.ramses_extras.framework.setup.features.get_enabled_feature_names",
+            return_value=["foo"],
+        ),
+        patch(
+            "importlib.import_module",
+            side_effect=RuntimeError("fail"),
+        ),
+    ):
+        await features.create_and_start_feature_instances(hass, MagicMock())
+
+    assert any(
+        "Failed to create feature instance" in msg for msg in caplog.text.splitlines()
+    )

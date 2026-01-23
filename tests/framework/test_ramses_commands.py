@@ -99,6 +99,32 @@ async def test_process_device_queue_logs_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_fan_params_broker_not_found() -> None:
+    hass = MagicMock()
+    hass.data = {"ramses_cc": {}}
+
+    cmds = ramses_commands.RamsesCommands(hass)
+
+    result = await cmds.update_fan_params("32_123456")
+
+    assert result.success is False
+    assert "broker not found" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_set_fan_param_broker_not_found() -> None:
+    hass = MagicMock()
+    hass.data = {"ramses_cc": {}}
+
+    cmds = ramses_commands.RamsesCommands(hass)
+
+    result = await cmds.set_fan_param("32_123456", "10", 1)
+
+    assert result.success is False
+    assert "broker not found" in result.error_message
+
+
+@pytest.mark.asyncio
 async def test_process_device_queue_warns_on_failed_result(caplog) -> None:
     rc = MagicMock()
 
@@ -141,6 +167,39 @@ async def test_process_device_queue_handles_exception(caplog) -> None:
     stats = mgr.get_queue_statistics()["command_statistics"]
     assert stats["failed_commands"] >= 1
     assert any("Queue processing error" in msg for msg in caplog.text.splitlines())
+
+
+@pytest.mark.asyncio
+async def test_process_device_queue_with_mixed_results(caplog) -> None:
+    rc = MagicMock()
+
+    mgr = ramses_commands.DeviceCommandManager(rc)
+    mgr._queues["01:mixed"] = asyncio.Queue()
+    mgr._queue_depths["01:mixed"] = 2
+    await mgr._queues["01:mixed"].put({"command_def": {}, "timeout": 1})
+    await mgr._queues["01:mixed"].put({"command_def": {}, "timeout": 1})
+
+    call_count = {"n": 0}
+
+    async def exec_mixed(device_id, command_def, timeout):  # type: ignore[override]
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return ramses_commands.CommandResult(success=True, execution_time=0.1)
+        raise RuntimeError("fail")
+
+    mgr._execute_command = exec_mixed  # type: ignore[assignment]
+
+    caplog.set_level("WARNING")
+
+    await mgr._process_device_queue("01:mixed")
+
+    stats = mgr.get_queue_statistics()["command_statistics"]
+    assert stats["successful_commands"] >= 1
+    assert stats["failed_commands"] >= 1
+    assert any(
+        "Queued command failed" in msg or "Queue processing error" in msg
+        for msg in caplog.text.splitlines()
+    )
 
 
 def test_get_queue_statistics_success_rate() -> None:
