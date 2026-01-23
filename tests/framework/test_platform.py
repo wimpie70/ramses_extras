@@ -88,6 +88,109 @@ async def test_async_create_and_add_platform_entities_no_devices(hass):
 
 
 @pytest.mark.asyncio
+async def test_async_create_and_add_platform_entities_stores_entities(hass):
+    """Store entities for automation when requested."""
+
+    config_entry = MagicMock()
+    config_entry.data = {"enabled_features": {"default": True}}
+    entity_configs = {"entity": {"type": "sensor"}}
+
+    stored_entity = MagicMock()
+    stored_entity.entity_id = "sensor.test_entity"
+
+    async def entity_factory(hass, device_id, entity_configs, config_entry):
+        return [stored_entity]
+
+    async_add_entities = MagicMock()
+
+    hass.data.setdefault("ramses_extras", {})["devices"] = ["32:123456"]
+
+    await platform.PlatformSetup.async_create_and_add_platform_entities(
+        platform="sensor",
+        hass=hass,
+        config_entry=config_entry,
+        async_add_entities=async_add_entities,
+        entity_configs=entity_configs,
+        entity_factory=entity_factory,
+        store_entities_for_automation=True,
+    )
+
+    async_add_entities.assert_called_once()
+    assert "entities" in hass.data["ramses_extras"]
+    assert (
+        hass.data["ramses_extras"]["entities"][stored_entity.entity_id] is stored_entity
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_create_and_add_platform_entities_handles_factory_error(hass):
+    """Ensure factory errors are caught and do not add entities."""
+
+    config_entry = MagicMock()
+    config_entry.data = {"enabled_features": {"default": True}}
+    entity_configs = {"entity": {"type": "sensor"}}
+
+    async def failing_factory(hass, device_id, entity_configs, config_entry):
+        raise RuntimeError("boom")
+
+    async_add_entities = MagicMock()
+
+    hass.data.setdefault("ramses_extras", {})["devices"] = ["32:123456"]
+
+    await platform.PlatformSetup.async_create_and_add_platform_entities(
+        platform="sensor",
+        hass=hass,
+        config_entry=config_entry,
+        async_add_entities=async_add_entities,
+        entity_configs=entity_configs,
+        entity_factory=failing_factory,
+    )
+
+    async_add_entities.assert_not_called()
+
+
+def test_get_filtered_devices_matrix_empty_uses_global_enablement(hass):
+    """Matrix empty and feature enabled should return all devices."""
+
+    config_entry = MagicMock()
+    config_entry.data = {"enabled_features": {"default": True}}
+
+    devices = ["32:123456", "18_987654"]
+    result = platform.PlatformSetup.get_filtered_devices_for_feature(
+        hass=hass,
+        feature_id="default",
+        config_entry=config_entry,
+        devices=devices,
+    )
+
+    assert result == ["32:123456", "18_987654"]
+
+
+def test_get_filtered_devices_respects_matrix_and_feature(hass):
+    """Matrix should filter devices per feature enablement."""
+
+    config_entry = MagicMock()
+    config_entry.data = {
+        "enabled_features": {"hello_world": True},
+        "device_feature_matrix": {
+            "32:123456": {"hello_world": True},
+            "18:987654": {"hello_world": False},
+        },
+    }
+
+    devices = ["32:123456", "18:987654"]
+
+    result = platform.PlatformSetup.get_filtered_devices_for_feature(
+        hass=hass,
+        feature_id="hello_world",
+        config_entry=config_entry,
+        devices=devices,
+    )
+
+    assert result == ["32:123456"]
+
+
+@pytest.mark.asyncio
 async def test_async_create_and_add_platform_entities_filters_devices_for_feature(
     hass: HomeAssistant,
 ) -> None:
