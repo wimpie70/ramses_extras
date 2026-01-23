@@ -4,6 +4,7 @@
 [![Quality](https://github.com/wimpie70/ramses_extras/actions/workflows/check-type.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/check-type.yml)
 [![Tests](https://github.com/wimpie70/ramses_extras/actions/workflows/tests.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/tests.yml)
 [![Integration](https://github.com/wimpie70/ramses_extras/actions/workflows/hassfest.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/hassfest.yml)
+[![CodeQL](https://github.com/wimpie70/ramses_extras/actions/workflows/codeql.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/codeql.yml)
 [![codecov](https://codecov.io/gh/wimpie70/ramses_extras/graph/badge.svg?token=3O1T9U8H49)](https://codecov.io/gh/wimpie70/ramses_extras)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
 [![Home Assistant 2025.10.4](https://img.shields.io/badge/home%20assistant-2025.10.4-green.svg)](https://home-assistant.io)
