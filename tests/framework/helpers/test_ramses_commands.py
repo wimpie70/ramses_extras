@@ -243,6 +243,91 @@ class TestRamsesCommands:
         assert ramses_commands.get_queue_statistics() == {"stat": 1}
 
 
+@pytest.mark.asyncio
+async def test_update_fan_params_success(ramses_commands, hass):
+    """Test successful fan params update."""
+    mock_broker = MagicMock()
+    mock_broker.get_all_fan_params = MagicMock()
+    hass.data = {"ramses_cc": {"entry_id": mock_broker}}
+
+    result = await ramses_commands.update_fan_params("32_123456", "18_654321")
+
+    assert result.success is True
+    mock_broker.get_all_fan_params.assert_called_once_with(
+        {"device_id": "32:123456", "from_id": "18_654321"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_fan_params_no_broker(ramses_commands, hass):
+    """Test fan params update when broker not found."""
+    hass.data = {"ramses_cc": {}}
+
+    result = await ramses_commands.update_fan_params("32_123456")
+
+    assert result.success is False
+    assert "broker not found" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_update_fan_params_error(ramses_commands, hass):
+    """Test fan params update error handling."""
+    mock_broker = MagicMock()
+    mock_broker.get_all_fan_params.side_effect = RuntimeError("Update failed")
+    hass.data = {"ramses_cc": {"entry_id": mock_broker}}
+
+    result = await ramses_commands.update_fan_params("32_123456")
+
+    assert result.success is False
+    assert "Update failed" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_set_fan_param_success(ramses_commands, hass):
+    """Test successful fan param setting."""
+    mock_broker = MagicMock()
+    mock_broker.async_set_fan_param = AsyncMock()
+    hass.data = {"ramses_cc": {"entry_id": mock_broker}}
+
+    result = await ramses_commands.set_fan_param(
+        "32_123456", "01", "value", "18_654321"
+    )
+
+    assert result.success is True
+    mock_broker.async_set_fan_param.assert_called_once_with(
+        {
+            "device_id": "32:123456",
+            "param_id": "01",
+            "value": "value",
+            "from_id": "18_654321",
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_fan_param_no_broker(ramses_commands, hass):
+    """Test fan param setting when broker not found."""
+    hass.data = {"ramses_cc": {}}
+
+    result = await ramses_commands.set_fan_param("32_123456", "01", "value")
+
+    assert result.success is False
+    assert "broker not found" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_set_fan_param_error(ramses_commands, hass):
+    """Test fan param setting error handling."""
+    mock_broker = MagicMock()
+    mock_broker.async_set_fan_param = AsyncMock(side_effect=RuntimeError("Set failed"))
+    hass.data = {"ramses_cc": {"entry_id": mock_broker}}
+
+    result = await ramses_commands.set_fan_param("32_123456", "01", "value")
+
+    assert result.success is False
+    assert "Set failed" in result.error_message
+
+
 def test_create_ramses_commands(hass):
     """Test factory function."""
     patch_path = (

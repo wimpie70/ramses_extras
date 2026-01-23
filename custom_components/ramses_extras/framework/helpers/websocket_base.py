@@ -419,7 +419,7 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
             return {}
 
     def _parse_all_entity_templates(
-        self, all_entities: dict[str, Any], device_id: str
+        self, all_entities: dict[Any, Any], device_id: str
     ) -> dict[str, Any]:
         """Parse all entity templates by replacing {device_id} with actual device_id.
 

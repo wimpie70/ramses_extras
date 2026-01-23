@@ -276,4 +276,17 @@ async def test_create_entity_success_logs(hass, caplog) -> None:
     ):
         await manager.create_entity("test.entity")
 
-    assert any("Entity created successfully" in msg for msg in caplog.text.splitlines())
+    assert any("Entity test.entity created" in msg for msg in caplog.text.splitlines())
+
+
+@pytest.mark.asyncio
+async def test_remove_entity_success_logs(hass, caplog) -> None:
+    """Test remove_entity logs success."""
+    caplog.set_level("INFO")
+
+    manager = SimpleEntityManager(hass)
+
+    with patch.object(manager, "_remove_entity_directly", new=AsyncMock()):
+        await manager.remove_entity("sensor.test")
+
+    assert any("Entity sensor.test removed" in msg for msg in caplog.text.splitlines())

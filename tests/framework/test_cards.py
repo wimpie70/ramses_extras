@@ -183,3 +183,76 @@ async def test_copy_all_card_files_copy_error_logs(hass, tmp_path, caplog) -> No
         await cards.copy_all_card_files(hass, card_features)
 
     assert any("Failed to copy card files" in msg for msg in caplog.text.splitlines())
+
+
+@pytest.mark.asyncio
+async def test_discover_card_features_discovers_features(tmp_path) -> None:
+    """Test discover_card_features discovers card features with JS files."""
+    # Create test structure
+    features_dir = tmp_path / "custom_components" / "ramses_extras" / "features"
+    features_dir.mkdir(parents=True)
+
+    # Create a feature with www directory and JS file
+    feature_dir = features_dir / "test_feature"
+    feature_dir.mkdir()
+    www_dir = feature_dir / "www" / "test_feature"
+    www_dir.mkdir(parents=True)
+    js_file = www_dir / "test.js"
+    js_file.write_text("// test js")
+
+    # Mock INTEGRATION_DIR to point to our test structure
+    original_dir = cards.INTEGRATION_DIR
+    cards.INTEGRATION_DIR = tmp_path / "custom_components" / "ramses_extras"
+    try:
+        features = await cards.discover_card_features()
+    finally:
+        cards.INTEGRATION_DIR = original_dir
+
+    assert len(features) == 1
+    assert features[0]["feature_name"] == "test_feature"
+    assert features[0]["source_dir"] == www_dir
+    assert "test.js" in features[0]["js_files"]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_card_deployments_skips_current_version(
+    hass, tmp_path
+) -> None:
+    """Test cleanup skips the current version directory."""
+    hass.config.config_dir = tmp_path
+    root = Path(tmp_path) / "www" / "ramses_extras"
+    current = root / "v1.0.0"
+    current.mkdir(parents=True)
+    (current / "file.txt").write_text("content")  # Add file to ensure it's not empty
+
+    await cards.cleanup_old_card_deployments(hass, "1.0.0", [])
+
+    # Current version should still exist
+    assert current.exists()
+    assert (current / "file.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_expose_feature_config_with_poll_ms_option(hass, tmp_path) -> None:
+    """Test expose_feature_config_to_frontend includes poll_ms option."""
+    hass.config.config_dir = tmp_path
+
+    entry = MagicMock()
+    entry.options = {
+        "debug_mode": False,
+        "log_level": "info",
+        "ramses_debugger_default_poll_ms": 5000,
+    }
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.cards.async_get_integration_version",
+        return_value="1.0.0",
+    ):
+        dest_helpers = tmp_path / "www" / "ramses_extras" / "v1.0.0" / "helpers"
+        dest_helpers.mkdir(parents=True, exist_ok=True)
+        await cards.expose_feature_config_to_frontend(hass, entry)
+
+    dest = dest_helpers / "ramses-extras-features.js"
+    assert dest.exists()
+    content = dest.read_text()
+    assert '"ramses_debugger_default_poll_ms": 5000' in content

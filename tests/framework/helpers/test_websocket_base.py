@@ -447,3 +447,112 @@ class TestGetAllFeatureEntitiesCommand:
         entities = {"sensor": {"t": {"entity_template": "t_{device_id}"}}}
         result = command._parse_all_entity_templates(entities, "32:1")
         assert result["sensor"]["t"]["entity_id"] == "sensor.t_32_1"
+
+
+@pytest.mark.asyncio
+async def test_get_entity_mappings_from_feature_asyncio_to_thread(hass):
+    """Test _get_entity_mappings_from_feature
+    uses asyncio.to_thread when unavailable."""
+    command = GetEntityMappingsCommand(hass, "test")
+
+    mock_module = MagicMock()
+    mock_module.FEATURE_DEFINITION = {
+        "sensor_configs": {"s1": {"entity_template": "t1"}}
+    }
+
+    # Remove async_add_executor_job to force asyncio.to_thread path
+    if hasattr(hass, "async_add_executor_job"):
+        delattr(hass, "async_add_executor_job")
+
+    with patch("importlib.import_module", return_value=mock_module):
+        mappings = await command._get_entity_mappings_from_feature()
+        assert mappings == {"s1_state": "sensor.t1"}
+
+
+@pytest.mark.asyncio
+async def test_get_entity_mappings_from_feature_non_dict_definition(hass):
+    """Test _get_entity_mappings_from_feature handles non-dict feature_definition."""
+    command = GetEntityMappingsCommand(hass, "test")
+
+    mock_module = MagicMock()
+    mock_module.FEATURE_DEFINITION = "not_a_dict"
+
+    with patch("importlib.import_module", return_value=mock_module):
+        mappings = await command._get_entity_mappings_from_feature()
+        assert mappings == {}
+
+
+@pytest.mark.asyncio
+async def test_get_all_entities_from_feature_module_path(hass):
+    """Test _get_all_entities_from_feature with direct module path."""
+    command = GetAllFeatureEntitiesCommand(hass, "test.const")
+
+    mock_module = MagicMock()
+    mock_module.FEATURE_DEFINITION = {"sensor_configs": {"s": {"entity_template": "t"}}}
+
+    if hasattr(hass, "async_add_executor_job"):
+        delattr(hass, "async_add_executor_job")
+
+    with patch("importlib.import_module", return_value=mock_module):
+        entities = await command._get_all_entities_from_feature()
+        assert "sensor" in entities
+
+
+@pytest.mark.asyncio
+async def test_get_all_entities_from_feature_asyncio_to_thread(hass):
+    """Test _get_all_entities_from_feature uses asyncio.to_thread."""
+    command = GetAllFeatureEntitiesCommand(hass, "test")
+
+    mock_module = MagicMock()
+    mock_module.FEATURE_DEFINITION = {"sensor_configs": {"s": {"entity_template": "t"}}}
+
+    if hasattr(hass, "async_add_executor_job"):
+        delattr(hass, "async_add_executor_job")
+
+    with patch("importlib.import_module", return_value=mock_module):
+        entities = await command._get_all_entities_from_feature()
+        assert "sensor" in entities
+
+
+@pytest.mark.asyncio
+async def test_get_all_entities_from_feature_non_dict_definition(hass):
+    """Test _get_all_entities_from_feature handles non-dict feature_definition."""
+    command = GetAllFeatureEntitiesCommand(hass, "test")
+
+    mock_module = MagicMock()
+    mock_module.FEATURE_DEFINITION = "not_a_dict"
+
+    with patch("importlib.import_module", return_value=mock_module):
+        entities = await command._get_all_entities_from_feature()
+        assert entities == {
+            "binary_sensor": {},
+            "sensor": {},
+            "switch": {},
+            "number": {},
+        }
+
+
+def test_parse_all_entity_templates_invalid_platform(hass):
+    """Test _parse_all_entity_templates skips invalid platform."""
+    command = GetAllFeatureEntitiesCommand(hass, "test")
+    entities = {123: {"t": {"entity_template": "t_{device_id}"}}}  # Invalid platform
+    result = command._parse_all_entity_templates(entities, "32:1")
+    assert result["sensor"] == {}
+
+
+def test_parse_all_entity_templates_invalid_entity_name(hass):
+    """Test _parse_all_entity_templates skips invalid entity name."""
+    command = GetAllFeatureEntitiesCommand(hass, "test")
+    entities = {
+        "sensor": {123: {"entity_template": "t_{device_id}"}}
+    }  # Invalid entity name
+    result = command._parse_all_entity_templates(entities, "32:1")
+    assert result["sensor"] == {}
+
+
+def test_parse_all_entity_templates_invalid_entity_template(hass):
+    """Test _parse_all_entity_templates skips invalid entity template."""
+    command = GetAllFeatureEntitiesCommand(hass, "test")
+    entities = {"sensor": {"t": {"entity_template": 123}}}  # Invalid entity template
+    result = command._parse_all_entity_templates(entities, "32:1")
+    assert result["sensor"] == {}

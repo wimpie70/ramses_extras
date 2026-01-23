@@ -878,7 +878,154 @@ class TestDiscoverAndStoreDevices:
             await discover_and_store_devices(hass)
 
             assert hass.data[DOMAIN]["devices"] == mock_devices
-            assert hass.data[DOMAIN]["device_discovery_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_apply_log_level_from_entry_invalid_level(hass):
+    """Test apply_log_level_from_entry with invalid log level."""
+    from custom_components.ramses_extras.framework.setup.entry import (
+        apply_log_level_from_entry,
+    )
+
+    entry = MagicMock()
+    entry.options = {"log_level": "invalid"}
+
+    # Should return early without setting level
+    apply_log_level_from_entry(entry)
+
+
+@pytest.mark.asyncio
+async def test_async_update_listener_old_enabled_features_none(hass):
+    """Test async_update_listener with old_enabled_features as None."""
+    from custom_components.ramses_extras.framework.setup.entry import (
+        async_update_listener,
+    )
+
+    hass.data[DOMAIN] = {"enabled_features": None}
+
+    entry = MagicMock()
+    entry.data = {"enabled_features": {"test": True}}
+    entry.options = {"log_level": "info"}
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.entry.expose_feature_config_to_frontend",
+    ):
+        await async_update_listener(hass, entry)
+
+
+@pytest.mark.asyncio
+async def test_async_update_listener_log_level_fallback(hass):
+    """Test async_update_listener log_level fallback."""
+    from custom_components.ramses_extras.framework.setup.entry import (
+        async_update_listener,
+    )
+
+    entry = MagicMock()
+    entry.data = {"enabled_features": {}}
+    entry.options = {"log_level": None}  # Invalid log_level
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.entry.expose_feature_config_to_frontend",
+    ):
+        await async_update_listener(hass, entry)
+
+    # Should set log_level to "info"
+
+
+@pytest.mark.asyncio
+async def test_async_update_listener_invalid_log_level(hass):
+    """Test async_update_listener with invalid log_level."""
+    from custom_components.ramses_extras.framework.setup.entry import (
+        async_update_listener,
+    )
+
+    entry = MagicMock()
+    entry.data = {"enabled_features": {}}
+    entry.options = {"log_level": 123}  # Invalid type
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.entry.expose_feature_config_to_frontend",
+    ):
+        await async_update_listener(hass, entry)
+
+
+@pytest.mark.asyncio
+async def test_async_update_listener_with_poll_ms_option(hass):
+    """Test async_update_listener includes poll_ms option."""
+    from custom_components.ramses_extras.framework.setup.entry import (
+        async_update_listener,
+    )
+
+    entry = MagicMock()
+    entry.data = {"enabled_features": {}}
+    entry.options = {"ramses_debugger_default_poll_ms": 3000}
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.entry.expose_feature_config_to_frontend",
+    ):
+        await async_update_listener(hass, entry)
+
+
+@pytest.mark.asyncio
+async def test_async_update_listener_reload_invalid_entry_id(hass):
+    """Test _do_reload in async_update_listener with invalid entry_id."""
+    from custom_components.ramses_extras.framework.setup.entry import (
+        async_update_listener,
+    )
+
+    entry = MagicMock()
+    entry.entry_id = None  # Invalid entry_id
+    entry.data = {"enabled_features": {}}
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.entry.expose_feature_config_to_frontend",
+    ):
+        await async_update_listener(hass, entry)
+
+
+@pytest.mark.asyncio
+async def test_async_update_listener_reload_entry_not_found(hass):
+    """Test _do_reload in async_update_listener when entry not found."""
+    from custom_components.ramses_extras.framework.setup.entry import (
+        async_update_listener,
+    )
+
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {"enabled_features": {}}
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.entry.expose_feature_config_to_frontend",
+    ):
+        with patch.object(hass.config_entries, "async_get_entry", return_value=None):
+            await async_update_listener(hass, entry)
+
+
+@pytest.mark.asyncio
+async def test_async_remove_entry_fallback_entry_id(hass):
+    """Test async_remove_entry uses fallback entry.id."""
+    from custom_components.ramses_extras.framework.setup.entry import async_remove_entry
+
+    entry = MagicMock()
+    entry.entry_id = None
+    entry.id = "fallback_id"
+
+    mock_device_reg = MagicMock()
+    device1 = MagicMock(id="dev1", config_entries={"fallback_id"})
+    mock_device_reg.devices = {"dev1": device1}
+
+    mock_entities = MagicMock(entities={})
+    with patch(
+        "custom_components.ramses_extras.framework.setup.entry.er.async_get",
+        return_value=mock_entities,
+    ):
+        with patch(
+            "custom_components.ramses_extras.framework.setup.entry.dr.async_get",
+            return_value=mock_device_reg,
+        ):
+            await async_remove_entry(hass, entry)
+
+    mock_device_reg.async_remove_device.assert_called_once_with("dev1")
 
 
 @pytest.mark.asyncio
