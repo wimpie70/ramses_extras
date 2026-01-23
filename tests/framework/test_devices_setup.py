@@ -185,6 +185,13 @@ async def test_discover_devices_from_entity_registry_success(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_cleanup_orphaned_devices_no_registries(hass) -> None:
+    """Test cleanup with no registries available."""
+    # This should not raise, just log and return
+    await devices.cleanup_orphaned_devices(hass, MagicMock())
+
+
+@pytest.mark.asyncio
 async def test_discover_ramses_devices_broker_dict(hass) -> None:
     class Broker:
         def __init__(self) -> None:

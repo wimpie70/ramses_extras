@@ -254,3 +254,47 @@ async def test_execute_command_logs_error(caplog) -> None:
 
     stats = mgr.get_queue_statistics()["command_statistics"]
     assert stats["failed_commands"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_process_device_queue_logs_failed_result_warning(caplog) -> None:
+    rc = MagicMock()
+
+    mgr = ramses_commands.DeviceCommandManager(rc)
+    mgr._queues["01:warn"] = asyncio.Queue()
+    mgr._queue_depths["01:warn"] = 1
+    await mgr._queues["01:warn"].put({"command_def": {}, "timeout": 1})
+
+    async def exec_fail(device_id, command_def, timeout):  # type: ignore[override]
+        return ramses_commands.CommandResult(success=False, error_message="boom")
+
+    mgr._execute_command = exec_fail  # type: ignore[assignment]
+
+    caplog.set_level("WARNING")
+
+    await mgr._process_device_queue("01:warn")
+
+    assert any("Queued command failed" in msg for msg in caplog.text.splitlines())
+
+
+@pytest.mark.asyncio
+async def test_process_device_queue_updates_depth_and_logs_warning(caplog) -> None:
+    rc = MagicMock()
+
+    mgr = ramses_commands.DeviceCommandManager(rc)
+    mgr._queues["01:depth2"] = asyncio.Queue()
+    mgr._queue_depths["01:depth2"] = 1
+    await mgr._queues["01:depth2"].put({"command_def": {}, "timeout": 1})
+
+    async def exec_fail(device_id, command_def, timeout):  # type: ignore[override]
+        raise RuntimeError("boom")
+
+    mgr._execute_command = exec_fail  # type: ignore[assignment]
+
+    caplog.set_level("ERROR")
+
+    await mgr._process_device_queue("01:depth2")
+
+    stats = mgr.get_queue_statistics()["command_statistics"]
+    assert stats["failed_commands"] >= 1
+    assert any("Queue processing error" in msg for msg in caplog.text.splitlines())
