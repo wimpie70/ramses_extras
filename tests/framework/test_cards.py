@@ -73,3 +73,48 @@ async def test_cleanup_old_card_deployments_removes_old_versions(
     assert current.exists()
     assert not old.exists()
     assert not legacy.exists()
+
+
+@pytest.mark.asyncio
+async def test_copy_helper_files_missing_source(hass, tmp_path, caplog) -> None:
+    hass.config.config_dir = tmp_path
+
+    caplog.set_level("WARNING")
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.cards.INTEGRATION_DIR",
+        tmp_path / "nope",
+    ):
+        await cards.copy_helper_files(hass)
+
+    assert any(
+        "Helper files directory not found" in msg for msg in caplog.text.splitlines()
+    )
+
+
+@pytest.mark.asyncio
+async def test_expose_feature_config_to_frontend_writes_file(hass, tmp_path) -> None:
+    hass.config.config_dir = tmp_path
+
+    entry = MagicMock()
+    entry.options = {"debug_mode": True, "log_level": "info"}
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.cards.async_get_integration_version",
+        return_value="1.0.0",
+    ):
+        dest_helpers = tmp_path / "www" / "ramses_extras" / "v1.0.0" / "helpers"
+        dest_helpers.mkdir(parents=True, exist_ok=True)
+        await cards.expose_feature_config_to_frontend(hass, entry)
+
+    dest = (
+        tmp_path
+        / "www"
+        / "ramses_extras"
+        / "v1.0.0"
+        / "helpers"
+        / "ramses-extras-features.js"
+    )
+    assert dest.exists()
+    content = dest.read_text()
+    assert "window.ramsesExtras" in content
