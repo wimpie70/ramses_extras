@@ -168,26 +168,16 @@ Suggested workflow per step:
 
 ## Ramses debugger improvements
 
-
-## Acceptance criteria
-- With ramses_cc message events enabled, Traffic Analyser shows live counts changing
-- Log Explorer can filter HA logs and return ±N context around matches
-- Log Explorer output is easy to copy/paste (plain + markdown)
-- Zoom dialogs work for both cards
-- Reset clears Traffic Analyser stats immediately
- - Traffic Analyser shows codes and verbs counters per flow
- - Traffic Analyser can open Log Explorer via action button
- - Message listing (when implemented) allows drilling down to raw + parsed message details
-
 ### 1) Shared backend cache (avoid duplicated work across multiple cards)
-- [ ] Add a cache object under `hass.data[DOMAIN]["ramses_debugger"]` (e.g. `debugger_cache`)
-- [ ] Cache keys must include:
+- [x] Add a cache object under `hass.data[DOMAIN]["ramses_debugger"]` (e.g. `debugger_cache`)
+- [x] Cache keys must include:
   - request type (tail/search/traffic-stats/messages)
   - file_id + configured base path + file mtime/size (avoid stale results)
   - all request params (e.g. `offset_lines`, `max_lines`, `query`, `before/after`, filters)
-- [ ] Add a short TTL for expensive operations (e.g. 0.5–2s) to dedupe polling bursts
-- [ ] Add max cache entries + eviction policy (LRU-ish or oldest-first)
-- [ ] Ensure cache never merges results across different ranges (e.g. two Log Explorers with different offsets)
+- [x] Add a short TTL for expensive operations (e.g. 0.5–2s) to dedupe polling bursts
+- [x] Add max cache entries + eviction policy (LRU-ish or oldest-first)
+- [x] Ensure cache never merges results across different ranges (e.g. two Log Explorers with different offsets)
+- [x] Add a debug WebSocket endpoint for cache stats (+ optional reset)
 
 ### 2) Log source improvements (tail/search)
 - [ ] Consolidate duplicated file resolution logic into a single backend helper
@@ -238,3 +228,14 @@ Suggested workflow per step:
   - flow eviction behavior
 - [ ] Run focused pytest for debugger feature
 - [ ] Run `make local-ci` for final validation
+
+
+## Acceptance criteria
+- With ramses_cc message events enabled, Traffic Analyser shows live counts changing
+- Log Explorer can filter HA logs and return ±N context around matches
+- Log Explorer output is easy to copy/paste (plain + markdown)
+- Zoom dialogs work for both cards
+- Reset clears Traffic Analyser stats immediately
+ - Traffic Analyser shows codes and verbs counters per flow
+ - Traffic Analyser can open Log Explorer via action button
+ - Message listing (when implemented) allows drilling down to raw + parsed message details

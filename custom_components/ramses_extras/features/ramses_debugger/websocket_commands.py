@@ -2,7 +2,7 @@ import logging
 from collections import Counter
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -11,6 +11,7 @@ from homeassistant.core import Event, HomeAssistant
 from custom_components.ramses_extras.const import DOMAIN
 
 from .const import DOMAIN as RAMSES_DEBUGGER_DOMAIN
+from .debugger_cache import DebuggerCache, freeze_for_key
 from .log_backend import (
     discover_log_files,
     get_configured_log_path,
@@ -25,6 +26,30 @@ if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _get_cache(hass: HomeAssistant) -> DebuggerCache | None:
+    domain_data = hass.data.get(DOMAIN)
+    if not isinstance(domain_data, dict):
+        return None
+
+    debugger_data = domain_data.get(RAMSES_DEBUGGER_DOMAIN)
+    if not isinstance(debugger_data, dict):
+        return None
+
+    cache = debugger_data.get("cache")
+    if not isinstance(cache, DebuggerCache):
+        return None
+
+    return cache
+
+
+def _file_state(path: Path) -> tuple[int, int] | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (int(st.st_mtime_ns), int(st.st_size))
 
 
 def _resolve_log_file(base: Path, file_id: str) -> Path | None:
@@ -132,77 +157,89 @@ async def ws_traffic_get_stats(
     # For log sources, `limit` is the number of flows to return, not how many
     # messages we should scan to build the stats.
     message_limit = 20_000
-    messages = await get_messages_from_sources(
-        hass,
-        sources,
-        src=msg.get("src"),
-        dst=msg.get("dst"),
-        verb=msg.get("verb"),
-        code=msg.get("code"),
-        limit=message_limit,
-        dedupe=True,
-    )
 
-    by_code: Counter[str] = Counter()
-    by_verb: Counter[str] = Counter()
-    flows: dict[tuple[str, str], dict[str, Any]] = {}
-    started_at: str | None = None
-    total_count = 0
+    cache = _get_cache(hass)
+    backing_path: Path | None = None
+    if traffic_source == "packet_log":
+        backing_path = get_configured_packet_log_path(hass)
+    elif traffic_source == "ha_log":
+        backing_path = get_configured_log_path(hass)
+    state = _file_state(backing_path) if isinstance(backing_path, Path) else None
 
-    for m in messages:
-        src = m.get("src")
-        dst = m.get("dst")
-        if not isinstance(src, str) or not isinstance(dst, str):
-            continue
+    async def _build_stats() -> dict[str, Any]:
+        messages = await get_messages_from_sources(
+            hass,
+            sources,
+            src=msg.get("src"),
+            dst=msg.get("dst"),
+            verb=msg.get("verb"),
+            code=msg.get("code"),
+            limit=message_limit,
+            dedupe=True,
+        )
 
-        if isinstance(device_id, str) and device_id and device_id not in (src, dst):
-            continue
+        by_code: Counter[str] = Counter()
+        by_verb: Counter[str] = Counter()
+        flows: dict[tuple[str, str], dict[str, Any]] = {}
+        started_at: str | None = None
+        total_count = 0
 
-        total_count += 1
+        for m in messages:
+            src_ = m.get("src")
+            dst_ = m.get("dst")
+            if not isinstance(src_, str) or not isinstance(dst_, str):
+                continue
 
-        dtm = m.get("dtm")
-        if isinstance(dtm, str) and dtm:
-            started_at = dtm if started_at is None else min(started_at, dtm)
+            if (
+                isinstance(device_id, str)
+                and device_id
+                and device_id not in (src_, dst_)
+            ):
+                continue
 
-        code = m.get("code")
-        if isinstance(code, str) and code:
-            by_code[code] += 1
+            total_count += 1
 
-        verb = m.get("verb")
-        if isinstance(verb, str) and verb:
-            by_verb[verb] += 1
+            dtm = m.get("dtm")
+            if isinstance(dtm, str) and dtm:
+                started_at = dtm if started_at is None else min(started_at, dtm)
 
-        key = (src, dst)
-        flow = flows.get(key)
-        if flow is None:
-            flow = {
-                "src": src,
-                "dst": dst,
-                "count_total": 0,
-                "last_seen": None,
-                "verbs": Counter(),
-                "codes": Counter(),
-            }
-            flows[key] = flow
+            code_ = m.get("code")
+            if isinstance(code_, str) and code_:
+                by_code[code_] += 1
 
-        flow["count_total"] += 1
+            verb_ = m.get("verb")
+            if isinstance(verb_, str) and verb_:
+                by_verb[verb_] += 1
 
-        if isinstance(dtm, str) and dtm:
-            last_seen = flow.get("last_seen")
-            if not isinstance(last_seen, str) or dtm > last_seen:
-                flow["last_seen"] = dtm
+            key = (src_, dst_)
+            flow = flows.get(key)
+            if flow is None:
+                flow = {
+                    "src": src_,
+                    "dst": dst_,
+                    "count_total": 0,
+                    "last_seen": None,
+                    "verbs": Counter(),
+                    "codes": Counter(),
+                }
+                flows[key] = flow
 
-        if isinstance(verb, str) and verb:
-            flow["verbs"][verb] += 1
-        if isinstance(code, str) and code:
-            flow["codes"][code] += 1
+            flow["count_total"] += 1
 
-    flow_list = list(flows.values())
-    flow_list.sort(key=lambda f: int(f.get("count_total", 0)), reverse=True)
+            if isinstance(dtm, str) and dtm:
+                last_seen = flow.get("last_seen")
+                if not isinstance(last_seen, str) or dtm > last_seen:
+                    flow["last_seen"] = dtm
 
-    connection.send_result(
-        msg["id"],
-        {
+            if isinstance(verb_, str) and verb_:
+                flow["verbs"][verb_] += 1
+            if isinstance(code_, str) and code_:
+                flow["codes"][code_] += 1
+
+        flow_list = list(flows.values())
+        flow_list.sort(key=lambda f: int(f.get("count_total", 0)), reverse=True)
+
+        return {
             "started_at": started_at or "",
             "total_count": total_count,
             "by_code": dict(by_code),
@@ -218,8 +255,32 @@ async def ws_traffic_get_stats(
                 }
                 for f in flow_list[: max(0, int(limit))]
             ],
-        },
+        }
+
+    cache_key = (
+        "traffic_get_stats",
+        traffic_source,
+        str(backing_path) if backing_path else None,
+        state,
+        freeze_for_key(
+            {
+                "device_id": device_id,
+                "src": msg.get("src"),
+                "dst": msg.get("dst"),
+                "verb": msg.get("verb"),
+                "code": msg.get("code"),
+                "limit": int(limit),
+                "message_limit": int(message_limit),
+            }
+        ),
     )
+
+    if cache is not None and state is not None:
+        stats = await cache.get_or_create(cache_key, ttl_s=1.0, create_fn=_build_stats)
+    else:
+        stats = await _build_stats()
+
+    connection.send_result(msg["id"], stats)
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -447,34 +508,58 @@ async def ws_packet_log_get_messages(
 
     from .messages_provider import PacketLogParser
 
-    messages = await PacketLogParser.get_messages(
-        hass,
-        log_path=path,
-        src=msg.get("src"),
-        dst=msg.get("dst"),
-        verb=msg.get("verb"),
-        code=msg.get("code"),
-        since=msg.get("since"),
-        until=msg.get("until"),
-        limit=msg.get("limit", 200),
+    cache = _get_cache(hass)
+    state = _file_state(path)
+    decode = bool(msg.get("decode"))
+
+    async def _load_result() -> dict[str, Any]:
+        messages = await PacketLogParser.get_messages(
+            hass,
+            log_path=path,
+            src=msg.get("src"),
+            dst=msg.get("dst"),
+            verb=msg.get("verb"),
+            code=msg.get("code"),
+            since=msg.get("since"),
+            until=msg.get("until"),
+            limit=msg.get("limit", 200),
+        )
+
+        message_dicts = [m.__dict__ for m in messages]
+        if decode:
+            from .messages_provider import decode_message_with_ramses_rf
+
+            for message in message_dicts:
+                decoded = decode_message_with_ramses_rf(message)
+                if decoded is not None:
+                    message["decoded"] = decoded
+
+        return {"file_id": path.name, "messages": message_dicts}
+
+    cache_key = (
+        "packet_log_get_messages",
+        str(path),
+        state,
+        freeze_for_key(
+            {
+                "src": msg.get("src"),
+                "dst": msg.get("dst"),
+                "verb": msg.get("verb"),
+                "code": msg.get("code"),
+                "since": msg.get("since"),
+                "until": msg.get("until"),
+                "limit": int(msg.get("limit", 200)),
+                "decode": decode,
+            }
+        ),
     )
 
-    message_dicts = [m.__dict__ for m in messages]
-    if msg.get("decode"):
-        from .messages_provider import decode_message_with_ramses_rf
+    if cache is not None and state is not None:
+        result = await cache.get_or_create(cache_key, ttl_s=2.0, create_fn=_load_result)
+    else:
+        result = await _load_result()
 
-        for message in message_dicts:
-            decoded = decode_message_with_ramses_rf(message)
-            if decoded is not None:
-                message["decoded"] = decoded
-
-    connection.send_result(
-        msg["id"],
-        {
-            "file_id": path.name,
-            "messages": message_dicts,
-        },
-    )
+    connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -519,24 +604,52 @@ async def ws_log_get_tail(
     max_lines = msg.get("max_lines", 200)
     offset_lines = msg.get("offset_lines", 0)
     max_chars = msg.get("max_chars", 200_000)
-    if offset_lines:
-        text = await hass.async_add_executor_job(
-            partial(
-                tail_text,
-                path,
-                max_lines=max_lines + offset_lines,
-                max_chars=max_chars,
+
+    cache = _get_cache(hass)
+    state = _file_state(path)
+
+    async def _read_tail() -> str:
+        if offset_lines:
+            text = cast(
+                str,
+                await hass.async_add_executor_job(
+                    partial(
+                        tail_text,
+                        path,
+                        max_lines=max_lines + offset_lines,
+                        max_chars=max_chars,
+                    )
+                ),
             )
+            lines = text.splitlines(keepends=True)
+            if offset_lines >= len(lines):
+                return ""
+            return "".join(lines[:-offset_lines])
+
+        return cast(
+            str,
+            await hass.async_add_executor_job(
+                partial(tail_text, path, max_lines=max_lines, max_chars=max_chars)
+            ),
         )
-        lines = text.splitlines(keepends=True)
-        if offset_lines >= len(lines):
-            text = ""
-        else:
-            text = "".join(lines[:-offset_lines])
+
+    cache_key = (
+        "log_get_tail",
+        str(path),
+        state,
+        freeze_for_key(
+            {
+                "max_lines": int(max_lines),
+                "offset_lines": int(offset_lines),
+                "max_chars": int(max_chars),
+            }
+        ),
+    )
+
+    if cache is not None and state is not None:
+        text = await cache.get_or_create(cache_key, ttl_s=1.0, create_fn=_read_tail)
     else:
-        text = await hass.async_add_executor_job(
-            partial(tail_text, path, max_lines=max_lines, max_chars=max_chars)
-        )
+        text = await _read_tail()
     connection.send_result(
         msg["id"],
         {
@@ -658,18 +771,47 @@ async def ws_log_search(
     max_matches = msg.get("max_matches", 200)
     max_chars = msg.get("max_chars", 400_000)
     case_sensitive = bool(msg.get("case_sensitive", False))
-    result = await hass.async_add_executor_job(
-        partial(
-            search_with_context,
-            path,
-            query=query,
-            before=before,
-            after=after,
-            max_matches=max_matches,
-            max_chars=max_chars,
-            case_sensitive=case_sensitive,
+
+    cache = _get_cache(hass)
+    state = _file_state(path)
+
+    async def _do_search() -> dict[str, Any]:
+        return cast(
+            dict[str, Any],
+            await hass.async_add_executor_job(
+                partial(
+                    search_with_context,
+                    path,
+                    query=query,
+                    before=before,
+                    after=after,
+                    max_matches=max_matches,
+                    max_chars=max_chars,
+                    case_sensitive=case_sensitive,
+                )
+            ),
         )
+
+    cache_key = (
+        "log_search",
+        str(path),
+        state,
+        freeze_for_key(
+            {
+                "query": query,
+                "before": int(before),
+                "after": int(after),
+                "max_matches": int(max_matches),
+                "max_chars": int(max_chars),
+                "case_sensitive": bool(case_sensitive),
+            }
+        ),
     )
+
+    if cache is not None and state is not None:
+        result = await cache.get_or_create(cache_key, ttl_s=2.0, create_fn=_do_search)
+    else:
+        result = await _do_search()
 
     connection.send_result(
         msg["id"],
@@ -678,3 +820,54 @@ async def ws_log_search(
             **result,
         },
     )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/cache/get_stats",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_cache_get_stats(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    cache = _get_cache(hass)
+    if cache is None:
+        connection.send_result(
+            msg["id"],
+            {
+                "available": False,
+                "stats": None,
+            },
+        )
+        return
+
+    connection.send_result(
+        msg["id"],
+        {
+            "available": True,
+            "stats": cache.stats(),
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/cache/clear",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_cache_clear(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    cache = _get_cache(hass)
+    if cache is None:
+        connection.send_result(msg["id"], {"available": False, "cleared": False})
+        return
+
+    cache.clear()
+    connection.send_result(msg["id"], {"available": True, "cleared": True})

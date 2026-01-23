@@ -19,6 +19,8 @@ RAMSES_DEBUGGER_WEBSOCKET_COMMANDS: dict[str, str] = {
     "packet_log_list_files": "ramses_extras/ramses_debugger/packet_log/list_files",
     "packet_log_get_messages": "ramses_extras/ramses_debugger/packet_log/get_messages",
     "messages_get_messages": "ramses_extras/ramses_debugger/messages/get_messages",
+    "cache_get_stats": "ramses_extras/ramses_debugger/cache/get_stats",
+    "cache_clear": "ramses_extras/ramses_debugger/cache/clear",
 }
 
 RAMSES_DEBUGGER_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {
