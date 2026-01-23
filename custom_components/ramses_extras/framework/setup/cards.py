@@ -344,6 +344,12 @@ async def expose_feature_config_to_frontend(
         js_log_level = json.dumps(log_level)
         js_frontend_log_level = json.dumps(frontend_log_level)
 
+        options_payload: dict[str, Any] = {}
+        default_poll_ms = entry.options.get("ramses_debugger_default_poll_ms")
+        if isinstance(default_poll_ms, int):
+            options_payload["ramses_debugger_default_poll_ms"] = int(default_poll_ms)
+        js_options = json.dumps(options_payload, indent=2)
+
         console_log = (
             f"if (window.ramsesExtras.debug === true) "
             f"console.log('Ramses Extras features loaded (v{version}):', "
@@ -358,6 +364,7 @@ window.ramsesExtras.features = {js_enabled_features};
 window.ramsesExtras.debug = {js_debug_mode};
 window.ramsesExtras.frontendLogLevel = {js_frontend_log_level};
 window.ramsesExtras.logLevel = {js_log_level};
+window.ramsesExtras.options = {js_options};
 
 // Log feature configuration for debugging
 {console_log}

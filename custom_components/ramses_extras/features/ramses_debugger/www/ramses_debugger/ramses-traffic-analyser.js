@@ -4,7 +4,7 @@
 
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
-import { callWebSocket } from '../../helpers/card-services.js';
+import { callWebSocketShared } from '../../helpers/card-services.js';
 
 import './ramses-log-explorer.js';
 import './ramses-messages-viewer.js';
@@ -153,7 +153,11 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     }
 
     try {
-      const res = await callWebSocket(this._hass, { type: 'ramses_extras/get_available_devices' });
+      const res = await callWebSocketShared(
+        this._hass,
+        { type: 'ramses_extras/get_available_devices' },
+        { cacheMs: 30_000 }
+      );
       const devices = Array.isArray(res?.devices) ? res.devices : [];
       const map = new Map();
 
@@ -262,16 +266,20 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   }
 
   _startPolling() {
-    const pollInterval = Number(this._config?.poll_interval || 5000);
+    let pollInterval = Number(this._config?.poll_interval || 5000);
+    const globalDefault = Number(window?.ramsesExtras?.options?.ramses_debugger_default_poll_ms);
+    if (pollInterval === 5000 && Number.isFinite(globalDefault) && globalDefault > 0) {
+      pollInterval = globalDefault;
+    }
     const safeInterval = Number.isFinite(pollInterval) ? Math.max(1000, pollInterval) : 5000;
 
     const doPoll = async () => {
       try {
         this._lastError = null;
-        const result = await callWebSocket(this._hass, {
+        const result = await callWebSocketShared(this._hass, {
           type: 'ramses_extras/ramses_debugger/traffic/get_stats',
           ...this._buildFiltersFromConfig({ includeTrafficSource: true }),
-        });
+        }, { cacheMs: 500 });
         this._stats = result;
       } catch (error) {
         this._lastError = error;
@@ -327,7 +335,11 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     }
 
     try {
-      const devices = await callWebSocket(this._hass, { type: 'config/device_registry/list' });
+      const devices = await callWebSocketShared(
+        this._hass,
+        { type: 'config/device_registry/list' },
+        { cacheMs: 30_000 }
+      );
       const map = new Map();
 
       if (Array.isArray(devices)) {
@@ -488,15 +500,15 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     this.render();
 
     try {
-      await callWebSocket(this._hass, {
+      await callWebSocketShared(this._hass, {
         type: 'ramses_extras/ramses_debugger/traffic/reset_stats',
       });
 
       // Refresh after reset so the "since" timestamp reflects the new window.
-      this._stats = await callWebSocket(this._hass, {
+      this._stats = await callWebSocketShared(this._hass, {
         type: 'ramses_extras/ramses_debugger/traffic/get_stats',
         ...this._buildFiltersFromConfig(),
-      });
+      }, { cacheMs: 500 });
     } catch (error) {
       this._lastError = error;
     }

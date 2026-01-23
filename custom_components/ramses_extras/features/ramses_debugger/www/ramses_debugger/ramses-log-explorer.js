@@ -3,7 +3,7 @@
 
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
-import { callWebSocket } from '../../helpers/card-services.js';
+import { callWebSocketShared } from '../../helpers/card-services.js';
 
 import { logExplorerCardStyle } from './card-styles.js';
 
@@ -334,9 +334,9 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this.render();
 
     try {
-      const res = await callWebSocket(this._hass, {
+      const res = await callWebSocketShared(this._hass, {
         type: 'ramses_extras/ramses_debugger/log/list_files',
-      });
+      }, { cacheMs: 1000 });
 
       this._basePath = typeof res?.base === 'string' ? res.base : null;
       this._files = Array.isArray(res?.files) ? res.files : [];
@@ -364,13 +364,13 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       const maxLines = Number.isFinite(this._tailLines)
         ? this._tailLines
         : Number(this._config?.max_tail_lines || 200);
-      const res = await callWebSocket(this._hass, {
+      const res = await callWebSocketShared(this._hass, {
         type: 'ramses_extras/ramses_debugger/log/get_tail',
         file_id: this._selectedFileId,
         max_lines: maxLines,
         offset_lines: this._tailOffset,
         max_chars: Number(this._config?.max_tail_chars || 200000),
-      });
+      }, { cacheMs: 500 });
 
       this._tailText = typeof res?.text === 'string' ? res.text : '';
     } catch (error) {
@@ -402,7 +402,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     try {
       const before = Number.isFinite(this._before) ? this._before : Number(this._config?.before || 3);
       const after = Number.isFinite(this._after) ? this._after : Number(this._config?.after || 3);
-      const res = await callWebSocket(this._hass, {
+      const res = await callWebSocketShared(this._hass, {
         type: 'ramses_extras/ramses_debugger/log/search',
         file_id: this._selectedFileId,
         query,
@@ -411,7 +411,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         max_matches: Number(this._config?.max_matches || 200),
         max_chars: Number(this._config?.max_chars || 400000),
         case_sensitive: Boolean(this._config?.case_sensitive),
-      });
+      }, { cacheMs: 500 });
 
       this._searchResult = res;
     } catch (error) {

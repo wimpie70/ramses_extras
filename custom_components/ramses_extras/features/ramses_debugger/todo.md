@@ -203,6 +203,7 @@ Suggested workflow per step:
   - what a flow is
   - why caching exists (multi-card pages)
   - trade-offs of lower/higher polling intervals
+- [ ] Move ramses_debugger options to the feature's config flow step (leave debug levels on advanced). This belongs to the feature, and can be dis/enabled.
 
 ### 5) Frontend: reduce redundant polling across multiple instances
 - [ ] Use a shared per-feature JS cache (e.g. `window.ramsesExtras.ramsesDebugger`) for:

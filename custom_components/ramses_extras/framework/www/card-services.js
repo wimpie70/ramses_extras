@@ -7,6 +7,31 @@
 
 import * as logger from './logger.js';
 
+function _stableStringify(value) {
+  const t = typeof value;
+  if (value == null || t === 'string' || t === 'number' || t === 'boolean') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => _stableStringify(v)).join(',')}]`;
+  }
+  if (t === 'object') {
+    const keys = Object.keys(value).sort();
+    const parts = keys.map((k) => `${JSON.stringify(k)}:${_stableStringify(value[k])}`);
+    return `{${parts.join(',')}}`;
+  }
+  return JSON.stringify(String(value));
+}
+
+function _getSharedWsState() {
+  window.ramsesExtras = window.ramsesExtras || {};
+  window.ramsesExtras._sharedWs = window.ramsesExtras._sharedWs || {
+    inflight: new Map(),
+    results: new Map(),
+  };
+  return window.ramsesExtras._sharedWs;
+}
+
 /**
  * Send a WebSocket command to Home Assistant
  *
@@ -54,6 +79,50 @@ export async function callWebSocket(hass, message) {
       reject(error);
     }
   });
+}
+
+export async function callWebSocketShared(hass, message, { cacheMs = 0, key = null } = {}) {
+  const state = _getSharedWsState();
+  const now = Date.now();
+
+  const cacheKey = key || _stableStringify(message);
+
+  const cached = state.results.get(cacheKey);
+  if (cached && typeof cached === 'object') {
+    const ts = Number(cached.ts || 0);
+    if (cacheMs > 0 && (now - ts) < cacheMs) {
+      return cached.value;
+    }
+  }
+
+  const inflight = state.inflight.get(cacheKey);
+  if (inflight && typeof inflight === 'object' && inflight.promise) {
+    return inflight.promise;
+  }
+
+  const promise = callWebSocket(hass, message)
+    .then((result) => {
+      state.inflight.delete(cacheKey);
+      if (cacheMs > 0) {
+        state.results.set(cacheKey, { ts: now, value: result });
+
+        while (state.results.size > 512) {
+          const oldestKey = state.results.keys().next().value;
+          if (!oldestKey) {
+            break;
+          }
+          state.results.delete(oldestKey);
+        }
+      }
+      return result;
+    })
+    .catch((error) => {
+      state.inflight.delete(cacheKey);
+      throw error;
+    });
+
+  state.inflight.set(cacheKey, { ts: now, promise });
+  return promise;
 }
 
 /**
@@ -209,6 +278,14 @@ export function clearAllCaches() {
   logger.debug(' Clearing all card services caches');
   _devicesCache = null;
   _devicesCacheTimestamp = 0;
+
+  try {
+    const shared = _getSharedWsState();
+    shared.inflight.clear();
+    shared.results.clear();
+  } catch {
+    // ignore
+  }
 }
 
 /**

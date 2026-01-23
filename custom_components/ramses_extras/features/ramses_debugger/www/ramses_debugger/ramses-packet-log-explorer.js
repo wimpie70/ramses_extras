@@ -1,6 +1,6 @@
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
-import { callWebSocket } from '../../helpers/card-services.js';
+import { callWebSocketShared } from '../../helpers/card-services.js';
 
 import './ramses-messages-viewer.js';
 
@@ -93,9 +93,9 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     this.render();
 
     try {
-      const res = await callWebSocket(this._hass, {
+      const res = await callWebSocketShared(this._hass, {
         type: 'ramses_extras/ramses_debugger/packet_log/list_files',
-      });
+      }, { cacheMs: 1000 });
 
       this._basePath = typeof res?.base === 'string' ? res.base : null;
       this._files = Array.isArray(res?.files) ? res.files : [];
@@ -249,12 +249,12 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
         if (!this._selectedFileId) {
           return { messages: [] };
         }
-        return callWebSocket(hass, {
+        return callWebSocketShared(hass, {
           type: 'ramses_extras/ramses_debugger/packet_log/get_messages',
           file_id: this._selectedFileId,
           limit: Number(limit || this._limit || 200),
           decode: Boolean(decode),
-        });
+        }, { cacheMs: 500 });
       };
 
       try {

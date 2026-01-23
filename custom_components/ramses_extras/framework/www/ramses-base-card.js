@@ -49,6 +49,9 @@ const _ensureOptionsUpdatesSubscribed = (hass) => {
       if (typeof payload.log_level === 'string' && payload.log_level) {
         window.ramsesExtras.logLevel = payload.log_level;
       }
+      if (payload.options && typeof payload.options === 'object') {
+        window.ramsesExtras.options = payload.options;
+      }
       if (typeof payload.cards_enabled === 'boolean') {
         window.ramsesExtras.cardsEnabled = payload.cards_enabled;
       }
@@ -426,6 +429,9 @@ export class RamsesBaseCard extends HTMLElement {
         })
           .then((result) => {
             window.ramsesExtras.features = result?.enabled_features || {};
+            if (result?.options && typeof result.options === 'object') {
+              window.ramsesExtras.options = result.options;
+            }
           })
           .catch((error) => {
             logger.warn(

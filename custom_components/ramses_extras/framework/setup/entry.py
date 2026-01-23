@@ -14,6 +14,7 @@ features
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -233,6 +234,11 @@ async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None
         if old_debug_mode is None or old_debug_mode != debug_mode:
             _LOGGER.info("Debug mode changed: %s -> %s", old_debug_mode, debug_mode)
 
+        options_payload: dict[str, Any] = {}
+        default_poll_ms = entry.options.get("ramses_debugger_default_poll_ms")
+        if isinstance(default_poll_ms, int):
+            options_payload["ramses_debugger_default_poll_ms"] = int(default_poll_ms)
+
         hass.bus.async_fire(
             "ramses_extras_options_updated",
             {
@@ -242,6 +248,7 @@ async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None
                 "frontend_log_level": frontend_log_level,
                 "log_level": log_level,
                 "cards_enabled": data.get("cards_enabled") is True,
+                "options": options_payload,
             },
         )
 

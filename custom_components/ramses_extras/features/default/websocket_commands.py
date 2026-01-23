@@ -51,7 +51,24 @@ async def ws_get_enabled_features(
             else:
                 enabled_features = {}
 
-        connection.send_result(msg["id"], {"enabled_features": enabled_features})
+        options_payload: dict[str, Any] = {}
+        config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        if config_entry is not None:
+            default_poll_ms = getattr(config_entry, "options", {}).get(
+                "ramses_debugger_default_poll_ms"
+            )
+            if isinstance(default_poll_ms, int):
+                options_payload["ramses_debugger_default_poll_ms"] = int(
+                    default_poll_ms
+                )
+
+        connection.send_result(
+            msg["id"],
+            {
+                "enabled_features": enabled_features,
+                "options": options_payload,
+            },
+        )
 
     except Exception as err:
         _LOGGER.error("Failed to get enabled features: %s", err)
