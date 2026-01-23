@@ -193,7 +193,7 @@ Suggested workflow per step:
 - [x] Eviction policy for flows when max is reached (drop oldest by last_seen/first_seen)
 
 ### 4) Config flow (Advanced settings)
-- [ ] Add debugger options:
+- [x] Add debugger options:
   - debugger cache TTL (ms)
   - debugger cache max entries
   - traffic flow cap
