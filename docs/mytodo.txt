@@ -24,3 +24,5 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 - testing env.
     - replace pre-commit hook with prek, see ramses_cc
     - deprecate: Starting in 2026.7, installation of pyserial-asyncio will be blocked in Home Assistant.
+
+- refactor wiki/docs into separate files, interlinked.... it's too big now

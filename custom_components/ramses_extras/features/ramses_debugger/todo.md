@@ -178,3 +178,63 @@ Suggested workflow per step:
  - Traffic Analyser shows codes and verbs counters per flow
  - Traffic Analyser can open Log Explorer via action button
  - Message listing (when implemented) allows drilling down to raw + parsed message details
+
+### 1) Shared backend cache (avoid duplicated work across multiple cards)
+- [ ] Add a cache object under `hass.data[DOMAIN]["ramses_debugger"]` (e.g. `debugger_cache`)
+- [ ] Cache keys must include:
+  - request type (tail/search/traffic-stats/messages)
+  - file_id + configured base path + file mtime/size (avoid stale results)
+  - all request params (e.g. `offset_lines`, `max_lines`, `query`, `before/after`, filters)
+- [ ] Add a short TTL for expensive operations (e.g. 0.5–2s) to dedupe polling bursts
+- [ ] Add max cache entries + eviction policy (LRU-ish or oldest-first)
+- [ ] Ensure cache never merges results across different ranges (e.g. two Log Explorers with different offsets)
+
+### 2) Log source improvements (tail/search)
+- [ ] Consolidate duplicated file resolution logic into a single backend helper
+- [ ] Ensure allowlisting prevents reading outside the configured base directory
+- [ ] Consider incremental tail (only read new bytes) as a later optimization (optional)
+
+### 3) Traffic collector: cap flows + explain what a flow is
+- [ ] Define "flow": a unique `(src, dst)` pair observed in `ramses_cc_message` events
+- [ ] Add configurable caps:
+  - max flows (unique `(src, dst)` pairs)
+  - max global message buffer (for message browsing)
+  - max messages per flow
+- [ ] Eviction policy for flows when max is reached (drop oldest by last_seen/first_seen)
+
+### 4) Config flow (Advanced settings)
+- [ ] Add debugger options:
+  - debugger cache TTL (ms)
+  - debugger cache max entries
+  - traffic flow cap
+  - traffic buffer sizes (global + per-flow)
+  - default polling interval (ms) for debugger cards
+- [ ] Add UI copy/help text explaining:
+  - what a flow is
+  - why caching exists (multi-card pages)
+  - trade-offs of lower/higher polling intervals
+
+### 5) Frontend: reduce redundant polling across multiple instances
+- [ ] Use a shared per-feature JS cache (e.g. `window.ramsesExtras.ramsesDebugger`) for:
+  - last results per request key
+  - in-flight requests per request key (promise de-dup)
+- [ ] Make polling interval consistent across cards by default:
+  - read from config-flow options via the existing `ramses_extras_options_updated` mechanism
+  - allow per-card override only when explicitly set
+- [ ] Ensure multiple Log Explorers with different offsets do not block each other
+
+### 6) Documentation
+- [ ] Add Sphinx-style docstrings to the main backend modules:
+  - [traffic_collector.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/traffic_collector.py:0:0-0:0)
+  - [messages_provider.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/messages_provider.py:0:0-0:0)
+  - [log_backend.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/log_backend.py:0:0-0:0)
+  - [websocket_commands.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/websocket_commands.py:0:0-0:0)
+- [ ] Document cache invariants (keys include file state + request params)
+
+### 7) Tests / validation
+- [ ] Add/adjust unit tests for:
+  - cache keying and TTL behavior
+  - file resolution allowlisting
+  - flow eviction behavior
+- [ ] Run focused pytest for debugger feature
+- [ ] Run `make local-ci` for final validation
