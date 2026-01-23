@@ -122,6 +122,66 @@ async def test_process_device_queue_warns_on_failed_result(caplog) -> None:
 
 
 @pytest.mark.asyncio
+async def test_process_device_queue_handles_exception(caplog) -> None:
+    rc = MagicMock()
+
+    mgr = ramses_commands.DeviceCommandManager(rc)
+    mgr._queues["01:000002"] = asyncio.Queue()
+    await mgr._queues["01:000002"].put({"command_def": {}, "timeout": 1})
+
+    async def raising_execute(device_id, command_def, timeout):  # type: ignore[override]
+        raise RuntimeError("boom")
+
+    mgr._execute_command = raising_execute  # type: ignore[assignment]
+
+    caplog.set_level("ERROR")
+
+    await mgr._process_device_queue("01:000002")
+
+    stats = mgr.get_queue_statistics()["command_statistics"]
+    assert stats["failed_commands"] >= 1
+    assert any("Queue processing error" in msg for msg in caplog.text.splitlines())
+
+
+def test_get_queue_statistics_success_rate() -> None:
+    rc = MagicMock()
+    mgr = ramses_commands.DeviceCommandManager(rc)
+
+    mgr._command_stats = {
+        "total_commands": 2,
+        "successful_commands": 1,
+        "failed_commands": 1,
+        "queued_commands": 0,
+        "total_execution_time": 2.0,
+    }
+
+    stats = mgr.get_queue_statistics()
+    assert stats["command_statistics"]["success_rate_percent"] == 50.0
+
+
+@pytest.mark.asyncio
+async def test_process_device_queue_updates_depths() -> None:
+    rc = MagicMock()
+    rc._send_packet = AsyncMock(return_value=True)
+
+    mgr = ramses_commands.DeviceCommandManager(rc)
+    mgr._queues["01:depth"] = asyncio.Queue()
+    mgr._queue_depths["01:depth"] = 1
+    await mgr._queues["01:depth"].put({"command_def": {}, "timeout": 1})
+
+    async def exec_ok(device_id, command_def, timeout):  # type: ignore[override]
+        return ramses_commands.CommandResult(success=True, execution_time=0.1)
+
+    mgr._execute_command = exec_ok  # type: ignore[assignment]
+
+    await mgr._process_device_queue("01:depth")
+
+    stats = mgr.get_queue_statistics()["queue_status"]
+    # processor cleanup removes device entry entirely
+    assert "01:depth" not in stats["device_queue_depths"]
+
+
+@pytest.mark.asyncio
 async def test_execute_command_logs_error(caplog) -> None:
     rc = MagicMock()
     rc._send_packet = AsyncMock(side_effect=RuntimeError("boom"))

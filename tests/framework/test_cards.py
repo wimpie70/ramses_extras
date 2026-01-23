@@ -118,3 +118,68 @@ async def test_expose_feature_config_to_frontend_writes_file(hass, tmp_path) -> 
     assert dest.exists()
     content = dest.read_text()
     assert "window.ramsesExtras" in content
+
+
+@pytest.mark.asyncio
+async def test_register_cards_handles_error(hass, caplog) -> None:
+    caplog.set_level("ERROR")
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.cards.CardRegistry.register_bootstrap",
+        new=AsyncMock(side_effect=RuntimeError("fail")),
+    ):
+        await cards.register_cards(hass)
+
+    assert any(
+        "CardRegistry registration failed" in msg for msg in caplog.text.splitlines()
+    )
+
+
+@pytest.mark.asyncio
+async def test_copy_all_card_files_missing_source(hass, tmp_path, caplog) -> None:
+    hass.config.config_dir = tmp_path
+
+    caplog.set_level("WARNING")
+
+    card_features = [
+        {"feature_name": "foo", "source_dir": tmp_path / "nope"},
+    ]
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.cards.async_get_integration_version",
+        return_value="1.0.0",
+    ):
+        await cards.copy_all_card_files(hass, card_features)
+
+    assert any(
+        "Card source directory not found" in msg for msg in caplog.text.splitlines()
+    )
+
+
+@pytest.mark.asyncio
+async def test_copy_all_card_files_copy_error_logs(hass, tmp_path, caplog) -> None:
+    hass.config.config_dir = tmp_path
+
+    caplog.set_level("ERROR")
+
+    src = tmp_path / "src"
+    src.mkdir(parents=True, exist_ok=True)
+    (src / "file.js").write_text("// test")
+
+    card_features = [
+        {"feature_name": "foo", "source_dir": src},
+    ]
+
+    with (
+        patch(
+            "custom_components.ramses_extras.framework.setup.cards.async_get_integration_version",
+            return_value="1.0.0",
+        ),
+        patch(
+            "custom_components.ramses_extras.framework.setup.cards.shutil.copytree",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        await cards.copy_all_card_files(hass, card_features)
+
+    assert any("Failed to copy card files" in msg for msg in caplog.text.splitlines())

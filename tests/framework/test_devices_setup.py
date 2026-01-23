@@ -83,3 +83,83 @@ async def test_discover_ramses_devices_error_fallback(hass) -> None:
 
     fallback.assert_awaited_once()
     assert result == ["fallback"]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_orphaned_devices_device_registry_none(hass, caplog) -> None:
+    caplog.set_level("WARNING")
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.devices.dr.async_get",
+        return_value=None,
+    ):
+        await devices.cleanup_orphaned_devices(
+            hass,
+            MagicMock(),
+            device_registry=None,
+            entity_registry=MagicMock(),
+        )
+
+    assert any("Device registry unavailable" in msg for msg in caplog.text.splitlines())
+
+
+@pytest.mark.asyncio
+async def test_cleanup_orphaned_devices_entity_registry_none(hass, caplog) -> None:
+    caplog.set_level("WARNING")
+
+    dummy_dr = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.devices.er.async_get",
+        return_value=None,
+    ):
+        await devices.cleanup_orphaned_devices(
+            hass,
+            MagicMock(),
+            device_registry=dummy_dr,
+            entity_registry=None,
+        )
+
+    assert any("Entity registry unavailable" in msg for msg in caplog.text.splitlines())
+
+
+@pytest.mark.asyncio
+async def test_cleanup_orphaned_devices_logs_orphan(hass, caplog) -> None:
+    caplog.set_level("INFO")
+
+    class DevEntry:
+        def __init__(self, dev_id: str) -> None:
+            self.identifiers = {(DOMAIN, dev_id)}
+            self.id = dev_id
+
+    device_registry = MagicMock()
+    device_registry.devices = {"dev1": DevEntry("dev1")}
+
+    entity_registry = MagicMock()
+    entity_registry.entities = {}
+
+    await devices.cleanup_orphaned_devices(
+        hass,
+        MagicMock(),
+        device_registry=device_registry,
+        entity_registry=entity_registry,
+    )
+
+    assert any("Removing 1 orphaned devices" in msg for msg in caplog.text.splitlines())
+
+
+@pytest.mark.asyncio
+async def test_discover_devices_from_entity_registry_error(hass, caplog) -> None:
+    caplog.set_level("ERROR")
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.devices.er.async_get",
+        side_effect=RuntimeError("boom"),
+    ):
+        result = await devices._discover_devices_from_entity_registry(hass)
+
+    assert result == []
+    assert any(
+        "Error discovering devices from entity registry" in msg
+        for msg in caplog.text.splitlines()
+    )
