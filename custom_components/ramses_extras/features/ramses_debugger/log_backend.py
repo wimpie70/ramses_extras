@@ -111,6 +111,30 @@ def discover_log_files(base_path: Path) -> list[LogFileInfo]:
     return files
 
 
+def resolve_log_file_id(base_path: Path, file_id: str) -> Path | None:
+    """Resolve a file_id to a Path if it is allowlisted by discovery.
+
+    The allowlist is the set of files discovered from the configured base path
+    and its rotated variants (same directory). The resolved path must remain
+    inside the base directory.
+    """
+
+    allowed = {f.path.name: f.path for f in discover_log_files(base_path)}
+    p = allowed.get(file_id)
+    if p is None:
+        return None
+
+    try:
+        resolved = p.resolve()
+        base_dir = base_path.expanduser().resolve().parent
+        if base_dir not in resolved.parents and resolved != base_dir:
+            return None
+    except OSError:
+        return None
+
+    return p
+
+
 def _open_text(path: Path) -> Iterable[str]:
     if path.suffix == ".gz":
         with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:

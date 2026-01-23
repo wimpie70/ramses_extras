@@ -180,8 +180,8 @@ Suggested workflow per step:
 - [x] Add a debug WebSocket endpoint for cache stats (+ optional reset)
 
 ### 2) Log source improvements (tail/search)
-- [ ] Consolidate duplicated file resolution logic into a single backend helper
-- [ ] Ensure allowlisting prevents reading outside the configured base directory
+- [x] Consolidate duplicated file resolution logic into a single backend helper
+- [x] Ensure allowlisting prevents reading outside the configured base directory
 - [ ] Consider incremental tail (only read new bytes) as a later optimization (optional)
 
 ### 3) Traffic collector: cap flows + explain what a flow is
@@ -199,7 +199,7 @@ Suggested workflow per step:
   - traffic flow cap
   - traffic buffer sizes (global + per-flow)
   - default polling interval (ms) for debugger cards
-- [ ] Add UI copy/help text explaining:
+- [x] Add UI copy/help text explaining:
   - what a flow is
   - why caching exists (multi-card pages)
   - trade-offs of lower/higher polling intervals

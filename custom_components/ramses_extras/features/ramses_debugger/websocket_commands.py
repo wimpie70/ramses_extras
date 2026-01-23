@@ -16,6 +16,7 @@ from .log_backend import (
     discover_log_files,
     get_configured_log_path,
     get_configured_packet_log_path,
+    resolve_log_file_id,
     search_with_context,
     tail_text,
 )
@@ -64,40 +65,6 @@ def _file_state(path: Path) -> tuple[int, int] | None:
     except OSError:
         return None
     return (int(st.st_mtime_ns), int(st.st_size))
-
-
-def _resolve_log_file(base: Path, file_id: str) -> Path | None:
-    allowed = {f.path.name: f.path for f in discover_log_files(base)}
-    p = allowed.get(file_id)
-    if p is None:
-        return None
-
-    try:
-        resolved = p.resolve()
-        base_dir = base.expanduser().resolve().parent
-        if base_dir not in resolved.parents and resolved != base_dir:
-            return None
-    except OSError:
-        return None
-
-    return p
-
-
-def _resolve_packet_log_file(base: Path, file_id: str) -> Path | None:
-    allowed = {f.path.name: f.path for f in discover_log_files(base)}
-    p = allowed.get(file_id)
-    if p is None:
-        return None
-
-    try:
-        resolved = p.resolve()
-        base_dir = base.expanduser().resolve().parent
-        if base_dir not in resolved.parents and resolved != base_dir:
-            return None
-    except OSError:
-        return None
-
-    return p
 
 
 def _get_traffic_collector(hass: HomeAssistant) -> TrafficCollector | None:
@@ -516,7 +483,7 @@ async def ws_packet_log_get_messages(
         )
         return
 
-    path = await hass.async_add_executor_job(_resolve_packet_log_file, base, file_id)
+    path = await hass.async_add_executor_job(resolve_log_file_id, base, file_id)
     if path is None:
         connection.send_error(
             msg["id"],
@@ -616,7 +583,7 @@ async def ws_log_get_tail(
         return
 
     base = get_configured_log_path(hass)
-    path = await hass.async_add_executor_job(_resolve_log_file, base, file_id)
+    path = await hass.async_add_executor_job(resolve_log_file_id, base, file_id)
     if path is None:
         connection.send_error(
             msg["id"],
@@ -777,7 +744,7 @@ async def ws_log_search(
         return
 
     base = get_configured_log_path(hass)
-    path = await hass.async_add_executor_job(_resolve_log_file, base, file_id)
+    path = await hass.async_add_executor_job(resolve_log_file_id, base, file_id)
     if path is None:
         connection.send_error(
             msg["id"],
