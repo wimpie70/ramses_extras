@@ -5,7 +5,7 @@ Split the current single-page documentation (`docs/RAMSES_EXTRAS_ARCHITECTURE.md
 
 ## Key invariants (must hold)
 - **Single source of truth**: content lives in `ramses_extras` under `docs/wiki/`.
-- **Wiki gets auto-updated** from `ramses_extras` (sync job / script).
+- **Wiki gets updated manually** from `ramses_extras`.
 - **Home page is stable** (structure + links stay consistent).
 - **Links must work in both repos**:
   - In `ramses_extras` repo: browsing `docs/wiki/*.md`
@@ -16,7 +16,8 @@ Split the current single-page documentation (`docs/RAMSES_EXTRAS_ARCHITECTURE.md
 - **Link style**: use Markdown links with `.md` extensions so links work in the repo.
   - Example: `[Overview](Overview.md)`
   - This should also work in the wiki repo because pages are stored as `.md` files.
-- **Images/assets**: place under `docs/wiki/assets/` and link as `assets/<file>`.
+- **Images/assets**: store images under `docs/wiki/assets/`, but link using **absolute URLs** so the same markdown renders in both repos without duplication.
+  - Recommended format: `https://raw.githubusercontent.com/wimpie70/ramses_extras/main/docs/wiki/assets/<file>.png`
 
 ## Proposed page set (initial + near-term)
 ### Initial pages (requested)

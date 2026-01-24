@@ -6,7 +6,7 @@ This page is derived from `docs/RAMSES_EXTRAS_ARCHITECTURE.md` section 13.
 
 ### Entity format detection
 
-Some helpers support both “CC-style” and “Extras-style” entity naming.
+Some helpers support both "CC-style" and "Extras-style" entity naming.
 
 The high-level detection rule is based on where the device id appears in the
 entity name:

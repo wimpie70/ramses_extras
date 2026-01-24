@@ -27,7 +27,7 @@ Key methods:
 
 Core responsibilities:
 
-- reconcile “required entities” vs “current entities”
+- reconcile "required entities" vs "current entities"
 - create/remove entities via HA registries
 
 Common entry points:

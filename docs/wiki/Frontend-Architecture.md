@@ -30,7 +30,7 @@ The base card centralizes:
 
 - lifecycle (`connectedCallback()` / `disconnectedCallback()`)
 - gating/validation and shared UX states
-- a consistent “subclass implements `_renderContent()`” pattern
+- a consistent "subclass implements `_renderContent()`" pattern
 
 ### Feature enablement and startup latches
 
@@ -108,7 +108,7 @@ Frontend cards may use a template system under:
 
 `custom_components/ramses_extras/features/{feature}/www/{feature}/templates/`
 
-Feature `const.py` is intended to be the “source of truth” for entity mappings
+Feature `const.py` is intended to be the "source of truth" for entity mappings
 and template metadata so frontend and backend can stay aligned.
 
 ## Entity resolution in cards

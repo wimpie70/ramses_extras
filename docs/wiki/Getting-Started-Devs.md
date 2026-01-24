@@ -28,7 +28,7 @@ See: [System Architecture](System-Architecture.md)
    - services
    - entities + HA platforms (sensor/switch/number/binary_sensor)
    - cards (frontend)
-   - websocket commands (for cards and integrations)
+   - WebSocket commands (for cards and integrations)
    - feature-specific config flow step (optional)
 4. Run tests locally.
 

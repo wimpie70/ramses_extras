@@ -5,7 +5,7 @@ This page is derived from `docs/RAMSES_EXTRAS_ARCHITECTURE.md` section 10.
 You are welcome to contribute to this integration. If you are missing support
 for a device, or have a nice card that you like to share, please do.
 
-Also see the repository “Contributing” information for environment setup.
+Also see the repository "Contributing" information for environment setup.
 
 ## Coding standards and conventions
 
@@ -44,7 +44,7 @@ avoid module resolution edge cases.
 
 ## Development workflow
 
-Recommended workflow is “framework-first”:
+Recommended workflow is "framework-first":
 
 1. Start with framework components for config, entities, and services.
 2. Use platform entity base classes for HA integration.
