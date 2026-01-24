@@ -16,7 +16,7 @@ The framework is layered:
 
 ## Setup framework
 
-The setup framework (in `framework/setup/`) orchestrates initialization phases
+The setup framework (in `custom_components/ramses_extras/framework/setup/`) orchestrates initialization phases
 in a strict order and manages dependencies.
 
 Key modules:
@@ -29,30 +29,30 @@ Key modules:
 
 ## Base classes
 
-- `ExtrasBaseEntity` (`framework/base_classes/base_entity.py`)
+- `ExtrasBaseEntity` (`custom_components/ramses_extras/framework/base_classes/base_entity.py`)
   - Base for custom entities.
-- `ExtrasBaseAutomation` (`framework/base_classes/base_automation.py`)
+- `ExtrasBaseAutomation` (`custom_components/ramses_extras/framework/base_classes/base_automation.py`)
   - Base for Python automation classes.
-- Platform entity classes (`framework/base_classes/platform_entities.py`)
+- Platform entity classes (`custom_components/ramses_extras/framework/base_classes/platform_entities.py`)
   - `ExtrasSensorEntity`, `ExtrasSwitchEntity`, `ExtrasNumberEntity`, `ExtrasBinarySensorEntity`.
-- `RamsesBaseCard` (`framework/www/ramses-base-card.js`)
+- `RamsesBaseCard` (`custom_components/ramses_extras/framework/www/ramses-base-card.js`)
   - Shared base for shipped Lovelace cards.
 
 ## Helper modules
 
 Common helper areas:
 
-- `framework/helpers/config/` configuration management patterns
-- `framework/helpers/entity/` entity lifecycle helpers, including:
+- `custom_components/ramses_extras/framework/helpers/config/` configuration management patterns
+- `custom_components/ramses_extras/framework/helpers/entity/` entity lifecycle helpers, including:
   - `SimpleEntityManager`
   - `DeviceFeatureMatrix`
-- `framework/helpers/service/` service registration/validation
-- `framework/helpers/commands/` command registry
-- `framework/helpers/device/` device filtering + helpers
+- `custom_components/ramses_extras/framework/helpers/service/` service registration/validation
+- `custom_components/ramses_extras/framework/helpers/commands/` command registry
+- `custom_components/ramses_extras/framework/helpers/device/` device filtering + helpers
 
 ## Framework services
 
-- Path management (`framework/helpers/paths.py` + `framework/www/paths.js`)
+- Path management (`custom_components/ramses_extras/framework/helpers/paths.py` + `custom_components/ramses_extras/framework/www/paths.js`)
 - Message system:
   - WebSocket command registration
   - ramses_cc message listeners + event patterns

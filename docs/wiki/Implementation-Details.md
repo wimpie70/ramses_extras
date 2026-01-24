@@ -67,3 +67,5 @@ Typical pattern:
 
 Back to: [Home](Home.md)
 Prev: [API Reference](API-Reference.md)
+
+Next: [Home](Home.md)

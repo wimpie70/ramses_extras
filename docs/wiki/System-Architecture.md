@@ -61,7 +61,7 @@ At a high level, the repo is split into:
 ## Integration flow (setup pipeline)
 
 The main setup pipeline is orchestrated by the setup framework in
-`framework/setup/`.
+`custom_components/ramses_extras/framework/setup/`.
 
 ### Setup phases (summary)
 
@@ -102,4 +102,5 @@ See:
 - `ramses_cc` integration architecture
 
 Back to: [Home](Home.md)
+Prev: [Getting Started (Developers)](Getting-Started-Devs.md)
 Next: [Feature System](Feature-System.md)

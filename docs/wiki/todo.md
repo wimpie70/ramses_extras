@@ -107,9 +107,9 @@ Split the current single-page documentation (`docs/RAMSES_EXTRAS_ARCHITECTURE.md
 - [x] Populate `Implementation-Details.md`
 
 ## Milestone 4 — Cross-linking + consistency
-- [ ] Add consistent “Next / Previous” navigation at bottom of each page (optional, but nice)
-- [ ] Ensure terminology is consistent (Feature, Framework, Platforms, Cards)
-- [ ] Ensure code paths referenced match repo structure
+- [x] Add consistent “Next / Previous” navigation at bottom of each page (optional, but nice)
+- [x] Ensure terminology is consistent (Feature, Framework, Platforms, Cards)
+- [x] Ensure code paths referenced match repo structure
 - [ ] Move/centralize shared diagrams into `assets/` and fix links
 
 ## Milestone 5 — Wiki sync automation

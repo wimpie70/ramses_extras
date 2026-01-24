@@ -45,3 +45,6 @@ Some features provide custom Lovelace cards (JavaScript). Once the integration i
 - Deeper: [Feature System](Feature-System.md)
 
 Back to: [Home](Home.md)
+
+Prev: [Overview](Overview.md)
+Next: [Getting Started (Developers)](Getting-Started-Devs.md)

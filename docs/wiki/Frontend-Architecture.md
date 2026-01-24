@@ -100,14 +100,13 @@ message handlers like `handle_31DA()`.
 Translations are feature-centric:
 
 - Integration translations: `custom_components/ramses_extras/translations/`
-- Feature translations: `features/{feature}/www/{feature}/translations/`
-- Framework translations: `framework/www/translations/`
+- Feature translations: `custom_components/ramses_extras/features/{feature}/www/{feature}/translations/`
 
 ## Template systems
 
 Frontend cards may use a template system under:
 
-`features/{feature}/www/{feature}/templates/`
+`custom_components/ramses_extras/features/{feature}/www/{feature}/templates/`
 
 Feature `const.py` is intended to be the “source of truth” for entity mappings
 and template metadata so frontend and backend can stay aligned.
