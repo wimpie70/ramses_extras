@@ -97,9 +97,9 @@ Split the current single-page documentation (`docs/RAMSES_EXTRAS_ARCHITECTURE.md
 - [x] Populate `System-Architecture.md`
 - [x] Populate `Feature-System.md`
 - [x] Populate `Framework-Foundation.md`
-- [ ] Populate `Device-Feature-Management.md`
-- [ ] Populate `Entity-Management.md`
-- [ ] Populate `Home-Assistant-Integration.md`
+- [x] Populate `Device-Feature-Management.md`
+- [x] Populate `Entity-Management.md`
+- [x] Populate `Home-Assistant-Integration.md`
 - [ ] Populate `Frontend-Architecture.md`
 - [ ] Populate `Development-Guide.md`
 - [ ] Populate `Debugging-and-Troubleshooting.md`
