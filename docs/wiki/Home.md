@@ -15,6 +15,7 @@ This wiki is the **in-repo** documentation for the `ramses_extras` Home Assistan
 
 ## Pages
 - [Overview](Overview.md)
+- [Feature Catalog](Feature-Catalog.md)
 - [Getting Started (Users)](Getting-Started-Users.md)
 - [Getting Started (Developers)](Getting-Started-Devs.md)
 

@@ -105,24 +105,25 @@ Split the current single-page documentation (`docs/RAMSES_EXTRAS_ARCHITECTURE.md
 - [x] Populate `Debugging-and-Troubleshooting.md`
 - [x] Populate `API-Reference.md`
 - [x] Populate `Implementation-Details.md`
+- [x] Add `Feature-Catalog.md`
 
 ## Milestone 4 — Cross-linking + consistency
 - [x] Add consistent “Next / Previous” navigation at bottom of each page (optional, but nice)
 - [x] Ensure terminology is consistent (Feature, Framework, Platforms, Cards)
 - [x] Ensure code paths referenced match repo structure
-- [ ] Move/centralize shared diagrams into `assets/` and fix links
+- [x] Move/centralize shared diagrams into `assets/` and fix links
 
 ## Milestone 5 — Wiki sync automation
-- [ ] Decide sync mechanism:
+- [x] Decide sync mechanism:
+  - [x] Manual updates to the GitHub wiki repo (`ramses_extras.wiki`)
   - [ ] GitHub Action in `ramses_extras` that pushes `docs/wiki/*.md` to `ramses_extras.wiki`
   - [ ] Or: scheduled/manual sync job (fallback)
-- [ ] Implement sync (copy pages + assets)
 - [ ] Ensure `Home.md` maps to wiki’s home page (GitHub wiki uses `Home.md`)
 
 ## Milestone 6 — Validation
-- [ ] Verify links work in `ramses_extras` repo browsing
+- [x] Verify links work in `ramses_extras` repo browsing
 - [ ] Verify links work in wiki repo browsing
-- [ ] Verify images render in both places
+- [x] Verify images render in both places
 - [ ] Final pass for readability (short sections, stable headings)
 
 ---
@@ -131,4 +132,4 @@ Split the current single-page documentation (`docs/RAMSES_EXTRAS_ARCHITECTURE.md
 - [x] Do we want “users” getting started to include YAML examples and UI steps, or only UI steps? -> only UI steps
 - [x] Do we want a separate “Feature catalog” page listing each feature and what it provides? -> Yes, Including pictures, Configuration
 - [x] Should API reference be trimmed to only stable public interfaces (WebSocket/service calls), and keep internals in the repo docs? -> For now yes, we can later create docs from the sphinx docstrings we already created.
-- [ ] Don't remove docs/RAMSES_EXTRAS_ARCHITECTURE.md, keep it for now so we can check if we have everything covered
+- [x] Don't remove docs/RAMSES_EXTRAS_ARCHITECTURE.md, keep it for now so we can check if we have everything covered
