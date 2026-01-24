@@ -1,4 +1,5 @@
-"""Default feature - shared entity definitions that all features can inherit from."""
+"""Default feature - shared entity definitions that all features can inherit from.
+This feature is always enabled"""
 
 from typing import Any
 
