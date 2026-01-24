@@ -235,7 +235,7 @@ After enabling a feature Ramses Extras will automatically create the associated 
 
 ## 🏗️ **Architecture**
 
-Ramses Extras uses a **feature-centric architecture** built on a **framework foundation**. For detailed architecture information, see the [Wiki Architecture Guide](https://github.com/wimpie70/ramses_extras/wiki).
+Ramses Extras uses a **feature-centric architecture** built on a **framework foundation**. For detailed architecture information, see the [Wiki](https://github.com/wimpie70/ramses_extras/wiki).
 
 ## 🔧 **Requirements**
 
