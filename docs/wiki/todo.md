@@ -100,11 +100,11 @@ Split the current single-page documentation (`docs/RAMSES_EXTRAS_ARCHITECTURE.md
 - [x] Populate `Device-Feature-Management.md`
 - [x] Populate `Entity-Management.md`
 - [x] Populate `Home-Assistant-Integration.md`
-- [ ] Populate `Frontend-Architecture.md`
-- [ ] Populate `Development-Guide.md`
-- [ ] Populate `Debugging-and-Troubleshooting.md`
-- [ ] Populate `API-Reference.md`
-- [ ] Populate `Implementation-Details.md`
+- [x] Populate `Frontend-Architecture.md`
+- [x] Populate `Development-Guide.md`
+- [x] Populate `Debugging-and-Troubleshooting.md`
+- [x] Populate `API-Reference.md`
+- [x] Populate `Implementation-Details.md`
 
 ## Milestone 4 — Cross-linking + consistency
 - [ ] Add consistent “Next / Previous” navigation at bottom of each page (optional, but nice)
