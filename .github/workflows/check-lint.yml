@@ -1,5 +1,11 @@
 name: Linting
 
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+  statuses: write
+
 on:
   push:
     branches: ['master', 'develop']

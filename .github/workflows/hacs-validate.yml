@@ -1,5 +1,11 @@
 name: HACS Action
 
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+  statuses: write
+
 on:
   push:
     branches: ['main']
