@@ -168,69 +168,23 @@ Suggested workflow per step:
 
 ## Ramses debugger improvements
 
-### 1) Shared backend cache (avoid duplicated work across multiple cards)
-- [x] Add a cache object under `hass.data[DOMAIN]["ramses_debugger"]` (e.g. `debugger_cache`)
-- [x] Cache keys must include:
-  - request type (tail/search/traffic-stats/messages)
-  - file_id + configured base path + file mtime/size (avoid stale results)
-  - all request params (e.g. `offset_lines`, `max_lines`, `query`, `before/after`, filters)
-- [x] Add a short TTL for expensive operations (e.g. 0.5–2s) to dedupe polling bursts
-- [x] Add max cache entries + eviction policy (LRU-ish or oldest-first)
-- [x] Ensure cache never merges results across different ranges (e.g. two Log Explorers with different offsets)
-- [x] Add a debug WebSocket endpoint for cache stats (+ optional reset)
+### Completed fixes:
 
-### 2) Log source improvements (tail/search)
-- [x] Consolidate duplicated file resolution logic into a single backend helper
-- [x] Ensure allowlisting prevents reading outside the configured base directory
-- [ ] Consider incremental tail (only read new bytes) as a later optimization (optional)
+- ✅ **Fixed: Cards losing focus/content on re-render**
+  - Added `_preserveUIState()` and `_restoreUIState()` helper methods to base card
+  - All debugger cards now preserve focus, selection, and scroll positions across re-renders
+  - Log Explorer, Traffic Analyser, and Packet Log Explorer all updated to use new helpers
 
-### 3) Traffic collector: cap flows + explain what a flow is
-- [x] Define "flow": a unique `(src, dst)` pair observed in `ramses_cc_message` events
-- [x] Add configurable caps:
-  - max flows (unique `(src, dst)` pairs)
-  - max global message buffer (for message browsing)
-  - max messages per flow
-- [x] Eviction policy for flows when max is reached (drop oldest by last_seen/first_seen)
+- ✅ **Fixed: Known devices filter**
+  - Added "Known devices only" checkbox to messages viewer
+  - Filters messages to only show those involving devices registered in Home Assistant
+  - Uses `ramses_extras/get_available_devices` WebSocket to fetch known devices
+  - Filter applies to all cards using messages viewer (Traffic Analyser, Packet Log Explorer)
 
-### 4) Config flow (Advanced settings)
-- [x] Add debugger options:
-  - debugger cache TTL (ms)
-  - debugger cache max entries
-  - traffic flow cap
-  - traffic buffer sizes (global + per-flow)
-  - default polling interval (ms) for debugger cards
-- [x] Add UI copy/help text explaining:
-  - what a flow is
-  - why caching exists (multi-card pages)
-  - trade-offs of lower/higher polling intervals
-- [x] Move ramses_debugger options to the feature's config flow step (leave debug levels on advanced). This belongs to the feature, and can be dis/enabled.
-
-### 5) Frontend: reduce redundant polling across multiple instances
-- [x] Use a shared per-feature JS cache (e.g. `window.ramsesExtras.ramsesDebugger`) for:
-  - last results per request key
-  - in-flight requests per request key (promise de-dup)
-- [x] Make polling interval consistent across cards by default:
-  - read from config-flow options via the existing `ramses_extras_options_updated` mechanism
-  - allow per-card override only when explicitly set
-- [x] Ensure multiple Log Explorers with different offsets do not block each other
-- [x] On search results, add a horizontal line divider after each block
-
-### 6) Documentation
-- [x] Add Sphinx-style docstrings to the main backend modules:
-  - [traffic_collector.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/traffic_collector.py:0:0-0:0)
-  - [messages_provider.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/messages_provider.py:0:0-0:0)
-  - [log_backend.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/log_backend.py:0:0-0:0)
-  - [websocket_commands.py](cci:7://file:///home/willem/dev/ramses_extras/custom_components/ramses_extras/features/ramses_debugger/websocket_commands.py:0:0-0:0)
-- [ ] Document cache invariants (keys include file state + request params)
-
-### 7) Tests / validation
-- [ ] Add/adjust unit tests for:
-  - cache keying and TTL behavior
-  - file resolution allowlisting
-  - flow eviction behavior
-- [x] Run focused pytest for debugger feature
-- [x] Run `make local-ci` for final validation
-
+- ✅ **Fixed: Select all toggles**
+  - Added "Select All" and "Deselect All" buttons for device pairs
+  - Added "Select All" and "Deselect All" buttons for codes
+  - Buttons appear above the respective filter sections in messages viewer
 
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing

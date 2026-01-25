@@ -17,7 +17,10 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from homeassistant.core import CoreState, Event, HomeAssistant, State
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 
 # Avoid circular imports by importing when needed in methods
 from ...const import DOMAIN
@@ -156,6 +159,11 @@ class ExtrasBaseAutomation(ABC):
                 self.feature_id
             ] = False
             _LOGGER.error("Failed to initialize %s automation: %s", self.feature_id, e)
+            # Fire the ready event even on failure to unblock cards_enabled latch
+            # Cards should still work even if this automation failed
+            self.hass.bus.async_fire(
+                "ramses_extras_feature_ready", {"feature_id": self.feature_id}
+            )
 
     async def stop(self) -> None:
         """Stop the automation and clean up all resources."""
@@ -422,7 +430,8 @@ class ExtrasBaseAutomation(ABC):
         _LOGGER.info(f"Setting up periodic entity check for {self.feature_id}")
 
         # Use HA's async_track_time_interval for periodic checks
-        self._periodic_check_handle = self.hass.helpers.event.async_track_time_interval(
+        self._periodic_check_handle = async_track_time_interval(
+            self.hass,
             self._check_for_entities_periodically,
             timedelta(seconds=30),  # Check every 30 seconds
         )

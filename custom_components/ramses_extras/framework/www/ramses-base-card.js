@@ -271,6 +271,78 @@ export class RamsesBaseCard extends HTMLElement {
   }
 
   /**
+   * Preserve UI state before re-render (focus, selection, scroll positions)
+   * Call this at the start of render() to capture current state
+   * @param {Array<string>} scrollElementIds - IDs of elements to preserve scroll for
+   * @returns {Object} Captured UI state
+   */
+  _preserveUIState(scrollElementIds = []) {
+    if (!this.shadowRoot) {
+      return null;
+    }
+
+    const active = this.shadowRoot.activeElement;
+    const state = {
+      focusedId: active?.id || null,
+      selectionStart: typeof active?.selectionStart === 'number' ? active.selectionStart : null,
+      selectionEnd: typeof active?.selectionEnd === 'number' ? active.selectionEnd : null,
+      scrollPositions: {},
+    };
+
+    // Capture scroll positions for specified elements
+    for (const id of scrollElementIds) {
+      const el = this.shadowRoot.getElementById(id);
+      if (el) {
+        state.scrollPositions[id] = {
+          scrollTop: el.scrollTop,
+          scrollLeft: el.scrollLeft,
+        };
+      }
+    }
+
+    return state;
+  }
+
+  /**
+   * Restore UI state after re-render (focus, selection, scroll positions)
+   * Call this at the end of render() to restore captured state
+   * @param {Object} state - State object from _preserveUIState()
+   */
+  _restoreUIState(state) {
+    if (!this.shadowRoot || !state) {
+      return;
+    }
+
+    // Restore scroll positions
+    for (const [id, pos] of Object.entries(state.scrollPositions || {})) {
+      const el = this.shadowRoot.getElementById(id);
+      if (el && pos) {
+        el.scrollTop = pos.scrollTop;
+        el.scrollLeft = pos.scrollLeft;
+      }
+    }
+
+    // Restore focus and selection
+    if (state.focusedId) {
+      const el = this.shadowRoot.getElementById(state.focusedId);
+      if (el && typeof el.focus === 'function') {
+        el.focus();
+        if (
+          typeof el.setSelectionRange === 'function'
+          && typeof state.selectionStart === 'number'
+          && typeof state.selectionEnd === 'number'
+        ) {
+          try {
+            el.setSelectionRange(state.selectionStart, state.selectionEnd);
+          } catch {
+            // Ignore errors (element may not support selection)
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Render in normal mode (for cards with edit modes)
    */
   renderNormalMode() {

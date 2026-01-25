@@ -52,6 +52,15 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     return 12;
   }
 
+  /**
+   * Preserve UI state across renders using base card helpers.
+   */
+  render() {
+    const uiState = this._preserveUIState(['fileSelect', 'loadMode', 'limitFilter']);
+    super.render();
+    this._restoreUIState(uiState);
+  }
+
   static getTagName() {
     return 'ramses-packet-log-explorer';
   }

@@ -79,16 +79,24 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       return;
     }
 
+    // Preserve scroll position and focus using base card helpers
+    const uiState = this._preserveUIState([]);
+
+    // Also preserve scroll for table wrapper (uses class selector)
     const tableWrap = this.shadowRoot?.querySelector?.('.table-wrap');
-    const prevScrollTop = tableWrap ? tableWrap.scrollTop : 0;
-    const prevScrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
+    const tableScrollTop = tableWrap ? tableWrap.scrollTop : 0;
+    const tableScrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
 
     super.render();
 
+    // Restore base UI state
+    this._restoreUIState(uiState);
+
+    // Restore table wrapper scroll
     const nextWrap = this.shadowRoot?.querySelector?.('.table-wrap');
     if (nextWrap) {
-      nextWrap.scrollTop = prevScrollTop;
-      nextWrap.scrollLeft = prevScrollLeft;
+      nextWrap.scrollTop = tableScrollTop;
+      nextWrap.scrollLeft = tableScrollLeft;
     }
   }
 

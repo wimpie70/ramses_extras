@@ -45,6 +45,9 @@ class RamsesMessagesViewer extends HTMLElement {
     this._lastPairsKey = '';
     this._lastVerbsKey = '';
     this._lastCodesKey = '';
+
+    this._knownDevicesOnly = false;
+    this._knownDevices = new Set();
   }
 
   set hass(hass) {
@@ -72,7 +75,28 @@ class RamsesMessagesViewer extends HTMLElement {
     const pairs = Array.isArray(this._config.pairs) ? this._config.pairs : [];
     this._activePairs = new Set(pairs.map((p) => `${p?.src}|${p?.dst}`));
 
+    if (typeof this._config.known_devices_only === 'boolean') {
+      this._knownDevicesOnly = this._config.known_devices_only;
+    }
+
     this.render();
+  }
+
+  async _loadKnownDevices() {
+    if (!this._hass) {
+      return;
+    }
+
+    try {
+      const res = await this._hass.callWS({
+        type: 'ramses_extras/get_available_devices',
+      });
+      const devices = Array.isArray(res?.devices) ? res.devices : [];
+      this._knownDevices = new Set(devices.map((d) => String(d?.id || '')).filter(Boolean));
+    } catch (error) {
+      logger.warn('Failed to load known devices:', error);
+      this._knownDevices = new Set();
+    }
   }
 
   async refresh() {
@@ -81,6 +105,11 @@ class RamsesMessagesViewer extends HTMLElement {
     if (!this._fetchMessages) {
       this.render();
       return;
+    }
+
+    // Load known devices if filtering is enabled
+    if (this._knownDevicesOnly && this._knownDevices.size === 0) {
+      await this._loadKnownDevices();
     }
 
     try {
@@ -222,6 +251,16 @@ class RamsesMessagesViewer extends HTMLElement {
 
     let normalized = Array.isArray(this._messages) ? this._messages.map(normalizeMessage) : [];
 
+    // Apply known devices filter if enabled
+    if (this._knownDevicesOnly && this._knownDevices.size > 0) {
+      normalized = normalized.filter((m) => {
+        const src = typeof m?.src === 'string' ? m.src : '';
+        const dst = typeof m?.__dstEffective === 'string' ? m.__dstEffective : '';
+        // Keep message if either src or dst is a known device
+        return this._knownDevices.has(src) || this._knownDevices.has(dst);
+      });
+    }
+
     let pairGroups = [];
     const mode = String(this._config?.pair_mode || 'selected');
     if (mode === 'derived') {
@@ -348,7 +387,16 @@ class RamsesMessagesViewer extends HTMLElement {
       </div>
       ${this._loading ? `<div class="muted" style="margin-top: 8px;">Loading...</div>` : ''}
       ${errorText ? `<div class="error">${errorText}</div>` : ''}
+      <div class="messages-controls">
+        <label><input type="checkbox" id="messagesDecode" ${this._decode ? 'checked' : ''}> Decode</label>
+        <label><input type="checkbox" id="knownDevicesToggle" ${this._knownDevicesOnly ? 'checked' : ''}> Known devices only</label>
+      </div>
       ${pairGroups.length ? `
+        <div style="margin-top: 8px;">
+          <strong>Device Pairs:</strong>
+          <button class="select-all-btn" id="selectAllPairs">Select All</button>
+          <button class="select-all-btn" id="deselectAllPairs">Deselect All</button>
+        </div>
         <div class="messages-selected">
           ${pairGroups.map(({ src, dst, key }) => {
             const checked = this._activePairs.has(key);
@@ -364,6 +412,11 @@ class RamsesMessagesViewer extends HTMLElement {
         </div>
       ` : ''}
       ${availableCodes.size ? `
+        <div style="margin-top: 8px;">
+          <strong>Codes:</strong>
+          <button class="select-all-btn" id="selectAllCodes">Select All</button>
+          <button class="select-all-btn" id="deselectAllCodes">Deselect All</button>
+        </div>
         <div class="messages-codes">
           ${[...availableCodes].sort().map((code) => {
             const checked = this._activeCodes.has(code);
@@ -499,6 +552,50 @@ class RamsesMessagesViewer extends HTMLElement {
         this.render();
       };
     });
+
+    const knownDevicesCb = this.shadowRoot.querySelector('#knownDevicesToggle');
+    if (knownDevicesCb) {
+      knownDevicesCb.onchange = (ev) => {
+        this._knownDevicesOnly = Boolean(ev?.target?.checked);
+        void this.refresh();
+      };
+    }
+
+    const selectAllPairsBtn = this.shadowRoot.querySelector('#selectAllPairs');
+    if (selectAllPairsBtn) {
+      selectAllPairsBtn.onclick = () => {
+        this._pairFilterTouched = true;
+        this._activePairs = new Set(pairGroups.map((p) => p.key));
+        this.render();
+      };
+    }
+
+    const deselectAllPairsBtn = this.shadowRoot.querySelector('#deselectAllPairs');
+    if (deselectAllPairsBtn) {
+      deselectAllPairsBtn.onclick = () => {
+        this._pairFilterTouched = true;
+        this._activePairs.clear();
+        this.render();
+      };
+    }
+
+    const selectAllCodesBtn = this.shadowRoot.querySelector('#selectAllCodes');
+    if (selectAllCodesBtn) {
+      selectAllCodesBtn.onclick = () => {
+        this._codeFilterTouched = true;
+        this._activeCodes = new Set(availableCodes);
+        this.render();
+      };
+    }
+
+    const deselectAllCodesBtn = this.shadowRoot.querySelector('#deselectAllCodes');
+    if (deselectAllCodesBtn) {
+      deselectAllCodesBtn.onclick = () => {
+        this._codeFilterTouched = true;
+        this._activeCodes.clear();
+        this.render();
+      };
+    }
   }
 }
 

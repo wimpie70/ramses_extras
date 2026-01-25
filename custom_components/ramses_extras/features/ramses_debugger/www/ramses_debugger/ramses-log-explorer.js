@@ -40,70 +40,15 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._after = null;
     this._tailLines = null;
     this._tailOffset = 0;
-
-    this._uiState = null;
   }
 
   /**
-   * Preserve cursor/scroll positions across renders.
-   *
-   * This card re-renders often (tail/search). Preserving UI state keeps typing
-   * in the query box and scrolling through results pleasant.
+   * Preserve cursor/scroll positions across renders using base card helpers.
    */
   render() {
-    if (this.shadowRoot) {
-      const active = this.shadowRoot.activeElement;
-      const focusedId = active?.id || null;
-      const selStart = typeof active?.selectionStart === 'number' ? active.selectionStart : null;
-      const selEnd = typeof active?.selectionEnd === 'number' ? active.selectionEnd : null;
-
-      const tailPre = this.shadowRoot.getElementById('tailPre');
-      const resultPre = this.shadowRoot.getElementById('resultPre');
-      this._uiState = {
-        focusedId,
-        selStart,
-        selEnd,
-        tailScrollTop: tailPre ? tailPre.scrollTop : 0,
-        tailScrollLeft: tailPre ? tailPre.scrollLeft : 0,
-        resultScrollTop: resultPre ? resultPre.scrollTop : 0,
-        resultScrollLeft: resultPre ? resultPre.scrollLeft : 0,
-      };
-    }
-
+    const uiState = this._preserveUIState(['tailPre', 'resultPre']);
     super.render();
-
-    if (!this.shadowRoot || !this._uiState) {
-      return;
-    }
-
-    const tailPre = this.shadowRoot.getElementById('tailPre');
-    const resultPre = this.shadowRoot.getElementById('resultPre');
-    if (tailPre) {
-      tailPre.scrollTop = this._uiState.tailScrollTop;
-      tailPre.scrollLeft = this._uiState.tailScrollLeft;
-    }
-    if (resultPre) {
-      resultPre.scrollTop = this._uiState.resultScrollTop;
-      resultPre.scrollLeft = this._uiState.resultScrollLeft;
-    }
-
-    if (this._uiState.focusedId) {
-      const el = this.shadowRoot.getElementById(this._uiState.focusedId);
-      if (el && typeof el.focus === 'function') {
-        el.focus();
-        if (
-          typeof el.setSelectionRange === 'function'
-          && typeof this._uiState.selStart === 'number'
-          && typeof this._uiState.selEnd === 'number'
-        ) {
-          try {
-            el.setSelectionRange(this._uiState.selStart, this._uiState.selEnd);
-          } catch {
-            // ignore
-          }
-        }
-      }
-    }
+    this._restoreUIState(uiState);
   }
 
   _escapeHtml(value) {
