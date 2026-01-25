@@ -320,9 +320,13 @@ class TestExtrasBaseAutomation:
 
     def test_setup_periodic_entity_check(self, automation, hass):
         """Test setting up periodic entity check."""
-        automation._setup_periodic_entity_check()
+        with patch(
+            "custom_components.ramses_extras.framework.base_classes."
+            "base_automation.async_track_time_interval"
+        ) as mock_track:
+            automation._setup_periodic_entity_check()
 
-        hass.helpers.event.async_track_time_interval.assert_called_once()
+            mock_track.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_check_for_entities_periodically_found(self, automation):
