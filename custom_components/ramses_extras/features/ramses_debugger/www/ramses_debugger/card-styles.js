@@ -51,7 +51,6 @@ export function logExplorerCardStyle({ wrapCss }) {
       border-radius: 1px;
       margin: 12px 0;
 
-    .search-result { max-height: 500px; }
     }
   `;
 }

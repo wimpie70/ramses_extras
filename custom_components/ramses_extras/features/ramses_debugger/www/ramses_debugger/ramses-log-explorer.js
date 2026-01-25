@@ -663,7 +663,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             </button>
           </div>
 
-          <div class="section search-result" style="margin-top: 10px;">
+          <div class="section" style="margin-top: 10px; max-height: 500px; overflow: auto;">
             <div class="muted">
               ${this.t('card.log.search.title') || 'search'}
               ${typeof matches === 'number' ? ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}` : ''}
