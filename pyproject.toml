@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ramses_extras"
-version = "0.13.2"
+version = "0.13.3"
 description = "Extra features for Ramses CC integration"
 authors = ["Willem (wimpie70)"]
 
@@ -21,7 +21,7 @@ homeassistant = "2025.10.4"
 optional = true
 
 [tool.poetry.group.test.dependencies]
- pytest-homeassistant-custom-component = "0.13.289"
+ pytest-homeassistant-custom-component = "0.13.389"
  pytest-cov = "^4.0.0"
 
 [build-system]
