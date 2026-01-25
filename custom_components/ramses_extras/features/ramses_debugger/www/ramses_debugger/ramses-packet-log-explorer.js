@@ -52,15 +52,6 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     return 12;
   }
 
-  /**
-   * Preserve UI state across renders using base card helpers.
-   */
-  render() {
-    const uiState = this._preserveUIState(['fileSelect', 'loadMode', 'limitFilter']);
-    super.render();
-    this._restoreUIState(uiState);
-  }
-
   static getTagName() {
     return 'ramses-packet-log-explorer';
   }
@@ -204,6 +195,12 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
   }
 
   _renderContent() {
+    const uiState = this._preserveUIState(['fileSelect', 'loadMode', 'limitFilter']);
+    this._renderContentImpl();
+    this._restoreUIState(uiState);
+  }
+
+  _renderContentImpl() {
     const title = this._config?.name || 'Ramses Packet Log Explorer';
     const files = Array.isArray(this._files) ? this._files : [];
 

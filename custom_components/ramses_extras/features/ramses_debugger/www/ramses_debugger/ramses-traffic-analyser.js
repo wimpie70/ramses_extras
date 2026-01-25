@@ -73,33 +73,6 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     return 12;
   }
 
-  render() {
-    if (this._dialogOpen) {
-      this._pendingRender = true;
-      return;
-    }
-
-    // Preserve scroll position and focus using base card helpers
-    const uiState = this._preserveUIState([]);
-
-    // Also preserve scroll for table wrapper (uses class selector)
-    const tableWrap = this.shadowRoot?.querySelector?.('.table-wrap');
-    const tableScrollTop = tableWrap ? tableWrap.scrollTop : 0;
-    const tableScrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
-
-    super.render();
-
-    // Restore base UI state
-    this._restoreUIState(uiState);
-
-    // Restore table wrapper scroll
-    const nextWrap = this.shadowRoot?.querySelector?.('.table-wrap');
-    if (nextWrap) {
-      nextWrap.scrollTop = tableScrollTop;
-      nextWrap.scrollLeft = tableScrollLeft;
-    }
-  }
-
   static getTagName() {
     return 'ramses-traffic-analyser';
   }
@@ -543,6 +516,27 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   }
 
   _renderContent() {
+    if (this._dialogOpen) {
+      this._pendingRender = true;
+      return;
+    }
+
+    const uiState = this._preserveUIState([]);
+    const tableWrap = this.shadowRoot?.querySelector?.('.table-wrap');
+    const tableScrollTop = tableWrap ? tableWrap.scrollTop : 0;
+    const tableScrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
+
+    this._renderContentImpl();
+
+    this._restoreUIState(uiState);
+    const nextWrap = this.shadowRoot?.querySelector?.('.table-wrap');
+    if (nextWrap) {
+      nextWrap.scrollTop = tableScrollTop;
+      nextWrap.scrollLeft = tableScrollLeft;
+    }
+  }
+
+  _renderContentImpl() {
     const title = this._config?.name || 'Ramses Traffic Analyser';
     const deviceDisplay = this._config?.device_id ? this.getDeviceDisplayName() : '-';
 

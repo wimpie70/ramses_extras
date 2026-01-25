@@ -702,6 +702,16 @@ export class RamsesBaseCard extends HTMLElement {
 
           // After HASS is ready, load initial state and render
           this._loadInitialState();
+
+          // Call _onConnected() to allow cards to re-fetch data after reconnection
+          if (connectionChanged && typeof this._onConnected === 'function') {
+            try {
+              this._onConnected();
+            } catch (error) {
+              logger.warn(`⚠️ ${this.constructor.name}: Error in _onConnected() after reconnection:`, error);
+            }
+          }
+
           this.render();
         });
       }
@@ -725,6 +735,16 @@ export class RamsesBaseCard extends HTMLElement {
 
             // After timeout, load initial state and render
             this._loadInitialState();
+
+            // Call _onConnected() to allow cards to re-fetch data after reconnection
+            if (connectionChanged && typeof this._onConnected === 'function') {
+              try {
+                this._onConnected();
+              } catch (error) {
+                logger.warn(`⚠️ ${this.constructor.name}: Error in _onConnected() after reconnection:`, error);
+              }
+            }
+
             this.render();
           }
         }, 120000); // Wait 2 minutes for ready event

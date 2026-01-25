@@ -166,16 +166,26 @@ Suggested workflow per step:
 - run `pre-commit run -a`  and/or `make local-ci` when the change is bigger or touches multiple areas
 - commit
 
-## Ramses debugger improvements
+## Ramses debugger issues
 
+### FIXED: Cards losing focus/content on re-render
+- **Root cause**: Cards were overriding `render()` and calling `super.render()`, which triggered full DOM replacement via `innerHTML` in `_renderContent()`, destroying scroll positions before restoration could happen
+- **Solution**:
+  - Removed `render()` overrides from all debugger cards (Log Explorer, Packet Log Explorer, Traffic Analyser)
+  - Wrapped `_renderContent()` to call `_preserveUIState()` before and `_restoreUIState()` after the actual rendering logic (now in `_renderContentImpl()`)
+  - This ensures state preservation happens at the right time in the render cycle
+- **Cards updated**:
+  - `ramses-log-explorer.js`: Preserves scroll for `tailPre` and `resultPre`
+  - `ramses-packet-log-explorer.js`: Preserves scroll for `fileSelect`, `loadMode`, `limitFilter`
+  - `ramses-traffic-analyser.js`: Preserves scroll for table wrapper and handles dialog state
 
--  ** Cards losing focus/content on re-render**
-  - Added `_preserveUIState()` and `_restoreUIState()` helper methods to base card
-  - All debugger cards now preserve focus, selection, and scroll positions across re-renders
-  - Log Explorer, Traffic Analyser, and Packet Log Explorer all updated to use new helpers
-  - Not fixed yet. EG in log explorer, when i scroll down a bit, at irregular times it scrolls up to the top...
-  - we lost the websocket and then we keep losing the connection (or not even getting it back to HA) This is on a NAS, not the dev docker.
-  -
+### FIXED: WebSocket connection loss and no reconnection
+- **Root cause**: When WebSocket connection was lost and restored, cards didn't re-fetch their data because `_onConnected()` was only called during initial DOM connection, not on reconnection
+- **Solution**:
+  - Modified `ramses-base-card.js` `set hass()` method to call `_onConnected()` when connection is restored
+  - Added reconnection logic in both the 'ready' event handler and timeout fallback path
+  - Cards now automatically re-fetch data when WebSocket connection is restored
+- **Affected cards**: All debugger cards (Log Explorer, Packet Log Explorer, Traffic Analyser) now properly reconnect and refresh data
 
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing

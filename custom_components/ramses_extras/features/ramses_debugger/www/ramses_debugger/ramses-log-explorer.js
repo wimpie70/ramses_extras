@@ -42,15 +42,6 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._tailOffset = 0;
   }
 
-  /**
-   * Preserve cursor/scroll positions across renders using base card helpers.
-   */
-  render() {
-    const uiState = this._preserveUIState(['tailPre', 'resultPre']);
-    super.render();
-    this._restoreUIState(uiState);
-  }
-
   _escapeHtml(value) {
     return String(value)
       .replaceAll('&', '&amp;')
@@ -520,6 +511,12 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
   }
 
   _renderContent() {
+    const uiState = this._preserveUIState(['tailPre', 'resultPre']);
+    this._renderContentImpl();
+    this._restoreUIState(uiState);
+  }
+
+  _renderContentImpl() {
     const title = this._config?.name || 'Ramses Log Explorer';
     const files = Array.isArray(this._files) ? this._files : [];
 
