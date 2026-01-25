@@ -313,7 +313,7 @@ export class RamsesBaseCard extends HTMLElement {
       return;
     }
 
-    // Restore scroll positions
+    // Restore scroll positions first
     for (const [id, pos] of Object.entries(state.scrollPositions || {})) {
       const el = this.shadowRoot.getElementById(id);
       if (el && pos) {
@@ -322,20 +322,29 @@ export class RamsesBaseCard extends HTMLElement {
       }
     }
 
-    // Restore focus and selection
+    // Restore focus and selection only for input elements to avoid unwanted scrolling
     if (state.focusedId) {
       const el = this.shadowRoot.getElementById(state.focusedId);
       if (el && typeof el.focus === 'function') {
-        el.focus();
-        if (
-          typeof el.setSelectionRange === 'function'
-          && typeof state.selectionStart === 'number'
-          && typeof state.selectionEnd === 'number'
-        ) {
-          try {
-            el.setSelectionRange(state.selectionStart, state.selectionEnd);
-          } catch {
-            // Ignore errors (element may not support selection)
+        // Only restore focus for input/textarea/select elements where user is actively editing
+        // Don't restore focus for buttons as it causes unwanted scroll-into-view behavior
+        const tagName = el.tagName?.toLowerCase();
+        const isInputElement = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+
+        if (isInputElement) {
+          // Use preventScroll to avoid browser auto-scrolling to focused element
+          el.focus({ preventScroll: true });
+
+          if (
+            typeof el.setSelectionRange === 'function'
+            && typeof state.selectionStart === 'number'
+            && typeof state.selectionEnd === 'number'
+          ) {
+            try {
+              el.setSelectionRange(state.selectionStart, state.selectionEnd);
+            } catch {
+              // Ignore errors (element may not support selection)
+            }
           }
         }
       }

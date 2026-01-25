@@ -195,9 +195,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
   }
 
   _renderContent() {
-    const uiState = this._preserveUIState(['fileSelect', 'loadMode', 'limitFilter']);
     this._renderContentImpl();
-    this._restoreUIState(uiState);
   }
 
   _renderContentImpl() {

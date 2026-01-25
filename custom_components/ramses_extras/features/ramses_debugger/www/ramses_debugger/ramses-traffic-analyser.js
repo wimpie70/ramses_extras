@@ -277,11 +277,22 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
           type: 'ramses_extras/ramses_debugger/traffic/get_stats',
           ...this._buildFiltersFromConfig({ includeTrafficSource: true }),
         }, { cacheMs: 500 });
+
+        // Only render if stats actually changed to avoid unnecessary scroll jumps
+        const statsChanged = JSON.stringify(this._stats) !== JSON.stringify(result);
         this._stats = result;
+
+        if (statsChanged) {
+          this.render();
+        }
       } catch (error) {
+        const errorChanged = JSON.stringify(this._lastError) !== JSON.stringify(error);
         this._lastError = error;
+
+        if (errorChanged) {
+          this.render();
+        }
       }
-      this.render();
     };
 
     void doPoll();
@@ -309,9 +320,15 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     this._wsUnsubPromise = this._hass.connection
       .subscribeMessage((msg) => {
         const eventPayload = msg?.event || msg;
+
+        // Only render if stats actually changed to avoid unnecessary scroll jumps
+        const statsChanged = JSON.stringify(this._stats) !== JSON.stringify(eventPayload);
         this._stats = eventPayload;
         this._lastError = null;
-        this.render();
+
+        if (statsChanged) {
+          this.render();
+        }
       }, payload)
       .then((unsub) => {
         this._wsUnsub = unsub;
@@ -521,14 +538,12 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       return;
     }
 
-    const uiState = this._preserveUIState([]);
     const tableWrap = this.shadowRoot?.querySelector?.('.table-wrap');
     const tableScrollTop = tableWrap ? tableWrap.scrollTop : 0;
     const tableScrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
 
     this._renderContentImpl();
 
-    this._restoreUIState(uiState);
     const nextWrap = this.shadowRoot?.querySelector?.('.table-wrap');
     if (nextWrap) {
       nextWrap.scrollTop = tableScrollTop;
