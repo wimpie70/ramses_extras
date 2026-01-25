@@ -168,23 +168,14 @@ Suggested workflow per step:
 
 ## Ramses debugger improvements
 
-### Completed fixes:
 
-- ✅ **Fixed: Cards losing focus/content on re-render**
+-  ** Cards losing focus/content on re-render**
   - Added `_preserveUIState()` and `_restoreUIState()` helper methods to base card
   - All debugger cards now preserve focus, selection, and scroll positions across re-renders
   - Log Explorer, Traffic Analyser, and Packet Log Explorer all updated to use new helpers
-
-- ✅ **Fixed: Known devices filter**
-  - Added "Known devices only" checkbox to messages viewer
-  - Filters messages to only show those involving devices registered in Home Assistant
-  - Uses `ramses_extras/get_available_devices` WebSocket to fetch known devices
-  - Filter applies to all cards using messages viewer (Traffic Analyser, Packet Log Explorer)
-
-- ✅ **Fixed: Select all toggles**
-  - Added "Select All" and "Deselect All" buttons for device pairs
-  - Added "Select All" and "Deselect All" buttons for codes
-  - Buttons appear above the respective filter sections in messages viewer
+  - Not fixed yet. EG in log explorer, when i scroll down a bit, at irregular times it scrolls up to the top...
+  - we lost the websocket and then we keep losing the connection (or not even getting it back to HA) This is on a NAS, not the dev docker.
+  -
 
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing

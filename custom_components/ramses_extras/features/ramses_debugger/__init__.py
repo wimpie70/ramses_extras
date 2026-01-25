@@ -28,7 +28,7 @@ def create_ramses_debugger_feature(
     debugger_data = registry.setdefault(RAMSES_DEBUGGER_DOMAIN, {})
 
     cache = debugger_data.get("cache")
-    if not isinstance(cache, DebuggerCache):
+    if cache is None or not hasattr(cache, "stats"):
         debugger_data["cache"] = DebuggerCache()
         cache = debugger_data.get("cache")
 
@@ -37,7 +37,7 @@ def create_ramses_debugger_feature(
         debugger_data["cache"] = DebuggerCache(max_entries=cache_max_entries)
 
     traffic_collector = debugger_data.get("traffic_collector")
-    if not isinstance(traffic_collector, TrafficCollector):
+    if traffic_collector is None or not hasattr(traffic_collector, "configure"):
         traffic_collector = TrafficCollector(hass)
         debugger_data["traffic_collector"] = traffic_collector
         config_entry.async_on_unload(traffic_collector.stop)

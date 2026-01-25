@@ -667,7 +667,7 @@ async def ws_log_get_tail(
     connection.send_result(
         msg["id"],
         {
-            "file_id": path.name,
+            "file_id": path.name if hasattr(path, "name") else str(path),
             "text": text,
         },
     )
@@ -831,7 +831,7 @@ async def ws_log_search(
     connection.send_result(
         msg["id"],
         {
-            "file_id": path.name,
+            "file_id": path.name if hasattr(path, "name") else str(path),
             **result,
         },
     )

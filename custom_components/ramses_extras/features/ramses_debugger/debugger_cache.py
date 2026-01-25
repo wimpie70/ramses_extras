@@ -53,28 +53,34 @@ class DebuggerCache:
             "inflight": int(len(self._inflight)),
         }
 
+    def _normalize_key(self, key: Any) -> Any:
+        """Normalize a key to ensure it's hashable."""
+        return freeze_for_key(key)
+
     def _evict_if_needed(self) -> None:
         while len(self._entries) > self._max_entries:
             self._entries.popitem(last=False)
 
     def _get_fresh(self, key: Any) -> Any | None:
-        entry = self._entries.get(key)
+        normalized_key = self._normalize_key(key)
+        entry = self._entries.get(normalized_key)
         if entry is None:
             return None
 
         now = monotonic()
         if entry.expires_at <= now:
-            self._entries.pop(key, None)
+            self._entries.pop(normalized_key, None)
             return None
 
-        self._entries.move_to_end(key)
+        self._entries.move_to_end(normalized_key)
         return entry.value
 
     def set(self, key: Any, value: Any, *, ttl_s: float) -> None:
         ttl_s = max(0.0, float(ttl_s))
         expires_at = monotonic() + ttl_s
-        self._entries[key] = CacheEntry(value=value, expires_at=expires_at)
-        self._entries.move_to_end(key)
+        normalized_key = self._normalize_key(key)
+        self._entries[normalized_key] = CacheEntry(value=value, expires_at=expires_at)
+        self._entries.move_to_end(normalized_key)
         self._evict_if_needed()
 
     async def get_or_create(
@@ -93,7 +99,8 @@ class DebuggerCache:
         if cached is not None:
             return cached
 
-        inflight = self._inflight.get(key)
+        normalized_key = self._normalize_key(key)
+        inflight = self._inflight.get(normalized_key)
         if inflight is not None:
             return await inflight
 
@@ -107,8 +114,8 @@ class DebuggerCache:
                 self.set(key, value, ttl_s=ttl_s)
                 return value
             finally:
-                self._inflight.pop(key, None)
+                self._inflight.pop(normalized_key, None)
 
         task = asyncio.create_task(_runner())
-        self._inflight[key] = task
+        self._inflight[normalized_key] = task
         return await task
