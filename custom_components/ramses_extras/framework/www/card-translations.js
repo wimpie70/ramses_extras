@@ -12,7 +12,7 @@ import * as logger from './logger.js';
 const translationFileCache = new Map();
 const translationFilePromiseCache = new Map();
 
-async function fetchTranslationFileJson(translationPath) {
+async function fetchTranslationFileJson(translationPath, originalPath = null) {
   if (translationFileCache.has(translationPath)) {
     return translationFileCache.get(translationPath);
   }
@@ -22,7 +22,14 @@ async function fetchTranslationFileJson(translationPath) {
   }
 
   const promise = (async () => {
-    const response = await fetch(translationPath);
+    let response = await fetch(translationPath);
+
+    // If versioned path fails and we have an original path, try that as fallback
+    if (!response.ok && originalPath && translationPath !== originalPath) {
+      logger.warn(`Translation file not found at versioned path, trying original: ${originalPath}`);
+      response = await fetch(originalPath);
+    }
+
     if (!response.ok) {
       throw new Error(`Translation file not found (${response.status}): ${translationPath}`);
     }
@@ -93,8 +100,9 @@ export class SimpleCardTranslator {
   async loadTranslations(cardPath) {
     const versionedCardPath = rewritePathToVersioned(cardPath);
     const translationPath = `${versionedCardPath}/translations/${this.currentLanguage}.json`;
+    const originalPath = `${cardPath}/translations/${this.currentLanguage}.json`;
     try {
-      this.translations = await fetchTranslationFileJson(translationPath);
+      this.translations = await fetchTranslationFileJson(translationPath, originalPath);
     } catch (error) {
       logger.warn(`⚠️ Could not load translations:`, error);
       await this.loadFallbackTranslations(cardPath);
@@ -104,8 +112,9 @@ export class SimpleCardTranslator {
   async loadFallbackTranslations(cardPath) {
     const versionedCardPath = rewritePathToVersioned(cardPath);
     const fallbackPath = `${versionedCardPath}/translations/en.json`;
+    const originalFallbackPath = `${cardPath}/translations/en.json`;
     try {
-      this.translations = await fetchTranslationFileJson(fallbackPath);
+      this.translations = await fetchTranslationFileJson(fallbackPath, originalFallbackPath);
     } catch (error) {
       logger.warn(`⚠️ Could not load fallback translations:`, error);
       this.translations = {};

@@ -1136,9 +1136,21 @@ export class RamsesBaseCard extends HTMLElement {
 
     window.ramsesExtras = window.ramsesExtras || {};
     window.ramsesExtras._cardsEnabledPromise = window.ramsesExtras._cardsEnabledPromise || null;
+    window.ramsesExtras._cardsEnabledFailCount = window.ramsesExtras._cardsEnabledFailCount || 0;
+    window.ramsesExtras._cardsEnabledLastFailTime = window.ramsesExtras._cardsEnabledLastFailTime || 0;
 
     if (window.ramsesExtras.cardsEnabled === true) {
       this._cardsEnabled = true;
+      return;
+    }
+
+    // If we've failed too many times, stop trying to prevent spam
+    const now = Date.now();
+    const timeSinceLastFail = now - window.ramsesExtras._cardsEnabledLastFailTime;
+    const backoffTime = Math.min(60000, 1000 * Math.pow(2, window.ramsesExtras._cardsEnabledFailCount));
+
+    if (window.ramsesExtras._cardsEnabledFailCount >= 3 && timeSinceLastFail < backoffTime) {
+      // Still in backoff period, don't retry yet
       return;
     }
 
@@ -1147,6 +1159,10 @@ export class RamsesBaseCard extends HTMLElement {
         type: 'ramses_extras/default/get_cards_enabled',
       })
         .then((result) => {
+          // Success - reset fail count
+          window.ramsesExtras._cardsEnabledFailCount = 0;
+          window.ramsesExtras._cardsEnabledLastFailTime = 0;
+
           const enabled = result?.cards_enabled === true;
           if (enabled) {
             window.ramsesExtras.cardsEnabled = true;
@@ -1171,8 +1187,25 @@ export class RamsesBaseCard extends HTMLElement {
           }
         })
         .catch((error) => {
-          logger.warn('⚠️ Failed to query cards_enabled:', error);
-          this._subscribeCardsEnabled();
+          // Track failures to implement backoff
+          window.ramsesExtras._cardsEnabledFailCount = (window.ramsesExtras._cardsEnabledFailCount || 0) + 1;
+          window.ramsesExtras._cardsEnabledLastFailTime = Date.now();
+
+          const isNotAvailable = error?.not_available === true || error?.code === 'unknown_command';
+
+          if (isNotAvailable) {
+            logger.warn(
+              `⚠️ ${this.constructor.name}: Integration appears disabled or not loaded. ` +
+              `Will retry with backoff (attempt ${window.ramsesExtras._cardsEnabledFailCount})`
+            );
+          } else {
+            logger.warn('⚠️ Failed to query cards_enabled:', error);
+          }
+
+          // Only subscribe if it's not a "not available" error
+          if (!isNotAvailable) {
+            this._subscribeCardsEnabled();
+          }
         })
         .finally(() => {
           if (window.ramsesExtras) {

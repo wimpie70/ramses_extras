@@ -3,7 +3,7 @@ export function logExplorerCardStyle({ wrapCss }) {
 
   return `
     :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
-    ha-card { width: 100%; }
+    ha-card { width: 100%; min-height: 400px; }
 
     .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .row input[type="text"] { min-width: 220px; }
@@ -60,7 +60,7 @@ export function trafficAnalyserCardStyle({ compact }) {
 
   return `
     :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
-    ha-card { width: 100%; }
+    ha-card { width: 100%; min-height: 400px; }
 
     .meta { display: flex; gap: 12px; font-size: 12px; opacity: 0.8; flex-wrap: ${metaWrap}; }
     .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
