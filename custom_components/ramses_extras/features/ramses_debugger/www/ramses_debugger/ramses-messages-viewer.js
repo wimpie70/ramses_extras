@@ -442,12 +442,6 @@ class RamsesMessagesViewer extends HTMLElement {
           }).join('')}
         </div>
       ` : ''}
-      <div class="messages-controls">
-        <label>
-          <input type="checkbox" id="messagesDecode" ${this._decode ? 'checked' : ''} title="Toggle decoded payload values (uses ramses_tx where available)">
-          Parsed values
-        </label>
-      </div>
       <div class="messages-table-wrapper">
         <table class="messages-table">
           <thead>
