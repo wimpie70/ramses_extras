@@ -2,19 +2,39 @@ export function logExplorerCardStyle({ wrapCss }) {
   const gridCols = '1fr';
 
   return `
-    :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
-    ha-card { width: 100%; min-height: 400px; }
+    :host { display: block; width: 100%; min-width: 0; max-width: 100%; height: 700px; }
+    ha-card {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .card-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 16px;
+    }
 
     .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .row input[type="text"] { min-width: 220px; }
     .row input.small { width: 70px; }
     .row select { min-width: 260px; flex: 1; }
 
-    .muted { font-size: 12px; opacity: 0.8; }
+    .muted { font-size: var(--ha-font-size-s); opacity: 0.8; }
     .error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
 
     .grid { display: grid; grid-template-columns: ${gridCols}; gap: 12px; margin-top: 12px; }
     .grid > div { min-width: 0; }
+
+    .scrollable-section {
+      flex: 1;
+      overflow: auto;
+      min-height: 0;
+    }
 
     pre {
       margin: 0;
@@ -24,7 +44,6 @@ export function logExplorerCardStyle({ wrapCss }) {
       overflow: auto;
       max-width: 100%;
       white-space: ${wrapCss};
-      max-height: 320px;
       user-select: text;
       -webkit-user-select: text;
     }
@@ -59,16 +78,37 @@ export function trafficAnalyserCardStyle({ compact }) {
   const metaWrap = compact ? 'wrap' : 'nowrap';
 
   return `
-    :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
-    ha-card { width: 100%; min-height: 400px; }
+    :host { display: block; width: 100%; min-width: 0; max-width: 100%; height: 700px; font-size: var(--ha-font-size-s); }
+    ha-card {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
 
-    .meta { display: flex; gap: 12px; font-size: 12px; opacity: 0.8; flex-wrap: ${metaWrap}; }
+    .card-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 16px;
+    }
+
+    .meta { display: flex; gap: 12px; font-size: var(--ha-font-size-s); opacity: 0.8; flex-wrap: ${metaWrap}; }
     .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .controls input { width: 110px; }
     .controls input.small { width: 80px; }
     .controls button { cursor: pointer; }
 
-    .table-wrap { width: 100%; max-height: 420px; overflow: auto; margin-top: 12px; border: 1px solid var(--divider-color); border-radius: 6px; }
+    .table-wrap {
+      flex: 1;
+      overflow: auto;
+      margin-top: 12px;
+      border: 1px solid var(--divider-color);
+      border-radius: 6px;
+      min-height: 0;
+    }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     th, td { padding: 6px 8px; border-bottom: 1px solid var(--divider-color); }
     th { text-align: left; font-weight: 600; }
@@ -78,18 +118,18 @@ export function trafficAnalyserCardStyle({ compact }) {
 
     td.device-cell { background: var(--dev-bg, transparent); }
     .dev { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
-    .dev .id { font-family: var(--code-font-family, monospace); font-size: 12px; }
-    .alias { font-size: 12px; opacity: 0.9; }
+    .dev .id { font-family: var(--code-font-family, monospace); font-size: var(--ha-font-size-s); }
+    .alias { font-size: var(--ha-font-size-s); opacity: 0.9; }
     .slug { font-size: 11px; opacity: 0.75; }
     .select-cell { text-align: center; width: 40px; }
     .select-cell input[type="checkbox"] { cursor: pointer; }
-    .codes { font-family: var(--code-font-family, monospace); font-size: 12px; white-space: normal; word-break: break-word; }
+    .codes { font-family: var(--code-font-family, monospace); font-size: var(--ha-font-size-s); white-space: normal; word-break: break-word; }
     .actions { white-space: nowrap; }
     .actions button { cursor: pointer; margin-right: 6px; }
 
     .error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
 
-    dialog { width: 98vw; max-width: 98vw; height: 90vh; max-height: 90vh; resize: both; overflow: auto; }
+    dialog { width: 90vw; max-width: 90vw; height: 600px; max-height: 600px; resize: both; overflow: auto; }
     dialog form { display: flex; flex-direction: column; height: 100%; }
     dialog pre { white-space: pre-wrap; word-break: break-word; overflow: auto; max-height: 70vh; }
     #logContainer { width: 100%; flex: 1; min-height: 0; }
@@ -97,7 +137,7 @@ export function trafficAnalyserCardStyle({ compact }) {
     .messages-list { display: flex; flex-direction: column; height: 100%; }
     .messages-header { padding: 8px 0; border-bottom: 1px solid var(--divider-color); margin-bottom: 8px; }
     .messages-table-wrapper { overflow: auto; flex: 1; }
-    .messages-table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px; }
+    .messages-table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: var(--ha-font-size-s); }
     .messages-table th, .messages-table td { padding: 4px 6px; border: 1px solid var(--divider-color); vertical-align: top; white-space: nowrap; }
     .messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; }
     .messages-table .col-time { width: 140px; font-size: 11px; }

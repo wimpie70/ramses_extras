@@ -570,7 +570,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         ${logExplorerCardStyle({ wrapCss })}
       </style>
       <ha-card header="${title}">
-        <div style="padding: 16px;">
+        <div class="card-content">
           <div class="row">
             <label>${this.t('card.log.files') || 'files'}:</label>
             <select id="fileSelect" title="Select which log file to view">${fileOptions}</select>
@@ -600,7 +600,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
           ${this._loading ? `<div class="muted" style="margin-top: 8px;">${this.t('card.log.loading') || 'Loading...'}</div>` : ''}
           ${errorText ? `<div class="error">${errorText}</div>` : ''}
 
-          <div id="tailSection" class="section" style="margin-top: 12px;">
+          <div class="scrollable-section" style="margin-top: 12px;">
             <div class="muted" style="display:flex; align-items:center; justify-content: space-between; gap: 12px;">
               <span>${this.t('card.log.tail.title') || 'tail'} (${tailWindowLabel})</span>
               <span style="display:flex; gap: 6px;">
@@ -656,7 +656,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             </button>
           </div>
 
-          <div id="resultsSection" class="section" style="margin-top: 10px; max-height: 500px; overflow: auto;">
+          <div class="scrollable-section" style="margin-top: 10px;">
             <div class="muted">
               ${this.t('card.log.search.title') || 'search'}
               ${typeof matches === 'number' ? ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}` : ''}

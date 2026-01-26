@@ -217,22 +217,42 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
 
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
-        ha-card { width: 100%; }
+        :host { display: block; width: 100%; min-width: 0; max-width: 100%; height: 700px; }
+        ha-card {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .card-content {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          padding: 16px;
+        }
+
+        .messages-container {
+          flex: 1;
+          overflow: auto;
+          min-height: 0;
+        }
 
         .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .row input[type="text"], .row input[type="number"] { min-width: 120px; }
         .row input.small { width: 70px; }
         .row select { min-width: 260px; flex: 1; }
 
-        .muted { font-size: 12px; opacity: 0.8; }
+        .muted { font-size: var(--ha-font-size-s); opacity: 0.8; }
         .error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
 
         button { cursor: pointer; }
       </style>
 
       <ha-card header="${title}">
-        <div style="padding: 16px;">
+        <div class="card-content">
           <div class="row">
             <label>files:</label>
             <select id="fileSelect" title="Select which packet log file to view">${fileOptions}</select>
@@ -257,7 +277,9 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
           ${this._loading ? `<div class="muted" style="margin-top: 8px;">Loading...</div>` : ''}
           ${errorText ? `<div class="error">${errorText}</div>` : ''}
 
-          <ramses-messages-viewer id="messagesViewer"></ramses-messages-viewer>
+          <div class="messages-container">
+            <ramses-messages-viewer id="messagesViewer"></ramses-messages-viewer>
+          </div>
         </div>
       </ha-card>
     `;

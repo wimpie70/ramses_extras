@@ -364,7 +364,7 @@ class RamsesMessagesViewer extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>
-        .messages-table-wrapper { overflow-y: auto; max-height: calc(25 * 20px); } /* 25 lines at ~20px each */
+        .messages-table-wrapper { overflow-y: auto; max-height: 400px; } /* Increased for better dialog display */
         .messages-table { width: 100%; border-collapse: collapse; }
         .messages-table th, .messages-table td { border: 1px solid var(--divider-color); padding: 4px 6px; vertical-align: top; }
         .messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; text-align: left; }

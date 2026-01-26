@@ -630,7 +630,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         ${trafficAnalyserCardStyle({ compact })}
       </style>
       <ha-card header="${title}">
-        <div style="padding: 16px;">
+        <div class="card-content">
           <div class="meta">
             <div><strong>Device</strong>: ${deviceDisplay}</div>
             <div>
