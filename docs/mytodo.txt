@@ -26,3 +26,8 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
     - deprecate: Starting in 2026.7, installation of pyserial-asyncio will be blocked in Home Assistant.
 
 - adv debug settings: check if we still have options/card and these are correct (not overriding)
+
+
+-> i think we have a central way of calling WC commands, can we add a version number of the current card, or we get it back from the result. This way we can check if the page has old cached content and ask the user for a hard refresh of the page. There is a regular problem with this.
+Also we should not keep trying to call WS commands. There are too many page re-renders etc that can break the counter resulting in too many calls.
+⚡ Power Flow Card Plus v0.2.6 Error: Entity "Unknown" is not available or misconfigured

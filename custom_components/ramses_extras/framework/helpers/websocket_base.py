@@ -42,13 +42,21 @@ class BaseWebSocketCommand:
         raise NotImplementedError("Subclasses must implement execute()")
 
     def _send_success(self, connection: "WebSocket", msg_id: Any, result: Any) -> None:
-        """Send successful response.
+        """Send successful response with backend version injected.
 
         Args:
             connection: WebSocket connection
             msg_id: Message ID for correlation
             result: Result data to send
         """
+        # Inject backend version for frontend version mismatch detection
+        if isinstance(result, dict):
+            from ...const import DOMAIN
+
+            version = self.hass.data.get(DOMAIN, {}).get(
+                "_integration_version", "0.0.0"
+            )
+            result["_backend_version"] = version
         connection.send_result(msg_id, result)
 
     def _send_error(

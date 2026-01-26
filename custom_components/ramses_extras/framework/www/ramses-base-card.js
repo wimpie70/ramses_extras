@@ -134,6 +134,12 @@ export class RamsesBaseCard extends HTMLElement {
     this._hassLoadTimeout = null; // Timeout for HASS load detection (2 minute fallback)
     this._hassReadyListener = null; // Listener for HASS ready event
 
+    // Render debouncing to prevent input disruption
+    this._renderDebounceTimer = null;
+    this._renderDebounceMs = 100; // 100ms debounce
+    this._renderScheduled = false;
+    this._lastRenderTime = 0;
+
     this._cardsEnabled = false;
     this._cardsEnabledUnsub = null;
 
@@ -251,7 +257,7 @@ export class RamsesBaseCard extends HTMLElement {
         this.clearPreviousStates();
         this.clearUpdateThrottle();
         if (this.isConnected) {
-          this.render();
+          this._scheduleRender(true);
         }
       }
     } catch (error) {
@@ -268,6 +274,39 @@ export class RamsesBaseCard extends HTMLElement {
    */
   getMessageCodes() {
     return [];
+  }
+
+  /**
+   * Schedule a debounced render to prevent excessive re-renders
+   * This replaces direct render() calls in most cases
+   * @param {boolean} immediate - If true, render immediately without debouncing
+   */
+  _scheduleRender(immediate = false) {
+    if (immediate) {
+      if (this._renderDebounceTimer) {
+        clearTimeout(this._renderDebounceTimer);
+        this._renderDebounceTimer = null;
+      }
+      this._renderScheduled = false;
+      this.render();
+      return;
+    }
+
+    if (this._renderScheduled) {
+      return;
+    }
+
+    this._renderScheduled = true;
+
+    if (this._renderDebounceTimer) {
+      clearTimeout(this._renderDebounceTimer);
+    }
+
+    this._renderDebounceTimer = setTimeout(() => {
+      this._renderDebounceTimer = null;
+      this._renderScheduled = false;
+      this.render();
+    }, this._renderDebounceMs);
   }
 
   /**
@@ -332,6 +371,11 @@ export class RamsesBaseCard extends HTMLElement {
         const isInputElement = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
 
         if (isInputElement) {
+          // Restore input value if it was captured and differs
+          if (state.focusedValue !== undefined && el.value !== state.focusedValue) {
+            el.value = state.focusedValue;
+          }
+
           // Use preventScroll to avoid browser auto-scrolling to focused element
           el.focus({ preventScroll: true });
 
@@ -399,7 +443,7 @@ export class RamsesBaseCard extends HTMLElement {
           this.renderHassInitializing();
         } else {
           this._ensureCardsEnabledLoaded();
-          this.render();
+          this._scheduleRender();
         }
       }
     } catch (error) {
@@ -423,7 +467,7 @@ export class RamsesBaseCard extends HTMLElement {
         }
 
         this.clearUpdateThrottle();
-        this.render();
+        this._scheduleRender(true);
       } catch (error) {
         logger.warn('⚠️ Failed to update after options change:', error);
       }
@@ -457,7 +501,7 @@ export class RamsesBaseCard extends HTMLElement {
       .then(() => {
         this._hassLoaded = true;
         this._backendReadyPromise = null;
-        this.render();
+        this._scheduleRender();
       })
       .catch(() => {
         this._backendReadyPromise = null;
@@ -528,7 +572,7 @@ export class RamsesBaseCard extends HTMLElement {
       window.ramsesExtras._featuresLoadPromise.then(() => {
         try {
           if (this._hass && this._config) {
-            this.render();
+            this._scheduleRender();
           }
         } catch (error) {
           logger.warn('⚠️ Failed to re-render after feature config load:', error);
@@ -604,7 +648,7 @@ export class RamsesBaseCard extends HTMLElement {
           this.renderHassInitializing();
         } else {
           this._checkAndLoadInitialState();
-          this.render();
+          this._scheduleRender();
         }
       }
     } catch (error) {
@@ -648,7 +692,7 @@ export class RamsesBaseCard extends HTMLElement {
       if (connectionChanged) {
         this._hassLoaded = false;
         this.clearUpdateThrottle();
-        this.render();
+        this._scheduleRender(true);
       }
 
       if (!this._isHomeAssistantRunning()) {
@@ -721,7 +765,7 @@ export class RamsesBaseCard extends HTMLElement {
             }
           }
 
-          this.render();
+          this._scheduleRender();
         });
       }
 
@@ -754,7 +798,7 @@ export class RamsesBaseCard extends HTMLElement {
               }
             }
 
-            this.render();
+            this._scheduleRender();
           }
         }, 120000); // Wait 2 minutes for ready event
       }
@@ -764,7 +808,7 @@ export class RamsesBaseCard extends HTMLElement {
 
       // Check if we should update based on entity changes
       if (this.shouldUpdate()) {
-        this.render();
+        this._scheduleRender();
       }
     }
   }
@@ -1194,7 +1238,7 @@ export class RamsesBaseCard extends HTMLElement {
 
             this.clearUpdateThrottle();
             this._checkAndLoadInitialState();
-            this.render();
+            this._scheduleRender(true);
           } else {
             this._subscribeCardsEnabled();
           }
@@ -1260,7 +1304,7 @@ export class RamsesBaseCard extends HTMLElement {
         this._cardsEnabled = true;
         this.clearUpdateThrottle();
         this._checkAndLoadInitialState();
-        this.render();
+        this._scheduleRender(true);
       }, 'ramses_extras_cards_enabled');
     } catch (error) {
       logger.warn('⚠️ Failed to subscribe to cards enabled events:', error);

@@ -42,6 +42,42 @@ function _getSharedWsState() {
 }
 
 /**
+ * Check for version mismatch between frontend and backend
+ * @param {Object} result - WebSocket response
+ */
+function _checkVersionMismatch(result) {
+  if (!result || typeof result !== 'object') {
+    return;
+  }
+
+  const backendVersion = result._backend_version;
+  if (!backendVersion) {
+    return;
+  }
+
+  window.ramsesExtras = window.ramsesExtras || {};
+  const frontendVersion = window.ramsesExtras.version;
+
+  if (!frontendVersion) {
+    return;
+  }
+
+  if (backendVersion !== frontendVersion) {
+    if (!window.ramsesExtras._versionMismatch) {
+      window.ramsesExtras._versionMismatch = {
+        frontend: frontendVersion,
+        backend: backendVersion,
+        detected: Date.now(),
+      };
+      logger.warn(
+        `Version mismatch detected! Frontend: ${frontendVersion}, Backend: ${backendVersion}. ` +
+        'Please hard refresh your browser (Ctrl+Shift+R or Cmd+Shift+R).'
+      );
+    }
+  }
+}
+
+/**
  * Send a WebSocket command to Home Assistant
  *
  * @param {Object} hass - Home Assistant instance
@@ -54,6 +90,7 @@ export async function callWebSocket(hass, message) {
       // Use Home Assistant's WebSocket API
       hass.callWS(message)
         .then((result) => {
+          _checkVersionMismatch(result);
           resolve(result);
         })
         .catch((error) => {
@@ -91,26 +128,28 @@ export async function callWebSocket(hass, message) {
 }
 
 /**
- * Shared WebSocket helper with short-lived caching and in-flight de-dup.
+ * Shared WebSocket helper with enhanced caching and in-flight de-dup.
  *
  * Rationale:
  * - Multiple Ramses Debugger cards can poll the same backend endpoint.
  * - For expensive operations (tail/search/stats), we want to avoid doing
  *   duplicate work in the frontend and backend.
+ * - Excessive re-renders can cause WS spam; longer caching prevents this.
  *
  * Behavior:
  * - Computes a stable cache key from the message (or explicit `key`).
  * - If there is an in-flight request for that key, returns the same Promise.
  * - Optionally caches successful results for `cacheMs`.
+ * - Default cache increased to 2000ms to reduce render-triggered spam.
  *
  * @param {Object} hass
  * @param {Object} message
  * @param {Object} options
- * @param {number} options.cacheMs
- * @param {string|null} options.key
+ * @param {number} options.cacheMs - Cache duration in ms (default 2000)
+ * @param {string|null} options.key - Custom cache key
  * @returns {Promise<any>}
  */
-export async function callWebSocketShared(hass, message, { cacheMs = 0, key = null } = {}) {
+export async function callWebSocketShared(hass, message, { cacheMs = 2000, key = null } = {}) {
   const state = _getSharedWsState();
   const now = Date.now();
 
@@ -135,7 +174,8 @@ export async function callWebSocketShared(hass, message, { cacheMs = 0, key = nu
       if (cacheMs > 0) {
         state.results.set(cacheKey, { ts: now, value: result });
 
-        while (state.results.size > 512) {
+        // Limit cache size to prevent memory bloat
+        while (state.results.size > 1024) {
           const oldestKey = state.results.keys().next().value;
           if (!oldestKey) {
             break;
