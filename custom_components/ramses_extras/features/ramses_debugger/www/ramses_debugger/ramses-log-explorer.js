@@ -582,7 +582,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         }, 2000);
       }
     } catch (error) {
-      console.error('Failed to fetch additional lines:', error);
+      logger.error('Failed to fetch additional lines:', error);
       button.textContent = 'Error';
       setTimeout(() => {
         button.textContent = originalText;

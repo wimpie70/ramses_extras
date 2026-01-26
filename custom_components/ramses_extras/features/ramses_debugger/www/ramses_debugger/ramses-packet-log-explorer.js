@@ -236,7 +236,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
 
         .messages-container {
           flex: 1;
-          overflow: auto;
+          // overflow: auto;
           min-height: 0;
         }
 
