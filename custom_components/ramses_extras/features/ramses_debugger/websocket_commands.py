@@ -672,7 +672,9 @@ async def ws_log_get_tail(
 
     lines = text.splitlines()
     total_lines = await hass.async_add_executor_job(_count_lines)
-    start_line = max(1, total_lines - len(lines) + 1)
+    # Account for offset: if offset is 50, we show lines ending 50 before EOF
+    end_line = total_lines - offset_lines
+    start_line = max(1, end_line - len(lines) + 1)
 
     connection.send_result(
         msg["id"],
@@ -680,7 +682,7 @@ async def ws_log_get_tail(
             "file_id": path.name if hasattr(path, "name") else str(path),
             "text": text,
             "start_line": start_line,
-            "end_line": total_lines,
+            "end_line": end_line,
         },
     )
 
