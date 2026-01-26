@@ -1144,7 +1144,20 @@ export class RamsesBaseCard extends HTMLElement {
       return;
     }
 
-    // If we've failed too many times, stop trying to prevent spam
+    // Hard limit: stop after 10 failed attempts to prevent infinite spam
+    const MAX_RETRIES = 10;
+    if (window.ramsesExtras._cardsEnabledFailCount >= MAX_RETRIES) {
+      if (!this._maxRetriesWarningShown) {
+        logger.error(
+          `❌ ${this.constructor.name}: Failed to connect after ${MAX_RETRIES} attempts. ` +
+          `Integration may be disabled or not loaded. Please restart Home Assistant if you've just updated the integration.`
+        );
+        this._maxRetriesWarningShown = true;
+      }
+      return;
+    }
+
+    // If we've failed, implement exponential backoff
     const now = Date.now();
     const timeSinceLastFail = now - window.ramsesExtras._cardsEnabledLastFailTime;
     const backoffTime = Math.min(60000, 1000 * Math.pow(2, window.ramsesExtras._cardsEnabledFailCount));

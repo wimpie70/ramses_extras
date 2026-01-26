@@ -84,16 +84,14 @@ export function logExplorerCardStyle({ wrapCss }) {
       position: relative;
     }
     .line-numbers {
-      counter-reset: line;
       padding-left: 60px;
     }
     .line-numbers .line {
-      counter-increment: line;
       position: relative;
       white-space: pre;
     }
     .line-numbers .line::before {
-      content: counter(line);
+      content: attr(data-line);
       position: absolute;
       left: -60px;
       width: 50px;
