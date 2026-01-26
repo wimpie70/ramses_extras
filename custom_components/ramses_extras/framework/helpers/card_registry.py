@@ -81,14 +81,14 @@ class CardRegistry:
         With the MutationObserver-based loader, we register only a tiny bootstrap
         module (`main.js`) and let it dynamically import feature cards/editors.
 
-        The resource URL is versioned to make it easier to diagnose user issues
-        (reported URLs include the integration version). A cache-busting query
-        parameter ensures browsers reload the file after version updates.
+        The resource URL uses a stable path without version directories to avoid
+        issues after updates. A cache-busting query parameter ensures browsers
+        reload the file after version updates.
         """
 
         return LovelaceCard(
             type="ramses-extras",
-            resource_path=f"/local/ramses_extras/v{version}/helpers/main.js?v={version}",
+            resource_path=f"/local/ramses_extras/helpers/main.js?v={version}",
             name="Ramses Extras (bootstrap)",
         )
 

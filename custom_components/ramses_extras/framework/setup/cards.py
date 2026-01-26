@@ -151,35 +151,27 @@ async def cleanup_old_card_deployments(
     current_version: str,
     card_features: list[dict[str, Any]],
 ) -> None:
-    """Clean up old card deployments.
+    """Clean up old versioned card deployments.
 
-    Removes legacy unversioned directories and old versioned deployments,
-    keeping only the current version.
+    Removes all old versioned directories (v0.x.x format) since we now use
+    a stable deployment path without version directories.
 
     :param hass: Home Assistant instance
-    :param current_version: Current integration version
+    :param current_version: Current integration version (kept for compatibility)
     :param card_features: List of discovered card features
     """
     root_dir = Path(hass.config.config_dir) / "www" / "ramses_extras"
     if not root_dir.exists():
         return
 
-    current_dirname = f"v{current_version}"
-
     def _do_cleanup() -> None:
-        for legacy_dir in (root_dir / "helpers", root_dir / "features"):
-            if legacy_dir.exists():
-                shutil.rmtree(legacy_dir, ignore_errors=True)
-
+        # Remove all old versioned directories (v0.x.x format)
         for entry in root_dir.iterdir():
             if not entry.is_dir():
                 continue
-            if not entry.name.startswith("v"):
-                continue
-            if entry.name == current_dirname:
-                continue
-
-            shutil.rmtree(entry, ignore_errors=True)
+            if entry.name.startswith("v") and entry.name[1:2].isdigit():
+                _LOGGER.info(f"Removing old versioned deployment: {entry.name}")
+                shutil.rmtree(entry, ignore_errors=True)
 
     await asyncio.to_thread(_do_cleanup)
 
@@ -187,10 +179,10 @@ async def cleanup_old_card_deployments(
 async def copy_all_card_files(
     hass: HomeAssistant, card_features: list[dict[str, Any]]
 ) -> None:
-    """Copy all card files to versioned deployment directories.
+    """Copy all card files to stable deployment directory.
 
     Copies JavaScript files for all discovered card features to the
-    versioned www directory structure.
+    stable www directory structure.
 
     :param hass: Home Assistant instance
     :param card_features: List of discovered card features
@@ -232,10 +224,10 @@ async def copy_all_card_files(
 
 
 async def copy_helper_files(hass: HomeAssistant) -> None:
-    """Copy helper files to the versioned deployment directory.
+    """Copy helper files to the stable deployment directory.
 
     Copies shared helper JavaScript files that are used by all cards
-    to the versioned helpers directory.
+    to the stable helpers directory.
 
     :param hass: Home Assistant instance
     """

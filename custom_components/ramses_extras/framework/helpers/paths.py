@@ -122,21 +122,23 @@ class DeploymentPaths:
 
     @staticmethod
     def get_destination_root(hass_config_dir: str | Path, version: str) -> Path:
-        """Get the destination root path for versioned deployment.
+        """Get the destination root path for deployment.
+
+        Version parameter is kept for backward compatibility but no longer used
+        for path generation. All files are deployed to a stable location.
 
         Args:
             hass_config_dir: Home Assistant config directory (can be string or Path)
-            version: Integration version string (e.g. "0.13.4")
+            version: Integration version string (kept for compatibility, not used)
 
         Returns:
-            Destination root path for this version.
+            Destination root path (stable, non-versioned).
         """
 
         if isinstance(hass_config_dir, str):
             hass_config_dir = Path(hass_config_dir)
 
-        version_dir = f"v{version}"
-        return hass_config_dir / "www" / "ramses_extras" / version_dir
+        return hass_config_dir / "www" / "ramses_extras"
 
     @staticmethod
     def get_source_feature_path(integration_dir: Path, feature_name: str) -> Path:
