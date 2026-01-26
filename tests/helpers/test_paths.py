@@ -56,7 +56,7 @@ def test_deployment_paths():
     version = "1.0.0"
 
     # get_destination_root
-    expected_root = Path("/config/www/ramses_extras/v1.0.0")
+    expected_root = Path("/config/www/ramses_extras")
     assert DeploymentPaths.get_destination_root(config_dir, version) == expected_root
     assert (
         DeploymentPaths.get_destination_root(Path(config_dir), version) == expected_root

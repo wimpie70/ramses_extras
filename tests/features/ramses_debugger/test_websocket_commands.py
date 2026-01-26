@@ -589,21 +589,22 @@ class TestWsLogGetTail:
         hass.async_add_executor_job.side_effect = [
             Path("/config/logs/home-assistant.log"),
             "log content here\n",
+            1234,
         ]
 
         with (
             patch(
                 "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.get_configured_log_path",
                 return_value="/config/logs",
-            ),
+            ) as _mock_base,
             patch(
                 "custom_components.ramses_extras.features.ramses_debugger.websocket_commands._get_cache",
                 return_value=None,
-            ),
+            ) as _mock_cache,
             patch(
                 "custom_components.ramses_extras.features.ramses_debugger.websocket_commands._file_state",
                 return_value=None,
-            ),
+            ) as _mock_state,
         ):
             await ws_log_get_tail(
                 hass,
@@ -621,6 +622,8 @@ class TestWsLogGetTail:
                 {
                     "file_id": "home-assistant.log",
                     "text": "log content here\n",
+                    "start_line": 1234,
+                    "end_line": 1234,
                 },
             )
 
@@ -646,11 +649,9 @@ class TestWsLogGetTail:
         """Test log tail when file is not allowed."""
         hass.async_add_executor_job.reset_mock()
         hass.async_add_executor_job.side_effect = [None]
-        with (
-            patch(
-                "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.get_configured_log_path",
-                return_value="/config/logs",
-            ),
+        with patch(
+            "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.get_configured_log_path",
+            return_value="/config/logs",
         ):
             await ws_log_get_tail(
                 hass,

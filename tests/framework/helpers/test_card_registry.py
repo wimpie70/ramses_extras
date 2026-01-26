@@ -34,7 +34,7 @@ def card_registry(mock_hass):
 async def test_register_bootstrap_adds_resource(card_registry):
     """Test that register_bootstrap adds the stable bootstrap resource."""
     version = "1.2.3"
-    expected_url = f"/local/ramses_extras/v{version}/helpers/main.js?v={version}"
+    expected_url = f"/local/ramses_extras/helpers/main.js?v={version}"
 
     await card_registry.register_bootstrap(version)
 
@@ -72,9 +72,7 @@ async def test_register_removes_legacy_resources(card_registry):
     urls = [item["url"] for item in save_data["items"]]
 
     # Bootstrap should be added (versioned URL with cache-busting)
-    assert f"/local/ramses_extras/v{version}/helpers/main.js?v={version}" in urls
-    # Stable URL should not be present
-    assert "/local/ramses_extras/helpers/main.js" not in urls
+    assert f"/local/ramses_extras/helpers/main.js?v={version}" in urls
     # Legacy should be removed
     assert legacy_url not in urls
     # Other integration should stay
@@ -85,7 +83,7 @@ async def test_register_removes_legacy_resources(card_registry):
 async def test_register_idempotent(card_registry):
     """Test that registration is idempotent and doesn't duplicate resources."""
     version = "1.2.3"
-    url = f"/local/ramses_extras/v{version}/helpers/main.js?v={version}"
+    url = f"/local/ramses_extras/helpers/main.js?v={version}"
     resource_id = url.replace("/", "_").strip("_")
 
     initial_items = [
@@ -116,4 +114,4 @@ async def test_register_migration_config_www(card_registry):
     urls = [item["url"] for item in save_data["items"]]
     assert legacy_www_path not in urls
     assert "/local/ramses_extras/something.js" not in urls
-    assert f"/local/ramses_extras/v{version}/helpers/main.js?v={version}" in urls
+    assert f"/local/ramses_extras/helpers/main.js?v={version}" in urls

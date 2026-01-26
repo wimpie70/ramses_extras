@@ -62,17 +62,14 @@ async def test_cleanup_old_card_deployments_removes_old_versions(
 ) -> None:
     hass.config.config_dir = tmp_path
     root = Path(tmp_path) / "www" / "ramses_extras"
-    current = root / "v1.0.0"
-    old = root / "v0.9.0"
-    legacy = root / "helpers"
-    for p in (current, old, legacy):
+    dirs = [root / "v1.0.0", root / "v0.9.0", root / "v2.0.0"]
+    for p in dirs:
         p.mkdir(parents=True, exist_ok=True)
 
     await cards.cleanup_old_card_deployments(hass, "1.0.0", [])
 
-    assert current.exists()
-    assert not old.exists()
-    assert not legacy.exists()
+    # All versioned directories should be removed when using stable paths
+    assert not any(p.exists() for p in dirs)
 
 
 @pytest.mark.asyncio
@@ -103,18 +100,11 @@ async def test_expose_feature_config_to_frontend_writes_file(hass, tmp_path) -> 
         "custom_components.ramses_extras.framework.setup.cards.async_get_integration_version",
         return_value="1.0.0",
     ):
-        dest_helpers = tmp_path / "www" / "ramses_extras" / "v1.0.0" / "helpers"
+        dest_helpers = tmp_path / "www" / "ramses_extras" / "helpers"
         dest_helpers.mkdir(parents=True, exist_ok=True)
         await cards.expose_feature_config_to_frontend(hass, entry)
 
-    dest = (
-        tmp_path
-        / "www"
-        / "ramses_extras"
-        / "v1.0.0"
-        / "helpers"
-        / "ramses-extras-features.js"
-    )
+    dest = dest_helpers / "ramses-extras-features.js"
     assert dest.exists()
     content = dest.read_text()
     assert "window.ramsesExtras" in content
@@ -218,18 +208,18 @@ async def test_discover_card_features_discovers_features(tmp_path) -> None:
 async def test_cleanup_old_card_deployments_skips_current_version(
     hass, tmp_path
 ) -> None:
-    """Test cleanup skips the current version directory."""
+    """Test cleanup leaves non-version directories intact."""
     hass.config.config_dir = tmp_path
     root = Path(tmp_path) / "www" / "ramses_extras"
-    current = root / "v1.0.0"
-    current.mkdir(parents=True)
-    (current / "file.txt").write_text("content")  # Add file to ensure it's not empty
+    helpers = root / "helpers"
+    helpers.mkdir(parents=True)
+    (helpers / "file.txt").write_text("content")
 
     await cards.cleanup_old_card_deployments(hass, "1.0.0", [])
 
-    # Current version should still exist
-    assert current.exists()
-    assert (current / "file.txt").exists()
+    # Stable helpers directory should still exist
+    assert helpers.exists()
+    assert (helpers / "file.txt").exists()
 
 
 @pytest.mark.asyncio
@@ -248,7 +238,7 @@ async def test_expose_feature_config_with_poll_ms_option(hass, tmp_path) -> None
         "custom_components.ramses_extras.framework.setup.cards.async_get_integration_version",
         return_value="1.0.0",
     ):
-        dest_helpers = tmp_path / "www" / "ramses_extras" / "v1.0.0" / "helpers"
+        dest_helpers = tmp_path / "www" / "ramses_extras" / "helpers"
         dest_helpers.mkdir(parents=True, exist_ok=True)
         await cards.expose_feature_config_to_frontend(hass, entry)
 
