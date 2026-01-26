@@ -61,15 +61,12 @@ def create_hello_world_feature(
         registry["hello_world_entities"] = entities_manager
 
     automation_manager = registry.get("hello_world_automation")
-    automation_created = False
     if automation_manager is None:
         automation_manager = create_hello_world_automation(hass, config_entry)
         registry["hello_world_automation"] = automation_manager
-        automation_created = True
 
-    # Start the automation manager if not skipped
-    if not skip_automation_setup and automation_created:
-        hass.async_create_task(automation_manager.start())
+    # Automation startup is handled centrally by the framework in features.py
+    # to avoid duplicate starts and ensure proper ordering
 
     _LOGGER.debug(
         "✅ Hello World feature created with framework entities manager and automation"
