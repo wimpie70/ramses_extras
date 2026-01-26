@@ -29,6 +29,8 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._selectedFileId = null;
 
     this._tailText = '';
+    this._tailStartLine = null;
+    this._tailEndLine = null;
     this._searchResult = null;
     this._searchQuery = '';
     this._autoLoaded = false;
@@ -330,6 +332,8 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       }, { cacheMs: 500 });
 
       this._tailText = typeof res?.text === 'string' ? res.text : '';
+      this._tailStartLine = typeof res?.start_line === 'number' ? res.start_line : null;
+      this._tailEndLine = typeof res?.end_line === 'number' ? res.end_line : null;
     } catch (error) {
       this._lastError = error;
     }
@@ -506,6 +510,132 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         dialog.close();
       }
     });
+
+    // Add event listeners for expand buttons using event delegation
+    this.shadowRoot.addEventListener('click', (e) => {
+      if (e.target.classList.contains('expand-before')) {
+        const blockIndex = parseInt(e.target.dataset.block);
+        void this._expandBlockContext(blockIndex, 'before');
+      } else if (e.target.classList.contains('expand-after')) {
+        const blockIndex = parseInt(e.target.dataset.block);
+        void this._expandBlockContext(blockIndex, 'after');
+      }
+    });
+  }
+
+  _expandBlockContext(blockIndex, direction) {
+    if (!Array.isArray(this._searchResult?.blocks) || blockIndex >= this._searchResult.blocks.length) {
+      return;
+    }
+
+    const block = this._searchResult.blocks[blockIndex];
+    const blockElement = this.shadowRoot.querySelector(`[data-block-index="${blockIndex}"]`);
+    if (!blockElement) return;
+
+    // Show loading state
+    const button = blockElement.querySelector(direction === 'before' ? '.expand-before' : '.expand-after');
+    const originalText = button.textContent;
+    button.textContent = 'Loading...';
+    button.disabled = true;
+
+    // Calculate the line range to fetch
+    let startLine, endLine;
+    if (direction === 'before') {
+      startLine = Math.max(1, block.start_line - 10);
+      endLine = block.start_line - 1;
+
+      // Check if we're already at the start of the file
+      if (endLine < 1) {
+        button.textContent = 'At start of file';
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.disabled = false;
+        }, 2000);
+        return;
+      }
+    } else {
+      startLine = block.end_line + 1;
+      endLine = block.end_line + 10;
+    }
+
+    // Fetch additional lines from the backend
+    void this._fetchAdditionalLines(startLine, endLine, blockIndex, direction, button, originalText);
+  }
+
+  async _fetchAdditionalLines(startLine, endLine, blockIndex, direction, button, originalText) {
+    try {
+      const response = await callWebSocketShared(this._hass, {
+        type: 'ramses_extras/ramses_debugger/log/get_lines',
+        file_id: this._selectedFileId,
+        start_line: startLine,
+        end_line: endLine,
+      });
+
+      if (response && response.lines && response.lines.length > 0) {
+        this._insertLinesIntoBlock(blockIndex, direction, response.lines, startLine, originalText);
+      } else {
+        // No more lines available
+        button.textContent = 'No more lines';
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.disabled = false;
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Failed to fetch additional lines:', error);
+      button.textContent = 'Error';
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.disabled = false;
+      }, 2000);
+    }
+  }
+
+  _insertLinesIntoBlock(blockIndex, direction, newLines, startLineNumber, originalText) {
+    const blockElement = this.shadowRoot.querySelector(`[data-block-index="${blockIndex}"]`);
+    if (!blockElement) return;
+
+    const preElement = blockElement.querySelector('.result-pre');
+    if (!preElement) return;
+
+    // Create new line elements with numbers and highlighting
+    const newLineElements = newLines.map((line, idx) => {
+      const lineNumber = startLineNumber + idx;
+      const highlightedLine = this._renderHighlightedLog(String(line), this._searchQuery);
+      return `<div class="line" data-line="${lineNumber}">${highlightedLine}</div>`;
+    }).join('');
+
+    if (direction === 'before') {
+      // Insert at the beginning
+      preElement.insertAdjacentHTML('afterbegin', newLineElements);
+
+      // Update the start line in the header
+      const headerSpan = blockElement.querySelector('.result-header .muted');
+      const currentEndLine = this._searchResult.blocks[blockIndex].end_line;
+      headerSpan.textContent = `Lines ${startLineNumber}-${currentEndLine}`;
+
+      // Update the block data
+      this._searchResult.blocks[blockIndex].start_line = startLineNumber;
+      this._searchResult.blocks[blockIndex].lines = [...newLines, ...this._searchResult.blocks[blockIndex].lines];
+    } else {
+      // Insert at the end
+      preElement.insertAdjacentHTML('beforeend', newLineElements);
+
+      // Update the end line in the header
+      const headerSpan = blockElement.querySelector('.result-header .muted');
+      const currentStartLine = this._searchResult.blocks[blockIndex].start_line;
+      const newEndLine = startLineNumber + newLines.length - 1;
+      headerSpan.textContent = `Lines ${currentStartLine}-${newEndLine}`;
+
+      // Update the block data
+      this._searchResult.blocks[blockIndex].end_line = newEndLine;
+      this._searchResult.blocks[blockIndex].lines = [...this._searchResult.blocks[blockIndex].lines, ...newLines];
+    }
+
+    // Re-enable the button
+    const button = blockElement.querySelector(direction === 'before' ? '.expand-before' : '.expand-after');
+    button.textContent = originalText;
+    button.disabled = false;
   }
 
   _renderContent() {
@@ -541,7 +671,19 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       ? this._after
       : Number(this._config?.after || 3);
 
-    const tailHtml = this._renderHighlightedLog(this._tailText, this._searchQuery);
+    // Render tail with line numbers if available
+    let tailHtml;
+    if (this._tailStartLine !== null && this._tailText) {
+      const tailLines = this._tailText.split('\n');
+      tailHtml = tailLines.map((line, idx) => {
+        const lineNumber = this._tailStartLine + idx;
+        const highlightedLine = this._renderHighlightedLog(line, this._searchQuery);
+        return `<div class="line" data-line="${lineNumber}">${highlightedLine}</div>`;
+      }).join('');
+      tailHtml = `<div class="line-numbers">${tailHtml}</div>`;
+    } else {
+      tailHtml = this._renderHighlightedLog(this._tailText, this._searchQuery);
+    }
     const resultHtml = this._renderHighlightedLog(resultPlain, this._searchQuery);
     const blocks = Array.isArray(this._searchResult?.blocks)
       ? this._searchResult.blocks
@@ -550,10 +692,30 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       ? blocks
         .map((b, idx) => {
           const lines = Array.isArray(b?.lines) ? b.lines : [];
-          const text = lines.map((l) => String(l)).join('\n');
-          const blockHtml = this._renderHighlightedLog(text, this._searchQuery);
+          const startLine = b?.start_line || 0;
+          const endLine = b?.end_line || 0;
+
+          // Add line numbers to each line
+          const linesWithNumbers = lines.map((line, lineIdx) => {
+            const lineNumber = startLine + lineIdx;
+            const highlightedLine = this._renderHighlightedLog(String(line), this._searchQuery);
+            return `<div class="line" data-line="${lineNumber}">${highlightedLine}</div>`;
+          }).join('');
+
           const sep = idx < blocks.length - 1 ? '<div class="separator"></div>' : '';
-          return `<pre class="result-pre">${blockHtml || ''}</pre>${sep}`;
+
+          return `
+            <div class="result-block" data-block-index="${idx}" data-start-line="${startLine}" data-end-line="${endLine}">
+              <div class="result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="muted">Lines ${startLine}-${endLine}</span>
+                <div class="result-controls" style="display: flex; gap: 4px;">
+                  <button class="expand-before" data-block="${idx}" title="Add 10 lines before this block">+10 lines up</button>
+                  <button class="expand-after" data-block="${idx}" title="Add 10 lines after this block">-10 lines down</button>
+                </div>
+              </div>
+              <pre class="result-pre line-numbers">${linesWithNumbers}</pre>
+            </div>${sep}
+          `;
         })
         .join('')
       : '';

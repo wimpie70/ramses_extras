@@ -54,6 +54,55 @@ export function logExplorerCardStyle({ wrapCss }) {
     button { cursor: pointer; }
 
     .hl-line { display: inline; }
+
+    .result-block { margin-bottom: 16px; }
+    .result-header {
+      padding: 4px 8px;
+      background: var(--secondary-background-color, rgba(0,0,0,0.02));
+      border-radius: 4px 4px 0 0;
+      border: 1px solid var(--divider-color);
+      border-bottom: none;
+    }
+    .result-controls button {
+      font-size: var(--ha-font-size-s, 12px);
+      padding: 4px 8px;
+      border: 1px solid var(--divider-color);
+      border-radius: 4px;
+      background: var(--primary-background-color);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .result-controls button:hover {
+      background: var(--secondary-background-color);
+    }
+    .result-block .result-pre {
+      border-radius: 0 0 4px 4px;
+      border-top: none;
+      margin: 0;
+      position: relative;
+    }
+    .line-numbers {
+      counter-reset: line;
+      padding-left: 60px;
+    }
+    .line-numbers .line {
+      counter-increment: line;
+      position: relative;
+      white-space: pre;
+    }
+    .line-numbers .line::before {
+      content: counter(line);
+      position: absolute;
+      left: -60px;
+      width: 50px;
+      text-align: right;
+      color: var(--secondary-text-color);
+      font-family: var(--code-font-family, monospace);
+      font-size: var(--ha-font-size-s);
+      user-select: none;
+    }
     .hl-match { background: rgba(255, 235, 59, 0.35); border-radius: 3px; padding: 0 1px; }
     .hl-warning { color: var(--warning-color, #c77f00); }
     .hl-error { color: var(--error-color); }

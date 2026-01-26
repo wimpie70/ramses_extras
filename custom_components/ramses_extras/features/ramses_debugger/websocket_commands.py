@@ -30,6 +30,7 @@ from .log_backend import (
     discover_log_files,
     get_configured_log_path,
     get_configured_packet_log_path,
+    read_file_lines,
     resolve_log_file_id,
     search_with_context,
     tail_text,
@@ -664,11 +665,19 @@ async def ws_log_get_tail(
         text = await cache.get_or_create(cache_key, ttl_s=ttl_s, create_fn=_read_tail)
     else:
         text = await _read_tail()
+
+    # Calculate line numbers for the tail
+    lines = text.splitlines()
+    total_lines = sum(1 for _ in path.open("r", encoding="utf-8", errors="replace"))
+    start_line = max(1, total_lines - len(lines) + 1)
+
     connection.send_result(
         msg["id"],
         {
             "file_id": path.name if hasattr(path, "name") else str(path),
             "text": text,
+            "start_line": start_line,
+            "end_line": total_lines,
         },
     )
 
@@ -835,6 +844,59 @@ async def ws_log_search(
             **result,
         },
     )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/log/get_lines",
+        vol.Required("file_id"): str,
+        vol.Required("start_line"): vol.All(int, vol.Range(min=1)),
+        vol.Required("end_line"): vol.All(int, vol.Range(min=1)),
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_log_get_lines(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    """Fetch specific line range from a log file."""
+    file_id = msg.get("file_id")
+    if not isinstance(file_id, str) or not file_id:
+        connection.send_error(msg["id"], "invalid_file_id", "Missing file_id")
+        return
+
+    base = get_configured_log_path(hass)
+    path = await hass.async_add_executor_job(resolve_log_file_id, base, file_id)
+    if path is None:
+        connection.send_error(
+            msg["id"],
+            "file_not_allowed",
+            "Requested file_id is not available",
+        )
+        return
+
+    start_line = msg.get("start_line")
+    end_line = msg.get("end_line")
+
+    if not isinstance(start_line, int) or not isinstance(end_line, int):
+        connection.send_error(msg["id"], "invalid_line_range", "Invalid line numbers")
+        return
+
+    if start_line > end_line:
+        connection.send_error(
+            msg["id"], "invalid_line_range", "start_line must be <= end_line"
+        )
+        return
+
+    try:
+        lines = await hass.async_add_executor_job(
+            read_file_lines, path, start_line, end_line
+        )
+        connection.send_result(msg["id"], {"lines": lines})
+    except Exception as exc:
+        _LOGGER.warning("Error in log/get_lines: %s", exc)
+        connection.send_error(msg["id"], "error", str(exc))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

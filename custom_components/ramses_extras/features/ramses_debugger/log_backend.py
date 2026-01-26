@@ -245,6 +245,31 @@ class LogBlock:
     lines: list[str]
 
 
+def read_file_lines(path: Path, start_line: int, end_line: int) -> list[str]:
+    """Read a specific range of lines from a file.
+
+    :param path: Path to the file
+    :param start_line: 1-based line number to start from
+    :param end_line: 1-based line number to end at (inclusive)
+    :return: List of lines in the specified range
+    """
+    if not path.exists() or not path.is_file():
+        return []
+
+    lines = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for current_line, line in enumerate(f, 1):
+                if current_line > end_line:
+                    break
+                if current_line >= start_line:
+                    lines.append(line.rstrip("\n\r"))
+    except (OSError, UnicodeDecodeError):
+        return []
+
+    return lines
+
+
 def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
     if not ranges:
         return []
