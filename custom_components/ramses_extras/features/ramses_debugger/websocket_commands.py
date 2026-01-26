@@ -667,8 +667,11 @@ async def ws_log_get_tail(
         text = await _read_tail()
 
     # Calculate line numbers for the tail
+    def _count_lines() -> int:
+        return sum(1 for _ in path.open("r", encoding="utf-8", errors="replace"))
+
     lines = text.splitlines()
-    total_lines = sum(1 for _ in path.open("r", encoding="utf-8", errors="replace"))
+    total_lines = await hass.async_add_executor_job(_count_lines)
     start_line = max(1, total_lines - len(lines) + 1)
 
     connection.send_result(
