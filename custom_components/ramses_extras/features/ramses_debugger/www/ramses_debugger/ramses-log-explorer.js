@@ -17,7 +17,6 @@
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocketShared } from '../../helpers/card-services.js';
-import { getVersionMismatchBanner } from '../../helpers/version-banner.js';
 
 import { logExplorerCardStyle } from './card-styles.js';
 
@@ -733,7 +732,6 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         ${logExplorerCardStyle({ wrapCss })}
       </style>
       <ha-card header="${title}">
-        ${getVersionMismatchBanner()}
         <div class="card-content">
           <div class="row">
             <label>${this.t('card.log.files') || 'files'}:</label>

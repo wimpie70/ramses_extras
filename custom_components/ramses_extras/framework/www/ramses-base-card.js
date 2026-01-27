@@ -9,6 +9,7 @@ import { SimpleCardTranslator } from './card-translations.js';
 import { callWebSocket, entityExists, getEntityState, buildEntityId } from './card-services.js';
 import { getRamsesMessageBroker } from './ramses-message-broker.js';
 import { getFeatureTranslationPath } from './paths.js';
+import { getVersionMismatchBanner } from './version-banner.js';
 /**
  * window.ramsesExtras = window.ramsesExtras || {};
  * window.ramsesExtras.debug = true;
@@ -1554,6 +1555,9 @@ export class RamsesBaseCard extends HTMLElement {
 
     // Call subclass-specific rendering
     this._renderContent();
+
+    // Auto-inject version mismatch banner if needed
+    this._injectVersionBanner();
   }
 
   /**
@@ -1562,6 +1566,29 @@ export class RamsesBaseCard extends HTMLElement {
    */
   _renderContent() {
     throw new Error('_renderContent() must be implemented by subclass');
+  }
+
+  /**
+   * Automatically inject version mismatch banner into rendered card
+   * This is called after _renderContent() to prepend the banner if needed
+   * @private
+   */
+  _injectVersionBanner() {
+    const banner = getVersionMismatchBanner();
+    if (!banner) {
+      return;
+    }
+
+    // Find the ha-card element and prepend the banner
+    const haCard = this.shadowRoot.querySelector('ha-card');
+    if (haCard) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = banner;
+      const bannerElement = tempDiv.firstElementChild;
+      if (bannerElement) {
+        haCard.insertBefore(bannerElement, haCard.firstChild);
+      }
+    }
   }
 
   /**
