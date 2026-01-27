@@ -86,6 +86,19 @@ function _checkVersionMismatch(result) {
  */
 export async function callWebSocket(hass, message) {
   return new Promise((resolve, reject) => {
+    // Block WebSocket calls if there's a version mismatch
+    if (window.ramsesExtras?._versionMismatch) {
+      const mismatch = window.ramsesExtras._versionMismatch;
+      reject({
+        version_mismatch: true,
+        code: 'version_mismatch',
+        message: `Version mismatch detected (Frontend: ${mismatch.frontend}, Backend: ${mismatch.backend}). Please hard refresh your browser.`,
+        frontend: mismatch.frontend,
+        backend: mismatch.backend,
+      });
+      return;
+    }
+
     try {
       // Use Home Assistant's WebSocket API
       hass.callWS(message)
