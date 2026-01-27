@@ -86,8 +86,11 @@ function _checkVersionMismatch(result) {
  */
 export async function callWebSocket(hass, message) {
   return new Promise((resolve, reject) => {
-    // Block WebSocket calls if there's a version mismatch
-    if (window.ramsesExtras?._versionMismatch) {
+    // Allow initialization-related calls to bypass version mismatch check
+    const isInitializationCall = message?.type === 'ramses_extras/default/get_cards_enabled';
+
+    // Block WebSocket calls if there's a version mismatch (except initialization)
+    if (window.ramsesExtras?._versionMismatch && !isInitializationCall) {
       const mismatch = window.ramsesExtras._versionMismatch;
       reject({
         version_mismatch: true,

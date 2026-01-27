@@ -13,8 +13,11 @@ Added version mismatch check at the start of `callWebSocket()`:
 ```javascript
 export async function callWebSocket(hass, message) {
   return new Promise((resolve, reject) => {
-    // Block WebSocket calls if there's a version mismatch
-    if (window.ramsesExtras?._versionMismatch) {
+    // Allow initialization-related calls to bypass version mismatch check
+    const isInitializationCall = message?.type === 'ramses_extras/default/get_cards_enabled';
+
+    // Block WebSocket calls if there's a version mismatch (except initialization)
+    if (window.ramsesExtras?._versionMismatch && !isInitializationCall) {
       const mismatch = window.ramsesExtras._versionMismatch;
       reject({
         version_mismatch: true,
@@ -37,6 +40,16 @@ export async function callWebSocket(hass, message) {
 2. **`callWebSocketShared(hass, message, options)`** - Inherits check via `callWebSocket()`
 
 Both functions will reject with a `version_mismatch` error when versions don't match.
+
+### Bypass for Initialization
+
+The `ramses_extras/default/get_cards_enabled` WebSocket call is **allowed to bypass** the version mismatch check. This is necessary to:
+
+- Allow the "Home Assistant is initializing" banner to appear correctly
+- Detect when cards are enabled/disabled
+- Ensure proper initialization flow even with version mismatch
+
+All other WebSocket calls are blocked when there's a version mismatch.
 
 ## Behavior
 
