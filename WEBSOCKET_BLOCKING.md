@@ -114,6 +114,59 @@ try {
    - Banner disappears
    - WebSocket calls work normally
 
+## Retry Prevention
+
+To prevent console spam from repeated failed WebSocket calls when there's a version mismatch:
+
+### Base Card Protection
+
+`ramses-base-card.js` checks for version mismatch before attempting initial state loading:
+
+```javascript
+_checkAndLoadInitialState() {
+  // Don't attempt to load state if there's a version mismatch
+  if (window.ramsesExtras?._versionMismatch) {
+    return;
+  }
+  // ... rest of initialization
+}
+```
+
+### HVAC Fan Card Protection
+
+`hvac-fan-card.js` prevents retry loops when loading entity mappings:
+
+```javascript
+async _loadEntityMappings() {
+  // Check for version mismatch - don't retry if there's a mismatch
+  if (window.ramsesExtras?._versionMismatch) {
+    this._entityMappingsLoadFailed = true;
+    return;
+  }
+
+  // Don't retry if we already failed due to version mismatch
+  if (this._entityMappingsLoadFailed) {
+    return;
+  }
+
+  try {
+    // ... WebSocket call
+  } catch (error) {
+    // If it's a version mismatch error, stop retrying
+    if (error?.version_mismatch || error?.code === 'version_mismatch') {
+      this._entityMappingsLoadFailed = true;
+      logger.warn('HvacFanCard: Version mismatch detected - stopping entity mapping retries');
+    }
+  }
+}
+```
+
+This ensures:
+
+- ✅ No infinite retry loops
+- ✅ Only one error message logged per card
+- ✅ Cards stop attempting WebSocket calls after detecting version mismatch
+
 ## Deployment
 
 ```bash
@@ -125,4 +178,5 @@ Then test by:
 
 1. Loading cards with old cached frontend
 2. Verifying banner appears and WS calls are blocked
-3. Hard refreshing to resolve
+3. Verifying only one error message per card (no retry spam)
+4. Hard refreshing to resolve

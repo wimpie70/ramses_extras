@@ -890,6 +890,11 @@ export class RamsesBaseCard extends HTMLElement {
    * Check and load initial state
    */
   _checkAndLoadInitialState() {
+    // Don't attempt to load state if there's a version mismatch
+    if (window.ramsesExtras?._versionMismatch) {
+      return;
+    }
+
     if (this._hass && this._config && !this._initialStateLoaded) {
       this._ensureRequiredEntitiesLoaded();
       this._loadInitialState();

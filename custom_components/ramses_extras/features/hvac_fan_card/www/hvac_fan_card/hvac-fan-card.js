@@ -218,6 +218,17 @@ class HvacFanCard extends RamsesBaseCard {
       return;
     }
 
+    // Check for version mismatch - don't retry if there's a mismatch
+    if (window.ramsesExtras?._versionMismatch) {
+      this._entityMappingsLoadFailed = true;
+      return;
+    }
+
+    // Don't retry if we already failed due to version mismatch
+    if (this._entityMappingsLoadFailed) {
+      return;
+    }
+
     this._entityMappingsLoading = true;
 
     try {
@@ -257,7 +268,13 @@ class HvacFanCard extends RamsesBaseCard {
         this._entityMappings = { ...(this._entityMappings || {}), ...result.mappings };
       }
     } catch (error) {
-      logger.warn('HvacFanCard: Failed to load entity mappings:', error);
+      // If it's a version mismatch error, stop retrying
+      if (error?.version_mismatch || error?.code === 'version_mismatch') {
+        this._entityMappingsLoadFailed = true;
+        logger.warn('HvacFanCard: Version mismatch detected - stopping entity mapping retries');
+      } else {
+        logger.warn('HvacFanCard: Failed to load entity mappings:', error);
+      }
     } finally {
       this._entityMappingsLoading = false;
     }
