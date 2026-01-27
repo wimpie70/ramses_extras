@@ -1571,22 +1571,38 @@ export class RamsesBaseCard extends HTMLElement {
   /**
    * Automatically inject version mismatch banner into rendered card
    * This is called after _renderContent() to prepend the banner if needed
+   * Only injects when mismatch state changes to avoid DOM thrashing
    * @private
    */
   _injectVersionBanner() {
-    const banner = getVersionMismatchBanner();
-    if (!banner) {
-      return;
+    const hasMismatch = Boolean(window.ramsesExtras?._versionMismatch);
+
+    // Track previous mismatch state to avoid unnecessary DOM manipulation
+    if (this._lastVersionMismatchState === hasMismatch) {
+      return; // State hasn't changed, no need to update
     }
 
-    // Find the ha-card element and prepend the banner
-    const haCard = this.shadowRoot.querySelector('ha-card');
-    if (haCard) {
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = banner;
-      const bannerElement = tempDiv.firstElementChild;
-      if (bannerElement) {
-        haCard.insertBefore(bannerElement, haCard.firstChild);
+    this._lastVersionMismatchState = hasMismatch;
+
+    // Remove existing banner if present
+    const existingBanner = this.shadowRoot.querySelector('[style*="background: #ff9800"]');
+    if (existingBanner) {
+      existingBanner.remove();
+    }
+
+    // Add new banner if there's a mismatch
+    if (hasMismatch) {
+      const banner = getVersionMismatchBanner();
+      if (banner) {
+        const haCard = this.shadowRoot.querySelector('ha-card');
+        if (haCard) {
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = banner;
+          const bannerElement = tempDiv.firstElementChild;
+          if (bannerElement) {
+            haCard.insertBefore(bannerElement, haCard.firstChild);
+          }
+        }
       }
     }
   }

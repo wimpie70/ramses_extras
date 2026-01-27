@@ -538,17 +538,13 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       return;
     }
 
-    const tableWrap = this.shadowRoot?.querySelector?.('.table-wrap');
-    const tableScrollTop = tableWrap ? tableWrap.scrollTop : 0;
-    const tableScrollLeft = tableWrap ? tableWrap.scrollLeft : 0;
+    // Preserve UI state (focus, scroll, input values) before re-render
+    const uiState = this._preserveUIState(['table-wrap']);
 
     this._renderContentImpl();
 
-    const nextWrap = this.shadowRoot?.querySelector?.('.table-wrap');
-    if (nextWrap) {
-      nextWrap.scrollTop = tableScrollTop;
-      nextWrap.scrollLeft = tableScrollLeft;
-    }
+    // Restore UI state after re-render
+    this._restoreUIState(uiState);
   }
 
   _renderContentImpl() {

@@ -639,7 +639,13 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
   }
 
   _renderContent() {
+    // Preserve UI state (focus, scroll, input values) before re-render
+    const uiState = this._preserveUIState(['tailOutput', 'searchOutput']);
+
     this._renderContentImpl();
+
+    // Restore UI state after re-render
+    this._restoreUIState(uiState);
   }
 
   _renderContentImpl() {
