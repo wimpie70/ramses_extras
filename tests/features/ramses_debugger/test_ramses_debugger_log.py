@@ -202,7 +202,8 @@ async def test_ws_packet_log_list_files_not_configured(hass) -> None:
     )
 
     assert not conn.errors
-    assert conn.results[-1] == (1, {"base": None, "files": []})
+    expected = (1, {"base": None, "files": [], "_backend_version": "0.0.0"})
+    assert conn.results[-1] == expected
 
 
 @pytest.mark.asyncio

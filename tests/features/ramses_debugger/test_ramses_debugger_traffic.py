@@ -114,6 +114,7 @@ async def test_ws_get_stats_and_reset(hass) -> None:
     assert conn.results
     assert conn.results[0][0] == 1
     assert conn.results[0][1]["total_count"] == 1
+    assert "_backend_version" in conn.results[0][1]
 
     # device_id filtering (matches src)
     await ws_traffic_get_stats(
@@ -153,7 +154,7 @@ async def test_ws_get_stats_and_reset(hass) -> None:
         },
     )
 
-    assert conn.results[-1] == (2, {"success": True})
+    assert conn.results[-1] == (2, {"success": True, "_backend_version": "0.0.0"})
 
     await ws_traffic_get_stats(
         hass,

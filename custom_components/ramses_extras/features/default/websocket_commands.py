@@ -86,7 +86,11 @@ async def ws_get_cards_enabled(
 ) -> None:
     try:
         cards_enabled = hass.data.get(DOMAIN, {}).get("cards_enabled") is True
-        connection.send_result(msg["id"], {"cards_enabled": cards_enabled})
+        # Inject backend version for version mismatch detection
+        result = {"cards_enabled": cards_enabled}
+        version = hass.data.get(DOMAIN, {}).get("_integration_version", "0.0.0")
+        result["_backend_version"] = version
+        connection.send_result(msg["id"], result)
     except Exception as err:
         _LOGGER.error("Failed to get cards_enabled: %s", err)
         connection.send_error(msg["id"], "get_cards_enabled_failed", str(err))

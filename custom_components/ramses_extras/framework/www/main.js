@@ -127,6 +127,19 @@ function scanAndLoad() {
 
   logger.debug('ramses_extras: main.js bootstrap init');
 
+  // Load feature configuration (version, debug settings, etc.)
+  if (assetBase) {
+    const featuresScript = document.createElement('script');
+    featuresScript.src = `${assetBase}/helpers/ramses-extras-features.js`;
+    featuresScript.onload = () => {
+      logger.debug('ramses_extras: features loaded');
+    };
+    featuresScript.onerror = () => {
+      logger.warn('ramses_extras: failed to load features file');
+    };
+    document.head.appendChild(featuresScript);
+  }
+
   Promise.all(CARD_MODULES.map(loadCardModule)).catch((err) => {
     logger.warn('ramses_extras: failed to preload card modules', err);
   });

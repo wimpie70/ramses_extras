@@ -44,6 +44,22 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _inject_version(hass: HomeAssistant, result: Any) -> Any:
+    """Inject backend version into WebSocket response for version mismatch detection.
+
+    Args:
+        hass: Home Assistant instance
+        result: Result data to send
+
+    Returns:
+        Result with version injected if it's a dict
+    """
+    if isinstance(result, dict):
+        version = hass.data.get(DOMAIN, {}).get("_integration_version", "0.0.0")
+        result["_backend_version"] = version
+    return result
+
+
 def _get_cache(hass: HomeAssistant) -> DebuggerCache | None:
     """Return the shared debugger cache instance, if configured."""
     domain_data = hass.data.get(DOMAIN)
@@ -148,7 +164,7 @@ async def ws_traffic_get_stats(
             verb=msg.get("verb"),
             limit=limit,
         )
-        connection.send_result(msg["id"], stats)
+        connection.send_result(msg["id"], _inject_version(hass, stats))
         return
 
     if traffic_source == "packet_log":
@@ -289,7 +305,7 @@ async def ws_traffic_get_stats(
     else:
         stats = await _build_stats()
 
-    connection.send_result(msg["id"], stats)
+    connection.send_result(msg["id"], _inject_version(hass, stats))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -313,7 +329,7 @@ async def ws_traffic_reset_stats(
         return
 
     collector.reset()
-    connection.send_result(msg["id"], {"success": True})
+    connection.send_result(msg["id"], _inject_version(hass, {"success": True}))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -408,7 +424,7 @@ async def ws_traffic_subscribe_stats(
         connection.subscriptions = {}
     connection.subscriptions[msg["id"]] = unsub
 
-    connection.send_result(msg["id"], {"success": True})
+    connection.send_result(msg["id"], _inject_version(hass, {"success": True}))
     _send_snapshot()
 
 
@@ -427,17 +443,20 @@ async def ws_log_list_files(
     files = await hass.async_add_executor_job(discover_log_files, base)
     connection.send_result(
         msg["id"],
-        {
-            "base": str(base),
-            "files": [
-                {
-                    "file_id": f.file_id,
-                    "size": f.size,
-                    "modified_at": f.modified_at,
-                }
-                for f in files
-            ],
-        },
+        _inject_version(
+            hass,
+            {
+                "base": str(base),
+                "files": [
+                    {
+                        "file_id": f.file_id,
+                        "size": f.size,
+                        "modified_at": f.modified_at,
+                    }
+                    for f in files
+                ],
+            },
+        ),
     )
 
 
@@ -454,23 +473,27 @@ async def ws_packet_log_list_files(
 ) -> None:
     base = get_configured_packet_log_path(hass)
     if base is None:
-        connection.send_result(msg["id"], {"base": None, "files": []})
+        result = _inject_version(hass, {"base": None, "files": []})
+        connection.send_result(msg["id"], result)
         return
 
     files = await hass.async_add_executor_job(discover_log_files, base)
     connection.send_result(
         msg["id"],
-        {
-            "base": str(base),
-            "files": [
-                {
-                    "file_id": f.file_id,
-                    "size": f.size,
-                    "modified_at": f.modified_at,
-                }
-                for f in files
-            ],
-        },
+        _inject_version(
+            hass,
+            {
+                "base": str(base),
+                "files": [
+                    {
+                        "file_id": f.file_id,
+                        "size": f.size,
+                        "modified_at": f.modified_at,
+                    }
+                    for f in files
+                ],
+            },
+        ),
     )
 
 
@@ -573,7 +596,7 @@ async def ws_packet_log_get_messages(
     else:
         result = await _load_result()
 
-    connection.send_result(msg["id"], result)
+    connection.send_result(msg["id"], _inject_version(hass, result))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -678,12 +701,15 @@ async def ws_log_get_tail(
 
     connection.send_result(
         msg["id"],
-        {
-            "file_id": path.name if hasattr(path, "name") else str(path),
-            "text": text,
-            "start_line": start_line,
-            "end_line": end_line,
-        },
+        _inject_version(
+            hass,
+            {
+                "file_id": path.name if hasattr(path, "name") else str(path),
+                "text": text,
+                "start_line": start_line,
+                "end_line": end_line,
+            },
+        ),
     )
 
 
@@ -744,7 +770,7 @@ async def ws_messages_get_messages(
                 if decoded is not None:
                     m["decoded"] = decoded
 
-        connection.send_result(msg["id"], {"messages": messages})
+        connection.send_result(msg["id"], _inject_version(hass, {"messages": messages}))
     except Exception as exc:
         _LOGGER.warning("Error in messages/get_messages: %s", exc)
         connection.send_error(msg["id"], "error", str(exc))
@@ -844,10 +870,13 @@ async def ws_log_search(
 
     connection.send_result(
         msg["id"],
-        {
-            "file_id": path.name if hasattr(path, "name") else str(path),
-            **result,
-        },
+        _inject_version(
+            hass,
+            {
+                "file_id": path.name if hasattr(path, "name") else str(path),
+                **result,
+            },
+        ),
     )
 
 
@@ -898,7 +927,7 @@ async def ws_log_get_lines(
         lines = await hass.async_add_executor_job(
             read_file_lines, path, start_line, end_line
         )
-        connection.send_result(msg["id"], {"lines": lines})
+        connection.send_result(msg["id"], _inject_version(hass, {"lines": lines}))
     except Exception as exc:
         _LOGGER.warning("Error in log/get_lines: %s", exc)
         connection.send_error(msg["id"], "error", str(exc))
@@ -919,19 +948,25 @@ async def ws_cache_get_stats(
     if cache is None:
         connection.send_result(
             msg["id"],
-            {
-                "available": False,
-                "stats": None,
-            },
+            _inject_version(
+                hass,
+                {
+                    "available": False,
+                    "stats": None,
+                },
+            ),
         )
         return
 
     connection.send_result(
         msg["id"],
-        {
-            "available": True,
-            "stats": cache.stats(),
-        },
+        _inject_version(
+            hass,
+            {
+                "available": True,
+                "stats": cache.stats(),
+            },
+        ),
     )
 
 
@@ -948,8 +983,10 @@ async def ws_cache_clear(
 ) -> None:
     cache = _get_cache(hass)
     if cache is None:
-        connection.send_result(msg["id"], {"available": False, "cleared": False})
+        result = _inject_version(hass, {"available": False, "cleared": False})
+        connection.send_result(msg["id"], result)
         return
 
     cache.clear()
-    connection.send_result(msg["id"], {"available": True, "cleared": True})
+    result = _inject_version(hass, {"available": True, "cleared": True})
+    connection.send_result(msg["id"], result)

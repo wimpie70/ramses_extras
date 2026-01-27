@@ -24,6 +24,11 @@ ws_cache_get_stats = websocket_commands.ws_cache_get_stats.__wrapped__
 ws_cache_clear = websocket_commands.ws_cache_clear.__wrapped__
 
 
+def _with_version(result: dict) -> dict:
+    """Add _backend_version to expected result for test assertions."""
+    return {**result, "_backend_version": "0.0.0"}
+
+
 @pytest.fixture
 def hass() -> HomeAssistant:
     """Fixture for Home Assistant."""
@@ -103,7 +108,7 @@ class TestWsGetMessages:
 
         # Verify response was sent
         conn.send_result.assert_called_once_with(
-            "test-id", {"messages": mock_get_messages.return_value}
+            "test-id", _with_version({"messages": mock_get_messages.return_value})
         )
 
     @pytest.mark.asyncio
@@ -326,9 +331,11 @@ class TestWsTrafficGetStats:
                 verb=None,
                 limit=100,
             )
-            conn.send_result.assert_called_once_with(
-                "test-id", mock_collector.get_stats.return_value
-            )
+            # Note: mock_collector.get_stats.return_value is already a dict,
+            # so we need to check it was called with _with_version wrapper
+            call_args = conn.send_result.call_args
+            assert call_args[0][0] == "test-id"
+            assert "_backend_version" in call_args[0][1]
 
     @pytest.mark.asyncio
     async def test_traffic_get_stats_no_collector(self, hass, conn):
@@ -390,22 +397,24 @@ class TestWsTrafficGetStats:
 
             conn.send_result.assert_called_once_with(
                 "test-id",
-                {
-                    "started_at": "2026-01-20T10:00:00",
-                    "total_count": 1,
-                    "by_code": {"31DA": 1},
-                    "by_verb": {"RQ": 1},
-                    "flows": [
-                        {
-                            "src": "32:153289",
-                            "dst": "37:169161",
-                            "count_total": 1,
-                            "last_seen": "2026-01-20T10:00:00",
-                            "verbs": {"RQ": 1},
-                            "codes": {"31DA": 1},
-                        }
-                    ],
-                },
+                _with_version(
+                    {
+                        "started_at": "2026-01-20T10:00:00",
+                        "total_count": 1,
+                        "by_code": {"31DA": 1},
+                        "by_verb": {"RQ": 1},
+                        "flows": [
+                            {
+                                "src": "32:153289",
+                                "dst": "37:169161",
+                                "count_total": 1,
+                                "last_seen": "2026-01-20T10:00:00",
+                                "verbs": {"RQ": 1},
+                                "codes": {"31DA": 1},
+                            }
+                        ],
+                    }
+                ),
             )
 
 
@@ -431,7 +440,9 @@ class TestWsTrafficResetStats:
             )
 
             mock_collector.reset.assert_called_once()
-            conn.send_result.assert_called_once_with("test-id", {"success": True})
+            conn.send_result.assert_called_once_with(
+                "test-id", _with_version({"success": True})
+            )
 
     @pytest.mark.asyncio
     async def test_traffic_reset_stats_no_collector(self, hass, conn):
@@ -495,21 +506,23 @@ class TestWsLogListFiles:
 
             conn.send_result.assert_called_once_with(
                 "test-id",
-                {
-                    "base": "/config/logs",
-                    "files": [
-                        {
-                            "file_id": "home-assistant.log",
-                            "size": 1024,
-                            "modified_at": "2026-01-20T10:00:00",
-                        },
-                        {
-                            "file_id": "home-assistant.log.1",
-                            "size": 2048,
-                            "modified_at": "2026-01-19T10:00:00",
-                        },
-                    ],
-                },
+                _with_version(
+                    {
+                        "base": "/config/logs",
+                        "files": [
+                            {
+                                "file_id": "home-assistant.log",
+                                "size": 1024,
+                                "modified_at": "2026-01-20T10:00:00",
+                            },
+                            {
+                                "file_id": "home-assistant.log.1",
+                                "size": 2048,
+                                "modified_at": "2026-01-19T10:00:00",
+                            },
+                        ],
+                    }
+                ),
             )
 
 
@@ -546,16 +559,18 @@ class TestWsPacketLogListFiles:
 
             conn.send_result.assert_called_once_with(
                 "test-id",
-                {
-                    "base": "/config/packet_logs",
-                    "files": [
-                        {
-                            "file_id": "packet.log",
-                            "size": 512,
-                            "modified_at": "2026-01-20T10:00:00",
-                        },
-                    ],
-                },
+                _with_version(
+                    {
+                        "base": "/config/packet_logs",
+                        "files": [
+                            {
+                                "file_id": "packet.log",
+                                "size": 512,
+                                "modified_at": "2026-01-20T10:00:00",
+                            },
+                        ],
+                    }
+                ),
             )
 
     @pytest.mark.asyncio
@@ -575,7 +590,7 @@ class TestWsPacketLogListFiles:
             )
 
             conn.send_result.assert_called_once_with(
-                "test-id", {"base": None, "files": []}
+                "test-id", _with_version({"base": None, "files": []})
             )
 
 
@@ -619,12 +634,14 @@ class TestWsLogGetTail:
 
             conn.send_result.assert_called_once_with(
                 "test-id",
-                {
-                    "file_id": "home-assistant.log",
-                    "text": "log content here\n",
-                    "start_line": 1234,
-                    "end_line": 1234,
-                },
+                _with_version(
+                    {
+                        "file_id": "home-assistant.log",
+                        "text": "log content here\n",
+                        "start_line": 1234,
+                        "end_line": 1234,
+                    }
+                ),
             )
 
     @pytest.mark.asyncio
@@ -710,12 +727,14 @@ class TestWsLogSearch:
 
             conn.send_result.assert_called_once_with(
                 "test-id",
-                {
-                    "file_id": "home-assistant.log",
-                    "matches": 5,
-                    "total_chars": 1000,
-                    "truncated": False,
-                },
+                _with_version(
+                    {
+                        "file_id": "home-assistant.log",
+                        "matches": 5,
+                        "total_chars": 1000,
+                        "truncated": False,
+                    }
+                ),
             )
 
     @pytest.mark.asyncio
@@ -783,10 +802,12 @@ class TestWsCacheGetStats:
 
             conn.send_result.assert_called_once_with(
                 "test-id",
-                {
-                    "available": True,
-                    "stats": {"entries": 10, "max_entries": 256},
-                },
+                _with_version(
+                    {
+                        "available": True,
+                        "stats": {"entries": 10, "max_entries": 256},
+                    }
+                ),
             )
 
     @pytest.mark.asyncio
@@ -807,10 +828,12 @@ class TestWsCacheGetStats:
 
             conn.send_result.assert_called_once_with(
                 "test-id",
-                {
-                    "available": False,
-                    "stats": None,
-                },
+                _with_version(
+                    {
+                        "available": False,
+                        "stats": None,
+                    }
+                ),
             )
 
 
@@ -837,7 +860,7 @@ class TestWsCacheClear:
 
             mock_cache.clear.assert_called_once()
             conn.send_result.assert_called_once_with(
-                "test-id", {"available": True, "cleared": True}
+                "test-id", _with_version({"available": True, "cleared": True})
             )
 
     @pytest.mark.asyncio
@@ -857,7 +880,7 @@ class TestWsCacheClear:
             )
 
             conn.send_result.assert_called_once_with(
-                "test-id", {"available": False, "cleared": False}
+                "test-id", _with_version({"available": False, "cleared": False})
             )
 
 
@@ -894,7 +917,9 @@ class TestWsTrafficSubscribeStats:
             )
 
             assert conn.subscriptions["test-id"] == mock_unsub
-            conn.send_result.assert_called_once_with("test-id", {"success": True})
+            conn.send_result.assert_called_once_with(
+                "test-id", _with_version({"success": True})
+            )
 
 
 class TestWsPacketLogGetMessages:

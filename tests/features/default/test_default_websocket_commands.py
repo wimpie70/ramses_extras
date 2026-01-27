@@ -133,7 +133,9 @@ async def test_ws_get_cards_enabled(hass, connection):
     """Test ws_get_cards_enabled command."""
     msg = {"id": 1, "type": "ramses_extras/default/get_cards_enabled"}
     await ws_get_cards_enabled(hass, connection, msg)
-    connection.send_result.assert_called_once_with(1, {"cards_enabled": True})
+    connection.send_result.assert_called_once_with(
+        1, {"cards_enabled": True, "_backend_version": "0.0.0"}
+    )
 
 
 async def test_ws_get_cards_enabled_error_path(connection):
