@@ -1553,8 +1553,16 @@ export class RamsesBaseCard extends HTMLElement {
       return;
     }
 
+    // Preserve UI state (focus, scroll, input values) before re-render
+    // This automatically applies to ALL cards extending RamsesBaseCard
+    const uiState = this._preserveUIState();
+
     // Call subclass-specific rendering
     this._renderContent();
+
+    // Restore UI state after re-render
+    // This ensures input focus, scroll positions, etc. are maintained
+    this._restoreUIState(uiState);
 
     // Auto-inject version mismatch banner if needed
     this._injectVersionBanner();
