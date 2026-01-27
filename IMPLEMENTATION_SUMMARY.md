@@ -66,7 +66,7 @@ Added `_with_version()` helper function to test files for clean assertions.
 
 ```javascript
 // In browser console after restart:
-window.ramsesExtras.version; // Should show "0.13.7"
+window.ramsesExtras.version; // Should show "0.13.8"
 
 // After any WebSocket call:
 window.ramsesExtras._versionMismatch; // Shows mismatch if versions differ
