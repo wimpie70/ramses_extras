@@ -1,21 +1,11 @@
 /**
  * Card Header Template
- * Contains DOCTYPE, html, head, and style elements
+ * Contains ha-card wrapper and styles
  */
 
 export function createCardHeader(cardStyle) {
   return `
-    <!DOCTYPE html>
-    <html>
-    <head>
+    <ha-card>
       <style>${cardStyle}</style>
-    </head>
-    <body>
-      <script>
-        // Store the card instance globally so it can be accessed from inline handlers
-        if (!window.orconFanCardInstance) {
-          window.orconFanCardInstance = this;
-        }
-      </script>
   `;
 }

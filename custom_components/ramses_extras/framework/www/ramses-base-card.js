@@ -530,13 +530,10 @@ export class RamsesBaseCard extends HTMLElement {
 
     if (!window.ramsesExtras?.features) {
       this._ensureFeatureConfigLoaded();
-      debugLog(`Feature ${featureName} is enabled: unknown (loading)`);
       return null;
     }
 
-    const isEnabled = window.ramsesExtras.features[featureName] === true;
-    debugLog(`Feature ${featureName} is enabled: ${isEnabled}`);
-    return isEnabled;
+    return window.ramsesExtras.features[featureName] === true;
   }
 
   _ensureFeatureConfigLoaded() {
@@ -745,9 +742,6 @@ export class RamsesBaseCard extends HTMLElement {
       if (needsReadyLatch && hass && hass.connection && !this._hassReadyListener) {
         this._hassReadyListener = hass.connection.addEventListener('ready', () => {
           this._hassLoaded = true;
-          debugLog(
-            `✅ ${this.constructor.name}: HASS ready event received, allowing updates and rendering`
-          );
 
           if (typeof this._hassReadyListener === 'function') {
             this._hassReadyListener();
@@ -856,7 +850,6 @@ export class RamsesBaseCard extends HTMLElement {
     // Check if any monitored entities have changed
     const hasChanges = Object.entries(requiredEntities).some(([key, entityId]) => {
       if (!entityId) {
-        debugLog(`🔍 ${this.constructor.name}: shouldUpdate - entity ${key} is null/undefined`);
         return false;
       }
 
@@ -864,17 +857,8 @@ export class RamsesBaseCard extends HTMLElement {
       const newState = this._hass.states[entityId];
       this._previousStates[entityId] = newState;
 
-      const changed = oldState !== newState;
-      debugLog(`🔍 ${this.constructor.name}: shouldUpdate - entity ${entityId}:`, {
-        oldState: oldState?.state,
-        newState: newState?.state,
-        changed
-      });
-
-      return changed;
+      return oldState !== newState;
     });
-
-    debugLog(`🔍 ${this.constructor.name}: shouldUpdate result:`, hasChanges);
 
     // Update the last update time if there are changes
     if (hasChanges) {
@@ -1596,24 +1580,13 @@ export class RamsesBaseCard extends HTMLElement {
   _injectVersionBanner() {
     const hasMismatch = Boolean(window.ramsesExtras?._versionMismatch);
 
-    // Try to find target element for banner injection:
-    // 1. ha-card (standard debugger cards, Hello World)
-    // 2. body (if card uses full HTML document structure)
-    // 3. First div child (HVAC Fan Card uses this)
-    let targetElement = this.shadowRoot?.querySelector('ha-card');
-    if (!targetElement) {
-      targetElement = this.shadowRoot?.querySelector('body');
-    }
-    if (!targetElement) {
-      // Try to find first DIV element (HVAC Fan Card structure)
-      const divs = Array.from(this.shadowRoot?.querySelectorAll('div') || []);
-      targetElement = divs[0]; // Get first div
-    }
+    // All cards now use ha-card element as standard
+    const targetElement = this.shadowRoot?.querySelector('ha-card');
 
     if (!targetElement) {
-      // Debug: Log when no suitable element is found
+      // Debug: Log when ha-card is not found
       if (hasMismatch) {
-        console.warn(`${this.constructor.name}: Cannot inject version banner - no suitable target element found`);
+        console.warn(`${this.constructor.name}: Cannot inject version banner - no ha-card element found`);
         console.log(`${this.constructor.name}: shadowRoot children:`, Array.from(this.shadowRoot?.children || []).map(el => el.tagName));
       }
       return; // No target element to inject into

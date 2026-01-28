@@ -915,10 +915,8 @@ class HvacFanCard extends RamsesBaseCard {
     }
 
     try {
-      const tempButton = this;
-      window.send_command('fan_request31DA', this._config.device_id, tempButton);
-
-      window.send_command('fan_request10D0', this._config.device_id, tempButton);
+      await sendFanCommand(this._hass, this._config.device_id, 'fan_request31DA');
+      await sendFanCommand(this._hass, this._config.device_id, 'fan_request10D0');
     } catch (error) {
       logger.error('❌ Failed to request initial data:', error);
     }
@@ -1022,28 +1020,42 @@ class HvacFanCard extends RamsesBaseCard {
       });
     }
 
-    // Control buttons - only attach listeners to buttons without existing onclick handlers
+    // Control buttons - handle via data attributes
     const controlButtons = this.shadowRoot?.querySelectorAll('.control-button');
     if (controlButtons) {
       controlButtons.forEach((button) => {
-        // Skip buttons that already have onclick handlers
-        if (!button.getAttribute('onclick')) {
-          button.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+        button.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
 
-            const onclick = button.getAttribute('onclick');
-            if (onclick) {
-              const fn = new Function(
-                'event',
-                `try { ${onclick} } catch(e) { window.ramsesExtrasLogger?.error('Error in button handler:', e); }`
-              );
-              fn.call(button, e);
+          const command = button.getAttribute('data-command');
+          const deviceId = button.getAttribute('data-device-id');
+          const action = button.getAttribute('data-action');
+          const entityId = button.getAttribute('data-entity-id');
+
+          if (command && deviceId) {
+            // Fan command button
+            try {
+              await sendFanCommand(this._hass, deviceId, command);
+            } catch (error) {
+              logger.error('Error sending command:', error);
             }
-          });
-        }
+          } else if (action === 'toggle-dehumidify' && entityId) {
+            // Dehumidify toggle button
+            try {
+              await this._hass.callService('switch', 'toggle', { entity_id: entityId });
+              this._prevStates = null;
+              setTimeout(() => {
+                if (this._hass && this.config) {
+                  this.render();
+                }
+              }, 100);
+            } catch (error) {
+              logger.error(`Failed to toggle dehumidify ${entityId}:`, error);
+            }
+          }
+        });
       });
-      // console.log(`✅ Attached event listeners to ${controlButtons.length - 1} control buttons (1 has onclick)`);
     }
   }
 
@@ -1059,7 +1071,6 @@ class HvacFanCard extends RamsesBaseCard {
 
     if (settingsIcon) {
       settingsIcon.addEventListener('click', (e) => {
-        // console.log('🔙 Back icon clicked');
         e.preventDefault();
         e.stopPropagation();
         this.toggleParameterMode();
@@ -1068,28 +1079,39 @@ class HvacFanCard extends RamsesBaseCard {
 
     if (backIcon) {
       backIcon.addEventListener('click', (e) => {
-        // console.log('🔙 Back icon clicked');
         e.preventDefault();
         e.stopPropagation();
         this.toggleParameterMode();
       });
     }
 
-    // Parameter update buttons - only attach to device parameter buttons, not humidity control buttons
-    this.shadowRoot?.querySelectorAll('.param-update-btn');
-    const deviceParamButtons = this.shadowRoot?.querySelectorAll('.param-update-btn[data-param]');
+    // Parameter update buttons - handle both device parameters and humidity control
+    const allUpdateButtons = this.shadowRoot?.querySelectorAll('.param-update-btn');
 
-    if (deviceParamButtons) {
-      deviceParamButtons.forEach((button) => {
-        button.addEventListener('click', () => {
+    if (allUpdateButtons) {
+      allUpdateButtons.forEach((button) => {
+        button.addEventListener('click', async () => {
           const paramKey = button.getAttribute('data-param');
+          const action = button.getAttribute('data-action');
+          const entityId = button.getAttribute('data-entity-id');
           const input = button.previousElementSibling;
           const newValue = input?.value;
-          // console.log(`📝 Device parameter ${paramKey} update button clicked with value ${newValue}`);
+
           if (paramKey && newValue !== undefined) {
+            // Device parameter update (2411)
             this.updateParameter(paramKey, newValue);
-          } else {
-            logger.error('❌ Missing paramKey or newValue:', { paramKey, newValue });
+          } else if (action === 'update-humidity' && entityId && newValue !== undefined) {
+            // Humidity control update
+            try {
+              await this._hass.callService('number', 'set_value', {
+                entity_id: entityId,
+                value: parseFloat(newValue),
+              });
+              this._prevStates = null;
+              this.render();
+            } catch (error) {
+              logger.error(`Failed to update humidity control ${entityId}:`, error);
+            }
           }
         });
       });
@@ -1113,134 +1135,6 @@ if (!customElements.get('hvac-fan-card')) {
   // console.log('Registering hvac-fan-card web component');
   customElements.define('hvac-fan-card', HvacFanCard);
 }
-
-// Make functions globally available for onclick handlers
-window.toggleParameterMode = function () {
-  const card = document.querySelector('hvac-fan-card');
-  if (card) {
-    card.toggleParameterMode();
-  }
-};
-
-window.updateParameter = function (paramKey, newValue) {
-  const card = document.querySelector('hvac-fan-card');
-  if (card) {
-    card.updateParameter(paramKey, newValue);
-  }
-};
-
-// controls min/max values
-window.updateHumidityControl = function (entityId, newValue, buttonElement) {
-  // console.log(`🔧 updateHumidityControl called with:`, { entityId, newValue, buttonElement });
-
-  // Find the card element using the button element (similar to send_command)
-  let element = buttonElement;
-  while (element && element.tagName !== 'HVAC-FAN-CARD') {
-    element = element.parentElement || element.getRootNode()?.host;
-  }
-
-  if (element && element._hass) {
-    // console.log(`📡 Calling number.set_value service for ${entityId} = ${newValue}`);
-
-    // Call Home Assistant service to update the entity
-    element._hass
-      .callService('number', 'set_value', {
-        entity_id: entityId,
-        value: parseFloat(newValue),
-      })
-      .then(() => {
-        // console.log(`✅ Humidity control updated: ${entityId} = ${newValue}`);
-        // Clear previous states to force update detection
-        element._prevStates = null;
-        // Trigger re-render
-        if (element._hass && element.config) {
-          element.render();
-        }
-      })
-      .catch((error) => {
-        logger.error(`❌ Failed to update humidity control ${entityId}:`, error);
-      });
-  } else {
-    logger.error(`❌ Cannot update humidity control - missing card or hass:`, {
-      element: !!element,
-      hass: element?._hass,
-    });
-  }
-};
-
-window.toggleDehumidify = function (entityId, buttonElement) {
-  // console.log(`🔧 toggleDehumidify called with:`, { entityId, buttonElement });
-
-  // Find the card element using the button element (similar to send_command)
-  let element = buttonElement;
-  while (element && element.tagName !== 'HVAC-FAN-CARD') {
-    element = element.parentElement || element.getRootNode()?.host;
-  }
-
-  if (element && element._hass) {
-    // console.log(`📡 Toggling dehumidify switch ${entityId}`);
-
-    // Toggle the switch using Home Assistant's toggle service
-    element._hass
-      .callService('switch', 'toggle', {
-        entity_id: entityId,
-      })
-      .then(() => {
-        // console.log(`✅ Dehumidify toggled: ${entityId}`);
-
-        // Clear previous states to force update detection
-        element._prevStates = null;
-
-        // Wait a brief moment for the entity state to update, then trigger re-render
-        setTimeout(() => {
-          // console.log(`🔄 Re-rendering card after dehumidify toggle`);
-          if (element._hass && element.config) {
-            element.render();
-          }
-        }, 100); // 100ms delay to ensure state is updated
-      })
-      .catch((error) => {
-        logger.error(`❌ Failed to toggle dehumidify ${entityId}:`, error);
-      });
-  } else {
-    logger.error(`❌ Cannot toggle dehumidify - missing card or hass:`, {
-      element: !!element,
-      hass: element?._hass,
-    });
-  }
-};
-
-
-window.send_command = function (commandKey, deviceId, buttonElement) {
-  // console.log(`window.send_command called with: ${commandKey}, deviceId: ${deviceId}, buttonElement:`, buttonElement);
-
-  // Use the button element to find the host element
-  let element = buttonElement;
-  while (element && element.tagName !== 'HVAC-FAN-CARD') {
-    element = element.parentElement || element.getRootNode()?.host;
-  }
-
-  if (element && element._hass) {
-    //    console.log('Found HASS instance in host element, using proper from_id');
-
-    (async () => {
-      try {
-        await sendFanCommand(element._hass, deviceId, commandKey);
-
-        // Command sent successfully - Python queue handles all timing and processing
-        // UI will update automatically when device state changes via WebSocket messages
-        // console.log(`✅ Command '${commandKey}' queued for device ${deviceId}`);
-      } catch (error) {
-        logger.error('Error sending command:', error);
-      }
-    })();
-  } else {
-    logger.error('Could not find HASS instance in host element');
-    logger.debug('Element found:', element);
-    logger.debug('Element _hass:', element?._hass);
-  }
-};
-
 
 // Register the card using the base class registration
 HvacFanCard.register();

@@ -44,11 +44,11 @@ export function createParameterEditSection(params) {
       <!-- Navigation Header -->
       <div class="param-nav">
         <div class="nav-left">
-          <span class="settings-icon" onclick="toggleParameterMode()">⚙️</span>
+          <span class="settings-icon">⚙️</span>
           <span class="device-title">${settingsText}: ${deviceId.replace(/_/g, ':')}</span>
         </div>
         <div class="nav-right">
-          <span class="back-icon" onclick="toggleParameterMode()">↩️</span>
+          <span class="back-icon">↩️</span>
         </div>
       </div>
 
@@ -134,7 +134,7 @@ function createHumidityControlItem(entity, tr) {
                 step="${entity.attributes?.step || 1}"
                 value="${currentValue}"
                 data-entity="${entityId}">
-        <button class="param-update-btn" onclick="updateHumidityControl('${entityId}', this.previousElementSibling.value, this)">${tr('parameters.update', 'Update')}</button>
+        <button class="param-update-btn" data-action="update-humidity" data-entity-id="${entityId}">${tr('parameters.update', 'Update')}</button>
         <span class="param-status"></span>
       </div>
     </div>
