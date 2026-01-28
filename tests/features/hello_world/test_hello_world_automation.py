@@ -131,7 +131,7 @@ class TestHelloWorldAutomationManager:
                 "_trigger_binary_sensor_update",
                 new_callable=AsyncMock,
             ) as mock_trigger:
-                entity_states = {"hello_world_switch": True}
+                entity_states = {"switch_state": True}
 
                 await automation._process_automation_logic("test_device", entity_states)
 
@@ -151,7 +151,7 @@ class TestHelloWorldAutomationManager:
                 "_trigger_binary_sensor_update",
                 new_callable=AsyncMock,
             ) as mock_trigger:
-                entity_states = {"hello_world_switch": False}
+                entity_states = {"switch_state": False}
 
                 await automation._process_automation_logic("test_device", entity_states)
 
