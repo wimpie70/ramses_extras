@@ -78,6 +78,7 @@ class ExtrasBaseAutomation(ABC):
         self._active = False
         self._specific_entity_ids: set[str] = set()
         self._periodic_check_handle: Callable[[], None] | None = None
+        self._no_entities_logged = False
 
         # Cache for entity patterns
         self._entity_patterns: list[str] | None = None
@@ -289,18 +290,32 @@ class ExtrasBaseAutomation(ABC):
                                     entity.entity_id,
                                 )
 
-        _LOGGER.info(
-            "Registered %d entity listeners for %s",
-            listeners_registered,
-            self.feature_id,
-        )
+        if listeners_registered == 0 and self._periodic_check_handle is not None:
+            _LOGGER.debug(
+                "Registered %d entity listeners for %s",
+                listeners_registered,
+                self.feature_id,
+            )
+        else:
+            _LOGGER.info(
+                "Registered %d entity listeners for %s",
+                listeners_registered,
+                self.feature_id,
+            )
 
         # If no entities found, set up a periodic check for entities
         if listeners_registered == 0:
-            _LOGGER.info(
-                f"No entities found yet for {self.feature_id}, "
-                f"setting up periodic check"
-            )
+            if not self._no_entities_logged:
+                _LOGGER.info(
+                    f"No entities found yet for {self.feature_id}, "
+                    "setting up periodic check"
+                )
+                self._no_entities_logged = True
+            else:
+                _LOGGER.debug(
+                    "No entities found yet for %s, periodic check already running",
+                    self.feature_id,
+                )
             self._setup_periodic_entity_check()
 
     # ==================== STATE CHANGE HANDLING ====================
@@ -427,7 +442,10 @@ class ExtrasBaseAutomation(ABC):
 
     def _setup_periodic_entity_check(self) -> None:
         """Set up periodic check for entities when none are found initially."""
-        _LOGGER.info(f"Setting up periodic entity check for {self.feature_id}")
+        if self._periodic_check_handle is not None:
+            return
+
+        _LOGGER.info("Setting up periodic entity check for %s", self.feature_id)
 
         # Use HA's async_track_time_interval for periodic checks
         self._periodic_check_handle = async_track_time_interval(
@@ -452,6 +470,7 @@ class ExtrasBaseAutomation(ABC):
             )
             self._periodic_check_handle()
             self._periodic_check_handle = None
+            self._no_entities_logged = False
 
     def _entity_matches_patterns(self, entity_id: str) -> bool:
         """Check if an entity ID matches any of the automation patterns.

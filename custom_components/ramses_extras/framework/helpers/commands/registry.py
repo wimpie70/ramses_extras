@@ -49,6 +49,13 @@ class CommandRegistry:
         for cmd_name, cmd_def in commands.items():
             if cmd_name in self._commands:
                 existing_feature = self._commands[cmd_name]["feature_id"]
+                if existing_feature == feature_id:
+                    _LOGGER.debug(
+                        "Command '%s' already registered by feature '%s', skipping",
+                        cmd_name,
+                        feature_id,
+                    )
+                    continue
                 _LOGGER.warning(
                     f"Command '{cmd_name}' already registered by feature '"
                     f"{existing_feature}', "
