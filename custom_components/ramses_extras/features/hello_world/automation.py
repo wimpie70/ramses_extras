@@ -144,7 +144,7 @@ class HelloWorldAutomationManager(ExtrasBaseAutomation):
             return
 
         try:
-            switch_state = bool(entity_states.get("hello_world_switch", False))
+            switch_state = bool(entity_states.get("switch_state", False))
 
             # Simple automation logic: binary sensor follows switch state
             binary_sensor_should_be_on = switch_state
