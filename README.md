@@ -8,7 +8,7 @@
 [![CodeQL](https://github.com/wimpie70/ramses_extras/workflows/CodeQL/badge.svg)](https://github.com/wimpie70/ramses_extras/security/code-scanning)
 [![codecov](https://codecov.io/gh/wimpie70/ramses_extras/graph/badge.svg?token=3O1T9U8H49)](https://codecov.io/gh/wimpie70/ramses_extras)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
-[![Home Assistant 2025.10.4](https://img.shields.io/badge/home%20assistant-2025.10.4-green.svg)](https://home-assistant.io)
+[![Home Assistant >=2026.1.0](https://img.shields.io/badge/home%20assistant-%3E%3D2026.1.0-green.svg)](https://home-assistant.io)
 
 **Ramses Extras** is a Home Assistant integration that extends the Ramses RF ([ramses_cc](https://github.com/ramses-rf/ramses_cc)) integration with additional features, entities, automation, and UI components. Built on a modular framework for easy extension and maintenance.
 
@@ -240,7 +240,7 @@ Ramses Extras uses a **feature-centric architecture** built on a **framework fou
 
 ## 🔧 **Requirements**
 
-- **Home Assistant**: 2025.10.4 or later
+- **Home Assistant**: >=2026.1.0 or later
 - **Ramses RF** (ramses_cc): v0.52.1 (pre-release) or later: https://github.com/ramses-rf/ramses_cc
 - **Python**: 3.13
 

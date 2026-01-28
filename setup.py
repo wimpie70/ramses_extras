@@ -14,7 +14,7 @@ setup(
         "custom_components.ramses_extras.framework": "custom_components/ramses_extras/framework",
     },
     install_requires=[
-        "homeassistant==2025.10.4",
+        "homeassistant>=2026.1.0",
     ],
     extras_require={
         "test": [

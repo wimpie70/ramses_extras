@@ -1,5 +1,5 @@
 # Requirements to dev the source code (matching ramses_cc)
-# - last checked/updated: 2025-10-27 (c.f. HA 2025.10.0)
+# - last checked/updated: 2026-01-28 (c.f. HA 2026.1.0)
 #
 
 # requirements (dependencies) are in manifest.json

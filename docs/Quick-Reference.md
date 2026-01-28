@@ -40,6 +40,6 @@
 
 ## 📋 Requirements
 
-- Home Assistant 2025.10.4+
+- Home Assistant >=2026.1.0
 - Ramses RF (ramses_cc) v0.52.1+
 - Python 3.13
