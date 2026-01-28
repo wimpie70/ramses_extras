@@ -29,7 +29,9 @@ https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_
 
 - hvac efficiency: create an entity for this so we can keep track/history (in default)
 
-⚡ Power Flow Card Plus v0.2.6 Error: Entity "Unknown" is not available or misconfigured
+log explorer:
+- search: zoom: give same +/- and query options as the small result field, just make the whole thing popup in a dialog. When opening zoom, give the same result (with enlarged log blocks)
+- tail: add a zoom button (with +/-)
 
 how can we simulate a version mismatch ?
 // In browser console

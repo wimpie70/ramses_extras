@@ -42,6 +42,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._after = null;
     this._tailLines = null;
     this._tailOffset = 0;
+    this._domInitialized = false;
   }
 
   _escapeHtml(value) {
@@ -513,10 +514,10 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
 
     // Add event listeners for expand buttons using event delegation
     this.shadowRoot.addEventListener('click', (e) => {
-      if (e.target.classList.contains('expand-before')) {
+      if (e.target.classList.contains('r-xtrs-log-xp-expand-before')) {
         const blockIndex = parseInt(e.target.dataset.block);
         void this._expandBlockContext(blockIndex, 'before');
-      } else if (e.target.classList.contains('expand-after')) {
+      } else if (e.target.classList.contains('r-xtrs-log-xp-expand-after')) {
         const blockIndex = parseInt(e.target.dataset.block);
         void this._expandBlockContext(blockIndex, 'after');
       }
@@ -639,93 +640,16 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
   }
 
   _renderContent() {
-    this._renderContentImpl();
+    if (!this._domInitialized) {
+      this._initializeDOM();
+      this._domInitialized = true;
+    }
+    this._updateDOM();
   }
 
-  _renderContentImpl() {
+  _initializeDOM() {
     const title = this._config?.name || 'Ramses Log Explorer';
-    const files = Array.isArray(this._files) ? this._files : [];
-
-    const fileOptions = files
-      .map((f) => {
-        const id = f?.file_id || '';
-        const selected = id && id === this._selectedFileId ? 'selected' : '';
-        const size = typeof f?.size === 'number' ? ` (${f.size})` : '';
-        return `<option value="${id}" ${selected}>${id}${size}</option>`;
-      })
-      .join('');
-
-    const errorText = this._lastError
-      ? String(this._lastError?.message || this._lastError)
-      : '';
-
-    const wrapCss = this._wrap ? 'pre-wrap' : 'pre';
-    const resultPlain = this._searchResult?.plain || '';
-    const matches = this._searchResult?.matches;
-    const truncated = Boolean(this._searchResult?.truncated);
-
-    const beforeVal = Number.isFinite(this._before)
-      ? this._before
-      : Number(this._config?.before || 3);
-    const afterVal = Number.isFinite(this._after)
-      ? this._after
-      : Number(this._config?.after || 3);
-
-    // Render tail with line numbers if available
-    let tailHtml;
-    if (this._tailStartLine !== null && this._tailText) {
-      const tailLines = this._tailText.split('\n');
-      tailHtml = tailLines.map((line, idx) => {
-        const lineNumber = this._tailStartLine + idx;
-        const highlightedLine = this._renderHighlightedLog(line, this._searchQuery);
-        return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
-      }).join('');
-      tailHtml = `<div class="r-xtrs-log-xp-line-numbers">${tailHtml}</div>`;
-    } else {
-      tailHtml = this._renderHighlightedLog(this._tailText, this._searchQuery);
-    }
-    const resultHtml = this._renderHighlightedLog(resultPlain, this._searchQuery);
-    const blocks = Array.isArray(this._searchResult?.blocks)
-      ? this._searchResult.blocks
-      : [];
-    const resultBlocksHtml = blocks.length
-      ? blocks
-        .map((b, idx) => {
-          const lines = Array.isArray(b?.lines) ? b.lines : [];
-          const startLine = b?.start_line || 0;
-          const endLine = b?.end_line || 0;
-
-          // Add line numbers to each line
-          const linesWithNumbers = lines.map((line, lineIdx) => {
-            const lineNumber = startLine + lineIdx;
-            const highlightedLine = this._renderHighlightedLog(String(line), this._searchQuery);
-            return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
-          }).join('');
-
-          const sep = idx < blocks.length - 1 ? '<div class="r-xtrs-log-xp-separator"></div>' : '';
-
-          return `
-            <div class="r-xtrs-log-xp-result-block" data-block-index="${idx}" data-start-line="${startLine}" data-end-line="${endLine}">
-              <div class="r-xtrs-log-xp-result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span class="r-xtrs-log-xp-muted">Lines ${startLine}-${endLine}</span>
-                <div class="r-xtrs-log-xp-result-controls" style="display: flex; gap: 4px;">
-                  <button class="r-xtrs-log-xp-expand-before" data-block="${idx}" title="Add 10 lines before this block">+10 lines up</button>
-                  <button class="r-xtrs-log-xp-expand-after" data-block="${idx}" title="Add 10 lines after this block">-10 lines down</button>
-                </div>
-              </div>
-              <pre class="r-xtrs-log-xp-result-pre r-xtrs-log-xp-line-numbers">${linesWithNumbers}</pre>
-            </div>${sep}
-          `;
-        })
-        .join('')
-      : '';
-    const tailLines = Number.isFinite(this._tailLines)
-      ? this._tailLines
-      : Number(this._config?.max_tail_lines || 200);
-    const tailOffset = this._tailOffset || 0;
-    const tailWindowLabel = tailOffset
-      ? `EOF-${tailLines + tailOffset} … EOF-${tailOffset}`
-      : `EOF-${tailLines} … EOF`;
+    const wrapCss = this._wrap ? 'white-space: pre-wrap; word-wrap: break-word;' : 'white-space: pre;';
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -735,7 +659,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         <div class="r-xtrs-log-xp-card-content">
           <div class="r-xtrs-log-xp-row">
             <label>${this.t('card.log.files') || 'files'}:</label>
-            <select id="fileSelect" title="Select which log file to view">${fileOptions}</select>
+            <select id="fileSelect" title="Select which log file to view"></select>
             <button id="refreshFiles" title="Reload the list of available log files">
               ${this.t('card.log.actions.refresh') || 'Refresh files'}
             </button>
@@ -750,27 +674,24 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
                 id="wrapToggle"
                 type="checkbox"
                 title="Toggle line wrapping in the output"
-                ${this._wrap ? 'checked' : ''}
               />
               ${this.t('card.log.actions.wrap') || 'Wrap'}
             </label>
           </div>
-          <div class="r-xtrs-log-xp-muted" style="margin-top: 6px;">
-            ${this._basePath ? `${this.t('card.log.base') || 'base'}: ${this._basePath}` : ''}
-          </div>
+          <div id="basePathDiv" class="r-xtrs-log-xp-muted" style="margin-top: 6px;"></div>
 
-          ${this._loading ? `<div class="r-xtrs-log-xp-muted" style="margin-top: 8px;">${this.t('card.log.loading') || 'Loading...'}</div>` : ''}
-          ${errorText ? `<div class="r-xtrs-log-xp-error">${errorText}</div>` : ''}
+          <div id="loadingMsg" class="r-xtrs-log-xp-muted" style="margin-top: 8px; display: none;"></div>
+          <div id="errorMsg" class="r-xtrs-log-xp-error" style="display: none;"></div>
 
-          <div class="r-xtrs-log-xp-scrollable-section" style="margin-top: 12px;">
+          <div class="r-xtrs-log-xp-scrollable-section" id="tailSection" style="margin-top: 12px;">
             <div class="r-xtrs-log-xp-muted" style="display:flex; align-items:center; justify-content: space-between; gap: 12px;">
-              <span>${this.t('card.log.tail.title') || 'tail'} (${tailWindowLabel})</span>
+              <span id="tailLabel"></span>
               <span style="display:flex; gap: 6px;">
                 <button id="tailUp" title="Move window 50 lines earlier">+50 lines up</button>
                 <button id="tailDown" title="Move window 50 lines later">-50 lines down</button>
               </span>
             </div>
-            <pre id="tailPre">${tailHtml || ''}</pre>
+            <pre id="tailPre"></pre>
           </div>
 
           <div class="r-xtrs-log-xp-separator"></div>
@@ -785,7 +706,6 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               id="searchQuery"
               type="text"
               placeholder="ERROR"
-              value="${this._searchQuery || ''}"
               title="Search query (case-insensitive by default)"
             />
             <label>${this.t('card.log.search.before') || 'before'}:</label>
@@ -793,7 +713,6 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               id="beforeInput"
               class="small"
               type="number"
-              value="${beforeVal}"
               title="Context lines before each match"
             />
             <label>${this.t('card.log.search.after') || 'after'}:</label>
@@ -801,7 +720,6 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               id="afterInput"
               class="small"
               type="number"
-              value="${afterVal}"
               title="Context lines after each match"
             />
             <button id="runSearch" title="Run search on the selected file">
@@ -818,13 +736,9 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             </button>
           </div>
 
-          <div class="r-xtrs-log-xp-scrollable-section" style="margin-top: 10px;">
-            <div class="r-xtrs-log-xp-muted">
-              ${this.t('card.log.search.title') || 'search'}
-              ${typeof matches === 'number' ? ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}` : ''}
-              ${truncated ? ` • ${this.t('card.log.search.truncated') || 'truncated'}` : ''}
-            </div>
-            ${resultBlocksHtml || `<pre id="resultPre">${resultHtml || ''}</pre>`}
+          <div class="r-xtrs-log-xp-scrollable-section" id="searchSection" style="margin-top: 10px;">
+            <div id="searchHeader" class="r-xtrs-log-xp-muted"></div>
+            <div id="searchResults"></div>
           </div>
 
           <dialog id="zoomDialog">
@@ -841,6 +755,173 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     `;
 
     this._attachEventListeners();
+  }
+
+  _updateDOM() {
+    // Update file select options
+    const fileSelect = this.shadowRoot.getElementById('fileSelect');
+    if (fileSelect) {
+      const files = Array.isArray(this._files) ? this._files : [];
+      fileSelect.innerHTML = files
+        .map((f) => {
+          const id = f?.file_id || '';
+          const selected = id && id === this._selectedFileId ? 'selected' : '';
+          const size = typeof f?.size === 'number' ? ` (${f.size})` : '';
+          return `<option value="${id}" ${selected}>${id}${size}</option>`;
+        })
+        .join('');
+    }
+
+    // Update wrap toggle
+    const wrapToggle = this.shadowRoot.getElementById('wrapToggle');
+    if (wrapToggle) {
+      wrapToggle.checked = this._wrap;
+    }
+
+    // Update base path
+    const basePathDiv = this.shadowRoot.getElementById('basePathDiv');
+    if (basePathDiv) {
+      basePathDiv.textContent = this._basePath ? `${this.t('card.log.base') || 'base'}: ${this._basePath}` : '';
+    }
+
+    // Update loading message
+    const loadingMsg = this.shadowRoot.getElementById('loadingMsg');
+    if (loadingMsg) {
+      if (this._loading) {
+        loadingMsg.textContent = this.t('card.log.loading') || 'Loading...';
+        loadingMsg.style.display = '';
+      } else {
+        loadingMsg.style.display = 'none';
+      }
+    }
+
+    // Update error message
+    const errorMsg = this.shadowRoot.getElementById('errorMsg');
+    if (errorMsg) {
+      if (this._lastError) {
+        errorMsg.textContent = String(this._lastError?.message || this._lastError);
+        errorMsg.style.display = '';
+      } else {
+        errorMsg.style.display = 'none';
+      }
+    }
+
+    // Update tail label
+    const tailLabel = this.shadowRoot.getElementById('tailLabel');
+    if (tailLabel) {
+      const tailLines = Number.isFinite(this._tailLines)
+        ? this._tailLines
+        : Number(this._config?.max_tail_lines || 200);
+      const tailOffset = this._tailOffset || 0;
+      const tailWindowLabel = tailOffset
+        ? `EOF-${tailLines + tailOffset} … EOF-${tailOffset}`
+        : `EOF-${tailLines} … EOF`;
+      tailLabel.textContent = `${this.t('card.log.tail.title') || 'tail'} (${tailWindowLabel})`;
+    }
+
+    // Update tail content
+    const tailPre = this.shadowRoot.getElementById('tailPre');
+    if (tailPre) {
+      let tailHtml;
+      if (this._tailStartLine !== null && this._tailText) {
+        const tailLines = this._tailText.split('\n');
+        tailHtml = tailLines.map((line, idx) => {
+          const lineNumber = this._tailStartLine + idx;
+          const highlightedLine = this._renderHighlightedLog(line, this._searchQuery);
+          return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
+        }).join('');
+        tailHtml = `<div class="r-xtrs-log-xp-line-numbers">${tailHtml}</div>`;
+      } else {
+        tailHtml = this._renderHighlightedLog(this._tailText, this._searchQuery);
+      }
+      tailPre.innerHTML = tailHtml || '';
+    }
+
+    // Update search query input
+    const searchQuery = this.shadowRoot.getElementById('searchQuery');
+    if (searchQuery && searchQuery.value !== (this._searchQuery || '')) {
+      searchQuery.value = this._searchQuery || '';
+    }
+
+    // Update before/after inputs
+    const beforeInput = this.shadowRoot.getElementById('beforeInput');
+    if (beforeInput) {
+      const beforeVal = Number.isFinite(this._before)
+        ? this._before
+        : Number(this._config?.before || 3);
+      if (beforeInput.value !== String(beforeVal)) {
+        beforeInput.value = String(beforeVal);
+      }
+    }
+
+    const afterInput = this.shadowRoot.getElementById('afterInput');
+    if (afterInput) {
+      const afterVal = Number.isFinite(this._after)
+        ? this._after
+        : Number(this._config?.after || 3);
+      if (afterInput.value !== String(afterVal)) {
+        afterInput.value = String(afterVal);
+      }
+    }
+
+    // Update search header
+    const searchHeader = this.shadowRoot.getElementById('searchHeader');
+    if (searchHeader) {
+      const matches = this._searchResult?.matches;
+      const truncated = Boolean(this._searchResult?.truncated);
+      let headerText = this.t('card.log.search.title') || 'search';
+      if (typeof matches === 'number') {
+        headerText += ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}`;
+      }
+      if (truncated) {
+        headerText += ` • ${this.t('card.log.search.truncated') || 'truncated'}`;
+      }
+      searchHeader.textContent = headerText;
+    }
+
+    // Update search results
+    const searchResults = this.shadowRoot.getElementById('searchResults');
+    if (searchResults) {
+      const blocks = Array.isArray(this._searchResult?.blocks)
+        ? this._searchResult.blocks
+        : [];
+
+      if (blocks.length) {
+        const resultBlocksHtml = blocks
+          .map((b, idx) => {
+            const lines = Array.isArray(b?.lines) ? b.lines : [];
+            const startLine = b?.start_line || 0;
+            const endLine = b?.end_line || 0;
+
+            const linesWithNumbers = lines.map((line, lineIdx) => {
+              const lineNumber = startLine + lineIdx;
+              const highlightedLine = this._renderHighlightedLog(String(line), this._searchQuery);
+              return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
+            }).join('');
+
+            const sep = idx < blocks.length - 1 ? '<div class="r-xtrs-log-xp-separator"></div>' : '';
+
+            return `
+              <div class="r-xtrs-log-xp-result-block" data-block-index="${idx}" data-start-line="${startLine}" data-end-line="${endLine}">
+                <div class="r-xtrs-log-xp-result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <span class="r-xtrs-log-xp-muted">Lines ${startLine}-${endLine}</span>
+                  <div class="r-xtrs-log-xp-result-controls" style="display: flex; gap: 4px;">
+                    <button class="r-xtrs-log-xp-expand-before" data-block="${idx}" title="Add 10 lines before this block">+10 lines up</button>
+                    <button class="r-xtrs-log-xp-expand-after" data-block="${idx}" title="Add 10 lines after this block">-10 lines down</button>
+                  </div>
+                </div>
+                <pre class="r-xtrs-log-xp-result-pre r-xtrs-log-xp-line-numbers">${linesWithNumbers}</pre>
+              </div>${sep}
+            `;
+          })
+          .join('');
+        searchResults.innerHTML = resultBlocksHtml;
+      } else {
+        const resultPlain = this._searchResult?.plain || '';
+        const resultHtml = this._renderHighlightedLog(resultPlain, this._searchQuery);
+        searchResults.innerHTML = `<pre id="resultPre">${resultHtml || ''}</pre>`;
+      }
+    }
   }
 
   static getCardInfo() {
