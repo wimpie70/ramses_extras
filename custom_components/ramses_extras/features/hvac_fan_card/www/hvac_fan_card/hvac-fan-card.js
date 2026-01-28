@@ -59,6 +59,7 @@ class HvacFanCard extends RamsesBaseCard {
     this._eventCheckTimer = null; // Timer for event checks
     this._stateCheckInterval = null; // Interval for state monitoring
     this._pollInterval = null; // Interval for polling
+    this._domInitialized = false;
   }
 
   // ========== IMPLEMENT REQUIRED ABSTRACT METHODS ==========
@@ -117,14 +118,144 @@ class HvacFanCard extends RamsesBaseCard {
    * Card-specific rendering implementation
    */
   _renderContent() {
+    if (!this._domInitialized) {
+      this._initializeDOM();
+      this._domInitialized = true;
+    }
+    this._updateDOM();
+  }
+
+  _initializeDOM() {
+    // Create a basic static structure that can be updated for both modes
+    this.shadowRoot.innerHTML = `
+      <style>
+        ${CARD_STYLE}
+      </style>
+      <ha-card>
+        <div id="cardContent">
+          <!-- Content will be dynamically updated -->
+        </div>
+      </ha-card>
+    `;
+
+    this._attachEventListeners();
+  }
+
+  _updateDOM() {
+    const cardContent = this.shadowRoot.getElementById('cardContent');
+    if (!cardContent) return;
+
     // Check if we're in parameter edit mode
     if (this.parameterEditMode) {
-      this.renderParameterEditMode();
-      return;
+      this._updateParameterEditMode(cardContent);
+    } else {
+      this._updateNormalMode(cardContent);
+    }
+  }
+
+  async _updateParameterEditMode(container) {
+    // Save scroll position before re-rendering
+    const scrollContainer = this.shadowRoot?.querySelector('.param-list');
+    const scrollTop = scrollContainer?.scrollTop || 0;
+
+    // Ensure we have the parameter schema
+    if (!this.parameterSchema) {
+      this.parameterSchema = await this.fetchParameterSchema();
     }
 
-    // Normal card rendering
-    this.renderNormalMode();
+    // Get available parameters based on entity existence
+    this.availableParams = this.getAvailableParameters();
+
+    const humidityControlEntities = this._getHumidityControlEntities();
+    const parameterItems = this._createParameterItems(this.availableParams);
+
+    const templateData = {
+      device_id: this.config.device_id,
+      humidityControlEntities,
+      parameterItems,
+      t: this.t?.bind(this),
+    };
+
+    // Generate HTML for parameter edit mode
+    const cardHtml = [
+      createCardHeader(CARD_STYLE),
+      this._createSensorSourcesPanel(), // Add sensor sources panel in settings
+      createParameterEditSection(templateData),
+      createCardFooter(),
+    ].join('');
+
+    container.innerHTML = cardHtml;
+
+    // Restore scroll position after DOM update
+    const newScrollContainer = this.shadowRoot?.querySelector('.param-list');
+    if (newScrollContainer) {
+      newScrollContainer.scrollTop = scrollTop;
+    }
+
+    // Attach event listeners for parameter edit mode
+    this.attachParameterEditListeners();
+  }
+
+  _updateNormalMode(container) {
+    if (!this._entityMappings && !this._entityMappingsLoading) {
+      this._loadEntityMappings();
+    }
+
+    const config = this.config;
+    const hass = this._hass;
+
+    // Collect live data
+    const { da31Data, da10D0Data } = this._collectLiveData(hass, config);
+    const dehumEntitiesAvailable = validateDehumidifyEntities(hass, config);
+
+    const rawData = {
+      // Basic device info
+      deviceId: config.device_id,
+      deviceName: config.device_name || config.device_id,
+      fanMode: da31Data.mode,
+      fanSpeed: da31Data.speed,
+      fanSpeedPercent: da31Data.speed_percent,
+      // Temperature data
+      indoorTemp: da31Data.indoor_temp,
+      outdoorTemp: da31Data.outdoor_temp,
+      // Humidity data
+      indoorHumidity: da31Data.indoor_humidity,
+      // Target data
+      targetTemp: da31Data.target_temp,
+      targetHumidity: da31Data.target_humidity,
+      // Bypass position
+      bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position : null,
+      dehumEntitiesAvailable, // Add availability flag
+      dataSource31DA: da31Data.source === '31DA_message', // Flag for UI
+      timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
+      // Filter days remaining from 10D0 data
+      filterDaysRemaining:
+        da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
+    };
+
+    // create templateData for rendering
+    const templateData = createTemplateData(rawData);
+    // Add airflow SVG to template data
+    const selectedSvg =
+      rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
+    templateData.airflowSvg = selectedSvg;
+
+    // Generate HTML using template functions
+    const cardHtml = [
+      createCardHeader(CARD_STYLE),
+      createTopSection(templateData, this.t?.bind(this)),
+      createControlsSection(
+        dehumEntitiesAvailable,
+        config,
+        this.t?.bind(this)
+      ), // Pass availability flag and config
+      createCardFooter(),
+    ].join('');
+
+    container.innerHTML = cardHtml;
+
+    // Attach event listeners for normal mode
+    this.attachNormalModeListeners();
   }
 
   // ========== OVERRIDE OPTIONAL METHODS ==========
@@ -392,56 +523,6 @@ class HvacFanCard extends RamsesBaseCard {
     `;
   }
 
-  /**
-   * Render settings mode (parameter edit view).
-   *
-   * Fetches parameter schema (if needed), builds a view-model for the template,
-   * and re-attaches listeners.
-   *
-   * @returns {Promise<void>}
-   */
-  async renderParameterEditMode() {
-    // Save scroll position before re-rendering
-    const scrollContainer = this.shadowRoot?.querySelector('.param-list');
-    const scrollTop = scrollContainer?.scrollTop || 0;
-
-    // Ensure we have the parameter schema
-    if (!this.parameterSchema) {
-      this.parameterSchema = await this.fetchParameterSchema();
-    }
-
-    // Get available parameters based on entity existence
-    this.availableParams = this.getAvailableParameters();
-
-    const humidityControlEntities = this._getHumidityControlEntities();
-    const parameterItems = this._createParameterItems(this.availableParams);
-
-    const templateData = {
-      device_id: this.config.device_id,
-      humidityControlEntities,
-      parameterItems,
-      t: this.t?.bind(this),
-    };
-
-    // Generate HTML for parameter edit mode
-    const cardHtml = [
-      createCardHeader(CARD_STYLE),
-      this._createSensorSourcesPanel(), // Add sensor sources panel in settings
-      createParameterEditSection(templateData),
-      createCardFooter(),
-    ].join('');
-
-    this.shadowRoot.innerHTML = cardHtml;
-
-    // Restore scroll position after DOM update
-    const newScrollContainer = this.shadowRoot?.querySelector('.param-list');
-    if (newScrollContainer) {
-      newScrollContainer.scrollTop = scrollTop;
-    }
-
-    // Attach event listeners for parameter edit mode
-    this.attachParameterEditListeners();
-  }
 
   /**
    * Render normal mode (live dashboard).

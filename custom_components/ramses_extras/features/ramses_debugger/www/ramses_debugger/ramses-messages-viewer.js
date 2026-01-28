@@ -48,6 +48,7 @@ class RamsesMessagesViewer extends HTMLElement {
 
     this._knownDevicesOnly = false;
     this._knownDevices = new Set();
+    this._domInitialized = false;
   }
 
   set hass(hass) {
@@ -158,6 +159,65 @@ class RamsesMessagesViewer extends HTMLElement {
       return;
     }
 
+    if (!this._domInitialized) {
+      this._initializeDOM();
+      this._domInitialized = true;
+    }
+    this._updateDOM();
+  }
+
+  _initializeDOM() {
+    this.shadowRoot.innerHTML = `
+      <style>
+        .r-xtrs-msg-viewer-messages-table-wrapper { overflow-y: auto; max-height: 400px; }
+        .r-xtrs-msg-viewer-messages-table { width: 100%; border-collapse: collapse; }
+        .r-xtrs-msg-viewer-messages-table th, .r-xtrs-msg-viewer-messages-table td { border: 1px solid var(--divider-color); padding: 4px 6px; vertical-align: top; }
+        .r-xtrs-msg-viewer-messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; text-align: left; }
+        .r-xtrs-msg-viewer-messages-table td { font-family: monospace; font-size: 12px; user-select: text; -webkit-user-select: text; }
+        .r-xtrs-msg-viewer-messages-table td.r-xtrs-msg-viewer-col-payload { white-space: nowrap; }
+        .r-xtrs-msg-viewer-messages-table th.sortable { cursor: pointer; user-select: none; }
+        .r-xtrs-msg-viewer-messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
+        .r-xtrs-msg-viewer-messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .r-xtrs-msg-viewer-messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+        .r-xtrs-msg-viewer-dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, rgba(0,0,0,0.04)); }
+        .r-xtrs-msg-viewer-messages-verbs { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .r-xtrs-msg-viewer-messages-verb-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+        .r-xtrs-msg-viewer-messages-codes { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .r-xtrs-msg-viewer-messages-code-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+        .r-xtrs-msg-viewer-error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
+        .r-xtrs-msg-viewer-select-all-btn { cursor: pointer; margin-left: 8px; }
+      </style>
+      <div id="messagesHeader" class="r-xtrs-msg-viewer-messages-header"></div>
+      <div id="loadingMsg" class="r-xtrs-msg-viewer-muted" style="margin-top: 8px; display: none;"></div>
+      <div id="errorMsg" class="r-xtrs-msg-viewer-error" style="display: none;"></div>
+      <div class="r-xtrs-msg-viewer-messages-controls">
+        <label><input type="checkbox" id="messagesDecode"> Decode</label>
+        <label><input type="checkbox" id="knownDevicesToggle"> Known devices only</label>
+      </div>
+      <div id="pairFilters" style="margin-top: 8px;"></div>
+      <div id="codeFilters" style="margin-top: 8px;"></div>
+      <div id="verbFilters"></div>
+      <div class="r-xtrs-msg-viewer-messages-table-wrapper">
+        <table class="r-xtrs-msg-viewer-messages-table">
+          <thead>
+            <tr>
+              <th class="r-xtrs-msg-viewer-col-time r-xtrs-msg-viewer-sortable" data-sort="dtm" title="Timestamp (click to sort)">Time</th>
+              <th class="r-xtrs-msg-viewer-col-verb r-xtrs-msg-viewer-sortable" data-sort="verb" title="Verb (click to sort)">Verb</th>
+              <th class="r-xtrs-msg-viewer-col-code r-xtrs-msg-viewer-sortable" data-sort="code" title="Code (click to sort)">Code</th>
+              <th class="r-xtrs-msg-viewer-col-src r-xtrs-msg-viewer-sortable" data-sort="src" title="Source device (click to sort)">Src</th>
+              <th class="r-xtrs-msg-viewer-col-dst r-xtrs-msg-viewer-sortable" data-sort="dst" title="Destination device (click to sort)">Dst</th>
+              <th class="r-xtrs-msg-viewer-col-payload">Payload</th>
+            </tr>
+          </thead>
+          <tbody id="messagesTableBody"></tbody>
+        </table>
+      </div>
+    `;
+
+    this._attachEventListeners();
+  }
+
+  _updateDOM() {
     const prevWrapper = this.shadowRoot.querySelector('.r-xtrs-msg-viewer-messages-table-wrapper');
     const prevScrollTop = prevWrapper ? prevWrapper.scrollTop : 0;
     const prevScrollLeft = prevWrapper ? prevWrapper.scrollLeft : 0;
@@ -359,134 +419,166 @@ class RamsesMessagesViewer extends HTMLElement {
       return this._sortDir === 'asc' ? ' ▲' : ' ▼';
     };
 
-    const errorText = this._lastError
-      ? String(this._lastError?.message || this._lastError)
-      : '';
+    // Update messages header
+    const messagesHeader = this.shadowRoot.getElementById('messagesHeader');
+    if (messagesHeader) {
+      const sourceText = sorted.length && sorted[0].source ? ` (Source: <code>${sorted[0].source}</code>)` : '';
+      messagesHeader.innerHTML = `<strong>Messages (${sorted.length})</strong>${sourceText}`;
+    }
 
-    this.shadowRoot.innerHTML = `
-      <style>
-        .r-xtrs-msg-viewer-messages-table-wrapper { overflow-y: auto; max-height: 400px; } /* Increased for better dialog display */
-        .r-xtrs-msg-viewer-messages-table { width: 100%; border-collapse: collapse; }
-        .r-xtrs-msg-viewer-messages-table th, .r-xtrs-msg-viewer-messages-table td { border: 1px solid var(--divider-color); padding: 4px 6px; vertical-align: top; }
-        .r-xtrs-msg-viewer-messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; text-align: left; }
-        .r-xtrs-msg-viewer-messages-table td { font-family: monospace; font-size: 12px; user-select: text; -webkit-user-select: text; }
-        .r-xtrs-msg-viewer-messages-table td.r-xtrs-msg-viewer-col-payload { white-space: nowrap; }
-        .r-xtrs-msg-viewer-messages-table th.sortable { cursor: pointer; user-select: none; }
-        .r-xtrs-msg-viewer-messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
-        .r-xtrs-msg-viewer-messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .r-xtrs-msg-viewer-messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-        .r-xtrs-msg-viewer-dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, rgba(0,0,0,0.04)); }
-        .r-xtrs-msg-viewer-messages-verbs { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .r-xtrs-msg-viewer-messages-verb-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-        .r-xtrs-msg-viewer-messages-codes { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .r-xtrs-msg-viewer-messages-code-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-        .r-xtrs-msg-viewer-error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
-      </style>
-      <div class="r-xtrs-msg-viewer-messages-header">
-        <strong>Messages (${sorted.length})</strong>
-        ${sorted.length && sorted[0].source ? ` (Source: <code>${sorted[0].source}</code>)` : ''}
-      </div>
-      ${this._loading ? `<div class="r-xtrs-msg-viewer-muted" style="margin-top: 8px;">Loading...</div>` : ''}
-      ${errorText ? `<div class="r-xtrs-msg-viewer-error">${errorText}</div>` : ''}
-      <div class="r-xtrs-msg-viewer-messages-controls">
-        <label><input type="checkbox" id="messagesDecode" ${this._decode ? 'checked' : ''}> Decode</label>
-        <label><input type="checkbox" id="knownDevicesToggle" ${this._knownDevicesOnly ? 'checked' : ''}> Known devices only</label>
-      </div>
-      ${pairGroups.length ? `
-        <div style="margin-top: 8px;">
-          <strong>Device Pairs:</strong>
-          <button class="r-xtrs-msg-viewer-select-all-btn" id="selectAllPairs">Select All</button>
-          <button class="r-xtrs-msg-viewer-select-all-btn" id="deselectAllPairs">Deselect All</button>
-        </div>
-        <div class="r-xtrs-msg-viewer-messages-selected">
-          ${pairGroups.map(({ src, dst, key }) => {
-            const checked = this._activePairs.has(key);
-            return `
-              <span class="r-xtrs-msg-viewer-messages-chip">
-                <input type="checkbox" class="r-xtrs-msg-viewer-pair-toggle" data-pair="${key}" ${checked ? 'checked' : ''} />
-                <span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${deviceBg(src)};">${src || ''}</span>
-                →
-                <span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${deviceBg(dst)};">${dst || ''}</span>
-              </span>
-            `;
-          }).join('')}
-        </div>
-      ` : ''}
-      ${availableCodes.size ? `
-        <div style="margin-top: 8px;">
-          <strong>Codes:</strong>
-          <button class="r-xtrs-msg-viewer-select-all-btn" id="selectAllCodes">Select All</button>
-          <button class="r-xtrs-msg-viewer-select-all-btn" id="deselectAllCodes">Deselect All</button>
-        </div>
-        <div class="r-xtrs-msg-viewer-messages-codes">
-          ${[...availableCodes].sort().map((code) => {
-            const checked = this._activeCodes.has(code);
-            return `
-              <span class="r-xtrs-msg-viewer-messages-code-chip">
-                <input type="checkbox" class="r-xtrs-msg-viewer-code-toggle" data-code="${code}" ${checked ? 'checked' : ''} />
-                <span>${code}</span>
-              </span>
-            `;
-          }).join('')}
-        </div>
-      ` : ''}
-      ${availableVerbs.size ? `
-        <div class="r-xtrs-msg-viewer-messages-verbs">
-          ${[...availableVerbs].sort().map((verb) => {
-            const checked = this._activeVerbs.has(verb);
-            return `
-              <span class="r-xtrs-msg-viewer-messages-verb-chip">
-                <input type="checkbox" class="r-xtrs-msg-viewer-verb-toggle" data-verb="${verb}" ${checked ? 'checked' : ''} />
-                <span>${verb}</span>
-              </span>
-            `;
-          }).join('')}
-        </div>
-      ` : ''}
-      <div class="r-xtrs-msg-viewer-messages-table-wrapper">
-        <table class="r-xtrs-msg-viewer-messages-table">
-          <thead>
-            <tr>
-              <th class="r-xtrs-msg-viewer-col-time r-xtrs-msg-viewer-sortable" data-sort="dtm" title="Timestamp (click to sort)">Time${sortArrow('dtm')}</th>
-              <th class="r-xtrs-msg-viewer-col-verb r-xtrs-msg-viewer-sortable" data-sort="verb" title="Verb (click to sort)">Verb${sortArrow('verb')}</th>
-              <th class="r-xtrs-msg-viewer-col-code r-xtrs-msg-viewer-sortable" data-sort="code" title="Code (click to sort)">Code${sortArrow('code')}</th>
-              <th class="r-xtrs-msg-viewer-col-src r-xtrs-msg-viewer-sortable" data-sort="src" title="Source device (click to sort)">Src${sortArrow('src')}</th>
-              <th class="r-xtrs-msg-viewer-col-dst r-xtrs-msg-viewer-sortable" data-sort="dst" title="Destination device (click to sort)">Dst${sortArrow('dst')}</th>
-              <th class="r-xtrs-msg-viewer-col-bcast r-xtrs-msg-viewer-sortable" data-sort="broadcast" title="Broadcast/via device (click to sort)">Broadcast${sortArrow('broadcast')}</th>
-              <th class="r-xtrs-msg-viewer-col-payload r-xtrs-msg-viewer-sortable" data-sort="payload" title="Payload (click to sort)">Payload${sortArrow('payload')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${sorted.map((msg) => {
-              const payload = msg.__payloadStr || '';
-              const dstDisplay = msg.__dstDisplay || '';
-              const viaDisplay = msg.__viaDisplay || '';
-              const srcBg = deviceBg(msg.src);
-              const dstBg = (dstDisplay === '--:------') ? 'rgba(0,0,0,0.04)' : deviceBg(dstDisplay);
-              const viaBg = viaDisplay ? deviceBg(viaDisplay) : '';
+    // Update loading message
+    const loadingMsg = this.shadowRoot.getElementById('loadingMsg');
+    if (loadingMsg) {
+      if (this._loading) {
+        loadingMsg.textContent = 'Loading...';
+        loadingMsg.style.display = '';
+      } else {
+        loadingMsg.style.display = 'none';
+      }
+    }
+
+    // Update error message
+    const errorMsg = this.shadowRoot.getElementById('errorMsg');
+    if (errorMsg) {
+      if (this._lastError) {
+        errorMsg.textContent = String(this._lastError?.message || this._lastError);
+        errorMsg.style.display = '';
+      } else {
+        errorMsg.style.display = 'none';
+      }
+    }
+
+    // Update decode checkbox
+    const decodeCb = this.shadowRoot.getElementById('messagesDecode');
+    if (decodeCb) {
+      decodeCb.checked = this._decode;
+    }
+
+    // Update known devices checkbox
+    const knownDevicesCb = this.shadowRoot.getElementById('knownDevicesToggle');
+    if (knownDevicesCb) {
+      knownDevicesCb.checked = this._knownDevicesOnly;
+    }
+
+    // Update pair filters
+    const pairFilters = this.shadowRoot.getElementById('pairFilters');
+    if (pairFilters) {
+      if (pairGroups.length) {
+        pairFilters.innerHTML = `
+          <div>
+            <strong>Device Pairs:</strong>
+            <button class="r-xtrs-msg-viewer-select-all-btn" id="selectAllPairs">Select All</button>
+            <button class="r-xtrs-msg-viewer-select-all-btn" id="deselectAllPairs">Deselect All</button>
+          </div>
+          <div class="r-xtrs-msg-viewer-messages-selected">
+            ${pairGroups.map(({ src, dst, key }) => {
+              const checked = this._activePairs.has(key);
               return `
-                <tr>
-                  <td class="r-xtrs-msg-viewer-col-time">${msg.dtm || ''}</td>
-                  <td class="r-xtrs-msg-viewer-col-verb">${msg.verb || ''}</td>
-                  <td class="r-xtrs-msg-viewer-col-code">${msg.code || ''}</td>
-                  <td class="r-xtrs-msg-viewer-col-src"><span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${srcBg};">${msg.src || ''}</span></td>
-                  <td class="r-xtrs-msg-viewer-col-dst"><span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${dstBg};">${dstDisplay}</span></td>
-                  <td class="r-xtrs-msg-viewer-col-bcast">${viaDisplay ? `<span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${viaBg};">${viaDisplay}</span>` : ''}</td>
-                  <td class="r-xtrs-msg-viewer-col-payload">${payload}</td>
-                </tr>
+                <span class="r-xtrs-msg-viewer-messages-chip">
+                  <input type="checkbox" class="r-xtrs-msg-viewer-pair-toggle" data-pair="${key}" ${checked ? 'checked' : ''} />
+                  <span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${deviceBg(src)};">${src || ''}</span>
+                  →
+                  <span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${deviceBg(dst)};">${dst || ''}</span>
+                </span>
               `;
             }).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
+          </div>
+        `;
+      } else {
+        pairFilters.innerHTML = '';
+      }
+    }
 
+    // Update code filters
+    const codeFilters = this.shadowRoot.getElementById('codeFilters');
+    if (codeFilters) {
+      if (availableCodes.size) {
+        codeFilters.innerHTML = `
+          <div>
+            <strong>Codes:</strong>
+            <button class="r-xtrs-msg-viewer-select-all-btn" id="selectAllCodes">Select All</button>
+            <button class="r-xtrs-msg-viewer-select-all-btn" id="deselectAllCodes">Deselect All</button>
+          </div>
+          <div class="r-xtrs-msg-viewer-messages-codes">
+            ${[...availableCodes].sort().map((code) => {
+              const checked = this._activeCodes.has(code);
+              return `
+                <span class="r-xtrs-msg-viewer-messages-code-chip">
+                  <input type="checkbox" class="r-xtrs-msg-viewer-code-toggle" data-code="${code}" ${checked ? 'checked' : ''} />
+                  <span>${code}</span>
+                </span>
+              `;
+            }).join('')}
+          </div>
+        `;
+      } else {
+        codeFilters.innerHTML = '';
+      }
+    }
+
+    // Update verb filters
+    const verbFilters = this.shadowRoot.getElementById('verbFilters');
+    if (verbFilters) {
+      if (availableVerbs.size) {
+        verbFilters.innerHTML = `
+          <div class="r-xtrs-msg-viewer-messages-verbs">
+            ${[...availableVerbs].sort().map((verb) => {
+              const checked = this._activeVerbs.has(verb);
+              return `
+                <span class="r-xtrs-msg-viewer-messages-verb-chip">
+                  <input type="checkbox" class="r-xtrs-msg-viewer-verb-toggle" data-verb="${verb}" ${checked ? 'checked' : ''} />
+                  <span>${verb}</span>
+                </span>
+              `;
+            }).join('')}
+          </div>
+        `;
+      } else {
+        verbFilters.innerHTML = '';
+      }
+    }
+
+    // Update table headers with sort arrows
+    const headers = this.shadowRoot.querySelectorAll('.r-xtrs-msg-viewer-sortable');
+    headers.forEach(th => {
+      const key = th.getAttribute('data-sort');
+      const baseText = th.textContent.replace(/ [▲▼]$/, '');
+      th.textContent = baseText + sortArrow(key);
+    });
+
+    // Update table body
+    const tbody = this.shadowRoot.getElementById('messagesTableBody');
+    if (tbody) {
+      tbody.innerHTML = sorted.map((msg) => {
+        const payload = msg.__payloadStr || '';
+        const dstDisplay = msg.__dstDisplay || '';
+        const viaDisplay = msg.__viaDisplay || '';
+        const srcBg = deviceBg(msg.src);
+        const dstBg = (dstDisplay === '--:------') ? 'rgba(0,0,0,0.04)' : deviceBg(dstDisplay);
+        const viaBg = viaDisplay ? deviceBg(viaDisplay) : '';
+        return `
+          <tr>
+            <td class="r-xtrs-msg-viewer-col-time">${msg.dtm || ''}</td>
+            <td class="r-xtrs-msg-viewer-col-verb">${msg.verb || ''}</td>
+            <td class="r-xtrs-msg-viewer-col-code">${msg.code || ''}</td>
+            <td class="r-xtrs-msg-viewer-col-src"><span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${srcBg};">${msg.src || ''}</span></td>
+            <td class="r-xtrs-msg-viewer-col-dst"><span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${dstBg};">${dstDisplay}</span></td>
+            <td class="r-xtrs-msg-viewer-col-payload">${payload}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Restore scroll position
     const wrapper = this.shadowRoot.querySelector('.r-xtrs-msg-viewer-messages-table-wrapper');
     if (wrapper) {
       wrapper.scrollTop = prevScrollTop;
       wrapper.scrollLeft = prevScrollLeft;
     }
+  }
 
+  _attachEventListeners() {
+    // Sort header clicks
     const thead = this.shadowRoot.querySelector('thead');
     if (thead) {
       thead.onclick = (ev) => {
@@ -498,106 +590,115 @@ class RamsesMessagesViewer extends HTMLElement {
       };
     }
 
+    // Decode checkbox
     const decodeCb = this.shadowRoot.querySelector('#messagesDecode');
     if (decodeCb) {
       decodeCb.onchange = (ev) => {
         this._decode = Boolean(ev?.target?.checked);
-        void this.refresh();
+        this.render();
       };
     }
 
-    this.shadowRoot.querySelectorAll('.pair-toggle').forEach((toggle) => {
-      toggle.onchange = (ev) => {
-        const key = ev?.target?.getAttribute?.('data-pair');
-        if (!key) return;
-        this._pairFilterTouched = true;
-        if (ev?.target?.checked) {
-          this._activePairs.add(key);
-        } else {
-          this._activePairs.delete(key);
-        }
-        this.render();
-      };
-    });
-
-    this.shadowRoot.querySelectorAll('.verb-toggle').forEach((toggle) => {
-      toggle.onchange = (ev) => {
-        const verb = ev?.target?.getAttribute?.('data-verb');
-        if (!verb) return;
-        this._verbFilterTouched = true;
-        if (ev?.target?.checked) {
-          this._activeVerbs.add(verb);
-        } else {
-          this._activeVerbs.delete(verb);
-        }
-        this.render();
-      };
-    });
-
-    this.shadowRoot.querySelectorAll('.code-toggle').forEach((toggle) => {
-      toggle.onchange = (ev) => {
-        const code = ev?.target?.getAttribute?.('data-code');
-        if (!code) return;
-        this._codeFilterTouched = true;
-        if (ev?.target?.checked) {
-          this._activeCodes.add(code);
-        } else {
-          this._activeCodes.delete(code);
-        }
-        this.render();
-      };
-    });
-
+    // Known devices checkbox
     const knownDevicesCb = this.shadowRoot.querySelector('#knownDevicesToggle');
     if (knownDevicesCb) {
       knownDevicesCb.onchange = (ev) => {
         this._knownDevicesOnly = Boolean(ev?.target?.checked);
-        void this.refresh();
+        this.render();
       };
     }
 
-    const selectAllPairsBtn = this.shadowRoot.querySelector('#selectAllPairs');
-    if (selectAllPairsBtn) {
-      selectAllPairsBtn.onclick = () => {
+    // Delegate pair/verb/code filter events
+    this.shadowRoot.addEventListener('change', (ev) => {
+      const target = ev.target;
+
+      if (target?.classList?.contains('r-xtrs-msg-viewer-pair-toggle')) {
+        const pair = target.getAttribute('data-pair');
+        if (target.checked) {
+          this._activePairs.add(pair);
+        } else {
+          this._activePairs.delete(pair);
+        }
         this._pairFilterTouched = true;
-        this._activePairs = new Set(pairGroups.map((p) => p.key));
         this.render();
-      };
-    }
+      } else if (target?.classList?.contains('r-xtrs-msg-viewer-verb-toggle')) {
+        const verb = target.getAttribute('data-verb');
+        if (target.checked) {
+          this._activeVerbs.add(verb);
+        } else {
+          this._activeVerbs.delete(verb);
+        }
+        this._verbFilterTouched = true;
+        this.render();
+      } else if (target?.classList?.contains('r-xtrs-msg-viewer-code-toggle')) {
+        const code = target.getAttribute('data-code');
+        if (target.checked) {
+          this._activeCodes.add(code);
+        } else {
+          this._activeCodes.delete(code);
+        }
+        this._codeFilterTouched = true;
+        this.render();
+      }
+    });
 
-    const deselectAllPairsBtn = this.shadowRoot.querySelector('#deselectAllPairs');
-    if (deselectAllPairsBtn) {
-      deselectAllPairsBtn.onclick = () => {
+    // Select/deselect all buttons
+    this.shadowRoot.addEventListener('click', (ev) => {
+      const target = ev.target;
+
+      if (target?.id === 'selectAllPairs') {
+        const checkboxes = this.shadowRoot.querySelectorAll('.r-xtrs-msg-viewer-pair-toggle');
+        checkboxes.forEach(cb => {
+          cb.checked = true;
+          this._activePairs.add(cb.getAttribute('data-pair'));
+        });
         this._pairFilterTouched = true;
-        this._activePairs.clear();
         this.render();
-      };
-    }
-
-    const selectAllCodesBtn = this.shadowRoot.querySelector('#selectAllCodes');
-    if (selectAllCodesBtn) {
-      selectAllCodesBtn.onclick = () => {
+      } else if (target?.id === 'deselectAllPairs') {
+        const checkboxes = this.shadowRoot.querySelectorAll('.r-xtrs-msg-viewer-pair-toggle');
+        checkboxes.forEach(cb => {
+          cb.checked = false;
+          this._activePairs.delete(cb.getAttribute('data-pair'));
+        });
+        this._pairFilterTouched = true;
+        this.render();
+      } else if (target?.id === 'selectAllCodes') {
+        const checkboxes = this.shadowRoot.querySelectorAll('.r-xtrs-msg-viewer-code-toggle');
+        checkboxes.forEach(cb => {
+          cb.checked = true;
+          this._activeCodes.add(cb.getAttribute('data-code'));
+        });
         this._codeFilterTouched = true;
-        this._activeCodes = new Set(availableCodes);
         this.render();
-      };
-    }
-
-    const deselectAllCodesBtn = this.shadowRoot.querySelector('#deselectAllCodes');
-    if (deselectAllCodesBtn) {
-      deselectAllCodesBtn.onclick = () => {
+      } else if (target?.id === 'deselectAllCodes') {
+        const checkboxes = this.shadowRoot.querySelectorAll('.r-xtrs-msg-viewer-code-toggle');
+        checkboxes.forEach(cb => {
+          cb.checked = false;
+          this._activeCodes.delete(cb.getAttribute('data-code'));
+        });
         this._codeFilterTouched = true;
-        this._activeCodes.clear();
         this.render();
-      };
-    }
+      } else if (target?.id === 'selectAllVerbs') {
+        const checkboxes = this.shadowRoot.querySelectorAll('.r-xtrs-msg-viewer-verb-toggle');
+        checkboxes.forEach(cb => {
+          cb.checked = true;
+          this._activeVerbs.add(cb.getAttribute('data-verb'));
+        });
+        this._verbFilterTouched = true;
+        this.render();
+      } else if (target?.id === 'deselectAllVerbs') {
+        const checkboxes = this.shadowRoot.querySelectorAll('.r-xtrs-msg-viewer-verb-toggle');
+        checkboxes.forEach(cb => {
+          cb.checked = false;
+          this._activeVerbs.delete(cb.getAttribute('data-verb'));
+        });
+        this._verbFilterTouched = true;
+        this.render();
+      }
+    });
   }
 }
 
-if (!customElements.get('ramses-messages-viewer')) {
-  try {
-    customElements.define('ramses-messages-viewer', RamsesMessagesViewer);
-  } catch (error) {
-    logger.warn('Failed to register ramses-messages-viewer:', error);
-  }
-}
+customElements.define('ramses-messages-viewer', RamsesMessagesViewer);
+
+export default RamsesMessagesViewer;

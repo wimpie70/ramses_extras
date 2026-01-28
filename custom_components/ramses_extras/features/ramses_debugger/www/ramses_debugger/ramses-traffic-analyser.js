@@ -61,6 +61,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
     this._trafficSource = 'live';
     this._boundOnTrafficSourceChange = null;
+    this._domInitialized = false;
 
     this._messagesSortKey = 'dtm';
     this._messagesSortDir = 'asc';
@@ -542,78 +543,17 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   }
 
   _renderContentImpl() {
+    if (!this._domInitialized) {
+      this._initializeDOM();
+      this._domInitialized = true;
+    }
+    this._updateDOM();
+  }
+
+  _initializeDOM() {
     const title = this._config?.name || 'Ramses Traffic Analyser';
-    const deviceDisplay = this._config?.device_id ? this.getDeviceDisplayName() : '-';
-
-    const trafficSource = this._trafficSource || 'live';
-
     const width = this.offsetWidth || 0;
     const compact = width > 0 && width < 900;
-
-    const stats = this._stats;
-    const flows = Array.isArray(stats?.flows) ? stats.flows : [];
-    const totalCount = stats?.total_count;
-    const startedAt = stats?.started_at;
-
-    const resetDisabled = trafficSource !== 'live';
-
-    const errorText = this._lastError ? String(this._lastError?.message || this._lastError) : '';
-
-    const sortArrow = (key) => {
-      if (this._sortKey !== key) return '';
-      return this._sortDir === 'asc' ? ' ▲' : ' ▼';
-    };
-
-    const sortedFlows = this._sortFlows([...flows]);
-
-    this._flows = sortedFlows;
-
-    const rowsHtml = sortedFlows
-      .map((flow) => {
-        const src = flow?.src || '';
-        const dst = flow?.dst || '';
-        const count = flow?.count_total ?? '';
-        const lastSeen = flow?.last_seen || '';
-        const verbs = this._formatCounter(flow?.verbs);
-        const codes = this._formatCounter(flow?.codes);
-        const data = encodeURIComponent(JSON.stringify(flow));
-
-        const srcBg = this._deviceBg(src);
-        const dstBg = this._deviceBg(dst);
-
-        const srcAlias = this._deviceAlias(src);
-        const dstAlias = this._deviceAlias(dst);
-
-        const srcSlugLabel = this._deviceSlugLabel(src);
-        const dstSlugLabel = this._deviceSlugLabel(dst);
-
-        return `
-          <tr class="r-xtrs-traf-nlysr-flow-row" data-flow="${data}">
-            <td class="r-xtrs-traf-nlysr-select-cell">
-              <input type="checkbox" class="r-xtrs-traf-nlysr-row-select" data-src="${src}" data-dst="${dst}" ${this._checkedRows.get(`${src}|${dst}`) ? 'checked' : ''}>
-            </td>
-            <td class="r-xtrs-traf-nlysr-device-cell" style="--dev-bg: ${srcBg};" title="Source device">
-              <div class="r-xtrs-traf-nlysr-dev">
-                <span class="r-xtrs-traf-nlysr-id">${src}</span>
-                ${srcAlias ? `<span class="r-xtrs-traf-nlysr-alias">${srcAlias}</span>` : ''}
-                ${srcSlugLabel ? `<span class="r-xtrs-traf-nlysr-slug">${srcSlugLabel}</span>` : ''}
-              </div>
-            </td>
-            <td class="r-xtrs-traf-nlysr-device-cell" style="--dev-bg: ${dstBg};" title="Destination device">
-              <div class="r-xtrs-traf-nlysr-dev">
-                <span class="r-xtrs-traf-nlysr-id">${dst}</span>
-                ${dstAlias ? `<span class="r-xtrs-traf-nlysr-alias">${dstAlias}</span>` : ''}
-                ${dstSlugLabel ? `<span class="r-xtrs-traf-nlysr-slug">${dstSlugLabel}</span>` : ''}
-              </div>
-            </td>
-            <td class="r-xtrs-traf-nlysr-verbs" title="Verbs observed for this flow">${verbs}</td>
-            <td class="r-xtrs-traf-nlysr-codes" title="Codes observed for this flow">${codes}</td>
-            <td style="text-align: right;">${count}</td>
-            <td>${lastSeen}</td>
-          </tr>
-        `;
-      })
-      .join('');
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -622,42 +562,42 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       <ha-card header="${title}">
         <div class="r-xtrs-traf-nlysr-card-content">
           <div class="r-xtrs-traf-nlysr-meta">
-            <div><strong>Device</strong>: ${deviceDisplay}</div>
+            <div><strong>Device</strong>: <span id="deviceDisplay">-</span></div>
             <div>
               <strong>Source</strong>:
               <select id="r-xtrs-traf-nlysr-trafficSource" title="Select traffic source">
-                <option value="live" ${trafficSource === 'live' ? 'selected' : ''}>live</option>
-                <option value="packet_log" ${trafficSource === 'packet_log' ? 'selected' : ''}>packet_log</option>
-                <option value="ha_log" ${trafficSource === 'ha_log' ? 'selected' : ''}>ha_log</option>
+                <option value="live">live</option>
+                <option value="packet_log">packet_log</option>
+                <option value="ha_log">ha_log</option>
               </select>
             </div>
-            <div><strong>Total</strong>: ${typeof totalCount === 'number' ? totalCount : '-'}</div>
-            <div><strong>Flows</strong>: ${flows.length}</div>
-            <div><strong>Since</strong>: ${startedAt || '-'}</div>
+            <div><strong>Total</strong>: <span id="totalCount">-</span></div>
+            <div><strong>Flows</strong>: <span id="flowsCount">0</span></div>
+            <div><strong>Since</strong>: <span id="startedAt">-</span></div>
             <div style="margin-left:auto; display: flex; gap: 8px;">
               <button id="r-xtrs-traf-nlysr-bulkLogs" title="Copy selected flows to clipboard">Copy selection</button>
               <button id="r-xtrs-traf-nlysr-bulkMessages" title="List raw messages for selected flows">Messages</button>
-              <button id="r-xtrs-traf-nlysr-resetStats" title="Reset the traffic counters" ${resetDisabled ? 'disabled' : ''}>Reset</button>
+              <button id="r-xtrs-traf-nlysr-resetStats" title="Reset the traffic counters">Reset</button>
             </div>
           </div>
 
-          ${errorText ? `<div class="r-xtrs-traf-nlysr-error">${errorText}</div>` : ''}
+          <div id="errorMsg" class="r-xtrs-traf-nlysr-error" style="display: none;"></div>
 
           <div class="r-xtrs-traf-nlysr-table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th class="r-xtrs-traf-nlysr-select-cell"><input type="checkbox" id="r-xtrs-traf-nlysr-selectAll" title="Select all flows" ${this._flows && this._flows.length && this._checkedRows.size === this._flows.length ? 'checked' : ''}></th>
-                  <th class="sortable" data-sort="src" title="Sort by source">src${sortArrow('src')}</th>
-                  <th class="sortable" data-sort="dst" title="Sort by destination">dst${sortArrow('dst')}</th>
+                  <th class="r-xtrs-traf-nlysr-select-cell"><input type="checkbox" id="r-xtrs-traf-nlysr-selectAll" title="Select all flows"></th>
+                  <th class="sortable" data-sort="src" title="Sort by source">src</th>
+                  <th class="sortable" data-sort="dst" title="Sort by destination">dst</th>
                   <th title="Verbs observed for this flow">verbs</th>
                   <th title="Codes observed for this flow">codes</th>
-                  <th class="sortable" data-sort="count_total" title="Sort by total count" style="text-align: right;">count${sortArrow('count_total')}</th>
-                  <th class="sortable" data-sort="last_seen" title="Sort by last seen">last_seen${sortArrow('last_seen')}</th>
+                  <th class="sortable" data-sort="count_total" title="Sort by total count" style="text-align: right;">count</th>
+                  <th class="sortable" data-sort="last_seen" title="Sort by last seen">last_seen</th>
                 </tr>
               </thead>
-              <tbody>
-                ${rowsHtml || '<tr><td colspan="7">No data</td></tr>'}
+              <tbody id="flowsTableBody">
+                <tr><td colspan="7">No data</td></tr>
               </tbody>
             </table>
           </div>
@@ -686,6 +626,128 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     `;
 
     this._attachEventListeners();
+  }
+
+  _updateDOM() {
+    const deviceDisplay = this._config?.device_id ? this.getDeviceDisplayName() : '-';
+    const trafficSource = this._trafficSource || 'live';
+    const stats = this._stats;
+    const flows = Array.isArray(stats?.flows) ? stats.flows : [];
+    const totalCount = stats?.total_count;
+    const startedAt = stats?.started_at;
+    const resetDisabled = trafficSource !== 'live';
+    const errorText = this._lastError ? String(this._lastError?.message || this._lastError) : '';
+
+    const sortArrow = (key) => {
+      if (this._sortKey !== key) return '';
+      return this._sortDir === 'asc' ? ' ▲' : ' ▼';
+    };
+
+    const sortedFlows = this._sortFlows([...flows]);
+    this._flows = sortedFlows;
+
+    // Update device display
+    const deviceDisplayEl = this.shadowRoot.getElementById('deviceDisplay');
+    if (deviceDisplayEl) {
+      deviceDisplayEl.textContent = deviceDisplay;
+    }
+
+    // Update traffic source select
+    const trafficSourceEl = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-trafficSource');
+    if (trafficSourceEl) {
+      trafficSourceEl.value = trafficSource;
+    }
+
+    // Update stats
+    const totalCountEl = this.shadowRoot.getElementById('totalCount');
+    if (totalCountEl) {
+      totalCountEl.textContent = typeof totalCount === 'number' ? totalCount : '-';
+    }
+
+    const flowsCountEl = this.shadowRoot.getElementById('flowsCount');
+    if (flowsCountEl) {
+      flowsCountEl.textContent = flows.length;
+    }
+
+    const startedAtEl = this.shadowRoot.getElementById('startedAt');
+    if (startedAtEl) {
+      startedAtEl.textContent = startedAt || '-';
+    }
+
+    // Update reset button state
+    const resetBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-resetStats');
+    if (resetBtn) {
+      resetBtn.disabled = resetDisabled;
+    }
+
+    // Update error message
+    const errorMsgEl = this.shadowRoot.getElementById('errorMsg');
+    if (errorMsgEl) {
+      if (errorText) {
+        errorMsgEl.textContent = errorText;
+        errorMsgEl.style.display = '';
+      } else {
+        errorMsgEl.style.display = 'none';
+      }
+    }
+
+    // Update table headers with sort arrows
+    const headers = this.shadowRoot.querySelectorAll('.sortable');
+    headers.forEach(th => {
+      const key = th.getAttribute('data-sort');
+      const baseText = th.textContent.replace(/ [▲▼]$/, '');
+      th.textContent = baseText + sortArrow(key);
+    });
+
+    // Update select all checkbox
+    const selectAllEl = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-selectAll');
+    if (selectAllEl) {
+      selectAllEl.checked = this._flows && this._flows.length && this._checkedRows.size === this._flows.length;
+    }
+
+    // Update table body
+    const tbody = this.shadowRoot.getElementById('flowsTableBody');
+    if (tbody) {
+      if (sortedFlows.length) {
+        tbody.innerHTML = sortedFlows.map((flow) => {
+          const src = flow?.src || '';
+          const dst = flow?.dst || '';
+          const count = flow?.count_total ?? '';
+          const lastSeen = flow?.last_seen || '';
+          const verbs = this._formatCounter(flow?.verbs);
+          const codes = this._formatCounter(flow?.codes);
+          const data = encodeURIComponent(JSON.stringify(flow));
+
+          const srcBg = this._deviceBg(src);
+          const dstBg = this._deviceBg(dst);
+
+          const srcAlias = this._deviceAlias(src);
+          const dstAlias = this._deviceAlias(dst);
+
+          const checked = this._checkedRows.has(`${src}|${dst}`);
+
+          return `
+            <tr data-src="${src}" data-dst="${dst}" data-data="${data}">
+              <td class="r-xtrs-traf-nlysr-select-cell">
+                <input type="checkbox" class="row-checkbox" data-src="${src}" data-dst="${dst}" ${checked ? 'checked' : ''} />
+              </td>
+              <td class="r-xtrs-traf-nlysr-src-cell">
+                <span class="r-xtrs-traf-nlysr-dev" style="--dev-bg: ${srcBg};">${srcAlias}</span>
+              </td>
+              <td class="r-xtrs-traf-nlysr-dst-cell">
+                <span class="r-xtrs-traf-nlysr-dev" style="--dev-bg: ${dstBg};">${dstAlias}</span>
+              </td>
+              <td class="r-xtrs-traf-nlysr-verbs-cell">${verbs}</td>
+              <td class="r-xtrs-traf-nlysr-codes-cell">${codes}</td>
+              <td class="r-xtrs-traf-nlysr-count-cell" style="text-align: right;">${count}</td>
+              <td class="r-xtrs-traf-nlysr-last-seen-cell">${lastSeen}</td>
+            </tr>
+          `;
+        }).join('');
+      } else {
+        tbody.innerHTML = '<tr><td colspan="7">No data</td></tr>';
+      }
+    }
   }
 
   _getSelectedFlows() {
