@@ -49,6 +49,3 @@ console.table({
   debug: window.ramsesExtras.debug,
   features: Object.keys(window.ramsesExtras.features || {})
 })
-
-
-Hvac card was using full <body> element instead of <ha-card> but maybe this was better for the 'losing focus/window position' ???

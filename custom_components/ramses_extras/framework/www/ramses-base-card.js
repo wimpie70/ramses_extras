@@ -1572,45 +1572,30 @@ export class RamsesBaseCard extends HTMLElement {
   }
 
   /**
-   * Automatically inject version mismatch banner into rendered card
-   * This is called after _renderContent() to prepend the banner if needed
-   * Checks if banner exists in DOM since _renderContent() wipes shadowRoot.innerHTML
+   * Inject version mismatch banner into card if needed
+   * Called after _renderContent() which wipes shadowRoot.innerHTML
    * @private
    */
   _injectVersionBanner() {
     const hasMismatch = Boolean(window.ramsesExtras?._versionMismatch);
+    const haCard = this.shadowRoot?.querySelector('ha-card');
 
-    // All cards now use ha-card element as standard
-    const targetElement = this.shadowRoot?.querySelector('ha-card');
+    if (!haCard) return;
 
-    if (!targetElement) {
-      // Debug: Log when ha-card is not found
-      if (hasMismatch) {
-        console.warn(`${this.constructor.name}: Cannot inject version banner - no ha-card element found`);
-        console.log(`${this.constructor.name}: shadowRoot children:`, Array.from(this.shadowRoot?.children || []).map(el => el.tagName));
-      }
-      return; // No target element to inject into
-    }
-
-    // Check if banner already exists in the DOM
-    const existingBanner = targetElement.querySelector('[style*="background: #ff9800"]');
+    const existingBanner = haCard.querySelector('.version-mismatch-banner');
 
     if (hasMismatch && !existingBanner) {
-      // Mismatch exists but no banner in DOM - inject it
       const banner = getVersionMismatchBanner();
       if (banner) {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = banner;
         const bannerElement = tempDiv.firstElementChild;
         if (bannerElement) {
-          targetElement.insertBefore(bannerElement, targetElement.firstChild);
-          console.log(`✅ ${this.constructor.name}: Version mismatch banner injected into ${targetElement.tagName}`);
+          haCard.insertBefore(bannerElement, haCard.firstChild);
         }
       }
     } else if (!hasMismatch && existingBanner) {
-      // No mismatch but banner exists - remove it
       existingBanner.remove();
-      console.log(`✅ ${this.constructor.name}: Version mismatch banner removed`);
     }
   }
 

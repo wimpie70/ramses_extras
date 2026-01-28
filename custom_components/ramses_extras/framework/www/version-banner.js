@@ -16,7 +16,7 @@ export function getVersionMismatchBanner() {
   }
 
   return `
-    <div style="background: #ff9800; color: #000; padding: 12px; margin: 8px; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+    <div class="version-mismatch-banner" style="background: #ff9800; color: #000; padding: 12px; margin: 8px; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
       <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
         <ha-icon icon="mdi:alert" style="color: #000; --mdc-icon-size: 24px;"></ha-icon>
         <div style="flex: 1;">
