@@ -144,36 +144,36 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       .map((line, idx) => {
         let html = this._escapeHtml(line);
         if (re) {
-          html = html.replace(re, (m) => `<span class="hl-match">${this._escapeHtml(m)}</span>`);
+          html = html.replace(re, (m) => `<span class="r-xtrs-log-xp-hl-match">${this._escapeHtml(m)}</span>`);
         }
 
-        html = html.replace(/\[[a-z0-9_.:-]+\]/i, (m) => `<span class="hl-source">${m}</span>`);
+        html = html.replace(/\[[a-z0-9_.:-]+\]/i, (m) => `<span class="r-xtrs-log-xp-hl-source">${m}</span>`);
         html = html.replace(/\b\d{2}:\d{6}\b/g, (m) => {
           const bg = this._deviceBg(m);
-          return `<span class="hl-id" style="--dev-bg: ${bg};">${m}</span>`;
+          return `<span class="r-xtrs-log-xp-hl-id" style="--dev-bg: ${bg};">${m}</span>`;
         });
 
         const classes = [];
         const level = String(line).match(/\b(error|warning|critical)\b/i);
         const lvl = typeof level?.[1] === 'string' ? level[1].toUpperCase() : '';
         if (lvl === 'ERROR' || lvl === 'CRITICAL') {
-          classes.push('hl-error');
+          classes.push('r-xtrs-log-xp-hl-error');
         } else if (lvl === 'WARNING') {
-          classes.push('hl-warning');
+          classes.push('r-xtrs-log-xp-hl-warning');
         }
 
         if (tbFlags[idx]) {
-          classes.push('hl-traceback');
+          classes.push('r-xtrs-log-xp-hl-traceback');
           if (isTracebackHeader(line)) {
-            classes.push('hl-traceback-header');
+            classes.push('r-xtrs-log-xp-hl-traceback-header');
           }
           if (String(line || '').startsWith('  File ')) {
-            classes.push('hl-traceback-file');
+            classes.push('r-xtrs-log-xp-hl-traceback-file');
           }
         }
 
         if (classes.length) {
-          return `<span class="hl-line ${classes.join(' ')}">${html}</span>`;
+          return `<span class="r-xtrs-log-xp-hl-line ${classes.join(' ')}">${html}</span>`;
         }
         return html;
       })
@@ -533,7 +533,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     if (!blockElement) return;
 
     // Show loading state
-    const button = blockElement.querySelector(direction === 'before' ? '.expand-before' : '.expand-after');
+    const button = blockElement.querySelector(direction === 'before' ? '.r-xtrs-log-xp-expand-before' : '.r-xtrs-log-xp-expand-after');
     const originalText = button.textContent;
     button.textContent = 'Loading...';
     button.disabled = true;
@@ -595,14 +595,14 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     const blockElement = this.shadowRoot.querySelector(`[data-block-index="${blockIndex}"]`);
     if (!blockElement) return;
 
-    const preElement = blockElement.querySelector('.result-pre');
+    const preElement = blockElement.querySelector('.r-xtrs-log-xp-result-pre');
     if (!preElement) return;
 
     // Create new line elements with numbers and highlighting
     const newLineElements = newLines.map((line, idx) => {
       const lineNumber = startLineNumber + idx;
       const highlightedLine = this._renderHighlightedLog(String(line), this._searchQuery);
-      return `<div class="line" data-line="${lineNumber}">${highlightedLine}</div>`;
+      return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
     }).join('');
 
     if (direction === 'before') {
@@ -610,7 +610,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       preElement.insertAdjacentHTML('afterbegin', newLineElements);
 
       // Update the start line in the header
-      const headerSpan = blockElement.querySelector('.result-header .muted');
+      const headerSpan = blockElement.querySelector('.r-xtrs-log-xp-result-header .r-xtrs-log-xp-muted');
       const currentEndLine = this._searchResult.blocks[blockIndex].end_line;
       headerSpan.textContent = `Lines ${startLineNumber}-${currentEndLine}`;
 
@@ -622,7 +622,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       preElement.insertAdjacentHTML('beforeend', newLineElements);
 
       // Update the end line in the header
-      const headerSpan = blockElement.querySelector('.result-header .muted');
+      const headerSpan = blockElement.querySelector('.r-xtrs-log-xp-result-header .r-xtrs-log-xp-muted');
       const currentStartLine = this._searchResult.blocks[blockIndex].start_line;
       const newEndLine = startLineNumber + newLines.length - 1;
       headerSpan.textContent = `Lines ${currentStartLine}-${newEndLine}`;
@@ -633,7 +633,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
 
     // Re-enable the button
-    const button = blockElement.querySelector(direction === 'before' ? '.expand-before' : '.expand-after');
+    const button = blockElement.querySelector(direction === 'before' ? '.r-xtrs-log-xp-expand-before' : '.r-xtrs-log-xp-expand-after');
     button.textContent = originalText;
     button.disabled = false;
   }
@@ -678,9 +678,9 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       tailHtml = tailLines.map((line, idx) => {
         const lineNumber = this._tailStartLine + idx;
         const highlightedLine = this._renderHighlightedLog(line, this._searchQuery);
-        return `<div class="line" data-line="${lineNumber}">${highlightedLine}</div>`;
+        return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
       }).join('');
-      tailHtml = `<div class="line-numbers">${tailHtml}</div>`;
+      tailHtml = `<div class="r-xtrs-log-xp-line-numbers">${tailHtml}</div>`;
     } else {
       tailHtml = this._renderHighlightedLog(this._tailText, this._searchQuery);
     }
@@ -699,21 +699,21 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
           const linesWithNumbers = lines.map((line, lineIdx) => {
             const lineNumber = startLine + lineIdx;
             const highlightedLine = this._renderHighlightedLog(String(line), this._searchQuery);
-            return `<div class="line" data-line="${lineNumber}">${highlightedLine}</div>`;
+            return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
           }).join('');
 
-          const sep = idx < blocks.length - 1 ? '<div class="separator"></div>' : '';
+          const sep = idx < blocks.length - 1 ? '<div class="r-xtrs-log-xp-separator"></div>' : '';
 
           return `
-            <div class="result-block" data-block-index="${idx}" data-start-line="${startLine}" data-end-line="${endLine}">
-              <div class="result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span class="muted">Lines ${startLine}-${endLine}</span>
-                <div class="result-controls" style="display: flex; gap: 4px;">
-                  <button class="expand-before" data-block="${idx}" title="Add 10 lines before this block">+10 lines up</button>
-                  <button class="expand-after" data-block="${idx}" title="Add 10 lines after this block">-10 lines down</button>
+            <div class="r-xtrs-log-xp-result-block" data-block-index="${idx}" data-start-line="${startLine}" data-end-line="${endLine}">
+              <div class="r-xtrs-log-xp-result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="r-xtrs-log-xp-muted">Lines ${startLine}-${endLine}</span>
+                <div class="r-xtrs-log-xp-result-controls" style="display: flex; gap: 4px;">
+                  <button class="r-xtrs-log-xp-expand-before" data-block="${idx}" title="Add 10 lines before this block">+10 lines up</button>
+                  <button class="r-xtrs-log-xp-expand-after" data-block="${idx}" title="Add 10 lines after this block">-10 lines down</button>
                 </div>
               </div>
-              <pre class="result-pre line-numbers">${linesWithNumbers}</pre>
+              <pre class="r-xtrs-log-xp-result-pre r-xtrs-log-xp-line-numbers">${linesWithNumbers}</pre>
             </div>${sep}
           `;
         })
@@ -732,8 +732,8 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         ${logExplorerCardStyle({ wrapCss })}
       </style>
       <ha-card header="${title}">
-        <div class="card-content">
-          <div class="row">
+        <div class="r-xtrs-log-xp-card-content">
+          <div class="r-xtrs-log-xp-row">
             <label>${this.t('card.log.files') || 'files'}:</label>
             <select id="fileSelect" title="Select which log file to view">${fileOptions}</select>
             <button id="refreshFiles" title="Reload the list of available log files">
@@ -755,15 +755,15 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               ${this.t('card.log.actions.wrap') || 'Wrap'}
             </label>
           </div>
-          <div class="muted" style="margin-top: 6px;">
+          <div class="r-xtrs-log-xp-muted" style="margin-top: 6px;">
             ${this._basePath ? `${this.t('card.log.base') || 'base'}: ${this._basePath}` : ''}
           </div>
 
-          ${this._loading ? `<div class="muted" style="margin-top: 8px;">${this.t('card.log.loading') || 'Loading...'}</div>` : ''}
-          ${errorText ? `<div class="error">${errorText}</div>` : ''}
+          ${this._loading ? `<div class="r-xtrs-log-xp-muted" style="margin-top: 8px;">${this.t('card.log.loading') || 'Loading...'}</div>` : ''}
+          ${errorText ? `<div class="r-xtrs-log-xp-error">${errorText}</div>` : ''}
 
-          <div class="scrollable-section" style="margin-top: 12px;">
-            <div class="muted" style="display:flex; align-items:center; justify-content: space-between; gap: 12px;">
+          <div class="r-xtrs-log-xp-scrollable-section" style="margin-top: 12px;">
+            <div class="r-xtrs-log-xp-muted" style="display:flex; align-items:center; justify-content: space-between; gap: 12px;">
               <span>${this.t('card.log.tail.title') || 'tail'} (${tailWindowLabel})</span>
               <span style="display:flex; gap: 6px;">
                 <button id="tailUp" title="Move window 50 lines earlier">+50 lines up</button>
@@ -773,13 +773,13 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             <pre id="tailPre">${tailHtml || ''}</pre>
           </div>
 
-          <div class="separator"></div>
+          <div class="r-xtrs-log-xp-separator"></div>
 
-          <div class="muted" style="margin-top: 6px;">
+          <div class="r-xtrs-log-xp-muted" style="margin-top: 6px;">
             Search scans the full file; the tail is shown separately.
           </div>
 
-          <div class="row" style="margin-top: 12px;">
+          <div class="r-xtrs-log-xp-row" style="margin-top: 12px;">
             <label>${this.t('card.log.search.query') || 'query'}:</label>
             <input
               id="searchQuery"
@@ -818,8 +818,8 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             </button>
           </div>
 
-          <div class="scrollable-section" style="margin-top: 10px;">
-            <div class="muted">
+          <div class="r-xtrs-log-xp-scrollable-section" style="margin-top: 10px;">
+            <div class="r-xtrs-log-xp-muted">
               ${this.t('card.log.search.title') || 'search'}
               ${typeof matches === 'number' ? ` • ${matches} ${this.t('card.log.search.matches') || 'matches'}` : ''}
               ${truncated ? ` • ${this.t('card.log.search.truncated') || 'truncated'}` : ''}

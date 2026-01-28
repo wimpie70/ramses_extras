@@ -835,7 +835,7 @@ class HvacFanCard extends RamsesBaseCard {
    * @returns {Promise<void>}
    */
   async refreshParameters() {
-    const refreshBtn = this.shadowRoot?.querySelector('.refresh-params-btn');
+    const refreshBtn = this.shadowRoot?.querySelector('.r-xtrs-hvac-fan-refresh-params-btn');
     if (refreshBtn) {
       refreshBtn.classList.add('loading');
     }
@@ -1011,7 +1011,7 @@ class HvacFanCard extends RamsesBaseCard {
    */
   attachNormalModeListeners() {
     // Settings icon in top section
-    const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');
+    const settingsIcon = this.shadowRoot?.querySelector('.r-xtrs-hvac-fan-settings-icon');
     if (settingsIcon) {
       settingsIcon.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1021,7 +1021,7 @@ class HvacFanCard extends RamsesBaseCard {
     }
 
     // Control buttons - handle via data attributes
-    const controlButtons = this.shadowRoot?.querySelectorAll('.control-button');
+    const controlButtons = this.shadowRoot?.querySelectorAll('.r-xtrs-hvac-fan-control-button');
     if (controlButtons) {
       controlButtons.forEach((button) => {
         button.addEventListener('click', async (e) => {
@@ -1066,8 +1066,8 @@ class HvacFanCard extends RamsesBaseCard {
    */
   attachParameterEditListeners() {
     // Back/settings icons in parameter edit mode
-    const settingsIcon = this.shadowRoot?.querySelector('.settings-icon');
-    const backIcon = this.shadowRoot?.querySelector('.back-icon');
+    const settingsIcon = this.shadowRoot?.querySelector('.r-xtrs-hvac-fan-settings-icon');
+    const backIcon = this.shadowRoot?.querySelector('.r-xtrs-hvac-fan-back-icon');
 
     if (settingsIcon) {
       settingsIcon.addEventListener('click', (e) => {
@@ -1086,7 +1086,7 @@ class HvacFanCard extends RamsesBaseCard {
     }
 
     // Parameter update buttons - handle both device parameters and humidity control
-    const allUpdateButtons = this.shadowRoot?.querySelectorAll('.param-update-btn');
+    const allUpdateButtons = this.shadowRoot?.querySelectorAll('.r-xtrs-hvac-fan-param-update-btn');
 
     if (allUpdateButtons) {
       allUpdateButtons.forEach((button) => {
@@ -1119,7 +1119,7 @@ class HvacFanCard extends RamsesBaseCard {
     }
 
     // Refresh button
-    const refreshBtn = this.shadowRoot?.querySelector('.refresh-params-btn');
+    const refreshBtn = this.shadowRoot?.querySelector('.r-xtrs-hvac-fan-refresh-params-btn');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', (e) => {
         e.preventDefault();

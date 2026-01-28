@@ -1,7 +1,7 @@
 export const CARD_STYLE = `
 
 /* ====== ROOT CONTAINER ====== */
-.ventilation-card {
+.r-xtrs-hvac-fan-ventilation-card {
   background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
   border-radius: var(--ha-card-border-radius, 12px);
   padding: 16px;
@@ -23,7 +23,7 @@ export const CARD_STYLE = `
 }
 
 /* ====== SENSOR SOURCES PANEL ====== */
-.sensor-sources-panel {
+.r-xtrs-hvac-fan-sensor-sources-panel {
   background: var(--secondary-background-color);
   border-radius: 8px;
   padding: 12px;
@@ -31,7 +31,7 @@ export const CARD_STYLE = `
   border: 1px solid var(--divider-color);
 }
 
-.sensor-sources-title {
+.r-xtrs-hvac-fan-sensor-sources-title {
   font-size: 12px;
   font-weight: 600;
   color: var(--primary-text-color);
@@ -41,13 +41,13 @@ export const CARD_STYLE = `
   opacity: 0.8;
 }
 
-.sensor-sources-grid {
+.r-xtrs-hvac-fan-sensor-sources-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
 }
 
-.sensor-source-indicator {
+.r-xtrs-hvac-fan-sensor-source-indicator {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -60,47 +60,47 @@ export const CARD_STYLE = `
   position: relative;
 }
 
-.sensor-source-indicator:hover {
+.r-xtrs-hvac-fan-sensor-source-indicator:hover {
   transform: translateY(-1px);
   box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.2));
 }
 
 /* Sensor source status styles */
-.sensor-source-external.valid {
+.r-xtrs-hvac-fan-sensor-source-external.valid {
   background: var(--secondary-background-color);
   border: 1px solid var(--success-color, #4caf50);
   color: var(--success-color, #4caf50);
 }
 
-.sensor-source-external.invalid {
+.r-xtrs-hvac-fan-sensor-source-external.invalid {
   background: var(--secondary-background-color);
   border: 1px solid var(--error-color, #f44336);
   color: var(--error-color, #f44336);
 }
 
-.sensor-source-derived {
+.r-xtrs-hvac-fan-sensor-source-derived {
   background: var(--secondary-background-color);
   border: 1px solid var(--info-color, var(--primary-color));
   color: var(--info-color, var(--primary-color));
 }
 
-.sensor-source-disabled {
+.r-xtrs-hvac-fan-sensor-source-disabled {
   background: var(--secondary-background-color);
   border: 1px solid var(--divider-color);
   color: var(--secondary-text-color);
 }
 
-.sensor-source-icon {
+.r-xtrs-hvac-fan-sensor-source-icon {
   font-size: 14px;
   line-height: 1;
 }
 
-.sensor-source-label {
+.r-xtrs-hvac-fan-sensor-source-label {
   flex: 1;
   font-weight: 500;
 }
 
-.sensor-source-kind {
+.r-xtrs-hvac-fan-sensor-source-kind {
   font-size: 9px;
   text-transform: uppercase;
   opacity: 0.7;
@@ -108,7 +108,7 @@ export const CARD_STYLE = `
   letter-spacing: 0.3px;
 }
 
-.sensor-source-entity {
+.r-xtrs-hvac-fan-sensor-source-entity {
   font-size: 10px;
   opacity: 0.8;
   font-weight: 400;
@@ -119,13 +119,13 @@ export const CARD_STYLE = `
   margin-left: 4px;
 }
 
-.value-unavailable {
+.r-xtrs-hvac-fan-value-unavailable {
   color: var(--secondary-text-color);
   font-style: italic;
 }
 
 /* ====== MAIN CONTENT SECTIONS ====== */
-.top-section, .parameter-edit-section {
+.r-xtrs-hvac-fan-top-section, .parameter-edit-section {
   background: var(--secondary-background-color);
   border-radius: var(--ha-card-border-radius, 12px);
   padding: 12px;
@@ -142,17 +142,17 @@ export const CARD_STYLE = `
   overflow: hidden;
 }
 
-.parameter-edit-section {
+.r-xtrs-hvac-fan-parameter-edit-section {
   background: var(--secondary-background-color);
 }
 
 /* ====== LAYOUT HELPERS ====== */
-.timer-display, .bottom-stats, .settings-container, .corner-value {
+.r-xtrs-hvac-fan-timer-display, .r-xtrs-hvac-fan-bottom-stats, .r-xtrs-hvac-fan-settings-container, .r-xtrs-hvac-fan-corner-value {
   position: absolute;
   display: flex;
 }
 
-.timer-display, .settings-container {
+.r-xtrs-hvac-fan-timer-display, .r-xtrs-hvac-fan-settings-container {
   top: 2%;
   left: 50%;
   width: 15%;
@@ -166,24 +166,24 @@ export const CARD_STYLE = `
   box-shadow: var(--ha-card-box-shadow, 0 4px 12px rgba(0, 0, 0, 0.1));
   border-radius: 10px;
 }
-.timer-icon {
+.r-xtrs-hvac-fan-timer-icon {
   width: 24px;
   height: 24px;
 }
-.settings-container {
+.r-xtrs-hvac-fan-settings-container {
   top: 12%;
 }
-.settings-icon {
+.r-xtrs-hvac-fan-settings-icon {
   margin: 5px auto 5px auto;
   font-size: 30px;
   background-color: transparent;
   border-color: transparent;
 }
-.settings-icon:hover {
+.r-xtrs-hvac-fan-settings-icon:hover {
   cursor: pointer;
 }
 
-.bottom-stats {
+.r-xtrs-hvac-fan-bottom-stats {
   bottom: 2%;
   left: 50%;
   transform: translateX(-50%);
@@ -199,7 +199,7 @@ export const CARD_STYLE = `
   min-width: 180px;
 }
 
-.stats-top {
+.r-xtrs-hvac-fan-stats-top {
   width: 100%;
   display: flex;
   justify-content: center;
@@ -207,23 +207,23 @@ export const CARD_STYLE = `
   padding-bottom: 2px;
 }
 
-.stats-bottom {
+.r-xtrs-hvac-fan-stats-bottom {
   width: 100%;
   display: flex;
   justify-content: space-between;
   gap: 20px;
 }
 
-.stat-item {
+.r-xtrs-hvac-fan-stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.stat-item.left { align-items: flex-start; }
-.stat-item.right { align-items: flex-end; }
+.r-xtrs-hvac-fan-stat-item.left { align-items: flex-start; }
+.r-xtrs-hvac-fan-stat-item.right { align-items: flex-end; }
 
-.corner-value {
+.r-xtrs-hvac-fan-corner-value {
   flex-direction: column;
   gap: 6px;
   z-index: 15;
@@ -235,22 +235,22 @@ export const CARD_STYLE = `
   width: 33%;
 }
 
-.corner-row, .humidity-row, .dehum-row {
+.r-xtrs-hvac-fan-corner-row, .r-xtrs-hvac-fan-humidity-row, .r-xtrs-hvac-fan-dehum-row {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
 }
 
-.top-left :is(.corner-row, .humidity-row, .dehum-row) { justify-content: flex-start; }
-.top-right :is(.corner-row, .humidity-row, .dehum-row) { justify-content: flex-end; }
+.top-left :is(.r-xtrs-hvac-fan-corner-row, .r-xtrs-hvac-fan-humidity-row, .r-xtrs-hvac-fan-dehum-row) { justify-content: flex-start; }
+.top-right :is(.r-xtrs-hvac-fan-corner-row, .r-xtrs-hvac-fan-humidity-row, .r-xtrs-hvac-fan-dehum-row) { justify-content: flex-end; }
 
-.outside-edge {
+.r-xtrs-hvac-fan-outside-edge {
   font-weight: 800;
   color: var(--primary-text-color);
 }
 
-.info-stack {
+.r-xtrs-hvac-fan-info-stack {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -260,13 +260,13 @@ export const CARD_STYLE = `
   border-top: 1px solid var(--divider-color);
 }
 
-.corner-value.top-left { top: 15px; left: 10px; text-align: left; }
-.corner-value.top-right { top: 15px; right: 10px; text-align: right; }
-.corner-value.bottom-left { bottom: 15px; left: 15px; background: none; box-shadow: none; border: none; padding: 0; width: auto; }
-.corner-value.bottom-right { bottom: 15px; right: 15px; background: none; box-shadow: none; border: none; padding: 0; width: auto; }
+.r-xtrs-hvac-fan-corner-value.top-left { top: 15px; left: 10px; text-align: left; }
+.r-xtrs-hvac-fan-corner-value.top-right { top: 15px; right: 10px; text-align: right; }
+.r-xtrs-hvac-fan-corner-value.bottom-left { bottom: 15px; left: 15px; background: none; box-shadow: none; border: none; padding: 0; width: auto; }
+.r-xtrs-hvac-fan-corner-value.bottom-right { bottom: 15px; right: 15px; background: none; box-shadow: none; border: none; padding: 0; width: auto; }
 
 /* ====== TEXT AND DATA ELEMENTS ====== */
-.temp-value {
+.r-xtrs-hvac-fan-temp-value {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -275,17 +275,17 @@ export const CARD_STYLE = `
   white-space: nowrap;
 }
 
-.arrow {
+.r-xtrs-hvac-fan-arrow {
   color: var(--secondary-text-color);
   font-weight: bold;
   margin: 0 4px;
 }
 
-.fanmode { font-size: 13px; text-transform: uppercase; font-weight: 700; color: var(--primary-text-color); }
-.speed-display { font-size: 13px; font-weight: 900; color: var(--primary-color); }
+.r-xtrs-hvac-fan-fanmode { font-size: 13px; text-transform: uppercase; font-weight: 700; color: var(--primary-text-color); }
+.r-xtrs-hvac-fan-speed-display { font-size: 13px; font-weight: 900; color: var(--primary-color); }
 
 /* ====== ICONS ====== */
-.icon-circle {
+.r-xtrs-hvac-fan-icon-circle {
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -298,17 +298,17 @@ export const CARD_STYLE = `
   background-color: var(--primary-color);
   color: var(--text-primary-color, #fff);
 }
-.icon-circle.red {
+.r-xtrs-hvac-fan-icon-circle.red {
   margin-left: 0;
   margin-right: auto;
   background-color: var(--error-color, #e57373);
 }
-.icon-circle.blue {
+.r-xtrs-hvac-fan-icon-circle.blue {
   margin-left: auto;
   margin-right: auto0;
 }
 /* ====== DIAGRAMS ====== */
-.airflow-diagram {
+.r-xtrs-hvac-fan-airflow-diagram {
   position: absolute;
   width: 40%;
   height: auto;
@@ -320,20 +320,20 @@ export const CARD_STYLE = `
 }
 
 /* ====== CONTROLS ====== */
-.controls-container {
+.r-xtrs-hvac-fan-controls-container {
   display: flex;
   flex-direction: column;
   gap: 12px;
   width: 100%;
 }
 
-.control-row {
+.r-xtrs-hvac-fan-control-row {
   display: flex;
   gap: 12px;
   justify-content: space-around;
 }
 
-.control-button {
+.r-xtrs-hvac-fan-control-button {
   background: var(--secondary-background-color);
   border: 1px solid var(--divider-color);
   border-radius: 12px;
@@ -347,23 +347,23 @@ export const CARD_STYLE = `
   flex: 1;
 }
 
-.control-button:hover, .control-button.active {
+.r-xtrs-hvac-fan-control-button:hover, .control-button.active {
   border-color: var(--primary-color);
 }
 
-.control-icon {
+.r-xtrs-hvac-fan-control-icon {
   font-size: 32px;
   color: var(--primary-color);
 }
 
-.control-label {
+.r-xtrs-hvac-fan-control-label {
   color: var(--primary-text-color);
   font-size: 13px;
   text-align: center;
 }
 
 /* ====== PARAMETER EDIT NAVIGATION ====== */
-.param-nav {
+.r-xtrs-hvac-fan-param-nav {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -372,32 +372,32 @@ export const CARD_STYLE = `
   border-bottom: 1px solid var(--divider-color);
 }
 
-.nav-left, .nav-right {
+.r-xtrs-hvac-fan-nav-left, .r-xtrs-hvac-fan-nav-right {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.device-title {
+.r-xtrs-hvac-fan-device-title {
   font-size: 16px;
   font-weight: 600;
   color: var(--primary-text-color);
 }
 
 /* ====== PARAMETER SECTIONS ====== */
-.param-section-header {
+.r-xtrs-hvac-fan-param-section-header {
   margin: 16px 0 12px 0;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--divider-color);
 }
 
-.param-section-header .header-content {
+.r-xtrs-hvac-fan-param-section-header .r-xtrs-hvac-fan-header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.refresh-params-btn {
+.r-xtrs-hvac-fan-refresh-params-btn {
   background: var(--primary-color);
   color: var(--text-primary-color, #fff);
   border: none;
@@ -414,29 +414,29 @@ export const CARD_STYLE = `
   box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
-.refresh-params-btn:hover {
+.r-xtrs-hvac-fan-refresh-params-btn:hover {
   filter: brightness(0.9);
   transform: translateY(-1px);
   box-shadow: var(--ha-card-box-shadow, 0 4px 8px rgba(0, 0, 0, 0.15));
 }
 
-.refresh-params-btn:active {
+.r-xtrs-hvac-fan-refresh-params-btn:active {
   transform: translateY(0);
 }
 
-.refresh-params-btn.loading .refresh-icon {
+.r-xtrs-hvac-fan-refresh-params-btn.loading .r-xtrs-hvac-fan-refresh-icon {
   animation: spin 1s linear infinite;
 }
 
-.refresh-params-btn.success {
+.r-xtrs-hvac-fan-refresh-params-btn.success {
   background: var(--success-color, #28a745);
 }
 
-.refresh-params-btn.error {
+.r-xtrs-hvac-fan-refresh-params-btn.error {
   background: var(--error-color, #dc3545);
 }
 
-.param-section-header h3 {
+.r-xtrs-hvac-fan-param-section-header h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
@@ -446,7 +446,7 @@ export const CARD_STYLE = `
 }
 
 /* ====== PARAMETER LIST ====== */
-.param-list {
+.r-xtrs-hvac-fan-param-list {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -457,12 +457,12 @@ export const CARD_STYLE = `
   margin-bottom: 20px;
 }
 
-.param-list::-webkit-scrollbar { width: 6px; }
-.param-list::-webkit-scrollbar-track { background: var(--secondary-background-color); border-radius: 3px; }
-.param-list::-webkit-scrollbar-thumb { background: var(--divider-color); border-radius: 3px; }
+.r-xtrs-hvac-fan-param-list::-webkit-scrollbar { width: 6px; }
+.r-xtrs-hvac-fan-param-list::-webkit-scrollbar-track { background: var(--secondary-background-color); border-radius: 3px; }
+.r-xtrs-hvac-fan-param-list::-webkit-scrollbar-thumb { background: var(--divider-color); border-radius: 3px; }
 
 /* ====== PARAMETER ITEMS ====== */
-.param-item {
+.r-xtrs-hvac-fan-param-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -473,40 +473,40 @@ export const CARD_STYLE = `
   transition: all 0.3s ease;
 }
 
-.param-item:hover {
+.r-xtrs-hvac-fan-param-item:hover {
   box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.1));
 }
 
-.param-item.loading { border-color: var(--warning-color, #ffc107); }
-.param-item.success { border-color: var(--success-color, #28a745); }
-.param-item.error { border-color: var(--error-color, #dc3545); }
+.r-xtrs-hvac-fan-param-item.loading { border-color: var(--warning-color, #ffc107); }
+.r-xtrs-hvac-fan-param-item.success { border-color: var(--success-color, #28a745); }
+.r-xtrs-hvac-fan-param-item.error { border-color: var(--error-color, #dc3545); }
 
-.param-info {
+.r-xtrs-hvac-fan-param-info {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.param-label {
+.r-xtrs-hvac-fan-param-label {
   font-weight: 500;
   color: var(--primary-text-color);
   line-height: 1.3;
 }
 
-.param-unit {
+.r-xtrs-hvac-fan-param-unit {
   font-size: 12px;
   color: var(--secondary-text-color);
   font-weight: 400;
 }
 
-.param-input-container {
+.r-xtrs-hvac-fan-param-input-container {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.param-input {
+.r-xtrs-hvac-fan-param-input {
   width: 80px;
   padding: 8px 12px;
   border: 1px solid var(--divider-color);
@@ -518,19 +518,19 @@ export const CARD_STYLE = `
   transition: all 0.3s ease;
 }
 
-.param-input:focus {
+.r-xtrs-hvac-fan-param-input:focus {
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.12);
 }
 
-.param-input:disabled {
+.r-xtrs-hvac-fan-param-input:disabled {
   background: var(--secondary-background-color);
   color: var(--secondary-text-color);
   cursor: not-allowed;
 }
 
-.param-update-btn {
+.r-xtrs-hvac-fan-param-update-btn {
   background: var(--primary-color);
   color: var(--text-primary-color, #fff);
   border: none;
@@ -542,31 +542,31 @@ export const CARD_STYLE = `
   transition: all 0.2s ease;
 }
 
-.param-update-btn:hover {
+.r-xtrs-hvac-fan-param-update-btn:hover {
   filter: brightness(0.9);
 }
 
-.param-item.loading .param-update-btn {
+.r-xtrs-hvac-fan-param-item.loading .param-update-btn {
   background: var(--warning-color, #ffc107);
 }
 
-.param-item.success .param-update-btn {
+.r-xtrs-hvac-fan-param-item.success .param-update-btn {
   background: var(--success-color, #28a745);
 }
 
-.param-item.error .param-update-btn {
+.r-xtrs-hvac-fan-param-item.error .param-update-btn {
   background: var(--error-color, #dc3545);
 }
 
-.param-status {
+.r-xtrs-hvac-fan-param-status {
   font-size: 16px;
   min-width: 20px;
   text-align: center;
 }
 
-.param-status.loading::after { content: "⏳"; animation: spin 1s linear infinite; }
-.param-status.success::after { content: "✅"; color: var(--success-color, #28a745); }
-.param-status.error::after { content: "❌"; color: var(--error-color, #dc3545); }
+.r-xtrs-hvac-fan-param-status.loading::after { content: "⏳"; animation: spin 1s linear infinite; }
+.r-xtrs-hvac-fan-param-status.success::after { content: "✅"; color: var(--success-color, #28a745); }
+.r-xtrs-hvac-fan-param-status.error::after { content: "❌"; color: var(--error-color, #dc3545); }
 
 @keyframes spin {
   0% { transform: rotate(0deg); }

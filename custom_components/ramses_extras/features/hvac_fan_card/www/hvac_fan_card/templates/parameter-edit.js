@@ -40,24 +40,24 @@ export function createParameterEditSection(params) {
   const deviceParameters = getDeviceParameters(parameterItems);
 
   return `
-    <div class="parameter-edit-section">
+    <div class="r-xtrs-hvac-fan-parameter-edit-section">
       <!-- Navigation Header -->
-      <div class="param-nav">
-        <div class="nav-left">
-          <span class="settings-icon">⚙️</span>
-          <span class="device-title">${settingsText}: ${deviceId.replace(/_/g, ':')}</span>
+      <div class="r-xtrs-hvac-fan-param-nav">
+        <div class="r-xtrs-hvac-fan-nav-left">
+          <span class="r-xtrs-hvac-fan-settings-icon">⚙️</span>
+          <span class="r-xtrs-hvac-fan-device-title">${settingsText}: ${deviceId.replace(/_/g, ':')}</span>
         </div>
-        <div class="nav-right">
-          <span class="back-icon">↩️</span>
+        <div class="r-xtrs-hvac-fan-nav-right">
+          <span class="r-xtrs-hvac-fan-back-icon">↩️</span>
         </div>
       </div>
 
       ${humidityEntities.length > 0 ? `
       <!-- Humidity Control Settings Section -->
-      <div class="param-section-header">
+      <div class="r-xtrs-hvac-fan-param-section-header">
         <h3>${tr('parameters.humidity_control_settings', 'Humidity Control Settings')}</h3>
       </div>
-      <div class="param-list" style="max-height: 200px; overflow-y: auto;">
+      <div class="r-xtrs-hvac-fan-param-list" style="max-height: 200px; overflow-y: auto;">
         ${humidityEntities.map(entity =>
           createHumidityControlItem(entity, tr)
         ).join('')}
@@ -66,15 +66,15 @@ export function createParameterEditSection(params) {
 
       ${deviceParameters.length > 0 ? `
       <!-- Device Parameters Section -->
-      <div class="param-section-header">
-        <div class="header-content">
+      <div class="r-xtrs-hvac-fan-param-section-header">
+        <div class="r-xtrs-hvac-fan-header-content">
           <h3>${tr('parameters.device_parameters_title', 'Device Parameters (2411)')}</h3>
-          <button class="refresh-params-btn" title="${tr('parameters.refresh_title', 'Refresh all parameters from device')}">
-            <span class="refresh-icon">🔄</span> ${tr('parameters.refresh', 'Refresh')}
+          <button class="r-xtrs-hvac-fan-refresh-params-btn" title="${tr('parameters.refresh_title', 'Refresh all parameters from device')}">
+            <span class="r-xtrs-hvac-fan-refresh-icon">🔄</span> ${tr('parameters.refresh', 'Refresh')}
           </button>
         </div>
       </div>
-      <div class="param-list" style="max-height: 400px; overflow-y: auto;">
+      <div class="r-xtrs-hvac-fan-param-list" style="max-height: 400px; overflow-y: auto;">
         ${deviceParameters.map((param) =>
           createParameterItem(param, tr)
         ).join('')}
@@ -121,21 +121,21 @@ function createHumidityControlItem(entity, tr) {
   }
 
   return `
-    <div class="param-item" data-humidity-control="${entityId}">
-      <div class="param-info">
-        <label class="param-label">${displayName}</label>
-        <span class="param-unit">${unit}</span>
+    <div class="r-xtrs-hvac-fan-param-item" data-humidity-control="${entityId}">
+      <div class="r-xtrs-hvac-fan-param-info">
+        <label class="r-xtrs-hvac-fan-param-label">${displayName}</label>
+        <span class="r-xtrs-hvac-fan-param-unit">${unit}</span>
       </div>
-      <div class="param-input-container">
+      <div class="r-xtrs-hvac-fan-param-input-container">
         <input type="number"
-                class="param-input"
+                class="r-xtrs-hvac-fan-param-input"
                 min="${entity.attributes?.min || 0}"
                 max="${entity.attributes?.max || 100}"
                 step="${entity.attributes?.step || 1}"
                 value="${currentValue}"
                 data-entity="${entityId}">
-        <button class="param-update-btn" data-action="update-humidity" data-entity-id="${entityId}">${tr('parameters.update', 'Update')}</button>
-        <span class="param-status"></span>
+        <button class="r-xtrs-hvac-fan-param-update-btn" data-action="update-humidity" data-entity-id="${entityId}">${tr('parameters.update', 'Update')}</button>
+        <span class="r-xtrs-hvac-fan-param-status"></span>
       </div>
     </div>
   `;
@@ -155,21 +155,21 @@ function createParameterItem(param, tr) {
   const displayValue = param.value;
 
   return `
-    <div class="param-item" data-param="${paramKey}">
-      <div class="param-info">
-        <label class="param-label">${param.description}</label>
-        <span class="param-unit">${param.unit}</span>
+    <div class="r-xtrs-hvac-fan-param-item" data-param="${paramKey}">
+      <div class="r-xtrs-hvac-fan-param-info">
+        <label class="r-xtrs-hvac-fan-param-label">${param.description}</label>
+        <span class="r-xtrs-hvac-fan-param-unit">${param.unit}</span>
       </div>
-      <div class="param-input-container">
+      <div class="r-xtrs-hvac-fan-param-input-container">
         <input type="number"
-                class="param-input"
+                class="r-xtrs-hvac-fan-param-input"
                 min="${displayMin}"
                 max="${displayMax}"
                 step="${displayStep}"
                 value="${displayValue}"
                 data-entity="${param.entity_id}">
-        <button class="param-update-btn" data-param="${paramKey}">${tr('parameters.update', 'Update')}</button>
-        <span class="param-status"></span>
+        <button class="r-xtrs-hvac-fan-param-update-btn" data-param="${paramKey}">${tr('parameters.update', 'Update')}</button>
+        <span class="r-xtrs-hvac-fan-param-status"></span>
       </div>
     </div>
   `;

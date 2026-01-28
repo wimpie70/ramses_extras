@@ -157,7 +157,7 @@ class RamsesMessagesViewer extends HTMLElement {
       return;
     }
 
-    const prevWrapper = this.shadowRoot.querySelector('.messages-table-wrapper');
+    const prevWrapper = this.shadowRoot.querySelector('.r-xtrs-msg-viewer-messages-table-wrapper');
     const prevScrollTop = prevWrapper ? prevWrapper.scrollTop : 0;
     const prevScrollLeft = prevWrapper ? prevWrapper.scrollLeft : 0;
 
@@ -364,48 +364,48 @@ class RamsesMessagesViewer extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>
-        .messages-table-wrapper { overflow-y: auto; max-height: 400px; } /* Increased for better dialog display */
-        .messages-table { width: 100%; border-collapse: collapse; }
-        .messages-table th, .messages-table td { border: 1px solid var(--divider-color); padding: 4px 6px; vertical-align: top; }
-        .messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; text-align: left; }
-        .messages-table td { font-family: monospace; font-size: 12px; user-select: text; -webkit-user-select: text; }
-        .messages-table td.col-payload { white-space: nowrap; }
-        .messages-table th.sortable { cursor: pointer; user-select: none; }
-        .messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
-        .messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-        .dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, rgba(0,0,0,0.04)); }
-        .messages-verbs { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .messages-verb-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-        .messages-codes { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .messages-code-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-        .error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
+        .r-xtrs-msg-viewer-messages-table-wrapper { overflow-y: auto; max-height: 400px; } /* Increased for better dialog display */
+        .r-xtrs-msg-viewer-messages-table { width: 100%; border-collapse: collapse; }
+        .r-xtrs-msg-viewer-messages-table th, .r-xtrs-msg-viewer-messages-table td { border: 1px solid var(--divider-color); padding: 4px 6px; vertical-align: top; }
+        .r-xtrs-msg-viewer-messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; text-align: left; }
+        .r-xtrs-msg-viewer-messages-table td { font-family: monospace; font-size: 12px; user-select: text; -webkit-user-select: text; }
+        .r-xtrs-msg-viewer-messages-table td.r-xtrs-msg-viewer-col-payload { white-space: nowrap; }
+        .r-xtrs-msg-viewer-messages-table th.sortable { cursor: pointer; user-select: none; }
+        .r-xtrs-msg-viewer-messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
+        .r-xtrs-msg-viewer-messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .r-xtrs-msg-viewer-messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+        .r-xtrs-msg-viewer-dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, rgba(0,0,0,0.04)); }
+        .r-xtrs-msg-viewer-messages-verbs { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .r-xtrs-msg-viewer-messages-verb-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+        .r-xtrs-msg-viewer-messages-codes { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .r-xtrs-msg-viewer-messages-code-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+        .r-xtrs-msg-viewer-error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
       </style>
-      <div class="messages-header">
+      <div class="r-xtrs-msg-viewer-messages-header">
         <strong>Messages (${sorted.length})</strong>
         ${sorted.length && sorted[0].source ? ` (Source: <code>${sorted[0].source}</code>)` : ''}
       </div>
-      ${this._loading ? `<div class="muted" style="margin-top: 8px;">Loading...</div>` : ''}
-      ${errorText ? `<div class="error">${errorText}</div>` : ''}
-      <div class="messages-controls">
+      ${this._loading ? `<div class="r-xtrs-msg-viewer-muted" style="margin-top: 8px;">Loading...</div>` : ''}
+      ${errorText ? `<div class="r-xtrs-msg-viewer-error">${errorText}</div>` : ''}
+      <div class="r-xtrs-msg-viewer-messages-controls">
         <label><input type="checkbox" id="messagesDecode" ${this._decode ? 'checked' : ''}> Decode</label>
         <label><input type="checkbox" id="knownDevicesToggle" ${this._knownDevicesOnly ? 'checked' : ''}> Known devices only</label>
       </div>
       ${pairGroups.length ? `
         <div style="margin-top: 8px;">
           <strong>Device Pairs:</strong>
-          <button class="select-all-btn" id="selectAllPairs">Select All</button>
-          <button class="select-all-btn" id="deselectAllPairs">Deselect All</button>
+          <button class="r-xtrs-msg-viewer-select-all-btn" id="selectAllPairs">Select All</button>
+          <button class="r-xtrs-msg-viewer-select-all-btn" id="deselectAllPairs">Deselect All</button>
         </div>
-        <div class="messages-selected">
+        <div class="r-xtrs-msg-viewer-messages-selected">
           ${pairGroups.map(({ src, dst, key }) => {
             const checked = this._activePairs.has(key);
             return `
-              <span class="messages-chip">
-                <input type="checkbox" class="pair-toggle" data-pair="${key}" ${checked ? 'checked' : ''} />
-                <span class="dev" style="--dev-bg: ${deviceBg(src)};">${src || ''}</span>
+              <span class="r-xtrs-msg-viewer-messages-chip">
+                <input type="checkbox" class="r-xtrs-msg-viewer-pair-toggle" data-pair="${key}" ${checked ? 'checked' : ''} />
+                <span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${deviceBg(src)};">${src || ''}</span>
                 →
-                <span class="dev" style="--dev-bg: ${deviceBg(dst)};">${dst || ''}</span>
+                <span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${deviceBg(dst)};">${dst || ''}</span>
               </span>
             `;
           }).join('')}
@@ -414,15 +414,15 @@ class RamsesMessagesViewer extends HTMLElement {
       ${availableCodes.size ? `
         <div style="margin-top: 8px;">
           <strong>Codes:</strong>
-          <button class="select-all-btn" id="selectAllCodes">Select All</button>
-          <button class="select-all-btn" id="deselectAllCodes">Deselect All</button>
+          <button class="r-xtrs-msg-viewer-select-all-btn" id="selectAllCodes">Select All</button>
+          <button class="r-xtrs-msg-viewer-select-all-btn" id="deselectAllCodes">Deselect All</button>
         </div>
-        <div class="messages-codes">
+        <div class="r-xtrs-msg-viewer-messages-codes">
           ${[...availableCodes].sort().map((code) => {
             const checked = this._activeCodes.has(code);
             return `
-              <span class="messages-code-chip">
-                <input type="checkbox" class="code-toggle" data-code="${code}" ${checked ? 'checked' : ''} />
+              <span class="r-xtrs-msg-viewer-messages-code-chip">
+                <input type="checkbox" class="r-xtrs-msg-viewer-code-toggle" data-code="${code}" ${checked ? 'checked' : ''} />
                 <span>${code}</span>
               </span>
             `;
@@ -430,29 +430,29 @@ class RamsesMessagesViewer extends HTMLElement {
         </div>
       ` : ''}
       ${availableVerbs.size ? `
-        <div class="messages-verbs">
+        <div class="r-xtrs-msg-viewer-messages-verbs">
           ${[...availableVerbs].sort().map((verb) => {
             const checked = this._activeVerbs.has(verb);
             return `
-              <span class="messages-verb-chip">
-                <input type="checkbox" class="verb-toggle" data-verb="${verb}" ${checked ? 'checked' : ''} />
+              <span class="r-xtrs-msg-viewer-messages-verb-chip">
+                <input type="checkbox" class="r-xtrs-msg-viewer-verb-toggle" data-verb="${verb}" ${checked ? 'checked' : ''} />
                 <span>${verb}</span>
               </span>
             `;
           }).join('')}
         </div>
       ` : ''}
-      <div class="messages-table-wrapper">
-        <table class="messages-table">
+      <div class="r-xtrs-msg-viewer-messages-table-wrapper">
+        <table class="r-xtrs-msg-viewer-messages-table">
           <thead>
             <tr>
-              <th class="col-time sortable" data-sort="dtm" title="Timestamp (click to sort)">Time${sortArrow('dtm')}</th>
-              <th class="col-verb sortable" data-sort="verb" title="Verb (click to sort)">Verb${sortArrow('verb')}</th>
-              <th class="col-code sortable" data-sort="code" title="Code (click to sort)">Code${sortArrow('code')}</th>
-              <th class="col-src sortable" data-sort="src" title="Source device (click to sort)">Src${sortArrow('src')}</th>
-              <th class="col-dst sortable" data-sort="dst" title="Destination device (click to sort)">Dst${sortArrow('dst')}</th>
-              <th class="col-bcast sortable" data-sort="broadcast" title="Broadcast/via device (click to sort)">Broadcast${sortArrow('broadcast')}</th>
-              <th class="col-payload sortable" data-sort="payload" title="Payload (click to sort)">Payload${sortArrow('payload')}</th>
+              <th class="r-xtrs-msg-viewer-col-time r-xtrs-msg-viewer-sortable" data-sort="dtm" title="Timestamp (click to sort)">Time${sortArrow('dtm')}</th>
+              <th class="r-xtrs-msg-viewer-col-verb r-xtrs-msg-viewer-sortable" data-sort="verb" title="Verb (click to sort)">Verb${sortArrow('verb')}</th>
+              <th class="r-xtrs-msg-viewer-col-code r-xtrs-msg-viewer-sortable" data-sort="code" title="Code (click to sort)">Code${sortArrow('code')}</th>
+              <th class="r-xtrs-msg-viewer-col-src r-xtrs-msg-viewer-sortable" data-sort="src" title="Source device (click to sort)">Src${sortArrow('src')}</th>
+              <th class="r-xtrs-msg-viewer-col-dst r-xtrs-msg-viewer-sortable" data-sort="dst" title="Destination device (click to sort)">Dst${sortArrow('dst')}</th>
+              <th class="r-xtrs-msg-viewer-col-bcast r-xtrs-msg-viewer-sortable" data-sort="broadcast" title="Broadcast/via device (click to sort)">Broadcast${sortArrow('broadcast')}</th>
+              <th class="r-xtrs-msg-viewer-col-payload r-xtrs-msg-viewer-sortable" data-sort="payload" title="Payload (click to sort)">Payload${sortArrow('payload')}</th>
             </tr>
           </thead>
           <tbody>
@@ -465,13 +465,13 @@ class RamsesMessagesViewer extends HTMLElement {
               const viaBg = viaDisplay ? deviceBg(viaDisplay) : '';
               return `
                 <tr>
-                  <td class="col-time">${msg.dtm || ''}</td>
-                  <td class="col-verb">${msg.verb || ''}</td>
-                  <td class="col-code">${msg.code || ''}</td>
-                  <td class="col-src"><span class="dev" style="--dev-bg: ${srcBg};">${msg.src || ''}</span></td>
-                  <td class="col-dst"><span class="dev" style="--dev-bg: ${dstBg};">${dstDisplay}</span></td>
-                  <td class="col-bcast">${viaDisplay ? `<span class="dev" style="--dev-bg: ${viaBg};">${viaDisplay}</span>` : ''}</td>
-                  <td class="col-payload">${payload}</td>
+                  <td class="r-xtrs-msg-viewer-col-time">${msg.dtm || ''}</td>
+                  <td class="r-xtrs-msg-viewer-col-verb">${msg.verb || ''}</td>
+                  <td class="r-xtrs-msg-viewer-col-code">${msg.code || ''}</td>
+                  <td class="r-xtrs-msg-viewer-col-src"><span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${srcBg};">${msg.src || ''}</span></td>
+                  <td class="r-xtrs-msg-viewer-col-dst"><span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${dstBg};">${dstDisplay}</span></td>
+                  <td class="r-xtrs-msg-viewer-col-bcast">${viaDisplay ? `<span class="r-xtrs-msg-viewer-dev" style="--dev-bg: ${viaBg};">${viaDisplay}</span>` : ''}</td>
+                  <td class="r-xtrs-msg-viewer-col-payload">${payload}</td>
                 </tr>
               `;
             }).join('')}
@@ -480,7 +480,7 @@ class RamsesMessagesViewer extends HTMLElement {
       </div>
     `;
 
-    const wrapper = this.shadowRoot.querySelector('.messages-table-wrapper');
+    const wrapper = this.shadowRoot.querySelector('.r-xtrs-msg-viewer-messages-table-wrapper');
     if (wrapper) {
       wrapper.scrollTop = prevScrollTop;
       wrapper.scrollLeft = prevScrollLeft;

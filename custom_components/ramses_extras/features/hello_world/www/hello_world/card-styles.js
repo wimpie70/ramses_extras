@@ -7,18 +7,18 @@ ha-card {
 }
 
 /* ====== HEADER ====== */
-.card-header {
+.r-xtrs-hello-card-header {
   margin-bottom: 16px;
   font-weight: 500;
 }
 
-.device-info {
+.r-xtrs-hello-device-info {
   font-size: 1.1em;
   color: var(--primary-text-color);
 }
 
 /* ====== CONTENT ====== */
-.card-content {
+.r-xtrs-hello-card-content {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -26,13 +26,13 @@ ha-card {
   justify-content: center;
 }
 
-.button-instruction {
+.r-xtrs-hello-button-instruction {
   font-size: 0.9em;
   color: var(--secondary-text-color);
   margin-bottom: 12px;
 }
 
-.button-container {
+.r-xtrs-hello-button-container {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -41,7 +41,7 @@ ha-card {
 }
 
 /* ====== TOGGLE BUTTON ====== */
-.toggle-button {
+.r-xtrs-hello-toggle-button {
   --mdc-theme-primary: var(--primary-color);
   --mdc-theme-on-primary: var(--text-primary-color, #fff);
   min-width: 120px;
@@ -59,36 +59,36 @@ ha-card {
   letter-spacing: 0.5px;
 }
 
-.toggle-button.on {
+.r-xtrs-hello-toggle-button.on {
   background-color: var(--primary-color);
   color: var(--text-primary-color, #fff);
   box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
-.toggle-button.off {
+.r-xtrs-hello-toggle-button.off {
   background-color: var(--secondary-background-color);
   color: var(--primary-text-color);
   border: 2px solid var(--divider-color);
 }
 
-.toggle-button:hover {
+.r-xtrs-hello-toggle-button:hover {
   transform: translateY(-1px);
   box-shadow: var(--ha-card-box-shadow, 0 4px 8px rgba(0, 0, 0, 0.3));
 }
 
-.toggle-button:active {
+.r-xtrs-hello-toggle-button:active {
   transform: translateY(0);
   box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 /* ====== STATUS ELEMENTS ====== */
-.status {
+.r-xtrs-hello-status {
   font-size: 0.9em;
   color: var(--secondary-text-color);
   font-weight: 500;
 }
 
-.binary-sensor-status {
+.r-xtrs-hello-binary-sensor-status {
   font-size: 0.8em;
   color: var(--secondary-text-color);
   margin-top: 8px;
@@ -99,7 +99,7 @@ ha-card {
 
 /* ====== RESPONSIVE ====== */
 @media (max-width: 480px) {
-  .button-container {
+  .r-xtrs-hello-button-container {
     flex-direction: column;
     gap: 8px;
   }
@@ -109,7 +109,7 @@ ha-card {
     min-width: unset;
   }
 
-  .device-info {
+  .r-xtrs-hello-device-info {
     font-size: 1em;
   }
 }
@@ -121,7 +121,7 @@ ha-card {
   100% { transform: scale(1); }
 }
 
-.toggle-button:active {
+.r-xtrs-hello-toggle-button:active {
   animation: pulse 0.2s ease-in-out;
 }
 `;

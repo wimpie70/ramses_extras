@@ -24,27 +24,27 @@ export function createCardContent(data) {
 
   return `
     <ha-card>
-      <div class="card-header">
-        <div class="device-info">${deviceDisplay}</div>
+      <div class="r-xtrs-hello-card-header">
+        <div class="r-xtrs-hello-device-info">${deviceDisplay}</div>
       </div>
-      <div class="card-content">
-        <div class="button-instruction">
+      <div class="r-xtrs-hello-card-content">
+        <div class="r-xtrs-hello-button-instruction">
           ${translator ? translator.t(instructionKey) : instructionKey}
         </div>
-        <div class="button-container">
+        <div class="r-xtrs-hello-button-container">
           <ha-button
             id="helloWorldButton"
-            class="toggle-button ${buttonClass}">
+            class="r-xtrs-hello-toggle-button ${buttonClass}">
             ${buttonText}
           </ha-button>
           ${showStatus ? `
-            <div class="status">
+            <div class="r-xtrs-hello-status">
               Status: ${statusText}
             </div>
           ` : ''}
         </div>
         ${showStatus ? `
-          <div class="binary-sensor-status">
+          <div class="r-xtrs-hello-binary-sensor-status">
             ${translator ? translator.t(sensorKey) : sensorKey} ${sensorText}
           </div>
         ` : ''}

@@ -143,8 +143,8 @@ class HelloWorld extends RamsesBaseCard {
       // Optimized re-render: Only update the button text and class, and sensor status
       // This avoids rebuilding the entire DOM structure
       const buttonElement = this.shadowRoot?.querySelector('#helloWorldButton');
-      const statusDiv = this.shadowRoot?.querySelector('.status');
-      const sensorStatusDiv = this.shadowRoot?.querySelector('.binary-sensor-status');
+      const statusDiv = this.shadowRoot?.querySelector('.r-xtrs-hello-status');
+      const sensorStatusDiv = this.shadowRoot?.querySelector('.r-xtrs-hello-binary-sensor-status');
 
       if (buttonElement) {
         buttonElement.textContent = switchState ? 'TURN OFF' : 'TURN ON';

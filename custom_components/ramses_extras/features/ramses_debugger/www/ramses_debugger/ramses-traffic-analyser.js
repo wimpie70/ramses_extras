@@ -588,26 +588,26 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         const dstSlugLabel = this._deviceSlugLabel(dst);
 
         return `
-          <tr class="flow-row" data-flow="${data}">
-            <td class="select-cell">
-              <input type="checkbox" class="row-select" data-src="${src}" data-dst="${dst}" ${this._checkedRows.get(`${src}|${dst}`) ? 'checked' : ''}>
+          <tr class="r-xtrs-traf-nlysr-flow-row" data-flow="${data}">
+            <td class="r-xtrs-traf-nlysr-select-cell">
+              <input type="checkbox" class="r-xtrs-traf-nlysr-row-select" data-src="${src}" data-dst="${dst}" ${this._checkedRows.get(`${src}|${dst}`) ? 'checked' : ''}>
             </td>
-            <td class="device-cell" style="--dev-bg: ${srcBg};" title="Source device">
-              <div class="dev">
-                <span class="id">${src}</span>
-                ${srcAlias ? `<span class="alias">${srcAlias}</span>` : ''}
-                ${srcSlugLabel ? `<span class="slug">${srcSlugLabel}</span>` : ''}
+            <td class="r-xtrs-traf-nlysr-device-cell" style="--dev-bg: ${srcBg};" title="Source device">
+              <div class="r-xtrs-traf-nlysr-dev">
+                <span class="r-xtrs-traf-nlysr-id">${src}</span>
+                ${srcAlias ? `<span class="r-xtrs-traf-nlysr-alias">${srcAlias}</span>` : ''}
+                ${srcSlugLabel ? `<span class="r-xtrs-traf-nlysr-slug">${srcSlugLabel}</span>` : ''}
               </div>
             </td>
-            <td class="device-cell" style="--dev-bg: ${dstBg};" title="Destination device">
-              <div class="dev">
-                <span class="id">${dst}</span>
-                ${dstAlias ? `<span class="alias">${dstAlias}</span>` : ''}
-                ${dstSlugLabel ? `<span class="slug">${dstSlugLabel}</span>` : ''}
+            <td class="r-xtrs-traf-nlysr-device-cell" style="--dev-bg: ${dstBg};" title="Destination device">
+              <div class="r-xtrs-traf-nlysr-dev">
+                <span class="r-xtrs-traf-nlysr-id">${dst}</span>
+                ${dstAlias ? `<span class="r-xtrs-traf-nlysr-alias">${dstAlias}</span>` : ''}
+                ${dstSlugLabel ? `<span class="r-xtrs-traf-nlysr-slug">${dstSlugLabel}</span>` : ''}
               </div>
             </td>
-            <td class="verbs" title="Verbs observed for this flow">${verbs}</td>
-            <td class="codes" title="Codes observed for this flow">${codes}</td>
+            <td class="r-xtrs-traf-nlysr-verbs" title="Verbs observed for this flow">${verbs}</td>
+            <td class="r-xtrs-traf-nlysr-codes" title="Codes observed for this flow">${codes}</td>
             <td style="text-align: right;">${count}</td>
             <td>${lastSeen}</td>
           </tr>
@@ -620,8 +620,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
         ${trafficAnalyserCardStyle({ compact })}
       </style>
       <ha-card header="${title}">
-        <div class="card-content">
-          <div class="meta">
+        <div class="r-xtrs-traf-nlysr-card-content">
+          <div class="r-xtrs-traf-nlysr-meta">
             <div><strong>Device</strong>: ${deviceDisplay}</div>
             <div>
               <strong>Source</strong>:
@@ -641,13 +641,13 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             </div>
           </div>
 
-          ${errorText ? `<div class="error">${errorText}</div>` : ''}
+          ${errorText ? `<div class="r-xtrs-traf-nlysr-error">${errorText}</div>` : ''}
 
-          <div class="table-wrap">
+          <div class="r-xtrs-traf-nlysr-table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th class="select-cell"><input type="checkbox" id="selectAll" title="Select all flows" ${this._flows && this._flows.length && this._checkedRows.size === this._flows.length ? 'checked' : ''}></th>
+                  <th class="r-xtrs-traf-nlysr-select-cell"><input type="checkbox" id="selectAll" title="Select all flows" ${this._flows && this._flows.length && this._checkedRows.size === this._flows.length ? 'checked' : ''}></th>
                   <th class="sortable" data-sort="src" title="Sort by source">src${sortArrow('src')}</th>
                   <th class="sortable" data-sort="dst" title="Sort by destination">dst${sortArrow('dst')}</th>
                   <th title="Verbs observed for this flow">verbs</th>
@@ -689,7 +689,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   }
 
   _getSelectedFlows() {
-    const checkboxes = this.shadowRoot.querySelectorAll('.row-select:checked');
+    const checkboxes = this.shadowRoot.querySelectorAll('.r-xtrs-traf-nlysr-row-select:checked');
     return Array.from(checkboxes).map((cb) => ({
       src: cb.getAttribute('data-src'),
       dst: cb.getAttribute('data-dst'),
@@ -894,7 +894,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     }
 
     // Add per-row checkbox listeners
-    const rowCheckboxes = this.shadowRoot.querySelectorAll('.row-select');
+    const rowCheckboxes = this.shadowRoot.querySelectorAll('.r-xtrs-traf-nlysr-row-select');
     rowCheckboxes.forEach((cb) => {
       const src = cb.getAttribute('data-src');
       const dst = cb.getAttribute('data-dst');

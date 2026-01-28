@@ -38,73 +38,73 @@ export function createTopSection(data, t) {
   // Helper function to format humidity values
   const formatHumidity = (value, unit) => {
     if (value === 'unavailable' || value === '?' || value === null || value === undefined) {
-      return `<span class="value-unavailable">${tr('sensor.unavailable', 'unavailable')}</span>`;
+      return `<span class="r-xtrs-hvac-fan-value-unavailable">${tr('sensor.unavailable', 'unavailable')}</span>`;
     }
     return `${value}${unit}`;
   };
 
   return `
-    <div class="ventilation-card">
+    <div class="r-xtrs-hvac-fan-ventilation-card">
       <!-- Top Section with airflow -->
-      <div class="top-section">
+      <div class="r-xtrs-hvac-fan-top-section">
         <!-- Timer -->
-        <div class="timer-display">
-          <svg class="timer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div class="r-xtrs-hvac-fan-timer-display">
+          <svg class="r-xtrs-hvac-fan-timer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M12 6v6l4 2"></path>
           </svg>
           <span id="timer">${timerMinutes} ${tr('time.minutes', 'min')}</span>
         </div>
 
-        <div class="settings-container">
-          <button class="settings-icon" title="${tr('card.edit_parameters', 'Edit Parameters')}">
+        <div class="r-xtrs-hvac-fan-settings-container">
+          <button class="r-xtrs-hvac-fan-settings-icon" title="${tr('card.edit_parameters', 'Edit Parameters')}">
             ⚙️
           </button>
         </div>
 
         <!-- Corner Values -->
-        <div class="corner-value top-left">
-          <div class="corner-row">
-            <div class="temp-value outside-edge">
+        <div class="r-xtrs-hvac-fan-corner-value top-left">
+          <div class="r-xtrs-hvac-fan-corner-row">
+            <div class="r-xtrs-hvac-fan-temp-value outside-edge">
               <span id="outdoorTemp">${outdoorTemp} °C</span>
               <span>🌡️</span>
             </div>
-            <div class="icon-circle blue">☁️</div>
+            <div class="r-xtrs-hvac-fan-icon-circle blue">☁️</div>
           </div>
-          <div class="humidity-row">
+          <div class="r-xtrs-hvac-fan-humidity-row">
             <span id="outdoorHumidity">${outdoorHumidity}%</span>
-            <span class="arrow">→</span>
+            <span class="r-xtrs-hvac-fan-arrow">→</span>
             <span id="outdoorAbsHumidity">${formatHumidity(outdoorAbsHumidity, ' g/m³')}</span>
             <span>💧</span>
           </div>
-          <div class="info-stack">
+          <div class="r-xtrs-hvac-fan-info-stack">
             <div>📊 ${efficiency}%</div>
             <div>🫧 ${co2Level} ppm</div>
             <div>📅 ${filterDaysRemaining}d</div>
           </div>
         </div>
 
-        <div class="corner-value top-right">
-          <div class="corner-row">
-            <div class="icon-circle red">🏠</div>
-            <div class="temp-value outside-edge">
+        <div class="r-xtrs-hvac-fan-corner-value top-right">
+          <div class="r-xtrs-hvac-fan-corner-row">
+            <div class="r-xtrs-hvac-fan-icon-circle red">🏠</div>
+            <div class="r-xtrs-hvac-fan-temp-value outside-edge">
               <span>🌡️</span>
               <span id="indoorTemp">${indoorTemp} °C</span>
             </div>
           </div>
-          <div class="humidity-row">
+          <div class="r-xtrs-hvac-fan-humidity-row">
             <span>💧</span>
             <span id="indoorHumidity">${indoorHumidity}%</span>
-            <span class="arrow">→</span>
+            <span class="r-xtrs-hvac-fan-arrow">→</span>
             <span id="indoorAbsHumidity">${formatHumidity(indoorAbsHumidity, ' g/m³')}</span>
           </div>
-          <div class="info-stack">
+          <div class="r-xtrs-hvac-fan-info-stack">
             <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temperature')}: ${comfortTemp} °C</div>
             ${dehumEntitiesAvailable ? `
-            <div class="dehum-row">
+            <div class="r-xtrs-hvac-fan-dehum-row">
               <span id="dehumMode">${dehumMode}</span>
               <span>⚡</span>
-              <span class="arrow">→</span>
+              <span class="r-xtrs-hvac-fan-arrow">→</span>
               <span id="dehumActive">${dehumActive}</span>
             </div>
             <div>
@@ -114,37 +114,37 @@ export function createTopSection(data, t) {
           </div>
         </div>
 
-        <div class="corner-value bottom-right">
-          <div class="temp-value">
+        <div class="r-xtrs-hvac-fan-corner-value bottom-right">
+          <div class="r-xtrs-hvac-fan-temp-value">
             <span>🌡️</span>
             <span id="supplyTemp">${supplyTemp} °C</span>
           </div>
         </div>
 
-        <div class="corner-value bottom-left">
-          <div class="temp-value">
+        <div class="r-xtrs-hvac-fan-corner-value bottom-left">
+          <div class="r-xtrs-hvac-fan-temp-value">
             <span>🌡️</span>
             <span id="exhaustTemp">${exhaustTemp} °C</span>
           </div>
         </div>
 
         <!-- SVG Flow Direction Arrows -->
-        <div class="airflow-diagram">
+        <div class="r-xtrs-hvac-fan-airflow-diagram">
           ${airflowSvg}
         </div>
 
         <!-- Bottom Stats -->
-        <div class="bottom-stats">
-          <div class="stats-top">
-            <div class="fanmode" id="fanMode">${fanMode}</div>
+        <div class="r-xtrs-hvac-fan-bottom-stats">
+          <div class="r-xtrs-hvac-fan-stats-top">
+            <div class="r-xtrs-hvac-fan-fanmode" id="fanMode">${fanMode}</div>
           </div>
-          <div class="stats-bottom">
-            <div class="stat-item left">
-              <div class="speed-display" id="exhaustFanSpeed">${exhaustFanSpeed}</div>
+          <div class="r-xtrs-hvac-fan-stats-bottom">
+            <div class="r-xtrs-hvac-fan-stat-item left">
+              <div class="r-xtrs-hvac-fan-speed-display" id="exhaustFanSpeed">${exhaustFanSpeed}</div>
               <span id="exhaustFlowRate">${exhaustFlowRate} L/s</span>
             </div>
-            <div class="stat-item right">
-              <div class="speed-display" id="supplyFanSpeed">${supplyFanSpeed}</div>
+            <div class="r-xtrs-hvac-fan-stat-item right">
+              <div class="r-xtrs-hvac-fan-speed-display" id="supplyFanSpeed">${supplyFanSpeed}</div>
               <span id="supplyFlowRate">${supplyFlowRate} L/s</span>
             </div>
           </div>

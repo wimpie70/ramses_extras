@@ -226,7 +226,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
           overflow: hidden;
         }
 
-        .card-content {
+        .r-xtrs-pack-log-card-content {
           flex: 1;
           display: flex;
           flex-direction: column;
@@ -234,26 +234,26 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
           padding: 16px;
         }
 
-        .messages-container {
+        .r-xtrs-pack-log-messages-container {
           flex: 1;
           // overflow: auto;
           min-height: 0;
         }
 
-        .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .row input[type="text"], .row input[type="number"] { min-width: 120px; }
-        .row input.small { width: 70px; }
-        .row select { min-width: 260px; flex: 1; }
+        .r-xtrs-pack-log-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .r-xtrs-pack-log-row input[type="text"], .r-xtrs-pack-log-row input[type="number"] { min-width: 120px; }
+        .r-xtrs-pack-log-row input.small { width: 70px; }
+        .r-xtrs-pack-log-row select { min-width: 260px; flex: 1; }
 
-        .muted { font-size: var(--ha-font-size-s); opacity: 0.8; }
-        .error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
+        .r-xtrs-pack-log-muted { font-size: var(--ha-font-size-s); opacity: 0.8; }
+        .r-xtrs-pack-log-error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
 
         button { cursor: pointer; }
       </style>
 
       <ha-card header="${title}">
-        <div class="card-content">
-          <div class="row">
+        <div class="r-xtrs-pack-log-card-content">
+          <div class="r-xtrs-pack-log-row">
             <label>files:</label>
             <select id="fileSelect" title="Select which packet log file to view">${fileOptions}</select>
             <button id="refreshFiles" title="Reload the list of available packet log files">Refresh</button>
@@ -265,19 +265,19 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
             ${showLoadBtn ? '<button id="loadMessages" title="Load messages from selected file">Load</button>' : ''}
           </div>
 
-          <div class="muted" style="margin-top: 6px;">
+          <div class="r-xtrs-pack-log-muted" style="margin-top: 6px;">
             ${this._basePath ? `base: ${this._basePath}` : ''}
           </div>
 
-          <div class="row" style="margin-top: 12px;">
+          <div class="r-xtrs-pack-log-row" style="margin-top: 12px;">
             <label>limit:</label>
             <input id="limitFilter" class="small" type="number" value="${Number(this._limit || 200)}" />
           </div>
 
-          ${this._loading ? `<div class="muted" style="margin-top: 8px;">Loading...</div>` : ''}
-          ${errorText ? `<div class="error">${errorText}</div>` : ''}
+          ${this._loading ? `<div class="r-xtrs-pack-log-muted" style="margin-top: 8px;">Loading...</div>` : ''}
+          ${errorText ? `<div class="r-xtrs-pack-log-error">${errorText}</div>` : ''}
 
-          <div class="messages-container">
+          <div class="r-xtrs-pack-log-messages-container">
             <ramses-messages-viewer id="messagesViewer"></ramses-messages-viewer>
           </div>
         </div>
