@@ -625,7 +625,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             <div><strong>Device</strong>: ${deviceDisplay}</div>
             <div>
               <strong>Source</strong>:
-              <select id="trafficSource" title="Select traffic source">
+              <select id="r-xtrs-traf-nlysr-trafficSource" title="Select traffic source">
                 <option value="live" ${trafficSource === 'live' ? 'selected' : ''}>live</option>
                 <option value="packet_log" ${trafficSource === 'packet_log' ? 'selected' : ''}>packet_log</option>
                 <option value="ha_log" ${trafficSource === 'ha_log' ? 'selected' : ''}>ha_log</option>
@@ -635,9 +635,9 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             <div><strong>Flows</strong>: ${flows.length}</div>
             <div><strong>Since</strong>: ${startedAt || '-'}</div>
             <div style="margin-left:auto; display: flex; gap: 8px;">
-              <button id="bulkLogs" title="Copy selected flows to clipboard">Copy selection</button>
-              <button id="bulkMessages" title="List raw messages for selected flows">Messages</button>
-              <button id="resetStats" title="Reset the traffic counters" ${resetDisabled ? 'disabled' : ''}>Reset</button>
+              <button id="r-xtrs-traf-nlysr-bulkLogs" title="Copy selected flows to clipboard">Copy selection</button>
+              <button id="r-xtrs-traf-nlysr-bulkMessages" title="List raw messages for selected flows">Messages</button>
+              <button id="r-xtrs-traf-nlysr-resetStats" title="Reset the traffic counters" ${resetDisabled ? 'disabled' : ''}>Reset</button>
             </div>
           </div>
 
@@ -647,7 +647,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             <table>
               <thead>
                 <tr>
-                  <th class="r-xtrs-traf-nlysr-select-cell"><input type="checkbox" id="selectAll" title="Select all flows" ${this._flows && this._flows.length && this._checkedRows.size === this._flows.length ? 'checked' : ''}></th>
+                  <th class="r-xtrs-traf-nlysr-select-cell"><input type="checkbox" id="r-xtrs-traf-nlysr-selectAll" title="Select all flows" ${this._flows && this._flows.length && this._checkedRows.size === this._flows.length ? 'checked' : ''}></th>
                   <th class="sortable" data-sort="src" title="Sort by source">src${sortArrow('src')}</th>
                   <th class="sortable" data-sort="dst" title="Sort by destination">dst${sortArrow('dst')}</th>
                   <th title="Verbs observed for this flow">verbs</th>
@@ -662,22 +662,22 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             </table>
           </div>
 
-          <dialog id="logDialog">
+          <dialog id="r-xtrs-traf-nlysr-logDialog">
             <form method="dialog">
               <h3>Log Explorer</h3>
-              <div id="logContainer"></div>
+              <div id="r-xtrs-traf-nlysr-logContainer"></div>
               <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 12px;">
-                <button id="closeLogDialog" title="Close this dialog">Close</button>
+                <button id="r-xtrs-traf-nlysr-closeLogDialog" title="Close this dialog">Close</button>
               </div>
             </form>
           </dialog>
 
-          <dialog id="messagesDialog">
+          <dialog id="r-xtrs-traf-nlysr-messagesDialog">
             <form method="dialog">
               <h3>Messages</h3>
-              <div id="messagesContainer"></div>
+              <div id="r-xtrs-traf-nlysr-messagesContainer"></div>
               <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 12px;">
-                <button id="closeMessagesDialog" title="Close this dialog">Close</button>
+                <button id="r-xtrs-traf-nlysr-closeMessagesDialog" title="Close this dialog">Close</button>
               </div>
             </form>
           </dialog>
@@ -697,8 +697,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   }
 
   _openLogDialog(query) {
-    const logDialog = this.shadowRoot?.getElementById('logDialog');
-    const container = this.shadowRoot?.getElementById('logContainer');
+    const logDialog = this.shadowRoot?.getElementById('r-xtrs-traf-nlysr-logDialog');
+    const container = this.shadowRoot?.getElementById('r-xtrs-traf-nlysr-logContainer');
     if (container) {
       container.innerHTML = '';
       const el = document.createElement('ramses-log-explorer');
@@ -726,8 +726,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   }
 
   _openMessagesDialog(selected) {
-    const messagesDialog = this.shadowRoot?.getElementById('messagesDialog');
-    const container = this.shadowRoot?.getElementById('messagesContainer');
+    const messagesDialog = this.shadowRoot?.getElementById('r-xtrs-traf-nlysr-messagesDialog');
+    const container = this.shadowRoot?.getElementById('r-xtrs-traf-nlysr-messagesContainer');
     if (container) {
       container.innerHTML = '';
       const viewer = document.createElement('ramses-messages-viewer');
@@ -785,13 +785,13 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     if (!this.shadowRoot) {
       return;
     }
-    const resetBtn = this.shadowRoot.getElementById('resetStats');
-    const trafficSourceSel = this.shadowRoot.getElementById('trafficSource');
-    const closeLogBtn = this.shadowRoot.getElementById('closeLogDialog');
-    const closeMessagesBtn = this.shadowRoot.getElementById('closeMessagesDialog');
-    const selectAllCb = this.shadowRoot.getElementById('selectAll');
-    const bulkLogsBtn = this.shadowRoot.getElementById('bulkLogs');
-    const bulkMessagesBtn = this.shadowRoot.getElementById('bulkMessages');
+    const resetBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-resetStats');
+    const trafficSourceSel = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-trafficSource');
+    const closeLogBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-closeLogDialog');
+    const closeMessagesBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-closeMessagesDialog');
+    const selectAllCb = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-selectAll');
+    const bulkLogsBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-bulkLogs');
+    const bulkMessagesBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-bulkMessages');
 
     const thead = this.shadowRoot.querySelector('thead');
 
@@ -803,8 +803,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     if (!this._boundOnDialogClose) {
       this._boundOnDialogClose = () => {
         try {
-          const logDialog = this.shadowRoot?.getElementById('logDialog');
-          const messagesDialog = this.shadowRoot?.getElementById('messagesDialog');
+          const logDialog = this.shadowRoot?.getElementById('r-xtrs-traf-nlysr-logDialog');
+          const messagesDialog = this.shadowRoot?.getElementById('r-xtrs-traf-nlysr-messagesDialog');
           if (logDialog && logDialog.open) {
             logDialog.close();
           }
@@ -905,7 +905,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
           this._checkedRows.delete(`${src}|${dst}`);
         }
         // Update select all checkbox state
-        const selectAll = this.shadowRoot.getElementById('selectAll');
+        const selectAll = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-selectAll');
         if (selectAll && this._flows) {
           selectAll.checked = this._checkedRows.size === this._flows.length;
         }
@@ -931,12 +931,12 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       thead.onclick = this._boundOnSortClick;
     }
 
-    const logDialog = this.shadowRoot.getElementById('logDialog');
+    const logDialog = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-logDialog');
     if (logDialog) {
       logDialog.onclose = this._boundOnDialogClosed;
     }
 
-    const messagesDialog = this.shadowRoot.getElementById('messagesDialog');
+    const messagesDialog = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-messagesDialog');
     if (messagesDialog) {
       messagesDialog.onclose = this._boundOnDialogClosed;
     }

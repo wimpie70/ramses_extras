@@ -848,7 +848,7 @@ export class RamsesBaseCard extends HTMLElement {
     }
 
     // Check if any monitored entities have changed
-    const hasChanges = Object.entries(requiredEntities).some(([key, entityId]) => {
+    const hasChanges = Object.entries(requiredEntities).some(([, entityId]) => {
       if (!entityId) {
         return false;
       }

@@ -58,6 +58,7 @@ class RamsesMessagesViewer extends HTMLElement {
     this._fetchMessages = typeof fn === 'function' ? fn : null;
   }
 
+
   setConfig(config) {
     const cfg = config && typeof config === 'object' ? config : {};
     this._config = {

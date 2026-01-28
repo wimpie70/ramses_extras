@@ -32,6 +32,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     this._loading = false;
     this._lastError = null;
     this._autoLoaded = false;
+    this._domInitialized = false;
   }
 
   set hass(hass) {
@@ -140,49 +141,49 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
       el.addEventListener(event, fn);
     };
 
-    bind('refreshFiles', 'click', () => {
+    bind('r-xtrs-pack-log-refreshFiles', 'click', () => {
       void this._refreshFiles();
     });
 
-    bind('fileSelect', 'change', (ev) => {
+    bind('r-xtrs-pack-log-fileSelect', 'change', (ev) => {
       const val = ev?.target?.value;
       this._selectedFileId = typeof val === 'string' && val ? val : null;
       this._autoLoadedFileId = null;
       this.render();
 
       if (this._loadMode === 'auto') {
-        const viewer = this.shadowRoot.getElementById('messagesViewer');
+        const viewer = this.shadowRoot.getElementById('r-xtrs-pack-log-messagesViewer');
         if (viewer && typeof viewer.refresh === 'function') {
           void viewer.refresh();
         }
       }
     });
 
-    bind('loadMessages', 'click', () => {
-      const viewer = this.shadowRoot.getElementById('messagesViewer');
+    bind('r-xtrs-pack-log-loadMessages', 'click', () => {
+      const viewer = this.shadowRoot.getElementById('r-xtrs-pack-log-messagesViewer');
       if (viewer && typeof viewer.refresh === 'function') {
         void viewer.refresh();
       }
     });
 
-    bind('loadMode', 'change', (ev) => {
+    bind('r-xtrs-pack-log-loadMode', 'change', (ev) => {
       const val = ev?.target?.value;
       this._loadMode = typeof val === 'string' && val ? val : 'manual';
       this._autoLoadedFileId = null;
       this.render();
 
       if (this._loadMode === 'auto') {
-        const viewer = this.shadowRoot.getElementById('messagesViewer');
+        const viewer = this.shadowRoot.getElementById('r-xtrs-pack-log-messagesViewer');
         if (viewer && typeof viewer.refresh === 'function') {
           void viewer.refresh();
         }
       }
     });
 
-    bind('limitFilter', 'change', (ev) => {
+    bind('r-xtrs-pack-log-limitFilter', 'change', (ev) => {
       const val = Number(ev?.target?.value || 200);
       this._limit = Number.isFinite(val) ? val : 200;
-      const viewer = this.shadowRoot.getElementById('messagesViewer');
+      const viewer = this.shadowRoot.getElementById('r-xtrs-pack-log-messagesViewer');
       if (viewer && typeof viewer.setConfig === 'function') {
         viewer.setConfig({ limit: this._limit });
       }
@@ -195,25 +196,15 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
   }
 
   _renderContent() {
-    this._renderContentImpl();
+    if (!this._domInitialized) {
+      this._initializeDOM();
+      this._domInitialized = true;
+    }
+    this._updateDOM();
   }
 
-  _renderContentImpl() {
+  _initializeDOM() {
     const title = this._config?.name || 'Ramses Packet Log Explorer';
-    const files = Array.isArray(this._files) ? this._files : [];
-
-    const fileOptions = files
-      .map((f) => {
-        const id = f?.file_id || '';
-        const selected = id && id === this._selectedFileId ? 'selected' : '';
-        const size = typeof f?.size === 'number' ? ` (${f.size})` : '';
-        return `<option value="${id}" ${selected}>${id}${size}</option>`;
-      })
-      .join('');
-
-    const errorText = this._lastError ? String(this._lastError?.message || this._lastError) : '';
-    const mode = String(this._loadMode || 'manual');
-    const showLoadBtn = mode === 'manual';
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -255,36 +246,35 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
         <div class="r-xtrs-pack-log-card-content">
           <div class="r-xtrs-pack-log-row">
             <label>files:</label>
-            <select id="fileSelect" title="Select which packet log file to view">${fileOptions}</select>
-            <button id="refreshFiles" title="Reload the list of available packet log files">Refresh</button>
+            <select id="r-xtrs-pack-log-fileSelect" title="Select which packet log file to view"></select>
+            <button id="r-xtrs-pack-log-refreshFiles" title="Reload the list of available packet log files">Refresh</button>
             <label>mode:</label>
-            <select id="loadMode" title="Auto-load refreshes when the file changes">
-              <option value="manual" ${mode === 'manual' ? 'selected' : ''}>manual</option>
-              <option value="auto" ${mode === 'auto' ? 'selected' : ''}>auto</option>
+            <select id="r-xtrs-pack-log-loadMode" title="Auto-load refreshes when the file changes">
+              <option value="manual">manual</option>
+              <option value="auto">auto</option>
             </select>
-            ${showLoadBtn ? '<button id="loadMessages" title="Load messages from selected file">Load</button>' : ''}
+            <button id="r-xtrs-pack-log-loadMessages" title="Load messages from selected file" style="display: none;">Load</button>
           </div>
 
-          <div class="r-xtrs-pack-log-muted" style="margin-top: 6px;">
-            ${this._basePath ? `base: ${this._basePath}` : ''}
-          </div>
+          <div id="r-xtrs-pack-log-basePath" class="r-xtrs-pack-log-muted" style="margin-top: 6px;"></div>
 
           <div class="r-xtrs-pack-log-row" style="margin-top: 12px;">
             <label>limit:</label>
-            <input id="limitFilter" class="small" type="number" value="${Number(this._limit || 200)}" />
+            <input id="r-xtrs-pack-log-limitFilter" class="small" type="number" value="200" />
           </div>
 
-          ${this._loading ? `<div class="r-xtrs-pack-log-muted" style="margin-top: 8px;">Loading...</div>` : ''}
-          ${errorText ? `<div class="r-xtrs-pack-log-error">${errorText}</div>` : ''}
+          <div id="r-xtrs-pack-log-loadingMsg" class="r-xtrs-pack-log-muted" style="margin-top: 8px; display: none;">Loading...</div>
+          <div id="r-xtrs-pack-log-errorMsg" class="r-xtrs-pack-log-error" style="display: none;"></div>
 
           <div class="r-xtrs-pack-log-messages-container">
-            <ramses-messages-viewer id="messagesViewer"></ramses-messages-viewer>
+            <ramses-messages-viewer id="r-xtrs-pack-log-messagesViewer"></ramses-messages-viewer>
           </div>
         </div>
       </ha-card>
     `;
 
-    const viewer = this.shadowRoot.getElementById('messagesViewer');
+    // Initialize the messages viewer
+    const viewer = this.shadowRoot.getElementById('r-xtrs-pack-log-messagesViewer');
     if (viewer) {
       viewer.fetchMessages = ({ hass, decode, limit }) => {
         if (!this._selectedFileId) {
@@ -321,6 +311,63 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
     }
 
     this._attachEventListeners();
+  }
+
+  _updateDOM() {
+    // Update file select options
+    const fileSelect = this.shadowRoot.getElementById('r-xtrs-pack-log-fileSelect');
+    if (fileSelect) {
+      const files = Array.isArray(this._files) ? this._files : [];
+      fileSelect.innerHTML = files
+        .map((f) => {
+          const id = f?.file_id || '';
+          const selected = id && id === this._selectedFileId ? 'selected' : '';
+          const size = typeof f?.size === 'number' ? ` (${f.size})` : '';
+          return `<option value="${id}" ${selected}>${id}${size}</option>`;
+        })
+        .join('');
+    }
+
+    // Update mode select
+    const modeSelect = this.shadowRoot.getElementById('r-xtrs-pack-log-loadMode');
+    if (modeSelect) {
+      modeSelect.value = String(this._loadMode || 'manual');
+    }
+
+    // Update Load button visibility
+    const loadBtn = this.shadowRoot.getElementById('r-xtrs-pack-log-loadMessages');
+    if (loadBtn) {
+      loadBtn.style.display = this._loadMode === 'manual' ? '' : 'none';
+    }
+
+    // Update base path
+    const basePathDiv = this.shadowRoot.getElementById('r-xtrs-pack-log-basePath');
+    if (basePathDiv) {
+      basePathDiv.textContent = this._basePath ? `base: ${this._basePath}` : '';
+    }
+
+    // Update limit input
+    const limitInput = this.shadowRoot.getElementById('r-xtrs-pack-log-limitFilter');
+    if (limitInput && limitInput.value !== String(this._limit)) {
+      limitInput.value = String(this._limit || 200);
+    }
+
+    // Update loading message
+    const loadingMsg = this.shadowRoot.getElementById('r-xtrs-pack-log-loadingMsg');
+    if (loadingMsg) {
+      loadingMsg.style.display = this._loading ? '' : 'none';
+    }
+
+    // Update error message
+    const errorMsg = this.shadowRoot.getElementById('r-xtrs-pack-log-errorMsg');
+    if (errorMsg) {
+      if (this._lastError) {
+        errorMsg.textContent = String(this._lastError?.message || this._lastError);
+        errorMsg.style.display = '';
+      } else {
+        errorMsg.style.display = 'none';
+      }
+    }
   }
 
   static getCardInfo() {
