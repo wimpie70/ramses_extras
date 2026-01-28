@@ -1,4 +1,4 @@
-**Document Version:** 0.14.2
+**Document Version:** 0.14.3
 
 # 1. Table of Contents
 - [1. Table of Contents](#1-table-of-contents)
@@ -1559,7 +1559,7 @@ custom_components/ramses_extras/
 Assets are deployed to `/config/www/ramses_extras/v{version}/`.
 
 ```
-hass/config/www/ramses_extras/v0.14.2/
+hass/config/www/ramses_extras/v0.14.3/
 ├── helpers/                         # Shared utilities
 │   ├── main.js                      # Bootstrap loader (Registered Resource)
 │   ├── ramses-base-card.js
@@ -1572,7 +1572,7 @@ hass/config/www/ramses_extras/v0.14.2/
 
 **Resource Registration:**
 Only one entry is added to Home Assistant's `lovelace_resources`:
-- **URL**: `/local/ramses_extras/v0.14.2/helpers/main.js`
+- **URL**: `/local/ramses_extras/v0.14.3/helpers/main.js`
 - **Type**: `module`
 
 ### Theme-Adaptive Styling
