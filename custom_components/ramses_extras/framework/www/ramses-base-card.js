@@ -958,6 +958,12 @@ export class RamsesBaseCard extends HTMLElement {
       return await callWebSocket(this._hass, message);
     } catch (error) {
       logger.error(`❌ ${this.constructor.name}: WebSocket command failed:`, error);
+
+      // If it's a version mismatch error, trigger a re-render to show the banner
+      if (error?.version_mismatch || error?.code === 'version_mismatch') {
+        this._scheduleRender(true);
+      }
+
       throw error;
     }
   }
@@ -1584,39 +1590,54 @@ export class RamsesBaseCard extends HTMLElement {
   /**
    * Automatically inject version mismatch banner into rendered card
    * This is called after _renderContent() to prepend the banner if needed
-   * Only injects when mismatch state changes to avoid DOM thrashing
+   * Checks if banner exists in DOM since _renderContent() wipes shadowRoot.innerHTML
    * @private
    */
   _injectVersionBanner() {
     const hasMismatch = Boolean(window.ramsesExtras?._versionMismatch);
 
-    // Track previous mismatch state to avoid unnecessary DOM manipulation
-    if (this._lastVersionMismatchState === hasMismatch) {
-      return; // State hasn't changed, no need to update
+    // Try to find target element for banner injection:
+    // 1. ha-card (standard debugger cards, Hello World)
+    // 2. body (if card uses full HTML document structure)
+    // 3. First div child (HVAC Fan Card uses this)
+    let targetElement = this.shadowRoot?.querySelector('ha-card');
+    if (!targetElement) {
+      targetElement = this.shadowRoot?.querySelector('body');
+    }
+    if (!targetElement) {
+      // Try to find first DIV element (HVAC Fan Card structure)
+      const divs = Array.from(this.shadowRoot?.querySelectorAll('div') || []);
+      targetElement = divs[0]; // Get first div
     }
 
-    this._lastVersionMismatchState = hasMismatch;
-
-    // Remove existing banner if present
-    const existingBanner = this.shadowRoot.querySelector('[style*="background: #ff9800"]');
-    if (existingBanner) {
-      existingBanner.remove();
+    if (!targetElement) {
+      // Debug: Log when no suitable element is found
+      if (hasMismatch) {
+        console.warn(`${this.constructor.name}: Cannot inject version banner - no suitable target element found`);
+        console.log(`${this.constructor.name}: shadowRoot children:`, Array.from(this.shadowRoot?.children || []).map(el => el.tagName));
+      }
+      return; // No target element to inject into
     }
 
-    // Add new banner if there's a mismatch
-    if (hasMismatch) {
+    // Check if banner already exists in the DOM
+    const existingBanner = targetElement.querySelector('[style*="background: #ff9800"]');
+
+    if (hasMismatch && !existingBanner) {
+      // Mismatch exists but no banner in DOM - inject it
       const banner = getVersionMismatchBanner();
       if (banner) {
-        const haCard = this.shadowRoot.querySelector('ha-card');
-        if (haCard) {
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = banner;
-          const bannerElement = tempDiv.firstElementChild;
-          if (bannerElement) {
-            haCard.insertBefore(bannerElement, haCard.firstChild);
-          }
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = banner;
+        const bannerElement = tempDiv.firstElementChild;
+        if (bannerElement) {
+          targetElement.insertBefore(bannerElement, targetElement.firstChild);
+          console.log(`✅ ${this.constructor.name}: Version mismatch banner injected into ${targetElement.tagName}`);
         }
       }
+    } else if (!hasMismatch && existingBanner) {
+      // No mismatch but banner exists - remove it
+      existingBanner.remove();
+      console.log(`✅ ${this.constructor.name}: Version mismatch banner removed`);
     }
   }
 
