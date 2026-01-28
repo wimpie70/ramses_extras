@@ -103,6 +103,10 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     };
   }
 
+  shouldUpdate() {
+    return false;
+  }
+
   _checkAndLoadInitialState() {
     if (this._hass && this._config && !this._initialStateLoaded) {
       this._loadInitialState();
@@ -727,15 +731,15 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
           const checked = this._checkedRows.has(`${src}|${dst}`);
 
           return `
-            <tr data-src="${src}" data-dst="${dst}" data-data="${data}">
+            <tr class="r-xtrs-traf-nlysr-flow-row" data-src="${src}" data-dst="${dst}" data-data="${data}">
               <td class="r-xtrs-traf-nlysr-select-cell">
                 <input type="checkbox" class="row-checkbox" data-src="${src}" data-dst="${dst}" ${checked ? 'checked' : ''} />
               </td>
-              <td class="r-xtrs-traf-nlysr-src-cell">
-                <span class="r-xtrs-traf-nlysr-dev" style="--dev-bg: ${srcBg};">${srcAlias}</span>
+              <td class="r-xtrs-traf-nlysr-src-cell r-xtrs-traf-nlysr-device-cell" style="--dev-bg: ${srcBg};">
+                <span class="r-xtrs-traf-nlysr-dev">${srcAlias}</span>
               </td>
-              <td class="r-xtrs-traf-nlysr-dst-cell">
-                <span class="r-xtrs-traf-nlysr-dev" style="--dev-bg: ${dstBg};">${dstAlias}</span>
+              <td class="r-xtrs-traf-nlysr-dst-cell r-xtrs-traf-nlysr-device-cell" style="--dev-bg: ${dstBg};">
+                <span class="r-xtrs-traf-nlysr-dev">${dstAlias}</span>
               </td>
               <td class="r-xtrs-traf-nlysr-verbs-cell">${verbs}</td>
               <td class="r-xtrs-traf-nlysr-codes-cell">${codes}</td>
