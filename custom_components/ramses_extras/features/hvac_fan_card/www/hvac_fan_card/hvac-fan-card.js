@@ -210,29 +210,55 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Collect live data
     const { da31Data, da10D0Data } = this._collectLiveData();
-    const dehumEntitiesAvailable = validateDehumidifyEntities(hass, config);
+    const dehumEntitiesAvailable = validateDehumidifyEntities(hass, config)?.available === true;
+
+    // Temperature data
+    const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp : null;
+    const outdoorTemp = da31Data.outdoor_temp !== undefined ? da31Data.outdoor_temp : null;
+    const supplyTemp = da31Data.supply_temp !== undefined ? da31Data.supply_temp : null;
+    const exhaustTemp = da31Data.exhaust_temp !== undefined ? da31Data.exhaust_temp : null;
+
+    // Humidity data
+    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity : null;
+    const outdoorHumidity =
+      da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity : null;
+
+    // Use ramses_extras absolute humidity sensor (if available) - raw values only
+    const indoorAbsHumidity = this.getEntityStateAsNumber(
+      config.indoor_abs_humid_entity,
+      null
+    );
+    const outdoorAbsHumidity = this.getEntityStateAsNumber(
+      config.outdoor_abs_humid_entity,
+      null
+    );
 
     const rawData = {
-      // Basic device info
-      deviceId: config.device_id,
-      deviceName: config.device_name || config.device_id,
-      fanMode: da31Data.mode,
-      fanSpeed: da31Data.speed,
-      fanSpeedPercent: da31Data.speed_percent,
-      // Temperature data
-      indoorTemp: da31Data.indoor_temp,
-      outdoorTemp: da31Data.outdoor_temp,
-      // Humidity data
-      indoorHumidity: da31Data.indoor_humidity,
-      // Target data
-      targetTemp: da31Data.target_temp,
-      targetHumidity: da31Data.target_humidity,
-      // Bypass position
+      indoorTemp,
+      outdoorTemp,
+      indoorHumidity,
+      outdoorHumidity,
+      indoorAbsHumidity,
+      outdoorAbsHumidity,
+      supplyTemp,
+      exhaustTemp,
+      exhaustFanSpeed: this._formatSpeed(da31Data.exhaust_fan_speed),
+      supplyFanSpeed: this._formatSpeed(da31Data.supply_fan_speed),
+      fanMode: this._getFanMode(da31Data),
+      supplyFlowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow : null,
+      exhaustFlowRate: da31Data.exhaust_flow !== undefined ? da31Data.exhaust_flow : null,
+      co2Level: this.getEntityStateAsNumber(config.co2 || config.co2_entity, null),
+      dehumMode: dehumEntitiesAvailable
+        ? this.getEntityState(config.dehum_mode_entity)?.state || 'off'
+        : null,
+      dehumActive: dehumEntitiesAvailable
+        ? this.getEntityState(config.dehum_active_entity)?.state || 'off'
+        : null,
+      comfortTemp: this.getEntityStateAsNumber(config.comfort_temp_entity, null),
       bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position : null,
-      dehumEntitiesAvailable, // Add availability flag
-      dataSource31DA: da31Data.source === '31DA_message', // Flag for UI
+      dehumEntitiesAvailable,
+      dataSource31DA: da31Data.source === '31DA_message',
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
-      // Filter days remaining from 10D0 data
       filterDaysRemaining:
         da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
     };
