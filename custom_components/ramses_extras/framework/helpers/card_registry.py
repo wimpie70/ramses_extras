@@ -132,6 +132,17 @@ class CardRegistry:
                             "🔧 Migrated legacy resource URL to: %s", item["url"]
                         )
 
+                    # Migrate old-style browser URLs that used /www/ instead of /local/
+                    # (some dashboards/resources may still reference
+                    # /www/ramses_extras/...)
+                    if item["url"].startswith("/www/"):
+                        item["url"] = item["url"].replace("/www", "/local", 1)
+                        item["id"] = item["url"].replace("/", "_").strip("_")
+                        needs_save = True
+                        _LOGGER.info(
+                            "🔧 Migrated legacy /www resource URL to: %s", item["url"]
+                        )
+
                 if "id" not in item:
                     # Generate a unique ID for the resource from its URL
                     item["id"] = item["url"].replace("/", "_").strip("_")

@@ -141,6 +141,10 @@ class HvacFanCard extends RamsesBaseCard {
     this._attachEventListeners();
   }
 
+  _attachEventListeners() {
+    return;
+  }
+
   _updateDOM() {
     const cardContent = this.shadowRoot.getElementById('cardContent');
     if (!cardContent) return;
@@ -205,7 +209,7 @@ class HvacFanCard extends RamsesBaseCard {
     const hass = this._hass;
 
     // Collect live data
-    const { da31Data, da10D0Data } = this._collectLiveData(hass, config);
+    const { da31Data, da10D0Data } = this._collectLiveData();
     const dehumEntitiesAvailable = validateDehumidifyEntities(hass, config);
 
     const rawData = {
@@ -256,6 +260,12 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Attach event listeners for normal mode
     this.attachNormalModeListeners();
+  }
+
+  _collectLiveData() {
+    const da31Data = typeof this.get31DAData === 'function' ? this.get31DAData() : {};
+    const da10D0Data = typeof this.get10D0Data === 'function' ? this.get10D0Data() : {};
+    return { da31Data, da10D0Data };
   }
 
   // ========== OVERRIDE OPTIONAL METHODS ==========
@@ -1212,9 +1222,20 @@ class HvacFanCard extends RamsesBaseCard {
 }
 
 // Register the web component
-if (!customElements.get('hvac-fan-card')) {
+const ExistingHvacFanCard = customElements.get('hvac-fan-card');
+if (!ExistingHvacFanCard) {
   // console.log('Registering hvac-fan-card web component');
   customElements.define('hvac-fan-card', HvacFanCard);
+} else if (ExistingHvacFanCard?.prototype) {
+  const patchableMethods = ['_collectLiveData', '_attachEventListeners'];
+  for (const methodName of patchableMethods) {
+    if (
+      typeof ExistingHvacFanCard.prototype[methodName] !== 'function'
+      && typeof HvacFanCard.prototype[methodName] === 'function'
+    ) {
+      ExistingHvacFanCard.prototype[methodName] = HvacFanCard.prototype[methodName];
+    }
+  }
 }
 
 // Register the card using the base class registration

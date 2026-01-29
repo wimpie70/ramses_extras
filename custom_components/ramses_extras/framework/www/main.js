@@ -2,6 +2,27 @@
 
 import * as logger from './logger.js';
 
+function getBootstrapVersion() {
+  try {
+    if (import.meta && import.meta.url) {
+      const URLCtor =
+        (typeof window !== 'undefined' && window.URL) ||
+        (typeof globalThis !== 'undefined' && globalThis.URL) ||
+        null;
+      if (!URLCtor) {
+        return null;
+      }
+
+      const url = new URLCtor(import.meta.url);
+      const v = url.searchParams.get('v');
+      return v || null;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 function detectAssetBase() {
   const fromPath = (path) => {
     if (!path) {
@@ -94,8 +115,13 @@ async function loadCardModule(cardDef) {
   loaded.add(cardDef.tag);
   logger.debug('ramses_extras: loading card module for', cardDef.tag, cardDef.modulePath);
 
+  const version = window.ramsesExtras?.version || getBootstrapVersion();
+  const modulePath = version
+    ? `${cardDef.modulePath}?v=${encodeURIComponent(version)}`
+    : cardDef.modulePath;
+
   try {
-    await import(cardDef.modulePath);
+    await import(modulePath);
     logger.debug('ramses_extras: loaded card module for', cardDef.tag);
   } catch (err) {
     logger.warn('ramses_extras: failed to load card module', cardDef, err);
@@ -109,7 +135,9 @@ function scanAndLoad() {
     }
 
     if (document.querySelector(cardDef.tag)) {
-      loadCardModule(cardDef);
+      Promise.resolve(window.ramsesExtras?._featuresLoaded)
+        .catch(() => {})
+        .then(() => loadCardModule(cardDef));
     }
   }
 }
@@ -120,29 +148,45 @@ function scanAndLoad() {
   }
 
   window.ramsesExtras = window.ramsesExtras || {};
+  const bootstrapVersion = getBootstrapVersion();
   const assetBase = detectAssetBase();
   if (assetBase) {
-    window.ramsesExtras.assetBase = assetBase;
+    window.ramsesExtras.assetBase = assetBase.startsWith('/www/')
+      ? assetBase.replace('/www', '/local')
+      : assetBase;
   }
 
   logger.debug('ramses_extras: main.js bootstrap init');
 
   // Load feature configuration (version, debug settings, etc.)
-  if (assetBase) {
-    const featuresScript = document.createElement('script');
-    featuresScript.src = `${assetBase}/helpers/ramses-extras-features.js`;
-    featuresScript.onload = () => {
-      logger.debug('ramses_extras: features loaded');
-    };
-    featuresScript.onerror = () => {
-      logger.warn('ramses_extras: failed to load features file');
-    };
-    document.head.appendChild(featuresScript);
+  if (!window.ramsesExtras._featuresLoaded) {
+    window.ramsesExtras._featuresLoaded = Promise.resolve();
   }
 
-  Promise.all(CARD_MODULES.map(loadCardModule)).catch((err) => {
-    logger.warn('ramses_extras: failed to preload card modules', err);
-  });
+  if (window.ramsesExtras.assetBase) {
+    window.ramsesExtras._featuresLoaded = new Promise((resolve) => {
+      const featuresScript = document.createElement('script');
+      const versionSuffix = bootstrapVersion
+        ? `?v=${encodeURIComponent(bootstrapVersion)}`
+        : '';
+      featuresScript.src = `${window.ramsesExtras.assetBase}/helpers/ramses-extras-features.js${versionSuffix}`;
+      featuresScript.onload = () => {
+        logger.debug('ramses_extras: features loaded');
+        resolve();
+      };
+      featuresScript.onerror = () => {
+        logger.warn('ramses_extras: failed to load features file');
+        resolve();
+      };
+      document.head.appendChild(featuresScript);
+    });
+  }
+
+  window.ramsesExtras._featuresLoaded
+    .then(() => Promise.all(CARD_MODULES.map(loadCardModule)))
+    .catch((err) => {
+      logger.warn('ramses_extras: failed to preload card modules', err);
+    });
 
   const observer = new MutationObserver(() => {
     scanAndLoad();

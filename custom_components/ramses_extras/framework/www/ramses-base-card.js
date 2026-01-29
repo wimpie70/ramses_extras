@@ -589,9 +589,14 @@ export class RamsesBaseCard extends HTMLElement {
    */
   t(key, params = {}) {
     if (!this.translator || !this._translationsLoaded) {
-      return key; // Fallback if translator not ready
+      return '';
     }
-    return this.translator.t(key, params);
+
+    const value = this.translator.t(key, params);
+    if (value === key) {
+      return '';
+    }
+    return value;
   }
 
   /**
@@ -733,7 +738,11 @@ export class RamsesBaseCard extends HTMLElement {
 
       // Clear any existing ready listener
       if (connectionChanged && typeof this._hassReadyListener === 'function') {
-        this._hassReadyListener();
+        try {
+          Promise.resolve(this._hassReadyListener()).catch(() => {});
+        } catch {
+          // ignore
+        }
         this._hassReadyListener = null;
       }
 
@@ -1137,17 +1146,29 @@ export class RamsesBaseCard extends HTMLElement {
 
     // Clean up HASS ready listener
     if (this._hassReadyListener) {
-      this._hassReadyListener();
+      try {
+        Promise.resolve(this._hassReadyListener()).catch(() => {});
+      } catch {
+        // ignore
+      }
       this._hassReadyListener = null;
     }
 
     if (typeof this._cardsEnabledUnsub === 'function') {
-      this._cardsEnabledUnsub();
+      try {
+        Promise.resolve(this._cardsEnabledUnsub()).catch(() => {});
+      } catch {
+        // ignore
+      }
     }
     this._cardsEnabledUnsub = null;
 
     if (typeof this._featureReadyUnsub === 'function') {
-      this._featureReadyUnsub();
+      try {
+        Promise.resolve(this._featureReadyUnsub()).catch(() => {});
+      } catch {
+        // ignore
+      }
     }
     this._featureReadyUnsub = null;
 
