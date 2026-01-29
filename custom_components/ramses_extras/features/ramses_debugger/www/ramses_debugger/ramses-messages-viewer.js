@@ -179,11 +179,11 @@ class RamsesMessagesViewer extends HTMLElement {
         .r-xtrs-msg-viewer-messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
         .r-xtrs-msg-viewer-messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
         .r-xtrs-msg-viewer-messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-        .r-xtrs-msg-viewer-dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, rgba(0,0,0,0.04)); }
+        .r-xtrs-msg-viewer-dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, rgba(0,0,0,0.04)); font-size: var(--ha-font-size-xs); }
         .r-xtrs-msg-viewer-messages-verbs { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
         .r-xtrs-msg-viewer-messages-verb-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
         .r-xtrs-msg-viewer-messages-codes { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .r-xtrs-msg-viewer-messages-code-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+        .r-xtrs-msg-viewer-messages-code-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); font-size: var(--ha-font-size-xs); }
         .r-xtrs-msg-viewer-error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
         .r-xtrs-msg-viewer-select-all-btn { cursor: pointer; margin-left: 8px; }
       </style>
