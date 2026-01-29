@@ -49,6 +49,8 @@ class HvacFanCard extends RamsesBaseCard {
 
     // HVAC-specific state
     this.parameterEditMode = false;
+    this._parameterModeRendered = false;
+    this._parameterModeDirty = true;
     this._cachedEntities = null; // Cache for getRequiredEntities
     this._entityMappings = null;
     this._entityMappingsLoading = false;
@@ -151,8 +153,11 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Check if we're in parameter edit mode
     if (this.parameterEditMode) {
-      this._updateParameterEditMode(cardContent);
+      if (!this._parameterModeRendered || this._parameterModeDirty) {
+        this._updateParameterEditMode(cardContent);
+      }
     } else {
+      this._parameterModeRendered = false;
       this._updateNormalMode(cardContent);
     }
   }
@@ -189,6 +194,9 @@ class HvacFanCard extends RamsesBaseCard {
     ].join('');
 
     container.innerHTML = cardHtml;
+
+    this._parameterModeRendered = true;
+    this._parameterModeDirty = false;
 
     // Restore scroll position after DOM update
     const newScrollContainer = this.shadowRoot?.querySelector('.param-list');
@@ -713,10 +721,13 @@ class HvacFanCard extends RamsesBaseCard {
     this.parameterEditMode = !this.parameterEditMode;
 
     if (this.parameterEditMode) {
+      this._parameterModeDirty = true;
       // Entering parameter edit mode - fetch schema if needed
       if (!this.parameterSchema) {
         this.parameterSchema = await this.fetchParameterSchema();
       }
+    } else {
+      this._parameterModeRendered = false;
     }
 
     this.render();
@@ -1051,6 +1062,9 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Force a re-render to show updated data
     if (this._hass && this.config) {
+      if (this.parameterEditMode) {
+        return;
+      }
       this.render();
     }
   }
@@ -1067,6 +1081,9 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Force a re-render to show updated data
     if (this._hass && this.config) {
+      if (this.parameterEditMode) {
+        return;
+      }
       this.render();
     }
   }
