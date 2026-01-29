@@ -236,7 +236,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     this._stopUpdates();
 
     if (this._trafficSource !== 'live') {
-      this._startPolling();
+      void this._refreshStatsOnce();
       return;
     }
 
@@ -246,6 +246,34 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     }
 
     this._startSubscription();
+  }
+
+  async _refreshStatsOnce() {
+    if (!this._hass) {
+      return;
+    }
+
+    try {
+      this._lastError = null;
+      const result = await callWebSocketShared(this._hass, {
+        type: 'ramses_extras/ramses_debugger/traffic/get_stats',
+        ...this._buildFiltersFromConfig({ includeTrafficSource: true }),
+      }, { cacheMs: 500 });
+
+      const statsChanged = JSON.stringify(this._stats) !== JSON.stringify(result);
+      this._stats = result;
+
+      if (statsChanged) {
+        this.render();
+      }
+    } catch (error) {
+      const errorChanged = JSON.stringify(this._lastError) !== JSON.stringify(error);
+      this._lastError = error;
+
+      if (errorChanged) {
+        this.render();
+      }
+    }
   }
 
   _buildFiltersFromConfig({ includeTrafficSource = true } = {}) {
@@ -579,6 +607,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
             <div><strong>Flows</strong>: <span id="flowsCount">0</span></div>
             <div><strong>Since</strong>: <span id="startedAt">-</span></div>
             <div style="margin-left:auto; display: flex; gap: 8px;">
+              <button id="r-xtrs-traf-nlysr-refreshStats" title="Refresh traffic counters">Refresh</button>
               <button id="r-xtrs-traf-nlysr-bulkLogs" title="Copy selected flows to clipboard">Copy selection</button>
               <button id="r-xtrs-traf-nlysr-bulkMessages" title="List raw messages for selected flows">Messages</button>
               <button id="r-xtrs-traf-nlysr-resetStats" title="Reset the traffic counters">Reset</button>
@@ -640,6 +669,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     const totalCount = stats?.total_count;
     const startedAt = stats?.started_at;
     const resetDisabled = trafficSource !== 'live';
+    const refreshDisabled = trafficSource === 'live';
     const errorText = this._lastError ? String(this._lastError?.message || this._lastError) : '';
 
     const sortArrow = (key) => {
@@ -682,6 +712,12 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     const resetBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-resetStats');
     if (resetBtn) {
       resetBtn.disabled = resetDisabled;
+    }
+
+    const refreshBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-refreshStats');
+    if (refreshBtn) {
+      refreshBtn.disabled = refreshDisabled;
+      refreshBtn.style.display = refreshDisabled ? 'none' : '';
     }
 
     // Update error message
@@ -851,6 +887,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     if (!this.shadowRoot) {
       return;
     }
+    const refreshBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-refreshStats');
     const resetBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-resetStats');
     const trafficSourceSel = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-trafficSource');
     const closeLogBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-closeLogDialog');
@@ -864,6 +901,12 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     if (!this._boundOnReset) {
       this._boundOnReset = () => {
         void this._resetStats();
+      };
+    }
+
+    if (!this._boundOnRefresh) {
+      this._boundOnRefresh = () => {
+        void this._refreshStatsOnce();
       };
     }
     if (!this._boundOnDialogClose) {
@@ -912,6 +955,9 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       };
     }
 
+    if (refreshBtn) {
+      refreshBtn.onclick = this._boundOnRefresh;
+    }
     if (resetBtn) {
       resetBtn.onclick = this._boundOnReset;
     }
