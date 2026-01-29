@@ -28,7 +28,7 @@ const _ensureOptionsUpdatesSubscribed = (hass) => {
   }
 
   try {
-    window.ramsesExtras._optionsUpdatesUnsub = hass.connection.subscribeEvents((event) => {
+    const unsubPromise = hass.connection.subscribeEvents((event) => {
       const payload = event?.data || {};
 
       window.ramsesExtras = window.ramsesExtras || {};
@@ -65,7 +65,15 @@ const _ensureOptionsUpdatesSubscribed = (hass) => {
       } catch (error) {
         logger.warn('⚠️ Failed to dispatch ramses_extras_options_updated event:', error);
       }
-    }, 'ramses_extras_options_updated');
+    }, 'ramses_extras_options_updated')
+      .catch((error) => {
+        logger.warn('⚠️ Failed to subscribe to options updated events:', error);
+        return null;
+      });
+
+    window.ramsesExtras._optionsUpdatesUnsub = () => Promise.resolve(unsubPromise)
+      .then((unsub) => (typeof unsub === 'function' ? unsub() : null))
+      .catch(() => {});
   } catch (error) {
     logger.warn('⚠️ Failed to subscribe to options updated events:', error);
   }
@@ -1304,7 +1312,7 @@ export class RamsesBaseCard extends HTMLElement {
     }
 
     try {
-      this._cardsEnabledUnsub = this._hass.connection.subscribeEvents(() => {
+      const unsubPromise = this._hass.connection.subscribeEvents(() => {
         // Prevent multiple renders when the event fires multiple times
         if (this._cardsEnabled) {
           return;
@@ -1327,6 +1335,10 @@ export class RamsesBaseCard extends HTMLElement {
         this._checkAndLoadInitialState();
         this._scheduleRender(true);
       }, 'ramses_extras_cards_enabled');
+
+      this._cardsEnabledUnsub = () => Promise.resolve(unsubPromise)
+        .then((unsub) => (typeof unsub === 'function' ? unsub() : null))
+        .catch(() => {});
     } catch (error) {
       logger.warn('⚠️ Failed to subscribe to cards enabled events:', error);
     }
