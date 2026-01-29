@@ -1,0 +1,20 @@
+snippets
+
+how can we simulate a version mismatch ?
+// In browser console
+window.ramsesExtras._versionMismatch = {
+  frontend: "0.13.0",
+  backend: "0.14.2",
+  detected: Date.now()
+};
+// Trigger re-render
+location.reload();
+
+check values:
+console.table({
+  frontend: window.ramsesExtras.version,
+  backend: window.ramsesExtras._versionMismatch?.backend || 'unknown',
+  mismatch: !!window.ramsesExtras._versionMismatch,
+  debug: window.ramsesExtras.debug,
+  features: Object.keys(window.ramsesExtras.features || {})
+})

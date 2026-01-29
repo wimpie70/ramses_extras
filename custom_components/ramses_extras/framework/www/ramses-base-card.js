@@ -753,7 +753,11 @@ export class RamsesBaseCard extends HTMLElement {
           this._hassLoaded = true;
 
           if (typeof this._hassReadyListener === 'function') {
-            this._hassReadyListener();
+            try {
+              Promise.resolve(this._hassReadyListener()).catch(() => {});
+            } catch {
+              // ignore
+            }
           }
           this._hassReadyListener = null;
 
