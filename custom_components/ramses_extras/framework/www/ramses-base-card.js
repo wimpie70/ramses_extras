@@ -864,7 +864,12 @@ export class RamsesBaseCard extends HTMLElement {
       }
 
       // No specific entities to monitor, always update
-      debugLog(`🔍 ${this.constructor.name}: shouldUpdate - no required entities, always update`);
+      const lastLoggedAt = this._noRequiredEntitiesLogAt || 0;
+      if (now - lastLoggedAt > 30000) {
+        debugLog(`🔍 ${this.constructor.name}: shouldUpdate - no required entities, always update`);
+        this._noRequiredEntitiesLogAt = now;
+      }
+      this._lastUpdateTime = now;
       return true;
     }
 
