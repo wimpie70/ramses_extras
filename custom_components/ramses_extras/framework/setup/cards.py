@@ -236,29 +236,41 @@ async def copy_helper_files(hass: HomeAssistant) -> None:
 
         version = await async_get_integration_version(hass)
 
-        source_helpers_dir = INTEGRATION_DIR / "framework" / "www"
+        source_www_dir = INTEGRATION_DIR / "framework" / "www"
         destination_helpers_dir = DEPLOYMENT_PATHS.get_destination_helpers_path(
             hass.config.config_dir,
             version,
         )
 
-        _LOGGER.info("Source helpers directory: %s", source_helpers_dir)
+        _LOGGER.info("Source www directory: %s", source_www_dir)
         _LOGGER.info("Destination helpers directory: %s", destination_helpers_dir)
-        _LOGGER.info("Source directory exists: %s", source_helpers_dir.exists())
+        _LOGGER.info("Source directory exists: %s", source_www_dir.exists())
 
-        if not source_helpers_dir.exists():
-            _LOGGER.warning("Helper files directory not found: %s", source_helpers_dir)
+        if not source_www_dir.exists():
+            _LOGGER.warning("Helper files directory not found: %s", source_www_dir)
             return
 
         destination_helpers_dir.mkdir(parents=True, exist_ok=True)
         _LOGGER.info("Created directory: %s", destination_helpers_dir)
 
-        await asyncio.to_thread(
-            shutil.copytree,
-            source_helpers_dir,
-            destination_helpers_dir,
-            dirs_exist_ok=True,
-        )
+        # Copy all .js files from www root to helpers directory
+        for js_file in source_www_dir.glob("*.js"):
+            dest_file = destination_helpers_dir / js_file.name
+            await asyncio.to_thread(shutil.copy2, js_file, dest_file)
+            _LOGGER.debug("Copied %s to %s", js_file.name, dest_file)
+
+        # Copy helpers subdirectory if it exists
+        source_helpers_subdir = source_www_dir / "helpers"
+        if source_helpers_subdir.exists():
+            dest_helpers_subdir = destination_helpers_dir / "helpers"
+            await asyncio.to_thread(
+                shutil.copytree,
+                source_helpers_subdir,
+                dest_helpers_subdir,
+                dirs_exist_ok=True,
+            )
+            _LOGGER.debug("Copied helpers subdirectory")
+
         _LOGGER.info("Helper files copied successfully")
 
     except Exception as e:
