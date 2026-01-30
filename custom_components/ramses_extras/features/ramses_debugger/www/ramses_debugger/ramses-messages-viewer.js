@@ -2,17 +2,46 @@
 /* global customElements */
 
 /**
- * Ramses Messages Viewer.
+ * Ramses Messages Viewer - Reusable message list component with filtering and sorting.
  *
- * A reusable UI component used by debugger cards to display a list of messages
- * (traffic_buffer / packet_log / ha_log) with sorting and filtering.
+ * This is a standalone Web Component that displays RAMSES RF messages in a table
+ * format with comprehensive filtering and sorting capabilities. It's designed to be
+ * embedded in other debugger cards (Traffic Analyser, Packet Log Explorer).
  *
- * Data loading is delegated to the parent via `fetchMessages`, which should
- * return either `{ messages: [...] }` or a plain array.
+ * Features:
+ * - Sortable columns (timestamp, source, destination, verb, code, payload)
+ * - Multi-select filtering by device pairs, verbs, and codes
+ * - Known devices filter (show only registered devices)
+ * - Decode toggle for payload interpretation
+ * - Configurable message limit
+ * - Delegated data loading via fetchMessages callback
+ *
+ * Usage:
+ * ```javascript
+ * const viewer = document.createElement('ramses-messages-viewer');
+ * viewer.hass = this._hass;
+ * viewer.fetchMessages = async () => {
+ *   return await callWebSocketShared(hass, { type: 'ramses_extras/...' });
+ * };
+ * viewer.setConfig({ pairs: [{ src: '01:123456', dst: '18:654321' }], limit: 200 });
+ * await viewer.refresh();
+ * ```
+ *
+ * @module ramses-messages-viewer
+ * @extends HTMLElement
  */
 import * as logger from '../../helpers/logger.js';
 import { deviceCache } from '../../helpers/device-cache.js';
 
+/**
+ * Ramses Messages Viewer component.
+ *
+ * Web Component for displaying and filtering RAMSES RF messages. Data loading
+ * is delegated to parent via fetchMessages callback.
+ *
+ * @class RamsesMessagesViewer
+ * @extends HTMLElement
+ */
 class RamsesMessagesViewer extends HTMLElement {
   constructor() {
     super();

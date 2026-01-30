@@ -45,7 +45,12 @@ See recommendations below for remaining items.
 - **6.1 JSDoc Documentation** ✅ DONE
   - Added: Comprehensive JSDoc to `clipboard.js` (all functions)
   - Added: Comprehensive JSDoc to `device-cache.js` (all methods)
-  - **Impact:** Better IDE autocomplete, easier onboarding
+  - Added: Module and class JSDoc to `ramses-log-explorer.js`
+  - Added: Module and class JSDoc to `ramses-traffic-analyser.js`
+  - Added: Module and class JSDoc to `ramses-messages-viewer.js`
+  - Added: Module and class JSDoc to `ramses-packet-log-explorer.js`
+  - Added: Method JSDoc to key helper methods in Log Explorer
+  - **Impact:** Better IDE autocomplete, easier onboarding, comprehensive API documentation
 
 ### 🐛 Bug Fixes
 
@@ -59,7 +64,11 @@ See recommendations below for remaining items.
 - **New utilities created:** 2 files (clipboard.js, device-cache.js)
 - **Cards updated:** 3 (ramses-log-explorer, ramses-traffic-analyser, ramses-messages-viewer)
 - **Base infrastructure improved:** Base card + card styles
-- **Documentation added:** Comprehensive JSDoc for 2 utility modules (10+ functions)
+- **Documentation added:**
+  - Comprehensive JSDoc for 2 utility modules (10+ functions with examples)
+  - Module and class documentation for 4 debugger cards
+  - Method documentation for key helper functions
+  - Total: 6 files with full JSDoc coverage
 - **Bug fixed:** Excessive logging in base_automation.py
 
 ---

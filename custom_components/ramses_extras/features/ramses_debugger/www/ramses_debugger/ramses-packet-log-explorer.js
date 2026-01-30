@@ -1,13 +1,27 @@
 /**
- * Ramses Packet Log Explorer card.
+ * Ramses Packet Log Explorer Card - Browser for RAMSES RF packet log files.
  *
- * This card explores ramses_cc packet logs (ramses_log) via debugger WebSocket
- * endpoints. It is primarily for browsing / debugging and does not poll by
- * default.
+ * This card provides an interface for exploring RAMSES RF packet log files
+ * (ramses_log) stored by the ramses_cc integration. It allows browsing log
+ * files and viewing their contents with the embedded messages viewer.
+ *
+ * Features:
+ * - File selection from available packet log files
+ * - Configurable message limit
+ * - Manual or auto-load modes
+ * - Embedded messages viewer with full filtering/sorting
+ * - Compact layout optimized for dashboard use
+ *
+ * Unlike the Log Explorer (which handles HA logs), this card specifically
+ * targets RAMSES RF packet logs with structured message data.
  *
  * Performance:
- * - Uses `callWebSocketShared()` so multiple explorers can share in-flight
- *   requests and short-lived cached results.
+ * - Uses callWebSocketShared() for request de-duplication
+ * - No polling by default (manual refresh mode)
+ * - Efficient file list caching
+ *
+ * @module ramses-packet-log-explorer
+ * @extends RamsesBaseCard
  */
 
 import * as logger from '../../helpers/logger.js';
@@ -16,6 +30,15 @@ import { callWebSocketShared } from '../../helpers/card-services.js';
 
 import './ramses-messages-viewer.js';
 
+/**
+ * Ramses Packet Log Explorer Card component.
+ *
+ * Provides UI for browsing RAMSES RF packet log files with integrated
+ * message viewer for detailed inspection.
+ *
+ * @class RamsesPacketLogExplorerCard
+ * @extends RamsesBaseCard
+ */
 class RamsesPacketLogExplorerCard extends RamsesBaseCard {
   constructor() {
     super();

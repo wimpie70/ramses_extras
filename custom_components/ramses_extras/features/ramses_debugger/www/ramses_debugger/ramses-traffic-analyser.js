@@ -2,17 +2,33 @@
 /* global clearInterval */
 
 /**
- * Ramses Traffic Analyser card.
+ * Ramses Traffic Analyser Card - Real-time and historical RAMSES RF message flow analyzer.
  *
- * A "flow" is a unique (src, dst) pair observed in ramses_cc message events.
- * This card can show live flows via subscription, or log-backed flows by
- * polling packet_log / ha_log sources.
+ * This card provides comprehensive traffic analysis for RAMSES RF messages, showing
+ * communication flows between devices. A "flow" represents a unique (source, destination)
+ * device pair with aggregated statistics.
  *
- * Performance:
- * - Uses `callWebSocketShared()` to de-duplicate in-flight requests across
- *   multiple cards on the same dashboard.
- * - When using the default poll interval, it prefers the integration option
- *   `ramses_debugger_default_poll_ms` so all cards stay in sync.
+ * Features:
+ * - Live traffic monitoring via WebSocket subscription
+ * - Historical analysis from packet logs or HA logs
+ * - Flow statistics (message counts, rates, last seen)
+ * - Device name/slug resolution with caching
+ * - Bulk operations (copy, filter, view messages)
+ * - Sortable columns with persistent state
+ * - Embedded message viewer for flow details
+ *
+ * Data Sources:
+ * - 'live': Real-time subscription to ramses_cc message events
+ * - 'packet_log': Historical data from packet log files
+ * - 'ha_log': Historical data from Home Assistant logs
+ *
+ * Performance Optimizations:
+ * - Uses callWebSocketShared() for request de-duplication
+ * - Device cache singleton to avoid redundant device list fetches
+ * - Configurable poll intervals with integration-wide sync
+ *
+ * @module ramses-traffic-analyser
+ * @extends RamsesBaseCard
  */
 
 import * as logger from '../../helpers/logger.js';
@@ -26,6 +42,15 @@ import './ramses-messages-viewer.js';
 
 import { trafficAnalyserCardStyle } from './card-styles.js';
 
+/**
+ * Ramses Traffic Analyser Card component.
+ *
+ * Displays RAMSES RF message flows with statistics, device resolution, and
+ * integrated message viewing. Supports live monitoring and historical analysis.
+ *
+ * @class RamsesTrafficAnalyserCard
+ * @extends RamsesBaseCard
+ */
 class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   constructor() {
     super();

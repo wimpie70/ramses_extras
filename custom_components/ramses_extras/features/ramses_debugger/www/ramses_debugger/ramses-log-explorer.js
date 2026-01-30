@@ -1,16 +1,22 @@
 /* global setTimeout */
 
 /**
- * Ramses Log Explorer card.
+ * Ramses Log Explorer Card - Home Assistant log file browser and search tool.
  *
- * Purpose:
- * - Browse HA log files (base + rotated variants) exposed by the debugger backend.
- * - Show a tail window plus search results with +/- context.
+ * This card provides a comprehensive interface for browsing and searching Home Assistant
+ * log files, including rotated log variants. It supports:
+ * - File selection from available log files
+ * - Tail view with configurable line count and offset
+ * - Full-text search with context expansion
+ * - Line wrapping toggle
+ * - Copy to clipboard functionality
+ * - Zoom dialog for detailed viewing
  *
- * Notes:
- * - Uses `callWebSocketShared()` to de-duplicate requests across multiple cards.
- * - Search results may be returned as structured blocks; we render blocks with
- *   separators so copy/paste is still straightforward.
+ * The card uses WebSocket commands to communicate with the backend debugger feature,
+ * with automatic request de-duplication via callWebSocketShared().
+ *
+ * @module ramses-log-explorer
+ * @extends RamsesBaseCard
  */
 
 import * as logger from '../../helpers/logger.js';
@@ -20,6 +26,15 @@ import { copyToClipboard } from '../../helpers/clipboard.js';
 
 import { logExplorerCardStyle } from './card-styles.js';
 
+/**
+ * Ramses Log Explorer Card component.
+ *
+ * Provides UI for browsing Home Assistant log files with search and tail functionality.
+ * Supports multiple log files (base + rotated), context expansion, and zoom viewing.
+ *
+ * @class RamsesLogExplorerCard
+ * @extends RamsesBaseCard
+ */
 class RamsesLogExplorerCard extends RamsesBaseCard {
   constructor() {
     super();
@@ -47,6 +62,15 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._zoomMode = null;
   }
 
+  /**
+   * Get human-readable label for current tail window position.
+   *
+   * Generates a label showing the tail window position relative to end-of-file (EOF).
+   * Format: "EOF-200 … EOF" for tail at end, or "EOF-250 … EOF-50" for offset tail.
+   *
+   * @returns {string} Tail window position label
+   * @private
+   */
   _getTailWindowLabel() {
     const tailLines = Number.isFinite(this._tailLines)
       ? this._tailLines
@@ -57,6 +81,16 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       : `EOF-${tailLines} … EOF`;
   }
 
+  /**
+   * Configure zoom dialog controls based on current mode.
+   *
+   * Updates button labels and tooltips to match the current zoom mode:
+   * - 'tail' mode: Controls for moving tail window (±50 lines)
+   * - 'search' mode: Controls for expanding search context (±10 lines)
+   *
+   * @param {string} mode - Zoom mode: 'tail' or 'search'
+   * @private
+   */
   _setZoomControlsForMode(mode) {
     const label = this.shadowRoot?.getElementById('zoomControlsLabel');
     const beforeBtn = this.shadowRoot?.getElementById('zoomBeforeMore');
@@ -85,6 +119,15 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     afterBtn.title = 'Increase context lines after matches by 10';
   }
 
+  /**
+   * Update tail zoom dialog content with current tail data.
+   *
+   * Refreshes the zoom dialog when in tail mode, updating the title with
+   * current window position and re-rendering the tail content with line numbers.
+   * Only updates if dialog is open and in tail mode.
+   *
+   * @private
+   */
   _updateTailZoomDialog() {
     const dialog = this.shadowRoot?.getElementById('zoomDialog');
     const dialogTitle = this.shadowRoot?.getElementById('zoomTitle');
@@ -104,6 +147,15 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
   }
 
+  /**
+   * Open zoom dialog in tail mode.
+   *
+   * Opens the zoom dialog displaying the current tail content with line numbers.
+   * Configures controls for tail mode (±50 line navigation) and sets the dialog
+   * title to show current window position.
+   *
+   * @private
+   */
   _openTailDialog() {
     const dialog = this.shadowRoot?.getElementById('zoomDialog');
     const dialogTitle = this.shadowRoot?.getElementById('zoomTitle');
