@@ -47,6 +47,110 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._zoomMode = null;
   }
 
+  _getTailWindowLabel() {
+    const tailLines = Number.isFinite(this._tailLines)
+      ? this._tailLines
+      : Number(this._config?.max_tail_lines || 200);
+    const tailOffset = this._tailOffset || 0;
+    return tailOffset
+      ? `EOF-${tailLines + tailOffset} … EOF-${tailOffset}`
+      : `EOF-${tailLines} … EOF`;
+  }
+
+  _setZoomControlsForMode(mode) {
+    const label = this.shadowRoot?.getElementById('zoomControlsLabel');
+    const beforeBtn = this.shadowRoot?.getElementById('zoomBeforeMore');
+    const afterBtn = this.shadowRoot?.getElementById('zoomAfterMore');
+    if (!beforeBtn || !afterBtn) {
+      return;
+    }
+
+    if (mode === 'tail') {
+      if (label) {
+        label.textContent = 'Tail controls';
+      }
+      beforeBtn.textContent = '+50 lines up';
+      beforeBtn.title = 'Move window 50 lines earlier';
+      afterBtn.textContent = '-50 lines down';
+      afterBtn.title = 'Move window 50 lines later';
+      return;
+    }
+
+    if (label) {
+      label.textContent = 'Zoom controls';
+    }
+    beforeBtn.textContent = '+10 lines up';
+    beforeBtn.title = 'Increase context lines before matches by 10';
+    afterBtn.textContent = '-10 lines down';
+    afterBtn.title = 'Increase context lines after matches by 10';
+  }
+
+  _updateTailZoomDialog() {
+    const dialog = this.shadowRoot?.getElementById('zoomDialog');
+    const dialogTitle = this.shadowRoot?.getElementById('zoomTitle');
+    if (!dialog?.open) {
+      return;
+    }
+    if (this._zoomMode !== 'tail') {
+      return;
+    }
+    if (dialogTitle) {
+      dialogTitle.textContent = `Tail (${this._getTailWindowLabel()})`;
+    }
+    const pre = this.shadowRoot?.getElementById('zoomPre');
+    if (pre) {
+      pre.innerHTML = this._renderTailHtml(this._tailText, this._tailStartLine, this._searchQuery) || '';
+      pre.style.display = '';
+    }
+  }
+
+  _openTailDialog() {
+    const dialog = this.shadowRoot?.getElementById('zoomDialog');
+    const dialogTitle = this.shadowRoot?.getElementById('zoomTitle');
+    const pre = this.shadowRoot?.getElementById('zoomPre');
+    const zoomResults = this.shadowRoot?.getElementById('zoomResults');
+    if (!dialog || !dialogTitle) {
+      return;
+    }
+
+    this._zoomMode = 'tail';
+    this._setZoomControlsForMode('tail');
+
+    dialogTitle.textContent = `Tail (${this._getTailWindowLabel()})`;
+
+    if (pre) {
+      pre.innerHTML = this._renderTailHtml(this._tailText, this._tailStartLine, this._searchQuery) || '';
+      pre.style.display = '';
+    }
+    if (zoomResults) {
+      zoomResults.innerHTML = '';
+      zoomResults.style.display = 'none';
+    }
+
+    try {
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      }
+    } catch (error) {
+      logger.warn('Failed to open dialog:', error);
+    }
+  }
+
+  _renderTailHtml(text, startLine, query) {
+    if (startLine !== null && text) {
+      const tailLines = String(text).split('\n');
+      const tailHtml = tailLines
+        .map((line, idx) => {
+          const lineNumber = startLine + idx;
+          const highlightedLine = this._renderHighlightedLog(line, query);
+          return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
+        })
+        .join('');
+      return `<div class="r-xtrs-log-xp-line-numbers">${tailHtml}</div>`;
+    }
+    return this._renderHighlightedLog(text, query);
+  }
+
   _escapeHtml(value) {
     return String(value)
       .replaceAll('&', '&amp;')
@@ -426,6 +530,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
 
     this._zoomMode = null;
+    this._setZoomControlsForMode(null);
 
     dialogTitle.textContent = title;
 
@@ -439,6 +544,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
     if (zoomResults) {
       zoomResults.innerHTML = '';
+      zoomResults.style.display = 'none';
     }
 
     try {
@@ -512,20 +618,42 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       void this._copyToClipboard(this._searchResult?.markdown || '');
     });
     bind('zoomTail', 'click', () => {
-      this._openDialog('Tail', this._renderHighlightedLog(this._tailText, this._searchQuery), { html: true });
+      this._openTailDialog();
     });
     bind('zoomResult', 'click', () => {
       this._openSearchResultDialog();
     });
-    bind('zoomBeforeMore', 'click', () => {
-      const beforeVal = Number.isFinite(this._before) ? this._before : Number(this._config?.before || 3);
-      this._before = beforeVal + 10;
-      void this._runSearch();
+    bind('zoomBeforeMore', 'click', (ev) => {
+      ev?.preventDefault?.();
+      if (this._zoomMode === 'tail') {
+        this._tailOffset = Math.min(100_000, (this._tailOffset || 0) + 50);
+        void this._refreshTail().then(() => {
+          this._updateTailZoomDialog();
+          this.render();
+        });
+        return;
+      }
+      if (this._zoomMode === 'search') {
+        const beforeVal = Number.isFinite(this._before) ? this._before : Number(this._config?.before || 3);
+        this._before = beforeVal + 10;
+        void this._runSearch();
+      }
     });
-    bind('zoomAfterMore', 'click', () => {
-      const afterVal = Number.isFinite(this._after) ? this._after : Number(this._config?.after || 3);
-      this._after = afterVal + 10;
-      void this._runSearch();
+    bind('zoomAfterMore', 'click', (ev) => {
+      ev?.preventDefault?.();
+      if (this._zoomMode === 'tail') {
+        this._tailOffset = Math.max(0, (this._tailOffset || 0) - 50);
+        void this._refreshTail().then(() => {
+          this._updateTailZoomDialog();
+          this.render();
+        });
+        return;
+      }
+      if (this._zoomMode === 'search') {
+        const afterVal = Number.isFinite(this._after) ? this._after : Number(this._config?.after || 3);
+        this._after = afterVal + 10;
+        void this._runSearch();
+      }
     });
     bind('closeDialog', 'click', () => {
       const dialog = this.shadowRoot?.getElementById('zoomDialog');
@@ -711,10 +839,14 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
 
     this._zoomMode = 'search';
+    this._setZoomControlsForMode('search');
     dialogTitle.textContent = 'Search result';
     if (pre) {
       pre.textContent = '';
       pre.style.display = 'none';
+    }
+    if (zoomResults) {
+      zoomResults.style.display = '';
     }
 
     const blocks = Array.isArray(this._searchResult?.blocks) ? this._searchResult.blocks : [];
@@ -841,16 +973,16 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
             <form method="dialog">
               <h3 id="zoomTitle"></h3>
               <div style="display:flex; align-items:center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-                <span class="r-xtrs-log-xp-muted">Zoom controls</span>
+                <span id="zoomControlsLabel" class="r-xtrs-log-xp-muted">Zoom controls</span>
                 <span style="display:flex; gap: 6px;">
-                  <button id="zoomBeforeMore" title="Increase context lines before matches by 10">+10 lines up</button>
-                  <button id="zoomAfterMore" title="Increase context lines after matches by 10">-10 lines down</button>
+                  <button type="button" id="zoomBeforeMore" title="Increase context lines before matches by 10">+10 lines up</button>
+                  <button type="button" id="zoomAfterMore" title="Increase context lines after matches by 10">-10 lines down</button>
                 </span>
               </div>
               <pre id="zoomPre"></pre>
               <div id="zoomResults" style="margin-top: 10px;"></div>
               <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 12px;">
-                <button id="closeDialog" title="Close this dialog">${this.t('card.actions.close') || 'Close'}</button>
+                <button type="button" id="closeDialog" title="Close this dialog">${this.t('card.actions.close') || 'Close'}</button>
               </div>
             </form>
           </dialog>
@@ -913,14 +1045,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     // Update tail label
     const tailLabel = this.shadowRoot.getElementById('tailLabel');
     if (tailLabel) {
-      const tailLines = Number.isFinite(this._tailLines)
-        ? this._tailLines
-        : Number(this._config?.max_tail_lines || 200);
-      const tailOffset = this._tailOffset || 0;
-      const tailWindowLabel = tailOffset
-        ? `EOF-${tailLines + tailOffset} … EOF-${tailOffset}`
-        : `EOF-${tailLines} … EOF`;
-      tailLabel.textContent = `${this.t('card.log.tail.title') || 'tail'} (${tailWindowLabel})`;
+      tailLabel.textContent = `${this.t('card.log.tail.title') || 'tail'} (${this._getTailWindowLabel()})`;
     }
 
     // Update tail content
