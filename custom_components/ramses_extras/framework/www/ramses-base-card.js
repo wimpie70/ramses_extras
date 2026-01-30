@@ -1057,6 +1057,26 @@ export class RamsesBaseCard extends HTMLElement {
     }
   }
 
+  // ========== DOM UTILITIES ==========
+
+  /**
+   * Bind event listener to element by ID in shadow root.
+   * Helper method to reduce boilerplate in card implementations.
+   *
+   * @param {string} elementId - Element ID in shadow root
+   * @param {string} eventType - Event type (e.g., 'click', 'change')
+   * @param {Function} handler - Event handler function
+   * @returns {boolean} True if binding succeeded, false if element not found
+   */
+  _bindEvent(elementId, eventType, handler) {
+    const element = this.shadowRoot?.getElementById(elementId);
+    if (!element) {
+      return false;
+    }
+    element.addEventListener(eventType, handler);
+    return true;
+  }
+
   // ========== ENTITY UTILITIES ==========
 
   /**

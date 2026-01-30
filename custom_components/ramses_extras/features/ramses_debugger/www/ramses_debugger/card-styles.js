@@ -1,8 +1,9 @@
-export function logExplorerCardStyle({ wrapCss }) {
-  const gridCols = '1fr';
-
+/**
+ * Common base styles shared across all debugger cards.
+ */
+function getBaseCardStyles() {
   return `
-    :host { display: block; width: 100%; min-width: 0; max-width: 100%; height: 700px; }
+    :host { display: block; width: 100%; min-width: 0; max-width: 100%; }
     ha-card {
       width: 100%;
       height: 100%;
@@ -10,6 +11,32 @@ export function logExplorerCardStyle({ wrapCss }) {
       flex-direction: column;
       overflow: hidden;
     }
+    button { cursor: pointer; }
+    dialog {
+      width: 90vw;
+      max-width: 90vw;
+      height: 80vh;
+      max-height: 80vh;
+      resize: both;
+      overflow: auto;
+    }
+    dialog pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: auto;
+      max-height: 70vh;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+  `;
+}
+
+export function logExplorerCardStyle({ wrapCss }) {
+  const gridCols = '1fr';
+
+  return `
+    ${getBaseCardStyles()}
+    :host { height: 700px; }
 
     .r-xtrs-log-xp-card-content {
       flex: 1;
@@ -48,10 +75,8 @@ export function logExplorerCardStyle({ wrapCss }) {
       -webkit-user-select: text;
     }
 
-    dialog { width: 98vw; max-width: 98vw; height: 90vh; max-height: 90vh; resize: both; overflow: auto; }
-    dialog pre { max-height: 70vh; white-space: pre-wrap; }
-
-    button { cursor: pointer; }
+    dialog { width: 98vw; max-width: 98vw; height: 90vh; max-height: 90vh; }
+    dialog pre { max-height: 70vh; }
 
     .r-xtrs-log-xp-hl-line { display: inline; }
 
@@ -125,14 +150,8 @@ export function trafficAnalyserCardStyle({ compact }) {
   const metaWrap = compact ? 'wrap' : 'nowrap';
 
   return `
-    :host { display: block; width: 100%; min-width: 0; max-width: 100%; height: 700px; font-size: var(--ha-font-size-xs); }
-    ha-card {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
+    ${getBaseCardStyles()}
+    :host { height: 700px; font-size: var(--ha-font-size-xs); }
 
     .r-xtrs-traf-nlysr-card-content {
       flex: 1;
@@ -146,7 +165,6 @@ export function trafficAnalyserCardStyle({ compact }) {
     .r-xtrs-traf-nlysr-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .r-xtrs-traf-nlysr-controls input { width: 110px; }
     .r-xtrs-traf-nlysr-controls input.small { width: 80px; }
-    .r-xtrs-traf-nlysr-controls button { cursor: pointer; }
 
     .r-xtrs-traf-nlysr-table-wrap {
       flex: 1;
@@ -176,9 +194,8 @@ export function trafficAnalyserCardStyle({ compact }) {
 
     .r-xtrs-traf-nlysr-error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
 
-    dialog { width: 90vw; max-width: 90vw; height: 600px; max-height: 600px; resize: both; overflow: auto; }
+    dialog { height: 600px; max-height: 600px; }
     dialog form { display: flex; flex-direction: column; height: 100%; }
-    dialog pre { white-space: pre-wrap; word-break: break-word; overflow: auto; max-height: 70vh; }
     #logContainer { width: 100%; flex: 1; min-height: 0; }
     #messagesContainer { width: 100%; flex: 1; min-height: 0; overflow: auto; }
     .r-xtrs-traf-nlysr-messages-list { display: flex; flex-direction: column; height: 100%; }

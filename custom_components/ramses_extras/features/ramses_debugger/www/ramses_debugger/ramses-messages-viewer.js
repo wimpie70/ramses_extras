@@ -11,6 +11,7 @@
  * return either `{ messages: [...] }` or a plain array.
  */
 import * as logger from '../../helpers/logger.js';
+import { deviceCache } from '../../helpers/device-cache.js';
 
 class RamsesMessagesViewer extends HTMLElement {
   constructor() {
@@ -94,13 +95,7 @@ class RamsesMessagesViewer extends HTMLElement {
     }
 
     try {
-      const res = await this._hass.callWS({
-        type: 'ramses_extras/get_available_devices',
-      });
-      const devices = Array.isArray(res?.devices) ? res.devices : [];
-      this._knownDevices = new Set(devices
-        .map((d) => String(d?.device_id ?? d?.id ?? ''))
-        .filter(Boolean));
+      this._knownDevices = await deviceCache.getKnownDeviceIds(this._hass);
     } catch (error) {
       logger.warn('Failed to load known devices:', error);
       this._knownDevices = new Set();

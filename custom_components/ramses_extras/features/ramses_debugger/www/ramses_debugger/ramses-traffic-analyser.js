@@ -1,6 +1,5 @@
 /* global setInterval */
 /* global clearInterval */
-/* global navigator */
 
 /**
  * Ramses Traffic Analyser card.
@@ -19,6 +18,8 @@
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocketShared } from '../../helpers/card-services.js';
+import { copyToClipboard } from '../../helpers/clipboard.js';
+import { deviceCache } from '../../helpers/device-cache.js';
 
 import './ramses-log-explorer.js';
 import './ramses-messages-viewer.js';
@@ -116,33 +117,6 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     }
   }
 
-  async _copyToClipboard(text) {
-    try {
-      if (!text) {
-        return;
-      }
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return;
-      }
-
-      const textarea = document.createElement('textarea');
-      textarea.value = String(text);
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.top = '0';
-      textarea.style.left = '0';
-      textarea.style.width = '1px';
-      textarea.style.height = '1px';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      textarea.remove();
-    } catch (error) {
-      logger.warn('Copy to clipboard failed:', error);
-    }
-  }
 
   async _loadDeviceSlugMap() {
     if (!this._hass) {
@@ -155,28 +129,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     }
 
     try {
-      const res = await callWebSocketShared(
-        this._hass,
-        { type: 'ramses_extras/get_available_devices' },
-        { cacheMs: 30_000 }
-      );
-      const devices = Array.isArray(res?.devices) ? res.devices : [];
-      const map = new Map();
-
-      for (const dev of devices) {
-        const id = String(dev?.device_id ?? '');
-        if (!id) {
-          continue;
-        }
-        const slugLabel = String(dev?.slug_label ?? '').trim();
-        const slugs = Array.isArray(dev?.slugs) ? dev.slugs.map((s) => String(s)).filter(Boolean) : [];
-        const label = slugLabel || (slugs.length ? slugs.join(', ') : '');
-        if (label) {
-          map.set(id, label);
-        }
-      }
-
-      this._deviceSlugMap = map;
+      this._deviceSlugMap = await deviceCache.getDeviceSlugMap(this._hass, { cacheMs: 30_000 });
       this._deviceSlugMapTs = now;
       this.render();
     } catch {
@@ -1053,7 +1006,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
           return;
         }
         const lines = selected.map(({ src, dst }) => (src && dst ? `${src} ${dst}` : src || dst)).filter(Boolean);
-        void this._copyToClipboard(lines.join('\n'));
+        void copyToClipboard(lines.join('\n'));
       });
     }
     if (bulkMessagesBtn) {

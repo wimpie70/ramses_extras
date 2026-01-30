@@ -446,6 +446,7 @@ class ExtrasBaseAutomation(ABC):
             return
 
         _LOGGER.info("Setting up periodic entity check for %s", self.feature_id)
+        self._periodic_check_count = 0
 
         # Use HA's async_track_time_interval for periodic checks
         self._periodic_check_handle = async_track_time_interval(
@@ -456,7 +457,15 @@ class ExtrasBaseAutomation(ABC):
 
     async def _check_for_entities_periodically(self, now: datetime) -> None:
         """Periodic check for entities."""
-        _LOGGER.debug(f"Periodic check for {self.feature_id} entities")
+        self._periodic_check_count = getattr(self, "_periodic_check_count", 0) + 1
+
+        # Only log every 10 checks (5 minutes) to reduce spam
+        if self._periodic_check_count % 10 == 1:
+            _LOGGER.debug(
+                "Periodic check for %s entities (check #%d)",
+                self.feature_id,
+                self._periodic_check_count,
+            )
 
         # Try to register listeners again
         listeners_before = len(self._specific_entity_ids)

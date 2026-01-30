@@ -1,4 +1,3 @@
-/* global navigator */
 /* global setTimeout */
 
 /**
@@ -17,6 +16,7 @@
 import * as logger from '../../helpers/logger.js';
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 import { callWebSocketShared } from '../../helpers/card-services.js';
+import { copyToClipboard } from '../../helpers/clipboard.js';
 
 import { logExplorerCardStyle } from './card-styles.js';
 
@@ -492,33 +492,6 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
   }
 
-  async _copyToClipboard(text) {
-    try {
-      if (!text) {
-        return;
-      }
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return;
-      }
-
-      const textarea = document.createElement('textarea');
-      textarea.value = String(text);
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.top = '0';
-      textarea.style.left = '0';
-      textarea.style.width = '1px';
-      textarea.style.height = '1px';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      textarea.remove();
-    } catch (error) {
-      logger.warn('Copy to clipboard failed:', error);
-    }
-  }
 
   _openDialog(title, text, { html = false } = {}) {
     const dialog = this.shadowRoot?.getElementById('zoomDialog');
@@ -612,10 +585,10 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     });
 
     bind('copyPlain', 'click', () => {
-      void this._copyToClipboard(this._searchResult?.plain || '');
+      void copyToClipboard(this._searchResult?.plain || '');
     });
     bind('copyMarkdown', 'click', () => {
-      void this._copyToClipboard(this._searchResult?.markdown || '');
+      void copyToClipboard(this._searchResult?.markdown || '');
     });
     bind('zoomTail', 'click', () => {
       this._openTailDialog();
