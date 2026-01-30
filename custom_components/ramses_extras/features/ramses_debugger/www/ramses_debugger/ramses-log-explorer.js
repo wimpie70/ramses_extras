@@ -611,6 +611,22 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     bind('runSearch', 'click', () => {
       void this._runSearch();
     });
+    bind('searchWarnings', 'click', () => {
+      this._searchQuery = 'WARNING';
+      const searchInput = this.shadowRoot?.getElementById('searchQuery');
+      if (searchInput) {
+        searchInput.value = 'WARNING';
+      }
+      void this._runSearch();
+    });
+    bind('searchErrors', 'click', () => {
+      this._searchQuery = 'ERROR';
+      const searchInput = this.shadowRoot?.getElementById('searchQuery');
+      if (searchInput) {
+        searchInput.value = 'ERROR';
+      }
+      void this._runSearch();
+    });
 
     bind('searchQuery', 'input', (ev) => {
       const val = ev?.target?.value;
@@ -961,6 +977,15 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               placeholder="ERROR"
               title="Search query (case-insensitive by default)"
             />
+            <button id="runSearch" title="Run search on the selected file">
+              ${this.t('card.log.actions.search') || 'Search'}
+            </button>
+            <button id="searchWarnings" title="Search for 'WARNING' in the log">
+              Warnings
+            </button>
+            <button id="searchErrors" title="Search for 'ERROR' in the log">
+              Errors
+            </button>
             <label>${this.t('card.log.search.before') || 'before'}:</label>
             <input
               id="beforeInput"
@@ -975,9 +1000,6 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               type="number"
               title="Context lines after each match"
             />
-            <button id="runSearch" title="Run search on the selected file">
-              ${this.t('card.log.actions.search') || 'Search'}
-            </button>
             <button id="zoomResult" title="Open search results in a large, resizable popup">
               ${this.t('card.log.actions.zoom') || 'Zoom'}
             </button>
