@@ -43,6 +43,8 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     this._tailLines = null;
     this._tailOffset = 0;
     this._domInitialized = false;
+
+    this._zoomMode = null;
   }
 
   _escapeHtml(value) {
@@ -418,15 +420,25 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     const dialog = this.shadowRoot?.getElementById('zoomDialog');
     const dialogTitle = this.shadowRoot?.getElementById('zoomTitle');
     const pre = this.shadowRoot?.getElementById('zoomPre');
-    if (!dialog || !pre || !dialogTitle) {
+    const zoomResults = this.shadowRoot?.getElementById('zoomResults');
+    if (!dialog || !dialogTitle) {
       return;
     }
 
+    this._zoomMode = null;
+
     dialogTitle.textContent = title;
-    if (html) {
-      pre.innerHTML = text || '';
-    } else {
-      pre.textContent = text || '';
+
+    if (pre) {
+      if (html) {
+        pre.innerHTML = text || '';
+      } else {
+        pre.textContent = text || '';
+      }
+      pre.style.display = '';
+    }
+    if (zoomResults) {
+      zoomResults.innerHTML = '';
     }
 
     try {
@@ -503,7 +515,17 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       this._openDialog('Tail', this._renderHighlightedLog(this._tailText, this._searchQuery), { html: true });
     });
     bind('zoomResult', 'click', () => {
-      this._openDialog('Search result', this._renderHighlightedLog(this._searchResult?.plain || '', this._searchQuery), { html: true });
+      this._openSearchResultDialog();
+    });
+    bind('zoomBeforeMore', 'click', () => {
+      const beforeVal = Number.isFinite(this._before) ? this._before : Number(this._config?.before || 3);
+      this._before = beforeVal + 10;
+      void this._runSearch();
+    });
+    bind('zoomAfterMore', 'click', () => {
+      const afterVal = Number.isFinite(this._after) ? this._after : Number(this._config?.after || 3);
+      this._after = afterVal + 10;
+      void this._runSearch();
     });
     bind('closeDialog', 'click', () => {
       const dialog = this.shadowRoot?.getElementById('zoomDialog');
@@ -512,29 +534,38 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       }
     });
 
+    const zoomDialog = this.shadowRoot?.getElementById('zoomDialog');
+    if (zoomDialog) {
+      zoomDialog.addEventListener('close', () => {
+        this._zoomMode = null;
+      });
+    }
+
     // Add event listeners for expand buttons using event delegation
     this.shadowRoot.addEventListener('click', (e) => {
       if (e.target.classList.contains('r-xtrs-log-xp-expand-before')) {
         const blockIndex = parseInt(e.target.dataset.block);
-        void this._expandBlockContext(blockIndex, 'before');
+        const blockEl = e.target.closest('.r-xtrs-log-xp-result-block');
+        void this._expandBlockContext(blockIndex, 'before', blockEl);
       } else if (e.target.classList.contains('r-xtrs-log-xp-expand-after')) {
         const blockIndex = parseInt(e.target.dataset.block);
-        void this._expandBlockContext(blockIndex, 'after');
+        const blockEl = e.target.closest('.r-xtrs-log-xp-result-block');
+        void this._expandBlockContext(blockIndex, 'after', blockEl);
       }
     });
   }
 
-  _expandBlockContext(blockIndex, direction) {
+  _expandBlockContext(blockIndex, direction, blockElement = null) {
     if (!Array.isArray(this._searchResult?.blocks) || blockIndex >= this._searchResult.blocks.length) {
       return;
     }
 
     const block = this._searchResult.blocks[blockIndex];
-    const blockElement = this.shadowRoot.querySelector(`[data-block-index="${blockIndex}"]`);
-    if (!blockElement) return;
+    const el = blockElement || this.shadowRoot.querySelector(`[data-block-index="${blockIndex}"]`);
+    if (!el) return;
 
     // Show loading state
-    const button = blockElement.querySelector(direction === 'before' ? '.r-xtrs-log-xp-expand-before' : '.r-xtrs-log-xp-expand-after');
+    const button = el.querySelector(direction === 'before' ? '.r-xtrs-log-xp-expand-before' : '.r-xtrs-log-xp-expand-after');
     const originalText = button.textContent;
     button.textContent = 'Loading...';
     button.disabled = true;
@@ -560,10 +591,10 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
 
     // Fetch additional lines from the backend
-    void this._fetchAdditionalLines(startLine, endLine, blockIndex, direction, button, originalText);
+    void this._fetchAdditionalLines(startLine, endLine, blockIndex, direction, button, originalText, el);
   }
 
-  async _fetchAdditionalLines(startLine, endLine, blockIndex, direction, button, originalText) {
+  async _fetchAdditionalLines(startLine, endLine, blockIndex, direction, button, originalText, blockElement) {
     try {
       const response = await callWebSocketShared(this._hass, {
         type: 'ramses_extras/ramses_debugger/log/get_lines',
@@ -573,7 +604,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       });
 
       if (response && response.lines && response.lines.length > 0) {
-        this._insertLinesIntoBlock(blockIndex, direction, response.lines, startLine, originalText);
+        this._insertLinesIntoBlock(blockIndex, direction, response.lines, startLine, originalText, blockElement);
       } else {
         // No more lines available
         button.textContent = 'No more lines';
@@ -592,11 +623,11 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
   }
 
-  _insertLinesIntoBlock(blockIndex, direction, newLines, startLineNumber, originalText) {
-    const blockElement = this.shadowRoot.querySelector(`[data-block-index="${blockIndex}"]`);
-    if (!blockElement) return;
+  _insertLinesIntoBlock(blockIndex, direction, newLines, startLineNumber, originalText, blockElement) {
+    const el = blockElement || this.shadowRoot.querySelector(`[data-block-index="${blockIndex}"]`);
+    if (!el) return;
 
-    const preElement = blockElement.querySelector('.r-xtrs-log-xp-result-pre');
+    const preElement = el.querySelector('.r-xtrs-log-xp-result-pre');
     if (!preElement) return;
 
     // Create new line elements with numbers and highlighting
@@ -611,7 +642,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       preElement.insertAdjacentHTML('afterbegin', newLineElements);
 
       // Update the start line in the header
-      const headerSpan = blockElement.querySelector('.r-xtrs-log-xp-result-header .r-xtrs-log-xp-muted');
+      const headerSpan = el.querySelector('.r-xtrs-log-xp-result-header .r-xtrs-log-xp-muted');
       const currentEndLine = this._searchResult.blocks[blockIndex].end_line;
       headerSpan.textContent = `Lines ${startLineNumber}-${currentEndLine}`;
 
@@ -623,7 +654,7 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
       preElement.insertAdjacentHTML('beforeend', newLineElements);
 
       // Update the end line in the header
-      const headerSpan = blockElement.querySelector('.r-xtrs-log-xp-result-header .r-xtrs-log-xp-muted');
+      const headerSpan = el.querySelector('.r-xtrs-log-xp-result-header .r-xtrs-log-xp-muted');
       const currentStartLine = this._searchResult.blocks[blockIndex].start_line;
       const newEndLine = startLineNumber + newLines.length - 1;
       headerSpan.textContent = `Lines ${currentStartLine}-${newEndLine}`;
@@ -634,9 +665,74 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
     }
 
     // Re-enable the button
-    const button = blockElement.querySelector(direction === 'before' ? '.r-xtrs-log-xp-expand-before' : '.r-xtrs-log-xp-expand-after');
+    const button = el.querySelector(direction === 'before' ? '.r-xtrs-log-xp-expand-before' : '.r-xtrs-log-xp-expand-after');
     button.textContent = originalText;
     button.disabled = false;
+  }
+
+  _renderSearchBlocksHtml(blocks) {
+    return blocks
+      .map((b, idx) => {
+        const lines = Array.isArray(b?.lines) ? b.lines : [];
+        const startLine = b?.start_line || 0;
+        const endLine = b?.end_line || 0;
+
+        const linesWithNumbers = lines.map((line, lineIdx) => {
+          const lineNumber = startLine + lineIdx;
+          const highlightedLine = this._renderHighlightedLog(String(line), this._searchQuery);
+          return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
+        }).join('');
+
+        const sep = idx < blocks.length - 1 ? '<div class="r-xtrs-log-xp-separator"></div>' : '';
+
+        return `
+          <div class="r-xtrs-log-xp-result-block" data-block-index="${idx}" data-start-line="${startLine}" data-end-line="${endLine}">
+            <div class="r-xtrs-log-xp-result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span class="r-xtrs-log-xp-muted">Lines ${startLine}-${endLine}</span>
+              <div class="r-xtrs-log-xp-result-controls" style="display: flex; gap: 4px;">
+                <button class="r-xtrs-log-xp-expand-before" data-block="${idx}" title="Add 10 lines before this block">+10 lines up</button>
+                <button class="r-xtrs-log-xp-expand-after" data-block="${idx}" title="Add 10 lines after this block">-10 lines down</button>
+              </div>
+            </div>
+            <pre class="r-xtrs-log-xp-result-pre r-xtrs-log-xp-line-numbers">${linesWithNumbers}</pre>
+          </div>${sep}
+        `;
+      })
+      .join('');
+  }
+
+  _openSearchResultDialog() {
+    const dialog = this.shadowRoot?.getElementById('zoomDialog');
+    const dialogTitle = this.shadowRoot?.getElementById('zoomTitle');
+    const pre = this.shadowRoot?.getElementById('zoomPre');
+    const zoomResults = this.shadowRoot?.getElementById('zoomResults');
+    if (!dialog || !dialogTitle || !zoomResults) {
+      return;
+    }
+
+    this._zoomMode = 'search';
+    dialogTitle.textContent = 'Search result';
+    if (pre) {
+      pre.textContent = '';
+      pre.style.display = 'none';
+    }
+
+    const blocks = Array.isArray(this._searchResult?.blocks) ? this._searchResult.blocks : [];
+    if (blocks.length) {
+      zoomResults.innerHTML = this._renderSearchBlocksHtml(blocks);
+    } else {
+      const resultPlain = this._searchResult?.plain || '';
+      const resultHtml = this._renderHighlightedLog(resultPlain, this._searchQuery);
+      zoomResults.innerHTML = `<pre class="r-xtrs-log-xp-result-pre">${resultHtml || ''}</pre>`;
+    }
+
+    try {
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      }
+    } catch (error) {
+      logger.warn('Failed to open dialog:', error);
+    }
   }
 
   _renderContent() {
@@ -744,7 +840,15 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
           <dialog id="zoomDialog">
             <form method="dialog">
               <h3 id="zoomTitle"></h3>
+              <div style="display:flex; align-items:center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                <span class="r-xtrs-log-xp-muted">Zoom controls</span>
+                <span style="display:flex; gap: 6px;">
+                  <button id="zoomBeforeMore" title="Increase context lines before matches by 10">+10 lines up</button>
+                  <button id="zoomAfterMore" title="Increase context lines after matches by 10">-10 lines down</button>
+                </span>
+              </div>
               <pre id="zoomPre"></pre>
+              <div id="zoomResults" style="margin-top: 10px;"></div>
               <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 12px;">
                 <button id="closeDialog" title="Close this dialog">${this.t('card.actions.close') || 'Close'}</button>
               </div>
@@ -887,39 +991,24 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
         : [];
 
       if (blocks.length) {
-        const resultBlocksHtml = blocks
-          .map((b, idx) => {
-            const lines = Array.isArray(b?.lines) ? b.lines : [];
-            const startLine = b?.start_line || 0;
-            const endLine = b?.end_line || 0;
-
-            const linesWithNumbers = lines.map((line, lineIdx) => {
-              const lineNumber = startLine + lineIdx;
-              const highlightedLine = this._renderHighlightedLog(String(line), this._searchQuery);
-              return `<div class="r-xtrs-log-xp-line" data-line="${lineNumber}">${highlightedLine}</div>`;
-            }).join('');
-
-            const sep = idx < blocks.length - 1 ? '<div class="r-xtrs-log-xp-separator"></div>' : '';
-
-            return `
-              <div class="r-xtrs-log-xp-result-block" data-block-index="${idx}" data-start-line="${startLine}" data-end-line="${endLine}">
-                <div class="r-xtrs-log-xp-result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                  <span class="r-xtrs-log-xp-muted">Lines ${startLine}-${endLine}</span>
-                  <div class="r-xtrs-log-xp-result-controls" style="display: flex; gap: 4px;">
-                    <button class="r-xtrs-log-xp-expand-before" data-block="${idx}" title="Add 10 lines before this block">+10 lines up</button>
-                    <button class="r-xtrs-log-xp-expand-after" data-block="${idx}" title="Add 10 lines after this block">-10 lines down</button>
-                  </div>
-                </div>
-                <pre class="r-xtrs-log-xp-result-pre r-xtrs-log-xp-line-numbers">${linesWithNumbers}</pre>
-              </div>${sep}
-            `;
-          })
-          .join('');
-        searchResults.innerHTML = resultBlocksHtml;
+        searchResults.innerHTML = this._renderSearchBlocksHtml(blocks);
       } else {
         const resultPlain = this._searchResult?.plain || '';
         const resultHtml = this._renderHighlightedLog(resultPlain, this._searchQuery);
         searchResults.innerHTML = `<pre id="resultPre">${resultHtml || ''}</pre>`;
+      }
+    }
+
+    const zoomDialog = this.shadowRoot.getElementById('zoomDialog');
+    const zoomResults = this.shadowRoot.getElementById('zoomResults');
+    if (zoomDialog?.open && this._zoomMode === 'search' && zoomResults) {
+      const blocks = Array.isArray(this._searchResult?.blocks) ? this._searchResult.blocks : [];
+      if (blocks.length) {
+        zoomResults.innerHTML = this._renderSearchBlocksHtml(blocks);
+      } else {
+        const resultPlain = this._searchResult?.plain || '';
+        const resultHtml = this._renderHighlightedLog(resultPlain, this._searchQuery);
+        zoomResults.innerHTML = `<pre class="r-xtrs-log-xp-result-pre">${resultHtml || ''}</pre>`;
       }
     }
   }
