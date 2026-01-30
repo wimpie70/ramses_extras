@@ -68,6 +68,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     this._messagesDecode = false;
     this._boundOnMessagesSortClick = null;
     this._boundOnMessagesDecodeToggle = null;
+
+    this._boundOnRowSelectChange = null;
   }
 
   getCardSize() {
@@ -769,7 +771,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
           return `
             <tr class="r-xtrs-traf-nlysr-flow-row" data-src="${src}" data-dst="${dst}" data-data="${data}">
               <td class="r-xtrs-traf-nlysr-select-cell">
-                <input type="checkbox" class="row-checkbox" data-src="${src}" data-dst="${dst}" ${checked ? 'checked' : ''} />
+                <input type="checkbox" class="r-xtrs-traf-nlysr-row-select" data-src="${src}" data-dst="${dst}" ${checked ? 'checked' : ''} />
               </td>
               <td class="r-xtrs-traf-nlysr-src-cell r-xtrs-traf-nlysr-device-cell" style="--dev-bg: ${srcBg};">
                 <span class="r-xtrs-traf-nlysr-dev">${srcAlias}</span>
@@ -791,11 +793,19 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
   }
 
   _getSelectedFlows() {
-    const checkboxes = this.shadowRoot.querySelectorAll('.r-xtrs-traf-nlysr-row-select:checked');
-    return Array.from(checkboxes).map((cb) => ({
-      src: cb.getAttribute('data-src'),
-      dst: cb.getAttribute('data-dst'),
-    }));
+    if (!this._checkedRows || this._checkedRows.size === 0) {
+      return [];
+    }
+
+    return Array.from(this._checkedRows.keys())
+      .map((k) => {
+        const parts = String(k).split('|');
+        return {
+          src: parts[0] || null,
+          dst: parts[1] || null,
+        };
+      })
+      .filter(({ src, dst }) => src || dst);
   }
 
   _openLogDialog(query) {
@@ -895,6 +905,8 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     const selectAllCb = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-selectAll');
     const bulkLogsBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-bulkLogs');
     const bulkMessagesBtn = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-bulkMessages');
+
+    const flowsTbody = this.shadowRoot.getElementById('flowsTableBody');
 
     const thead = this.shadowRoot.querySelector('thead');
 
@@ -1005,28 +1017,41 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       selectAllCb.onchange = this._boundOnSelectAll;
     }
 
-    // Add per-row checkbox listeners
-    const rowCheckboxes = this.shadowRoot.querySelectorAll('.r-xtrs-traf-nlysr-row-select');
-    rowCheckboxes.forEach((cb) => {
-      const src = cb.getAttribute('data-src');
-      const dst = cb.getAttribute('data-dst');
-      cb.addEventListener('change', (ev) => {
-        if (ev.target.checked) {
-          this._checkedRows.set(`${src}|${dst}`, true);
-        } else {
-          this._checkedRows.delete(`${src}|${dst}`);
+    if (!this._boundOnRowSelectChange) {
+      this._boundOnRowSelectChange = (ev) => {
+        const target = ev?.target;
+        if (!target?.matches?.('input.r-xtrs-traf-nlysr-row-select')) {
+          return;
         }
-        // Update select all checkbox state
+
+        const src = target.getAttribute('data-src');
+        const dst = target.getAttribute('data-dst');
+        const key = `${src}|${dst}`;
+
+        if (target.checked) {
+          this._checkedRows.set(key, true);
+        } else {
+          this._checkedRows.delete(key);
+        }
+
         const selectAll = this.shadowRoot.getElementById('r-xtrs-traf-nlysr-selectAll');
-        if (selectAll && this._flows) {
+        if (selectAll && this._flows?.length) {
           selectAll.checked = this._checkedRows.size === this._flows.length;
         }
-      });
-    });
+      };
+    }
+
+    if (flowsTbody) {
+      flowsTbody.onchange = this._boundOnRowSelectChange;
+    }
     if (bulkLogsBtn) {
       bulkLogsBtn.onclick = this._boundOnBulkLogs || (() => {
         const selected = this._getSelectedFlows();
-        if (selected.length === 0) return;
+        if (selected.length === 0) {
+          this._lastError = new Error('No flows selected. Tick one or more rows first.');
+          this.render();
+          return;
+        }
         const lines = selected.map(({ src, dst }) => (src && dst ? `${src} ${dst}` : src || dst)).filter(Boolean);
         void this._copyToClipboard(lines.join('\n'));
       });
@@ -1034,7 +1059,11 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     if (bulkMessagesBtn) {
       bulkMessagesBtn.onclick = this._boundOnBulkMessages || (() => {
         const selected = this._getSelectedFlows();
-        if (selected.length === 0) return;
+        if (selected.length === 0) {
+          this._lastError = new Error('No flows selected. Tick one or more rows first.');
+          this.render();
+          return;
+        }
         this._openMessagesDialog(selected);
       });
     }

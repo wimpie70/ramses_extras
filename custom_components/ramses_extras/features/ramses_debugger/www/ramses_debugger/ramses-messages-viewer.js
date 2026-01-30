@@ -74,8 +74,12 @@ class RamsesMessagesViewer extends HTMLElement {
       this._sortDir = this._config.sort_dir;
     }
 
-    const pairs = Array.isArray(this._config.pairs) ? this._config.pairs : [];
-    this._activePairs = new Set(pairs.map((p) => `${p?.src}|${p?.dst}`));
+    const hasPairs = Object.prototype.hasOwnProperty.call(cfg, 'pairs');
+    if (hasPairs) {
+      const pairs = Array.isArray(this._config.pairs) ? this._config.pairs : [];
+      this._activePairs = new Set(pairs.map((p) => `${p?.src}|${p?.dst}`));
+      this._pairFilterTouched = false;
+    }
 
     if (typeof this._config.known_devices_only === 'boolean') {
       this._knownDevicesOnly = this._config.known_devices_only;
@@ -94,7 +98,9 @@ class RamsesMessagesViewer extends HTMLElement {
         type: 'ramses_extras/get_available_devices',
       });
       const devices = Array.isArray(res?.devices) ? res.devices : [];
-      this._knownDevices = new Set(devices.map((d) => String(d?.id || '')).filter(Boolean));
+      this._knownDevices = new Set(devices
+        .map((d) => String(d?.device_id ?? d?.id ?? ''))
+        .filter(Boolean));
     } catch (error) {
       logger.warn('Failed to load known devices:', error);
       this._knownDevices = new Set();
@@ -178,12 +184,12 @@ class RamsesMessagesViewer extends HTMLElement {
         .r-xtrs-msg-viewer-messages-table th.sortable { cursor: pointer; user-select: none; }
         .r-xtrs-msg-viewer-messages-controls { display:flex; align-items:center; gap: 12px; margin-top: 8px; }
         .r-xtrs-msg-viewer-messages-selected { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .r-xtrs-msg-viewer-messages-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+        .r-xtrs-msg-viewer-messages-chip { display:inline-flex; align-items:center; gap: 0; padding: 2px 4px; border-radius: 999px; background: rgba(0,0,0,0.04); }
         .r-xtrs-msg-viewer-dev { padding: 1px 6px; border-radius: 999px; background: var(--dev-bg, rgba(0,0,0,0.04)); font-size: var(--ha-font-size-xs); }
-        .r-xtrs-msg-viewer-messages-verbs { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .r-xtrs-msg-viewer-messages-verb-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
-        .r-xtrs-msg-viewer-messages-codes { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .r-xtrs-msg-viewer-messages-code-chip { display:inline-flex; align-items:center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); font-size: var(--ha-font-size-xs); }
+        .r-xtrs-msg-viewer-messages-verbs { display:flex; flex-wrap: wrap; gap: 0; margin-top: 6px; }
+        .r-xtrs-msg-viewer-messages-verb-chip { display:inline-flex; align-items:center; gap: 0; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); }
+        .r-xtrs-msg-viewer-messages-codes { display:flex; flex-wrap: wrap; gap: 0; margin-top: 6px; }
+        .r-xtrs-msg-viewer-messages-code-chip { display:inline-flex; align-items:center; gap: 0; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,0.04); font-size: var(--ha-font-size-xs); }
         .r-xtrs-msg-viewer-error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
         .r-xtrs-msg-viewer-select-all-btn { cursor: pointer; margin-left: 8px; }
       </style>
@@ -555,7 +561,7 @@ class RamsesMessagesViewer extends HTMLElement {
         const viaDisplay = msg.__viaDisplay || '';
         const srcBg = deviceBg(msg.src);
         const dstBg = (dstDisplay === '--:------') ? 'rgba(0,0,0,0.04)' : deviceBg(dstDisplay);
-        const viaBg = viaDisplay ? deviceBg(viaDisplay) : '';
+        void viaDisplay;
         return `
           <tr>
             <td class="r-xtrs-msg-viewer-col-time">${msg.dtm || ''}</td>
@@ -595,7 +601,7 @@ class RamsesMessagesViewer extends HTMLElement {
     if (decodeCb) {
       decodeCb.onchange = (ev) => {
         this._decode = Boolean(ev?.target?.checked);
-        this.render();
+        void this.refresh();
       };
     }
 
@@ -604,7 +610,11 @@ class RamsesMessagesViewer extends HTMLElement {
     if (knownDevicesCb) {
       knownDevicesCb.onchange = (ev) => {
         this._knownDevicesOnly = Boolean(ev?.target?.checked);
-        this.render();
+        if (this._knownDevicesOnly) {
+          void this._loadKnownDevices().then(() => this.render());
+        } else {
+          this.render();
+        }
       };
     }
 

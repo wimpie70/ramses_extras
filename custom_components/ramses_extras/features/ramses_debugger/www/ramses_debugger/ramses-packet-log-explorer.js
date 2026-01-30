@@ -187,10 +187,8 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
       if (viewer && typeof viewer.setConfig === 'function') {
         viewer.setConfig({ limit: this._limit });
       }
-      if (this._loadMode === 'auto') {
-        if (viewer && typeof viewer.refresh === 'function') {
-          void viewer.refresh();
-        }
+      if (viewer && typeof viewer.refresh === 'function') {
+        void viewer.refresh();
       }
     });
   }
@@ -208,7 +206,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
 
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display: block; width: 100%; min-width: 0; max-width: 100%; height: 700px; }
+        :host { display: block; width: 100%; min-width: 0; max-width: 100%; height: 800px; }
         ha-card {
           width: 100%;
           height: 100%;
@@ -236,7 +234,7 @@ class RamsesPacketLogExplorerCard extends RamsesBaseCard {
         .r-xtrs-pack-log-row input.small { width: 70px; }
         .r-xtrs-pack-log-row select { min-width: 260px; flex: 1; }
 
-        .r-xtrs-pack-log-muted { font-size: var(--ha-font-size-s); opacity: 0.8; }
+        .r-xtrs-pack-log-muted { font-size: var(--ha-font-size-xs); opacity: 0.8; }
         .r-xtrs-pack-log-error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
 
         button { cursor: pointer; }
