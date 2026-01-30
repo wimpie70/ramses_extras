@@ -7,6 +7,81 @@
 
 import * as logger from './logger.js';
 
+const _WS_DEBUG_DEFAULT_THROTTLE_MS = 2000;
+const _wsDebugLastLoggedAt = new Map();
+
+function _getWsDebugThrottleMs() {
+  const throttleRaw = window?.ramsesExtras?.frontendWsLogThrottleMs;
+  const throttle = Number(throttleRaw);
+  if (Number.isFinite(throttle) && throttle >= 0) {
+    return throttle;
+  }
+  return _WS_DEBUG_DEFAULT_THROTTLE_MS;
+}
+
+function _shouldWsDebugLog(type) {
+  const throttleMs = _getWsDebugThrottleMs();
+  if (throttleMs === 0) {
+    return true;
+  }
+  const now = Date.now();
+  const last = _wsDebugLastLoggedAt.get(type) || 0;
+  if ((now - last) < throttleMs) {
+    return false;
+  }
+  _wsDebugLastLoggedAt.set(type, now);
+  return true;
+}
+
+function _summarizeWsPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return payload;
+  }
+  if (Array.isArray(payload)) {
+    return `[${payload.length} items]`;
+  }
+
+  const summary = {};
+  const keys = Object.keys(payload);
+  for (const k of keys) {
+    if (k === 'id' || k === 'type') {
+      summary[k] = payload[k];
+      continue;
+    }
+
+    const v = payload[k];
+    if (typeof v === 'string') {
+      if (v.length > 200) {
+        summary[k] = `${v.slice(0, 200)}…(${v.length})`;
+      } else {
+        summary[k] = v;
+      }
+      continue;
+    }
+
+    if (Array.isArray(v)) {
+      summary[k] = `[${v.length} items]`;
+      continue;
+    }
+
+    if (v && typeof v === 'object') {
+      summary[k] = '{…}';
+      continue;
+    }
+
+    summary[k] = v;
+  }
+  return summary;
+}
+
+function _nowMs() {
+  const perf = window?.performance;
+  if (perf && typeof perf.now === 'function') {
+    return perf.now();
+  }
+  return Date.now();
+}
+
 /**
  * Stable stringify for WebSocket cache keys.
  *
@@ -89,6 +164,10 @@ export async function callWebSocket(hass, message) {
     // Allow initialization-related calls to bypass version mismatch check
     const isInitializationCall = message?.type === 'ramses_extras/default/get_cards_enabled';
 
+    const messageType = String(message?.type || 'unknown');
+    const doDebugLog = _shouldWsDebugLog(messageType);
+    const startMs = _nowMs();
+
     // Block WebSocket calls if there's a version mismatch (except initialization)
     if (window.ramsesExtras?._versionMismatch && !isInitializationCall) {
       const mismatch = window.ramsesExtras._versionMismatch;
@@ -104,9 +183,21 @@ export async function callWebSocket(hass, message) {
 
     try {
       // Use Home Assistant's WebSocket API
+      if (doDebugLog) {
+        logger.debug('[ramses_extras] WS →', _summarizeWsPayload(message));
+      }
       hass.callWS(message)
         .then((result) => {
           _checkVersionMismatch(result);
+          if (doDebugLog) {
+            const endMs = _nowMs();
+            const durationMs = Math.round(endMs - startMs);
+            logger.debug(
+              '[ramses_extras] WS ←',
+              `${messageType} (${durationMs}ms)`,
+              _summarizeWsPayload(result),
+            );
+          }
           resolve(result);
         })
         .catch((error) => {
@@ -124,6 +215,13 @@ export async function callWebSocket(hass, message) {
             messageText.includes('Unknown command');
 
           if (isNotAvailable) {
+            if (doDebugLog) {
+              logger.debug(
+                '[ramses_extras] WS ✕',
+                `${messageType} (not_available)`,
+                _summarizeWsPayload({ code, message: messageText }),
+              );
+            }
             reject({
               not_available: true,
               code: code || 'unknown_command',
@@ -133,10 +231,16 @@ export async function callWebSocket(hass, message) {
             return;
           }
 
+          if (doDebugLog) {
+            logger.debug('[ramses_extras] WS ✕', messageType, _summarizeWsPayload(error));
+          }
           logger.error('WebSocket message failed:', error);
           reject(error);
         });
     } catch (error) {
+      if (doDebugLog) {
+        logger.debug('[ramses_extras] WS ✕', messageType, _summarizeWsPayload(error));
+      }
       logger.error('Error sending WebSocket message:', error);
       reject(error);
     }
