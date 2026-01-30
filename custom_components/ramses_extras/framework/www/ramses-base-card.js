@@ -863,14 +863,12 @@ export class RamsesBaseCard extends HTMLElement {
         return false;
       }
 
-      // No specific entities to monitor, always update
-      const lastLoggedAt = this._noRequiredEntitiesLogAt || 0;
-      if (now - lastLoggedAt > 30000) {
-        debugLog(`🔍 ${this.constructor.name}: shouldUpdate - no required entities, always update`);
-        this._noRequiredEntitiesLogAt = now;
-      }
+      // No specific entities to monitor.
+      // Cards without required entities should not re-render on every hass update;
+      // they should render only on explicit triggers (button clicks, config changes,
+      // websocket responses, etc.).
       this._lastUpdateTime = now;
-      return true;
+      return false;
     }
 
     // Check if any monitored entities have changed
