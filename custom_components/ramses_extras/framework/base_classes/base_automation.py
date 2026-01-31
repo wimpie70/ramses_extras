@@ -425,7 +425,9 @@ class ExtrasBaseAutomation(ABC):
             entity_states = await self._get_device_entity_states(device_id)
             _LOGGER.debug(f"Device {device_id}: Got entity states: {entity_states}")
         except ValueError as e:
-            _LOGGER.warning(f"Device {device_id}: Invalid entity states - {e}")
+            # Use debug level instead of warning since unavailable entities
+            # are expected during startup or when devices are offline
+            _LOGGER.debug(f"Device {device_id}: Invalid entity states - {e}")
             return
 
         # Call feature-specific processing logic

@@ -169,6 +169,7 @@ class TestRamsesCommands:
     async def test_send_packet_success(self, ramses_commands, hass):
         """Test low-level packet sending."""
         hass.services.async_call = AsyncMock()
+        hass.services.has_service = MagicMock(return_value=True)
         cmd_def = {
             "code": "22F1",
             "verb": "I",
@@ -199,6 +200,21 @@ class TestRamsesCommands:
         hass.services.async_call = AsyncMock(
             side_effect=Exception("Service call failed")
         )
+        hass.services.has_service = MagicMock(return_value=True)
+        cmd_def = {
+            "code": "22F1",
+            "verb": "I",
+            "payload": "000307",
+            "description": "High",
+        }
+
+        success = await ramses_commands._send_packet("32_123456", cmd_def)
+        assert success is False
+
+    @pytest.mark.asyncio
+    async def test_send_packet_service_not_found(self, ramses_commands, hass):
+        """Test packet sending when ramses_cc service is not available."""
+        hass.services.has_service = MagicMock(return_value=False)
         cmd_def = {
             "code": "22F1",
             "verb": "I",

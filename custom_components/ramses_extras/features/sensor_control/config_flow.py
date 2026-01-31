@@ -98,7 +98,12 @@ async def async_step_sensor_control_config(
 
     if stage == "select_device":
         if user_input is not None:
-            flow._sensor_control_selected_device = user_input["device_id"]
+            device_id = user_input.get("device_id")
+            if not device_id:
+                _LOGGER.error("No device_id provided in sensor_control config flow")
+                flow._sensor_control_stage = "select_device"
+                return await async_step_sensor_control_config(flow, None)
+            flow._sensor_control_selected_device = device_id
             flow._sensor_control_stage = "configure_device"
             return await async_step_sensor_control_config(flow, None)
 

@@ -98,9 +98,17 @@ async def _manage_cards_config_flow(
                 # The card is registered as a static resource in async_setup_entry
                 _LOGGER.info(f"Card {feature_key} is automatically registered")
             else:
-                _LOGGER.warning(
-                    f"Cannot register {feature_key}: {card_source_path} not found"
-                )
+                # Only warn if this feature actually has a card_config
+                # Some features don't have frontend cards
+                # (e.g., sensor_control, humidity_control)
+                if card_info:
+                    _LOGGER.warning(
+                        f"Cannot register {feature_key}: {card_source_path} not found"
+                    )
+                else:
+                    _LOGGER.debug(
+                        f"Feature {feature_key} has no card configuration, skipping"
+                    )
         else:
             # Remove card from community folder if it exists
             await _remove_card_config_flow(hass, card_dest_path)

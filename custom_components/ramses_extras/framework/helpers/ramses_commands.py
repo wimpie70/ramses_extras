@@ -435,6 +435,15 @@ class RamsesCommands:
                     f"No bound REM device found for {device_id}, using default source"
                 )
 
+            # Check if the ramses_cc.send_packet service exists
+            if not self.hass.services.has_service("ramses_cc", "send_packet"):
+                _LOGGER.error(
+                    f"Failed to send Ramses command {cmd_def['code']}: "
+                    "Service ramses_cc.send_packet not found. "
+                    "Ensure ramses_cc integration is installed and loaded."
+                )
+                return False
+
             # Call the ramses_cc send_packet service with parameters
             await self.hass.services.async_call(
                 "ramses_cc", "send_packet", service_data
