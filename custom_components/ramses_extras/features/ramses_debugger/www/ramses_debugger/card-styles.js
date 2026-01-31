@@ -75,8 +75,10 @@ export function logExplorerCardStyle({ wrapCss }) {
       -webkit-user-select: text;
     }
 
-    dialog { width: 98vw; max-width: 98vw; height: 90vh; max-height: 90vh; }
-    dialog pre { max-height: 70vh; }
+    dialog { width: 98vw; max-width: 98vw; height: 90vh; max-height: 90vh; overflow: hidden; }
+    dialog form { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+    dialog pre { max-height: 70vh; flex-shrink: 0; }
+    #zoomResults { flex: 1; overflow: auto; min-height: 0; }
 
     .r-xtrs-log-xp-hl-line { display: inline; }
 
