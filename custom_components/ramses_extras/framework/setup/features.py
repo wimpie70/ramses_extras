@@ -231,6 +231,8 @@ async def create_and_start_feature_instances(
 
     hass.data[DOMAIN]["cards_pending_features"] = cards_pending_features
 
+    # Set up event listener BEFORE creating features to avoid race condition
+    # where features fire ready events before listener is attached
     existing_unsub = hass.data[DOMAIN].get("_cards_enabled_unsub")
     if callable(existing_unsub):
         existing_unsub()

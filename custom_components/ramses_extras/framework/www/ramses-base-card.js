@@ -469,8 +469,15 @@ export class RamsesBaseCard extends HTMLElement {
       return;
     }
 
-    this._optionsUpdatedListener = () => {
+    this._optionsUpdatedListener = (event) => {
       try {
+        // Update feature configuration if provided in event
+        if (event?.detail?.enabled_features && typeof event.detail.enabled_features === 'object') {
+          window.ramsesExtras = window.ramsesExtras || {};
+          window.ramsesExtras.features = event.detail.enabled_features;
+          logger.debug(`${this.constructor.name}: Updated features from options event:`, event.detail.enabled_features);
+        }
+
         if (window.ramsesExtras?.cardsEnabled === true) {
           this._cardsEnabled = true;
         }
@@ -506,24 +513,37 @@ export class RamsesBaseCard extends HTMLElement {
       return;
     }
     if (!this._isHomeAssistantRunning()) {
+      logger.debug(`${this.constructor.name}: HA not running yet`);
       return;
     }
     if (!this._hass?.connection) {
+      logger.debug(`${this.constructor.name}: No connection yet`);
       return;
     }
     if (this._backendReadyPromise) {
       return;
     }
 
+    logger.debug(`${this.constructor.name}: Calling get_cards_enabled to confirm backend ready`);
     this._backendReadyPromise = callWebSocket(this._hass, {
       type: 'ramses_extras/default/get_cards_enabled',
     })
-      .then(() => {
+      .then((result) => {
+        logger.debug(`${this.constructor.name}: Backend ready confirmed, cards_enabled=${result?.cards_enabled}`);
         this._hassLoaded = true;
         this._backendReadyPromise = null;
+
+        // Also set cardsEnabled if the response indicates it's enabled
+        if (result?.cards_enabled === true) {
+          window.ramsesExtras = window.ramsesExtras || {};
+          window.ramsesExtras.cardsEnabled = true;
+          this._cardsEnabled = true;
+        }
+
         this._scheduleRender();
       })
-      .catch(() => {
+      .catch((error) => {
+        logger.warn(`${this.constructor.name}: Backend ready check failed, will retry:`, error);
         this._backendReadyPromise = null;
         setTimeout(() => this._confirmBackendReady(), 1000);
       });
@@ -1242,9 +1262,17 @@ export class RamsesBaseCard extends HTMLElement {
     }
 
     window.ramsesExtras = window.ramsesExtras || {};
-    window.ramsesExtras._cardsEnabledPromise = window.ramsesExtras._cardsEnabledPromise || null;
-    window.ramsesExtras._cardsEnabledFailCount = window.ramsesExtras._cardsEnabledFailCount || 0;
-    window.ramsesExtras._cardsEnabledLastFailTime = window.ramsesExtras._cardsEnabledLastFailTime || 0;
+
+    // On fresh page load (no retry state exists), ensure we start clean
+    if (window.ramsesExtras._cardsEnabledPromise === undefined) {
+      window.ramsesExtras._cardsEnabledPromise = null;
+      window.ramsesExtras._cardsEnabledFailCount = 0;
+      window.ramsesExtras._cardsEnabledLastFailTime = 0;
+    } else {
+      window.ramsesExtras._cardsEnabledPromise = window.ramsesExtras._cardsEnabledPromise || null;
+      window.ramsesExtras._cardsEnabledFailCount = window.ramsesExtras._cardsEnabledFailCount || 0;
+      window.ramsesExtras._cardsEnabledLastFailTime = window.ramsesExtras._cardsEnabledLastFailTime || 0;
+    }
 
     if (window.ramsesExtras.cardsEnabled === true) {
       this._cardsEnabled = true;
