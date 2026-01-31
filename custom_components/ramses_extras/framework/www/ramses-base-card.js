@@ -475,6 +475,17 @@ export class RamsesBaseCard extends HTMLElement {
           this._cardsEnabled = true;
         }
 
+        // Reset retry state to allow cards to recover after feature disable/enable
+        if (window.ramsesExtras) {
+          window.ramsesExtras._cardsEnabledFailCount = 0;
+          window.ramsesExtras._cardsEnabledLastFailTime = 0;
+          window.ramsesExtras._cardsEnabledPromise = null;
+        }
+        this._maxRetriesWarningShown = false;
+
+        // Force re-check of cards enabled status
+        this._ensureCardsEnabledLoaded();
+
         this.clearUpdateThrottle();
         this._scheduleRender(true);
       } catch (error) {
