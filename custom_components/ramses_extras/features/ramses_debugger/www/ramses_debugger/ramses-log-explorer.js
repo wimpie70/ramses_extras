@@ -977,13 +977,13 @@ class RamsesLogExplorerCard extends RamsesBaseCard {
               placeholder="ERROR"
               title="Search query (case-insensitive by default)"
             />
-            <button id="runSearch" title="Run search on the selected file">
+            <button id="runSearch" title="Run search on the selected file" style="color: var(--primary-color, #03a9f4);">
               ${this.t('card.log.actions.search') || 'Search'}
             </button>
-            <button id="searchWarnings" title="Search for 'WARNING' in the log">
+            <button id="searchWarnings" title="Search for 'WARNING' in the log" style="color: var(--warning-color, #c77f00);">
               Warnings
             </button>
-            <button id="searchErrors" title="Search for 'ERROR' in the log">
+            <button id="searchErrors" title="Search for 'ERROR' in the log" style="color: var(--error-color);">
               Errors
             </button>
             <label>${this.t('card.log.search.before') || 'before'}:</label>
