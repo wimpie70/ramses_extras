@@ -244,27 +244,19 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         # Check entities from required_entities (created by humidity_control feature)
         for expected_entity_id in required_entity_ids:
-            _LOGGER.debug("Checking for entity: %s", expected_entity_id)
-
             # Check entity registry instead of states
             entity_entry = registry.async_get(expected_entity_id)
             if not entity_entry:
-                _LOGGER.warning("Missing entity: %s", expected_entity_id)
+                _LOGGER.debug("Missing entity: %s", expected_entity_id)
                 missing_entities.append(expected_entity_id)
-            else:
-                _LOGGER.debug("Found entity: %s", expected_entity_id)
 
         # Check entities from entity_mappings (created by default feature)
         for state_name, expected_entity_id in entity_mappings.items():
-            _LOGGER.debug("Checking for mapped entity: %s", expected_entity_id)
-
             # Check entity registry instead of states
             entity_entry = registry.async_get(expected_entity_id)
             if not entity_entry:
-                _LOGGER.warning("Missing mapped entity: %s", expected_entity_id)
+                _LOGGER.debug("Missing mapped entity: %s", expected_entity_id)
                 missing_entities.append(expected_entity_id)
-            else:
-                _LOGGER.debug("Found mapped entity: %s", expected_entity_id)
 
         if missing_entities:
             # Only log missing entities once per device to avoid log spam
