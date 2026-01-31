@@ -429,7 +429,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     const id = String(deviceId || '');
     const key = `ramses_extras:${id}`;
     const alias = this._deviceNameMap?.get(key);
-    return alias ? String(alias) : '';
+    return alias ? String(alias) : id;
   }
 
   _deviceBg(deviceId) {
