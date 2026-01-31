@@ -572,7 +572,14 @@ export class RamsesBaseCard extends HTMLElement {
       return null;
     }
 
-    return window.ramsesExtras.features[featureName] === true;
+    const enabled = window.ramsesExtras.features[featureName] === true;
+    logger.debug(
+      `${this.constructor.name}: isFeatureEnabled() - ` +
+      `featureName="${featureName}", ` +
+      `enabled=${enabled}, ` +
+      `features=`, window.ramsesExtras.features
+    );
+    return enabled;
   }
 
   _ensureFeatureConfigLoaded() {
@@ -1637,8 +1644,13 @@ export class RamsesBaseCard extends HTMLElement {
     const featureEnabled = this.isFeatureEnabled();
 
     if (featureEnabled === false) {
+      logger.debug(`${this.constructor.name}: render() - Feature disabled, showing placeholder`);
       this.renderFeatureDisabled();
       return;
+    }
+
+    if (featureEnabled === true) {
+      logger.debug(`${this.constructor.name}: render() - Feature enabled, proceeding with normal render`);
     }
 
     // Use subclass validation check
@@ -1757,6 +1769,9 @@ export class RamsesBaseCard extends HTMLElement {
   renderFeatureDisabled() {
     const featureName = this.getFeatureName();
     const featureDisplayName = featureName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+    // Reset DOM initialization flag so DOM gets re-initialized when feature is re-enabled
+    this._domInitialized = false;
 
     this.shadowRoot.innerHTML = `
       <ha-card>

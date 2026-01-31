@@ -186,7 +186,8 @@ async def create_and_start_feature_instances(
     """
     features = hass.data[DOMAIN].setdefault("features", {})
     feature_ready = hass.data[DOMAIN].setdefault("feature_ready", {})
-    hass.data[DOMAIN].setdefault("cards_enabled", False)
+    # Cards don't actually depend on automations being ready, so enable them immediately
+    hass.data[DOMAIN]["cards_enabled"] = True
     hass.data[DOMAIN]["cards_pending_features"] = set()
 
     enabled_feature_names = get_enabled_feature_names(

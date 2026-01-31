@@ -91,7 +91,7 @@ async def async_get_integration_version(hass: HomeAssistant) -> str:
     """
     data = hass.data.setdefault(DOMAIN, {})
     cached_version = data.get("_integration_version")
-    if isinstance(cached_version, str) and cached_version:
+    if isinstance(cached_version, str) and cached_version and cached_version != "0.0.0":
         return cached_version
 
     try:
@@ -103,8 +103,11 @@ async def async_get_integration_version(hass: HomeAssistant) -> str:
     except Exception:
         pass
 
-    data["_integration_version"] = "0.0.0"
-    return "0.0.0"
+    # Only set to 0.0.0 if we don't have a cached version
+    # This prevents version reset during integration reloads
+    if not cached_version:
+        data["_integration_version"] = "0.0.0"
+    return cached_version or "0.0.0"
 
 
 async def discover_card_features() -> list[dict[str, Any]]:
