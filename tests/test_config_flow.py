@@ -77,8 +77,8 @@ class TestRamsesExtrasOptionsFlowHandler:
     """Test RamsesExtrasOptionsFlowHandler core logic and coverage branches."""
 
     @pytest.mark.asyncio
-    async def test_main_menu_and_view_config(self, hass):
-        """Test main menu and view configuration steps."""
+    async def test_main_menu(self, hass):
+        """Test main menu step."""
         mock_config_entry = MagicMock()
         mock_config_entry.data = {
             CONF_ENABLED_FEATURES: {"default": True, "sensor_control": True}
@@ -102,10 +102,9 @@ class TestRamsesExtrasOptionsFlowHandler:
         ):
             result = await options_flow.async_step_main_menu()
             assert result["type"] == "menu"
-
-        result = await options_flow.async_step_view_configuration()
-        assert result["type"] == "form"
-        assert "Current Configuration" in result["description_placeholders"]["info"]
+            assert "menu_options" in result
+            # Verify view_configuration is not in menu options
+            assert "view_configuration" not in result["menu_options"]
 
     @pytest.mark.asyncio
     async def test_features_step(self, hass):

@@ -245,8 +245,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         # Add static menu options; step IDs must match async_step_* method names
         static_menu_items = {
             "features": "Enable/Disable Features",
-            "configure_devices": "Configure Devices for Features",
-            "view_configuration": "View Current Configuration",
             "advanced_settings": "Advanced Settings",
         }
 
@@ -306,20 +304,8 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         )
 
         info_text = "🎛️ **Ramses Extras Configuration**\n\n"
-
         info_text += f"Currently have {enabled_count} features enabled.\n"
-        info_text += "Choose what you want to configure:\n\n"
-
-        # Add feature-centric details using per-feature translations when available
-        feature_lines: list[str] = []
-        for feature_id in dynamic_features_found:
-            feature_title = await self._get_feature_title_from_translations(feature_id)
-            feature_lines.append(f"- Feature: {feature_title}")
-
-        if feature_lines:
-            info_text += "\nAvailable feature configurations:\n" + "\n".join(
-                feature_lines
-            )
+        info_text += "Choose what you want to configure:"
 
         if _LOGGER.isEnabledFor(logging.DEBUG):
             _LOGGER.debug("Current language: %s", self.hass.config.language)
@@ -374,41 +360,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             step_id="features",
             data_schema=schema,
             description_placeholders={"info": info_text},
-        )
-
-    async def async_step_configure_devices(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle configure devices step."""
-        return await self.async_step_main_menu()
-
-    async def async_step_view_configuration(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle view configuration step."""
-        # Get current configuration summary
-        current_features = (self._config_entry.data or {}).get("enabled_features", {})
-        enabled_count = sum(
-            1
-            for enabled in current_features.values()
-            if enabled and not isinstance(enabled, str)
-        )
-
-        info_text = "📋 **Current Configuration**\n\n"
-        info_text += f"Enabled features: {enabled_count}\n\n"
-
-        # List enabled features
-        for feature_id, enabled in current_features.items():
-            if enabled and not isinstance(enabled, str):
-                feature_name = AVAILABLE_FEATURES.get(feature_id, {}).get(
-                    "name", feature_id
-                )
-                info_text += f"- {feature_name} ({feature_id})\n"
-
-        return self.async_show_form(
-            step_id="view_configuration",
-            description_placeholders={"info": info_text},
-            data_schema=vol.Schema({}),
         )
 
     async def async_step_sensor_control_overview(

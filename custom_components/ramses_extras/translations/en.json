@@ -41,8 +41,6 @@
         "description": "{info}",
         "menu_options": {
           "features": "Enable/Disable Features",
-          "configure_devices": "Configure Devices for Features",
-          "view_configuration": "View Current Configuration",
           "advanced_settings": "Advanced Settings",
           "feature_default": "Feature: Default",
           "feature_humidity_control": "Feature: Humidity Control",
@@ -54,14 +52,6 @@
       },
       "enable_features": {
         "title": "Enable/Disable Features",
-        "description": "{info}"
-      },
-      "configure_devices": {
-        "title": "Configure Devices for Features",
-        "description": "{info}"
-      },
-      "view_configuration": {
-        "title": "View Current Configuration",
         "description": "{info}"
       },
       "advanced_settings": {

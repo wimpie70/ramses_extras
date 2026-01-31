@@ -41,26 +41,17 @@
         "description": "{info}",
         "menu_options": {
           "enable_features": "Functies In/Ausschakelen",
-          "configure_devices": "Apparaten Configureren voor Functies",
-          "view_configuration": "Huidige Configuratie Bekijken",
           "advanced_settings": "Geavanceerde Instellingen",
           "feature_default": "Feature: Default",
           "feature_humidity_control": "Feature: Humidity Control",
           "feature_hvac_fan_card": "Feature: Hvac Fan Card",
           "feature_hello_world": "Feature: Hello World",
-          "feature_sensor_control": "Feature: Sensor Control"
+          "feature_sensor_control": "Feature: Sensor Control",
+          "feature_ramses_debugger": "Feature: Ramses Debugger"
         }
       },
       "enable_features": {
         "title": "Functies In/Ausschakelen",
-        "description": "{info}"
-      },
-      "configure_devices": {
-        "title": "Apparaten Configureren voor Functies",
-        "description": "{info}"
-      },
-      "view_configuration": {
-        "title": "Huidige Configuratie Bekijken",
         "description": "{info}"
       },
       "advanced_settings": {
