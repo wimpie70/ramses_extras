@@ -18,7 +18,13 @@ function getBaseCardStyles() {
       height: 80vh;
       max-height: 80vh;
       resize: both;
-      overflow: auto;
+      overflow: hidden;
+      z-index: 1000;
+      position: relative;
+    }
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
     }
     dialog pre {
       white-space: pre-wrap;
@@ -27,6 +33,8 @@ function getBaseCardStyles() {
       max-height: 70vh;
       user-select: text;
       -webkit-user-select: text;
+      position: relative;
+      z-index: 1;
     }
   `;
 }
@@ -106,10 +114,14 @@ export function logExplorerCardStyle({ wrapCss }) {
     #zoomResults {
       flex: 1;
       overflow: auto;
+      overflow-y: auto;
+      overflow-x: hidden;
       min-height: 0;
+      max-height: 100%;
       position: relative;
       z-index: 1;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
 
     .r-xtrs-log-xp-hl-line { display: inline; }
@@ -256,10 +268,14 @@ export function trafficAnalyserCardStyle({ compact }) {
       width: 100%;
       flex: 1;
       min-height: 0;
+      max-height: 100%;
       overflow: auto;
+      overflow-y: auto;
+      overflow-x: hidden;
       position: relative;
       z-index: 1;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .r-xtrs-traf-nlysr-messages-list {
       display: flex;
@@ -275,10 +291,14 @@ export function trafficAnalyserCardStyle({ compact }) {
     }
     .r-xtrs-traf-nlysr-messages-table-wrapper {
       overflow: auto;
+      overflow-y: auto;
+      overflow-x: auto;
       flex: 1;
+      max-height: 100%;
       position: relative;
       z-index: 1;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .r-xtrs-traf-nlysr-messages-table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: var(--ha-font-size-xs); }
     .r-xtrs-traf-nlysr-messages-table th, .r-xtrs-traf-nlysr-messages-table td { padding: 4px 6px; border: 1px solid var(--divider-color); vertical-align: top; white-space: nowrap; }
