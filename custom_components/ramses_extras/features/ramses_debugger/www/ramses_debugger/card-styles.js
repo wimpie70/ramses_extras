@@ -123,6 +123,10 @@ export function logExplorerCardStyle({ wrapCss }) {
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
     }
+    #zoomResults pre {
+      overflow: visible;
+      max-height: none;
+    }
 
     .r-xtrs-log-xp-hl-line { display: inline; }
 
