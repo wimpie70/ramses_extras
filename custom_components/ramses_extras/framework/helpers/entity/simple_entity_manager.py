@@ -192,7 +192,6 @@ class SimpleEntityManager:
             for entity_id in extra_entities:
                 try:
                     await self._remove_entity_directly(entity_id)
-                    _LOGGER.info(f"Removed extra entity: {entity_id}")
                 except Exception as e:
                     _LOGGER.warning(f"Failed to remove extra entity {entity_id}: {e}")
 
@@ -493,12 +492,6 @@ class SimpleEntityManager:
             if entity_entry:
                 # Entity exists, remove it using the proper HA method
                 entity_registry_instance.async_remove(entity_id)
-                _LOGGER.info(f"Entity {entity_id} removed from entity registry")
-            else:
-                # Entity doesn't exist, nothing to remove
-                _LOGGER.debug(
-                    f"Entity {entity_id} doesn't exist in registry, nothing to remove"
-                )
 
         except Exception as e:
             _LOGGER.error(f"Failed to remove entity {entity_id}: {e}")

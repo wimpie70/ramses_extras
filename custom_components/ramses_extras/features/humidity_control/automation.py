@@ -469,10 +469,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 return
 
         # Switch is ON - run automation
-        _LOGGER.info(
-            "Enhanced Humidity Control processing automation logic for device %s",
-            device_id,
-        )
 
         try:
             # Extract humidity values (these should be float)
@@ -644,7 +640,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             self._decision_history.pop(0)
 
         # Always log the decision for debugging
-        _LOGGER.info(
+        _LOGGER.debug(
             "Decision for device %s: %s (confidence: %.2f, diff: %.2f, "
             "indoor RH: %.1f%%)",
             device_id,
@@ -655,7 +651,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         )
         if decision["reasoning"]:
             reasoning = "; ".join(decision["reasoning"])
-            _LOGGER.info("Reasoning: %s", reasoning)
+            _LOGGER.debug("Reasoning: %s", reasoning)
 
         return decision
 
@@ -672,11 +668,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             old_state: Previous state (if any)
             new_state: New state
         """
-        _LOGGER.info(
-            "HumidityAutomationManager _async_handle_state_change called for "
-            "entity_id=%s",
-            entity_id,
-        )
+        # State change handling - logging removed to reduce log volume
 
         # Check if feature is still enabled first
         if not self._is_feature_enabled():

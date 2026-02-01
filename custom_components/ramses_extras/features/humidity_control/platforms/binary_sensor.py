@@ -157,21 +157,11 @@ class HumidityControlBinarySensor(ExtrasBinarySensorEntity):
         """Turn on the binary sensor - controlled by automation only."""
         self._is_on = True
         self.async_write_ha_state()
-        _LOGGER.info(
-            "Binary sensor %s turned ON by automation (is_on: %s)",
-            self._attr_name,
-            self._is_on,
-        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the binary sensor - controlled by automation only."""
         self._is_on = False
         self.async_write_ha_state()
-        _LOGGER.info(
-            "Binary sensor %s turned OFF by automation (is_on: %s)",
-            self._attr_name,
-            self._is_on,
-        )
 
     def set_state(self, is_on: bool) -> None:
         """Set the binary sensor state (used by automation)."""

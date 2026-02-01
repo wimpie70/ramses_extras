@@ -71,7 +71,6 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     # Use broker's _get_device method for efficient lookup
     device = broker._get_device(device_id)
     if device:
-        _LOGGER.info("Found device %s (%s)", device_id, device.__class__.__name__)
         return device
 
     _LOGGER.warning("Device %s not found in broker", device_id)
