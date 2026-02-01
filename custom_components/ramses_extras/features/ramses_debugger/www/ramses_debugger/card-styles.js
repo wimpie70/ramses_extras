@@ -75,10 +75,42 @@ export function logExplorerCardStyle({ wrapCss }) {
       -webkit-user-select: text;
     }
 
-    dialog { width: 98vw; max-width: 98vw; height: 90vh; max-height: 90vh; overflow: hidden; }
-    dialog form { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-    dialog pre { max-height: 70vh; flex-shrink: 0; }
-    #zoomResults { flex: 1; overflow: auto; min-height: 0; }
+    dialog {
+      width: 98vw;
+      max-width: 98vw;
+      height: 90vh;
+      max-height: 90vh;
+      overflow: hidden;
+      z-index: 1000;
+      position: relative;
+    }
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+    }
+    dialog form {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+    }
+    dialog pre {
+      max-height: 70vh;
+      flex-shrink: 0;
+      overflow: auto;
+      position: relative;
+      z-index: 1;
+    }
+    #zoomResults {
+      flex: 1;
+      overflow: auto;
+      min-height: 0;
+      position: relative;
+      z-index: 1;
+      -webkit-overflow-scrolling: touch;
+    }
 
     .r-xtrs-log-xp-hl-line { display: inline; }
 
@@ -196,13 +228,58 @@ export function trafficAnalyserCardStyle({ compact }) {
 
     .r-xtrs-traf-nlysr-error { color: var(--error-color); margin-top: 8px; white-space: pre-wrap; }
 
-    dialog { height: 600px; max-height: 600px; }
-    dialog form { display: flex; flex-direction: column; height: 100%; }
-    #logContainer { width: 100%; flex: 1; min-height: 0; }
-    #messagesContainer { width: 100%; flex: 1; min-height: 0; overflow: auto; }
-    .r-xtrs-traf-nlysr-messages-list { display: flex; flex-direction: column; height: 100%; }
-    .r-xtrs-traf-nlysr-messages-header { padding: 8px 0; border-bottom: 1px solid var(--divider-color); margin-bottom: 8px; }
-    .r-xtrs-traf-nlysr-messages-table-wrapper { overflow: auto; flex: 1; }
+    dialog {
+      height: 600px;
+      max-height: 600px;
+      z-index: 1000;
+      position: relative;
+    }
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+    }
+    dialog form {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      position: relative;
+      z-index: 1;
+    }
+    #logContainer {
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      z-index: 1;
+    }
+    #messagesContainer {
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      position: relative;
+      z-index: 1;
+      -webkit-overflow-scrolling: touch;
+    }
+    .r-xtrs-traf-nlysr-messages-list {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      position: relative;
+      z-index: 1;
+    }
+    .r-xtrs-traf-nlysr-messages-header {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--divider-color);
+      margin-bottom: 8px;
+    }
+    .r-xtrs-traf-nlysr-messages-table-wrapper {
+      overflow: auto;
+      flex: 1;
+      position: relative;
+      z-index: 1;
+      -webkit-overflow-scrolling: touch;
+    }
     .r-xtrs-traf-nlysr-messages-table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: var(--ha-font-size-xs); }
     .r-xtrs-traf-nlysr-messages-table th, .r-xtrs-traf-nlysr-messages-table td { padding: 4px 6px; border: 1px solid var(--divider-color); vertical-align: top; white-space: nowrap; }
     .r-xtrs-traf-nlysr-messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; }
