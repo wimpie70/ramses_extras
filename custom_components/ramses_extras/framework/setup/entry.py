@@ -316,7 +316,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload Ramses Extras integration.
 
     Cleans up all integration resources including platforms, services,
-    and data structures when the integration is unloaded.
+    automations, and data structures when the integration is unloaded.
 
     :param hass: Home Assistant instance
     :param entry: Configuration entry to unload
@@ -324,6 +324,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     :return: True if unload was successful, False otherwise
     """
     _LOGGER.info("Unloading Ramses Extras integration...")
+
+    # Stop any running automations before unloading
+    if DOMAIN in hass.data:
+        domain_data = hass.data[DOMAIN]
+        if isinstance(domain_data, dict):
+            # Stop humidity_control automation if running
+            if "humidity_automation" in domain_data:
+                try:
+                    automation = domain_data["humidity_automation"]
+                    if hasattr(automation, "stop"):
+                        await automation.stop()
+                        _LOGGER.info("Stopped humidity control automation")
+                except Exception as e:
+                    _LOGGER.warning("Failed to stop automation: %s", e)
 
     from ...services_integration import async_unload_feature_services
 
@@ -341,6 +355,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if unload_ok:
         hass.data.pop(DOMAIN, None)
+        _LOGGER.info("Ramses Extras integration unloaded successfully")
 
     return bool(unload_ok)
 
@@ -348,19 +363,46 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove Ramses Extras integration and clean up all related data.
 
-    Removes all entities and devices associated with this integration
-    from the Home Assistant registries.
+    Removes all entities, devices, Lovelace resources, www files,
+    and automations associated with this integration.
 
     :param hass: Home Assistant instance
     :param entry: Configuration entry being removed
     """
+    import shutil
+    from pathlib import Path
+
+    from homeassistant.helpers.storage import Store
+
+    _LOGGER.info("Removing Ramses Extras integration and cleaning up...")
+
+    # 1. Stop any running automations
+    if DOMAIN in hass.data:
+        domain_data = hass.data[DOMAIN]
+        if isinstance(domain_data, dict):
+            # Stop humidity_control automation if running
+            if "humidity_automation" in domain_data:
+                try:
+                    automation = domain_data["humidity_automation"]
+                    if hasattr(automation, "stop"):
+                        await automation.stop()
+                        _LOGGER.info("Stopped humidity control automation")
+                except Exception as e:
+                    _LOGGER.warning("Failed to stop automation: %s", e)
+
+    # 2. Remove entities
     entity_registry = er.async_get(hass)
     entity_entries = list(entity_registry.entities.values())
+    removed_entities = 0
     for entity_entry in entity_entries:
         if entity_entry.platform != DOMAIN:
             continue
         entity_registry.async_remove(entity_entry.entity_id)
+        removed_entities += 1
+    if removed_entities:
+        _LOGGER.info("Removed %d entities", removed_entities)
 
+    # 3. Remove devices
     device_registry = dr.async_get(hass)
     device_entries = list(device_registry.devices.values())
     entry_id = getattr(entry, "entry_id", None)
@@ -369,6 +411,43 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if not isinstance(entry_id, str):
         entry_id = None
 
+    removed_devices = 0
     for device_entry in device_entries:
         if entry_id and entry_id in device_entry.config_entries:
             device_registry.async_remove_device(device_entry.id)
+            removed_devices += 1
+    if removed_devices:
+        _LOGGER.info("Removed %d devices", removed_devices)
+
+    # 4. Remove Lovelace resources
+    try:
+        store = Store(hass, 1, "lovelace_resources")
+        data = await store.async_load()
+        if data and "items" in data:
+            original_count = len(data["items"])
+            # Remove all ramses_extras resources
+            data["items"] = [
+                item
+                for item in data["items"]
+                if not item.get("url", "").startswith("/local/ramses_extras/")
+            ]
+            removed_resources = original_count - len(data["items"])
+            if removed_resources > 0:
+                await store.async_save(data)
+                _LOGGER.info("Removed %d Lovelace resources", removed_resources)
+    except Exception as e:
+        _LOGGER.warning("Failed to remove Lovelace resources: %s", e)
+
+    # 5. Remove www files
+    try:
+        www_path = Path(hass.config.path("www/ramses_extras"))
+        if www_path.exists():
+            shutil.rmtree(www_path)
+            _LOGGER.info("Removed www/ramses_extras directory")
+    except Exception as e:
+        _LOGGER.warning("Failed to remove www files: %s", e)
+
+    # 6. Clear hass.data
+    hass.data.pop(DOMAIN, None)
+
+    _LOGGER.info("Ramses Extras integration removal complete")
