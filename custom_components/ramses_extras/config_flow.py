@@ -22,7 +22,6 @@ from homeassistant.helpers import selector
 
 from .const import (
     AVAILABLE_FEATURES,
-    CARD_FOLDER,
     CONF_ENABLED_FEATURES,
     CONF_NAME,
     DOMAIN,
@@ -35,6 +34,7 @@ from .framework.helpers.device.filter import DeviceFilter
 from .framework.helpers.entity.simple_entity_manager import (
     SimpleEntityManager,
 )
+from .framework.helpers.paths import DEPLOYMENT_PATHS
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -86,9 +86,9 @@ async def _manage_cards_config_flow(
 
         card_info = extras_registry.get_card_config(feature_key) or {}
 
-        # Use the location from the card_info or feature key
-        card_source_path = (
-            INTEGRATION_DIR / CARD_FOLDER / card_info.get("location", feature_key)
+        # Use the proper path helper to get the source feature path
+        card_source_path = DEPLOYMENT_PATHS.get_source_feature_path(
+            INTEGRATION_DIR, feature_key
         )
         card_dest_path = www_local_path / "features" / feature_key
 
