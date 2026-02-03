@@ -16,8 +16,6 @@
 
 Ramses Extras provides additional features, entities, automation, and UI components for the Ramses RF (ramses_cc) integration.
 
-`note: This is a work in progress, contributions are welcome ([CONTRIBUTING.md](CONTRIBUTING.md)).`
-
 - **Modular Features**: Easy to enable/disable features based on user needs
 - **Automatic Cleanup**: Features manage their own entities, cards, and services
 - **Custom Cards**: JavaScript cards available as custom card types in dashboards
