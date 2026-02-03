@@ -36,7 +36,7 @@ debugger:
 prepared post for tweakers:
 
 
-Ramses Extras 0.15.8 is nu beschikbaar via HACS, of https://github.com/wimpie70/ramses_extras
+Ramses Extras 0.15.9 is nu beschikbaar via HACS, of https://github.com/wimpie70/ramses_extras
 Het bevat o.a. de volgende kaarten. Zie de README.md of wiki.
 
 [img=472,736]https://tweakers.net/i/8VeiSRPpRrwI-YmpcNt_GRd88uE=/fit-in/4000x4000/filters:no_upscale():strip_exif()/f/image/qHZYw3JzL21eqIZROpu1yJD3.png?f=user_large&w=100[/img]
