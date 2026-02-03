@@ -76,7 +76,7 @@ export function logExplorerCardStyle({ wrapCss }) {
       padding: 10px;
       border: 1px solid var(--divider-color);
       border-radius: 6px;
-      overflow: auto;
+      // overflow: auto;
       max-width: 100%;
       white-space: ${wrapCss};
       user-select: text;
@@ -115,7 +115,7 @@ export function logExplorerCardStyle({ wrapCss }) {
       flex: 1;
       overflow: auto;
       overflow-y: auto;
-      overflow-x: hidden;
+      overflow-x: auto;
       min-height: 0;
       max-height: 100%;
       position: relative;

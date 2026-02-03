@@ -199,7 +199,7 @@ class RamsesMessagesViewer extends HTMLElement {
   _initializeDOM() {
     this.shadowRoot.innerHTML = `
       <style>
-        .r-xtrs-msg-viewer-messages-table-wrapper { overflow-y: auto; max-height: 400px; }
+        .r-xtrs-msg-viewer-messages-table-wrapper { overflow: auto; max-height: 300px; }
         .r-xtrs-msg-viewer-messages-table { width: 100%; border-collapse: collapse; }
         .r-xtrs-msg-viewer-messages-table th, .r-xtrs-msg-viewer-messages-table td { border: 1px solid var(--divider-color); padding: 4px 6px; vertical-align: top; }
         .r-xtrs-msg-viewer-messages-table th { background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; text-align: left; }
