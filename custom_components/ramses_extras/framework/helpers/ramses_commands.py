@@ -247,8 +247,8 @@ class RamsesCommands:
         self.hass = hass
         self._command_registry = get_command_registry()
         self._device_manager = DeviceCommandManager(self)
-        # Per-device locks to prevent concurrent update_fan_params calls
-        self._update_fan_params_locks: dict[str, asyncio.Lock] = {}
+        # Track running update_fan_params tasks per device
+        self._update_fan_params_tasks: dict[str, asyncio.Task] = {}
 
     async def send_fan_command(self, device_id: str, command: str) -> CommandResult:
         """Send a fan command to a Ramses RF device.
@@ -315,8 +315,7 @@ class RamsesCommands:
         """Update all fan parameters for a device by calling ramses_cc broker directly.
 
         This bypasses HA service validation warnings about referenced devices.
-        Uses per-device locking to prevent concurrent calls that cause
-        protocol timeouts.
+        Uses task tracking to prevent concurrent calls that cause protocol timeouts.
 
         Args:
             device_id: Target device ID
@@ -328,56 +327,61 @@ class RamsesCommands:
         # Convert device_id format if needed (32_153289 -> 32:153289)
         device_id_formatted = device_id.replace("_", ":")
 
-        # Get or create lock for this device
-        if device_id_formatted not in self._update_fan_params_locks:
-            self._update_fan_params_locks[device_id_formatted] = asyncio.Lock()
-
-        lock = self._update_fan_params_locks[device_id_formatted]
-
         # Check if already running for this device
-        if lock.locked():
-            _LOGGER.info(
-                f"update_fan_params already running for {device_id_formatted}, skipping"
+        if device_id_formatted in self._update_fan_params_tasks:
+            task = self._update_fan_params_tasks[device_id_formatted]
+            if not task.done():
+                _LOGGER.info(
+                    f"update_fan_params already running for {device_id_formatted}, "
+                    "skipping"
+                )
+                return CommandResult(
+                    success=False,
+                    error_message=(
+                        f"Parameter update already in progress for "
+                        f"{device_id_formatted}"
+                    ),
+                )
+            # Clean up completed task
+            del self._update_fan_params_tasks[device_id_formatted]
+
+        try:
+            ramses_cc_data = self.hass.data.get("ramses_cc", {})
+            broker = None
+            for entry_id, broker_instance in ramses_cc_data.items():
+                if hasattr(broker_instance, "get_all_fan_params"):
+                    broker = broker_instance
+                    break
+
+            if not broker:
+                return CommandResult(
+                    success=False, error_message="ramses_cc broker not found"
+                )
+
+            call_data = {"device_id": device_id_formatted}
+            if from_id:
+                call_data["from_id"] = from_id
+
+            _LOGGER.debug(f"Starting update_fan_params for {device_id_formatted}")
+
+            # Call broker method directly (spawns async task internally)
+            # Store reference to track it, but don't await it
+            broker.get_all_fan_params(call_data)
+
+            # Track a placeholder task to prevent immediate re-entry
+            # Use a simple delay task that doesn't block the event loop
+            async def _track_completion() -> None:
+                await asyncio.sleep(0.5)  # Minimal delay, non-blocking
+
+            self._update_fan_params_tasks[device_id_formatted] = (
+                self.hass.async_create_task(_track_completion())
             )
-            return CommandResult(
-                success=False,
-                error_message=(
-                    f"Parameter update already in progress for {device_id_formatted}"
-                ),
-            )
 
-        async with lock:
-            try:
-                ramses_cc_data = self.hass.data.get("ramses_cc", {})
-                broker = None
-                for entry_id, broker_instance in ramses_cc_data.items():
-                    if hasattr(broker_instance, "get_all_fan_params"):
-                        broker = broker_instance
-                        break
+            return CommandResult(success=True)
 
-                if not broker:
-                    return CommandResult(
-                        success=False, error_message="ramses_cc broker not found"
-                    )
-
-                call_data = {"device_id": device_id_formatted}
-                if from_id:
-                    call_data["from_id"] = from_id
-
-                _LOGGER.debug(f"Starting update_fan_params for {device_id_formatted}")
-
-                # Call broker method directly (spawns async task internally)
-                broker.get_all_fan_params(call_data)
-
-                # Wait a bit to allow the sequence to start before releasing lock
-                # This prevents immediate re-entry while the broker task is starting
-                await asyncio.sleep(1.0)
-
-                return CommandResult(success=True)
-
-            except Exception as e:
-                _LOGGER.error(f"Failed to trigger update_fan_params: {e}")
-                return CommandResult(success=False, error_message=str(e))
+        except Exception as e:
+            _LOGGER.error(f"Failed to trigger update_fan_params: {e}")
+            return CommandResult(success=False, error_message=str(e))
 
     async def set_fan_param(
         self, device_id: str, param_id: str, value: Any, from_id: str | None = None
