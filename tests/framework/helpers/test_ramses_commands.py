@@ -167,9 +167,16 @@ class TestRamsesCommands:
 
     @pytest.mark.asyncio
     async def test_send_packet_success(self, ramses_commands, hass):
-        """Test low-level packet sending."""
-        hass.services.async_call = AsyncMock()
-        hass.services.has_service = MagicMock(return_value=True)
+        """Test low-level packet sending via coordinator."""
+        # Mock the coordinator and client
+        mock_coordinator = MagicMock()
+        mock_client = MagicMock()
+        mock_cmd = MagicMock()
+        mock_client.create_cmd = MagicMock(return_value=mock_cmd)
+        mock_client.async_send_cmd = AsyncMock()
+        mock_client.hgi.id = "18:000001"
+        mock_coordinator.client = mock_client
+
         cmd_def = {
             "code": "22F1",
             "verb": "I",
@@ -177,30 +184,39 @@ class TestRamsesCommands:
             "description": "High",
         }
 
-        # Mock bound device
-        patch_target = "_get_bound_rem_device"
-        with patch.object(ramses_commands, patch_target, return_value="18:111111"):
+        # Mock helper methods
+        with (
+            patch.object(
+                ramses_commands,
+                "_get_ramses_cc_coordinator",
+                return_value=mock_coordinator,
+            ),
+            patch.object(
+                ramses_commands, "_get_bound_rem_device", return_value="18:111111"
+            ),
+        ):
             success = await ramses_commands._send_packet("32_123456", cmd_def)
             assert success is True
-            hass.services.async_call.assert_called_once_with(
-                "ramses_cc",
-                "send_packet",
-                {
-                    "device_id": "32:123456",
-                    "verb": "I",
-                    "code": "22F1",
-                    "payload": "000307",
-                    "from_id": "18:111111",
-                },
+            mock_client.create_cmd.assert_called_once_with(
+                device_id="32:123456",
+                verb="I",
+                code="22F1",
+                payload="000307",
+                from_id="18:111111",
             )
+            mock_client.async_send_cmd.assert_called_once_with(mock_cmd)
 
     @pytest.mark.asyncio
     async def test_send_packet_failure(self, ramses_commands, hass):
         """Test packet sending failure."""
-        hass.services.async_call = AsyncMock(
-            side_effect=Exception("Service call failed")
+        # Mock coordinator with failing client
+        mock_coordinator = MagicMock()
+        mock_client = MagicMock()
+        mock_client.create_cmd = MagicMock(
+            side_effect=Exception("Command creation failed")
         )
-        hass.services.has_service = MagicMock(return_value=True)
+        mock_coordinator.client = mock_client
+
         cmd_def = {
             "code": "22F1",
             "verb": "I",
@@ -208,13 +224,15 @@ class TestRamsesCommands:
             "description": "High",
         }
 
-        success = await ramses_commands._send_packet("32_123456", cmd_def)
-        assert success is False
+        with patch.object(
+            ramses_commands, "_get_ramses_cc_coordinator", return_value=mock_coordinator
+        ):
+            success = await ramses_commands._send_packet("32_123456", cmd_def)
+            assert success is False
 
     @pytest.mark.asyncio
-    async def test_send_packet_service_not_found(self, ramses_commands, hass):
-        """Test packet sending when ramses_cc service is not available."""
-        hass.services.has_service = MagicMock(return_value=False)
+    async def test_send_packet_coordinator_not_found(self, ramses_commands, hass):
+        """Test packet sending when ramses_cc coordinator is not available."""
         cmd_def = {
             "code": "22F1",
             "verb": "I",
@@ -222,8 +240,11 @@ class TestRamsesCommands:
             "description": "High",
         }
 
-        success = await ramses_commands._send_packet("32_123456", cmd_def)
-        assert success is False
+        with patch.object(
+            ramses_commands, "_get_ramses_cc_coordinator", return_value=None
+        ):
+            success = await ramses_commands._send_packet("32_123456", cmd_def)
+            assert success is False
 
     @pytest.mark.asyncio
     async def test_get_bound_rem_device(self, ramses_commands, hass):

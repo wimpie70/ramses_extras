@@ -9,9 +9,12 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from .commands.registry import get_command_registry
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from custom_components.ramses_cc.coordinator import RamsesCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -395,7 +398,10 @@ class RamsesCommands:
             return CommandResult(success=False, error_message=str(e))
 
     async def _send_packet(self, device_id: str, cmd_def: dict[str, str]) -> bool:
-        """Send a packet using the ramses_cc send_packet service.
+        """Send a packet directly via ramses_cc coordinator client.
+
+        This bypasses the service layer to avoid requiring the send_packet
+        advanced feature to be enabled in ramses_cc.
 
         Args:
             device_id: Target device ID
@@ -413,8 +419,25 @@ class RamsesCommands:
                 f"{cmd_def['description']}"
             )
 
-            # Prepare service call data
-            service_data = {
+            # Get the ramses_cc coordinator
+            coordinator = await self._get_ramses_cc_coordinator()
+            if not coordinator:
+                _LOGGER.error(
+                    f"Failed to send Ramses command {cmd_def['code']}: "
+                    "ramses_cc coordinator not found. "
+                    "Ensure ramses_cc integration is installed and loaded."
+                )
+                return False
+
+            if not coordinator.client:
+                _LOGGER.error(
+                    f"Failed to send Ramses command {cmd_def['code']}: "
+                    "ramses_cc client is not initialized."
+                )
+                return False
+
+            # Prepare command parameters
+            kwargs = {
                 "device_id": device_id_formatted,
                 "verb": cmd_def["verb"],
                 "code": cmd_def["code"],
@@ -425,7 +448,7 @@ class RamsesCommands:
             # This is required for FAN devices to respond to commands
             from_id = await self._get_bound_rem_device(device_id_formatted)
             if from_id:
-                service_data["from_id"] = from_id
+                kwargs["from_id"] = from_id
                 _LOGGER.debug(
                     f"Using bound REM device {from_id} as source for command to "
                     f"{device_id}"
@@ -435,19 +458,17 @@ class RamsesCommands:
                     f"No bound REM device found for {device_id}, using default source"
                 )
 
-            # Check if the ramses_cc.send_packet service exists
-            if not self.hass.services.has_service("ramses_cc", "send_packet"):
-                _LOGGER.error(
-                    f"Failed to send Ramses command {cmd_def['code']}: "
-                    "Service ramses_cc.send_packet not found. "
-                    "Ensure ramses_cc integration is installed and loaded."
-                )
-                return False
+            # Handle HGI aliasing (same logic as ramses_cc service handler)
+            if (
+                kwargs["device_id"] == "18:000730"
+                and kwargs.get("from_id", "18:000730") == "18:000730"
+                and coordinator.client.hgi.id
+            ):
+                kwargs["device_id"] = coordinator.client.hgi.id
 
-            # Call the ramses_cc send_packet service with parameters
-            await self.hass.services.async_call(
-                "ramses_cc", "send_packet", service_data
-            )
+            # Create and send the command directly via the client
+            cmd = coordinator.client.create_cmd(**kwargs)
+            await coordinator.client.async_send_cmd(cmd)
 
             _LOGGER.debug(f"Ramses command sent: {cmd_def['description']}")
             return True
@@ -455,6 +476,25 @@ class RamsesCommands:
         except Exception as e:
             _LOGGER.error(f"Failed to send Ramses command {cmd_def['code']}: {e}")
             return False
+
+    async def _get_ramses_cc_coordinator(self) -> "RamsesCoordinator | None":
+        """Get the ramses_cc coordinator instance.
+
+        Returns:
+            RamsesCoordinator instance or None if not found
+        """
+        try:
+            ramses_cc_data = self.hass.data.get("ramses_cc", {})
+
+            # Find the coordinator instance (there should be one per config entry)
+            for entry_id, coordinator_instance in ramses_cc_data.items():
+                if hasattr(coordinator_instance, "client"):
+                    return coordinator_instance
+
+        except Exception as e:
+            _LOGGER.debug(f"Could not get ramses_cc coordinator: {e}")
+
+        return None
 
     async def _get_bound_rem_device(self, device_id: str) -> str | None:
         """Get the bound REM device ID for a FAN device.
@@ -466,19 +506,10 @@ class RamsesCommands:
             Bound REM device ID or None if not found
         """
         try:
-            # Access the ramses_cc broker to get device information
-            # This follows the same pattern as used in ramses_cc broker
-            broker = None
-            ramses_cc_data = self.hass.data.get("ramses_cc", {})
-
-            # Find the broker instance (there should be one per config entry)
-            for entry_id, broker_instance in ramses_cc_data.items():
-                if hasattr(broker_instance, "_get_device"):
-                    broker = broker_instance
-                    break
-
-            if broker and hasattr(broker, "_get_device"):
-                device = broker._get_device(device_id)
+            # Get the coordinator to access device information
+            coordinator = await self._get_ramses_cc_coordinator()
+            if coordinator and hasattr(coordinator, "_get_device"):
+                device = coordinator._get_device(device_id)
                 if device and hasattr(device, "get_bound_rem"):
                     bound_rem = device.get_bound_rem()
                     if bound_rem:
