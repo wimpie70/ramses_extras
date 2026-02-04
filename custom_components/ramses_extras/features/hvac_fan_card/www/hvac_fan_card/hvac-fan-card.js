@@ -385,26 +385,37 @@ class HvacFanCard extends RamsesBaseCard {
    * @returns {Promise<void>}
    */
   async _loadEntityMappings() {
+    logger.debug('HvacFanCard: _loadEntityMappings called');
+
     if (!this._hass || !this._config?.device_id) {
+      logger.debug('HvacFanCard: Early return - missing hass or device_id', {
+        hasHass: !!this._hass,
+        hasConfig: !!this._config,
+        deviceId: this._config?.device_id
+      });
       return;
     }
 
     if (this._entityMappingsLoading) {
+      logger.debug('HvacFanCard: Early return - already loading');
       return;
     }
 
     // Check for version mismatch - don't retry if there's a mismatch
     if (window.ramsesExtras?._versionMismatch) {
+      logger.debug('HvacFanCard: Early return - version mismatch detected');
       this._entityMappingsLoadFailed = true;
       return;
     }
 
     // Don't retry if we already failed due to version mismatch
     if (this._entityMappingsLoadFailed) {
+      logger.debug('HvacFanCard: Early return - previous load failed');
       return;
     }
 
     this._entityMappingsLoading = true;
+    logger.debug(`HvacFanCard: Loading entity mappings for device ${this._config.device_id}`);
 
     try {
       const result = await this._sendWebSocketCommand({

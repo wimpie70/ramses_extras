@@ -1001,7 +1001,10 @@ export class RamsesBaseCard extends HTMLElement {
    */
   async _performWebSocketCommand(message) {
     try {
-      return await callWebSocket(this._hass, message);
+      logger.debug(`🔌 ${this.constructor.name}: WebSocket call: ${message.type}`);
+      const result = await callWebSocket(this._hass, message);
+      logger.debug(`✅ ${this.constructor.name}: WebSocket response received for ${message.type}`);
+      return result;
     } catch (error) {
       logger.error(`❌ ${this.constructor.name}: WebSocket command failed:`, error);
 
