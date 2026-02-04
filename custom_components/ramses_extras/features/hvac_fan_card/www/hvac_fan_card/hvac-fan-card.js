@@ -324,7 +324,9 @@ class HvacFanCard extends RamsesBaseCard {
    * @returns {Array<string>} Array of message codes
    */
   getMessageCodes() {
-    return ['31DA', '10D0'];
+    const codes = ['31DA', '10D0'];
+    logger.debug(`HvacFanCard: Subscribing to message codes: ${codes.join(', ')}`);
+    return codes;
   }
 
   /**
@@ -1033,10 +1035,12 @@ class HvacFanCard extends RamsesBaseCard {
   // called automatically by (Global) RamsesMessageBroker
   // these were first registered in connectedCallback
   handle_31DA(messageData) {
+    logger.debug('HvacFanCard: handle_31DA called, dispatching to handler');
     HvacFanCardHandlers.handle_31DA(this, messageData);
   }
 
   handle_10D0(messageData) {
+    logger.debug('HvacFanCard: handle_10D0 called, dispatching to handler');
     HvacFanCardHandlers.handle_10D0(this, messageData);
   }
 

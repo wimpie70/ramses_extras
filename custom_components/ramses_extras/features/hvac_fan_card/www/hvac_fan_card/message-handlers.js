@@ -11,6 +11,7 @@ export class HvacFanCardHandlers {
      */
     static handle_31DA(card, messageData) {
         try {
+            logger.debug('📨 31DA message received for HVAC fan card');
 
             const payload = messageData?.data?.payload;
             if (!payload) {
@@ -20,11 +21,17 @@ export class HvacFanCardHandlers {
 
             // Extract HVAC data from 31DA message
             const hvacData = HvacFanCardHandlers.extract31DAData(payload);
+            logger.debug('31DA data extracted:', {
+                hvac_id: hvacData.hvac_id,
+                indoor_temp: hvacData.indoor_temp,
+                fan_info: hvacData.fan_info,
+                hasTemps: !!(hvacData.indoor_temp || hvacData.outdoor_temp),
+                hasHumidity: !!(hvacData.indoor_humidity || hvacData.outdoor_humidity)
+            });
 
             // Update the card with new data
             card.updateFrom31DA(hvacData);
-
-            // console.log('✅ 31DA data processed and card updated:', hvacData);
+            logger.debug('✅ 31DA data processed and card updated');
 
         } catch (error) {
             logger.error('Error handling 31DA message:', error);
@@ -36,7 +43,7 @@ export class HvacFanCardHandlers {
      */
     static handle_10D0(card, messageData) {
         try {
-            // console.log('🎯 10D0 message received for HVAC fan card');
+            logger.debug('📨 10D0 message received for HVAC fan card');
 
             const payload = messageData?.data?.payload;
             if (!payload) {
@@ -46,11 +53,15 @@ export class HvacFanCardHandlers {
 
             // Extract 10D0 data
             const filterData = HvacFanCardHandlers.extract10D0Data(payload);
+            logger.debug('10D0 data extracted:', {
+                hvac_id: filterData.hvac_id,
+                filter_change_required: filterData.filter_change_required,
+                days_remaining: filterData.days_remaining
+            });
 
             // Update the card with filter information
             card.updateFrom10D0(filterData);
-
-            // console.log('✅ 10D0 data processed and card updated:', filterData);
+            logger.debug('✅ 10D0 data processed and card updated');
 
         } catch (error) {
             logger.error('Error handling 10D0 message:', error);

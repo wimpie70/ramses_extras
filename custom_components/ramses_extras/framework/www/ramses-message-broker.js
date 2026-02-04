@@ -84,6 +84,8 @@ class RamsesMessageBroker {
         const deviceId = data.src || data.device_id;
         const messageCode = data.code;
 
+        logger.debug(`📡 RamsesMessageBroker: Received ${messageCode} from ${deviceId}`);
+
         // Route the message to registered listeners
         this.routeMessage(deviceId, messageCode, event);
     }
@@ -111,8 +113,11 @@ class RamsesMessageBroker {
         const listeners = this.listeners.get(deviceId);
 
         if (!listeners) {
+            logger.debug(`📡 RamsesMessageBroker: No listeners for device ${deviceId}`);
             return; // No listeners for this device
         }
+
+        logger.debug(`📡 RamsesMessageBroker: Routing ${messageCode} to ${listeners.length} listener(s)`);
 
         // Check if this message code is handled by any listener
         for (const [card, handleCodes] of listeners) {
@@ -122,10 +127,13 @@ class RamsesMessageBroker {
 
                 if (typeof card[handlerMethod] === 'function') {
                     try {
+                        logger.debug(`📡 RamsesMessageBroker: Calling ${handlerMethod} on ${card.constructor.name}`);
                         card[handlerMethod](messageData);
                     } catch (error) {
                         logger.error(`Error calling ${handlerMethod} on card:`, error);
                     }
+                } else {
+                    logger.warn(`📡 RamsesMessageBroker: ${card.constructor.name} missing ${handlerMethod} method`);
                 }
             }
         }
@@ -134,6 +142,8 @@ class RamsesMessageBroker {
     addListener(card, deviceId, handleCodes) {
         // Normalize device ID format
         const normalizedDeviceId = deviceId.replace(/_/g, ':');
+
+        logger.debug(`📡 RamsesMessageBroker: Registering ${card.constructor.name} for device ${normalizedDeviceId}, codes: ${handleCodes.join(', ')}`);
 
         // Store listener
         if (!this.listeners.has(normalizedDeviceId)) {
