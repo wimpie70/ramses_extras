@@ -220,16 +220,21 @@ class HvacFanCard extends RamsesBaseCard {
     const { da31Data, da10D0Data } = this._collectLiveData();
     const dehumEntitiesAvailable = validateDehumidifyEntities(hass, config)?.available === true;
 
-    // Temperature data
-    const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp : null;
-    const outdoorTemp = da31Data.outdoor_temp !== undefined ? da31Data.outdoor_temp : null;
-    const supplyTemp = da31Data.supply_temp !== undefined ? da31Data.supply_temp : null;
-    const exhaustTemp = da31Data.exhaust_temp !== undefined ? da31Data.exhaust_temp : null;
+    // Temperature data - prefer 31DA real-time, fall back to entity states
+    const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp :
+      this.getEntityStateAsNumber(config.indoor_temp_entity, null);
+    const outdoorTemp = da31Data.outdoor_temp !== undefined ? da31Data.outdoor_temp :
+      this.getEntityStateAsNumber(config.outdoor_temp_entity, null);
+    const supplyTemp = da31Data.supply_temp !== undefined ? da31Data.supply_temp :
+      this.getEntityStateAsNumber(config.supply_temp_entity, null);
+    const exhaustTemp = da31Data.exhaust_temp !== undefined ? da31Data.exhaust_temp :
+      this.getEntityStateAsNumber(config.exhaust_temp_entity, null);
 
-    // Humidity data
-    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity : null;
-    const outdoorHumidity =
-      da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity : null;
+    // Humidity data - prefer 31DA real-time, fall back to entity states
+    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity :
+      this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
+    const outdoorHumidity = da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity :
+      this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
 
     // Use ramses_extras absolute humidity sensor (if available) - raw values only
     const indoorAbsHumidity = this.getEntityStateAsNumber(
@@ -250,11 +255,13 @@ class HvacFanCard extends RamsesBaseCard {
       outdoorAbsHumidity,
       supplyTemp,
       exhaustTemp,
-      exhaustFanSpeed: this._formatSpeed(da31Data.exhaust_fan_speed),
-      supplyFanSpeed: this._formatSpeed(da31Data.supply_fan_speed),
-      fanMode: this._getFanMode(da31Data),
-      supplyFlowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow : null,
-      exhaustFlowRate: da31Data.exhaust_flow !== undefined ? da31Data.exhaust_flow : null,
+      exhaustFanSpeed: this._getSpeedDisplay(da31Data.exhaust_fan_speed, config.exhaust_fan_speed_entity),
+      supplyFanSpeed: this._getSpeedDisplay(da31Data.supply_fan_speed, config.supply_fan_speed_entity),
+      fanMode: da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
+      supplyFlowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow :
+        this.getEntityStateAsNumber(config.supply_flow_entity, null),
+      exhaustFlowRate: da31Data.exhaust_flow !== undefined ? da31Data.exhaust_flow :
+        this.getEntityStateAsNumber(config.exhaust_flow_entity, null),
       co2Level: this.getEntityStateAsNumber(config.co2 || config.co2_entity, null),
       dehumMode: dehumEntitiesAvailable
         ? this.getEntityState(config.dehum_mode_entity)?.state || 'off'
@@ -263,7 +270,8 @@ class HvacFanCard extends RamsesBaseCard {
         ? this.getEntityState(config.dehum_active_entity)?.state || 'off'
         : null,
       comfortTemp: this.getEntityStateAsNumber(config.comfort_temp_entity, null),
-      bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position : null,
+      bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position :
+        (this.getEntityState(config.bypass_entity)?.state === 'on' ? 100 : null),
       dehumEntitiesAvailable,
       dataSource31DA: da31Data.source === '31DA_message',
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
@@ -603,16 +611,21 @@ class HvacFanCard extends RamsesBaseCard {
     // Get data from 31DA messages
     const da31Data = this.get31DAData();
 
-    // Temperature data
-    const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp : null;
-    const outdoorTemp = da31Data.outdoor_temp !== undefined ? da31Data.outdoor_temp : null;
-    const supplyTemp = da31Data.supply_temp !== undefined ? da31Data.supply_temp : null;
-    const exhaustTemp = da31Data.exhaust_temp !== undefined ? da31Data.exhaust_temp : null;
+    // Temperature data - prefer 31DA real-time, fall back to entity states
+    const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp :
+      this.getEntityStateAsNumber(config.indoor_temp_entity, null);
+    const outdoorTemp = da31Data.outdoor_temp !== undefined ? da31Data.outdoor_temp :
+      this.getEntityStateAsNumber(config.outdoor_temp_entity, null);
+    const supplyTemp = da31Data.supply_temp !== undefined ? da31Data.supply_temp :
+      this.getEntityStateAsNumber(config.supply_temp_entity, null);
+    const exhaustTemp = da31Data.exhaust_temp !== undefined ? da31Data.exhaust_temp :
+      this.getEntityStateAsNumber(config.exhaust_temp_entity, null);
 
-    // Humidity data
-    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity : null;
-    const outdoorHumidity =
-      da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity : null;
+    // Humidity data - prefer 31DA real-time, fall back to entity states
+    const indoorHumidity = da31Data.indoor_humidity !== undefined ? da31Data.indoor_humidity :
+      this.getEntityStateAsNumber(config.indoor_humidity_entity, null);
+    const outdoorHumidity = da31Data.outdoor_humidity !== undefined ? da31Data.outdoor_humidity :
+      this.getEntityStateAsNumber(config.outdoor_humidity_entity, null);
 
     // Use ramses_extras absolute humidity sensor (if available) - raw values only
     const indoorAbsHumidity = this.getEntityStateAsNumber(
@@ -637,13 +650,15 @@ class HvacFanCard extends RamsesBaseCard {
       outdoorAbsHumidity, // From integration sensor
       supplyTemp,
       exhaustTemp,
-      // Fan data
-      exhaustFanSpeed: this._formatSpeed(da31Data.exhaust_fan_speed),
-      supplyFanSpeed: this._formatSpeed(da31Data.supply_fan_speed),
-      fanMode: this._getFanMode(da31Data),
-      // Flow data
-      supplyFlowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow : null,
-      exhaustFlowRate: da31Data.exhaust_flow !== undefined ? da31Data.exhaust_flow : null,
+      // Fan data - prefer 31DA real-time, fall back to entity states
+      exhaustFanSpeed: this._getSpeedDisplay(da31Data.exhaust_fan_speed, config.exhaust_fan_speed_entity),
+      supplyFanSpeed: this._getSpeedDisplay(da31Data.supply_fan_speed, config.supply_fan_speed_entity),
+      fanMode: da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
+      // Flow data - prefer 31DA real-time, fall back to entity states
+      supplyFlowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow :
+        this.getEntityStateAsNumber(config.supply_flow_entity, null),
+      exhaustFlowRate: da31Data.exhaust_flow !== undefined ? da31Data.exhaust_flow :
+        this.getEntityStateAsNumber(config.exhaust_flow_entity, null),
       // Other data - raw values only
       // Prefer sensor_control-resolved CO2 mapping (config.co2) when available,
       // fall back to the original co2_entity from feature constants.
@@ -657,8 +672,9 @@ class HvacFanCard extends RamsesBaseCard {
         : null,
       // Comfort temperature entity (will be available when created)
       comfortTemp: this.getEntityStateAsNumber(config.comfort_temp_entity, null),
-      // Bypass position
-      bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position : null,
+      // Bypass position - prefer 31DA real-time, fall back to entity state
+      bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position :
+        (this.getEntityState(config.bypass_entity)?.state === 'on' ? 100 : null),
       dehumEntitiesAvailable, // Add availability flag
       dataSource31DA: da31Data.source === '31DA_message', // Flag for UI
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
@@ -1145,12 +1161,21 @@ class HvacFanCard extends RamsesBaseCard {
     return da31Data.fan_info || null;
   }
 
-  // Format speed value consistently
+  // Format speed value consistently (31DA raw values are 0-1)
   _formatSpeed(speed) {
     if (speed === undefined || speed === null) {
       return null;
     }
     return `${Math.round(speed * 100)}%`;
+  }
+
+  // Get speed display: prefer 31DA raw value, fall back to entity state (already 0-100%)
+  _getSpeedDisplay(da31Speed, entityId) {
+    if (da31Speed !== undefined && da31Speed !== null) {
+      return this._formatSpeed(da31Speed);
+    }
+    const entityVal = this.getEntityStateAsNumber(entityId, null);
+    return entityVal !== null ? `${Math.round(entityVal)}%` : null;
   }
 
   // Attach event listeners for normal mode

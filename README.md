@@ -206,6 +206,23 @@ The debugger provides comprehensive tools for troubleshooting Ramses RF communic
 
 ### **Configuration**
 
+#### **⚠️ IMPORTANT: Ramses CC Configuration Required**
+
+For full functionality of Ramses Extras features (especially the HVAC Fan Card), you must configure these settings in **ramses_cc**:
+
+1. **Enable Message Events** (required for real-time updates):
+   - Go to **Settings → Devices & Services → Ramses CC**
+   - Click **Configure** → **Advanced Features**
+   - Enable **Message Events**
+   - Set **Message Events Regex** to: `31DA|10D0`
+   - This enables real-time 31DA (HVAC data) and 10D0 (filter info) messages
+
+2. **Enable Send Packet Service** (required for fan control commands):
+   - In the same **Advanced Features** section
+   - Enable **Send Packet Service**
+
+> **Why this matters**: Without these settings, the HVAC Fan Card will only show static entity states and won't receive real-time updates or allow control commands.
+
 #### **Ramses RF - bound REM**
 
 When using FAN related features, make sure Ramses RF has the 'bound' trait defined for your FAN.
