@@ -33,16 +33,3 @@ debugger:
 - check what code can be reused, check for other optimizations
 
 --------------------
-prepared post for tweakers:
-
-
-Ramses Extras 0.16.0 is nu beschikbaar via HACS, of https://github.com/wimpie70/ramses_extras
-Het bevat o.a. de volgende kaarten. Zie de README.md of wiki.
-
-[img=472,736]https://tweakers.net/i/8VeiSRPpRrwI-YmpcNt_GRd88uE=/fit-in/4000x4000/filters:no_upscale():strip_exif()/f/image/qHZYw3JzL21eqIZROpu1yJD3.png?f=user_large&w=100[/img]
-Traffic Analyser:
-[url="https://tweakers.net/i/9D8CSBH3YANiAHnvCCYuLevtDmI=/fit-in/4000x4000/filters:no_upscale():strip_exif()/f/image/H79fVVQCgcE6bLHAQUZ5sM5b.png?f=user_large",,"1"][img=800,275]https://tweakers.net/i/UBAngGc3FS_lWyUGptJ-u8J6wPE=/800x/filters:strip_exif()/f/image/H79fVVQCgcE6bLHAQUZ5sM5b.png?f=fotoalbum_large[/img][/url]
-Packet Log Explorer:
-[url="https://tweakers.net/i/RlWJEopXbWAg8aogIE0Eq_cDEqE=/fit-in/4000x4000/filters:no_upscale():strip_exif()/f/image/4SBceIiBP6tyv8pHeiMRFbo3.png?f=user_large",,"1"][img=800,275]https://tweakers.net/i/-5Er3zgV8lS_6C9kCCgrfa4O3zI=/800x/filters:strip_exif()/f/image/4SBceIiBP6tyv8pHeiMRFbo3.png?f=fotoalbum_large[/img][/url]
-Ramses Log Explorer:
-[url="https://tweakers.net/i/gRK3ZXvbvbSviWr0kygMNzV8FT4=/fit-in/4000x4000/filters:no_upscale():strip_exif()/f/image/PHU9pAe1aawf5Bfe9NHeeFdL.png?f=user_large",,"1"][img=800,281]https://tweakers.net/i/kUxm_qRPkuNpL8NTINljfZ3c76w=/800x/filters:strip_exif()/f/image/PHU9pAe1aawf5Bfe9NHeeFdL.png?f=fotoalbum_large[/img][/url]

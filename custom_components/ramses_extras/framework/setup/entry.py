@@ -442,7 +442,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     try:
         www_path = Path(hass.config.path("www/ramses_extras"))
         if www_path.exists():
-            shutil.rmtree(www_path)
+            await hass.async_add_executor_job(shutil.rmtree, www_path)
             _LOGGER.info("Removed www/ramses_extras directory")
     except Exception as e:
         _LOGGER.warning("Failed to remove www files: %s", e)
