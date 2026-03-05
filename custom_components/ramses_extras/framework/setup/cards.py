@@ -257,7 +257,10 @@ async def copy_helper_files(hass: HomeAssistant) -> None:
         _LOGGER.info("Created directory: %s", destination_helpers_dir)
 
         # Copy all .js files from www root to helpers directory
-        for js_file in source_www_dir.glob("*.js"):
+        js_files: list[Path] = await hass.async_add_executor_job(
+            lambda: list(source_www_dir.glob("*.js"))
+        )
+        for js_file in js_files:
             dest_file = destination_helpers_dir / js_file.name
             await asyncio.to_thread(shutil.copy2, js_file, dest_file)
             _LOGGER.debug("Copied %s to %s", js_file.name, dest_file)
