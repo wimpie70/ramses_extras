@@ -20,6 +20,8 @@ export const CARD_STYLE = `
   margin: 0 auto;
   box-sizing: border-box;
   transition: all 0.3s ease;
+  position: relative;
+  z-index: 0;
 }
 
 /* ====== SENSOR SOURCES PANEL ====== */
@@ -131,6 +133,7 @@ export const CARD_STYLE = `
   padding: 12px;
   margin-bottom: 16px;
   position: relative;
+  z-index: 0;
   min-height: 380px;
   display: flex;
   flex-direction: column;
