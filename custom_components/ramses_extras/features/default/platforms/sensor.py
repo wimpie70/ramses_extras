@@ -158,6 +158,29 @@ async def create_default_sensor(
     return sensor_list
 
 
+def _get_possible_entity_names(base_type: str, device_id_underscore: str) -> list[str]:
+    """Generate possible entity names for backward/forward compatibility.
+
+    Handles both old ramses_cc format (e.g., sensor.32_153289_indoor_temp)
+    and new format (e.g., sensor.fan_32_153289_indoor_temperature).
+    """
+    names = []
+
+    # Original format
+    names.append(f"sensor.{device_id_underscore}_{base_type}")
+
+    # New format with fan_ prefix and potentially _temperature instead of _temp
+    new_base = base_type
+    if base_type.endswith("_temp"):
+        new_base = base_type.replace("_temp", "_temperature")
+
+    names.append(f"sensor.fan_{device_id_underscore}_{new_base}")
+    if new_base != base_type:
+        names.append(f"sensor.fan_{device_id_underscore}_{base_type}")
+
+    return names
+
+
 async def _check_underlying_entities_exist(
     hass: HomeAssistant, device_id: str, sensor_type: str
 ) -> bool:
@@ -191,18 +214,31 @@ async def _check_underlying_entities_exist(
     device_id_underscore = device_id.replace(":", "_")
 
     # ramses_cc entities use CC format (device_id prefix): {device_id}_{identifier}
-    temp_entity = EntityHelpers.generate_entity_name_from_template(
-        "sensor", "{device_id}_" + temp_type, device_id=device_id_underscore
-    )
-    humidity_entity = EntityHelpers.generate_entity_name_from_template(
-        "sensor", "{device_id}_" + humidity_type, device_id=device_id_underscore
-    )
-
-    # Check entity registry instead of states,
-    #  as states may not be available during setup
     registry = entity_registry.async_get(hass)
-    temp_entity_entry = registry.async_get(temp_entity)
-    humidity_entity_entry = registry.async_get(humidity_entity)
+
+    # Check for temperature entity
+    temp_entity_entry = None
+    temp_entity = ""
+    for name in _get_possible_entity_names(temp_type, device_id_underscore):
+        temp_entity_entry = registry.async_get(name)
+        if temp_entity_entry is not None:
+            temp_entity = name
+            break
+
+    if temp_entity_entry is None:
+        temp_entity = f"sensor.{device_id_underscore}_{temp_type}"
+
+    # Check for humidity entity
+    humidity_entity_entry = None
+    humidity_entity = ""
+    for name in _get_possible_entity_names(humidity_type, device_id_underscore):
+        humidity_entity_entry = registry.async_get(name)
+        if humidity_entity_entry is not None:
+            humidity_entity = name
+            break
+
+    if humidity_entity_entry is None:
+        humidity_entity = f"sensor.{device_id_underscore}_{humidity_type}"
 
     exists = temp_entity_entry is not None and humidity_entity_entry is not None
     if not exists:
@@ -340,13 +376,34 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         device_id_str = extract_device_id_as_string(self._device_id)
         device_id_underscore = device_id_str.replace(":", "_")
 
-        # Generate entity IDs using CC format for ramses_cc entities
-        temp_entity = EntityHelpers.generate_entity_name_from_template(
-            "sensor", "{device_id}_" + temp_type, device_id=device_id_underscore
-        )
-        humidity_entity = EntityHelpers.generate_entity_name_from_template(
-            "sensor", "{device_id}_" + humidity_type, device_id=device_id_underscore
-        )
+        # Find the actual entity IDs from registry or fallback to generated names
+        from homeassistant.helpers import entity_registry
+
+        registry = entity_registry.async_get(self.hass)
+
+        # Determine temperature entity
+        temp_entity = ""
+        for name in _get_possible_entity_names(temp_type, device_id_underscore):
+            if registry.async_get(name) is not None:
+                temp_entity = name
+                break
+
+        if not temp_entity:
+            temp_entity = EntityHelpers.generate_entity_name_from_template(
+                "sensor", "{device_id}_" + temp_type, device_id=device_id_underscore
+            )
+
+        # Determine humidity entity
+        humidity_entity = ""
+        for name in _get_possible_entity_names(humidity_type, device_id_underscore):
+            if registry.async_get(name) is not None:
+                humidity_entity = name
+                break
+
+        if not humidity_entity:
+            humidity_entity = EntityHelpers.generate_entity_name_from_template(
+                "sensor", "{device_id}_" + humidity_type, device_id=device_id_underscore
+            )
 
         # Track state changes on both temperature and humidity sensor
         def _handle_state_change_event(event: Any) -> None:
@@ -428,13 +485,30 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         device_id_str = extract_device_id_as_string(self._device_id)
         device_id_underscore = device_id_str.replace(":", "_")
 
-        # Generate entity IDs using CC format for ramses_cc entities
-        temp_entity = EntityHelpers.generate_entity_name_from_template(
-            "sensor", "{device_id}_" + temp_type, device_id=device_id_underscore
-        )
-        humidity_entity = EntityHelpers.generate_entity_name_from_template(
-            "sensor", "{device_id}_" + humidity_type, device_id=device_id_underscore
-        )
+        # Find the actual entity IDs from states or fallback to generated names
+        # Determine temperature entity
+        temp_entity = ""
+        for name in _get_possible_entity_names(temp_type, device_id_underscore):
+            if self.hass.states.get(name) is not None:
+                temp_entity = name
+                break
+
+        if not temp_entity:
+            temp_entity = EntityHelpers.generate_entity_name_from_template(
+                "sensor", "{device_id}_" + temp_type, device_id=device_id_underscore
+            )
+
+        # Determine humidity entity
+        humidity_entity = ""
+        for name in _get_possible_entity_names(humidity_type, device_id_underscore):
+            if self.hass.states.get(name) is not None:
+                humidity_entity = name
+                break
+
+        if not humidity_entity:
+            humidity_entity = EntityHelpers.generate_entity_name_from_template(
+                "sensor", "{device_id}_" + humidity_type, device_id=device_id_underscore
+            )
 
         try:
             # Get temperature from ramses_cc sensor
