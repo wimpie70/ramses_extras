@@ -16,7 +16,7 @@ from .device_types import DEVICE_TYPE_HANDLERS
 
 _LOGGER = logging.getLogger(__name__)
 
-_INTEGRATION_DIR = Path(__file__).resolve().parents[2]
+_FEATURE_DIR = Path(__file__).resolve().parent
 
 
 async def _async_load_sensor_control_info_suffix_translations(
@@ -28,7 +28,7 @@ async def _async_load_sensor_control_info_suffix_translations(
     if isinstance(cached, dict):
         return cached
 
-    translations_dir = _INTEGRATION_DIR / "translations"
+    translations_dir = _FEATURE_DIR / "translations"
 
     def _load(lang: str) -> dict[str, str]:
         path = translations_dir / f"{lang}.json"
@@ -39,16 +39,14 @@ async def _async_load_sensor_control_info_suffix_translations(
         except Exception:
             return {}
 
-        options = raw.get("options") if isinstance(raw, dict) else None
-        if not isinstance(options, dict):
-            return {}
-        sc = options.get("sensor_control")
-        if not isinstance(sc, dict):
-            return {}
-        info_suffix = sc.get("info_suffix")
+        info_suffix = raw.get("info_suffix") if isinstance(raw, dict) else None
         if not isinstance(info_suffix, dict):
             return {}
-        return {str(k): str(v) for k, v in info_suffix.items() if isinstance(v, str)}
+        return {
+            str(k): str(v)
+            for k, v in info_suffix.items()
+            if isinstance(k, str) and isinstance(v, str)
+        }
 
     loaded = await asyncio.to_thread(_load, language)
     if not loaded and language != "en":

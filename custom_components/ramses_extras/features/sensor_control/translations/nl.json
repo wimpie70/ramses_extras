@@ -1,4 +1,12 @@
 {
+  "info_suffix": {
+    "indoor_basic": "Bronnen voor binnentemperatuur en -vochtigheid.",
+    "outdoor_basic": "Bronnen voor buitentemperatuur en -vochtigheid.",
+    "co2": "CO2-sensor bron. Tip: gebruik de zoekfunctie van de entiteitkiezer en typ 'co2'.",
+    "indoor_abs": "Invoer-sensoren voor absolute luchtvochtigheid binnen.",
+    "outdoor_abs": "Invoer-sensoren voor absolute luchtvochtigheid buiten.",
+    "co2_device_preview": "CO2-apparaten zijn gedetecteerd, maar Sensor Control voor CO2 is nog niet geïmplementeerd. Dit onderdeel is voorbereid als preview voor toekomstig gebruik."
+  },
   "config": {
     "step": {
       "feature_sensor_control": {

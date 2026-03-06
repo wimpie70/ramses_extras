@@ -1,4 +1,12 @@
 {
+  "info_suffix": {
+    "indoor_basic": "Indoor temperature and humidity sources.",
+    "outdoor_basic": "Outdoor temperature and humidity sources.",
+    "co2": "CO2 sensor source. Tip: use the entity picker search and type 'co2'.",
+    "indoor_abs": "Indoor absolute humidity input sensors.",
+    "outdoor_abs": "Outdoor absolute humidity input sensors.",
+    "co2_device_preview": "CO2 devices are detected, but sensor control for CO2 is not yet implemented. This section is prepared as a preview for future use."
+  },
   "config": {
     "step": {
       "feature_sensor_control": {
