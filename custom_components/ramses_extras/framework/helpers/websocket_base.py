@@ -8,6 +8,8 @@ import importlib
 import logging
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
+from .entity.entity_id_fallbacks import iter_ramses_cc_entity_id_fallbacks
+
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import WebSocket
 
@@ -170,6 +172,10 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
                     parsed_mappings = self._parse_entity_templates(
                         entity_mappings, device_id
                     )
+                    parsed_mappings = await self._async_apply_entity_id_fallbacks(
+                        parsed_mappings,
+                        device_id,
+                    )
                 else:
                     parsed_mappings = entity_mappings
 
@@ -204,6 +210,37 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
             self._send_error(
                 connection, msg["id"], "get_entity_mappings_failed", str(error)
             )
+
+    async def _async_apply_entity_id_fallbacks(
+        self,
+        entity_mappings: dict[str, str],
+        device_id: str,
+    ) -> dict[str, str]:
+        try:
+            from homeassistant.helpers import entity_registry as er
+
+            registry = er.async_get(self.hass)
+        except Exception:
+            return entity_mappings
+
+        device_id_underscore = device_id.replace(":", "_")
+        resolved: dict[str, str] = dict(entity_mappings)
+
+        for state_name, entity_id in entity_mappings.items():
+            if not isinstance(entity_id, str) or not entity_id:
+                continue
+            if registry.async_get(entity_id) is not None:
+                continue
+
+            for candidate in iter_ramses_cc_entity_id_fallbacks(
+                entity_id,
+                device_id_underscore=device_id_underscore,
+            ):
+                if registry.async_get(candidate) is not None:
+                    resolved[state_name] = candidate
+                    break
+
+        return resolved
 
     def _parse_entity_templates(
         self, entity_mappings: dict[str, str], device_id: str
