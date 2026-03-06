@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import voluptuous as vol
@@ -40,6 +41,7 @@ def build_group_schema(
     kind_options: list[selector.SelectOptionDict],
     kind_options_with_none: list[selector.SelectOptionDict],
     sensor_selector: selector.EntitySelector,
+    translate: Callable[[str, str], str] | None = None,
 ) -> tuple[vol.Schema, str]:
     """Return a minimal schema and info text for CO2 devices.
 
@@ -52,8 +54,12 @@ def build_group_schema(
         raise ValueError(f"Unsupported group_stage for CO2 handler: {group_stage}")
 
     schema = vol.Schema({})
-    info_suffix = (
+    default_suffix = (
         "CO2 devices are detected, but sensor control for CO2 is not yet "
         "implemented. This section is prepared as a preview for future use."
     )
+    if translate:
+        info_suffix = translate("co2_device_preview", default_suffix)
+    else:
+        info_suffix = default_suffix
     return schema, info_suffix

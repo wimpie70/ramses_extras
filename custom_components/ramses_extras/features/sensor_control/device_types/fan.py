@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import voluptuous as vol
@@ -240,6 +241,7 @@ def build_group_schema(
     kind_options: list[selector.SelectOptionDict],
     kind_options_with_none: list[selector.SelectOptionDict],
     sensor_selector: selector.EntitySelector,
+    translate: Callable[[str, str], str] | None = None,
 ) -> tuple[vol.Schema, str]:
     """Return the schema and info suffix for a given group.
 
@@ -286,7 +288,11 @@ def build_group_schema(
                 indoor_hum_key: sensor_selector,
             }
         )
-        info_suffix = "Indoor temperature and humidity sources."
+        info_suffix = (
+            translate("indoor_basic", "Indoor temperature and humidity sources.")
+            if translate
+            else "Indoor temperature and humidity sources."
+        )
     elif group_stage == "outdoor_basic":
         outdoor_temp_default = _get_entity(device_sources, "outdoor_temperature")
         outdoor_hum_default = _get_entity(device_sources, "outdoor_humidity")
@@ -330,7 +336,11 @@ def build_group_schema(
                 outdoor_hum_key: sensor_selector,
             }
         )
-        info_suffix = "Outdoor temperature and humidity sources."
+        info_suffix = (
+            translate("outdoor_basic", "Outdoor temperature and humidity sources.")
+            if translate
+            else "Outdoor temperature and humidity sources."
+        )
     elif group_stage == "co2":
         co2_default = _get_entity(device_sources, "co2")
         co2_entity_key = (
@@ -354,7 +364,14 @@ def build_group_schema(
                 co2_entity_key: sensor_selector,
             }
         )
-        info_suffix = "CO2 sensor source."
+        info_suffix = (
+            translate(
+                "co2",
+                "CO2 sensor source. Tip: use the entity picker search and type 'co2'.",
+            )
+            if translate
+            else "CO2 sensor source. Tip: use the entity picker search and type 'co2'."
+        )
     elif group_stage == "indoor_abs":
         indoor_abs_temp_default = _get_abs_entity(
             device_abs_inputs, "indoor_abs_humidity", "temperature"
@@ -431,7 +448,11 @@ def build_group_schema(
                 indoor_abs_hum_key: sensor_selector,
             }
         )
-        info_suffix = "Indoor absolute humidity input sensors."
+        info_suffix = (
+            translate("indoor_abs", "Indoor absolute humidity input sensors.")
+            if translate
+            else "Indoor absolute humidity input sensors."
+        )
     elif group_stage == "outdoor_abs":
         outdoor_abs_temp_default = _get_abs_entity(
             device_abs_inputs, "outdoor_abs_humidity", "temperature"
@@ -512,7 +533,11 @@ def build_group_schema(
                 outdoor_abs_hum_key: sensor_selector,
             }
         )
-        info_suffix = "Outdoor absolute humidity input sensors."
+        info_suffix = (
+            translate("outdoor_abs", "Outdoor absolute humidity input sensors.")
+            if translate
+            else "Outdoor absolute humidity input sensors."
+        )
     else:
         raise ValueError(f"Unsupported group_stage for FAN handler: {group_stage}")
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
@@ -12,6 +15,47 @@ from .const import SUPPORTED_METRICS
 from .device_types import DEVICE_TYPE_HANDLERS
 
 _LOGGER = logging.getLogger(__name__)
+
+_INTEGRATION_DIR = Path(__file__).resolve().parents[2]
+
+
+async def _async_load_sensor_control_info_suffix_translations(
+    hass: Any,
+) -> dict[str, str]:
+    language = getattr(getattr(hass, "config", None), "language", "en") or "en"
+    cache = hass.data.setdefault(DOMAIN, {}).setdefault("_sc_info_suffix", {})
+    cached = cache.get(language)
+    if isinstance(cached, dict):
+        return cached
+
+    translations_dir = _INTEGRATION_DIR / "translations"
+
+    def _load(lang: str) -> dict[str, str]:
+        path = translations_dir / f"{lang}.json"
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except Exception:
+            return {}
+
+        options = raw.get("options") if isinstance(raw, dict) else None
+        if not isinstance(options, dict):
+            return {}
+        sc = options.get("sensor_control")
+        if not isinstance(sc, dict):
+            return {}
+        info_suffix = sc.get("info_suffix")
+        if not isinstance(info_suffix, dict):
+            return {}
+        return {str(k): str(v) for k, v in info_suffix.items() if isinstance(v, str)}
+
+    loaded = await asyncio.to_thread(_load, language)
+    if not loaded and language != "en":
+        loaded = await asyncio.to_thread(_load, "en")
+
+    cache[language] = loaded
+    return loaded
 
 
 def _device_key(device_id: str) -> str:
@@ -423,6 +467,14 @@ async def async_step_sensor_control_config(
         selector.EntitySelectorConfig(domain=["sensor"])
     )
 
+    info_suffix_translations = (
+        await _async_load_sensor_control_info_suffix_translations(flow.hass)
+    )
+
+    def _t(key: str, default: str) -> str:
+        val = info_suffix_translations.get(key)
+        return val if isinstance(val, str) and val else default
+
     # Per-group schemas via the per-device-type handler
     try:
         schema, info_suffix = handler.build_group_schema(
@@ -432,6 +484,7 @@ async def async_step_sensor_control_config(
             kind_options,
             kind_options_with_none,
             sensor_selector,
+            translate=_t,
         )
     except Exception:
         # If the handler does not support this group (or any other error

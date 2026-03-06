@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Protocol, runtime_checkable
 
 import voluptuous as vol
@@ -28,6 +29,7 @@ class SensorControlDeviceHandler(Protocol):
         kind_options: list[selector.SelectOptionDict],
         kind_options_with_none: list[selector.SelectOptionDict],
         sensor_selector: selector.EntitySelector,
+        translate: Callable[[str, str], str] | None = None,
     ) -> tuple[vol.Schema, str]: ...
 
 
