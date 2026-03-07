@@ -107,8 +107,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "number.absolute_humidity_offset_*",
             "switch.dehumidify_*",
             "binary_sensor.dehumidifying_active_*",
-            # Ramses CC sensor entities
+            # Ramses CC sensor entities (both old and new naming)
             "sensor.*_indoor_humidity",
+            "sensor.fan_*_indoor_humidity",
         ]
 
         _LOGGER.debug(
