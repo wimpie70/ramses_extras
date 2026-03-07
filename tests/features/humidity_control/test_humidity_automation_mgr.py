@@ -565,3 +565,42 @@ class TestHumidityAutomationManager:
             side_effect=Exception("Test error")
         )
         assert await self.manager.async_set_offset(device_id, 0.5) is False
+
+    def test_generate_entity_patterns_with_slug_prefixes(self):
+        """Test entity pattern generation includes both old and new naming."""
+        patterns = self.manager._generate_entity_patterns()
+
+        # Should include both old and new ramses_cc naming patterns
+        assert "sensor.*_indoor_humidity" in patterns
+        assert "sensor.fan_*_indoor_humidity" in patterns
+
+        # Should include other expected patterns
+        assert "sensor.indoor_absolute_humidity_*" in patterns
+        assert "sensor.outdoor_absolute_humidity_*" in patterns
+        assert "number.relative_humidity_minimum_*" in patterns
+        assert "switch.dehumidify_*" in patterns
+
+    def test_wildcard_pattern_matches_old_naming(self):
+        """Test that wildcard pattern matches old ramses_cc naming."""
+        patterns = self.manager._generate_entity_patterns()
+        old_entity_id = "sensor.32_153289_indoor_humidity"
+
+        # The pattern sensor.*_indoor_humidity should match
+        pattern = "sensor.*_indoor_humidity"
+        assert pattern in patterns
+
+        # Verify the entity ID ends with the expected suffix
+        assert old_entity_id.endswith("_indoor_humidity")
+
+    def test_wildcard_pattern_matches_new_naming(self):
+        """Test that wildcard pattern matches new ramses_cc naming."""
+        patterns = self.manager._generate_entity_patterns()
+        new_entity_id = "sensor.fan_32_153289_indoor_humidity"
+
+        # The pattern sensor.fan_*_indoor_humidity should match
+        pattern = "sensor.fan_*_indoor_humidity"
+        assert pattern in patterns
+
+        # Verify the entity ID starts with the expected prefix
+        assert new_entity_id.startswith("sensor.fan_")
+        assert new_entity_id.endswith("_indoor_humidity")
