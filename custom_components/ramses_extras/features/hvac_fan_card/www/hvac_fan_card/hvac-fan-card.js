@@ -794,11 +794,19 @@ class HvacFanCard extends RamsesBaseCard {
     const deviceId = this.config?.device_id;
     if (!deviceId) return available;
 
-    // Get all states and filter for this device's number entities
-    const devicePrefix = `number.${deviceId.replace(/:/g, '_')}_`;
+    const deviceIdUnderscore = deviceId.replace(/:/g, '_');
+    const devicePrefixes = [
+      `number.${deviceIdUnderscore}_`,
+      `number.fan_${deviceIdUnderscore}_`,
+    ];
 
     Object.keys(this._hass.states).forEach((entityId) => {
-      if (entityId.startsWith(devicePrefix) && entityId.startsWith('number.')) {
+      if (entityId.startsWith('number.')) {
+        const devicePrefix = devicePrefixes.find((prefix) => entityId.startsWith(prefix));
+        if (!devicePrefix) {
+          return;
+        }
+
         const entity = this._hass.states[entityId];
         const entityName = entityId.replace(devicePrefix, '');
 
@@ -824,6 +832,7 @@ class HvacFanCard extends RamsesBaseCard {
         // Create parameter info based on entity attributes or schema
         const paramInfo = {
           description: description,
+          entity_id: entityId,
           unit: entity.attributes?.unit_of_measurement || '',
           min_value: entity.attributes?.min || 0,
           max_value: entity.attributes?.max || 100,
@@ -920,7 +929,7 @@ class HvacFanCard extends RamsesBaseCard {
     return Object.entries(availableParams || {})
       .filter(([paramKey]) => paramKey.startsWith('param_'))
       .map(([paramKey, paramInfo]) => {
-      const entityId = `number.${deviceIdUnderscore}_${paramKey}`;
+      const entityId = paramInfo?.entity_id || `number.${deviceIdUnderscore}_${paramKey}`;
 
       const rawValue =
         paramInfo?.current_value ??
