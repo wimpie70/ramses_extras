@@ -50,7 +50,7 @@ fi
 
 # Check ruff version consistency
 echo "  🔍 Checking ruff version consistency..."
-MIN_VERSION="0.14.4"
+MIN_VERSION="0.15.0"
 CURRENT_VERSION=$(ruff --version | cut -d' ' -f2)
 
 # Compare versions (handle cases like 0.14.4 vs 0.13.0)

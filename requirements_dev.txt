@@ -20,7 +20,7 @@
 
 # used for development (linting)
     prek == 0.3.4
-    ruff == 0.14.4                               # latest: 0.14.4 See also: pre-commit-config.yaml
+    ruff == 0.15.0                               # latest: 0.14.4 See also: pre-commit-config.yaml
 
 # used for development (typing)
     mypy == 1.19.0                               # pinned to match CI
