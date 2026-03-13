@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: eslint
         name: ESLint
-        entry: npm --prefix config run lint
+        entry: npm --prefix config exec -- eslint --cache --ext .js
         language: system
         types: [file]
         files: \.(js|jsx|ts|tsx)$
@@ -34,11 +34,10 @@ repos:
           )
         verbose: true
         require_serial: true
-        pass_filenames: false
 
       - id: prettier
         name: Prettier
-        entry: npm --prefix config run format
+        entry: npm --prefix config exec -- prettier --write
         language: system
         types: [file]
         files: \.(js|jsx|ts|tsx|json|md|css|scss|html|yaml|yml|graphql|mdx)$
@@ -52,7 +51,6 @@ repos:
             \..*\.(js|ts|json|yaml|yml)$
           )
         verbose: true
-        pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
