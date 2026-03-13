@@ -6,14 +6,14 @@ authors = ["Willem (wimpie70)"]
 
 [tool.poetry.dependencies]
 python = ">=3.13.2,<4.0"
-homeassistant = ">=2026.1.0"
+homeassistant = ">=2026.3.1"
 
 [tool.poetry.group.dev.dependencies]
  pytest = "^8.0.0"
  pytest-asyncio = "^0.24.0"
  mypy = "^1.11.0"
  ruff = "==0.14.4"
- pre-commit = "^3.8.0"
+ prek = "^0.3.4"
  typing-extensions = "^4.15.0"
  types-PyYAML = "^6.0.12"
 

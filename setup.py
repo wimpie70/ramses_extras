@@ -14,7 +14,7 @@ setup(
         "custom_components.ramses_extras.framework": "custom_components/ramses_extras/framework",
     },
     install_requires=[
-        "homeassistant>=2026.1.0",
+        "homeassistant>=2026.3.1",
     ],
     extras_require={
         "test": [
@@ -24,7 +24,7 @@ setup(
             "pytest-mock>=3.10.0",
             "mypy>=0.910",
             "types-requests",
-            "pre-commit",
+            "prek",
             "ruff",
         ],
         "dev": [
@@ -34,7 +34,7 @@ setup(
             "black>=24.0.0",
             "isort>=5.13.0",
             "flake8>=7.0.0",
-            "pre-commit>=3.8.0",
+            "prek>=0.3.4",
             "typing-extensions>=4.15.0",
         ],
     },

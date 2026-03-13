@@ -19,7 +19,7 @@
 # - pip list | grep -E 'pre-commit|ruff|mypy|types-|voluptuous'
 
 # used for development (linting)
-    pre-commit >= 4.2.0                          # latest: 4.3.0
+    prek == 0.3.4
     ruff == 0.14.4                               # latest: 0.14.4 See also: pre-commit-config.yaml
 
 # used for development (typing)
