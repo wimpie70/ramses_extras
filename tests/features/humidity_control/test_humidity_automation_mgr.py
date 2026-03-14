@@ -23,6 +23,7 @@ class TestHumidityAutomationManager:
         self.hass.data.get.return_value = {
             "enabled_features": {"humidity_control": True}
         }
+        self.hass.config = MagicMock()
         self.hass.states = MagicMock()
         self.config_entry = MagicMock()
         self.config_entry.options = {}
@@ -136,13 +137,31 @@ class TestHumidityAutomationManager:
         mock_reg = MagicMock()
         mock_registry.async_get.return_value = mock_reg
 
-        # All entities exist
-        mock_reg.async_get.return_value = True
-        assert await self.manager._validate_device_entities(device_id) is True
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.entity.core.get_feature_entity_mappings",
+                new=AsyncMock(
+                    return_value={
+                        "indoor_abs": "sensor.indoor_absolute_humidity_32_123456",
+                    }
+                ),
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.entity.core.get_required_entity_ids_for_feature_device",
+                new=AsyncMock(
+                    return_value=[
+                        "switch.dehumidify_32_123456",
+                    ]
+                ),
+            ),
+        ):
+            # All entities exist
+            mock_reg.async_get.return_value = True
+            assert await self.manager._validate_device_entities(device_id) is True
 
-        # Some missing
-        mock_reg.async_get.return_value = None
-        assert await self.manager._validate_device_entities(device_id) is False
+            # Some missing
+            mock_reg.async_get.return_value = None
+            assert await self.manager._validate_device_entities(device_id) is False
 
     async def test_evaluate_humidity_conditions_high(self):
         """Test evaluation logic for high humidity."""
@@ -274,9 +293,25 @@ class TestHumidityAutomationManager:
 
         self.hass.states.get.side_effect = lambda eid: state_map.get(eid)
 
-        with patch.object(
-            self.manager, "_get_sensor_control_context", new_callable=AsyncMock
-        ) as mock_ctx:
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.entity.core.get_feature_entity_mappings",
+                new=AsyncMock(
+                    return_value={
+                        "indoor_rh": "sensor.32_123456_indoor_humidity",
+                        "indoor_abs": "sensor.indoor_absolute_humidity_32_123456",
+                        "outdoor_abs": "sensor.outdoor_absolute_humidity_32_123456",
+                        "min_humidity": "number.relative_humidity_minimum_32_123456",
+                        "max_humidity": "number.relative_humidity_maximum_32_123456",
+                        "offset": "number.absolute_humidity_offset_32_123456",
+                        "dehumidify": "switch.dehumidify_32_123456",
+                    }
+                ),
+            ),
+            patch.object(
+                self.manager, "_get_sensor_control_context", new_callable=AsyncMock
+            ) as mock_ctx,
+        ):
             mock_ctx.return_value = None
 
             states = await self.manager._get_device_entity_states(device_id)
@@ -437,16 +472,24 @@ class TestHumidityAutomationManager:
         """Test _get_device_entity_states error paths."""
         device_id = "32_123456"
 
-        # Entity not found
-        self.hass.states.get.return_value = None
-        with pytest.raises(ValueError, match="Entity .* not found"):
-            await self.manager._get_device_entity_states(device_id)
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.entity.core.get_feature_entity_mappings",
+            new=AsyncMock(
+                return_value={
+                    "indoor_rh": "sensor.32_123456_indoor_humidity",
+                }
+            ),
+        ):
+            # Entity not found
+            self.hass.states.get.return_value = None
+            with pytest.raises(ValueError, match="Entity .* not found"):
+                await self.manager._get_device_entity_states(device_id)
 
-        # Entity unavailable
-        mock_state = MagicMock(state="unavailable")
-        self.hass.states.get.return_value = mock_state
-        with pytest.raises(ValueError, match="Entity .* state unavailable"):
-            await self.manager._get_device_entity_states(device_id)
+            # Entity unavailable
+            mock_state = MagicMock(state="unavailable")
+            self.hass.states.get.return_value = mock_state
+            with pytest.raises(ValueError, match="Entity .* state unavailable"):
+                await self.manager._get_device_entity_states(device_id)
 
     async def test_get_sensor_control_context_failure(self):
         """Test _get_sensor_control_context failure paths."""
