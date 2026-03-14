@@ -175,7 +175,9 @@ async def test_discover_devices_from_entity_registry_success(hass) -> None:
     entity = MagicMock()
     entity.domain = "sensor"
     entity.platform = "ramses_cc"
-    entity.device_id = "dev1"
+    entity.device_id = "6e555070689103f6f2f80693f447024b"
+    entity.unique_id = "32_153289_param_01"
+    entity.entity_id = "number.32_153289_param_01"
 
     registry = MagicMock()
     registry.entities = {"e1": entity}
@@ -186,7 +188,7 @@ async def test_discover_devices_from_entity_registry_success(hass) -> None:
     ):
         result = await devices._discover_devices_from_entity_registry(hass)
 
-    assert result == ["dev1"]
+    assert result == ["32:153289"]
 
 
 @pytest.mark.asyncio

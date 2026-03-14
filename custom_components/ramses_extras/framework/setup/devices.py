@@ -61,6 +61,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import re
 from typing import Any, cast
 
 from homeassistant.config_entries import ConfigEntry
@@ -75,6 +76,11 @@ from ...const import DOMAIN, EVENT_DEVICES_UPDATED
 _LOGGER = logging.getLogger(__name__)
 
 _setup_in_progress = False
+_RAMSES_DEVICE_ID = re.compile(r"^\d{2}:\d{6}$")
+_RAMSES_DEVICE_ID_UNDERSCORE = re.compile(r"^\d{2}_\d{6}$")
+_RAMSES_DEVICE_ID_EMBEDDED = re.compile(
+    r"(?:^|[._-])(?:fan_|co2_)?(\d{2})_(\d{6})(?:[._-]|$)"
+)
 
 
 async def setup_entity_registry_device_refresh(
@@ -356,12 +362,8 @@ async def _discover_devices_from_entity_registry(hass: HomeAssistant) -> list[st
         ]
 
         for entity in entity_registry.entities.values():
-            if (
-                entity.domain in relevant_domains
-                and entity.platform == "ramses_cc"
-                and hasattr(entity, "device_id")
-            ):
-                device_id = entity.device_id
+            if entity.domain in relevant_domains and entity.platform == "ramses_cc":
+                device_id = _extract_ramses_device_id_from_registry_entry(entity)
                 if (
                     isinstance(device_id, str)
                     and device_id
@@ -379,6 +381,26 @@ async def _discover_devices_from_entity_registry(hass: HomeAssistant) -> list[st
     except Exception as e:
         _LOGGER.error("Error discovering devices from entity registry: %s", e)
         return []
+
+
+def _extract_ramses_device_id_from_registry_entry(entity: Any) -> str | None:
+    """Extract a RAMSES device ID from an entity registry entry."""
+    for attr_name in ("device_id", "unique_id", "entity_id"):
+        value = getattr(entity, attr_name, None)
+        if not isinstance(value, str) or not value:
+            continue
+
+        if _RAMSES_DEVICE_ID.match(value):
+            return value
+
+        if _RAMSES_DEVICE_ID_UNDERSCORE.match(value):
+            return value.replace("_", ":")
+
+        match = _RAMSES_DEVICE_ID_EMBEDDED.search(value)
+        if match:
+            return f"{match.group(1)}:{match.group(2)}"
+
+    return None
 
 
 async def cleanup_orphaned_devices(
