@@ -231,7 +231,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             get_required_entity_ids_for_feature_device,
         )
 
-        entity_mappings = await get_feature_entity_mappings(self.feature_id, device_id)
+        entity_mappings = await get_feature_entity_mappings(
+            self.feature_id,
+            device_id,
+            self.hass,
+        )
         required_entity_ids = await get_required_entity_ids_for_feature_device(
             self.feature_id,
             device_id,
@@ -299,7 +303,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         )
 
         # Base mappings from feature definition (centralized helper)
-        state_mappings = await get_feature_entity_mappings(self.feature_id, device_id)
+        state_mappings = await get_feature_entity_mappings(
+            self.feature_id,
+            device_id,
+            self.hass,
+        )
 
         # Optional context from sensor_control via WebSocket helper to align
         # indoor_rh with the same indoor_humidity source used elsewhere.

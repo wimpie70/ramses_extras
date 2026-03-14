@@ -21,6 +21,7 @@ from ..common import (
     RamsesValidator,
     _singularize_entity_type,
 )
+from .entity_id_fallbacks import iter_ramses_cc_entity_id_fallbacks
 
 # AVAILABLE_FEATURES import removed to avoid blocking imports
 # from ....const import AVAILABLE_FEATURES
@@ -793,7 +794,9 @@ class EntityHelpers:
 
 
 async def get_feature_entity_mappings(
-    feature_id: str, device_id: str
+    feature_id: str,
+    device_id: str,
+    hass: HomeAssistant | None = None,
 ) -> dict[str, str]:
     """Get entity mappings for a feature and device.
 
@@ -805,6 +808,8 @@ async def get_feature_entity_mappings(
         Dictionary mapping state names to entity IDs
     """
     mappings = await _get_entity_mappings_from_feature(feature_id, device_id)
+    if hass is not None:
+        mappings = await _async_apply_entity_id_fallbacks(hass, mappings, device_id)
     _LOGGER.debug(f"Feature {feature_id} mappings for {device_id}: {mappings}")
     return mappings
 
@@ -825,6 +830,32 @@ async def _get_entity_mappings_from_feature(
         templates = {}
 
     return parse_entity_mapping_templates_for_device(templates, device_id)
+
+
+async def _async_apply_entity_id_fallbacks(
+    hass: HomeAssistant,
+    entity_mappings: dict[str, str],
+    device_id: str,
+) -> dict[str, str]:
+    registry = entity_registry.async_get(hass)
+    device_id_underscore = device_id.replace(":", "_").lower()
+    resolved: dict[str, str] = dict(entity_mappings)
+
+    for state_name, entity_id in entity_mappings.items():
+        if not isinstance(entity_id, str) or not entity_id:
+            continue
+        if registry.async_get(entity_id) is not None:
+            continue
+
+        for candidate in iter_ramses_cc_entity_id_fallbacks(
+            entity_id,
+            device_id_underscore=device_id_underscore,
+        ):
+            if registry.async_get(candidate) is not None:
+                resolved[state_name] = candidate
+                break
+
+    return resolved
 
 
 def _import_entity_mapping_templates_sync(feature_id: str) -> dict[str, str]:

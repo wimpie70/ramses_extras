@@ -584,7 +584,11 @@ class ExtrasBaseAutomation(ABC):
         states: dict[str, float | bool] = {}
 
         # Get dynamic state mappings from feature configuration
-        state_mappings = await get_feature_entity_mappings(self.feature_id, device_id)
+        state_mappings = await get_feature_entity_mappings(
+            self.feature_id,
+            device_id,
+            self.hass,
+        )
 
         for state_name, entity_id in state_mappings.items():
             state = self.hass.states.get(entity_id)

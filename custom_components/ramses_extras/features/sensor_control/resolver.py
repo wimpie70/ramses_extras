@@ -48,8 +48,10 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from ...const import DOMAIN
+from ...framework.helpers.entity.entity_id_fallbacks import iter_ramses_cc_entity_ids
 from .const import INTERNAL_SENSOR_MAPPINGS, SUPPORTED_METRICS
 
 _LOGGER = logging.getLogger(__name__)
@@ -199,29 +201,38 @@ class SensorControlResolver:
             Dictionary mapping metric to internal entity ID
         """
         internal_mappings = INTERNAL_SENSOR_MAPPINGS.get(device_type, {})
-        # INTERNAL_SENSOR_MAPPINGS.get() always returns a dict, so no need for
-        # isinstance check
+        device_id_underscore = device_id.replace(":", "_").lower()
+        registry = er.async_get(self.hass)
 
-        from custom_components.ramses_extras.framework.helpers.entity.core import (
-            parse_entity_mapping_templates_for_device,
-        )
-
-        templates: dict[str, str] = {
-            metric: template
-            for metric, template in internal_mappings.items()
-            if isinstance(metric, str) and isinstance(template, str)
-        }
-        parsed = parse_entity_mapping_templates_for_device(templates, device_id)
-
-        result: dict[str, str | None] = {
-            metric: parsed.get(metric)
-            for metric, template in internal_mappings.items()
-            if isinstance(metric, str) and template
+        metric_keys = {
+            "indoor_temperature": "indoor_temperature",
+            "indoor_humidity": "indoor_humidity",
+            "co2": "co2_level",
+            "outdoor_temperature": "outdoor_temperature",
+            "outdoor_humidity": "outdoor_humidity",
         }
 
-        for metric, template in internal_mappings.items():
-            if isinstance(metric, str) and not template:
+        result: dict[str, str | None] = {}
+        for metric, key in metric_keys.items():
+            if metric not in internal_mappings:
                 result[metric] = None
+                continue
+
+            candidates = iter_ramses_cc_entity_ids(
+                "sensor",
+                key,
+                device_id_underscore=device_id_underscore,
+            )
+            resolved = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if registry.async_get(candidate) is not None
+                    or self.hass.states.get(candidate) is not None
+                ),
+                None,
+            )
+            result[metric] = resolved or (candidates[0] if candidates else None)
 
         # Ensure all supported metrics are present
         for metric in SUPPORTED_METRICS:

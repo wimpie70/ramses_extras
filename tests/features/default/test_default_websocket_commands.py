@@ -227,3 +227,24 @@ async def test_ws_get_2411_schema_multiple_params(hass, connection):
     connection.send_result.assert_called_once()
     schema = connection.send_result.call_args[0][1]
     assert len(schema) == 3
+
+
+async def test_ws_get_2411_schema_fan_prefixed_params(hass, connection):
+    """Test ws_get_2411_schema returns schema for fan-prefixed param entities."""
+    mock_state = MagicMock()
+    mock_state.entity_id = "number.fan_32_123456_param_75"
+    mock_state.attributes = {
+        "friendly_name": "Comfort temperature",
+        "min": 5,
+        "max": 35,
+        "step": 0.5,
+        "unit_of_measurement": "°C",
+    }
+    hass.states.async_all.return_value = [mock_state]
+    msg = {"id": 1, "type": "ramses_extras/get_2411_schema", "device_id": "32:123456"}
+    await ws_get_2411_schema(hass, connection, msg)
+    connection.send_result.assert_called_once()
+    schema = connection.send_result.call_args[0][1]
+    assert "75" in schema
+    assert schema["75"]["min_value"] == 5
+    assert schema["75"]["max_value"] == 35
