@@ -444,12 +444,16 @@ async def ws_get_2411_schema(
     """
 
     device_id = str(msg["device_id"]).replace(":", "_").lower()
-    prefix = f"number.{device_id}_param_"
+    prefixes = (
+        f"number.{device_id}_param_",
+        f"number.fan_{device_id}_param_",
+    )
     schema: dict[str, Any] = {}
 
     for st in hass.states.async_all():
         entity_id = st.entity_id
-        if not entity_id.startswith(prefix):
+        prefix = next((p for p in prefixes if entity_id.startswith(p)), None)
+        if prefix is None:
             continue
         param_id = entity_id.removeprefix(prefix).upper()
         attrs = dict(st.attributes)

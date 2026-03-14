@@ -399,7 +399,22 @@ class TestSensorControlResolverEdgeCases:
     def setup_method(self):
         """Set up test fixtures."""
         self.hass = MagicMock(spec=HomeAssistant)
+        self.hass.data = {}
+        self.hass.config = MagicMock()
+        self.hass.states = MagicMock()
+        self.hass.states.get = MagicMock(return_value=None)
+        self.entity_registry = MagicMock()
+        self.entity_registry.async_get = MagicMock(return_value=None)
+        self._entity_registry_patcher = patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.er.async_get",
+            return_value=self.entity_registry,
+        )
+        self._entity_registry_patcher.start()
         self.resolver = SensorControlResolver(self.hass)
+
+    def teardown_method(self):
+        """Clean up patchers."""
+        self._entity_registry_patcher.stop()
 
     @pytest.mark.asyncio
     async def test_resolve_with_invalid_device_id(self):

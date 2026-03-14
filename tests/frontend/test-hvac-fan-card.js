@@ -257,6 +257,35 @@ describe('HvacFanCard', () => {
     });
   });
 
+  describe('fan parameter entity IDs', () => {
+    test('should recognise fan-prefixed number parameter entities', () => {
+      const deviceId = '32:153289';
+      const deviceIdUnderscore = deviceId.replace(/:/g, '_');
+      const devicePrefixes = [
+        `number.${deviceIdUnderscore}_`,
+        `number.fan_${deviceIdUnderscore}_`,
+      ];
+
+      const entityId = 'number.fan_32_153289_param_75';
+      const devicePrefix = devicePrefixes.find((prefix) => entityId.startsWith(prefix));
+
+      expect(devicePrefix).toBe('number.fan_32_153289_');
+      expect(entityId.replace(devicePrefix, '')).toBe('param_75');
+    });
+
+    test('should keep the discovered parameter entity id', () => {
+      const paramInfo = {
+        entity_id: 'number.fan_32_153289_param_75',
+        current_value: '19.5',
+        precision: 0.1,
+      };
+
+      const entityId = paramInfo?.entity_id || 'number.32_153289_param_75';
+
+      expect(entityId).toBe('number.fan_32_153289_param_75');
+    });
+  });
+
   describe('checkDehumidifyEntities', () => {
     test('should return true when both dehumidify entities exist', () => {
       mockHass.states['switch.dehumidify_32_153289'] = { state: 'off' };

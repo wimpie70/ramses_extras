@@ -58,15 +58,16 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '18'
           cache: 'npm'
+          cache-dependency-path: config/package-lock.json
 
       - name: Install Node.js dependencies
-        run: npm ci
+        run: npm ci --prefix config
 
-      - name: Run pre-commit
-        run: pre-commit run --all-files
+      - name: Run prek
+        run: prek run --all-files
 
       - run: echo "🍏 This job's status is ${{ job.status }}."

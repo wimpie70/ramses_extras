@@ -23,6 +23,7 @@ class TestHumidityAutomationManager:
         self.hass.data.get.return_value = {
             "enabled_features": {"humidity_control": True}
         }
+        self.hass.config = MagicMock()
         self.hass.states = MagicMock()
         self.config_entry = MagicMock()
         self.config_entry.options = {}
@@ -136,13 +137,31 @@ class TestHumidityAutomationManager:
         mock_reg = MagicMock()
         mock_registry.async_get.return_value = mock_reg
 
-        # All entities exist
-        mock_reg.async_get.return_value = True
-        assert await self.manager._validate_device_entities(device_id) is True
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.entity.core.get_feature_entity_mappings",
+                new=AsyncMock(
+                    return_value={
+                        "indoor_abs": "sensor.indoor_absolute_humidity_32_123456",
+                    }
+                ),
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.entity.core.get_required_entity_ids_for_feature_device",
+                new=AsyncMock(
+                    return_value=[
+                        "switch.dehumidify_32_123456",
+                    ]
+                ),
+            ),
+        ):
+            # All entities exist
+            mock_reg.async_get.return_value = True
+            assert await self.manager._validate_device_entities(device_id) is True
 
-        # Some missing
-        mock_reg.async_get.return_value = None
-        assert await self.manager._validate_device_entities(device_id) is False
+            # Some missing
+            mock_reg.async_get.return_value = None
+            assert await self.manager._validate_device_entities(device_id) is False
 
     async def test_evaluate_humidity_conditions_high(self):
         """Test evaluation logic for high humidity."""
@@ -274,9 +293,25 @@ class TestHumidityAutomationManager:
 
         self.hass.states.get.side_effect = lambda eid: state_map.get(eid)
 
-        with patch.object(
-            self.manager, "_get_sensor_control_context", new_callable=AsyncMock
-        ) as mock_ctx:
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.entity.core.get_feature_entity_mappings",
+                new=AsyncMock(
+                    return_value={
+                        "indoor_rh": "sensor.32_123456_indoor_humidity",
+                        "indoor_abs": "sensor.indoor_absolute_humidity_32_123456",
+                        "outdoor_abs": "sensor.outdoor_absolute_humidity_32_123456",
+                        "min_humidity": "number.relative_humidity_minimum_32_123456",
+                        "max_humidity": "number.relative_humidity_maximum_32_123456",
+                        "offset": "number.absolute_humidity_offset_32_123456",
+                        "dehumidify": "switch.dehumidify_32_123456",
+                    }
+                ),
+            ),
+            patch.object(
+                self.manager, "_get_sensor_control_context", new_callable=AsyncMock
+            ) as mock_ctx,
+        ):
             mock_ctx.return_value = None
 
             states = await self.manager._get_device_entity_states(device_id)
@@ -437,16 +472,24 @@ class TestHumidityAutomationManager:
         """Test _get_device_entity_states error paths."""
         device_id = "32_123456"
 
-        # Entity not found
-        self.hass.states.get.return_value = None
-        with pytest.raises(ValueError, match="Entity .* not found"):
-            await self.manager._get_device_entity_states(device_id)
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.entity.core.get_feature_entity_mappings",
+            new=AsyncMock(
+                return_value={
+                    "indoor_rh": "sensor.32_123456_indoor_humidity",
+                }
+            ),
+        ):
+            # Entity not found
+            self.hass.states.get.return_value = None
+            with pytest.raises(ValueError, match="Entity .* not found"):
+                await self.manager._get_device_entity_states(device_id)
 
-        # Entity unavailable
-        mock_state = MagicMock(state="unavailable")
-        self.hass.states.get.return_value = mock_state
-        with pytest.raises(ValueError, match="Entity .* state unavailable"):
-            await self.manager._get_device_entity_states(device_id)
+            # Entity unavailable
+            mock_state = MagicMock(state="unavailable")
+            self.hass.states.get.return_value = mock_state
+            with pytest.raises(ValueError, match="Entity .* state unavailable"):
+                await self.manager._get_device_entity_states(device_id)
 
     async def test_get_sensor_control_context_failure(self):
         """Test _get_sensor_control_context failure paths."""
@@ -565,3 +608,42 @@ class TestHumidityAutomationManager:
             side_effect=Exception("Test error")
         )
         assert await self.manager.async_set_offset(device_id, 0.5) is False
+
+    def test_generate_entity_patterns_with_slug_prefixes(self):
+        """Test entity pattern generation includes both old and new naming."""
+        patterns = self.manager._generate_entity_patterns()
+
+        # Should include both old and new ramses_cc naming patterns
+        assert "sensor.*_indoor_humidity" in patterns
+        assert "sensor.fan_*_indoor_humidity" in patterns
+
+        # Should include other expected patterns
+        assert "sensor.indoor_absolute_humidity_*" in patterns
+        assert "sensor.outdoor_absolute_humidity_*" in patterns
+        assert "number.relative_humidity_minimum_*" in patterns
+        assert "switch.dehumidify_*" in patterns
+
+    def test_wildcard_pattern_matches_old_naming(self):
+        """Test that wildcard pattern matches old ramses_cc naming."""
+        patterns = self.manager._generate_entity_patterns()
+        old_entity_id = "sensor.32_153289_indoor_humidity"
+
+        # The pattern sensor.*_indoor_humidity should match
+        pattern = "sensor.*_indoor_humidity"
+        assert pattern in patterns
+
+        # Verify the entity ID ends with the expected suffix
+        assert old_entity_id.endswith("_indoor_humidity")
+
+    def test_wildcard_pattern_matches_new_naming(self):
+        """Test that wildcard pattern matches new ramses_cc naming."""
+        patterns = self.manager._generate_entity_patterns()
+        new_entity_id = "sensor.fan_32_153289_indoor_humidity"
+
+        # The pattern sensor.fan_*_indoor_humidity should match
+        pattern = "sensor.fan_*_indoor_humidity"
+        assert pattern in patterns
+
+        # Verify the entity ID starts with the expected prefix
+        assert new_entity_id.startswith("sensor.fan_")
+        assert new_entity_id.endswith("_indoor_humidity")

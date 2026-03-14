@@ -1,6 +1,6 @@
 """Integration tests for Ramses Extras components working together."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntry
@@ -28,6 +28,9 @@ class TestFrameworkIntegration:
             "sensor_control": {"sources": {}, "abs_humidity_inputs": {}}
         }
         self.hass.data = {"ramses_extras": {"config_entry": self.config_entry}}
+        self.hass.config = MagicMock()
+        self.hass.states = MagicMock()
+        self.hass.states.get = MagicMock(return_value=None)
 
     @pytest.mark.asyncio
     async def test_config_manager_with_entity_helpers(self):
@@ -77,14 +80,16 @@ class TestFrameworkIntegration:
 
         self.config_entry.options = {"sensor_control": sensor_control_config}
 
-        # Create resolver
-        resolver = SensorControlResolver(self.hass)
+        mock_registry = MagicMock()
+        mock_registry.async_get = MagicMock(return_value=None)
 
-        # Mock entity existence check
-        resolver._entity_exists = MagicMock(return_value=True)
-
-        # Test resolution
-        result = await resolver.resolve_entity_mappings("32:153:08", "FAN")
+        with patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.er.async_get",
+            return_value=mock_registry,
+        ):
+            resolver = SensorControlResolver(self.hass)
+            resolver._entity_exists = MagicMock(return_value=True)
+            result = await resolver.resolve_entity_mappings("32:153:08", "FAN")
 
         assert "mappings" in result
         assert "sources" in result
@@ -117,12 +122,16 @@ class TestFrameworkIntegration:
         self.config_entry.options = {"sensor_control": sensor_control_config}
         self.hass.data = {"ramses_extras": {"config_entry": self.config_entry}}
 
-        # Create resolver
-        resolver = SensorControlResolver(self.hass)
-        resolver._entity_exists = MagicMock(return_value=True)
+        mock_registry = MagicMock()
+        mock_registry.async_get = MagicMock(return_value=None)
 
-        # Test resolution
-        result = await resolver.resolve_entity_mappings("32:153:08", "FAN")
+        with patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.er.async_get",
+            return_value=mock_registry,
+        ):
+            resolver = SensorControlResolver(self.hass)
+            resolver._entity_exists = MagicMock(return_value=True)
+            result = await resolver.resolve_entity_mappings("32:153:08", "FAN")
 
         # Verify external entity is used
         assert result["mappings"]["indoor_temperature"] == "sensor.external_temp"
