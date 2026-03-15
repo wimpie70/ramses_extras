@@ -474,6 +474,9 @@ class TestHumidityAutomationManager:
         decision = {"reasoning": ["Test"]}
         self.manager._dehumidify_active = True
 
+        self.manager.ramses_commands.send_command = AsyncMock(
+            return_value=MagicMock(success=True)
+        )
         self.manager.services.async_deactivate_dehumidification = AsyncMock(
             return_value=True
         )
@@ -647,9 +650,7 @@ class TestHumidityAutomationManager:
 
         await self.manager._stop_dehumidification_without_switch_change(device_id)
         assert self.manager._dehumidify_active is False
-        self.manager.services.async_deactivate_dehumidification.assert_called_once_with(
-            device_id
-        )
+        self.manager.services.async_deactivate_dehumidification.assert_not_called()
 
     async def test_update_automation_status_missing_entity(self):
         """Test _update_automation_status with missing entity."""
