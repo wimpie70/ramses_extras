@@ -127,6 +127,42 @@ async def test_async_step_sensor_control_config_select_device_with_overview(
     assert "indoor_abs_humidity" in info_text
 
 
+async def test_select_device_abs_overview_variants(
+    flow,
+    helper,
+):
+    """Test global overview formatting for varied absolute humidity mappings."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "select_device"
+    flow._config_entry.options = {
+        "sensor_control": {
+            "abs_humidity_inputs": {
+                "32_123456": {
+                    "indoor_abs_humidity": {
+                        "temperature": {
+                            "kind": "external_abs",
+                            "entity_id": "sensor.abs",
+                        },
+                        "humidity": {"kind": "internal"},
+                    },
+                    "outdoor_abs_humidity": {
+                        "temperature": {
+                            "kind": "external_temp",
+                            "entity_id": "sensor.outdoor_temp",
+                        },
+                        "humidity": {"kind": "none"},
+                    },
+                }
+            }
+        }
+    }
+
+    await async_step_sensor_control_config(flow, None)
+    info_text = flow.async_show_form.call_args[1]["description_placeholders"]["info"]
+    assert "external abs  sensor.abs" in info_text
+    assert "humidity: none" in info_text
+
+
 async def test_async_step_sensor_control_config_select_device_with_area_sensor_overview(
     flow, helper
 ):
@@ -252,6 +288,27 @@ async def test_async_step_sensor_control_config_configure_group(flow, helper):
         flow.hass.config_entries.async_update_entry.assert_called_once()
 
 
+async def test_async_step_sensor_control_config_area_sensors_edit_selection(
+    flow, helper
+):
+    """Edit selection should store the selected source id."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "area_sensors_menu"
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(
+            flow, {"area_sensor_action": "edit:bathroom"}
+        )
+
+    assert flow._sensor_control_group_stage == "area_sensors_edit"
+    assert flow._sensor_control_area_sensor_id == "bathroom"
+
+
 async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, helper):
     """Test adding and editing an area sensor."""
     flow._get_config_flow_helper.return_value = helper
@@ -317,6 +374,69 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         assert edited_area_sensor["check_interval_minutes"] == 2
 
 
+async def test_async_step_sensor_control_config_area_sensors_edit_preserves_others(
+    flow, helper
+):
+    """Editing one area sensor should keep non-edited entries intact."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "area_sensors_edit"
+    flow._sensor_control_area_sensor_id = "bathroom"
+    flow._config_entry.options = {
+        "sensor_control": {
+            "area_sensors": {
+                "32_123456": [
+                    {
+                        "source_id": "bathroom",
+                        "label": "Bathroom",
+                        "temperature_entity": "sensor.bath_temp",
+                        "humidity_entity": "sensor.bath_humidity",
+                        "spike_rise_percent": 12.0,
+                        "spike_window_minutes": 3,
+                        "check_interval_minutes": 1,
+                        "enabled": True,
+                    },
+                    {
+                        "source_id": "kitchen",
+                        "label": "Kitchen",
+                        "temperature_entity": "sensor.kitchen_temp",
+                        "humidity_entity": "sensor.kitchen_humidity",
+                        "spike_rise_percent": 10.0,
+                        "spike_window_minutes": 5,
+                        "check_interval_minutes": 2,
+                        "enabled": True,
+                    },
+                ]
+            }
+        }
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(
+            flow,
+            {
+                "area_sensor_label": "Bathroom Updated",
+                "area_sensor_enabled": True,
+                "temperature_entity": "sensor.bath_temp_2",
+                "humidity_entity": "sensor.bath_humidity_2",
+                "spike_rise_percent": 14.0,
+                "spike_window_minutes": 4,
+                "check_interval_minutes": 2,
+            },
+        )
+
+    updated = flow.hass.config_entries.async_update_entry.call_args.kwargs["options"][
+        "sensor_control"
+    ]["area_sensors"]["32_123456"]
+    assert len(updated) == 2
+    assert updated[0]["label"] == "Bathroom Updated"
+    assert updated[1]["source_id"] == "kitchen"
+
+
 async def test_async_step_sensor_control_config_area_sensors_delete(flow, helper):
     """Test deleting an area sensor."""
     flow._get_config_flow_helper.return_value = helper
@@ -355,3 +475,165 @@ async def test_async_step_sensor_control_config_area_sensors_delete(flow, helper
             "options"
         ]
         assert options["sensor_control"]["area_sensors"]["32_123456"] == []
+
+
+async def test_async_step_sensor_control_config_area_sensors_menu_back(flow, helper):
+    """Test returning from the area sensors menu to group selection."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "area_sensors_menu"
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(flow, {"area_sensor_action": "back"})
+
+    assert flow._sensor_control_group_stage == "select_group"
+
+
+async def test_async_step_sensor_control_config_area_sensors_menu_shows_edit_options(
+    flow, helper
+):
+    """Configured area sensors should appear in the menu info and actions."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "area_sensors_menu"
+    flow._config_entry.options = {
+        "sensor_control": {
+            "area_sensors": {
+                "32_123456": [
+                    {
+                        "source_id": "",
+                        "label": "Ignored",
+                        "temperature_entity": "sensor.ignore_temp",
+                        "humidity_entity": "sensor.ignore_humidity",
+                    },
+                    {
+                        "source_id": "bathroom",
+                        "label": "Bathroom",
+                        "temperature_entity": "sensor.bath_temp",
+                        "humidity_entity": "sensor.bath_humidity",
+                        "spike_rise_percent": 12.0,
+                        "spike_window_minutes": 3,
+                        "check_interval_minutes": 1,
+                        "enabled": True,
+                    },
+                ]
+            }
+        }
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(flow, None)
+
+    info_text = flow.async_show_form.call_args.kwargs["description_placeholders"][
+        "info"
+    ]
+    assert "Current area sensors:" in info_text
+    assert "area sensor Bathroom" in info_text
+
+
+async def test_async_step_sensor_control_config_device_overview_formats_mappings(
+    flow, helper
+):
+    """Device overview should summarize source and abs humidity mappings."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "select_group"
+    flow._config_entry.options = {
+        "sensor_control": {
+            "sources": {
+                "32_123456": {
+                    "indoor_temperature": {
+                        "kind": "external",
+                        "entity_id": "sensor.indoor_temp",
+                    },
+                    "indoor_humidity": {"kind": "none"},
+                    "outdoor_temperature": {"kind": "derived"},
+                    "outdoor_humidity": {"kind": "external"},
+                }
+            },
+            "abs_humidity_inputs": {
+                "32_123456": {
+                    "indoor_abs_humidity": {
+                        "temperature": {
+                            "kind": "external_abs",
+                            "entity_id": "sensor.indoor_abs",
+                        },
+                        "humidity": {"kind": "internal"},
+                    },
+                    "outdoor_abs_humidity": {
+                        "temperature": {
+                            "kind": "external_temp",
+                            "entity_id": "sensor.outdoor_temp",
+                        },
+                        "humidity": {"kind": "none"},
+                    },
+                }
+            },
+        }
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(flow, None)
+
+    info_text = flow.async_show_form.call_args.kwargs["description_placeholders"][
+        "info"
+    ]
+    assert "indoor_temperature: external  sensor.indoor_temp" in info_text
+    assert "indoor_humidity: disabled" in info_text
+    assert "outdoor_temperature: derived" in info_text
+    assert "outdoor_humidity: external (no entity)" in info_text
+    assert "external abs  sensor.indoor_abs" in info_text
+    assert "temp: external  sensor.outdoor_temp" in info_text
+    assert "humidity: none" in info_text
+
+
+async def test_async_step_sensor_control_config_device_overview_includes_area_sensors(
+    flow, helper
+):
+    """Device overview should include area sensor descriptions."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "select_group"
+    flow._config_entry.options = {
+        "sensor_control": {
+            "area_sensors": {
+                "32_123456": [
+                    {
+                        "source_id": "bathroom",
+                        "label": "Bathroom",
+                        "temperature_entity": "sensor.bath_temp",
+                        "humidity_entity": "sensor.bath_humidity",
+                        "spike_rise_percent": 12.0,
+                        "spike_window_minutes": 3,
+                        "check_interval_minutes": 1,
+                        "enabled": True,
+                    }
+                ]
+            }
+        }
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(flow, None)
+
+    info_text = flow.async_show_form.call_args.kwargs["description_placeholders"][
+        "info"
+    ]
+    assert "Current mappings for this device" in info_text
+    assert "area sensor Bathroom" in info_text

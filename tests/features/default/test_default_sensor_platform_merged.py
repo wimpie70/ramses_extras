@@ -441,6 +441,49 @@ class TestDefaultHumiditySensor:
         assert result is not None
         assert result > 0
 
+    def test_get_area_temp_and_humidity_result_invalid_states(
+        self, hass, sensor_config
+    ):
+        """Area sensors should return None for missing or invalid input states."""
+        sensor = DefaultHumiditySensor(
+            hass,
+            "32:153289",
+            "area_absolute_humidity_bathroom",
+            {
+                **sensor_config,
+                "source_id": "bathroom",
+                "temperature_entity": "sensor.bath_temp",
+                "humidity_entity": "sensor.bath_humidity",
+            },
+        )
+
+        hass.states.get = MagicMock(return_value=None)
+        assert sensor._get_area_temp_and_humidity_result() is None
+
+        def unavailable_get(entity_id):
+            state = MagicMock()
+            state.state = "unknown"
+            return state
+
+        hass.states.get = MagicMock(side_effect=unavailable_get)
+        assert sensor._get_area_temp_and_humidity_result() is None
+
+        def invalid_value_get(entity_id):
+            state = MagicMock()
+            state.state = "abc" if "temp" in entity_id else "55.0"
+            return state
+
+        hass.states.get = MagicMock(side_effect=invalid_value_get)
+        assert sensor._get_area_temp_and_humidity_result() is None
+
+        def invalid_humidity_get(entity_id):
+            state = MagicMock()
+            state.state = "22.0" if "temp" in entity_id else "150.0"
+            return state
+
+        hass.states.get = MagicMock(side_effect=invalid_humidity_get)
+        assert sensor._get_area_temp_and_humidity_result() is None
+
     @pytest.mark.asyncio
     async def test_async_compute_abs_from_sensor_control_external_abs(
         self, hass, sensor_config
@@ -553,7 +596,6 @@ class TestDefaultHumiditySensor:
         self, hass, sensor_config
     ):
         """Ensure None is returned when feature disabled or data invalid."""
-        hass.data = {"ramses_extras": {"config_entry": MagicMock(data={}, options={})}}
         sensor = DefaultHumiditySensor(
             hass, "32:153289", "indoor_absolute_humidity", sensor_config
         )
@@ -587,6 +629,203 @@ class TestDefaultHumiditySensor:
             result = await sensor._async_compute_abs_from_sensor_control()
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_async_compute_abs_from_sensor_control_external_abs_invalid_paths(
+        self, hass, sensor_config
+    ):
+        """Invalid direct absolute humidity states should return None."""
+        hass.data = {
+            "ramses_extras": {
+                "config_entry": MagicMock(
+                    data={"enabled_features": {"sensor_control": True}}, options={}
+                ),
+            }
+        }
+        sensor = DefaultHumiditySensor(
+            hass, "32:153289", "indoor_absolute_humidity", sensor_config
+        )
+        sensor._is_sensor_control_enabled = MagicMock(return_value=True)
+        sensor._get_device_type = MagicMock(return_value="FAN")
+        sensor.entity_id = "sensor.indoor_absolute_humidity_32_153289"
+
+        with patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
+        ) as resolver_cls:
+            resolver = MagicMock()
+            resolver.resolve_entity_mappings = AsyncMock(
+                return_value={
+                    "abs_humidity_inputs": {
+                        "indoor_abs_humidity": {
+                            "temperature": {
+                                "kind": "external_abs",
+                                "entity_id": sensor.entity_id,
+                            }
+                        }
+                    },
+                    "mappings": {},
+                }
+            )
+            resolver_cls.return_value = resolver
+
+            assert await sensor._async_compute_abs_from_sensor_control() is None
+
+            resolver.resolve_entity_mappings = AsyncMock(
+                return_value={
+                    "abs_humidity_inputs": {
+                        "indoor_abs_humidity": {
+                            "temperature": {
+                                "kind": "external_abs",
+                                "entity_id": "sensor.abs",
+                            }
+                        }
+                    },
+                    "mappings": {},
+                }
+            )
+            hass.states.get = MagicMock(return_value=MagicMock(state="unavailable"))
+            assert await sensor._async_compute_abs_from_sensor_control() is None
+
+            hass.states.get = MagicMock(return_value=MagicMock(state="bad"))
+            assert await sensor._async_compute_abs_from_sensor_control() is None
+
+    @pytest.mark.asyncio
+    async def test_async_compute_abs_from_sensor_control_derived_invalid_paths(
+        self, hass, sensor_config
+    ):
+        """Derived sensor_control branches should return None for invalid config."""
+        hass.data = {
+            "ramses_extras": {
+                "config_entry": MagicMock(
+                    data={"enabled_features": {"sensor_control": True}}, options={}
+                ),
+            }
+        }
+        sensor = DefaultHumiditySensor(
+            hass, "32:153289", "indoor_absolute_humidity", sensor_config
+        )
+        sensor._is_sensor_control_enabled = MagicMock(return_value=True)
+
+        sensor._get_device_type = MagicMock(return_value=None)
+        assert await sensor._async_compute_abs_from_sensor_control() is None
+
+        sensor._get_device_type = MagicMock(return_value="FAN")
+
+        with patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
+        ) as resolver_cls:
+            resolver = MagicMock()
+            resolver_cls.return_value = resolver
+
+            resolver.resolve_entity_mappings = AsyncMock(
+                return_value={"abs_humidity_inputs": {}, "mappings": {}}
+            )
+            assert await sensor._async_compute_abs_from_sensor_control() is None
+
+            resolver.resolve_entity_mappings = AsyncMock(
+                return_value={
+                    "abs_humidity_inputs": {
+                        "indoor_abs_humidity": {
+                            "temperature": {"kind": "unsupported"},
+                            "humidity": {"kind": "internal"},
+                        }
+                    },
+                    "mappings": {},
+                }
+            )
+            assert await sensor._async_compute_abs_from_sensor_control() is None
+
+            resolver.resolve_entity_mappings = AsyncMock(
+                return_value={
+                    "abs_humidity_inputs": {
+                        "indoor_abs_humidity": {
+                            "temperature": {"kind": "internal"},
+                            "humidity": {"kind": "unsupported"},
+                        }
+                    },
+                    "mappings": {"indoor_temperature": "sensor.temp"},
+                }
+            )
+            hass.states.get = MagicMock(return_value=MagicMock(state="22.0"))
+            assert await sensor._async_compute_abs_from_sensor_control() is None
+
+            resolver.resolve_entity_mappings = AsyncMock(
+                return_value={
+                    "abs_humidity_inputs": {
+                        "indoor_abs_humidity": {
+                            "temperature": {
+                                "kind": "external_temp",
+                                "entity_id": "sensor.temp",
+                            },
+                            "humidity": {
+                                "kind": "external",
+                                "entity_id": "sensor.humidity",
+                            },
+                        }
+                    },
+                    "mappings": {},
+                }
+            )
+            hass.states.get = MagicMock(return_value=MagicMock(state="unknown"))
+            assert await sensor._async_compute_abs_from_sensor_control() is None
+
+            hass.states.get = MagicMock(
+                side_effect=[MagicMock(state="22.0"), MagicMock(state="bad")]
+            )
+            assert await sensor._async_compute_abs_from_sensor_control() is None
+
+    @pytest.mark.asyncio
+    async def test_async_compute_abs_from_sensor_control_missing_entity_ids(
+        self, hass, sensor_config
+    ):
+        """Missing mapped entity ids should return None for derived sensor control."""
+        hass.data = {
+            "ramses_extras": {
+                "config_entry": MagicMock(
+                    data={"enabled_features": {"sensor_control": True}}, options={}
+                ),
+            }
+        }
+        sensor = DefaultHumiditySensor(
+            hass, "32:153289", "indoor_absolute_humidity", sensor_config
+        )
+        sensor._is_sensor_control_enabled = MagicMock(return_value=True)
+        sensor._get_device_type = MagicMock(return_value="FAN")
+
+        with patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
+        ) as resolver_cls:
+            resolver = MagicMock()
+            resolver_cls.return_value = resolver
+
+            resolver.resolve_entity_mappings = AsyncMock(
+                return_value={
+                    "abs_humidity_inputs": {
+                        "indoor_abs_humidity": {
+                            "temperature": {"kind": "internal"},
+                            "humidity": {"kind": "internal"},
+                        }
+                    },
+                    "mappings": {},
+                }
+            )
+            assert await sensor._async_compute_abs_from_sensor_control() is None
+
+            resolver.resolve_entity_mappings = AsyncMock(
+                return_value={
+                    "abs_humidity_inputs": {
+                        "indoor_abs_humidity": {
+                            "temperature": {"kind": "external_temp"},
+                            "humidity": {
+                                "kind": "external",
+                                "entity_id": "sensor.humidity",
+                            },
+                        }
+                    },
+                    "mappings": {},
+                }
+            )
+            assert await sensor._async_compute_abs_from_sensor_control() is None
 
 
 class TestCreateDefaultSensor:

@@ -197,6 +197,11 @@ class TestSensorControlResolver:
         assert result["area_sensors"][1]["source_id"] == "broken"
         assert result["area_sensors"][1]["valid"] is False
 
+    def test_resolve_area_sensors_ignores_invalid_input(self):
+        """Non-list and non-dict area sensor config should be ignored."""
+        assert self.resolver._resolve_area_sensors("invalid") == []
+        assert self.resolver._resolve_area_sensors([None, "bad"]) == []
+
     def test_get_sensor_control_config_no_entry(self):
         """Test getting sensor control config when no config entry exists."""
         self.hass.data = {}
