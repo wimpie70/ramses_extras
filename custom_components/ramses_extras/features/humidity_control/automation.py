@@ -10,7 +10,7 @@ import logging
 from collections.abc import Mapping
 from typing import Any, cast
 
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import Event, HomeAssistant, State
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -420,11 +420,20 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         _LOGGER.info("Configuration loaded, starting base automation")
 
-        # Start base automation
-        await super().start()
-
         self._automation_active = True
+        try:
+            await super().start()
+        except Exception:
+            self._automation_active = False
+            raise
+
         _LOGGER.info("Humidity control automation started")
+
+    async def _on_homeassistant_started(self, event: Event | None) -> None:
+        await super()._on_homeassistant_started(event)
+        if not self._automation_active or not self._is_feature_enabled():
+            return
+        await self._reconcile_startup_states()
 
     async def stop(self) -> None:
         """Stop the humidity control automation.
@@ -512,6 +521,40 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         except Exception as e:
             _LOGGER.error("Automation logic error: %s", e)
+
+    async def _reconcile_startup_states(self) -> None:
+        device_ids: set[str] = set()
+        for state in self.hass.states.async_all("switch"):
+            if not state.entity_id.startswith("switch.dehumidify_"):
+                continue
+            device_id = self._extract_device_id(state.entity_id)
+            if device_id:
+                device_ids.add(device_id)
+
+        for device_id in sorted(device_ids):
+            try:
+                entity_states = await self._get_device_entity_states(device_id)
+            except ValueError as err:
+                _LOGGER.debug(
+                    "Skipping startup reconciliation for %s: %s", device_id, err
+                )
+                continue
+
+            if not bool(entity_states.get("dehumidify")):
+                await self._enforce_switch_off_state(device_id)
+                await self._set_indicator_off(device_id)
+                continue
+
+            await self._process_automation_logic(device_id, entity_states)
+
+    async def _enforce_switch_off_state(self, device_id: str) -> None:
+        result = await self.ramses_commands.send_command(device_id, "fan_auto")
+        if not result.success:
+            _LOGGER.warning(
+                "Failed to enforce OFF balance state for device %s during startup",
+                device_id,
+            )
+        self._dehumidify_active = False
 
     async def _set_indicator_off(self, device_id: str) -> None:
         """Set indicator to OFF when switch is off or automation stops."""

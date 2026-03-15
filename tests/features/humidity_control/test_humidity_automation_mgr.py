@@ -128,6 +128,59 @@ class TestHumidityAutomationManager:
             await self.manager._process_automation_logic(device_id, entity_states)
             mock_off.assert_called_once_with(device_id)
 
+    async def test_reconcile_startup_states_switch_off(self):
+        """Test startup reconciliation enforces restored OFF switch state."""
+        mock_switch = MagicMock()
+        mock_switch.entity_id = "switch.dehumidify_32_123456"
+        self.hass.states.async_all.return_value = [mock_switch]
+
+        with (
+            patch.object(
+                self.manager,
+                "_get_device_entity_states",
+                new=AsyncMock(return_value={"dehumidify": False}),
+            ),
+            patch.object(
+                self.manager, "_enforce_switch_off_state", new=AsyncMock()
+            ) as mock_enforce,
+            patch.object(
+                self.manager, "_set_indicator_off", new=AsyncMock()
+            ) as mock_indicator,
+            patch.object(
+                self.manager, "_process_automation_logic", new=AsyncMock()
+            ) as mock_process,
+        ):
+            await self.manager._reconcile_startup_states()
+
+        mock_enforce.assert_called_once_with("32_123456")
+        mock_indicator.assert_called_once_with("32_123456")
+        mock_process.assert_not_called()
+
+    async def test_reconcile_startup_states_switch_on(self):
+        """Test startup reconciliation evaluates restored ON switch state."""
+        mock_switch = MagicMock()
+        mock_switch.entity_id = "switch.dehumidify_32_123456"
+        self.hass.states.async_all.return_value = [mock_switch]
+        entity_states = {"dehumidify": True, "indoor_rh": 55.0}
+
+        with (
+            patch.object(
+                self.manager,
+                "_get_device_entity_states",
+                new=AsyncMock(return_value=entity_states),
+            ),
+            patch.object(
+                self.manager, "_process_automation_logic", new=AsyncMock()
+            ) as mock_process,
+            patch.object(
+                self.manager, "_enforce_switch_off_state", new=AsyncMock()
+            ) as mock_enforce,
+        ):
+            await self.manager._reconcile_startup_states()
+
+        mock_process.assert_called_once_with("32_123456", entity_states)
+        mock_enforce.assert_not_called()
+
     @patch(
         "custom_components.ramses_extras.features.humidity_control.automation.entity_registry"
     )
@@ -237,6 +290,23 @@ class TestHumidityAutomationManager:
             await self.manager.stop()
             assert self.manager._automation_active is False
             mock_super_stop.assert_called_once()
+
+    async def test_on_homeassistant_started_reconciles_states(self):
+        """Test startup handler reconciles restored device states."""
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.base_classes.base_automation.ExtrasBaseAutomation._on_homeassistant_started",
+                new=AsyncMock(),
+            ) as mock_super_started,
+            patch.object(
+                self.manager, "_reconcile_startup_states", new=AsyncMock()
+            ) as mock_reconcile,
+        ):
+            self.manager._automation_active = True
+            await self.manager._on_homeassistant_started(None)
+
+        mock_super_started.assert_called_once_with(None)
+        mock_reconcile.assert_called_once()
 
     async def test_check_any_device_ready(self):
         """Test checking if any device is ready."""

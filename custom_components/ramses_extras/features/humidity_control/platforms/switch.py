@@ -8,7 +8,9 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_ON
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
     ExtrasSwitchEntity,
@@ -93,7 +95,7 @@ async def create_humidity_switch(
     return switch_list
 
 
-class HumidityControlSwitch(ExtrasSwitchEntity):
+class HumidityControlSwitch(ExtrasSwitchEntity, RestoreEntity):
     """Switch to toggle dehumidify mode."""
 
     def __init__(
@@ -108,9 +110,11 @@ class HumidityControlSwitch(ExtrasSwitchEntity):
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
-        # Call base class method first
         await super().async_added_to_hass()
-        _LOGGER.info("switch added to hass")
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            self._is_on = last_state.state == STATE_ON
+            self.async_write_ha_state()
 
     async def _handle_update(self, *args: Any, **kwargs: Any) -> None:
         """Handle updates from Ramses RF."""

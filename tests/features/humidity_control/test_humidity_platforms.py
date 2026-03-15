@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor import (  # noqa: E501
@@ -72,6 +73,30 @@ class TestHumidityPlatforms:
         )
         assert len(switches) == 1
         assert isinstance(switches[0], HumidityControlSwitch)
+
+    async def test_humidity_switch_restores_last_state(self):
+        """Test HumidityControlSwitch restores its last persisted state."""
+        config = {
+            "name": "Balance",
+            "supported_device_types": ["HvacVentilator"],
+            "entity_template": "dehumidify_{device_id}",
+        }
+        entity = HumidityControlSwitch(self.hass, self.device_id, "dehumidify", config)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.switch.ExtrasSwitchEntity.async_added_to_hass",
+                new=AsyncMock(),
+            ),
+            patch.object(
+                entity,
+                "async_get_last_state",
+                new=AsyncMock(return_value=MagicMock(state=STATE_ON)),
+            ),
+        ):
+            await entity.async_added_to_hass()
+
+        assert entity.is_on is True
 
     async def test_humidity_number(self):
         """Test HumidityControlNumber."""
