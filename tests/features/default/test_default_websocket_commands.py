@@ -158,6 +158,64 @@ async def test_ws_get_entity_mappings_missing_identifier(hass, connection):
     )
 
 
+async def test_ws_get_entity_mappings_overlay_includes_area_sensors(hass, connection):
+    """Test sensor_control overlay forwards area_sensors metadata."""
+    hass.data[DOMAIN]["enabled_features"] = {"sensor_control": True}
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/get_entity_mappings",
+        "feature_id": "default",
+    }
+
+    overlay_holder: dict[str, object] = {}
+
+    class FakeCommand:
+        def __init__(self, _hass, _feature_identifier, overlay_provider=None):
+            overlay_holder["overlay_provider"] = overlay_provider
+
+        async def execute(self, _connection, _msg):
+            return None
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.GetEntityMappingsCommand",
+            FakeCommand,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver"
+        ) as mock_resolver_cls,
+    ):
+        mock_resolver = MagicMock()
+        mock_resolver.resolve_entity_mappings = AsyncMock(
+            return_value={
+                "mappings": {"indoor_temperature": "sensor.room_temp"},
+                "sources": {"indoor_temperature": {"kind": "external"}},
+                "raw_internal": {"indoor_temperature": "sensor.internal_temp"},
+                "abs_humidity_inputs": {"indoor_abs_humidity": {"temperature": {}}},
+                "area_sensors": [
+                    {
+                        "source_id": "bathroom",
+                        "label": "Bathroom",
+                        "valid": True,
+                    }
+                ],
+            }
+        )
+        mock_resolver_cls.return_value = mock_resolver
+
+        await ws_get_entity_mappings(hass, connection, msg)
+
+        overlay_provider = overlay_holder["overlay_provider"]
+        assert callable(overlay_provider)
+        overlay_result = await overlay_provider(
+            "32:123456", {"indoor_temperature": "sensor.base_temp"}
+        )
+
+    assert overlay_result["mappings"]["indoor_temperature"] == "sensor.room_temp"
+    assert overlay_result["area_sensors"][0]["source_id"] == "bathroom"
+    assert overlay_result["sources"]["indoor_temperature"]["kind"] == "external"
+
+
 async def test_ws_get_available_devices_empty_list(hass, connection):
     """Test ws_get_available_devices with empty devices list."""
     hass.data[DOMAIN]["devices"] = []

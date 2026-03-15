@@ -60,7 +60,9 @@ class TestSensorControlResolver:
         assert "sources" in result
         assert "raw_internal" in result
         assert "abs_humidity_inputs" in result
+        assert "area_sensors" in result
         assert result["abs_humidity_inputs"] == {}
+        assert result["area_sensors"] == []
 
     @pytest.mark.asyncio
     async def test_resolve_entity_mappings_with_config(self):
@@ -107,6 +109,7 @@ class TestSensorControlResolver:
                 "humidity": {"kind": "external", "entity_id": "sensor.room_humidity"},
             }
         }
+        assert result["area_sensors"] == []
 
     @pytest.mark.asyncio
     async def test_resolve_entity_mappings_absolute_humidity_derived(self):
@@ -142,6 +145,62 @@ class TestSensorControlResolver:
         # Outdoor should be internal (no config)
         assert result["mappings"]["outdoor_abs_humidity"] is None
         assert result["sources"]["outdoor_abs_humidity"]["kind"] == "internal"
+
+    @pytest.mark.asyncio
+    async def test_resolve_entity_mappings_with_area_sensors(self):
+        """Test resolver returns validated area sensor summaries."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "sensor_control": {
+                "area_sensors": {
+                    self.device_key: [
+                        {
+                            "source_id": "bathroom",
+                            "label": "Bathroom",
+                            "temperature_entity": "sensor.bath_temp",
+                            "humidity_entity": "sensor.bath_humidity",
+                            "spike_rise_percent": 15.0,
+                            "spike_window_minutes": 3,
+                            "check_interval_minutes": 1,
+                            "enabled": True,
+                            "zone_id": "zone_1",
+                        },
+                        {
+                            "source_id": "broken",
+                            "label": "Broken",
+                            "temperature_entity": "sensor.missing_temp",
+                            "humidity_entity": "sensor.missing_humidity",
+                            "spike_rise_percent": 20.0,
+                            "spike_window_minutes": 2,
+                            "check_interval_minutes": 1,
+                            "enabled": True,
+                        },
+                    ]
+                }
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+        self.resolver._entity_exists = MagicMock(
+            side_effect=lambda entity_id: (
+                entity_id in {"sensor.bath_temp", "sensor.bath_humidity"}
+            )
+        )
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert len(result["area_sensors"]) == 2
+        assert result["area_sensors"][0]["source_id"] == "bathroom"
+        assert result["area_sensors"][0]["valid"] is True
+        assert result["area_sensors"][0]["zone_id"] == "zone_1"
+        assert result["area_sensors"][1]["source_id"] == "broken"
+        assert result["area_sensors"][1]["valid"] is False
+
+    def test_resolve_area_sensors_ignores_invalid_input(self):
+        """Non-list and non-dict area sensor config should be ignored."""
+        assert self.resolver._resolve_area_sensors("invalid") == []
+        assert self.resolver._resolve_area_sensors([None, "bad"]) == []
 
     def test_get_sensor_control_config_no_entry(self):
         """Test getting sensor control config when no config entry exists."""

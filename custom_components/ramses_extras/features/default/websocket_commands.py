@@ -256,6 +256,7 @@ async def ws_get_entity_mappings(
                     "sources": sensor_result["sources"],
                     "raw_internal": sensor_result.get("raw_internal"),
                     "abs_humidity_inputs": sensor_result.get("abs_humidity_inputs", {}),
+                    "area_sensors": sensor_result.get("area_sensors", []),
                 }
             except Exception as err:
                 _LOGGER.error(

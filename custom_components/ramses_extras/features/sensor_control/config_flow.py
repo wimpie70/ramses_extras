@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +59,73 @@ async def _async_load_sensor_control_info_suffix_translations(
 
 def _device_key(device_id: str) -> str:
     return device_id.replace(":", "_")
+
+
+def _slugify_area_sensor_id(label: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", label.strip().lower())
+    slug = slug.strip("_")
+    return slug or "area_sensor"
+
+
+def _unique_area_sensor_id(
+    label: str, existing_area_sensors: list[dict[str, Any]]
+) -> str:
+    base = _slugify_area_sensor_id(label)
+    existing_ids = {
+        str(item.get("source_id"))
+        for item in existing_area_sensors
+        if isinstance(item, dict) and item.get("source_id")
+    }
+    if base not in existing_ids:
+        return base
+
+    suffix = 2
+    while f"{base}_{suffix}" in existing_ids:
+        suffix += 1
+    return f"{base}_{suffix}"
+
+
+def _get_area_sensor_by_id(
+    area_sensors: list[dict[str, Any]], source_id: str | None
+) -> dict[str, Any] | None:
+    if not source_id:
+        return None
+    for item in area_sensors:
+        if isinstance(item, dict) and str(item.get("source_id") or "") == source_id:
+            return item
+    return None
+
+
+def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
+    label = str(area_sensor.get("label") or area_sensor.get("source_id") or "Unnamed")
+    temp_entity = str(area_sensor.get("temperature_entity") or "missing")
+    humidity_entity = str(area_sensor.get("humidity_entity") or "missing")
+    spike_rise = area_sensor.get("spike_rise_percent")
+    spike_window = area_sensor.get("spike_window_minutes")
+    check_interval = area_sensor.get("check_interval_minutes")
+    enabled = bool(area_sensor.get("enabled", True))
+
+    details = [
+        f"temp: {temp_entity}",
+        f"humidity: {humidity_entity}",
+    ]
+    if spike_rise is not None and spike_window is not None:
+        details.append(f"spike: {spike_rise}%/{spike_window}m")
+    if check_interval is not None:
+        details.append(f"check: {check_interval}m")
+    details.append("enabled" if enabled else "disabled")
+
+    zone_id = str(area_sensor.get("zone_id") or "").strip()
+    if zone_id:
+        details.append(f"zone: {zone_id}")
+
+    return f"- area sensor {label}: " + "; ".join(details)
+
+
+def _validate_area_sensor_entries(area_sensors: Any) -> list[dict[str, Any]]:
+    if not isinstance(area_sensors, list):
+        return []
+    return [item for item in area_sensors if isinstance(item, dict)]
 
 
 def _get_device_type(flow: Any, device_id: str) -> str | None:
@@ -175,8 +243,15 @@ async def async_step_sensor_control_config(
             abs_inputs: dict[str, dict[str, Any]] = sensor_control_options.get(
                 "abs_humidity_inputs", {}
             )
+            area_sensor_cfgs: dict[str, list[dict[str, Any]]] = (
+                sensor_control_options.get("area_sensors") or {}
+            )
 
-            device_keys = set(sources.keys()) | set(abs_inputs.keys())
+            device_keys = (
+                set(sources.keys())
+                | set(abs_inputs.keys())
+                | set(area_sensor_cfgs.keys())
+            )
 
             if device_keys:
                 overview_lines.append("Existing Sensor Control Mappings\n")
@@ -241,7 +316,18 @@ async def async_step_sensor_control_config(
                             device_lines.append(f"- {metric}: {summary}")
 
                     if not device_lines:
-                        continue
+                        area_sensor_list = _validate_area_sensor_entries(
+                            area_sensor_cfgs.get(device_key)
+                        )
+                        if not area_sensor_list:
+                            continue
+                    else:
+                        area_sensor_list = _validate_area_sensor_entries(
+                            area_sensor_cfgs.get(device_key)
+                        )
+
+                    for area_sensor in area_sensor_list:
+                        device_lines.append(_describe_area_sensor(area_sensor))
 
                     overview_lines.append(f"**Device {device_id}** ({device_key}):")
                     overview_lines.extend(device_lines)
@@ -277,10 +363,12 @@ async def async_step_sensor_control_config(
 
     sources = dict(sensor_control_options.get("sources", {}))
     abs_inputs = dict(sensor_control_options.get("abs_humidity_inputs", {}))
+    area_sensors = dict(sensor_control_options.get("area_sensors", {}))
 
     dkey = _device_key(selected_device_id)
     device_sources = dict(sources.get(dkey, {}))
     device_abs_inputs = dict(abs_inputs.get(dkey, {}))
+    device_area_sensors = _validate_area_sensor_entries(area_sensors.get(dkey))
 
     _LOGGER.debug(
         "Loaded device_sources for %s (key=%s): %s",
@@ -319,7 +407,9 @@ async def async_step_sensor_control_config(
                 return await flow.async_step_main_menu()
 
             # Switch to the selected group configuration step
-            flow._sensor_control_group_stage = action
+            flow._sensor_control_group_stage = (
+                "area_sensors_menu" if action == "area_sensors" else action
+            )
             return await async_step_sensor_control_config(flow, None)
 
         group_options = handler.get_group_options(selected_device_id)
@@ -397,6 +487,10 @@ async def async_step_sensor_control_config(
                             summary = kind
 
                         device_overview.append(f"- {metric}: {summary}")
+            for area_sensor in device_area_sensors:
+                if not device_overview:
+                    device_overview.append("Current mappings for this device")
+                device_overview.append(_describe_area_sensor(area_sensor))
         except Exception:  # pragma: no cover - best-effort overview only
             device_overview = []
 
@@ -414,6 +508,243 @@ async def async_step_sensor_control_config(
         return flow.async_show_form(
             step_id="feature_config",
             data_schema=menu_schema,
+            description_placeholders={"info": info_text},
+        )
+
+    if group_stage == "area_sensors_menu":
+        if user_input is not None:
+            action = str(user_input.get("area_sensor_action") or "")
+            if action == "back":
+                flow._sensor_control_group_stage = "select_group"
+                return await async_step_sensor_control_config(flow, None)
+            if action == "add":
+                flow._sensor_control_area_sensor_id = None
+                flow._sensor_control_group_stage = "area_sensors_edit"
+                return await async_step_sensor_control_config(flow, None)
+            if action.startswith("edit:"):
+                flow._sensor_control_area_sensor_id = action.split(":", 1)[1]
+                flow._sensor_control_group_stage = "area_sensors_edit"
+                return await async_step_sensor_control_config(flow, None)
+            if action.startswith("delete:"):
+                delete_id = action.split(":", 1)[1]
+                device_area_sensors = [
+                    item
+                    for item in device_area_sensors
+                    if str(item.get("source_id") or "") != delete_id
+                ]
+                area_sensors[dkey] = device_area_sensors
+                sensor_control_options["area_sensors"] = area_sensors
+                options[feature_id] = sensor_control_options
+                flow.hass.config_entries.async_update_entry(  # noqa: SLF001
+                    flow._config_entry,  # noqa: SLF001
+                    options=options,
+                )
+                return await async_step_sensor_control_config(flow, None)
+
+        area_sensor_options = [
+            selector.SelectOptionDict(value="add", label="Add area sensor")
+        ]
+        for area_sensor in device_area_sensors:
+            source_id = str(area_sensor.get("source_id") or "")
+            label = str(area_sensor.get("label") or source_id or "Unnamed")
+            if not source_id:
+                continue
+            area_sensor_options.append(
+                selector.SelectOptionDict(
+                    value=f"edit:{source_id}",
+                    label=f"Edit: {label}",
+                )
+            )
+            area_sensor_options.append(
+                selector.SelectOptionDict(
+                    value=f"delete:{source_id}",
+                    label=f"Delete: {label}",
+                )
+            )
+        area_sensor_options.append(
+            selector.SelectOptionDict(value="back", label="Back to device groups")
+        )
+
+        menu_schema = vol.Schema(
+            {
+                vol.Required("area_sensor_action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=area_sensor_options,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                )
+            }
+        )
+
+        info_lines = [
+            "Sensor Control",
+            "",
+            f"Configuring area sensors for device: `{selected_device_id}`",
+            "",
+            (
+                "Area sensors provide localized temperature + humidity inputs "
+                "for spike detection."
+            ),
+        ]
+        if device_area_sensors:
+            info_lines.extend(["", "Current area sensors:"])
+            info_lines.extend(
+                _describe_area_sensor(item) for item in device_area_sensors
+            )
+        else:
+            info_lines.extend(["", "No area sensors configured yet."])
+
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=menu_schema,
+            description_placeholders={"info": "\n".join(info_lines)},
+        )
+
+    if group_stage == "area_sensors_edit":
+        selected_area_sensor = _get_area_sensor_by_id(
+            device_area_sensors,
+            getattr(flow, "_sensor_control_area_sensor_id", None),
+        )
+        if user_input is not None:
+            label = str(user_input.get("area_sensor_label") or "").strip()
+            source_id = (
+                str(selected_area_sensor.get("source_id"))
+                if selected_area_sensor and selected_area_sensor.get("source_id")
+                else _unique_area_sensor_id(label, device_area_sensors)
+            )
+
+            updated_area_sensor: dict[str, Any] = {
+                "source_id": source_id,
+                "label": label,
+                "enabled": bool(user_input.get("area_sensor_enabled", True)),
+                "temperature_entity": str(user_input.get("temperature_entity") or ""),
+                "humidity_entity": str(user_input.get("humidity_entity") or ""),
+                "spike_rise_percent": float(user_input.get("spike_rise_percent") or 0),
+                "spike_window_minutes": int(
+                    user_input.get("spike_window_minutes") or 1
+                ),
+                "check_interval_minutes": int(
+                    user_input.get("check_interval_minutes") or 1
+                ),
+            }
+            zone_id = str(user_input.get("zone_id") or "").strip()
+            if zone_id:
+                updated_area_sensor["zone_id"] = zone_id
+
+            replaced = False
+            new_area_sensors: list[dict[str, Any]] = []
+            for item in device_area_sensors:
+                if str(item.get("source_id") or "") == source_id:
+                    new_area_sensors.append(updated_area_sensor)
+                    replaced = True
+                else:
+                    new_area_sensors.append(item)
+            if not replaced:
+                new_area_sensors.append(updated_area_sensor)
+
+            area_sensors[dkey] = new_area_sensors
+            sensor_control_options["area_sensors"] = area_sensors
+            options[feature_id] = sensor_control_options
+            flow.hass.config_entries.async_update_entry(  # noqa: SLF001
+                flow._config_entry,  # noqa: SLF001
+                options=options,
+            )
+            flow._sensor_control_area_sensor_id = None
+            flow._sensor_control_group_stage = "area_sensors_menu"
+            return await async_step_sensor_control_config(flow, None)
+
+        label_default = (
+            str(selected_area_sensor.get("label"))
+            if selected_area_sensor and selected_area_sensor.get("label")
+            else "Bathroom"
+        )
+        zone_default = (
+            str(selected_area_sensor.get("zone_id"))
+            if selected_area_sensor and selected_area_sensor.get("zone_id")
+            else ""
+        )
+        temp_default = (
+            str(selected_area_sensor.get("temperature_entity"))
+            if selected_area_sensor and selected_area_sensor.get("temperature_entity")
+            else None
+        )
+        humidity_default = (
+            str(selected_area_sensor.get("humidity_entity"))
+            if selected_area_sensor and selected_area_sensor.get("humidity_entity")
+            else None
+        )
+        area_sensor_selector = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain=["sensor"])
+        )
+        temp_key = (
+            vol.Required("temperature_entity")
+            if temp_default is None
+            else vol.Required("temperature_entity", default=temp_default)
+        )
+        humidity_key = (
+            vol.Required("humidity_entity")
+            if humidity_default is None
+            else vol.Required("humidity_entity", default=humidity_default)
+        )
+        zone_key = (
+            vol.Optional("zone_id")
+            if not zone_default
+            else vol.Optional("zone_id", default=zone_default)
+        )
+
+        schema = vol.Schema(
+            {
+                vol.Required("area_sensor_label", default=label_default): vol.All(
+                    str, vol.Length(min=1)
+                ),
+                vol.Required(
+                    "area_sensor_enabled",
+                    default=bool(
+                        selected_area_sensor.get("enabled", True)
+                        if selected_area_sensor
+                        else True
+                    ),
+                ): bool,
+                zone_key: str,
+                temp_key: area_sensor_selector,
+                humidity_key: area_sensor_selector,
+                vol.Required(
+                    "spike_rise_percent",
+                    default=float(
+                        selected_area_sensor.get("spike_rise_percent", 10.0)
+                        if selected_area_sensor
+                        else 10.0
+                    ),
+                ): vol.All(vol.Coerce(float), vol.Range(min=1, max=100)),
+                vol.Required(
+                    "spike_window_minutes",
+                    default=int(
+                        selected_area_sensor.get("spike_window_minutes", 3)
+                        if selected_area_sensor
+                        else 3
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+                vol.Required(
+                    "check_interval_minutes",
+                    default=int(
+                        selected_area_sensor.get("check_interval_minutes", 1)
+                        if selected_area_sensor
+                        else 1
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+            }
+        )
+
+        info_text = (
+            "🧭 **Sensor Control**\n\n"
+            f"Configuring device: `{selected_device_id}`\n\n"
+            "Define one local area sensor using temperature + humidity inputs. "
+            "This will later drive derived absolute humidity and spike detection."
+        )
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
             description_placeholders={"info": info_text},
         )
 

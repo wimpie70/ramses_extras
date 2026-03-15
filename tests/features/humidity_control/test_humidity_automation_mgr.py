@@ -1,5 +1,6 @@
 """Tests for Humidity Control Automation Manager."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from homeassistant.core import HomeAssistant, State
 from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.features.humidity_control.automation import (
     HumidityAutomationManager,
+    create_humidity_control_automation,
 )
 
 
@@ -258,6 +260,340 @@ class TestHumidityAutomationManager:
         assert decision["action"] == "stop"
         assert "acceptable range" in decision["reasoning"][0]
 
+    async def test_evaluate_humidity_conditions_area_spike_detected(self):
+        """Area spike should trigger spike_boost dehumidification."""
+        self.manager._latest_sensor_control_context["test"] = {
+            "area_sensors": [
+                {
+                    "source_id": "bathroom",
+                    "label": "Bathroom",
+                    "temperature_entity": "sensor.bath_temp",
+                    "humidity_entity": "sensor.bath_humidity",
+                    "spike_rise_percent": 15.0,
+                    "spike_window_minutes": 3,
+                    "check_interval_minutes": 1,
+                    "enabled": True,
+                }
+            ]
+        }
+
+        temp_state = MagicMock(state="22.0")
+        humidity_state = MagicMock(state="65.0")
+        self.hass.states.get.side_effect = lambda entity_id: {
+            "sensor.bath_temp": temp_state,
+            "sensor.bath_humidity": humidity_state,
+        }.get(entity_id)
+
+        self.manager._area_history["test"] = {
+            "bathroom": [
+                {"ts": time.time() - 60, "abs": 9.0},
+                {"ts": time.time() - 10, "abs": 9.2},
+            ]
+        }
+
+        with patch.object(
+            self.manager,
+            "_schedule_area_spike_recheck",
+        ) as mock_schedule:
+            decision = await self.manager._evaluate_humidity_conditions(
+                device_id="test",
+                indoor_rh=50.0,
+                indoor_abs=10.0,
+                outdoor_abs=8.0,
+                min_humidity=40.0,
+                max_humidity=75.0,
+                offset=0.0,
+            )
+
+        assert decision["action"] == "dehumidify"
+        assert decision["control_mode"] == "spike_boost"
+        assert decision["active_trigger"]["source_id"] == "bathroom"
+        mock_schedule.assert_called_once_with("test", 1)
+
+    async def test_evaluate_active_area_spike_clears_when_recovered(self):
+        """Active spike should stop once the area humidity recovers."""
+        self.manager._active_area_spikes["test"] = {
+            "source_id": "bathroom",
+            "label": "Bathroom",
+            "baseline_abs": 10.0,
+            "check_interval_minutes": 1,
+        }
+        area_sensor_states = [{"source_id": "bathroom", "current_abs": 9.5}]
+
+        decision = self.manager._evaluate_active_area_spike(
+            device_id="test",
+            indoor_abs=10.0,
+            outdoor_abs=8.0,
+            offset=0.0,
+            area_sensor_states=area_sensor_states,
+        )
+
+        assert decision is None
+
+    async def test_evaluate_active_area_spike_keeps_boost_active(self):
+        """Active spike should stay active while still above target."""
+        self.manager._active_area_spikes["test"] = {
+            "source_id": "bathroom",
+            "label": "Bathroom",
+            "baseline_abs": 10.0,
+            "check_interval_minutes": 1,
+        }
+        area_sensor_states = [{"source_id": "bathroom", "current_abs": 12.0}]
+
+        decision = self.manager._evaluate_active_area_spike(
+            device_id="test",
+            indoor_abs=10.5,
+            outdoor_abs=8.0,
+            offset=0.0,
+            area_sensor_states=area_sensor_states,
+        )
+
+        assert decision is not None
+        assert decision["action"] == "dehumidify"
+        assert decision["control_mode"] == "spike_boost"
+
+    def test_build_indicator_attributes_with_active_trigger(self):
+        """Indicator attributes should include active trigger metadata."""
+        decision = {
+            "control_mode": "spike_boost",
+            "active_trigger": {
+                "source_id": "bathroom",
+                "label": "Bathroom",
+                "current_abs": 12.0,
+                "baseline_abs": 10.0,
+                "rise_percent": 20.0,
+                "check_interval_minutes": 1,
+            },
+        }
+
+        attrs = self.manager._build_indicator_attributes("32_123456", decision)
+
+        assert attrs["control_mode"] == "spike_boost"
+        assert attrs["active_trigger_source_id"] == "bathroom"
+        assert attrs["active_trigger_label"] == "Bathroom"
+        assert attrs["active_trigger_rise_percent"] == 20.0
+
+    def test_build_indicator_attributes_with_active_spike_fallback(self):
+        """Active spike cache should populate indicator metadata when needed."""
+        self.manager._active_area_spikes["32_123456"] = {
+            "source_id": "bathroom",
+            "label": "Bathroom",
+            "current_abs": 12.0,
+            "baseline_abs": 10.0,
+            "rise_percent": 20.0,
+            "check_interval_minutes": 1,
+        }
+
+        attrs = self.manager._build_indicator_attributes(
+            "32_123456",
+            {"control_mode": "dehumidify", "active_trigger": None},
+        )
+
+        assert attrs["control_mode"] == "spike_boost"
+        assert attrs["active_trigger_source_id"] == "bathroom"
+        assert attrs["next_check_interval_minutes"] == 1
+
+    def test_detect_area_spike_guard_paths(self):
+        """
+        Spike detection should ignore disabled, incomplete, and below-threshold data.
+        """
+        now = time.time()
+        self.manager._area_history["test"] = {
+            "bathroom": [{"ts": now - 10, "abs": 9.0}],
+            "zero": [{"ts": now - 10, "abs": 0.0}],
+            "lowrise": [{"ts": now - 10, "abs": 10.0}],
+            "outdoorbad": [{"ts": now - 10, "abs": 9.0}],
+        }
+
+        area_sensor_states = [
+            {"source_id": "", "enabled": True, "current_abs": 12.0},
+            {"source_id": "disabled", "enabled": False, "current_abs": 12.0},
+            {"source_id": "missing_abs", "enabled": True, "current_abs": None},
+            {
+                "source_id": "zero",
+                "enabled": True,
+                "current_abs": 12.0,
+                "spike_window_minutes": 3,
+                "spike_rise_percent": 10.0,
+                "check_interval_minutes": 1,
+            },
+            {
+                "source_id": "lowrise",
+                "enabled": True,
+                "current_abs": 10.5,
+                "spike_window_minutes": 3,
+                "spike_rise_percent": 10.0,
+                "check_interval_minutes": 1,
+            },
+            {
+                "source_id": "outdoorbad",
+                "enabled": True,
+                "current_abs": 9.2,
+                "spike_window_minutes": 3,
+                "spike_rise_percent": 1.0,
+                "check_interval_minutes": 1,
+            },
+        ]
+
+        decision = self.manager._detect_area_spike(
+            device_id="test",
+            indoor_abs=10.0,
+            outdoor_abs=9.5,
+            offset=0.0,
+            area_sensor_states=area_sensor_states,
+        )
+
+        assert decision is None
+
+    def test_detect_area_spike_skips_missing_history_window(self):
+        """Spike detection should ignore sources with no usable history window."""
+        now = time.time()
+        self.manager._area_history["test"] = {
+            "expired": [{"ts": now - 600, "abs": 9.0}],
+        }
+
+        assert (
+            self.manager._detect_area_spike(
+                device_id="test",
+                indoor_abs=10.0,
+                outdoor_abs=8.0,
+                offset=0.0,
+                area_sensor_states=[
+                    {
+                        "source_id": "nohistory",
+                        "enabled": True,
+                        "current_abs": 12.0,
+                        "spike_window_minutes": 3,
+                        "spike_rise_percent": 10.0,
+                    },
+                    {
+                        "source_id": "expired",
+                        "enabled": True,
+                        "current_abs": 12.0,
+                        "spike_window_minutes": 1,
+                        "spike_rise_percent": 10.0,
+                    },
+                ],
+            )
+            is None
+        )
+
+    def test_schedule_and_cancel_area_spike_recheck(self):
+        """Scheduling should replace old handles and cancellation should call them."""
+        old_handle = MagicMock()
+        self.manager._area_spike_check_handles["32_123456"] = old_handle
+
+        new_handle = MagicMock()
+        with patch(
+            "custom_components.ramses_extras.features.humidity_control.automation.async_track_time_interval",
+            return_value=new_handle,
+        ) as mock_track:
+            self.manager._schedule_area_spike_recheck("32_123456", 0)
+
+        old_handle.assert_called_once()
+        assert self.manager._area_spike_check_handles["32_123456"] is new_handle
+        assert mock_track.call_args.args[2].total_seconds() == 60
+
+        self.manager._cancel_area_spike_recheck("32_123456")
+        new_handle.assert_called_once()
+        assert "32_123456" not in self.manager._area_spike_check_handles
+
+    async def test_async_recheck_area_spike_paths(self):
+        """Recheck should guard on disabled state and process valid states."""
+        device_id = "32_123456"
+
+        self.manager._automation_active = False
+        self.manager._get_device_entity_states = AsyncMock()
+        self.manager._process_automation_logic = AsyncMock()
+        await self.manager._async_recheck_area_spike(device_id)
+        self.manager._get_device_entity_states.assert_not_called()
+
+        self.manager._automation_active = True
+        with patch.object(self.manager, "_is_feature_enabled", return_value=False):
+            await self.manager._async_recheck_area_spike(device_id)
+        self.manager._get_device_entity_states.assert_not_called()
+
+        with patch.object(self.manager, "_is_feature_enabled", return_value=True):
+            self.manager._get_device_entity_states = AsyncMock(
+                side_effect=ValueError("missing")
+            )
+            await self.manager._async_recheck_area_spike(device_id)
+
+            entity_states = {"dehumidify": True}
+            self.manager._get_device_entity_states = AsyncMock(
+                return_value=entity_states
+            )
+            self.manager._process_automation_logic = AsyncMock()
+            await self.manager._async_recheck_area_spike(device_id)
+
+        self.manager._process_automation_logic.assert_awaited_once_with(
+            device_id, entity_states
+        )
+
+    def test_evaluate_active_area_spike_guard_paths(self):
+        """
+        Active spike evaluation should return None for unmatched or invalid states.
+        """
+        assert (
+            self.manager._evaluate_active_area_spike(
+                device_id="missing",
+                indoor_abs=10.0,
+                outdoor_abs=8.0,
+                offset=0.0,
+                area_sensor_states=[],
+            )
+            is None
+        )
+
+        self.manager._active_area_spikes["test"] = {
+            "source_id": "bathroom",
+            "label": "Bathroom",
+            "baseline_abs": 10.0,
+            "check_interval_minutes": 1,
+        }
+        assert (
+            self.manager._evaluate_active_area_spike(
+                device_id="test",
+                indoor_abs=10.0,
+                outdoor_abs=8.0,
+                offset=0.0,
+                area_sensor_states=[{"source_id": "other", "current_abs": 12.0}],
+            )
+            is None
+        )
+        assert (
+            self.manager._evaluate_active_area_spike(
+                device_id="test",
+                indoor_abs=10.0,
+                outdoor_abs=10.0,
+                offset=1.0,
+                area_sensor_states=[{"source_id": "bathroom", "current_abs": 10.5}],
+            )
+            is None
+        )
+
+    def test_get_decision_history_statistics_and_factory(self):
+        """Helpers should return recent decisions, statistics, and factory instances."""
+        self.manager._decision_history = [
+            {"id": 1},
+            {"id": 2},
+            {"id": 3},
+        ]
+        self.manager._decision_count = 7
+        self.manager._active_cycles = 2
+        self.manager._automation_active = True
+        self.manager._dehumidify_active = False
+
+        assert self.manager.get_decision_history(2) == [{"id": 2}, {"id": 3}]
+
+        stats = self.manager.get_automation_statistics()
+        assert stats["decisions_made"] == 7
+        assert stats["active_cycles"] == 2
+        assert stats["recent_decisions"] == 3
+
+        created = create_humidity_control_automation(self.hass, self.config_entry)
+        assert isinstance(created, HumidityAutomationManager)
+
     def test_generate_entity_patterns(self):
         """Test generating entity patterns."""
         patterns = self.manager._generate_entity_patterns()
@@ -447,7 +783,8 @@ class TestHumidityAutomationManager:
         }
 
         await self.manager._set_indicator_off(device_id)
-        mock_entity.set_state.assert_called_once_with(False)
+        mock_entity.set_state.assert_called_once()
+        assert mock_entity.set_state.call_args[0][0] is False
 
     async def test_activate_dehumidification(self):
         """Test activating dehumidification."""

@@ -7,25 +7,23 @@ feature-centric architecture.
 
 import asyncio
 import logging
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
+from datetime import timedelta
 from typing import Any, cast
 
 from homeassistant.core import Event, HomeAssistant, State
 from homeassistant.helpers import entity_registry
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_time_interval
 
 from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
-from custom_components.ramses_extras.framework.helpers.entity import EntityHelpers
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
     RamsesCommands,
 )
 
-from ...framework.helpers.common import (
-    RamsesValidator,
-)
 from .config import HumidityConfig
 from .const import FEATURE_DEFINITION
 from .services import HumidityServices
@@ -66,6 +64,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._automation_active = False
         self._last_decision_state: dict[str, Any] | None = None
         self._decision_history: list[dict[str, Any]] = []
+        self._latest_sensor_control_context: dict[str, dict[str, Any] | None] = {}
+        self._area_history: dict[str, dict[str, list[dict[str, float]]]] = {}
+        self._active_area_spikes: dict[str, dict[str, Any]] = {}
+        self._area_spike_check_handles: dict[str, Callable[[], None]] = {}
 
         # Performance tracking
         self._decision_count = 0
@@ -110,6 +112,26 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "sensor.*_indoor_humidity",
             "sensor.fan_*_indoor_humidity",
         ]
+
+        sensor_control_config = (
+            self.config_entry.options.get("sensor_control")
+            or self.config_entry.data.get("sensor_control")
+            or {}
+        )
+        area_sensor_map = sensor_control_config.get("area_sensors") or {}
+        if isinstance(area_sensor_map, dict):
+            for area_sensors in area_sensor_map.values():
+                if not isinstance(area_sensors, list):
+                    continue
+                for item in area_sensors:
+                    if not isinstance(item, dict):
+                        continue
+                    temp_entity = str(item.get("temperature_entity") or "").strip()
+                    humidity_entity = str(item.get("humidity_entity") or "").strip()
+                    if temp_entity:
+                        patterns.append(temp_entity)
+                    if humidity_entity:
+                        patterns.append(humidity_entity)
 
         _LOGGER.debug(
             "Generated %s entity patterns for humidity control",
@@ -311,6 +333,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         # Optional context from sensor_control via WebSocket helper to align
         # indoor_rh with the same indoor_humidity source used elsewhere.
         sensor_ctx = await self._get_sensor_control_context(device_id)
+        self._latest_sensor_control_context[device_id] = sensor_ctx
         if sensor_ctx:
             metric_mappings = cast(dict[str, str], sensor_ctx.get("mappings") or {})
             indoor_humidity_entity = metric_mappings.get("indoor_humidity")
@@ -443,6 +466,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         _LOGGER.info("Stopping humidity control automation")
 
         self._automation_active = False
+        for device_id in list(self._active_area_spikes):
+            self._clear_active_area_spike(device_id)
         await super().stop()
 
         _LOGGER.info("Humidity control automation stopped")
@@ -481,6 +506,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     # Stop dehumidification but don't touch the switch
                     #  (user manually turned it off)
                     await self._stop_dehumidification_without_switch_change(device_id)
+                self._clear_active_area_spike(device_id)
                 # Just update binary sensor to reflect inactive state
                 await self._set_indicator_off(device_id)
                 return
@@ -567,7 +593,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
 
             if binary_sensor_entity:
-                binary_sensor_entity.set_state(False)
+                binary_sensor_entity.set_state(
+                    False, self._build_indicator_attributes(device_id, None)
+                )
                 _LOGGER.debug("Set indicator OFF for device %s", device_id)
             else:
                 _LOGGER.warning(
@@ -603,15 +631,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Returns:
             Decision dictionary with action and reasoning
         """
-        # Calculate humidity differential (outdoor - indoor)
-        # Positive = outdoor more humid (avoid bringing in),
-        # Negative = outdoor drier (good for ventilation)
         humidity_diff = outdoor_abs - indoor_abs
-
-        # Apply offset
         adjusted_diff = humidity_diff + offset
-
-        # Decision logic with RELATIVE HUMIDITY PRIORITY
         decision: dict[str, Any] = {
             "action": "stop",  # Default action
             "reasoning": [],
@@ -626,6 +647,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 "offset": offset,
             },
             "confidence": 0.0,
+            "control_mode": "idle",
         }
 
         # PRIORITY 1: High humidity check (relative humidity threshold) - ORIGINAL LOGIC
@@ -638,6 +660,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     f"({outdoor_abs:.2f}) + offset ({offset:.2f})"
                 )
                 decision["confidence"] = 0.9
+                decision["control_mode"] = "balance"
             else:
                 decision["action"] = "stop"
                 decision["reasoning"].append(
@@ -657,6 +680,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     f"({outdoor_abs:.2f}) - offset ({offset:.2f})"
                 )
                 decision["confidence"] = 0.8
+                decision["control_mode"] = "balance"
             else:
                 decision["action"] = "stop"
                 decision["reasoning"].append(
@@ -681,6 +705,62 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             decision["reasoning"].append(
                 f"High indoor absolute humidity: {indoor_abs:.1f} g/m³"
             )
+
+        area_sensor_states = self._get_area_sensor_states(device_id)
+        self._update_area_sensor_history(device_id, area_sensor_states)
+
+        active_spike = self._active_area_spikes.get(device_id)
+        if active_spike:
+            spike_decision = self._evaluate_active_area_spike(
+                device_id=device_id,
+                indoor_abs=indoor_abs,
+                outdoor_abs=outdoor_abs,
+                offset=offset,
+                area_sensor_states=area_sensor_states,
+            )
+            if spike_decision is not None:
+                self._schedule_area_spike_recheck(
+                    device_id,
+                    int(active_spike.get("check_interval_minutes") or 1),
+                )
+                decision = spike_decision
+            else:
+                self._clear_active_area_spike(device_id)
+
+        if decision["action"] != "dehumidify":
+            new_spike = self._detect_area_spike(
+                device_id=device_id,
+                indoor_abs=indoor_abs,
+                outdoor_abs=outdoor_abs,
+                offset=offset,
+                area_sensor_states=area_sensor_states,
+            )
+            if new_spike is not None:
+                self._active_area_spikes[device_id] = new_spike
+                self._schedule_area_spike_recheck(
+                    device_id,
+                    int(new_spike.get("check_interval_minutes") or 1),
+                )
+                decision = {
+                    "action": "dehumidify",
+                    "reasoning": [
+                        (
+                            f"Area spike detected for {new_spike['label']}: "
+                            f"{new_spike['rise_percent']:.1f}% rise over "
+                            f"{new_spike['spike_window_minutes']} min"
+                        )
+                    ],
+                    "values": {
+                        **decision["values"],
+                        "active_area_sensor": new_spike["source_id"],
+                        "active_area_abs": new_spike["current_abs"],
+                        "active_area_baseline_abs": new_spike["baseline_abs"],
+                        "active_area_rise_percent": new_spike["rise_percent"],
+                    },
+                    "confidence": 1.0,
+                    "control_mode": "spike_boost",
+                    "active_trigger": new_spike,
+                }
 
         # Record decision
         self._decision_count += 1
@@ -830,6 +910,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 )
 
             self._dehumidify_active = False
+            if decision.get("control_mode") != "spike_boost":
+                self._clear_active_area_spike(device_id)
 
             reasoning = "; ".join(decision["reasoning"])
             _LOGGER.info(
@@ -893,7 +975,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
 
             if binary_sensor_entity:
-                binary_sensor_entity.set_state(is_active)
+                binary_sensor_entity.set_state(
+                    is_active,
+                    self._build_indicator_attributes(device_id, decision),
+                )
                 _LOGGER.debug(
                     "Updated binary sensor %s: %s",
                     entity_id,
@@ -906,6 +991,278 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 )
         except Exception as e:
             _LOGGER.error("Failed to update binary sensor for %s: %s", device_id, e)
+
+    def _get_area_sensor_states(self, device_id: str) -> list[dict[str, Any]]:
+        sensor_ctx = self._latest_sensor_control_context.get(device_id) or {}
+        area_sensors = sensor_ctx.get("area_sensors") or []
+        if not isinstance(area_sensors, list):
+            return []
+
+        result: list[dict[str, Any]] = []
+        for item in area_sensors:
+            if not isinstance(item, dict):
+                continue
+            temp_entity = str(item.get("temperature_entity") or "").strip()
+            humidity_entity = str(item.get("humidity_entity") or "").strip()
+            if not temp_entity or not humidity_entity:
+                continue
+
+            temp_state = self.hass.states.get(temp_entity)
+            humidity_state = self.hass.states.get(humidity_entity)
+            current_abs = self._calculate_absolute_humidity_from_states(
+                temp_state, humidity_state
+            )
+            result.append(
+                {
+                    **item,
+                    "current_abs": current_abs,
+                }
+            )
+
+        return result
+
+    def _calculate_absolute_humidity_from_states(
+        self, temp_state: State | None, humidity_state: State | None
+    ) -> float | None:
+        if not temp_state or not humidity_state:
+            return None
+        if temp_state.state in ["unavailable", "unknown", "uninitialized"]:
+            return None
+        if humidity_state.state in ["unavailable", "unknown", "uninitialized"]:
+            return None
+
+        try:
+            temp = float(temp_state.state)
+            humidity = float(humidity_state.state)
+        except ValueError:
+            return None
+
+        if not (0 <= humidity <= 100):
+            return None
+
+        from custom_components.ramses_extras.framework.helpers.common import (
+            calculate_absolute_humidity,
+        )
+
+        result = calculate_absolute_humidity(temp, humidity)
+        return float(result) if result is not None else None
+
+    def _update_area_sensor_history(
+        self, device_id: str, area_sensor_states: list[dict[str, Any]]
+    ) -> None:
+        device_history = self._area_history.setdefault(device_id, {})
+        now = time.time()
+        max_window_seconds = max(
+            [
+                int(item.get("spike_window_minutes") or 1) * 60
+                for item in area_sensor_states
+                if item.get("spike_window_minutes") is not None
+            ]
+            or [60]
+        )
+        trim_before = now - max_window_seconds - 60
+
+        for item in area_sensor_states:
+            source_id = str(item.get("source_id") or "").strip()
+            current_abs = item.get("current_abs")
+            if not source_id or current_abs is None:
+                continue
+            source_history = device_history.setdefault(source_id, [])
+            source_history.append({"ts": now, "abs": float(current_abs)})
+            device_history[source_id] = [
+                entry for entry in source_history if entry["ts"] >= trim_before
+            ]
+
+    def _detect_area_spike(
+        self,
+        device_id: str,
+        indoor_abs: float,
+        outdoor_abs: float,
+        offset: float,
+        area_sensor_states: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        best_spike: dict[str, Any] | None = None
+        device_history = self._area_history.get(device_id, {})
+
+        for item in area_sensor_states:
+            source_id = str(item.get("source_id") or "").strip()
+            if not source_id or not bool(item.get("enabled", True)):
+                continue
+
+            current_abs = item.get("current_abs")
+            if current_abs is None:
+                continue
+
+            history = device_history.get(source_id, [])
+            if not history:
+                continue
+
+            window_minutes = int(item.get("spike_window_minutes") or 1)
+            threshold_percent = float(item.get("spike_rise_percent") or 0.0)
+            window_start = time.time() - (window_minutes * 60)
+            window_values = [
+                entry["abs"] for entry in history if entry["ts"] >= window_start
+            ]
+            if not window_values:
+                continue
+
+            baseline_abs = min(window_values)
+            if baseline_abs <= 0:
+                continue
+
+            rise_percent = ((float(current_abs) - baseline_abs) / baseline_abs) * 100.0
+            if rise_percent < threshold_percent:
+                continue
+            if float(current_abs) <= max(indoor_abs, outdoor_abs + offset):
+                continue
+
+            candidate = {
+                "source_id": source_id,
+                "label": str(item.get("label") or source_id),
+                "baseline_abs": baseline_abs,
+                "current_abs": float(current_abs),
+                "rise_percent": rise_percent,
+                "spike_window_minutes": window_minutes,
+                "check_interval_minutes": int(item.get("check_interval_minutes") or 1),
+                "temperature_entity": item.get("temperature_entity"),
+                "humidity_entity": item.get("humidity_entity"),
+                "zone_id": item.get("zone_id"),
+                "triggered_at": time.time(),
+            }
+            if (
+                best_spike is None
+                or candidate["rise_percent"] > best_spike["rise_percent"]
+            ):
+                best_spike = candidate
+
+        return best_spike
+
+    def _evaluate_active_area_spike(
+        self,
+        device_id: str,
+        indoor_abs: float,
+        outdoor_abs: float,
+        offset: float,
+        area_sensor_states: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        active_spike = self._active_area_spikes.get(device_id)
+        if not active_spike:
+            return None
+
+        source_id = active_spike.get("source_id")
+        matching_sensor = next(
+            (item for item in area_sensor_states if item.get("source_id") == source_id),
+            None,
+        )
+        if not matching_sensor or matching_sensor.get("current_abs") is None:
+            return None
+
+        current_abs = float(matching_sensor["current_abs"])
+        baseline_abs = float(active_spike.get("baseline_abs") or 0.0)
+        target_abs = max(indoor_abs, baseline_abs)
+        if current_abs <= target_abs:
+            return None
+        if current_abs <= outdoor_abs + offset:
+            return None
+
+        active_spike["current_abs"] = current_abs
+        return {
+            "action": "dehumidify",
+            "reasoning": [
+                (
+                    f"Active area spike for {active_spike['label']}: "
+                    f"{current_abs:.2f} g/m³ remains above target {target_abs:.2f} g/m³"
+                )
+            ],
+            "values": {
+                "indoor_abs": indoor_abs,
+                "outdoor_abs": outdoor_abs,
+                "offset": offset,
+                "active_area_sensor": active_spike["source_id"],
+                "active_area_abs": current_abs,
+                "active_area_baseline_abs": baseline_abs,
+            },
+            "confidence": 0.95,
+            "control_mode": "spike_boost",
+            "active_trigger": active_spike.copy(),
+        }
+
+    def _schedule_area_spike_recheck(
+        self, device_id: str, check_interval_minutes: int
+    ) -> None:
+        self._cancel_area_spike_recheck(device_id)
+        interval_minutes = max(1, check_interval_minutes)
+        self._area_spike_check_handles[device_id] = async_track_time_interval(
+            self.hass,
+            lambda now: self.hass.async_create_task(
+                self._async_recheck_area_spike(device_id)
+            ),
+            timedelta(minutes=interval_minutes),
+        )
+
+    def _cancel_area_spike_recheck(self, device_id: str) -> None:
+        handle = self._area_spike_check_handles.pop(device_id, None)
+        if handle:
+            handle()
+
+    async def _async_recheck_area_spike(self, device_id: str) -> None:
+        if not self._automation_active or not self._is_feature_enabled():
+            return
+
+        try:
+            entity_states = await self._get_device_entity_states(device_id)
+        except ValueError as err:
+            _LOGGER.debug("Skipping area spike recheck for %s: %s", device_id, err)
+            return
+
+        await self._process_automation_logic(device_id, entity_states)
+
+    def _clear_active_area_spike(self, device_id: str) -> None:
+        self._active_area_spikes.pop(device_id, None)
+        self._cancel_area_spike_recheck(device_id)
+
+    def _build_indicator_attributes(
+        self, device_id: str, decision: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        attrs: dict[str, Any] = {
+            "control_mode": "idle",
+            "active_trigger_source_id": None,
+            "active_trigger_label": None,
+            "active_trigger_abs_humidity": None,
+            "active_trigger_baseline_abs_humidity": None,
+            "active_trigger_rise_percent": None,
+            "next_check_interval_minutes": None,
+        }
+        if not decision:
+            return attrs
+
+        attrs["control_mode"] = decision.get("control_mode", "idle")
+        active_trigger = decision.get("active_trigger")
+        if isinstance(active_trigger, dict):
+            attrs["active_trigger_source_id"] = active_trigger.get("source_id")
+            attrs["active_trigger_label"] = active_trigger.get("label")
+            attrs["active_trigger_abs_humidity"] = active_trigger.get("current_abs")
+            attrs["active_trigger_baseline_abs_humidity"] = active_trigger.get(
+                "baseline_abs"
+            )
+            attrs["active_trigger_rise_percent"] = active_trigger.get("rise_percent")
+            attrs["next_check_interval_minutes"] = active_trigger.get(
+                "check_interval_minutes"
+            )
+        elif device_id in self._active_area_spikes:
+            active_spike = self._active_area_spikes[device_id]
+            attrs["control_mode"] = "spike_boost"
+            attrs["active_trigger_source_id"] = active_spike.get("source_id")
+            attrs["active_trigger_label"] = active_spike.get("label")
+            attrs["active_trigger_abs_humidity"] = active_spike.get("current_abs")
+            attrs["active_trigger_baseline_abs_humidity"] = active_spike.get(
+                "baseline_abs"
+            )
+            attrs["active_trigger_rise_percent"] = active_spike.get("rise_percent")
+            attrs["next_check_interval_minutes"] = active_spike.get(
+                "check_interval_minutes"
+            )
+        return attrs
 
     # Public API methods
     async def async_set_min_humidity(self, device_id: str, value: float) -> bool:

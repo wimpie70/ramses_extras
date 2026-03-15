@@ -130,6 +130,7 @@ class HumidityControlBinarySensor(ExtrasBinarySensorEntity):
 
         # Initialize state
         self._current_fan_speed = "auto"  # Track current fan speed
+        self._automation_attrs: dict[str, Any] = {}
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""
@@ -163,9 +164,10 @@ class HumidityControlBinarySensor(ExtrasBinarySensorEntity):
         self._is_on = False
         self.async_write_ha_state()
 
-    def set_state(self, is_on: bool) -> None:
+    def set_state(self, is_on: bool, extra_attrs: dict[str, Any] | None = None) -> None:
         """Set the binary sensor state (used by automation)."""
         self._is_on = is_on
+        self._automation_attrs = dict(extra_attrs or {})
         self.async_write_ha_state()
         _LOGGER.debug("Binary sensor %s state set to %s", self._attr_name, is_on)
 
@@ -178,6 +180,7 @@ class HumidityControlBinarySensor(ExtrasBinarySensorEntity):
             "binary_type": self._entity_type,
             "controlled_by": "automation",
             "current_fan_speed": self._current_fan_speed,
+            **self._automation_attrs,
         }
 
 

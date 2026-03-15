@@ -88,6 +88,7 @@ class SensorControlResolver:
             - sources: Source metadata for each metric
             - raw_internal: Raw internal mappings (optional)
             - abs_humidity_inputs: Absolute humidity input mappings
+            - area_sensors: Validated area sensor summaries
         """
         device_key = device_id.replace(":", "_")
 
@@ -103,6 +104,7 @@ class SensorControlResolver:
             "sources": {},
             "raw_internal": internal_mappings,
             "abs_humidity_inputs": {},
+            "area_sensors": [],
         }
 
         # Get device-specific overrides if available
@@ -118,6 +120,12 @@ class SensorControlResolver:
             )
 
         result["abs_humidity_inputs"] = abs_humidity_inputs
+
+        area_sensors = []
+        if sensor_control_config and "area_sensors" in sensor_control_config:
+            area_sensors = sensor_control_config["area_sensors"].get(device_key, [])
+
+        result["area_sensors"] = self._resolve_area_sensors(area_sensors)
 
         # Resolve each metric
         for metric in SUPPORTED_METRICS:
@@ -171,6 +179,47 @@ class SensorControlResolver:
         )
 
         return result
+
+    def _resolve_area_sensors(self, area_sensors: Any) -> list[dict[str, Any]]:
+        if not isinstance(area_sensors, list):
+            return []
+
+        resolved: list[dict[str, Any]] = []
+        for item in area_sensors:
+            if not isinstance(item, dict):
+                continue
+
+            source_id = str(item.get("source_id") or "").strip()
+            label = str(item.get("label") or source_id or "Unnamed").strip()
+            temperature_entity = str(item.get("temperature_entity") or "").strip()
+            humidity_entity = str(item.get("humidity_entity") or "").strip()
+            zone_id = str(item.get("zone_id") or "").strip()
+
+            temp_valid = bool(temperature_entity) and self._entity_exists(
+                temperature_entity
+            )
+            humidity_valid = bool(humidity_entity) and self._entity_exists(
+                humidity_entity
+            )
+            valid = bool(source_id) and temp_valid and humidity_valid
+
+            resolved_item: dict[str, Any] = {
+                "source_id": source_id,
+                "label": label,
+                "enabled": bool(item.get("enabled", True)),
+                "temperature_entity": temperature_entity or None,
+                "humidity_entity": humidity_entity or None,
+                "spike_rise_percent": item.get("spike_rise_percent"),
+                "spike_window_minutes": item.get("spike_window_minutes"),
+                "check_interval_minutes": item.get("check_interval_minutes"),
+                "valid": valid,
+            }
+            if zone_id:
+                resolved_item["zone_id"] = zone_id
+
+            resolved.append(resolved_item)
+
+        return resolved
 
     def _get_sensor_control_config(self) -> dict[str, Any] | None:
         """Get sensor control configuration from config entry options.
