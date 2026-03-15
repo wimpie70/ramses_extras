@@ -56,6 +56,7 @@ class HvacFanCard extends RamsesBaseCard {
     this._entityMappingsLoading = false;
     this._sensorSources = null; // Store sensor source information
     this._rawInternalMappings = null; // Store raw internal mappings
+    this._areaSensors = []; // Store sensor_control area sensors
     this.parameterSchema = null;
     this.availableParams = {};
     this._eventCheckTimer = null; // Timer for event checks
@@ -289,6 +290,7 @@ class HvacFanCard extends RamsesBaseCard {
     // Generate HTML using template functions
     const cardHtml = [
       createCardHeader(CARD_STYLE),
+      this._createSensorSourcesPanel(),
       createTopSection(templateData, this.t?.bind(this)),
       createControlsSection(
         dehumEntitiesAvailable,
@@ -448,6 +450,10 @@ class HvacFanCard extends RamsesBaseCard {
           this._rawInternalMappings = result.raw_internal;
         }
 
+        if (Array.isArray(result.area_sensors)) {
+          this._areaSensors = result.area_sensors;
+        }
+
         // Merge entity mappings into config, but keep any explicit overrides
         const updatedConfig = { ...this._config };
         Object.entries(result.mappings).forEach(([key, value]) => {
@@ -508,22 +514,22 @@ class HvacFanCard extends RamsesBaseCard {
     const config = metricConfig[metric] || { icon: '📊', label: metric };
 
     // Determine status and styling
-    let statusClass = 'sensor-source-external';
+    let statusClass = 'r-xtrs-hvac-fan-sensor-source-external';
     let statusText = '';
     let displayEntity = '';
 
     if (kind === 'external_entity' || kind === 'external') {
       if (valid && entity_id) {
-        statusClass = 'sensor-source-external valid';
+        statusClass = 'r-xtrs-hvac-fan-sensor-source-external valid';
         statusText = `External: ${entity_id}`;
         displayEntity = entity_id;
       } else {
-        statusClass = 'sensor-source-external invalid';
+        statusClass = 'r-xtrs-hvac-fan-sensor-source-external invalid';
         statusText = 'External: Invalid Entity';
         displayEntity = entity_id || 'Invalid';
       }
     } else if (kind === 'derived') {
-      statusClass = 'sensor-source-derived';
+      statusClass = 'r-xtrs-hvac-fan-sensor-source-derived';
       // For derived sensors, show the actual entity being used from mappings
       const actualEntity = this._entityMappings?.[metric];
       if (actualEntity) {
@@ -534,17 +540,81 @@ class HvacFanCard extends RamsesBaseCard {
         displayEntity = 'Calculated';
       }
     } else if (kind === 'none') {
-      statusClass = 'sensor-source-disabled';
+      statusClass = 'r-xtrs-hvac-fan-sensor-source-disabled';
       statusText = 'Disabled';
       displayEntity = 'Disabled';
     }
 
     return `
-      <div class="sensor-source-indicator ${statusClass}" title="${statusText}">
-        <span class="sensor-source-icon">${config.icon}</span>
-        <span class="sensor-source-label">${config.label}</span>
-        <span class="sensor-source-kind">${kind}</span>
-        <span class="sensor-source-entity">${displayEntity}</span>
+      <div class="r-xtrs-hvac-fan-sensor-source-indicator ${statusClass}" title="${statusText}">
+        <span class="r-xtrs-hvac-fan-sensor-source-icon">${config.icon}</span>
+        <span class="r-xtrs-hvac-fan-sensor-source-label">${config.label}</span>
+        <span class="r-xtrs-hvac-fan-sensor-source-kind">${kind}</span>
+        <span class="r-xtrs-hvac-fan-sensor-source-entity">${displayEntity}</span>
+      </div>
+    `;
+  }
+
+  _createAreaSensorIndicator(areaSensor) {
+    const sourceId = areaSensor?.source_id || 'area';
+    const label = areaSensor?.label || sourceId;
+    const tempEntity = areaSensor?.temperature_entity || 'n/a';
+    const humidityEntity = areaSensor?.humidity_entity || 'n/a';
+
+    return `
+      <div
+        class="r-xtrs-hvac-fan-sensor-source-indicator r-xtrs-hvac-fan-sensor-source-derived"
+        title="Area sensor: ${label}"
+      >
+        <span class="r-xtrs-hvac-fan-sensor-source-icon">🚿</span>
+        <span class="r-xtrs-hvac-fan-sensor-source-label">${label}</span>
+        <span class="r-xtrs-hvac-fan-sensor-source-kind">area</span>
+        <span
+          class="r-xtrs-hvac-fan-sensor-source-entity"
+        >${tempEntity} · ${humidityEntity}</span>
+      </div>
+    `;
+  }
+
+  _getDehumidifyStatusAttributes() {
+    const config = this.config || {};
+    const entityId = config.dehum_active_entity;
+    if (!entityId) {
+      return {};
+    }
+
+    return this.getEntityState(entityId)?.attributes || {};
+  }
+
+  _createActiveControlIndicator() {
+    const attrs = this._getDehumidifyStatusAttributes();
+    const controlMode = attrs.control_mode;
+    if (!controlMode || controlMode === 'idle') {
+      return '';
+    }
+
+    const sourceLabel = attrs.active_trigger_label || attrs.active_trigger_source_id;
+    const risePercent = attrs.active_trigger_rise_percent;
+    const interval = attrs.next_check_interval_minutes;
+    const displayEntity = [
+      sourceLabel ? `Source: ${sourceLabel}` : '',
+      risePercent !== undefined && risePercent !== null
+        ? `Rise: ${Number(risePercent).toFixed(1)}%`
+        : '',
+      interval ? `Check: ${interval}m` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    return `
+      <div
+        class="r-xtrs-hvac-fan-sensor-source-indicator r-xtrs-hvac-fan-sensor-source-derived"
+        title="Active humidity control mode"
+      >
+        <span class="r-xtrs-hvac-fan-sensor-source-icon">💧</span>
+        <span class="r-xtrs-hvac-fan-sensor-source-label">Humidity Control</span>
+        <span class="r-xtrs-hvac-fan-sensor-source-kind">${controlMode}</span>
+        <span class="r-xtrs-hvac-fan-sensor-source-entity">${displayEntity || 'Active'}</span>
       </div>
     `;
   }
@@ -572,6 +642,16 @@ class HvacFanCard extends RamsesBaseCard {
       .map(metric => this._createSensorSourceIndicator(metric))
       .filter(html => html.trim() !== '');
 
+    const areaIndicators = (this._areaSensors || [])
+      .map(areaSensor => this._createAreaSensorIndicator(areaSensor))
+      .filter(html => html.trim() !== '');
+
+    const activeControlIndicator = this._createActiveControlIndicator();
+    if (activeControlIndicator) {
+      indicators.push(activeControlIndicator);
+    }
+    indicators.push(...areaIndicators);
+
     if (indicators.length === 0) {
       return '';
     }
@@ -579,9 +659,9 @@ class HvacFanCard extends RamsesBaseCard {
     const panelTitle = this.t?.('sensor.sources') || 'Sensor Sources';
 
     return `
-      <div class="sensor-sources-panel">
-        <div class="sensor-sources-title">${panelTitle}</div>
-        <div class="sensor-sources-grid">
+      <div class="r-xtrs-hvac-fan-sensor-sources-panel">
+        <div class="r-xtrs-hvac-fan-sensor-sources-title">${panelTitle}</div>
+        <div class="r-xtrs-hvac-fan-sensor-sources-grid">
           ${indicators.join('')}
         </div>
       </div>
@@ -694,6 +774,7 @@ class HvacFanCard extends RamsesBaseCard {
     // Generate HTML using template functions
     const cardHtml = [
       createCardHeader(CARD_STYLE),
+      this._createSensorSourcesPanel(),
       createTopSection(templateData, this.t?.bind(this)),
       createControlsSection(
         dehumEntitiesAvailable,

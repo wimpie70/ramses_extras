@@ -34,6 +34,25 @@ from ..const import ENTITY_PATTERNS
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_area_sensors_config(
+    hass: HomeAssistant,
+    device_id: str,
+    config_entry: ConfigEntry | None = None,
+) -> list[dict[str, Any]]:
+    entry = config_entry or hass.data.get(DOMAIN, {}).get("config_entry")
+    if entry is None:
+        return []
+
+    sensor_control_options = entry.options.get("sensor_control") or {}
+    area_sensor_map = sensor_control_options.get("area_sensors") or {}
+    device_key = extract_device_id_as_string(device_id).replace(":", "_")
+    area_sensors = area_sensor_map.get(device_key)
+    if not isinstance(area_sensors, list):
+        return []
+
+    return [item for item in area_sensors if isinstance(item, dict)]
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -146,8 +165,6 @@ async def create_default_sensor(
         if config.get("supported_device_types") and "FAN" in config.get(
             "supported_device_types", []
         ):
-            # Create sensor with calculation logic (always create, listeners
-            #  will be set up when entities exist)
             sensor_entity = DefaultHumiditySensor(
                 hass, device_id_str, sensor_type, config
             )
@@ -157,6 +174,30 @@ async def create_default_sensor(
                 sensor_type,
                 device_id_str,
             )
+
+    for area_sensor in _get_area_sensors_config(hass, device_id_str, config_entry):
+        source_id = str(area_sensor.get("source_id") or "").strip()
+        if not source_id:
+            continue
+
+        label = str(area_sensor.get("label") or source_id).strip()
+        area_config = {
+            "name_template": "{label} Absolute Humidity {device_id}",
+            "unit": "g/m³",
+            "icon": "mdi:water-percent",
+            "device_class": None,
+            "label": label,
+            "source_id": source_id,
+            "area_sensor": area_sensor,
+        }
+        sensor_list.append(
+            DefaultHumiditySensor(
+                hass,
+                device_id_str,
+                f"area_absolute_humidity_{source_id}",
+                area_config,
+            )
+        )
 
     return sensor_list
 
@@ -289,6 +330,7 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
 
         # Set sensor-specific attributes
         self._sensor_type = sensor_type
+        self._area_sensor = cast(dict[str, Any], config.get("area_sensor") or {})
         self._attr_native_unit_of_measurement = config.get("unit", "g/m³")
         self._attr_device_class = config.get("device_class")
         self._attr_icon = config.get("icon")
@@ -300,7 +342,11 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         name_template = config.get(
             "name_template", f"{sensor_type} {device_id_underscore}"
         )
-        self._attr_name = name_template.format(device_id=device_id_underscore)
+        self._attr_name = name_template.format(
+            device_id=device_id_underscore,
+            source_id=str(config.get("source_id") or ""),
+            label=str(config.get("label") or ""),
+        )
 
         # Track if we have listeners set up (only for absolute humidity sensors)
         self._listeners_set_up = False
@@ -331,13 +377,15 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         await super().async_added_to_hass()
         # Set up listeners for underlying temperature and humidity sensor
         # for absolute humidity sensors
-        if self._sensor_type in [
+        if self._is_absolute_humidity_sensor():
+            await self._setup_listeners()
+            await self._recalculate_and_update()
+
+    def _is_absolute_humidity_sensor(self) -> bool:
+        return self._sensor_type in [
             "indoor_absolute_humidity",
             "outdoor_absolute_humidity",
-        ]:
-            await self._setup_listeners()
-            # Trigger initial calculation after setting up listeners
-            await self._recalculate_and_update()
+        ] or bool(self._area_sensor)
 
     async def _setup_listeners(self) -> None:
         """Set up listeners for temperature and humidity sensor changes.
@@ -359,53 +407,60 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         if self._listeners_set_up:
             return
 
-        if self._sensor_type not in ENTITY_PATTERNS:
+        if self._area_sensor:
+            temp_entity = str(self._area_sensor.get("temperature_entity") or "").strip()
+            humidity_entity = str(
+                self._area_sensor.get("humidity_entity") or ""
+            ).strip()
+            if not temp_entity or not humidity_entity:
+                return
+        elif self._sensor_type not in ENTITY_PATTERNS:
             return
+        else:
+            temp_type, humidity_type = ENTITY_PATTERNS[self._sensor_type]
 
-        temp_type, humidity_type = ENTITY_PATTERNS[self._sensor_type]
+            device_id_str = extract_device_id_as_string(self._device_id)
+            device_id_underscore = device_id_str.replace(":", "_")
 
-        # ramses_cc entities use CC format (device_id prefix): {device_id}_{identifier}
-        device_id_str = extract_device_id_as_string(self._device_id)
-        device_id_underscore = device_id_str.replace(":", "_")
+            from homeassistant.helpers import entity_registry
 
-        # Find the actual entity IDs from registry or fallback to generated names
-        from homeassistant.helpers import entity_registry
+            registry = entity_registry.async_get(self.hass)
 
-        registry = entity_registry.async_get(self.hass)
+            temp_entity = ""
+            for name in iter_ramses_cc_entity_ids(
+                "sensor",
+                temp_type,
+                device_id_underscore=device_id_underscore,
+                slugs=("", "fan"),
+            ):
+                if registry.async_get(name) is not None:
+                    temp_entity = name
+                    break
 
-        # Determine temperature entity
-        temp_entity = ""
-        for name in iter_ramses_cc_entity_ids(
-            "sensor",
-            temp_type,
-            device_id_underscore=device_id_underscore,
-            slugs=("", "fan"),
-        ):
-            if registry.async_get(name) is not None:
-                temp_entity = name
-                break
+            if not temp_entity:
+                temp_entity = EntityHelpers.generate_entity_name_from_template(
+                    "sensor",
+                    "{device_id}_" + temp_type,
+                    device_id=device_id_underscore,
+                )
 
-        if not temp_entity:
-            temp_entity = EntityHelpers.generate_entity_name_from_template(
-                "sensor", "{device_id}_" + temp_type, device_id=device_id_underscore
-            )
+            humidity_entity = ""
+            for name in iter_ramses_cc_entity_ids(
+                "sensor",
+                humidity_type,
+                device_id_underscore=device_id_underscore,
+                slugs=("", "fan"),
+            ):
+                if registry.async_get(name) is not None:
+                    humidity_entity = name
+                    break
 
-        # Determine humidity entity
-        humidity_entity = ""
-        for name in iter_ramses_cc_entity_ids(
-            "sensor",
-            humidity_type,
-            device_id_underscore=device_id_underscore,
-            slugs=("", "fan"),
-        ):
-            if registry.async_get(name) is not None:
-                humidity_entity = name
-                break
-
-        if not humidity_entity:
-            humidity_entity = EntityHelpers.generate_entity_name_from_template(
-                "sensor", "{device_id}_" + humidity_type, device_id=device_id_underscore
-            )
+            if not humidity_entity:
+                humidity_entity = EntityHelpers.generate_entity_name_from_template(
+                    "sensor",
+                    "{device_id}_" + humidity_type,
+                    device_id=device_id_underscore,
+                )
 
         # Track state changes on both temperature and humidity sensor
         def _handle_state_change_event(event: Any) -> None:
@@ -454,13 +509,15 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         try:
             result: float | None = None
 
-            if self._sensor_type in [
+            if self._area_sensor:
+                result = self._get_area_temp_and_humidity_result()
+            elif self._sensor_type in [
                 "indoor_absolute_humidity",
                 "outdoor_absolute_humidity",
             ]:
                 result = await self._async_compute_abs_from_sensor_control()
 
-            if result is None:
+            if result is None and not self._area_sensor:
                 temp, rh = self._get_temp_and_humidity()
                 result = self._calculate_abs_humidity(temp, rh)
 
@@ -589,6 +646,32 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         except (ValueError, AttributeError) as e:
             _LOGGER.debug("Error parsing temp/humidity for %s: %s", self._attr_name, e)
             return None, None
+
+    def _get_area_temp_and_humidity_result(self) -> float | None:
+        temp_entity = str(self._area_sensor.get("temperature_entity") or "").strip()
+        humidity_entity = str(self._area_sensor.get("humidity_entity") or "").strip()
+        if not temp_entity or not humidity_entity:
+            return None
+
+        temp_state = self.hass.states.get(temp_entity)
+        humidity_state = self.hass.states.get(humidity_entity)
+        if not temp_state or not humidity_state:
+            return None
+        if temp_state.state in ["unavailable", "unknown", "uninitialized"]:
+            return None
+        if humidity_state.state in ["unavailable", "unknown", "uninitialized"]:
+            return None
+
+        try:
+            temp = float(temp_state.state)
+            humidity = float(humidity_state.state)
+        except ValueError:
+            return None
+
+        if not (0 <= humidity <= 100):
+            return None
+
+        return self._calculate_abs_humidity(temp, humidity)
 
     async def _async_compute_abs_from_sensor_control(self) -> float | None:
         """Compute absolute humidity using sensor_control configuration.
@@ -812,7 +895,22 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         :rtype: dict[str, Any]
         """
         base_attrs = super().extra_state_attributes or {}
-        return {**base_attrs, "sensor_type": self._sensor_type}
+        attrs = {**base_attrs, "sensor_type": self._sensor_type}
+        if self._area_sensor:
+            attrs["source_id"] = self._area_sensor.get("source_id")
+            attrs["label"] = self._area_sensor.get("label")
+            attrs["temperature_entity"] = self._area_sensor.get("temperature_entity")
+            attrs["humidity_entity"] = self._area_sensor.get("humidity_entity")
+            attrs["spike_rise_percent"] = self._area_sensor.get("spike_rise_percent")
+            attrs["spike_window_minutes"] = self._area_sensor.get(
+                "spike_window_minutes"
+            )
+            attrs["check_interval_minutes"] = self._area_sensor.get(
+                "check_interval_minutes"
+            )
+            if self._area_sensor.get("zone_id"):
+                attrs["zone_id"] = self._area_sensor.get("zone_id")
+        return attrs
 
 
 # Register this platform with the global registry

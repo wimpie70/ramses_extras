@@ -255,6 +255,27 @@ describe('HvacFanCard', () => {
       expect(availableAbsEntities).toContain('Indoor Absolute Humidity');
       expect(availableAbsEntities).toContain('Outdoor Absolute Humidity');
     });
+
+    test('should keep area sensor metadata available for diagnostics rendering', () => {
+      const areaSensors = [
+        {
+          source_id: 'bathroom',
+          label: 'Bathroom',
+          temperature_entity: 'sensor.bathroom_temp',
+          humidity_entity: 'sensor.bathroom_humidity',
+          spike_rise_percent: 15,
+          spike_window_minutes: 3,
+          check_interval_minutes: 1,
+        },
+      ];
+
+      card._areaSensors = areaSensors;
+
+      expect(card._areaSensors).toHaveLength(1);
+      expect(card._areaSensors[0].source_id).toBe('bathroom');
+      expect(card._areaSensors[0].label).toBe('Bathroom');
+      expect(card._areaSensors[0].check_interval_minutes).toBe(1);
+    });
   });
 
   describe('fan parameter entity IDs', () => {
@@ -307,6 +328,27 @@ describe('HvacFanCard', () => {
         !!mockHass.states['binary_sensor.dehumidifying_active_32_153289'];
 
       expect(entitiesAvailable).toBe(false);
+    });
+
+    test('should expose active humidity control attributes from the status entity', () => {
+      mockHass.states['binary_sensor.dehumidifying_active_32_153289'] = {
+        state: 'on',
+        attributes: {
+          control_mode: 'spike_boost',
+          active_trigger_source_id: 'bathroom',
+          active_trigger_label: 'Bathroom',
+          active_trigger_rise_percent: 18.5,
+          next_check_interval_minutes: 1,
+        },
+      };
+
+      const attrs =
+        mockHass.states['binary_sensor.dehumidifying_active_32_153289'].attributes;
+
+      expect(attrs.control_mode).toBe('spike_boost');
+      expect(attrs.active_trigger_source_id).toBe('bathroom');
+      expect(attrs.active_trigger_label).toBe('Bathroom');
+      expect(attrs.next_check_interval_minutes).toBe(1);
     });
   });
 

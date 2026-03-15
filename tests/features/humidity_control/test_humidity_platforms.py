@@ -254,6 +254,33 @@ class TestHumidityPlatforms:
         assert attrs["controlled_by"] == "automation"
         assert attrs["current_fan_speed"] == "auto"
 
+    async def test_humidity_binary_sensor_extra_attributes_from_automation(self):
+        """Automation metadata should be exposed on the binary sensor."""
+        config = {
+            "name": "Balance Active",
+            "supported_device_types": ["HvacVentilator"],
+            "entity_template": "dehumidifying_active_{device_id}",
+        }
+        entity = humidity_binary_sensor_platform.HumidityControlBinarySensor(
+            self.hass, self.device_id, "dehumidifying_active", config
+        )
+
+        entity.set_state(
+            True,
+            {
+                "control_mode": "spike_boost",
+                "active_trigger_source_id": "bathroom",
+                "active_trigger_label": "Bathroom",
+                "next_check_interval_minutes": 1,
+            },
+        )
+        attrs = entity.extra_state_attributes
+
+        assert attrs["control_mode"] == "spike_boost"
+        assert attrs["active_trigger_source_id"] == "bathroom"
+        assert attrs["active_trigger_label"] == "Bathroom"
+        assert attrs["next_check_interval_minutes"] == 1
+
     async def test_create_humidity_binary_sensor(self):
         """Test create_humidity_control_binary_sensor factory."""
         sensors = (

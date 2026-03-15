@@ -1,5 +1,6 @@
 """Tests for Humidity Control Automation Manager."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -258,6 +259,119 @@ class TestHumidityAutomationManager:
         assert decision["action"] == "stop"
         assert "acceptable range" in decision["reasoning"][0]
 
+    async def test_evaluate_humidity_conditions_area_spike_detected(self):
+        """Area spike should trigger spike_boost dehumidification."""
+        self.manager._latest_sensor_control_context["test"] = {
+            "area_sensors": [
+                {
+                    "source_id": "bathroom",
+                    "label": "Bathroom",
+                    "temperature_entity": "sensor.bath_temp",
+                    "humidity_entity": "sensor.bath_humidity",
+                    "spike_rise_percent": 15.0,
+                    "spike_window_minutes": 3,
+                    "check_interval_minutes": 1,
+                    "enabled": True,
+                }
+            ]
+        }
+
+        temp_state = MagicMock(state="22.0")
+        humidity_state = MagicMock(state="65.0")
+        self.hass.states.get.side_effect = lambda entity_id: {
+            "sensor.bath_temp": temp_state,
+            "sensor.bath_humidity": humidity_state,
+        }.get(entity_id)
+
+        self.manager._area_history["test"] = {
+            "bathroom": [
+                {"ts": time.time() - 60, "abs": 9.0},
+                {"ts": time.time() - 10, "abs": 9.2},
+            ]
+        }
+
+        with patch.object(
+            self.manager,
+            "_schedule_area_spike_recheck",
+        ) as mock_schedule:
+            decision = await self.manager._evaluate_humidity_conditions(
+                device_id="test",
+                indoor_rh=50.0,
+                indoor_abs=10.0,
+                outdoor_abs=8.0,
+                min_humidity=40.0,
+                max_humidity=75.0,
+                offset=0.0,
+            )
+
+        assert decision["action"] == "dehumidify"
+        assert decision["control_mode"] == "spike_boost"
+        assert decision["active_trigger"]["source_id"] == "bathroom"
+        mock_schedule.assert_called_once_with("test", 1)
+
+    async def test_evaluate_active_area_spike_clears_when_recovered(self):
+        """Active spike should stop once the area humidity recovers."""
+        self.manager._active_area_spikes["test"] = {
+            "source_id": "bathroom",
+            "label": "Bathroom",
+            "baseline_abs": 10.0,
+            "check_interval_minutes": 1,
+        }
+        area_sensor_states = [{"source_id": "bathroom", "current_abs": 9.5}]
+
+        decision = self.manager._evaluate_active_area_spike(
+            device_id="test",
+            indoor_abs=10.0,
+            outdoor_abs=8.0,
+            offset=0.0,
+            area_sensor_states=area_sensor_states,
+        )
+
+        assert decision is None
+
+    async def test_evaluate_active_area_spike_keeps_boost_active(self):
+        """Active spike should stay active while still above target."""
+        self.manager._active_area_spikes["test"] = {
+            "source_id": "bathroom",
+            "label": "Bathroom",
+            "baseline_abs": 10.0,
+            "check_interval_minutes": 1,
+        }
+        area_sensor_states = [{"source_id": "bathroom", "current_abs": 12.0}]
+
+        decision = self.manager._evaluate_active_area_spike(
+            device_id="test",
+            indoor_abs=10.5,
+            outdoor_abs=8.0,
+            offset=0.0,
+            area_sensor_states=area_sensor_states,
+        )
+
+        assert decision is not None
+        assert decision["action"] == "dehumidify"
+        assert decision["control_mode"] == "spike_boost"
+
+    def test_build_indicator_attributes_with_active_trigger(self):
+        """Indicator attributes should include active trigger metadata."""
+        decision = {
+            "control_mode": "spike_boost",
+            "active_trigger": {
+                "source_id": "bathroom",
+                "label": "Bathroom",
+                "current_abs": 12.0,
+                "baseline_abs": 10.0,
+                "rise_percent": 20.0,
+                "check_interval_minutes": 1,
+            },
+        }
+
+        attrs = self.manager._build_indicator_attributes("32_123456", decision)
+
+        assert attrs["control_mode"] == "spike_boost"
+        assert attrs["active_trigger_source_id"] == "bathroom"
+        assert attrs["active_trigger_label"] == "Bathroom"
+        assert attrs["active_trigger_rise_percent"] == 20.0
+
     def test_generate_entity_patterns(self):
         """Test generating entity patterns."""
         patterns = self.manager._generate_entity_patterns()
@@ -447,7 +561,8 @@ class TestHumidityAutomationManager:
         }
 
         await self.manager._set_indicator_off(device_id)
-        mock_entity.set_state.assert_called_once_with(False)
+        mock_entity.set_state.assert_called_once()
+        assert mock_entity.set_state.call_args[0][0] is False
 
     async def test_activate_dehumidification(self):
         """Test activating dehumidification."""
