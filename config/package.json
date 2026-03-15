@@ -4,8 +4,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "eslint ../custom_components --ext .js --cache",
-    "lint:fix": "eslint ../custom_components --ext .js --cache --fix",
+    "lint": "eslint custom_components --ext .js --cache --config config/eslint.config.js --no-config-lookup",
+    "lint:fix": "eslint custom_components --ext .js --cache --fix --config config/eslint.config.js --no-config-lookup",
     "format": "prettier --write ..",
     "format:check": "prettier --check .."
   },

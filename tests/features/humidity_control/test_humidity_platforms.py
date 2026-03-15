@@ -2,25 +2,21 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 
-from custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor import (  # noqa: E501
-    HumidityControlBinarySensor,
-    create_humidity_control_binary_sensor,
+from custom_components.ramses_extras.features.humidity_control.platforms import (
+    binary_sensor as humidity_binary_sensor_platform,
 )
-from custom_components.ramses_extras.features.humidity_control.platforms.number import (
-    HumidityControlNumber,
-    create_humidity_number,
+from custom_components.ramses_extras.features.humidity_control.platforms import (
+    number as humidity_number_platform,
 )
-from custom_components.ramses_extras.features.humidity_control.platforms.sensor import (
-    create_humidity_sensor,
+from custom_components.ramses_extras.features.humidity_control.platforms import (
+    sensor as humidity_sensor_platform,
 )
-from custom_components.ramses_extras.features.humidity_control.platforms.switch import (
-    HumidityControlSwitch,
-    create_humidity_switch,
+from custom_components.ramses_extras.features.humidity_control.platforms import (
+    switch as humidity_switch_platform,
 )
 
 
@@ -39,6 +35,7 @@ class TestHumidityPlatforms:
 
         self.hass.loop_thread_id = threading.get_ident()
         self.hass.bus = MagicMock()
+        self.hass.config_entries = MagicMock()
 
         self.config_entry = MagicMock(spec=ConfigEntry)
         self.config_entry.options = {}
@@ -52,7 +49,9 @@ class TestHumidityPlatforms:
             "supported_device_types": ["HvacVentilator"],
             "entity_template": "dehumidify_{device_id}",
         }
-        entity = HumidityControlSwitch(self.hass, self.device_id, "dehumidify", config)
+        entity = humidity_switch_platform.HumidityControlSwitch(
+            self.hass, self.device_id, "dehumidify", config
+        )
 
         # Manually set internal state since we're testing the logic
         entity._is_on = False
@@ -68,11 +67,11 @@ class TestHumidityPlatforms:
 
     async def test_create_humidity_switch(self):
         """Test create_humidity_switch factory."""
-        switches = await create_humidity_switch(
+        switches = await humidity_switch_platform.create_humidity_switch(
             self.hass, self.device_id, self.config_entry
         )
         assert len(switches) == 1
-        assert isinstance(switches[0], HumidityControlSwitch)
+        assert isinstance(switches[0], humidity_switch_platform.HumidityControlSwitch)
 
     async def test_humidity_switch_restores_last_state(self):
         """Test HumidityControlSwitch restores its last persisted state."""
@@ -81,7 +80,9 @@ class TestHumidityPlatforms:
             "supported_device_types": ["HvacVentilator"],
             "entity_template": "dehumidify_{device_id}",
         }
-        entity = HumidityControlSwitch(self.hass, self.device_id, "dehumidify", config)
+        entity = humidity_switch_platform.HumidityControlSwitch(
+            self.hass, self.device_id, "dehumidify", config
+        )
 
         with (
             patch(
@@ -98,6 +99,33 @@ class TestHumidityPlatforms:
 
         assert entity.is_on is True
 
+    async def test_humidity_switch_restores_default_without_last_state(self):
+        """Test HumidityControlSwitch keeps default state without persisted state."""
+        config = {
+            "name": "Balance",
+            "supported_device_types": ["HvacVentilator"],
+            "entity_template": "dehumidify_{device_id}",
+        }
+        entity = humidity_switch_platform.HumidityControlSwitch(
+            self.hass, self.device_id, "dehumidify", config
+        )
+        entity._is_on = False
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.switch.ExtrasSwitchEntity.async_added_to_hass",
+                new=AsyncMock(),
+            ),
+            patch.object(
+                entity,
+                "async_get_last_state",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            await entity.async_added_to_hass()
+
+        assert entity.is_on is False
+
     async def test_humidity_number(self):
         """Test HumidityControlNumber."""
         config = {
@@ -105,7 +133,7 @@ class TestHumidityPlatforms:
             "default_value": 45.0,
             "supported_device_types": ["HvacVentilator"],
         }
-        entity = HumidityControlNumber(
+        entity = humidity_number_platform.HumidityControlNumber(
             self.hass,
             self.device_id,
             "relative_humidity_minimum",
@@ -129,9 +157,57 @@ class TestHumidityPlatforms:
             entity._native_value = 50.0
             assert entity.native_value == 50.0
 
+    async def test_humidity_number_loads_from_config(self):
+        """Test HumidityControlNumber loads persisted config values."""
+        self.config_entry.options = {
+            "humidity_control": {
+                self.device_id: {"relative_humidity_minimum": 47.5},
+            }
+        }
+        config = {
+            "name": "Min Humidity",
+            "default_value": 45.0,
+            "supported_device_types": ["HvacVentilator"],
+        }
+        entity = humidity_number_platform.HumidityControlNumber(
+            self.hass,
+            self.device_id,
+            "relative_humidity_minimum",
+            config,
+            self.config_entry,
+        )
+
+        assert entity.native_value == 47.5
+
+    async def test_humidity_number_save_value_to_config(self):
+        """Test HumidityControlNumber saves values to config entry options."""
+        config = {
+            "name": "Min Humidity",
+            "default_value": 45.0,
+            "supported_device_types": ["HvacVentilator"],
+        }
+        entity = humidity_number_platform.HumidityControlNumber(
+            self.hass,
+            self.device_id,
+            "relative_humidity_minimum",
+            config,
+            self.config_entry,
+        )
+
+        await entity._save_value_to_config(52.0)
+
+        self.hass.config_entries.async_update_entry.assert_called_once()
+        _, kwargs = self.hass.config_entries.async_update_entry.call_args
+        assert (
+            kwargs["options"]["humidity_control"][self.device_id][
+                "relative_humidity_minimum"
+            ]
+            == 52.0
+        )
+
     async def test_create_humidity_number(self):
         """Test create_humidity_number factory."""
-        numbers = await create_humidity_number(
+        numbers = await humidity_number_platform.create_humidity_number(
             self.hass, self.device_id, self.config_entry
         )
         assert len(numbers) == 3
@@ -144,7 +220,7 @@ class TestHumidityPlatforms:
             "supported_device_types": ["HvacVentilator"],
             "entity_template": "dehumidifying_active_{device_id}",
         }
-        entity = HumidityControlBinarySensor(
+        entity = humidity_binary_sensor_platform.HumidityControlBinarySensor(
             self.hass, self.device_id, "dehumidifying_active", config
         )
 
@@ -161,19 +237,163 @@ class TestHumidityPlatforms:
         await entity.async_turn_off()
         assert entity.is_on is False
 
+    async def test_humidity_binary_sensor_extra_attributes(self):
+        """Test binary sensor extra attributes."""
+        config = {
+            "name": "Balance Active",
+            "supported_device_types": ["HvacVentilator"],
+            "entity_template": "dehumidifying_active_{device_id}",
+        }
+        entity = humidity_binary_sensor_platform.HumidityControlBinarySensor(
+            self.hass, self.device_id, "dehumidifying_active", config
+        )
+
+        attrs = entity.extra_state_attributes
+
+        assert attrs["binary_type"] == "dehumidifying_active"
+        assert attrs["controlled_by"] == "automation"
+        assert attrs["current_fan_speed"] == "auto"
+
     async def test_create_humidity_binary_sensor(self):
         """Test create_humidity_control_binary_sensor factory."""
-        sensors = await create_humidity_control_binary_sensor(
-            self.hass, self.device_id, self.config_entry
+        sensors = (
+            await humidity_binary_sensor_platform.create_humidity_control_binary_sensor(
+                self.hass, self.device_id, self.config_entry
+            )
         )
         assert len(sensors) == 1
-        assert isinstance(sensors[0], HumidityControlBinarySensor)
+        assert isinstance(
+            sensors[0], humidity_binary_sensor_platform.HumidityControlBinarySensor
+        )
 
     async def test_create_humidity_sensor_placeholder(self):
         """Test create_humidity_sensor (placeholder)."""
         # This currently returns empty list as sensors are handled by default feature
-        sensors = await create_humidity_sensor(
+        sensors = await humidity_sensor_platform.create_humidity_sensor(
             self.hass, self.device_id, {}, self.config_entry
         )
         assert isinstance(sensors, list)
         assert len(sensors) == 0
+
+    async def test_switch_async_setup_entry_no_devices(self):
+        """Test switch platform setup with no filtered devices."""
+        async_add_entities = MagicMock()
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+            return_value=[],
+        ):
+            await humidity_switch_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        async_add_entities.assert_not_called()
+
+    async def test_switch_async_setup_entry_adds_entities(self):
+        """Test switch platform setup adds created entities."""
+        async_add_entities = MagicMock()
+        mock_entity = MagicMock()
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+                return_value=[self.device_id],
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.switch.create_humidity_switch",
+                new=AsyncMock(return_value=[mock_entity]),
+            ),
+        ):
+            await humidity_switch_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        async_add_entities.assert_called_once_with([mock_entity], True)
+
+    async def test_number_async_setup_entry_no_devices(self):
+        """Test number platform setup with no filtered devices."""
+        async_add_entities = MagicMock()
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+            return_value=[],
+        ):
+            await humidity_number_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        async_add_entities.assert_not_called()
+
+    async def test_number_async_setup_entry_adds_entities(self):
+        """Test number platform setup adds created entities."""
+        async_add_entities = MagicMock()
+        mock_entity = MagicMock()
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+                return_value=[self.device_id],
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.number.create_humidity_number",
+                new=AsyncMock(return_value=[mock_entity]),
+            ),
+        ):
+            await humidity_number_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        async_add_entities.assert_called_once_with([mock_entity], True)
+
+    async def test_binary_sensor_async_setup_entry_no_devices(self):
+        """Test binary sensor platform setup with no filtered devices."""
+        async_add_entities = MagicMock()
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+            return_value=[],
+        ):
+            await humidity_binary_sensor_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        async_add_entities.assert_not_called()
+
+    async def test_binary_sensor_async_setup_entry_adds_entities(self):
+        """Test binary sensor platform setup adds and stores entities."""
+        async_add_entities = MagicMock()
+        mock_entity = MagicMock()
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+                return_value=[self.device_id],
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor.create_humidity_control_binary_sensor",
+                new=AsyncMock(return_value=[mock_entity]),
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup._store_entities_for_automation",
+            ) as mock_store,
+        ):
+            await humidity_binary_sensor_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        async_add_entities.assert_called_once_with([mock_entity], True)
+        mock_store.assert_called_once_with(self.hass, [mock_entity])
+
+    async def test_sensor_async_setup_entry_uses_platform_helper(self):
+        """Test sensor platform setup delegates to platform helper."""
+        async_add_entities = MagicMock()
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.async_create_and_add_platform_entities",
+            new=AsyncMock(),
+        ) as mock_helper:
+            await humidity_sensor_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        mock_helper.assert_called_once()
