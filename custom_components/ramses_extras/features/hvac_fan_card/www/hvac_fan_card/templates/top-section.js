@@ -102,8 +102,9 @@ export function createTopSection(data, t) {
             <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temperature')}: ${comfortTemp} °C</div>
             ${dehumEntitiesAvailable ? `
             <div class="r-xtrs-hvac-fan-dehum-row">
+              <span>${tr('controls.dehumidify', 'Balance')}</span>
+              <span>💧</span>
               <span id="dehumMode">${dehumMode}</span>
-              <span>⚡</span>
               <span class="r-xtrs-hvac-fan-arrow">→</span>
               <span id="dehumActive">${dehumActive}</span>
             </div>

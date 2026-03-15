@@ -56,7 +56,7 @@ class TestHumidityServices:
         self.hass.services.async_call.assert_called_with(
             "switch", SERVICE_TURN_ON, {"entity_id": entity_id}
         )
-        self.mock_ramses.send_command.assert_called_with(device_id, "fan_high")
+        self.mock_ramses.send_command.assert_not_called()
 
     @patch(
         "custom_components.ramses_extras.features.humidity_control.services.EntityHelpers"
@@ -84,7 +84,7 @@ class TestHumidityServices:
         self.hass.services.async_call.assert_called_with(
             "switch", SERVICE_TURN_OFF, {"entity_id": entity_id}
         )
-        self.mock_ramses.send_command.assert_called_with(device_id, "fan_auto")
+        self.mock_ramses.send_command.assert_not_called()
 
     async def test_async_set_fan_speed(self):
         """Test setting fan speed."""

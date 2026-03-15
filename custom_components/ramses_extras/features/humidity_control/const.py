@@ -47,8 +47,8 @@ ZEHNDER_DEVICE_MODELS = {
 # Feature-specific switch configurations
 HUMIDITY_SWITCH_CONFIGS = {
     "dehumidify": {
-        "name_template": "Dehumidify {device_id}",
-        "icon": "mdi:air-humidifier",
+        "name_template": "Balance {device_id}",
+        "icon": "mdi:water-percent",
         "entity_category": EntityCategory.CONFIG,
         "supported_device_types": ["HvacVentilator"],
         "entity_template": "dehumidify_{device_id}",
@@ -101,8 +101,8 @@ HUMIDITY_NUMBER_CONFIGS = {
 # Feature-specific binary sensor configurations
 HUMIDITY_BOOLEAN_CONFIGS = {
     "dehumidifying_active": {
-        "name_template": "Dehumidifying Active {device_id}",
-        "icon": "mdi:air-humidifier",
+        "name_template": "Balance Active {device_id}",
+        "icon": "mdi:water-percent",
         "entity_category": EntityCategory.DIAGNOSTIC,
         "device_class": "running",
         "supported_device_types": ["HvacVentilator"],

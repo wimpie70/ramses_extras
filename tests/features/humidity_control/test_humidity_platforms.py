@@ -44,13 +44,10 @@ class TestHumidityPlatforms:
         self.config_entry.data = {}
         self.device_id = "32_123456"
 
-    @patch(
-        "custom_components.ramses_extras.framework.helpers.device.core.find_ramses_device"
-    )
-    async def test_humidity_switch(self, mock_find_device):
+    async def test_humidity_switch(self):
         """Test HumidityControlSwitch."""
         config = {
-            "name": "Dehumidify",
+            "name": "Balance",
             "supported_device_types": ["HvacVentilator"],
             "entity_template": "dehumidify_{device_id}",
         }
@@ -62,25 +59,11 @@ class TestHumidityPlatforms:
         assert entity.is_on is False
         assert entity.extra_state_attributes["dehumidifying"] is False
 
-        # Test turn on
-        mock_device = MagicMock()
-        mock_find_device.return_value = mock_device
+        await entity.async_turn_on()
+        assert entity.is_on is True
 
-        # Mock _set_device_fan_speed to avoid actual side effects or complex mocks
-        with patch.object(
-            entity, "_set_device_fan_speed", new_callable=AsyncMock
-        ) as mock_set_speed:
-            await entity.async_turn_on()
-            assert entity.is_on is True
-            mock_set_speed.assert_called_once_with(mock_device, "high")
-
-        # Test turn off
-        with patch.object(
-            entity, "_set_device_fan_speed", new_callable=AsyncMock
-        ) as mock_set_speed:
-            await entity.async_turn_off()
-            assert entity.is_on is False
-            mock_set_speed.assert_called_once_with(mock_device, "auto")
+        await entity.async_turn_off()
+        assert entity.is_on is False
 
     async def test_create_humidity_switch(self):
         """Test create_humidity_switch factory."""
@@ -132,7 +115,7 @@ class TestHumidityPlatforms:
     async def test_humidity_binary_sensor(self):
         """Test HumidityControlBinarySensor."""
         config = {
-            "name": "Dehumidifying Active",
+            "name": "Balance Active",
             "supported_device_types": ["HvacVentilator"],
             "entity_template": "dehumidifying_active_{device_id}",
         }

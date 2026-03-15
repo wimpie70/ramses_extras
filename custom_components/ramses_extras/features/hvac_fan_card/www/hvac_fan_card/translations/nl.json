@@ -27,7 +27,7 @@
     "bypass_open": "Bypass Open",
     "bypass_close": "Bypass Dicht",
     "filter_reset": "Filter Reset",
-    "dehumidify": "Ontvochtigen"
+    "dehumidify": "Balans"
   },
   "parameters": {
     "title": "Ventilatie Parameters",
