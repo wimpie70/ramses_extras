@@ -11,9 +11,6 @@ global.console = {
   debug: jest.fn(),
 };
 
-// Mock DOM environment
-const { JSDOM } = require('jsdom');
-
 describe('HvacFanCard Integration', () => {
   let dom;
   let window;
@@ -22,14 +19,9 @@ describe('HvacFanCard Integration', () => {
 
   beforeEach(() => {
     // Set up DOM environment
-    dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', {
-      url: 'http://localhost:8123',
-      pretendToBeVisual: true,
-      resources: 'usable',
-    });
-
-    window = dom.window;
-    document = window.document;
+    window = global.window;
+    document = global.document;
+    dom = { window };
 
     // Mock Home Assistant
     window.customElements = {

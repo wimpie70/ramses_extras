@@ -74,11 +74,6 @@ class HumidityServices:
                 "switch", SERVICE_TURN_ON, {"entity_id": dehumidify_entity}
             )
 
-            # Set fan speed to HIGH for dehumidification
-            success = await self.async_set_fan_speed(device_id, "high")
-            if not success:
-                _LOGGER.warning("Failed to set fan speed for device %s", device_id)
-
             _LOGGER.info("Dehumidification activated: %s", dehumidify_entity)
             return True
 
@@ -108,11 +103,6 @@ class HumidityServices:
             await self.hass.services.async_call(
                 "switch", SERVICE_TURN_OFF, {"entity_id": dehumidify_entity}
             )
-
-            # Reset fan speed to AUTO/normal
-            success = await self.async_set_fan_speed(device_id, "auto")
-            if not success:
-                _LOGGER.warning("Failed to set fan auto speed for device %s", device_id)
 
             _LOGGER.info("Dehumidification deactivated: %s", dehumidify_entity)
             return True

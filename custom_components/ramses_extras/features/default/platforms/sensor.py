@@ -304,6 +304,8 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
 
         # Track if we have listeners set up (only for absolute humidity sensors)
         self._listeners_set_up = False
+        self._recalc_in_progress = False
+        self._recalc_requested = False
 
     @property
     def name(self) -> str:
@@ -408,7 +410,7 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         # Track state changes on both temperature and humidity sensor
         def _handle_state_change_event(event: Any) -> None:
             def _schedule_recalculate() -> None:
-                self.hass.async_create_task(self._recalculate_and_update())
+                self.hass.async_create_task(self._queue_recalculate())
 
             self.hass.loop.call_soon_threadsafe(_schedule_recalculate)
 
@@ -425,6 +427,21 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
             temp_entity,
             humidity_entity,
         )
+
+    async def _queue_recalculate(self) -> None:
+        if self._recalc_in_progress:
+            self._recalc_requested = True
+            return
+
+        self._recalc_in_progress = True
+        try:
+            while True:
+                self._recalc_requested = False
+                await self._recalculate_and_update()
+                if not self._recalc_requested:
+                    break
+        finally:
+            self._recalc_in_progress = False
 
     async def _recalculate_and_update(self) -> None:
         """Recalculate absolute humidity and update sensor state.
@@ -448,6 +465,9 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
                 result = self._calculate_abs_humidity(temp, rh)
 
             if result is not None:
+                current_value = getattr(self, "_attr_native_value", None)
+                if current_value == result:
+                    return
                 _LOGGER.debug(
                     "Recalculated absolute humidity for %s: %.2f g/m³",
                     self._attr_name,

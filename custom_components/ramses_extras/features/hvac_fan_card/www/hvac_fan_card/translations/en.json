@@ -27,7 +27,7 @@
     "bypass_open": "Bypass Open",
     "bypass_close": "Bypass Close",
     "filter_reset": "Filter Reset",
-    "dehumidify": "Dehumidify"
+    "dehumidify": "Balance"
   },
   "parameters": {
     "title": "Ventilation Parameters",

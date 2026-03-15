@@ -60,7 +60,7 @@ class HumidityEntities:
             },
             "switch": {
                 "dehumidify": {
-                    "name": "Dehumidify",
+                    "name": "Balance",
                     "icon": "mdi:air-humidifier",
                     "category": "control",
                 },
@@ -102,7 +102,7 @@ class HumidityEntities:
             },
             "binary_sensor": {
                 "dehumidifying_active": {
-                    "name": "Dehumidifying Active",
+                    "name": "Balance Active",
                     "device_class": "running",
                     "icon": "mdi:air-humidifier",
                     "category": "diagnostic",

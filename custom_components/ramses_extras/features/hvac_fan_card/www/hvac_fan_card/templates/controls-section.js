@@ -41,8 +41,8 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
         </div>
         ${dehumEntitiesAvailable ? `
         <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-dehumidify" data-entity-id="${config.dehum_mode_entity || 'switch.dehumidify_' + config.device_id.replace(/:/g, '_')}">
-          <div class="r-xtrs-hvac-fan-control-icon">⚡</div>
-          <div class="r-xtrs-hvac-fan-control-label">${tr('controls.dehumidify', 'Dehumidify')}</div>
+          <div class="r-xtrs-hvac-fan-control-icon">💧</div>
+          <div class="r-xtrs-hvac-fan-control-label">${tr('controls.dehumidify', 'Balance')}</div>
         </div>
         ` : ''}
       </div>
