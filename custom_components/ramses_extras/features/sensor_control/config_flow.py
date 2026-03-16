@@ -606,6 +606,14 @@ async def async_step_sensor_control_config(
             device_area_sensors,
             getattr(flow, "_sensor_control_area_sensor_id", None),
         )
+        info_suffix_translations = (
+            await _async_load_sensor_control_info_suffix_translations(flow.hass)
+        )
+
+        def _t_area(key: str, default: str) -> str:
+            val = info_suffix_translations.get(key)
+            return val if isinstance(val, str) and val else default
+
         if user_input is not None:
             label = str(user_input.get("area_sensor_label") or "").strip()
             source_id = (
@@ -724,7 +732,14 @@ async def async_step_sensor_control_config(
                         if selected_area_sensor
                         else 3
                     ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1,
+                        max=60,
+                        step=1,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
                 vol.Required(
                     "check_interval_minutes",
                     default=int(
@@ -732,15 +747,36 @@ async def async_step_sensor_control_config(
                         if selected_area_sensor
                         else 1
                     ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1,
+                        max=30,
+                        step=1,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
             }
         )
 
         info_text = (
             "🧭 **Sensor Control**\n\n"
             f"Configuring device: `{selected_device_id}`\n\n"
-            "Define one local area sensor using temperature + humidity inputs. "
-            "This will later drive derived absolute humidity and spike detection."
+            f"{
+                _t_area(
+                    'area_sensors_edit',
+                    'Define one local area sensor using temperature + humidity inputs. '
+                    'This will later drive derived absolute humidity '
+                    'and spike detection.',
+                )
+            } \
+            \n\n"
+            f"{
+                _t_area(
+                    'area_sensors_entity_note',
+                    'Temperature entity and humidity entity should come from '
+                    'the same device, or be positioned very close together.',
+                )
+            }"
         )
         return flow.async_show_form(
             step_id="feature_config",

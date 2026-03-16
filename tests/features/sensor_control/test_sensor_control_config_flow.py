@@ -227,6 +227,26 @@ async def test_async_step_sensor_control_config_select_group_select(flow, helper
         assert flow._sensor_control_group_stage == "indoor_basic"
 
 
+async def test_async_step_sensor_control_config_select_group_shows_area_sensors(
+    flow, helper
+):
+    """The FAN group menu should expose the area sensors entry."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "select_group"
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(flow, None)
+
+    config = flow.async_show_form.call_args.kwargs["data_schema"].schema["group_action"]
+    options = config.config["options"]
+    assert any(option["value"] == "area_sensors" for option in options)
+
+
 async def test_async_step_sensor_control_config_select_group_done(flow, helper):
     """Test the 'done' action in the group selection menu."""
     flow._get_config_flow_helper.return_value = helper
