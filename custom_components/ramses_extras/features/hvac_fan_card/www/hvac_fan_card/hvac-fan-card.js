@@ -291,7 +291,6 @@ class HvacFanCard extends RamsesBaseCard {
     // Generate HTML using template functions
     const cardHtml = [
       createCardHeader(CARD_STYLE),
-      this._createSensorSourcesPanel(),
       createTopSection(templateData, this.t?.bind(this)),
       createControlsSection(
         dehumEntitiesAvailable,
@@ -788,7 +787,6 @@ class HvacFanCard extends RamsesBaseCard {
     // Generate HTML using template functions
     const cardHtml = [
       createCardHeader(CARD_STYLE),
-      this._createSensorSourcesPanel(),
       createTopSection(templateData, this.t?.bind(this)),
       createControlsSection(
         dehumEntitiesAvailable,

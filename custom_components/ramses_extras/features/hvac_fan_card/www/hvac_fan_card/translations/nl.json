@@ -27,7 +27,10 @@
     "bypass_open": "Bypass Open",
     "bypass_close": "Bypass Dicht",
     "filter_reset": "Filter Reset",
-    "dehumidify": "Balans"
+    "dehumidify": "Balans",
+    "activated": "Geactiveerd",
+    "tracking_by": "Volgt op",
+    "indoor": "Binnen"
   },
   "parameters": {
     "title": "Ventilatie Parameters",

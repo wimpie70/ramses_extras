@@ -263,6 +263,20 @@ export const CARD_STYLE = `
   border-top: 1px solid var(--divider-color);
 }
 
+.r-xtrs-hvac-fan-balance-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.r-xtrs-hvac-fan-dehum-subrow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 100%;
+}
+
 .r-xtrs-hvac-fan-corner-value.top-left { top: 15px; left: 10px; text-align: left; }
 .r-xtrs-hvac-fan-corner-value.top-right { top: 15px; right: 10px; text-align: right; }
 .r-xtrs-hvac-fan-corner-value.bottom-left { bottom: 15px; left: 15px; background: none; box-shadow: none; border: none; padding: 0; width: auto; }

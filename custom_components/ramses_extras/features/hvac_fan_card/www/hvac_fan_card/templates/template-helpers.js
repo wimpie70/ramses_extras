@@ -67,7 +67,7 @@ export function createTemplateData(rawData) {
     indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
     indoorAbsHumidity, outdoorAbsHumidity,  // Integration-provided values (preferred)
     supplyTemp, exhaustTemp, exhaustFanSpeed, supplyFanSpeed, fanMode, co2Level, supplyFlowRate, exhaustFlowRate,
-    dehumMode, dehumActive, dehumEntitiesAvailable, comfortTemp, timerMinutes = 0, efficiency = 75,
+    dehumMode, dehumActive, dehumEntitiesAvailable, balanceTrackingLabel, comfortTemp, timerMinutes = 0, efficiency = 75,
     filterDaysRemaining = null
   } = rawData;
 
@@ -115,6 +115,7 @@ export function createTemplateData(rawData) {
     dehumMode: dehumMode || 'off',
     dehumActive: dehumActive || 'off',
     dehumEntitiesAvailable: dehumEntitiesAvailable || false,
+    balanceTrackingLabel: balanceTrackingLabel || 'Indoor',
     comfortTemp: comfortTemp || '?',
 
     // Timer and bypass state
