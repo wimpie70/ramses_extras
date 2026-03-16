@@ -256,6 +256,30 @@ class ExtrasBaseAutomation(ABC):
 
         listeners_registered = 0
 
+        def _register_listener(entity_id: str) -> bool:
+            if entity_id in self._specific_entity_ids:
+                return False
+
+            def _handle_state_change_event(event: Event) -> None:
+                self._handle_state_change(
+                    event.data.get("entity_id"),
+                    event.data.get("old_state"),
+                    event.data.get("new_state"),
+                )
+
+            listener = async_track_state_change_event(
+                self.hass,
+                entity_id,
+                _handle_state_change_event,
+            )
+            if not listener:
+                return False
+
+            self._listeners.append(listener)
+            self._specific_entity_ids.add(entity_id)
+            _LOGGER.debug("Registered listener: %s", entity_id)
+            return True
+
         # Register listeners for each entity pattern
         for pattern in self.entity_patterns:
             if pattern.endswith("*"):
@@ -266,29 +290,12 @@ class ExtrasBaseAutomation(ABC):
                 for entity in entities:
                     if entity.entity_id.startswith(prefix):
                         _LOGGER.debug("Found entity: %s", entity.entity_id)
-                        if entity.entity_id not in self._specific_entity_ids:
-
-                            def _handle_state_change_event(event: Event) -> None:
-                                self._handle_state_change(
-                                    event.data.get("entity_id"),
-                                    event.data.get("old_state"),
-                                    event.data.get("new_state"),
-                                )
-
-                            listener = async_track_state_change_event(
-                                self.hass,
-                                entity.entity_id,
-                                _handle_state_change_event,
-                            )
-
-                            if listener:
-                                self._listeners.append(listener)
-                                self._specific_entity_ids.add(entity.entity_id)
-                                listeners_registered += 1
-                                _LOGGER.debug(
-                                    "Registered listener: %s",
-                                    entity.entity_id,
-                                )
+                        if _register_listener(entity.entity_id):
+                            listeners_registered += 1
+            elif self.hass.states.get(pattern) is not None:
+                _LOGGER.debug("Found exact entity: %s", pattern)
+                if _register_listener(pattern):
+                    listeners_registered += 1
 
         if listeners_registered == 0 and self._periodic_check_handle is not None:
             _LOGGER.debug(

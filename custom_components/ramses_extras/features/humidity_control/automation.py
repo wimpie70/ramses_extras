@@ -9,7 +9,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable, Mapping
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from homeassistant.core import Event, HomeAssistant, State
@@ -139,6 +139,34 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         )
         _LOGGER.debug("Entity patterns: %s", patterns)
         return patterns
+
+    def _extract_device_id(self, entity_id: str) -> str | None:
+        device_id = super()._extract_device_id(entity_id)
+        if isinstance(device_id, str) and device_id:
+            return device_id
+
+        sensor_control_config = (
+            self.config_entry.options.get("sensor_control")
+            or self.config_entry.data.get("sensor_control")
+            or {}
+        )
+        area_sensor_map = sensor_control_config.get("area_sensors") or {}
+        if not isinstance(area_sensor_map, dict):
+            return None
+
+        for raw_device_id, area_sensors in area_sensor_map.items():
+            if not isinstance(area_sensors, list):
+                continue
+            for item in area_sensors:
+                if not isinstance(item, dict):
+                    continue
+                if entity_id in {
+                    str(item.get("temperature_entity") or "").strip(),
+                    str(item.get("humidity_entity") or "").strip(),
+                }:
+                    return cast(str, raw_device_id).replace(":", "_")
+
+        return None
 
     async def _check_any_device_ready(self) -> bool:
         """Check if any device has all required humidity control entities ready.
@@ -1180,10 +1208,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             current_abs = item.get("current_abs")
             if current_abs is None:
                 continue
-            current_rh = item.get("current_rh")
-            if current_rh is None or float(current_rh) <= max_humidity:
-                continue
-
             history = device_history.get(source_id, [])
             if not history:
                 continue
@@ -1205,6 +1229,26 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             if rise_percent < threshold_percent:
                 continue
             if float(current_abs) <= max(indoor_abs, outdoor_abs + offset):
+                continue
+            current_rh = item.get("current_rh")
+            if current_rh is None:
+                _LOGGER.debug(
+                    "Ignoring area spike candidate for %s/%s: missing current RH",
+                    device_id,
+                    source_id,
+                )
+                continue
+            if float(current_rh) <= max_humidity:
+                _LOGGER.debug(
+                    (
+                        "Ignoring area spike candidate for %s/%s: RH %.1f%% "
+                        "<= max %.1f%%"
+                    ),
+                    device_id,
+                    source_id,
+                    float(current_rh),
+                    max_humidity,
+                )
                 continue
 
             spikes.append(
@@ -1261,6 +1305,17 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if isinstance(active_spikes, dict):
             return [active_spikes]
         return []
+
+    def _format_active_trigger_label(self, trigger: dict[str, Any]) -> str:
+        label = str(trigger.get("label") or trigger.get("source_id") or "Unknown")
+        current_rh = trigger.get("current_rh")
+        if current_rh is None:
+            return label
+        try:
+            rh_value = float(current_rh)
+        except (TypeError, ValueError):
+            return label
+        return f"{label} ({rh_value:.0f}%)"
 
     def _set_active_area_spikes(
         self, device_id: str, active_spikes: list[dict[str, Any]]
@@ -1327,6 +1382,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             if current_abs <= outdoor_abs + offset:
                 continue
             if current_rh is not None and float(current_rh) <= max_humidity:
+                _LOGGER.debug(
+                    "Clearing active area spike for %s/%s: RH %.1f%% <= max %.1f%%",
+                    device_id,
+                    source_id,
+                    float(current_rh),
+                    max_humidity,
+                )
                 continue
 
             updated_spike = active_spike.copy()
@@ -1388,11 +1450,16 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         self._cancel_area_spike_recheck(device_id)
         interval_minutes = max(1, check_interval_minutes)
+
+        def _schedule_recheck(_: datetime) -> None:
+            def _create_task() -> None:
+                self.hass.async_create_task(self._async_recheck_area_spike(device_id))
+
+            self.hass.loop.call_soon_threadsafe(_create_task)
+
         self._area_spike_check_handles[device_id] = async_track_time_interval(
             self.hass,
-            lambda now: self.hass.async_create_task(
-                self._async_recheck_area_spike(device_id)
-            ),
+            _schedule_recheck,
             timedelta(minutes=interval_minutes),
         )
 
@@ -1478,7 +1545,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 if item.get("source_id")
             ]
             attrs["active_trigger_labels"] = [
-                item.get("label") or item.get("source_id")
+                self._format_active_trigger_label(item)
                 for item in active_triggers
                 if item.get("label") or item.get("source_id")
             ]

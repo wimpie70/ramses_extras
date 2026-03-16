@@ -364,6 +364,7 @@ class TestHumidityAutomationManager:
                 "source_id": "bathroom",
                 "label": "Bathroom",
                 "current_abs": 12.0,
+                "current_rh": 68.0,
                 "baseline_abs": 10.0,
                 "rise_percent": 20.0,
                 "check_interval_minutes": 1,
@@ -373,6 +374,7 @@ class TestHumidityAutomationManager:
                     "source_id": "bathroom",
                     "label": "Bathroom",
                     "current_abs": 12.0,
+                    "current_rh": 68.0,
                     "baseline_abs": 10.0,
                     "rise_percent": 20.0,
                     "check_interval_minutes": 1,
@@ -381,6 +383,7 @@ class TestHumidityAutomationManager:
                     "source_id": "ensuite",
                     "label": "Ensuite",
                     "current_abs": 11.8,
+                    "current_rh": 64.0,
                     "baseline_abs": 10.1,
                     "rise_percent": 16.8,
                     "check_interval_minutes": 2,
@@ -394,8 +397,11 @@ class TestHumidityAutomationManager:
         assert attrs["active_trigger_source_id"] == "bathroom"
         assert attrs["active_trigger_label"] == "Bathroom"
         assert attrs["active_trigger_rise_percent"] == 20.0
-        assert attrs["active_trigger_labels"] == ["Bathroom", "Ensuite"]
-        assert attrs["active_trigger_labels_text"] == "Bathroom, Ensuite"
+        assert attrs["active_trigger_labels"] == [
+            "Bathroom (68%)",
+            "Ensuite (64%)",
+        ]
+        assert attrs["active_trigger_labels_text"] == ("Bathroom (68%), Ensuite (64%)")
         assert attrs["next_check_interval_minutes"] == 1
 
     def test_build_indicator_attributes_with_active_spike_fallback(self):
@@ -405,6 +411,7 @@ class TestHumidityAutomationManager:
                 "source_id": "bathroom",
                 "label": "Bathroom",
                 "current_abs": 12.0,
+                "current_rh": 68.0,
                 "baseline_abs": 10.0,
                 "rise_percent": 20.0,
                 "check_interval_minutes": 1,
@@ -413,6 +420,7 @@ class TestHumidityAutomationManager:
                 "source_id": "ensuite",
                 "label": "Ensuite",
                 "current_abs": 11.8,
+                "current_rh": 64.0,
                 "baseline_abs": 10.1,
                 "rise_percent": 16.8,
                 "check_interval_minutes": 2,
@@ -426,7 +434,7 @@ class TestHumidityAutomationManager:
 
         assert attrs["control_mode"] == "spike_boost"
         assert attrs["active_trigger_source_id"] == "bathroom"
-        assert attrs["active_trigger_labels_text"] == "Bathroom, Ensuite"
+        assert attrs["active_trigger_labels_text"] == ("Bathroom (68%), Ensuite (64%)")
         assert attrs["next_check_interval_minutes"] == 1
 
     def test_detect_area_spike_guard_paths(self):
