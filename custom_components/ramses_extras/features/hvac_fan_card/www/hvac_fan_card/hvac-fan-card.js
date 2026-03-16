@@ -270,6 +270,7 @@ class HvacFanCard extends RamsesBaseCard {
       dehumActive: dehumEntitiesAvailable
         ? this.getEntityState(config.dehum_active_entity)?.state || 'off'
         : null,
+      balanceTrackingLabel: this._getBalanceTrackingLabel(),
       comfortTemp: this.getEntityStateAsNumber(config.comfort_temp_entity, null),
       bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position :
         (this.getEntityState(config.bypass_entity)?.state === 'on' ? 100 : null),
@@ -586,6 +587,18 @@ class HvacFanCard extends RamsesBaseCard {
     return this.getEntityState(entityId)?.attributes || {};
   }
 
+  _getBalanceTrackingLabel() {
+    const attrs = this._getDehumidifyStatusAttributes();
+    const controlMode = attrs.control_mode;
+    if (controlMode === 'spike_boost') {
+      return attrs.active_trigger_label || attrs.active_trigger_source_id || 'Indoor';
+    }
+    if (controlMode === 'balance') {
+      return 'Indoor';
+    }
+    return attrs.active_trigger_label || attrs.active_trigger_source_id || 'Indoor';
+  }
+
   _createActiveControlIndicator() {
     const attrs = this._getDehumidifyStatusAttributes();
     const controlMode = attrs.control_mode;
@@ -750,6 +763,7 @@ class HvacFanCard extends RamsesBaseCard {
       dehumActive: dehumEntitiesAvailable
         ? this.getEntityState(config.dehum_active_entity)?.state || 'off'
         : null,
+      balanceTrackingLabel: this._getBalanceTrackingLabel(),
       // Comfort temperature entity (will be available when created)
       comfortTemp: this.getEntityStateAsNumber(config.comfort_temp_entity, null),
       // Bypass position - prefer 31DA real-time, fall back to entity state
