@@ -166,13 +166,14 @@ Questions to finalize during implementation:
 - [ ] whether outdoor comparison is required or advisory for activation
 - [ ] whether activation should require both RH rise and abs rise, or use RH rise as trigger and abs/outdoor as the decision gate
 
-### Periodic re-evaluation / stop conditions
+### Event-driven re-evaluation / stop conditions
 
 - [ ] Enter spike-boost state when an area sensor spike is detected
-- [ ] Re-evaluate active spike control every configured interval
+- [ ] Re-evaluate active spike control on matching entity updates
+- [ ] Keep a configured interval recheck only as a fallback safety net
 - [ ] Do not restore a cached previous fan state
-- [ ] If the area remains too humid and outdoor air is still beneficial, remain on high
-- [ ] If the area has recovered enough, or outdoor abs humidity is now worse, stop spike boost
+- [ ] If one or more triggered areas remain above their recovery target and outdoor air is still beneficial, remain on high
+- [ ] If all triggered areas recover to the configured max RH range, or outdoor abs humidity is now worse, stop spike boost
 - [ ] When spike boost stops, fall back to the current balance/manual logic outcome at that moment
 
 ### Manual mode assumptions for now
@@ -194,8 +195,8 @@ Use outdoor comparison as part of the decision model.
 ### Main card
 
 - [ ] do not overload the main card with every area-sensor value by default
-- [ ] show the currently active trigger area sensor when spike control is active
-- [ ] show the relevant values for that active area sensor
+- [ ] show the active trigger list when spike control is active
+- [ ] show the relevant values for the primary trigger while keeping the trigger list visible
 
 ### Settings / sensor sources panel
 
@@ -241,13 +242,13 @@ Treat current `area_sensors` as compatible with future real zone support.
 
 - [ ] add spike evaluation state machine
 - [ ] evaluate all configured `area_sensors` on updates
-- [ ] add periodic re-evaluation scheduling for active spike control
-- [ ] expose active trigger area sensor and mode in entity attributes
+- [ ] keep event-driven updates primary and periodic re-evaluation as fallback
+- [ ] expose active trigger area sensor list and mode in entity attributes
 - [ ] keep current balance behaviour intact when no source spikes
 
 ### 5. Extend HVAC fan card
 
-- [ ] show active trigger area sensor + values during spike control
+- [ ] show active trigger list + values during spike control
 - [ ] show all configured `area_sensors` in the settings/source panel
 - [ ] keep card data fully resolver/websocket driven
 - [ ] add frontend tests for area-sensor listing / active trigger rendering

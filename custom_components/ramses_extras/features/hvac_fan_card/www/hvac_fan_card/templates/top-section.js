@@ -112,7 +112,7 @@ export function createTopSection(data, t) {
                 <span id="dehumActive">${dehumActive}</span>
               </div>
               <div class="r-xtrs-hvac-fan-dehum-subrow">
-                <span>${tr('controls.tracking_by', 'Tracking by')}</span>
+                <span>${tr('controls.triggers', 'Triggers')}</span>
                 <span id="dehumTracking">${balanceTrackingLabel || tr('controls.indoor', 'Indoor')}</span>
               </div>
             </div>

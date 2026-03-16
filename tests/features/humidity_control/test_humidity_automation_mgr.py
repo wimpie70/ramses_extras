@@ -301,7 +301,7 @@ class TestHumidityAutomationManager:
                 indoor_abs=10.0,
                 outdoor_abs=8.0,
                 min_humidity=40.0,
-                max_humidity=75.0,
+                max_humidity=60.0,
                 offset=0.0,
             )
 
@@ -318,7 +318,9 @@ class TestHumidityAutomationManager:
             "baseline_abs": 10.0,
             "check_interval_minutes": 1,
         }
-        area_sensor_states = [{"source_id": "bathroom", "current_abs": 9.5}]
+        area_sensor_states = [
+            {"source_id": "bathroom", "current_abs": 9.5, "current_rh": 60.0}
+        ]
 
         decision = self.manager._evaluate_active_area_spike(
             device_id="test",
@@ -338,7 +340,9 @@ class TestHumidityAutomationManager:
             "baseline_abs": 10.0,
             "check_interval_minutes": 1,
         }
-        area_sensor_states = [{"source_id": "bathroom", "current_abs": 12.0}]
+        area_sensor_states = [
+            {"source_id": "bathroom", "current_abs": 12.0, "current_rh": 75.0}
+        ]
 
         decision = self.manager._evaluate_active_area_spike(
             device_id="test",
@@ -364,6 +368,24 @@ class TestHumidityAutomationManager:
                 "rise_percent": 20.0,
                 "check_interval_minutes": 1,
             },
+            "active_triggers": [
+                {
+                    "source_id": "bathroom",
+                    "label": "Bathroom",
+                    "current_abs": 12.0,
+                    "baseline_abs": 10.0,
+                    "rise_percent": 20.0,
+                    "check_interval_minutes": 1,
+                },
+                {
+                    "source_id": "ensuite",
+                    "label": "Ensuite",
+                    "current_abs": 11.8,
+                    "baseline_abs": 10.1,
+                    "rise_percent": 16.8,
+                    "check_interval_minutes": 2,
+                },
+            ],
         }
 
         attrs = self.manager._build_indicator_attributes("32_123456", decision)
@@ -372,17 +394,30 @@ class TestHumidityAutomationManager:
         assert attrs["active_trigger_source_id"] == "bathroom"
         assert attrs["active_trigger_label"] == "Bathroom"
         assert attrs["active_trigger_rise_percent"] == 20.0
+        assert attrs["active_trigger_labels"] == ["Bathroom", "Ensuite"]
+        assert attrs["active_trigger_labels_text"] == "Bathroom, Ensuite"
+        assert attrs["next_check_interval_minutes"] == 1
 
     def test_build_indicator_attributes_with_active_spike_fallback(self):
         """Active spike cache should populate indicator metadata when needed."""
-        self.manager._active_area_spikes["32_123456"] = {
-            "source_id": "bathroom",
-            "label": "Bathroom",
-            "current_abs": 12.0,
-            "baseline_abs": 10.0,
-            "rise_percent": 20.0,
-            "check_interval_minutes": 1,
-        }
+        self.manager._active_area_spikes["32_123456"] = [
+            {
+                "source_id": "bathroom",
+                "label": "Bathroom",
+                "current_abs": 12.0,
+                "baseline_abs": 10.0,
+                "rise_percent": 20.0,
+                "check_interval_minutes": 1,
+            },
+            {
+                "source_id": "ensuite",
+                "label": "Ensuite",
+                "current_abs": 11.8,
+                "baseline_abs": 10.1,
+                "rise_percent": 16.8,
+                "check_interval_minutes": 2,
+            },
+        ]
 
         attrs = self.manager._build_indicator_attributes(
             "32_123456",
@@ -391,6 +426,7 @@ class TestHumidityAutomationManager:
 
         assert attrs["control_mode"] == "spike_boost"
         assert attrs["active_trigger_source_id"] == "bathroom"
+        assert attrs["active_trigger_labels_text"] == "Bathroom, Ensuite"
         assert attrs["next_check_interval_minutes"] == 1
 
     def test_detect_area_spike_guard_paths(self):
@@ -567,7 +603,13 @@ class TestHumidityAutomationManager:
                 indoor_abs=10.0,
                 outdoor_abs=10.0,
                 offset=1.0,
-                area_sensor_states=[{"source_id": "bathroom", "current_abs": 10.5}],
+                area_sensor_states=[
+                    {
+                        "source_id": "bathroom",
+                        "current_abs": 10.5,
+                        "current_rh": 70.0,
+                    }
+                ],
             )
             is None
         )
@@ -757,6 +799,50 @@ class TestHumidityAutomationManager:
                 result = await self.manager._get_sensor_control_context(device_id)
                 assert result["success"] is True
                 assert result["mappings"]["indoor_humidity"] == "sensor.other_rh"
+
+    async def test_get_sensor_control_overlay(self):
+        """Test sensor_control overlay merges area sensor metadata."""
+        device_id = "32_123456"
+        self.hass.data = {
+            DOMAIN: {
+                "devices": [
+                    {
+                        "device_id": "32:123456",
+                        "type": "FAN",
+                    }
+                ]
+            }
+        }
+
+        with patch(
+            "custom_components.ramses_extras.features.sensor_control.resolver.SensorControlResolver.resolve_entity_mappings",
+            new=AsyncMock(
+                return_value={
+                    "mappings": {"indoor_humidity": "sensor.bathroom_humidity"},
+                    "sources": {"indoor_humidity": {"kind": "external"}},
+                    "raw_internal": {
+                        "indoor_humidity": "sensor.fan_32_123456_indoor_humidity"
+                    },
+                    "abs_humidity_inputs": {
+                        "indoor_abs_humidity": {"kind": "area_sensor"}
+                    },
+                    "area_sensors": [{"source_id": "bathroom", "label": "Bathroom"}],
+                }
+            ),
+        ):
+            result = await self.manager._get_sensor_control_overlay(
+                device_id,
+                {"indoor_abs": "sensor.indoor_absolute_humidity_32_123456"},
+            )
+
+        assert (
+            result["mappings"]["indoor_abs"]
+            == "sensor.indoor_absolute_humidity_32_123456"
+        )
+        assert result["mappings"]["indoor_humidity"] == "sensor.bathroom_humidity"
+        assert result["area_sensors"] == [
+            {"source_id": "bathroom", "label": "Bathroom"}
+        ]
 
     def test_is_sensor_control_enabled(self):
         """Test sensor control enabled check."""

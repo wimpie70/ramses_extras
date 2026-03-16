@@ -559,6 +559,37 @@ async def test_async_step_sensor_control_config_area_sensors_menu_shows_edit_opt
     assert "area sensor Bathroom" in info_text
 
 
+async def test_async_step_sensor_control_config_selectors_allow_input_number(
+    flow, helper
+):
+    """Selectors should allow sensor and input_number entities."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        flow._sensor_control_group_stage = "indoor_basic"
+        await async_step_sensor_control_config(flow, None)
+        indoor_schema = flow.async_show_form.call_args.kwargs["data_schema"].schema
+        temp_selector = indoor_schema["indoor_temperature_entity"]
+        hum_selector = indoor_schema["indoor_humidity_entity"]
+        assert temp_selector.config["domain"] == ["sensor", "input_number"]
+        assert hum_selector.config["domain"] == ["sensor", "input_number"]
+
+        flow.async_show_form.reset_mock()
+        flow._sensor_control_group_stage = "area_sensors_edit"
+        flow._sensor_control_area_sensor_id = None
+        await async_step_sensor_control_config(flow, None)
+        area_schema = flow.async_show_form.call_args.kwargs["data_schema"].schema
+        area_temp_selector = area_schema["temperature_entity"]
+        area_hum_selector = area_schema["humidity_entity"]
+        assert area_temp_selector.config["domain"] == ["sensor", "input_number"]
+        assert area_hum_selector.config["domain"] == ["sensor", "input_number"]
+
+
 async def test_async_step_sensor_control_config_device_overview_formats_mappings(
     flow, helper
 ):

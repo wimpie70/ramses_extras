@@ -683,7 +683,7 @@ async def async_step_sensor_control_config(
             else None
         )
         area_sensor_selector = selector.EntitySelector(
-            selector.EntitySelectorConfig(domain=["sensor"])
+            selector.EntitySelectorConfig(domain=["sensor", "input_number"])
         )
         temp_key = (
             vol.Required("temperature_entity")
@@ -829,7 +829,7 @@ async def async_step_sensor_control_config(
     ]
 
     sensor_selector = selector.EntitySelector(
-        selector.EntitySelectorConfig(domain=["sensor"])
+        selector.EntitySelectorConfig(domain=["sensor", "input_number"])
     )
 
     info_suffix_translations = (

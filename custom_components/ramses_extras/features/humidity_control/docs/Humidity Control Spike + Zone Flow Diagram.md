@@ -21,7 +21,9 @@ This design keeps the existing feature boundaries:
   - temperature + relative humidity for derivation
   - or a direct absolute humidity entity
 - no RH-only fallback path
-- when spike timeout/cooldown expires, the automation **recalculates current conditions**
+- matching state changes remain the **primary** way spike control is re-evaluated
+- the interval timer acts only as a fallback safety recheck
+- when the fallback recheck fires, the automation **recalculates current conditions**
   instead of restoring a cached previous fan state
 - when **Balance** is enabled, additional configured `area_sensors` may trigger `fan_high`
 - manual-mode overrule logic is deferred for future work
@@ -66,20 +68,20 @@ continues to use the existing `abs_humidity_inputs` config model.
 
 ```mermaid
 flowchart TD
-    START[Humidity-related state change or timer expiry] --> SWITCH{Balance switch ON?}
+    START[Humidity-related state change or fallback timer recheck] --> SWITCH{Balance switch ON?}
 
     SWITCH -->|NO| OFFPATH[Do not run balance/spike override logic<br/>Leave current conservative/manual path unchanged]
 
     SWITCH -->|YES| LOAD[Load effective primary metrics<br/>Load all configured area_sensors]
     LOAD --> VALID{Any valid area_sensor spikes?}
 
-    VALID -->|YES| SPIKECMP{Area sensor abs humidity meaningfully above outdoor / still worth venting?}
+    VALID -->|YES| SPIKECMP{One or more area sensors still above recovery target and outdoor air still helps?}
     VALID -->|NO| BALANCE[Run normal balance logic]
 
-    SPIKECMP -->|YES| HIGH[Set fan HIGH<br/>Mark active mode = spike_boost<br/>Store active area sensor + values<br/>Start/extend timer]
+    SPIKECMP -->|YES| HIGH[Set fan HIGH<br/>Mark active mode = spike_boost<br/>Store active trigger list + values<br/>Start/extend fallback timer]
     SPIKECMP -->|NO| BALANCE
 
-    HIGH --> TIMER[Timer/cooldown expires]
+    HIGH --> TIMER[Fallback timer recheck]
     TIMER --> RECALC[Recalculate current situation]
     RECALC --> LOAD
 
@@ -125,14 +127,14 @@ flowchart TD
 - evaluates normal balance conditions
 - evaluates `area_sensor` moisture spikes
 - decides when `fan_high` is required
-- maintains timer/cooldown state
-- recalculates at timeout instead of restoring previous state
-- exposes active area sensor, mode, and values for diagnostics/UI
+- maintains fallback timer/recheck state
+- recalculates at fallback timeout instead of restoring previous state
+- exposes active trigger list, mode, and values for diagnostics/UI
 
 ### HVAC fan card
 
 - does not list every area sensor on the main card by default
-- shows active trigger area sensor + relevant values when spike control is active
+- shows active trigger area sensor list + relevant values when spike control is active
 - in settings / Sensor Sources panel, lists all configured sensor-control
   `area_sensors`
 - shows whether each area sensor is direct-abs or derived
@@ -147,7 +149,7 @@ Suggested observable state:
   - `idle`
   - `balance`
   - `spike_boost`
-- active area-sensor label / id
+- active area-sensor label / id list
 - active area-sensor absolute humidity
 - area-sensor delta / rise summary
 - outdoor absolute humidity used in comparison

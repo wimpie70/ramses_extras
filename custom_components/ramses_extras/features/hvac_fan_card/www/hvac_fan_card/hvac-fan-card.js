@@ -590,12 +590,18 @@ class HvacFanCard extends RamsesBaseCard {
     const attrs = this._getDehumidifyStatusAttributes();
     const controlMode = attrs.control_mode;
     if (controlMode === 'spike_boost') {
-      return attrs.active_trigger_label || attrs.active_trigger_source_id || 'Indoor';
+      return attrs.active_trigger_labels_text
+        || attrs.active_trigger_label
+        || attrs.active_trigger_source_id
+        || 'Indoor';
     }
     if (controlMode === 'balance') {
       return 'Indoor';
     }
-    return attrs.active_trigger_label || attrs.active_trigger_source_id || 'Indoor';
+    return attrs.active_trigger_labels_text
+      || attrs.active_trigger_label
+      || attrs.active_trigger_source_id
+      || 'Indoor';
   }
 
   _createActiveControlIndicator() {
@@ -605,7 +611,9 @@ class HvacFanCard extends RamsesBaseCard {
       return '';
     }
 
-    const sourceLabel = attrs.active_trigger_label || attrs.active_trigger_source_id;
+    const sourceLabel = attrs.active_trigger_labels_text
+      || attrs.active_trigger_label
+      || attrs.active_trigger_source_id;
     const risePercent = attrs.active_trigger_rise_percent;
     const interval = attrs.next_check_interval_minutes;
     const displayEntity = [
