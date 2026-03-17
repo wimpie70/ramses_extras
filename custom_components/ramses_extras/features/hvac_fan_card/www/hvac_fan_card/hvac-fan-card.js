@@ -588,6 +588,9 @@ class HvacFanCard extends RamsesBaseCard {
     const humidityEntity = areaSensor?.humidity_entity || 'n/a';
     const zoneId = areaSensor?.zone_id || '—';
     const isEnabled = areaSensor?.enabled !== false;
+    const triggersHighHumidity = ['true', true, 1, '1'].includes(
+      areaSensor?.trigger_on_high_humidity
+    );
 
     // Get current values
     let tempValue = '—';
@@ -644,6 +647,14 @@ class HvacFanCard extends RamsesBaseCard {
           <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
             <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Zone:</span>
             <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${zoneId}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Enabled:</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${isEnabled ? 'Yes' : 'No'}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-label">High Humidity Trigger:</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${triggersHighHumidity ? 'Yes' : 'No'}</span>
           </div>
           <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
             <span class="r-xtrs-hvac-fan-sensor-source-entity">${tempEntity}</span>

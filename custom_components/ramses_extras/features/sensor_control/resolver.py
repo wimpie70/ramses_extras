@@ -212,6 +212,9 @@ class SensorControlResolver:
                 "spike_rise_percent": item.get("spike_rise_percent"),
                 "spike_window_minutes": item.get("spike_window_minutes"),
                 "check_interval_minutes": item.get("check_interval_minutes"),
+                "trigger_on_high_humidity": bool(
+                    item.get("trigger_on_high_humidity", False)
+                ),
                 "valid": valid,
             }
             if zone_id:
