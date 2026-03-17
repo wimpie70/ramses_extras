@@ -587,6 +587,7 @@ class HvacFanCard extends RamsesBaseCard {
     const tempEntity = areaSensor?.temperature_entity || 'n/a';
     const humidityEntity = areaSensor?.humidity_entity || 'n/a';
     const zoneId = areaSensor?.zone_id || '—';
+    const isEnabled = areaSensor?.enabled !== false;
 
     // Get current values
     let tempValue = '—';
@@ -631,8 +632,8 @@ class HvacFanCard extends RamsesBaseCard {
 
     return `
       <div
-        class="r-xtrs-hvac-fan-sensor-source-indicator r-xtrs-hvac-fan-sensor-source-derived"
-        title="Area sensor: ${label}"
+        class="r-xtrs-hvac-fan-sensor-source-indicator r-xtrs-hvac-fan-sensor-source-derived ${isEnabled ? '' : 'disabled'}"
+        title="Area sensor: ${label}${isEnabled ? '' : ' (disabled)'}"
       >
         <div class="r-xtrs-hvac-fan-sensor-source-header">
           <span class="r-xtrs-hvac-fan-sensor-source-icon">🚿</span>
@@ -751,10 +752,11 @@ class HvacFanCard extends RamsesBaseCard {
       const label = areaSensor?.label || sourceId;
       const tempEntity = areaSensor?.temperature_entity;
       const humidityEntity = areaSensor?.humidity_entity;
+      const isDisabled = areaSensor?.enabled === false;
 
       // Check if this sensor is actively triggering
-      const isActive = activeTriggerSourceIds.includes(sourceId) ||
-                       primaryTriggerSourceId === sourceId;
+      const isActive = !isDisabled && (activeTriggerSourceIds.includes(sourceId) ||
+                       primaryTriggerSourceId === sourceId);
 
       // Get current values
       let tempValue = '—';
@@ -786,6 +788,7 @@ class HvacFanCard extends RamsesBaseCard {
         tempValue,
         humidValue,
         isActive,
+        isDisabled,
       };
     }).filter(item => item.sourceId); // Filter out invalid items
 
@@ -807,15 +810,21 @@ class HvacFanCard extends RamsesBaseCard {
       balanceStatus = `Balance → On + ${activeState}`;
     }
 
-    const itemsHtml = triggerItems.map(item => `
-      <div class="r-xtrs-hvac-fan-balance-trigger-item ${item.isActive ? 'active' : ''}">
-        <span class="r-xtrs-hvac-fan-balance-trigger-label">${item.label}</span>
-        <div class="r-xtrs-hvac-fan-balance-trigger-values">
-          <span>🌡️ ${item.tempValue}</span>
-          <span>💧 ${item.humidValue}</span>
+    const itemsHtml = triggerItems.map(item => {
+      const stateClass = [
+        item.isActive ? 'active' : '',
+        item.isDisabled ? 'disabled' : '',
+      ].filter(Boolean).join(' ');
+      return `
+        <div class="r-xtrs-hvac-fan-balance-trigger-item ${stateClass}">
+          <span class="r-xtrs-hvac-fan-balance-trigger-label">${item.label}</span>
+          <div class="r-xtrs-hvac-fan-balance-trigger-values">
+            <span>🌡️ ${item.tempValue}</span>
+            <span>💧 ${item.humidValue}</span>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     return `
       <div class="r-xtrs-hvac-fan-balance-divider"></div>

@@ -395,6 +395,11 @@ export const CARD_STYLE = `
   box-shadow: 0 0 8px var(--primary-color);
 }
 
+.r-xtrs-hvac-fan-balance-trigger-item.disabled {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
 .r-xtrs-hvac-fan-balance-trigger-label {
   font-size: 9px;
   font-weight: 600;
