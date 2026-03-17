@@ -798,9 +798,18 @@ class HvacFanCard extends RamsesBaseCard {
     const dehumMode = this.getEntityState(config.dehum_mode_entity)?.state || 'off';
     const dehumActive = this.getEntityState(config.dehum_active_entity)?.state || 'off';
 
+    // Create compact balance status: "Balance → On + Active" or "Balance → Off"
+    let balanceStatus = '';
+    if (dehumMode === 'off') {
+      balanceStatus = 'Balance → Off';
+    } else {
+      const activeState = dehumActive === 'on' ? 'Active' : 'Passive';
+      balanceStatus = `Balance → On + ${activeState}`;
+    }
+
     const itemsHtml = triggerItems.map(item => `
       <div class="r-xtrs-hvac-fan-balance-trigger-item ${item.isActive ? 'active' : ''}">
-        <div class="r-xtrs-hvac-fan-balance-trigger-label">${item.label}</div>
+        <span class="r-xtrs-hvac-fan-balance-trigger-label">${item.label}</span>
         <div class="r-xtrs-hvac-fan-balance-trigger-values">
           <span>🌡️ ${item.tempValue}</span>
           <span>💧 ${item.humidValue}</span>
@@ -809,19 +818,13 @@ class HvacFanCard extends RamsesBaseCard {
     `).join('');
 
     return `
+      <div class="r-xtrs-hvac-fan-balance-divider"></div>
       <div class="r-xtrs-hvac-fan-balance-triggers">
         <div class="r-xtrs-hvac-fan-balance-info">
           <div class="r-xtrs-hvac-fan-balance-info-row">
-            <span>💧 Balance</span>
-            <span id="dehumMode">${dehumMode}</span>
-          </div>
-          <div class="r-xtrs-hvac-fan-balance-info-row">
-            <span>Activated</span>
-            <span id="dehumActive">${dehumActive}</span>
+            <span>💧 ${balanceStatus}</span>
           </div>
         </div>
-        <div class="r-xtrs-hvac-fan-balance-divider"></div>
-        <div class="r-xtrs-hvac-fan-balance-triggers-title">Triggers</div>
         ${itemsHtml}
       </div>
     `;

@@ -314,10 +314,11 @@ export const CARD_STYLE = `
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 11px;
+  font-size: 9px;
   color: var(--secondary-text-color);
   padding-top: 6px;
   border-top: 1px solid var(--divider-color);
+  text-align: left;
 }
 
 .r-xtrs-hvac-fan-balance-summary {
@@ -328,18 +329,19 @@ export const CARD_STYLE = `
 
 /* ====== BALANCE TRIGGERS SECTION ====== */
 .r-xtrs-hvac-fan-balance-triggers {
-  position: absolute;
-  top: 15px;
-  right: 10px;
-  background: var(--secondary-background-color);
-  border: 2px solid var(--primary-color);
-  border-radius: 8px;
-  padding: 8px;
-  max-width: 200px;
-  max-height: 200px;
-  overflow-y: auto;
-  box-shadow: var(--ha-card-box-shadow, 0 4px 8px rgba(0, 0, 0, 0.3));
-  z-index: 10;
+  text-align: left;
+  // position: absolute;
+  // top: 15px;
+  // right: 10px;
+  // background: var(--secondary-background-color);
+  // border: 2px solid var(--primary-color);
+  // border-radius: 8px;
+  // padding: 8px;
+  // max-width: 200px;
+  // max-height: 200px;
+  // overflow-y: auto;
+  // box-shadow: var(--ha-card-box-shadow, 0 4px 8px rgba(0, 0, 0, 0.3));
+  // z-index: 10;
 }
 
 .r-xtrs-hvac-fan-balance-info {
@@ -353,14 +355,14 @@ export const CARD_STYLE = `
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 500;
 }
 
 .r-xtrs-hvac-fan-balance-divider {
   height: 1px;
   background: var(--divider-color);
-  margin: 8px 0;
+  margin: 1px 0;
 }
 
 .r-xtrs-hvac-fan-balance-triggers-title {
@@ -374,14 +376,16 @@ export const CARD_STYLE = `
 
 .r-xtrs-hvac-fan-balance-trigger-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
   border-radius: 4px;
   margin-bottom: 4px;
   background: var(--secondary-background-color);
   border: 1px solid transparent;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .r-xtrs-hvac-fan-balance-trigger-item.active {
@@ -392,8 +396,10 @@ export const CARD_STYLE = `
 }
 
 .r-xtrs-hvac-fan-balance-trigger-label {
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .r-xtrs-hvac-fan-balance-trigger-values {
@@ -401,6 +407,7 @@ export const CARD_STYLE = `
   gap: 8px;
   font-size: 9px;
   opacity: 0.8;
+  white-space: nowrap;
 }
 
 .r-xtrs-hvac-fan-balance-triggers::-webkit-scrollbar {

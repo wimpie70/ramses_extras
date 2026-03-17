@@ -100,12 +100,13 @@ export function createTopSection(data, t) {
             <span id="indoorAbsHumidity">${formatHumidity(indoorAbsHumidity, ' g/m³')}</span>
           </div>
           <div class="r-xtrs-hvac-fan-info-stack">
-            <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temperature')}: ${comfortTemp} °C</div>
+            <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temp')}: ${comfortTemp} °C</div>
           </div>
+
+          <!-- Balance Triggers Section -->
+          ${balanceTriggersHtml || ''}
         </div>
 
-        <!-- Balance Triggers Section -->
-        ${balanceTriggersHtml || ''}
 
         <div class="r-xtrs-hvac-fan-corner-value bottom-right">
           <div class="r-xtrs-hvac-fan-temp-value">
