@@ -732,11 +732,14 @@ class HvacFanCard extends RamsesBaseCard {
   _createBalanceTriggersSection() {
     // Only show if we have area sensors configured
     if (!this._areaSensors || this._areaSensors.length === 0) {
+      logger.debug('HvacFanCard: No area sensors configured, skipping balance triggers section');
       return '';
     }
 
+    logger.debug(`HvacFanCard: Creating balance triggers section with ${this._areaSensors.length} area sensor(s)`);
     const attrs = this._getDehumidifyStatusAttributes();
     const controlMode = attrs.control_mode;
+    logger.debug(`HvacFanCard: Control mode: ${controlMode}`);
 
     // Get active trigger source IDs
     const activeTriggerSourceIds = attrs.active_trigger_source_ids || [];
@@ -790,6 +793,11 @@ class HvacFanCard extends RamsesBaseCard {
       return '';
     }
 
+    // Get balance mode and activation status
+    const config = this.config || {};
+    const dehumMode = this.getEntityState(config.dehum_mode_entity)?.state || 'off';
+    const dehumActive = this.getEntityState(config.dehum_active_entity)?.state || 'off';
+
     const itemsHtml = triggerItems.map(item => `
       <div class="r-xtrs-hvac-fan-balance-trigger-item ${item.isActive ? 'active' : ''}">
         <div class="r-xtrs-hvac-fan-balance-trigger-label">${item.label}</div>
@@ -802,7 +810,18 @@ class HvacFanCard extends RamsesBaseCard {
 
     return `
       <div class="r-xtrs-hvac-fan-balance-triggers">
-        <div class="r-xtrs-hvac-fan-balance-triggers-title">Balance Triggers</div>
+        <div class="r-xtrs-hvac-fan-balance-info">
+          <div class="r-xtrs-hvac-fan-balance-info-row">
+            <span>💧 Balance</span>
+            <span id="dehumMode">${dehumMode}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-balance-info-row">
+            <span>Activated</span>
+            <span id="dehumActive">${dehumActive}</span>
+          </div>
+        </div>
+        <div class="r-xtrs-hvac-fan-balance-divider"></div>
+        <div class="r-xtrs-hvac-fan-balance-triggers-title">Triggers</div>
         ${itemsHtml}
       </div>
     `;

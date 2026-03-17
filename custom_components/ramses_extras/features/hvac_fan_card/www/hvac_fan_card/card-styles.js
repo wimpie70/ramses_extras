@@ -331,14 +331,36 @@ export const CARD_STYLE = `
   position: absolute;
   top: 15px;
   right: 10px;
-  background: var(--card-background-color, var(--ha-card-background));
-  border: 1px solid var(--divider-color);
+  background: var(--secondary-background-color);
+  border: 2px solid var(--primary-color);
   border-radius: 8px;
   padding: 8px;
   max-width: 200px;
-  max-height: 150px;
+  max-height: 200px;
   overflow-y: auto;
-  box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
+  box-shadow: var(--ha-card-box-shadow, 0 4px 8px rgba(0, 0, 0, 0.3));
+  z-index: 10;
+}
+
+.r-xtrs-hvac-fan-balance-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.r-xtrs-hvac-fan-balance-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.r-xtrs-hvac-fan-balance-divider {
+  height: 1px;
+  background: var(--divider-color);
+  margin: 8px 0;
 }
 
 .r-xtrs-hvac-fan-balance-triggers-title {

@@ -101,23 +101,6 @@ export function createTopSection(data, t) {
           </div>
           <div class="r-xtrs-hvac-fan-info-stack">
             <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temperature')}: ${comfortTemp} °C</div>
-            ${dehumEntitiesAvailable ? `
-            <div class="r-xtrs-hvac-fan-balance-summary">
-              <div class="r-xtrs-hvac-fan-dehum-row">
-                <span>💧</span>
-                <span>${tr('controls.dehumidify', 'Balance')}</span>
-                <span id="dehumMode">${dehumMode}</span>
-              </div>
-              <div class="r-xtrs-hvac-fan-dehum-subrow">
-                <span>${tr('controls.activated', 'Activated')}</span>
-                <span id="dehumActive">${dehumActive}</span>
-              </div>
-              <div class="r-xtrs-hvac-fan-dehum-subrow">
-                <span>${tr('controls.triggers', 'Triggers')}</span>
-                <span id="dehumTracking">${balanceTrackingLabel || tr('controls.indoor', 'Indoor')}</span>
-              </div>
-            </div>
-            ` : ''}
           </div>
         </div>
 
