@@ -618,10 +618,13 @@ class HvacFanCard extends RamsesBaseCard {
       const temp = parseFloat(tempValue);
       const rh = parseFloat(humidValue);
       if (!isNaN(temp) && !isNaN(rh)) {
-        // Simple absolute humidity calculation
-        const saturationVaporPressure = 6.112 * Math.exp((17.67 * temp) / (temp + 243.5));
+        // Absolute humidity calculation using Magnus formula
+        // Saturation vapor pressure in hPa
+        const saturationVaporPressure = 6.112 * Math.exp((17.62 * temp) / (243.12 + temp));
+        // Actual vapor pressure
         const actualVaporPressure = (rh / 100) * saturationVaporPressure;
-        const absHumidity = (2.1674 * actualVaporPressure) / (temp + 273.15);
+        // Absolute humidity in g/m³
+        const absHumidity = (216.7 * actualVaporPressure) / (temp + 273.15);
         absValue = `${absHumidity.toFixed(1)} g/m³`;
       }
     }
@@ -650,7 +653,7 @@ class HvacFanCard extends RamsesBaseCard {
             <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${humidValue}</span>
           </div>
           <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
-            <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Abs:</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Absolute Humidity:</span>
             <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${absValue}</span>
           </div>
         </div>
