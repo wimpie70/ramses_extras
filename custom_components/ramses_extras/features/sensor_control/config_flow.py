@@ -102,7 +102,7 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
     humidity_entity = str(area_sensor.get("humidity_entity") or "missing")
     spike_rise = area_sensor.get("spike_rise_percent")
     spike_window = area_sensor.get("spike_window_minutes")
-    check_interval = area_sensor.get("check_interval_minutes")
+    trigger_on_high_humidity = bool(area_sensor.get("trigger_on_high_humidity", False))
     enabled = bool(area_sensor.get("enabled", True))
 
     details = [
@@ -111,8 +111,8 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
     ]
     if spike_rise is not None and spike_window is not None:
         details.append(f"spike: {spike_rise}%/{spike_window}m")
-    if check_interval is not None:
-        details.append(f"check: {check_interval}m")
+    if trigger_on_high_humidity:
+        details.append("max RH trigger")
     details.append("enabled" if enabled else "disabled")
 
     zone_id = str(area_sensor.get("zone_id") or "").strip()
@@ -628,12 +628,12 @@ async def async_step_sensor_control_config(
                 "enabled": bool(user_input.get("area_sensor_enabled", True)),
                 "temperature_entity": str(user_input.get("temperature_entity") or ""),
                 "humidity_entity": str(user_input.get("humidity_entity") or ""),
+                "trigger_on_high_humidity": bool(
+                    user_input.get("trigger_on_high_humidity", False)
+                ),
                 "spike_rise_percent": float(user_input.get("spike_rise_percent") or 0),
                 "spike_window_minutes": int(
                     user_input.get("spike_window_minutes") or 1
-                ),
-                "check_interval_minutes": int(
-                    user_input.get("check_interval_minutes") or 1
                 ),
             }
             zone_id = str(user_input.get("zone_id") or "").strip()
@@ -718,6 +718,14 @@ async def async_step_sensor_control_config(
                 temp_key: area_sensor_selector,
                 humidity_key: area_sensor_selector,
                 vol.Required(
+                    "trigger_on_high_humidity",
+                    default=bool(
+                        selected_area_sensor.get("trigger_on_high_humidity", False)
+                        if selected_area_sensor
+                        else False
+                    ),
+                ): bool,
+                vol.Required(
                     "spike_rise_percent",
                     default=float(
                         selected_area_sensor.get("spike_rise_percent", 10.0)
@@ -736,21 +744,6 @@ async def async_step_sensor_control_config(
                     selector.NumberSelectorConfig(
                         min=1,
                         max=60,
-                        step=1,
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Required(
-                    "check_interval_minutes",
-                    default=int(
-                        selected_area_sensor.get("check_interval_minutes", 1)
-                        if selected_area_sensor
-                        else 1
-                    ),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=1,
-                        max=30,
                         step=1,
                         mode=selector.NumberSelectorMode.BOX,
                     )

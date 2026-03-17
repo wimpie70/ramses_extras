@@ -370,7 +370,7 @@ class SensorControlResolver:
         Returns:
             List of supported metric names
         """
-        return SUPPORTED_METRICS.copy()
+        return list(SUPPORTED_METRICS)
 
     def get_supported_device_types(self) -> list[str]:
         """Get list of supported device types.

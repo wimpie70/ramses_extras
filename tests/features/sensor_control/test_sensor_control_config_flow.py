@@ -178,9 +178,9 @@ async def test_async_step_sensor_control_config_select_device_with_area_sensor_o
                         "label": "Bathroom",
                         "temperature_entity": "sensor.bath_temp",
                         "humidity_entity": "sensor.bath_humidity",
+                        "trigger_on_high_humidity": True,
                         "spike_rise_percent": 12.0,
                         "spike_window_minutes": 3,
-                        "check_interval_minutes": 1,
                         "enabled": True,
                     }
                 ]
@@ -192,7 +192,7 @@ async def test_async_step_sensor_control_config_select_device_with_area_sensor_o
     info_text = flow.async_show_form.call_args[1]["description_placeholders"]["info"]
     assert "area sensor Bathroom" in info_text
     assert "spike: 12.0%/3m" in info_text
-    assert "check: 1m" in info_text
+    assert "max RH trigger" in info_text
 
 
 async def test_async_step_sensor_control_config_select_device_refresh(flow, helper):
@@ -349,9 +349,9 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
             "zone_id": "zone_1",
             "temperature_entity": "sensor.bath_temp",
             "humidity_entity": "sensor.bath_humidity",
+            "trigger_on_high_humidity": True,
             "spike_rise_percent": 15.0,
             "spike_window_minutes": 3,
-            "check_interval_minutes": 1,
         }
         await async_step_sensor_control_config(flow, user_input)
 
@@ -362,6 +362,7 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         assert len(area_sensors) == 1
         assert area_sensors[0]["source_id"] == "bathroom"
         assert area_sensors[0]["zone_id"] == "zone_1"
+        assert area_sensors[0]["trigger_on_high_humidity"] is True
         assert flow._sensor_control_group_stage == "area_sensors_menu"
 
         flow._config_entry.options = options
@@ -375,9 +376,9 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
             "zone_id": "zone_2",
             "temperature_entity": "sensor.shower_temp",
             "humidity_entity": "sensor.shower_humidity",
+            "trigger_on_high_humidity": False,
             "spike_rise_percent": 18.0,
             "spike_window_minutes": 2,
-            "check_interval_minutes": 2,
         }
         await async_step_sensor_control_config(flow, edit_input)
 
@@ -391,7 +392,7 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         assert edited_area_sensor["label"] == "Bathroom Shower"
         assert edited_area_sensor["enabled"] is False
         assert edited_area_sensor["zone_id"] == "zone_2"
-        assert edited_area_sensor["check_interval_minutes"] == 2
+        assert edited_area_sensor["trigger_on_high_humidity"] is False
 
 
 async def test_async_step_sensor_control_config_area_sensors_edit_preserves_others(
@@ -412,9 +413,9 @@ async def test_async_step_sensor_control_config_area_sensors_edit_preserves_othe
                         "label": "Bathroom",
                         "temperature_entity": "sensor.bath_temp",
                         "humidity_entity": "sensor.bath_humidity",
+                        "trigger_on_high_humidity": True,
                         "spike_rise_percent": 12.0,
                         "spike_window_minutes": 3,
-                        "check_interval_minutes": 1,
                         "enabled": True,
                     },
                     {
@@ -422,9 +423,9 @@ async def test_async_step_sensor_control_config_area_sensors_edit_preserves_othe
                         "label": "Kitchen",
                         "temperature_entity": "sensor.kitchen_temp",
                         "humidity_entity": "sensor.kitchen_humidity",
+                        "trigger_on_high_humidity": False,
                         "spike_rise_percent": 10.0,
                         "spike_window_minutes": 5,
-                        "check_interval_minutes": 2,
                         "enabled": True,
                     },
                 ]
@@ -443,9 +444,9 @@ async def test_async_step_sensor_control_config_area_sensors_edit_preserves_othe
                 "area_sensor_enabled": True,
                 "temperature_entity": "sensor.bath_temp_2",
                 "humidity_entity": "sensor.bath_humidity_2",
+                "trigger_on_high_humidity": True,
                 "spike_rise_percent": 14.0,
                 "spike_window_minutes": 4,
-                "check_interval_minutes": 2,
             },
         )
 
@@ -472,9 +473,9 @@ async def test_async_step_sensor_control_config_area_sensors_delete(flow, helper
                         "label": "Bathroom",
                         "temperature_entity": "sensor.bath_temp",
                         "humidity_entity": "sensor.bath_humidity",
+                        "trigger_on_high_humidity": True,
                         "spike_rise_percent": 12.0,
                         "spike_window_minutes": 3,
-                        "check_interval_minutes": 1,
                         "enabled": True,
                     }
                 ]
@@ -536,9 +537,9 @@ async def test_async_step_sensor_control_config_area_sensors_menu_shows_edit_opt
                         "label": "Bathroom",
                         "temperature_entity": "sensor.bath_temp",
                         "humidity_entity": "sensor.bath_humidity",
+                        "trigger_on_high_humidity": True,
                         "spike_rise_percent": 12.0,
                         "spike_window_minutes": 3,
-                        "check_interval_minutes": 1,
                         "enabled": True,
                     },
                 ]
@@ -586,6 +587,8 @@ async def test_async_step_sensor_control_config_selectors_allow_input_number(
         area_schema = flow.async_show_form.call_args.kwargs["data_schema"].schema
         area_temp_selector = area_schema["temperature_entity"]
         area_hum_selector = area_schema["humidity_entity"]
+        assert "check_interval_minutes" not in area_schema
+        assert "trigger_on_high_humidity" in area_schema
         assert area_temp_selector.config["domain"] == ["sensor", "input_number"]
         assert area_hum_selector.config["domain"] == ["sensor", "input_number"]
 
@@ -667,9 +670,9 @@ async def test_async_step_sensor_control_config_device_overview_includes_area_se
                         "label": "Bathroom",
                         "temperature_entity": "sensor.bath_temp",
                         "humidity_entity": "sensor.bath_humidity",
+                        "trigger_on_high_humidity": True,
                         "spike_rise_percent": 12.0,
                         "spike_window_minutes": 3,
-                        "check_interval_minutes": 1,
                         "enabled": True,
                     }
                 ]
