@@ -287,6 +287,8 @@ class HvacFanCard extends RamsesBaseCard {
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
+    // Add balance triggers HTML to template data
+    templateData.balanceTriggersHtml = this._createBalanceTriggersSection();
 
     // Generate HTML using template functions
     const cardHtml = [
@@ -502,16 +504,16 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Define display configuration for different metrics
     const metricConfig = {
-      indoor_temperature: { icon: '🌡️', label: 'Indoor Temp' },
-      indoor_humidity: { icon: '💧', label: 'Indoor Humidity' },
-      outdoor_temperature: { icon: '🌡️', label: 'Outdoor Temp' },
-      outdoor_humidity: { icon: '💧', label: 'Outdoor Humidity' },
-      co2: { icon: '🫧', label: 'CO₂' },
-      indoor_abs_humidity: { icon: '💨', label: 'Indoor Abs Humidity' },
-      outdoor_abs_humidity: { icon: '💨', label: 'Outdoor Abs Humidity' },
+      indoor_temperature: { icon: '🌡️', label: 'Indoor Temp', unit: '°C' },
+      indoor_humidity: { icon: '💧', label: 'Indoor Humidity', unit: '%' },
+      outdoor_temperature: { icon: '🌡️', label: 'Outdoor Temp', unit: '°C' },
+      outdoor_humidity: { icon: '💧', label: 'Outdoor Humidity', unit: '%' },
+      co2: { icon: '🫧', label: 'CO₂', unit: 'ppm' },
+      indoor_abs_humidity: { icon: '💨', label: 'Indoor Abs', unit: 'g/m³' },
+      outdoor_abs_humidity: { icon: '💨', label: 'Outdoor Abs', unit: 'g/m³' },
     };
 
-    const config = metricConfig[metric] || { icon: '📊', label: metric };
+    const config = metricConfig[metric] || { icon: '📊', label: metric, unit: '' };
 
     // Determine status and styling
     let statusClass = 'r-xtrs-hvac-fan-sensor-source-external';
@@ -545,12 +547,36 @@ class HvacFanCard extends RamsesBaseCard {
       displayEntity = 'Disabled';
     }
 
+    // Get current value from entity state
+    let currentValue = '—';
+    if (entity_id || displayEntity !== 'Disabled') {
+      const entityToCheck = entity_id || this._entityMappings?.[metric];
+      if (entityToCheck) {
+        const state = this.getEntityState(entityToCheck);
+        if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
+          const numValue = parseFloat(state.state);
+          if (!isNaN(numValue)) {
+            currentValue = `${numValue.toFixed(1)} ${config.unit}`;
+          } else {
+            currentValue = state.state;
+          }
+        }
+      }
+    }
+
     return `
       <div class="r-xtrs-hvac-fan-sensor-source-indicator ${statusClass}" title="${statusText}">
-        <span class="r-xtrs-hvac-fan-sensor-source-icon">${config.icon}</span>
-        <span class="r-xtrs-hvac-fan-sensor-source-label">${config.label}</span>
-        <span class="r-xtrs-hvac-fan-sensor-source-kind">${kind}</span>
-        <span class="r-xtrs-hvac-fan-sensor-source-entity">${displayEntity}</span>
+        <div class="r-xtrs-hvac-fan-sensor-source-header">
+          <span class="r-xtrs-hvac-fan-sensor-source-icon">${config.icon}</span>
+          <span class="r-xtrs-hvac-fan-sensor-source-label">${config.label}</span>
+          <span class="r-xtrs-hvac-fan-sensor-source-kind">${kind}</span>
+        </div>
+        <div class="r-xtrs-hvac-fan-sensor-source-details">
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-entity">${displayEntity}</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${currentValue}</span>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -560,18 +586,74 @@ class HvacFanCard extends RamsesBaseCard {
     const label = areaSensor?.label || sourceId;
     const tempEntity = areaSensor?.temperature_entity || 'n/a';
     const humidityEntity = areaSensor?.humidity_entity || 'n/a';
+    const zoneId = areaSensor?.zone_id || '—';
+
+    // Get current values
+    let tempValue = '—';
+    let humidValue = '—';
+    let absValue = '—';
+
+    if (tempEntity && tempEntity !== 'n/a') {
+      const tempState = this.getEntityState(tempEntity);
+      if (tempState && tempState.state !== 'unavailable' && tempState.state !== 'unknown') {
+        const numValue = parseFloat(tempState.state);
+        if (!isNaN(numValue)) {
+          tempValue = `${numValue.toFixed(1)} °C`;
+        }
+      }
+    }
+
+    if (humidityEntity && humidityEntity !== 'n/a') {
+      const humidState = this.getEntityState(humidityEntity);
+      if (humidState && humidState.state !== 'unavailable' && humidState.state !== 'unknown') {
+        const numValue = parseFloat(humidState.state);
+        if (!isNaN(numValue)) {
+          humidValue = `${numValue.toFixed(1)} %`;
+        }
+      }
+    }
+
+    // Try to calculate absolute humidity if we have both temp and humidity
+    if (tempValue !== '—' && humidValue !== '—') {
+      const temp = parseFloat(tempValue);
+      const rh = parseFloat(humidValue);
+      if (!isNaN(temp) && !isNaN(rh)) {
+        // Simple absolute humidity calculation
+        const saturationVaporPressure = 6.112 * Math.exp((17.67 * temp) / (temp + 243.5));
+        const actualVaporPressure = (rh / 100) * saturationVaporPressure;
+        const absHumidity = (2.1674 * actualVaporPressure) / (temp + 273.15);
+        absValue = `${absHumidity.toFixed(1)} g/m³`;
+      }
+    }
 
     return `
       <div
         class="r-xtrs-hvac-fan-sensor-source-indicator r-xtrs-hvac-fan-sensor-source-derived"
         title="Area sensor: ${label}"
       >
-        <span class="r-xtrs-hvac-fan-sensor-source-icon">🚿</span>
-        <span class="r-xtrs-hvac-fan-sensor-source-label">${label}</span>
-        <span class="r-xtrs-hvac-fan-sensor-source-kind">area</span>
-        <span
-          class="r-xtrs-hvac-fan-sensor-source-entity"
-        >${tempEntity} · ${humidityEntity}</span>
+        <div class="r-xtrs-hvac-fan-sensor-source-header">
+          <span class="r-xtrs-hvac-fan-sensor-source-icon">🚿</span>
+          <span class="r-xtrs-hvac-fan-sensor-source-label">${label}</span>
+          <span class="r-xtrs-hvac-fan-sensor-source-kind">area</span>
+        </div>
+        <div class="r-xtrs-hvac-fan-sensor-source-details">
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Zone:</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${zoneId}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-entity">${tempEntity}</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${tempValue}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-entity">${humidityEntity}</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${humidValue}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Abs:</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${absValue}</span>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -635,6 +717,90 @@ class HvacFanCard extends RamsesBaseCard {
         <span class="r-xtrs-hvac-fan-sensor-source-label">Humidity Control</span>
         <span class="r-xtrs-hvac-fan-sensor-source-kind">${controlMode}</span>
         <span class="r-xtrs-hvac-fan-sensor-source-entity">${displayEntity || 'Active'}</span>
+      </div>
+    `;
+  }
+
+  /**
+   * Create balance triggers section for main card
+   * Shows all area sensors with current values and highlights active trigger
+   * @returns {string} HTML string for balance triggers section
+   */
+  _createBalanceTriggersSection() {
+    // Only show if we have area sensors configured
+    if (!this._areaSensors || this._areaSensors.length === 0) {
+      return '';
+    }
+
+    const attrs = this._getDehumidifyStatusAttributes();
+    const controlMode = attrs.control_mode;
+
+    // Get active trigger source IDs
+    const activeTriggerSourceIds = attrs.active_trigger_source_ids || [];
+    const primaryTriggerSourceId = attrs.active_trigger_source_id;
+
+    // Build trigger items from area sensors
+    const triggerItems = (this._areaSensors || []).map(areaSensor => {
+      const sourceId = areaSensor?.source_id || '';
+      const label = areaSensor?.label || sourceId;
+      const tempEntity = areaSensor?.temperature_entity;
+      const humidityEntity = areaSensor?.humidity_entity;
+
+      // Check if this sensor is actively triggering
+      const isActive = activeTriggerSourceIds.includes(sourceId) ||
+                       primaryTriggerSourceId === sourceId;
+
+      // Get current values
+      let tempValue = '—';
+      let humidValue = '—';
+
+      if (tempEntity) {
+        const tempState = this.getEntityState(tempEntity);
+        if (tempState && tempState.state !== 'unavailable' && tempState.state !== 'unknown') {
+          const numValue = parseFloat(tempState.state);
+          if (!isNaN(numValue)) {
+            tempValue = `${numValue.toFixed(1)}°C`;
+          }
+        }
+      }
+
+      if (humidityEntity) {
+        const humidState = this.getEntityState(humidityEntity);
+        if (humidState && humidState.state !== 'unavailable' && humidState.state !== 'unknown') {
+          const numValue = parseFloat(humidState.state);
+          if (!isNaN(numValue)) {
+            humidValue = `${numValue.toFixed(0)}%`;
+          }
+        }
+      }
+
+      return {
+        sourceId,
+        label,
+        tempValue,
+        humidValue,
+        isActive,
+      };
+    }).filter(item => item.sourceId); // Filter out invalid items
+
+    if (triggerItems.length === 0) {
+      return '';
+    }
+
+    const itemsHtml = triggerItems.map(item => `
+      <div class="r-xtrs-hvac-fan-balance-trigger-item ${item.isActive ? 'active' : ''}">
+        <div class="r-xtrs-hvac-fan-balance-trigger-label">${item.label}</div>
+        <div class="r-xtrs-hvac-fan-balance-trigger-values">
+          <span>🌡️ ${item.tempValue}</span>
+          <span>💧 ${item.humidValue}</span>
+        </div>
+      </div>
+    `).join('');
+
+    return `
+      <div class="r-xtrs-hvac-fan-balance-triggers">
+        <div class="r-xtrs-hvac-fan-balance-triggers-title">Balance Triggers</div>
+        ${itemsHtml}
       </div>
     `;
   }
@@ -791,6 +957,8 @@ class HvacFanCard extends RamsesBaseCard {
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
+    // Add balance triggers HTML to template data
+    templateData.balanceTriggersHtml = this._createBalanceTriggersSection();
 
     // Generate HTML using template functions
     const cardHtml = [

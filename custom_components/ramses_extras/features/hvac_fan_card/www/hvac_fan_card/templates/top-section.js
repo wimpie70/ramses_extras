@@ -32,7 +32,8 @@ export function createTopSection(data, t) {
     supplyTemp, exhaustTemp,
     exhaustFanSpeed, supplyFanSpeed, fanMode,
     co2Level, supplyFlowRate, exhaustFlowRate, efficiency,
-    timerMinutes, airflowSvg, filterDaysRemaining
+    timerMinutes, airflowSvg, filterDaysRemaining,
+    balanceTriggersHtml
   } = data;
 
   // Helper function to format humidity values
@@ -119,6 +120,9 @@ export function createTopSection(data, t) {
             ` : ''}
           </div>
         </div>
+
+        <!-- Balance Triggers Section -->
+        ${balanceTriggersHtml || ''}
 
         <div class="r-xtrs-hvac-fan-corner-value bottom-right">
           <div class="r-xtrs-hvac-fan-temp-value">

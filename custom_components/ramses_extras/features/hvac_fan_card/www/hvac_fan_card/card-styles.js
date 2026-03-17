@@ -44,22 +44,80 @@ export const CARD_STYLE = `
 }
 
 .r-xtrs-hvac-fan-sensor-sources-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.r-xtrs-hvac-fan-sensor-sources-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.r-xtrs-hvac-fan-sensor-sources-grid::-webkit-scrollbar-track {
+  background: var(--divider-color);
+  border-radius: 3px;
+}
+
+.r-xtrs-hvac-fan-sensor-sources-grid::-webkit-scrollbar-thumb {
+  background: var(--primary-color);
+  border-radius: 3px;
+}
+
+.r-xtrs-hvac-fan-sensor-sources-grid::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-color);
+  opacity: 0.8;
 }
 
 .r-xtrs-hvac-fan-sensor-source-indicator {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
   transition: all 0.2s ease;
   cursor: default;
   position: relative;
+  min-height: 50px;
+}
+
+.r-xtrs-hvac-fan-sensor-source-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.r-xtrs-hvac-fan-sensor-source-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  opacity: 0.9;
+  padding-left: 20px;
+}
+
+.r-xtrs-hvac-fan-sensor-source-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.r-xtrs-hvac-fan-sensor-source-detail-label {
+  opacity: 0.7;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.r-xtrs-hvac-fan-sensor-source-detail-value {
+  font-weight: 600;
+  font-size: 11px;
 }
 
 .r-xtrs-hvac-fan-sensor-source-indicator:hover {
@@ -99,7 +157,8 @@ export const CARD_STYLE = `
 
 .r-xtrs-hvac-fan-sensor-source-label {
   flex: 1;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 12px;
 }
 
 .r-xtrs-hvac-fan-sensor-source-kind {
@@ -111,14 +170,12 @@ export const CARD_STYLE = `
 }
 
 .r-xtrs-hvac-fan-sensor-source-entity {
-  font-size: 10px;
-  opacity: 0.8;
+  font-size: 9px;
+  opacity: 0.7;
   font-weight: 400;
-  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-left: 4px;
 }
 
 .r-xtrs-hvac-fan-value-unavailable {
@@ -267,6 +324,75 @@ export const CARD_STYLE = `
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* ====== BALANCE TRIGGERS SECTION ====== */
+.r-xtrs-hvac-fan-balance-triggers {
+  position: absolute;
+  top: 15px;
+  right: 10px;
+  background: var(--card-background-color, var(--ha-card-background));
+  border: 1px solid var(--divider-color);
+  border-radius: 8px;
+  padding: 8px;
+  max-width: 200px;
+  max-height: 150px;
+  overflow-y: auto;
+  box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.r-xtrs-hvac-fan-balance-triggers-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+.r-xtrs-hvac-fan-balance-trigger-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  background: var(--secondary-background-color);
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.r-xtrs-hvac-fan-balance-trigger-item.active {
+  border-color: var(--primary-color);
+  background: var(--primary-color);
+  color: var(--text-primary-color);
+  box-shadow: 0 0 8px var(--primary-color);
+}
+
+.r-xtrs-hvac-fan-balance-trigger-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.r-xtrs-hvac-fan-balance-trigger-values {
+  display: flex;
+  gap: 8px;
+  font-size: 9px;
+  opacity: 0.8;
+}
+
+.r-xtrs-hvac-fan-balance-triggers::-webkit-scrollbar {
+  width: 4px;
+}
+
+.r-xtrs-hvac-fan-balance-triggers::-webkit-scrollbar-track {
+  background: var(--divider-color);
+  border-radius: 2px;
+}
+
+.r-xtrs-hvac-fan-balance-triggers::-webkit-scrollbar-thumb {
+  background: var(--primary-color);
+  border-radius: 2px;
 }
 
 .r-xtrs-hvac-fan-dehum-subrow {
