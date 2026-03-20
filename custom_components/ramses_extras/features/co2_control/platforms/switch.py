@@ -5,8 +5,10 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.ramses_extras.const import register_feature_platform
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
@@ -17,7 +19,7 @@ from custom_components.ramses_extras.framework.helpers.platform import PlatformS
 _LOGGER = logging.getLogger(__name__)
 
 
-class CO2ControlSwitch(ExtrasSwitchEntity):
+class CO2ControlSwitch(ExtrasSwitchEntity, RestoreEntity):
     """CO2 Control switch entity."""
 
     def __init__(
@@ -40,6 +42,13 @@ class CO2ControlSwitch(ExtrasSwitchEntity):
     def is_on(self) -> bool:
         """Return true if CO2 control is on."""
         return self._attr_is_on
+
+    async def async_added_to_hass(self) -> None:
+        """Restore previous switch state when entity is (re)added."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            self._attr_is_on = last_state.state == STATE_ON
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on CO2 control."""

@@ -653,7 +653,6 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 sensor_ctx, device_id
             ),
             "internal_triggered": "internal_co2" in trigger_ids,
-            "last_updated": datetime.now().isoformat(),
         }
         self._trigger_meta[device_id] = attrs
 

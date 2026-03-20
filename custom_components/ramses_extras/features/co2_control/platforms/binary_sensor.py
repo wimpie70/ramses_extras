@@ -48,8 +48,12 @@ class CO2ControlBinarySensor(ExtrasBinarySensorEntity):
         Args:
             is_active: Whether CO2 control is active
         """
+        new_attrs = attrs or {}
+        if self._attr_is_on == is_active and self._automation_attrs == new_attrs:
+            return
+
         self._attr_is_on = is_active
-        self._automation_attrs = attrs or {}
+        self._automation_attrs = new_attrs
         self.async_write_ha_state()
 
 

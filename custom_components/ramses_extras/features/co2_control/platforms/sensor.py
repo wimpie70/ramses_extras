@@ -49,8 +49,12 @@ class CO2ControlSensor(ExtrasSensorEntity):
         Args:
             status: Status string
         """
+        new_attrs = attrs or {}
+        if self._zone_status == status and self._automation_attrs == new_attrs:
+            return
+
         self._zone_status = status
-        self._automation_attrs = attrs or {}
+        self._automation_attrs = new_attrs
         self.async_write_ha_state()
 
 
