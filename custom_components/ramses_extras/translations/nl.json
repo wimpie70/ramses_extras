@@ -46,6 +46,7 @@
           "feature_humidity_control": "Feature: Humidity Control",
           "feature_hvac_fan_card": "Feature: Hvac Fan Card",
           "feature_hello_world": "Feature: Hello World",
+          "feature_co2_control": "Feature: CO2 Control",
           "feature_sensor_control": "Feature: Sensor Control",
           "feature_ramses_debugger": "Feature: Ramses Debugger"
         }
@@ -88,6 +89,10 @@
     "feature_hvac_fan_card": {
       "title": "HVAC Ventilator Kaart Configuratie",
       "description": "Configureer geavanceerde ventilatorkaart instellingen en bediening"
+    },
+    "feature_co2_control": {
+      "title": "CO2 Controle Configuratie",
+      "description": "Configureer CO2-gestuurde ventilatie automatisering en prioriteitslogica"
     },
     "feature_hello_world": {
       "title": "Hello World Kaart Configuratie",

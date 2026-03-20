@@ -8,6 +8,15 @@ This module provides configuration management for the Hello World feature.
 Since entities are defined in const.py, this config class focuses solely on
 runtime configuration management without overriding entity definitions.
 
+Note:
+- Every feature exposed in the options menu must add a translation entry
+  (`options.step.main_menu.menu_options.feature_<feature_id>`) so the
+  feature name renders in the list.
+- The global config flow (`config_flow.py`) also needs an
+  `async_step_feature_<feature_id>()` helper that sets
+  `self._selected_feature` before calling `async_step_feature_config`.
+Keep this requirement in mind when cloning this template for new features.
+
 :platform: Home Assistant
 :feature: Hello World Configuration
 :components: Configuration Management, Validation
