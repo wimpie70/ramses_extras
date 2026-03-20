@@ -172,6 +172,52 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         switch_state = self.hass.states.get(switch_entity)
         return bool(switch_state and switch_state.state == "on")
 
+    async def _get_device_entity_states(
+        self, device_id: str
+    ) -> dict[str, float | bool]:
+        """Get input entity states needed for change-processing.
+
+        CO2 automation evaluates triggers via direct source lookups, so diagnostic
+        output entities like `sensor.co2_zone_status_*` must not block processing
+        when they are temporarily unknown/unavailable.
+        """
+        from custom_components.ramses_extras.framework.helpers.entity.core import (
+            get_feature_entity_mappings,
+        )
+
+        states: dict[str, float | bool] = {}
+        state_mappings = await get_feature_entity_mappings(
+            self.feature_id,
+            device_id,
+            self.hass,
+        )
+
+        input_state_names = {
+            "co2_control",
+            "co2_threshold",
+            "co2_activation_hysteresis",
+            "co2_deactivation_hysteresis",
+        }
+
+        for state_name, entity_id in state_mappings.items():
+            if state_name not in input_state_names:
+                continue
+
+            state = self.hass.states.get(entity_id)
+            if not state or state.state in {"unavailable", "unknown", "uninitialized"}:
+                continue
+
+            entity_type = self._extract_entity_type_from_id(entity_id)
+            try:
+                states[state_name] = self._convert_entity_state(
+                    entity_type,
+                    state.state,
+                )
+            except ValueError:
+                continue
+
+        return states
+
     async def _process_automation_logic(
         self, device_id: str, entity_states: Mapping[str, float | bool]
     ) -> None:

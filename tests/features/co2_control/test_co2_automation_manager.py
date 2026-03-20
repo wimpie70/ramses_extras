@@ -132,6 +132,33 @@ class TestCO2AutomationManager:
         assert self.manager._is_automation_enabled_for_device("32:123456") is True
 
     @pytest.mark.asyncio
+    async def test_get_device_entity_states_ignores_unknown_status_sensor(self) -> None:
+        """Diagnostic status sensor unknown should not block automation loop."""
+        self.hass.states.get.side_effect = lambda entity_id: {
+            "switch.co2_control_32_123456": _MockState("on"),
+            "number.co2_threshold_32_123456": _MockState("800"),
+            "binary_sensor.co2_active_32_123456": _MockState("off"),
+            "sensor.co2_zone_status_32_123456": _MockState("unknown"),
+        }.get(entity_id)
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.entity.core.get_feature_entity_mappings",  # noqa: E501
+            new=AsyncMock(
+                return_value={
+                    "co2_control": "switch.co2_control_32_123456",
+                    "co2_threshold": "number.co2_threshold_32_123456",
+                    "co2_active": "binary_sensor.co2_active_32_123456",
+                    "co2_zone_status": "sensor.co2_zone_status_32_123456",
+                }
+            ),
+        ):
+            states = await self.manager._get_device_entity_states("32:123456")
+
+        assert states["co2_control"] is True
+        assert states["co2_threshold"] == 800.0
+        assert "co2_zone_status" not in states
+
+    @pytest.mark.asyncio
     async def test_on_homeassistant_started_runs_initial_evaluation(self) -> None:
         """Startup hook should evaluate current CO2 states once."""
         self.manager._evaluate_co2_control = AsyncMock()
