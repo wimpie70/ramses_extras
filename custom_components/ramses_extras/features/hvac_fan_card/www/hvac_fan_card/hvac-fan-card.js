@@ -825,8 +825,11 @@ class HvacFanCard extends RamsesBaseCard {
       co2Status = `CO2 → On + ${activeState}`;
     }
 
-    const attrs = this._getDehumidifyStatusAttributes();
-    const activeTriggerSourceIds = attrs.active_trigger_source_ids || [];
+    const co2StatusState = this.getEntityState(config.co2_zone_status_entity);
+    const attrs = co2StatusState?.attributes || {};
+    const activeTriggerSourceIds = Array.isArray(attrs.active_trigger_source_ids)
+      ? attrs.active_trigger_source_ids
+      : [];
     const primaryTriggerSourceId = attrs.active_trigger_source_id;
 
     // Build area sensor items (humidity/temp and CO2 where enabled)
@@ -917,6 +920,32 @@ class HvacFanCard extends RamsesBaseCard {
       .filter(Boolean)
       .join('');
 
+    const internalEntity = attrs.internal_co2_entity;
+    let internalItemHtml = '';
+    if (internalEntity) {
+      let internalValue = '—';
+      const internalState = this.getEntityState(internalEntity);
+      if (
+        internalState &&
+        internalState.state !== 'unavailable' &&
+        internalState.state !== 'unknown'
+      ) {
+        const numValue = parseFloat(internalState.state);
+        if (!isNaN(numValue)) {
+          internalValue = `${numValue.toFixed(0)}ppm`;
+        }
+      }
+
+      const internalActive = activeTriggerSourceIds.includes('internal_co2');
+      internalItemHtml = `
+        <div class="r-xtrs-hvac-fan-balance-trigger-item ${internalActive ? 'active' : ''}">
+          <div class="r-xtrs-hvac-fan-balance-trigger-values">
+            <span>Device CO2: ${internalValue}</span>
+          </div>
+        </div>
+      `;
+    }
+
     // Display zone status
     const zoneStatusHtml = `
       <div class="r-xtrs-hvac-fan-balance-trigger-item">
@@ -935,6 +964,7 @@ class HvacFanCard extends RamsesBaseCard {
           </div>
         </div>
         ${areaSensorItems}
+        ${internalItemHtml}
         ${zoneStatusHtml}
       </div>
     `;

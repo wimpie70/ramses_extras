@@ -159,6 +159,9 @@ class TestSensorControlResolver:
                             "label": "Bathroom",
                             "temperature_entity": "sensor.bath_temp",
                             "humidity_entity": "sensor.bath_humidity",
+                            "area_co2_enabled": True,
+                            "co2_entity": "sensor.bath_co2",
+                            "co2_threshold": 900,
                             "spike_rise_percent": 15.0,
                             "spike_window_minutes": 3,
                             "check_interval_minutes": 1,
@@ -182,7 +185,12 @@ class TestSensorControlResolver:
         self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
         self.resolver._entity_exists = MagicMock(
             side_effect=lambda entity_id: (
-                entity_id in {"sensor.bath_temp", "sensor.bath_humidity"}
+                entity_id
+                in {
+                    "sensor.bath_temp",
+                    "sensor.bath_humidity",
+                    "sensor.bath_co2",
+                }
             )
         )
 
@@ -194,6 +202,9 @@ class TestSensorControlResolver:
         assert result["area_sensors"][0]["source_id"] == "bathroom"
         assert result["area_sensors"][0]["valid"] is True
         assert result["area_sensors"][0]["zone_id"] == "zone_1"
+        assert result["area_sensors"][0]["area_co2_enabled"] is True
+        assert result["area_sensors"][0]["co2_entity"] == "sensor.bath_co2"
+        assert result["area_sensors"][0]["co2_threshold"] == 900
         assert result["area_sensors"][1]["source_id"] == "broken"
         assert result["area_sensors"][1]["valid"] is False
 

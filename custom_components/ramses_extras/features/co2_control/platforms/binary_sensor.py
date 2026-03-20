@@ -30,19 +30,26 @@ class CO2ControlBinarySensor(ExtrasBinarySensorEntity):
         """Initialize CO2 control binary sensor."""
         super().__init__(hass, device_id, sensor_type, config)
         self._attr_is_on = False
+        self._automation_attrs: dict[str, Any] = {}
 
     @property
     def is_on(self) -> bool:
         """Return true if CO2 control is active."""
         return self._attr_is_on
 
-    def set_state(self, is_active: bool) -> None:
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return automation attributes for UI diagnostics/highlighting."""
+        return self._automation_attrs
+
+    def set_state(self, is_active: bool, attrs: dict[str, Any] | None = None) -> None:
         """Set the active state.
 
         Args:
             is_active: Whether CO2 control is active
         """
         self._attr_is_on = is_active
+        self._automation_attrs = attrs or {}
         self.async_write_ha_state()
 
 
@@ -86,6 +93,7 @@ async def binary_sensor_async_setup_entry(
         async_add_entities=async_add_entities,
         entity_configs=CO2_BINARY_SENSOR_CONFIGS,
         entity_factory=create_co2_binary_sensor_entities,
+        store_entities_for_automation=True,
         feature_id="co2_control",
     )
 

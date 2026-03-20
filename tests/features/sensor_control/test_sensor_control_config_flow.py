@@ -563,7 +563,7 @@ async def test_async_step_sensor_control_config_area_sensors_menu_shows_edit_opt
 async def test_async_step_sensor_control_config_selectors_allow_input_number(
     flow, helper
 ):
-    """Selectors should allow sensor and input_number entities."""
+    """Selectors should allow sensor, number and input_number entities."""
     flow._get_config_flow_helper.return_value = helper
     flow._sensor_control_stage = "configure_device"
     flow._sensor_control_selected_device = "32:123456"
@@ -577,8 +577,8 @@ async def test_async_step_sensor_control_config_selectors_allow_input_number(
         indoor_schema = flow.async_show_form.call_args.kwargs["data_schema"].schema
         temp_selector = indoor_schema["indoor_temperature_entity"]
         hum_selector = indoor_schema["indoor_humidity_entity"]
-        assert temp_selector.config["domain"] == ["sensor", "input_number"]
-        assert hum_selector.config["domain"] == ["sensor", "input_number"]
+        assert temp_selector.config["domain"] == ["sensor", "number", "input_number"]
+        assert hum_selector.config["domain"] == ["sensor", "number", "input_number"]
 
         flow.async_show_form.reset_mock()
         flow._sensor_control_group_stage = "area_sensors_edit"
@@ -589,8 +589,16 @@ async def test_async_step_sensor_control_config_selectors_allow_input_number(
         area_hum_selector = area_schema["humidity_entity"]
         assert "check_interval_minutes" not in area_schema
         assert "trigger_on_high_humidity" in area_schema
-        assert area_temp_selector.config["domain"] == ["sensor", "input_number"]
-        assert area_hum_selector.config["domain"] == ["sensor", "input_number"]
+        assert area_temp_selector.config["domain"] == [
+            "sensor",
+            "number",
+            "input_number",
+        ]
+        assert area_hum_selector.config["domain"] == [
+            "sensor",
+            "number",
+            "input_number",
+        ]
 
 
 async def test_async_step_sensor_control_config_device_overview_formats_mappings(

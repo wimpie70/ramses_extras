@@ -31,19 +31,26 @@ class CO2ControlSensor(ExtrasSensorEntity):
         """Initialize CO2 control sensor."""
         super().__init__(hass, device_id, sensor_type, config)
         self._zone_status: str | None = None
+        self._automation_attrs: dict[str, Any] = {}
 
     @property
     def native_value(self) -> StateType:
         """Return zone status information."""
         return self._zone_status if self._zone_status is not None else "unknown"
 
-    def set_zone_status(self, status: str) -> None:
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return automation attributes for UI diagnostics/highlighting."""
+        return self._automation_attrs
+
+    def set_zone_status(self, status: str, attrs: dict[str, Any] | None = None) -> None:
         """Set zone status.
 
         Args:
             status: Status string
         """
         self._zone_status = status
+        self._automation_attrs = attrs or {}
         self.async_write_ha_state()
 
 
@@ -85,6 +92,7 @@ async def sensor_async_setup_entry(
         async_add_entities=async_add_entities,
         entity_configs=CO2_SENSOR_CONFIGS,
         entity_factory=create_co2_sensor_entities,
+        store_entities_for_automation=True,
         feature_id="co2_control",
     )
 

@@ -108,6 +108,10 @@ class CO2Config:
         self._config.update(updates)
         _LOGGER.debug("Updated CO2 config for device %s: %s", self.device_id, updates)
 
+    async def async_load(self) -> bool:
+        """Load config asynchronously for automation startup compatibility."""
+        return True
+
     def validate(self) -> tuple[bool, list[str]]:
         """Validate configuration.
 

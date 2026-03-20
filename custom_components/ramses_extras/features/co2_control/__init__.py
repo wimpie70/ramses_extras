@@ -11,6 +11,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
+from .automation import CO2AutomationManager
 from .config import CO2Config
 from .const import (
     CO2_BINARY_SENSOR_CONFIGS,
@@ -107,8 +108,41 @@ async def async_create_co2_control_feature(
     return feature
 
 
+def _get_humidity_automation(hass: HomeAssistant) -> Any | None:
+    features = hass.data.get("ramses_extras", {}).get("features", {})
+    humidity_feature = (
+        features.get("humidity_control") if isinstance(features, dict) else None
+    )
+    if isinstance(humidity_feature, dict):
+        return humidity_feature.get("automation")
+    return None
+
+
+async def create_co2_control_feature(
+    hass: HomeAssistant, config_entry: Any
+) -> dict[str, Any]:
+    """Factory function to create CO2 control feature for framework startup."""
+    automation = CO2AutomationManager(hass, config_entry)
+    humidity_automation = _get_humidity_automation(hass)
+    if humidity_automation is not None:
+        automation.set_humidity_manager(humidity_automation)
+
+    return {
+        "automation": automation,
+        "config": CO2Config(hass, "", config_entry.options.get("co2_control", {})),
+        "platforms": {
+            "switch": {"async_setup_entry": switch_async_setup_entry},
+            "number": {"async_setup_entry": number_async_setup_entry},
+            "binary_sensor": {"async_setup_entry": binary_sensor_async_setup_entry},
+            "sensor": {"async_setup_entry": sensor_async_setup_entry},
+        },
+    }
+
+
 __all__ = [
     "CO2ControlFeature",
+    "CO2AutomationManager",
+    "create_co2_control_feature",
     "async_create_co2_control_feature",
     "CO2Config",
     "CO2Zone",
