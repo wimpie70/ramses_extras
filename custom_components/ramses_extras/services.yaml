@@ -97,3 +97,81 @@ get_queue_statistics:
   name: Get Queue Statistics
   description: Refresh the RAMSES command queue statistics in the integration data.
   fields: {}
+
+enable_co2_control:
+  name: Enable CO2 Control
+  description: Enable CO2-based ventilation control for a device.
+  fields:
+    device_id:
+      name: Device ID
+      description: The Ramses device ID (e.g., "32:153289").
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+
+disable_co2_control:
+  name: Disable CO2 Control
+  description: Disable CO2-based ventilation control for a device.
+  fields:
+    device_id:
+      name: Device ID
+      description: The Ramses device ID (e.g., "32:153289").
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+
+set_zone_threshold:
+  name: Set Zone CO2 Threshold
+  description: Set CO2 threshold for a specific zone.
+  fields:
+    device_id:
+      name: Device ID
+      description: The Ramses device ID (e.g., "32:153289").
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    zone_id:
+      name: Zone ID
+      description: The zone identifier.
+      required: true
+      example: "zone_1"
+      selector:
+        text:
+    threshold:
+      name: CO2 Threshold
+      description: CO2 threshold in ppm.
+      required: true
+      example: 1000
+      selector:
+        number:
+          min: 400
+          max: 2000
+          step: 50
+          unit_of_measurement: ppm
+
+trigger_co2_boost:
+  name: Trigger CO2 Boost
+  description: Manually trigger CO2-based boost mode.
+  fields:
+    device_id:
+      name: Device ID
+      description: The Ramses device ID (e.g., "32:153289").
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    duration_minutes:
+      name: Duration
+      description: Duration in minutes.
+      required: false
+      default: 30
+      example: 30
+      selector:
+        number:
+          min: 5
+          max: 120
+          step: 5
+          unit_of_measurement: minutes

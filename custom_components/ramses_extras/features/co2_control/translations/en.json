@@ -1,0 +1,90 @@
+{
+  "title": "CO2 Control",
+  "config": {
+    "step": {
+      "co2_setup": {
+        "title": "CO2 Control Setup",
+        "description": "Configure CO2-based ventilation control",
+        "data": {
+          "enabled": "Enable CO2 Control",
+          "automation_enabled": "Enable Automation",
+          "default_threshold": "Default CO2 Threshold (ppm)",
+          "activation_hysteresis": "Activation Hysteresis (ppm)",
+          "deactivation_hysteresis": "Deactivation Hysteresis (ppm)"
+        }
+      },
+      "co2_sensors": {
+        "title": "CO2 Sensors",
+        "description": "Select CO2 sensor entities for monitoring",
+        "data": {
+          "zone_count": "Number of Zones"
+        }
+      },
+      "co2_zones": {
+        "title": "Zone Configuration",
+        "description": "Configure CO2 monitoring zones",
+        "data": {
+          "zone_name": "Zone Name",
+          "sensor_entity": "CO2 Sensor Entity",
+          "threshold": "CO2 Threshold (ppm)",
+          "enabled": "Zone Enabled"
+        }
+      },
+      "co2_advanced": {
+        "title": "Advanced Settings",
+        "description": "Configure advanced CO2 control settings",
+        "data": {
+          "max_runtime_minutes": "Maximum Runtime (minutes)",
+          "cooldown_period_minutes": "Cooldown Period (minutes)",
+          "priority_over_humidity": "Priority Over Humidity Control"
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "co2_control": {
+        "name": "CO2 Control"
+      }
+    },
+    "number": {
+      "co2_threshold": {
+        "name": "CO2 Threshold"
+      },
+      "co2_activation_hysteresis": {
+        "name": "CO2 Activation Hysteresis"
+      },
+      "co2_deactivation_hysteresis": {
+        "name": "CO2 Deactivation Hysteresis"
+      }
+    },
+    "binary_sensor": {
+      "co2_active": {
+        "name": "CO2 Active"
+      }
+    },
+    "sensor": {
+      "co2_zone_status": {
+        "name": "CO2 Zone Status"
+      }
+    }
+  },
+  "services": {
+    "enable_co2_control": {
+      "name": "Enable CO2 Control",
+      "description": "Enable CO2-based ventilation control for a device"
+    },
+    "disable_co2_control": {
+      "name": "Disable CO2 Control",
+      "description": "Disable CO2-based ventilation control for a device"
+    },
+    "set_zone_threshold": {
+      "name": "Set Zone Threshold",
+      "description": "Set CO2 threshold for a specific zone"
+    },
+    "trigger_co2_boost": {
+      "name": "Trigger CO2 Boost",
+      "description": "Manually trigger CO2-based boost mode"
+    }
+  }
+}
