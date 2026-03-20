@@ -420,17 +420,45 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 device_id, device_type
             )
 
+            resolved_area_sensors = cast(
+                list[dict[str, Any]], sensor_result.get("area_sensors") or []
+            )
+            if not resolved_area_sensors:
+                resolved_area_sensors = self._get_raw_area_sensors_from_options(
+                    device_id
+                )
+
             return {
                 "mappings": sensor_result.get("mappings") or {},
                 "sources": sensor_result.get("sources") or {},
                 "raw_internal": sensor_result.get("raw_internal") or {},
-                "area_sensors": sensor_result.get("area_sensors") or [],
+                "area_sensors": resolved_area_sensors,
             }
         except Exception as err:
             _LOGGER.error(
                 "Error getting sensor_control context for %s: %s", device_id, err
             )
             return None
+
+    def _get_raw_area_sensors_from_options(
+        self,
+        device_id: str,
+    ) -> list[dict[str, Any]]:
+        """Read raw area sensor config directly from options as a fallback."""
+        sensor_control = cast(
+            dict[str, Any],
+            self.config_entry.options.get("sensor_control") or {},
+        )
+        area_map = cast(dict[str, Any], sensor_control.get("area_sensors") or {})
+
+        key = device_id.replace(":", "_")
+        raw = area_map.get(key)
+        if raw is None:
+            raw = area_map.get(device_id)
+        if not isinstance(raw, list):
+            return []
+
+        return [item for item in raw if isinstance(item, dict)]
 
     def _get_device_type_for_sensor_control(self, device_id: str) -> str | None:
         devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
@@ -491,6 +519,25 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self._latest_sensor_control_context[device_id] = sensor_ctx
         await self._register_source_listeners(device_id, sensor_ctx)
         triggered_sources = self._evaluate_trigger_sources(device_id, sensor_ctx)
+        _LOGGER.debug(
+            "CO2 source evaluation for %s: area_sensors=%d, triggered_sources=%s",
+            device_id,
+            len(
+                cast(
+                    list[dict[str, Any]],
+                    (sensor_ctx or {}).get("area_sensors") or [],
+                )
+            ),
+            [
+                {
+                    "source_id": item.get("source_id"),
+                    "entity_id": item.get("entity_id"),
+                    "value": item.get("value"),
+                    "threshold": item.get("threshold"),
+                }
+                for item in triggered_sources
+            ],
+        )
 
         was_active = self._co2_active
         self._co2_active = bool(triggered_zones or triggered_sources)
