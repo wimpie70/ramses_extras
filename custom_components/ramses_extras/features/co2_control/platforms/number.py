@@ -8,9 +8,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.ramses_extras.const import register_feature_platform
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
     ExtrasNumberEntity,
 )
+from custom_components.ramses_extras.framework.helpers.platform import PlatformSetup
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,21 +24,23 @@ class CO2ControlNumber(ExtrasNumberEntity):
         self,
         hass: HomeAssistant,
         device_id: str,
+        number_type: str,
         config: dict[str, Any],
+        config_entry: ConfigEntry | None = None,
     ) -> None:
-        """Initialize CO2 control number.
-
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            config: Entity configuration
-        """
-        super().__init__(hass, device_id, "co2_threshold", config)
-        self._attr_native_min_value = config.get("min_value", 0)
-        self._attr_native_max_value = config.get("max_value", 2000)
-        self._attr_native_step = config.get("step", 1)
-        self._attr_native_value = config.get("default_value", 1000)
-        self._attr_native_unit_of_measurement = config.get("unit")
+        """Initialize CO2 control number."""
+        super().__init__(hass, device_id, number_type, config, config_entry)
+        self._attr_native_min_value = config.get(
+            "min_value", self._attr_native_min_value
+        )
+        self._attr_native_max_value = config.get(
+            "max_value", self._attr_native_max_value
+        )
+        self._attr_native_step = config.get("step", self._attr_native_step)
+        self._attr_native_value = config.get("default_value", self._native_value)
+        self._attr_native_unit_of_measurement = config.get(
+            "unit", self._attr_native_unit_of_measurement
+        )
 
     @property
     def native_value(self) -> float:
@@ -60,19 +64,27 @@ class CO2ControlNumber(ExtrasNumberEntity):
 def create_co2_number(
     hass: HomeAssistant,
     device_id: str,
+    number_type: str,
     config: dict[str, Any],
+    config_entry: ConfigEntry | None = None,
 ) -> CO2ControlNumber:
-    """Create CO2 control number entity.
+    """Create a single CO2 control number entity."""
+    return CO2ControlNumber(hass, device_id, number_type, config, config_entry)
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config: Entity configuration
 
-    Returns:
-        CO2ControlNumber entity
-    """
-    return CO2ControlNumber(hass, device_id, config)
+async def create_co2_number_entities(
+    hass: HomeAssistant,
+    device_id: str,
+    entity_configs: dict[str, Any],
+    config_entry: ConfigEntry | None,
+) -> list[NumberEntity]:
+    """Factory to create CO2 number entities for a device."""
+    entities: list[NumberEntity] = []
+    for number_type, config in entity_configs.items():
+        entities.append(
+            create_co2_number(hass, device_id, number_type, config, config_entry)
+        )
+    return entities
 
 
 async def number_async_setup_entry(
@@ -80,14 +92,25 @@ async def number_async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up CO2 control number entities.
+    """Set up CO2 control number entities."""
+    from ..const import CO2_NUMBER_CONFIGS
 
-    Args:
-        hass: Home Assistant instance
-        entry: Config entry
-        async_add_entities: Callback to add entities
-    """
-    # Implementation will be completed in Phase 4
+    await PlatformSetup.async_create_and_add_platform_entities(
+        platform="number",
+        hass=hass,
+        config_entry=entry,
+        async_add_entities=async_add_entities,
+        entity_configs=CO2_NUMBER_CONFIGS,
+        entity_factory=create_co2_number_entities,
+        feature_id="co2_control",
+    )
 
 
-__all__ = ["CO2ControlNumber", "create_co2_number", "number_async_setup_entry"]
+register_feature_platform("number", "co2_control", number_async_setup_entry)
+
+__all__ = [
+    "CO2ControlNumber",
+    "create_co2_number",
+    "create_co2_number_entities",
+    "number_async_setup_entry",
+]

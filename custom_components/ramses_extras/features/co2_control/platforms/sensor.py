@@ -9,9 +9,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
+from custom_components.ramses_extras.const import register_feature_platform
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
     ExtrasSensorEntity,
 )
+from custom_components.ramses_extras.framework.helpers.platform import PlatformSetup
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,18 +25,12 @@ class CO2ControlSensor(ExtrasSensorEntity):
         self,
         hass: HomeAssistant,
         device_id: str,
+        sensor_type: str,
         config: dict[str, Any],
     ) -> None:
-        """Initialize CO2 control sensor.
-
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            config: Entity configuration
-        """
-        super().__init__(hass, device_id, "co2_zone_status", config)
+        """Initialize CO2 control sensor."""
+        super().__init__(hass, device_id, sensor_type, config)
         self._zone_status: str | None = None
-        self._attr_native_unit_of_measurement = config.get("unit")
 
     @property
     def native_value(self) -> StateType:
@@ -54,19 +50,24 @@ class CO2ControlSensor(ExtrasSensorEntity):
 def create_co2_sensor(
     hass: HomeAssistant,
     device_id: str,
+    sensor_type: str,
     config: dict[str, Any],
 ) -> CO2ControlSensor:
-    """Create CO2 control sensor entity.
+    """Create CO2 control sensor entity."""
+    return CO2ControlSensor(hass, device_id, sensor_type, config)
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config: Entity configuration
 
-    Returns:
-        CO2ControlSensor entity
-    """
-    return CO2ControlSensor(hass, device_id, config)
+async def create_co2_sensor_entities(
+    hass: HomeAssistant,
+    device_id: str,
+    entity_configs: dict[str, Any],
+    config_entry: ConfigEntry | None,
+) -> list[SensorEntity]:
+    """Factory to create CO2 sensors for a device."""
+    entities: list[SensorEntity] = []
+    for sensor_type, config in entity_configs.items():
+        entities.append(create_co2_sensor(hass, device_id, sensor_type, config))
+    return entities
 
 
 async def sensor_async_setup_entry(
@@ -74,14 +75,26 @@ async def sensor_async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up CO2 control sensor entities.
+    """Set up CO2 control sensor entities."""
+    from ..const import CO2_SENSOR_CONFIGS
 
-    Args:
-        hass: Home Assistant instance
-        entry: Config entry
-        async_add_entities: Callback to add entities
-    """
-    # Implementation will be completed in Phase 4
+    await PlatformSetup.async_create_and_add_platform_entities(
+        platform="sensor",
+        hass=hass,
+        config_entry=entry,
+        async_add_entities=async_add_entities,
+        entity_configs=CO2_SENSOR_CONFIGS,
+        entity_factory=create_co2_sensor_entities,
+        feature_id="co2_control",
+    )
 
 
-__all__ = ["CO2ControlSensor", "create_co2_sensor", "sensor_async_setup_entry"]
+register_feature_platform("sensor", "co2_control", sensor_async_setup_entry)
+
+
+__all__ = [
+    "CO2ControlSensor",
+    "create_co2_sensor",
+    "create_co2_sensor_entities",
+    "sensor_async_setup_entry",
+]
