@@ -690,12 +690,16 @@ class HvacFanCard extends RamsesBaseCard {
             <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${humidValue}</span>
           </div>
           <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
-            <span class="r-xtrs-hvac-fan-sensor-source-entity">${co2Entity}</span>
-            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${co2Value}</span>
-          </div>
-          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
             <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Absolute Humidity:</span>
             <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${absValue}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Area CO2 Enabled:</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${areaCo2Enabled ? 'Yes' : 'No'}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-entity">${co2Entity}</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${co2Value}</span>
           </div>
         </div>
       </div>
@@ -904,9 +908,8 @@ class HvacFanCard extends RamsesBaseCard {
 
         return `
           <div class="r-xtrs-hvac-fan-balance-trigger-item ${stateClass}">
-            <span class="r-xtrs-hvac-fan-balance-trigger-label">${label}</span>
             <div class="r-xtrs-hvac-fan-balance-trigger-values">
-              <span>${sensorValues.join(' · ')}</span>
+              <span>${label}: ${sensorValues.join(' · ')}</span>
             </div>
           </div>
         `;
