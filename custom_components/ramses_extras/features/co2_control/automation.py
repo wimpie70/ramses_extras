@@ -531,7 +531,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
             source_id = str(area_sensor.get("source_id") or entity_id)
             label = str(area_sensor.get("label") or source_id)
-            threshold = int(area_sensor.get("co2_threshold") or threshold_default)
+            threshold = self._resolve_area_threshold(area_sensor, threshold_default)
 
             source_result = self._evaluate_source_trigger(
                 source_states,
@@ -561,6 +561,26 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             triggered.append(internal_result)
 
         return triggered
+
+    def _resolve_area_threshold(
+        self,
+        area_sensor: dict[str, Any],
+        threshold_default: int,
+    ) -> int:
+        """Resolve per-area threshold from entity, static value, or default."""
+        threshold_entity = str(area_sensor.get("co2_threshold_entity") or "").strip()
+        if threshold_entity:
+            state = self.hass.states.get(threshold_entity)
+            if state and state.state not in {"unavailable", "unknown", "uninitialized"}:
+                try:
+                    return int(float(state.state))
+                except (TypeError, ValueError):
+                    pass
+
+        try:
+            return int(area_sensor.get("co2_threshold") or threshold_default)
+        except (TypeError, ValueError):
+            return threshold_default
 
     def _evaluate_source_trigger(
         self,

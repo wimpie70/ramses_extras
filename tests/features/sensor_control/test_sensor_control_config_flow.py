@@ -395,6 +395,119 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         assert edited_area_sensor["trigger_on_high_humidity"] is False
 
 
+async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
+    """Area sensor should persist co2_threshold_entity and static fallback."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "area_sensors_menu"
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(flow, {"area_sensor_action": "add"})
+
+        await async_step_sensor_control_config(
+            flow,
+            {
+                "area_sensor_label": "Bathroom",
+                "area_sensor_enabled": True,
+                "temperature_entity": "input_number.temp_helper",
+                "humidity_entity": "input_number.humid_helper",
+                "trigger_on_high_humidity": True,
+                "spike_rise_percent": 5.0,
+                "spike_window_minutes": 3,
+                "area_co2_enabled": True,
+                "co2_entity": "input_number.co2_helper",
+                "co2_threshold_entity": "input_number.bathroom_co2_threshold",
+                "co2_threshold": 800,
+            },
+        )
+
+    options = flow.hass.config_entries.async_update_entry.call_args.kwargs["options"]
+    area_sensor = options["sensor_control"]["area_sensors"]["32_123456"][0]
+    assert area_sensor["source_id"] == "bathroom"
+    assert area_sensor["co2_entity"] == "input_number.co2_helper"
+    assert area_sensor["co2_threshold_entity"] == "input_number.bathroom_co2_threshold"
+    assert area_sensor["co2_threshold"] == 800
+
+
+async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper):
+    """Editing one area should keep other area's CO2 settings unchanged."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "area_sensors_edit"
+    flow._sensor_control_area_sensor_id = "bathroom"
+    flow._config_entry.options = {
+        "sensor_control": {
+            "area_sensors": {
+                "32_123456": [
+                    {
+                        "source_id": "bathroom",
+                        "label": "Bathroom",
+                        "enabled": True,
+                        "temperature_entity": "input_number.temp_helper",
+                        "humidity_entity": "input_number.humid_helper",
+                        "area_co2_enabled": True,
+                        "co2_entity": "input_number.co2_helper",
+                        "co2_threshold_entity": "input_number.bathroom_co2_threshold",
+                        "co2_threshold": 800,
+                        "trigger_on_high_humidity": True,
+                        "spike_rise_percent": 5.0,
+                        "spike_window_minutes": 3,
+                    },
+                    {
+                        "source_id": "kitchen",
+                        "label": "Kitchen",
+                        "enabled": True,
+                        "temperature_entity": "sensor.kitchen_temp",
+                        "humidity_entity": "sensor.kitchen_humidity",
+                        "area_co2_enabled": True,
+                        "co2_entity": "sensor.kitchen_co2",
+                        "co2_threshold_entity": "input_number.kitchen_co2_threshold",
+                        "co2_threshold": 950,
+                        "trigger_on_high_humidity": False,
+                        "spike_rise_percent": 10.0,
+                        "spike_window_minutes": 5,
+                    },
+                ]
+            }
+        }
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(
+            flow,
+            {
+                "area_sensor_label": "Bathroom Updated",
+                "area_sensor_enabled": True,
+                "temperature_entity": "input_number.temp_helper",
+                "humidity_entity": "input_number.humid_helper",
+                "trigger_on_high_humidity": True,
+                "spike_rise_percent": 6.0,
+                "spike_window_minutes": 3,
+                "area_co2_enabled": True,
+                "co2_entity": "input_number.co2_helper",
+                "co2_threshold_entity": "input_number.bathroom_co2_threshold",
+                "co2_threshold": 820,
+            },
+        )
+
+    updated = flow.hass.config_entries.async_update_entry.call_args.kwargs["options"][
+        "sensor_control"
+    ]["area_sensors"]["32_123456"]
+    assert updated[0]["source_id"] == "bathroom"
+    assert updated[0]["co2_threshold"] == 820
+    assert updated[1]["source_id"] == "kitchen"
+    assert updated[1]["co2_threshold"] == 950
+    assert updated[1]["co2_entity"] == "sensor.kitchen_co2"
+
+
 async def test_async_step_sensor_control_config_area_sensors_edit_preserves_others(
     flow, helper
 ):
