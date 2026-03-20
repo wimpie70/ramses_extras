@@ -400,6 +400,27 @@ export const CARD_STYLE = `
   border-style: dashed;
 }
 
+/* CO2 trigger value highlighting */
+.r-xtrs-co2-trigger {
+  font-weight: 600;
+  color: var(--primary-color);
+  text-shadow: 0 0 4px var(--primary-color);
+}
+
+/* Temperature trigger value highlighting */
+.r-xtrs-temp-trigger {
+  font-weight: 600;
+  color: var(--error-color, #db4437);
+  text-shadow: 0 0 4px var(--error-color, #db4437);
+}
+
+/* Humidity trigger value highlighting */
+.r-xtrs-humid-trigger {
+  font-weight: 600;
+  color: var(--warning-color, #f4b400);
+  text-shadow: 0 0 4px var(--warning-color, #f4b400);
+}
+
 .r-xtrs-hvac-fan-balance-trigger-label {
   font-size: 9px;
   font-weight: 600;

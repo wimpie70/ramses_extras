@@ -20,6 +20,8 @@ class TestCO2AutomationManager:
 
     def setup_method(self) -> None:
         self.hass = MagicMock(spec=HomeAssistant)
+        self.hass.config_entries = MagicMock()
+        self.hass.config_entries.async_entries = MagicMock(return_value=[])
         self.hass.data = {
             "ramses_extras": {
                 "enabled_features": {
@@ -151,6 +153,41 @@ class TestCO2AutomationManager:
         )
 
         assert threshold == 800
+
+    def test_get_raw_area_sensors_from_active_entry_when_hass_data_is_stale(
+        self,
+    ) -> None:
+        """Raw area sensor fallback should use active config entries for the device."""
+        stale_entry = MagicMock()
+        stale_entry.options = {"sensor_control": {"area_sensors": {}}}
+        stale_entry.data = {}
+
+        active_entry = MagicMock()
+        active_entry.options = {
+            "sensor_control": {
+                "area_sensors": {
+                    "32_123456": [
+                        {
+                            "source_id": "bathroom",
+                            "label": "Bathroom",
+                            "area_co2_enabled": True,
+                            "co2_entity": "input_number.co2_helper",
+                            "co2_threshold": 800,
+                        }
+                    ]
+                }
+            }
+        }
+        active_entry.data = {}
+
+        self.hass.data["ramses_extras"]["config_entry"] = stale_entry
+        self.hass.config_entries.async_entries.return_value = [active_entry]
+
+        area_sensors = self.manager._get_raw_area_sensors_from_options("32_123456")
+
+        assert len(area_sensors) == 1
+        assert area_sensors[0]["source_id"] == "bathroom"
+        assert area_sensors[0]["co2_entity"] == "input_number.co2_helper"
 
     def test_is_automation_enabled_for_device_accepts_switch_on(self) -> None:
         """Switch ON should enable evaluation even if config flag is false."""

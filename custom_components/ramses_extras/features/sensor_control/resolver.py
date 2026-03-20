@@ -93,7 +93,7 @@ class SensorControlResolver:
         device_key = device_id.replace(":", "_")
 
         # Get sensor control configuration
-        sensor_control_config = self._get_sensor_control_config()
+        sensor_control_config = self._get_sensor_control_config(device_id)
 
         # Get base internal mappings for this device type
         internal_mappings = self._get_internal_mappings(device_id, device_type)
@@ -126,6 +126,13 @@ class SensorControlResolver:
             area_sensors = sensor_control_config["area_sensors"].get(device_key, [])
 
         result["area_sensors"] = self._resolve_area_sensors(area_sensors)
+        self._logger.debug(
+            "Resolved area sensors for %s (%s): configured=%d, resolved=%d",
+            device_id,
+            device_type,
+            len(area_sensors) if isinstance(area_sensors, list) else 0,
+            len(result["area_sensors"]),
+        )
 
         # Resolve each metric
         for metric in SUPPORTED_METRICS:
@@ -236,18 +243,99 @@ class SensorControlResolver:
 
         return resolved
 
-    def _get_sensor_control_config(self) -> dict[str, Any] | None:
+    def _get_sensor_control_config(
+        self,
+        device_id: str | None = None,
+    ) -> dict[str, Any] | None:
         """Get sensor control configuration from config entry options.
 
         Returns:
             Sensor control configuration dictionary or None if not configured
         """
         try:
-            config_entry = self.hass.data.get(DOMAIN, {}).get("config_entry")
-            if not config_entry:
-                return None
+            entries: list[Any] = []
+            domain_data = self.hass.data.get(DOMAIN, {})
 
-            return config_entry.options.get("sensor_control") or None
+            config_entry = domain_data.get("config_entry")
+            if config_entry is not None:
+                entries.append(config_entry)
+
+            config_entries = getattr(self.hass, "config_entries", None)
+            async_entries = getattr(config_entries, "async_entries", None)
+            if callable(async_entries):
+                entries.extend(async_entries(DOMAIN))
+
+            # Strip device type suffix (e.g., " (HVC)") before normalizing
+            clean_device_id = device_id
+            if device_id and " (" in device_id:
+                clean_device_id = device_id.split(" (")[0]
+
+            normalized_keys: set[str] = set()
+            if clean_device_id:
+                normalized_keys = {
+                    str(clean_device_id),
+                    str(clean_device_id).replace(":", "_"),
+                    str(clean_device_id).replace("_", ":"),
+                }
+
+            fallback_config: dict[str, Any] | None = None
+            seen_entries: set[int] = set()
+
+            for entry in entries:
+                if entry is None:
+                    continue
+
+                entry_marker = id(entry)
+                if entry_marker in seen_entries:
+                    continue
+                seen_entries.add(entry_marker)
+
+                options = getattr(entry, "options", {}) or {}
+                data = getattr(entry, "data", {}) or {}
+                sensor_control = options.get("sensor_control") or data.get(
+                    "sensor_control"
+                )
+                if not isinstance(sensor_control, dict):
+                    continue
+
+                if fallback_config is None:
+                    fallback_config = sensor_control
+
+                if not normalized_keys:
+                    self._logger.debug(
+                        (
+                            "Selected sensor_control config from entry %s "
+                            "without device filter"
+                        ),
+                        getattr(entry, "entry_id", "unknown"),
+                    )
+                    return sensor_control
+
+                for config_key in ("sources", "abs_humidity_inputs", "area_sensors"):
+                    section = sensor_control.get(config_key) or {}
+                    if not isinstance(section, dict):
+                        continue
+                    if any(key in section for key in normalized_keys):
+                        self._logger.debug(
+                            (
+                                "Selected sensor_control config from entry %s "
+                                "for %s via %s"
+                            ),
+                            getattr(entry, "entry_id", "unknown"),
+                            device_id,
+                            config_key,
+                        )
+                        return sensor_control
+
+            if fallback_config is not None and device_id is not None:
+                self._logger.debug(
+                    (
+                        "Using fallback sensor_control config for %s "
+                        "(no matching device key found)"
+                    ),
+                    device_id,
+                )
+            return fallback_config
         except Exception as err:
             self._logger.error("Failed to get sensor_control config: %s", err)
             return None

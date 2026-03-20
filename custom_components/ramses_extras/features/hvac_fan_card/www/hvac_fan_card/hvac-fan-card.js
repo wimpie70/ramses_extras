@@ -895,14 +895,45 @@ class HvacFanCard extends RamsesBaseCard {
         ].filter(Boolean).join(' ');
 
         const sensorValues = [];
+
+        // Check each sensor type for independent triggering
+        let tempHighlighted = false;
+        let humidHighlighted = false;
+        let co2Highlighted = false;
+
+        if (isActive) {
+          // Get detailed trigger information to determine which sensor type is triggering
+          const co2ZoneStatusState = this.getEntityState(config.co2_zone_status_entity);
+          const triggerAttrs = co2ZoneStatusState?.attributes || {};
+          const triggeredSources = triggerAttrs.triggered_sources || [];
+
+          const myTrigger = triggeredSources.find(t => t.source_id === sourceId);
+          if (myTrigger) {
+            // For CO2 control, triggers are always CO2-based, but we can check the entity_id
+            // to determine if it's a temperature, humidity, or CO2 sensor
+            const entityId = myTrigger.entity_id || '';
+            if (entityId.includes('temp') || entityId.includes('temperature')) {
+              tempHighlighted = true;
+            } else if (entityId.includes('humid') || entityId.includes('humidity')) {
+              humidHighlighted = true;
+            } else {
+              co2Highlighted = true; // Default to CO2 for CO2 control
+            }
+          }
+        }
+
+        // Always show all values with independent highlighting
         if (tempValue !== null) {
-          sensorValues.push(tempValue);
+          const tempClass = tempHighlighted ? 'r-xtrs-temp-trigger' : '';
+          sensorValues.push(`<span class="${tempClass}">${tempValue}</span>`);
         }
         if (humidValue !== null) {
-          sensorValues.push(humidValue);
+          const humidClass = humidHighlighted ? 'r-xtrs-humid-trigger' : '';
+          sensorValues.push(`<span class="${humidClass}">${humidValue}</span>`);
         }
         if (areaCo2Enabled && co2Entity) {
-          sensorValues.push(co2Value);
+          const co2Class = co2Highlighted ? 'r-xtrs-co2-trigger' : '';
+          sensorValues.push(`<span class="${co2Class}">${co2Value}</span>`);
         }
 
         if (sensorValues.length === 0) {
@@ -912,7 +943,7 @@ class HvacFanCard extends RamsesBaseCard {
         return `
           <div class="r-xtrs-hvac-fan-balance-trigger-item ${stateClass}">
             <div class="r-xtrs-hvac-fan-balance-trigger-values">
-              <span>${label}: ${sensorValues.join(' · ')}</span>
+              <span>${label}: </span>${sensorValues.join(' · ')}
             </div>
           </div>
         `;
@@ -920,9 +951,10 @@ class HvacFanCard extends RamsesBaseCard {
       .filter(Boolean)
       .join('');
 
+    // Only show internal device CO2 if it's the trigger
     const internalEntity = attrs.internal_co2_entity;
     let internalItemHtml = '';
-    if (internalEntity) {
+    if (internalEntity && activeTriggerSourceIds.includes('internal_co2')) {
       let internalValue = '—';
       const internalState = this.getEntityState(internalEntity);
       if (

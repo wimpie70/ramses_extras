@@ -445,24 +445,101 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         device_id: str,
     ) -> list[dict[str, Any]]:
         """Read raw area sensor config directly from options as a fallback."""
-        sensor_control = cast(
-            dict[str, Any],
-            self.config_entry.options.get("sensor_control") or {},
-        )
+        # Strip device type suffix (e.g., " (HVC)") before lookup
+        clean_device_id = device_id
+        if device_id and " (" in device_id:
+            clean_device_id = device_id.split(" (")[0]
+
+        sensor_control = self._get_sensor_control_config(clean_device_id)
+        if not sensor_control:
+            return []
+
         area_map = cast(dict[str, Any], sensor_control.get("area_sensors") or {})
 
-        key = device_id.replace(":", "_")
-        raw = area_map.get(key)
-        if raw is None:
-            raw = area_map.get(device_id)
+        raw = None
+        for key in {
+            str(clean_device_id),
+            str(clean_device_id).replace(":", "_"),
+            str(clean_device_id).replace("_", ":"),
+        }:
+            raw = area_map.get(key)
+            if raw is not None:
+                break
+
         if not isinstance(raw, list):
             return []
 
         return [item for item in raw if isinstance(item, dict)]
 
+    def _get_sensor_control_config(
+        self,
+        device_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Get sensor_control config from the most relevant config entry."""
+        entries: list[Any] = [self.config_entry]
+
+        domain_data = self.hass.data.get(DOMAIN, {})
+        hass_config_entry = domain_data.get("config_entry")
+        if hass_config_entry is not None:
+            entries.append(hass_config_entry)
+
+        config_entries = getattr(self.hass, "config_entries", None)
+        async_entries = getattr(config_entries, "async_entries", None)
+        if callable(async_entries):
+            resolved_entries = async_entries(DOMAIN)
+            if isinstance(resolved_entries, list):
+                entries.extend(resolved_entries)
+
+        normalized_keys: set[str] = set()
+        if device_id:
+            normalized_keys = {
+                str(device_id),
+                str(device_id).replace(":", "_"),
+                str(device_id).replace("_", ":"),
+            }
+
+        fallback_config: dict[str, Any] | None = None
+        seen_entries: set[int] = set()
+
+        for entry in entries:
+            if entry is None:
+                continue
+
+            entry_marker = id(entry)
+            if entry_marker in seen_entries:
+                continue
+            seen_entries.add(entry_marker)
+
+            options = getattr(entry, "options", {}) or {}
+            data = getattr(entry, "data", {}) or {}
+            sensor_control = options.get("sensor_control") or data.get("sensor_control")
+            if not isinstance(sensor_control, dict):
+                continue
+
+            if fallback_config is None:
+                fallback_config = sensor_control
+
+            if not normalized_keys:
+                return sensor_control
+
+            for config_key in ("sources", "abs_humidity_inputs", "area_sensors"):
+                section = sensor_control.get(config_key) or {}
+                if not isinstance(section, dict):
+                    continue
+                if any(key in section for key in normalized_keys):
+                    return sensor_control
+
+        return fallback_config or {}
+
     def _get_device_type_for_sensor_control(self, device_id: str) -> str | None:
         devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
-        target_colon = str(device_id).replace("_", ":")
+
+        # Strip device type suffix for consistent lookup
+        clean_device_id = device_id
+        if device_id and " (" in device_id:
+            clean_device_id = device_id.split(" (")[0]
+
+        target_colon = str(clean_device_id).replace("_", ":")
 
         for device in devices:
             if isinstance(device, dict):
@@ -475,8 +552,12 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if raw_id is None:
                 continue
 
-            resolved_id = str(raw_id)
-            if resolved_id.replace("_", ":") == target_colon:
+            # Also normalize the stored device ID for comparison
+            stored_id = str(raw_id)
+            if " (" in stored_id:
+                stored_id = stored_id.split(" (")[0]
+
+            if stored_id.replace("_", ":") == target_colon:
                 return str(device_type) if device_type else None
 
         return None
@@ -502,12 +583,17 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         """Evaluate CO2 control and adjust fan speed if needed.
 
         Args:
-            device_id: Device identifier
+            device_id: Device identifier (may include device type suffix)
         """
-        if not self._is_automation_enabled_for_device(device_id):
+        # Normalize device_id by stripping device type suffix
+        clean_device_id = device_id
+        if device_id and " (" in device_id:
+            clean_device_id = device_id.split(" (")[0]
+
+        if not self._is_automation_enabled_for_device(clean_device_id):
             return
 
-        zone_manager = self._zone_managers.get(device_id)
+        zone_manager = self._zone_managers.get(clean_device_id)
         triggered_zones: list[str] = []
         if zone_manager:
             triggered_zones = await zone_manager.check_zone_triggers(
@@ -515,13 +601,13 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 self.config.deactivation_hysteresis,
             )
 
-        sensor_ctx = await self._get_sensor_control_context(device_id)
-        self._latest_sensor_control_context[device_id] = sensor_ctx
-        await self._register_source_listeners(device_id, sensor_ctx)
-        triggered_sources = self._evaluate_trigger_sources(device_id, sensor_ctx)
+        sensor_ctx = await self._get_sensor_control_context(clean_device_id)
+        self._latest_sensor_control_context[clean_device_id] = sensor_ctx
+        await self._register_source_listeners(clean_device_id, sensor_ctx)
+        triggered_sources = self._evaluate_trigger_sources(clean_device_id, sensor_ctx)
         _LOGGER.debug(
             "CO2 source evaluation for %s: area_sensors=%d, triggered_sources=%s",
-            device_id,
+            clean_device_id,
             len(
                 cast(
                     list[dict[str, Any]],
@@ -542,7 +628,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         was_active = self._co2_active
         self._co2_active = bool(triggered_zones or triggered_sources)
         await self._update_automation_status(
-            device_id,
+            clean_device_id,
             triggered_zones,
             triggered_sources,
             sensor_ctx,
@@ -553,7 +639,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             self._activation_time = datetime.now()
             _LOGGER.info(
                 "CO2 control activated for %s - zones: %s, sources: %s",
-                device_id,
+                clean_device_id,
                 triggered_zones,
                 [item.get("source_id") for item in triggered_sources],
             )
@@ -561,19 +647,19 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             await self._notify_priority_takeover()
 
         elif not self._co2_active and was_active:
-            _LOGGER.info("CO2 control deactivated for device %s", device_id)
+            _LOGGER.info("CO2 control deactivated for device %s", clean_device_id)
             # Notify humidity control it can resume
             await self._notify_priority_release()
 
         # Calculate and set fan speed
         if self._co2_active:
             if zone_manager:
-                await self._adjust_fan_speed(device_id, zone_manager)
+                await self._adjust_fan_speed(clean_device_id, zone_manager)
             else:
-                await self._boost_from_triggers(device_id)
+                await self._boost_from_triggers(clean_device_id)
         else:
             # Return to idle/normal speed
-            await self._return_to_idle(device_id)
+            await self._return_to_idle(clean_device_id)
 
     def _evaluate_trigger_sources(
         self, device_id: str, sensor_ctx: dict[str, Any] | None

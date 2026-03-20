@@ -20,6 +20,8 @@ class TestSensorControlResolver:
     def setup_method(self):
         """Set up test fixtures."""
         self.hass = MagicMock(spec=HomeAssistant)
+        self.hass.config_entries = MagicMock()
+        self.hass.config_entries.async_entries = MagicMock(return_value=[])
         self.hass.data = {}
         self.hass.bus = MagicMock()
         self.hass.config = MagicMock()
@@ -240,6 +242,34 @@ class TestSensorControlResolver:
         self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
         result = self.resolver._get_sensor_control_config()
         assert result == sensor_control_config
+
+    def test_get_sensor_control_config_prefers_entry_with_device_key(self):
+        """Device-aware lookup should prefer the entry that contains the device."""
+        stale_entry = MagicMock()
+        stale_entry.options = {"sensor_control": {"area_sensors": {}}}
+        stale_entry.data = {}
+
+        active_config = {
+            "area_sensors": {
+                self.device_key: [
+                    {
+                        "source_id": "bathroom",
+                        "temperature_entity": "sensor.bath_temp",
+                        "humidity_entity": "sensor.bath_humidity",
+                    }
+                ]
+            }
+        }
+        active_entry = MagicMock()
+        active_entry.options = {"sensor_control": active_config}
+        active_entry.data = {}
+
+        self.hass.data = {"ramses_extras": {"config_entry": stale_entry}}
+        self.hass.config_entries.async_entries.return_value = [active_entry]
+
+        result = self.resolver._get_sensor_control_config(self.device_id)
+
+        assert result == active_config
 
     def test_get_sensor_control_config_exception(self):
         """Test getting sensor control config with exception."""
