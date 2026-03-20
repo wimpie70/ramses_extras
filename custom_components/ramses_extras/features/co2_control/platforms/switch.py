@@ -8,9 +8,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.ramses_extras.const import register_feature_platform
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
     ExtrasSwitchEntity,
 )
+from custom_components.ramses_extras.framework.helpers.platform import PlatformSetup
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,17 +59,24 @@ def create_co2_switch(
     device_id: str,
     config: dict[str, Any],
 ) -> CO2ControlSwitch:
-    """Create CO2 control switch entity.
-
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config: Entity configuration
-
-    Returns:
-        CO2ControlSwitch entity
-    """
+    """Create CO2 control switch entity."""
     return CO2ControlSwitch(hass, device_id, config)
+
+
+async def create_co2_switch_entities(
+    hass: HomeAssistant,
+    device_id: str,
+    entity_configs: dict[str, Any],
+    config_entry: ConfigEntry | None,
+) -> list[SwitchEntity]:
+    """Factory to create CO2 control switch entities."""
+    from ..const import CO2_SWITCH_CONFIGS
+
+    entities: list[SwitchEntity] = []
+    config = CO2_SWITCH_CONFIGS.get("co2_control")
+    if config:
+        entities.append(create_co2_switch(hass, device_id, config))
+    return entities
 
 
 async def switch_async_setup_entry(
@@ -75,14 +84,24 @@ async def switch_async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up CO2 control switch entities.
+    """Set up CO2 control switch entities."""
+    from ..const import CO2_SWITCH_CONFIGS
 
-    Args:
-        hass: Home Assistant instance
-        entry: Config entry
-        async_add_entities: Callback to add entities
-    """
-    # Implementation will be completed in Phase 4
+    await PlatformSetup.async_create_and_add_platform_entities(
+        platform="switch",
+        hass=hass,
+        config_entry=entry,
+        async_add_entities=async_add_entities,
+        entity_configs=CO2_SWITCH_CONFIGS,
+        entity_factory=create_co2_switch_entities,
+        feature_id="co2_control",
+    )
 
 
-__all__ = ["CO2ControlSwitch", "create_co2_switch", "switch_async_setup_entry"]
+register_feature_platform("switch", "co2_control", switch_async_setup_entry)
+
+__all__ = [
+    "CO2ControlSwitch",
+    "create_co2_switch",
+    "switch_async_setup_entry",
+]

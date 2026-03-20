@@ -32,7 +32,6 @@ from .platforms import (
     create_co2_control_binary_sensor,
     create_co2_number,
     create_co2_sensor,
-    create_co2_switch,
     number_async_setup_entry,
     sensor_async_setup_entry,
     switch_async_setup_entry,

@@ -17,7 +17,6 @@ from .sensor import (
 )
 from .switch import (
     CO2ControlSwitch,
-    create_co2_switch,
     switch_async_setup_entry,
 )
 
@@ -36,6 +35,5 @@ __all__ = [
     "sensor_async_setup_entry",
     # Switch
     "CO2ControlSwitch",
-    "create_co2_switch",
     "switch_async_setup_entry",
 ]
