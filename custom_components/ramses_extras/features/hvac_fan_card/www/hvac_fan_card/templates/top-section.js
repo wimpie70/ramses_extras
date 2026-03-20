@@ -33,7 +33,7 @@ export function createTopSection(data, t) {
     exhaustFanSpeed, supplyFanSpeed, fanMode,
     co2Level, supplyFlowRate, exhaustFlowRate, efficiency,
     timerMinutes, airflowSvg, filterDaysRemaining,
-    balanceTriggersHtml
+    balanceTriggersHtml, co2ZonesHtml
   } = data;
 
   // Helper function to format humidity values
@@ -103,8 +103,9 @@ export function createTopSection(data, t) {
             <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temp')}: ${comfortTemp} °C</div>
           </div>
 
-          <!-- Balance Triggers Section -->
+          <!-- Balance Triggers & CO2 Zones Section (RIGHT panel) -->
           ${balanceTriggersHtml || ''}
+          ${co2ZonesHtml || ''}
         </div>
 
 

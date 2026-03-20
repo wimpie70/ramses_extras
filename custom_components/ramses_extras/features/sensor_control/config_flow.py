@@ -104,6 +104,9 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
     spike_window = area_sensor.get("spike_window_minutes")
     trigger_on_high_humidity = bool(area_sensor.get("trigger_on_high_humidity", False))
     enabled = bool(area_sensor.get("enabled", True))
+    area_co2_enabled = bool(area_sensor.get("area_co2_enabled", False))
+    co2_entity = str(area_sensor.get("co2_entity") or "missing")
+    co2_threshold = area_sensor.get("co2_threshold", 1000)
 
     details = [
         f"temp: {temp_entity}",
@@ -113,6 +116,8 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
         details.append(f"spike: {spike_rise}%/{spike_window}m")
     if trigger_on_high_humidity:
         details.append("max RH trigger")
+    if area_co2_enabled:
+        details.append(f"CO2: {co2_entity} (threshold: {co2_threshold}ppm)")
     details.append("enabled" if enabled else "disabled")
 
     zone_id = str(area_sensor.get("zone_id") or "").strip()
@@ -635,6 +640,9 @@ async def async_step_sensor_control_config(
                 "spike_window_minutes": int(
                     user_input.get("spike_window_minutes") or 1
                 ),
+                "area_co2_enabled": bool(user_input.get("area_co2_enabled", False)),
+                "co2_entity": str(user_input.get("co2_entity") or ""),
+                "co2_threshold": int(user_input.get("co2_threshold") or 1000),
             }
             zone_id = str(user_input.get("zone_id") or "").strip()
             if zone_id:
@@ -682,6 +690,11 @@ async def async_step_sensor_control_config(
             if selected_area_sensor and selected_area_sensor.get("humidity_entity")
             else None
         )
+        co2_default = (
+            str(selected_area_sensor.get("co2_entity"))
+            if selected_area_sensor and selected_area_sensor.get("co2_entity")
+            else None
+        )
         area_sensor_selector = selector.EntitySelector(
             selector.EntitySelectorConfig(domain=["sensor", "input_number"])
         )
@@ -694,6 +707,11 @@ async def async_step_sensor_control_config(
             vol.Required("humidity_entity")
             if humidity_default is None
             else vol.Required("humidity_entity", default=humidity_default)
+        )
+        co2_key = (
+            vol.Optional("co2_entity")
+            if co2_default is None
+            else vol.Optional("co2_entity", default=co2_default)
         )
         zone_key = (
             vol.Optional("zone_id")
@@ -748,6 +766,23 @@ async def async_step_sensor_control_config(
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),
+                vol.Required(
+                    "area_co2_enabled",
+                    default=bool(
+                        selected_area_sensor.get("area_co2_enabled", False)
+                        if selected_area_sensor
+                        else False
+                    ),
+                ): bool,
+                co2_key: area_sensor_selector,
+                vol.Required(
+                    "co2_threshold",
+                    default=int(
+                        selected_area_sensor.get("co2_threshold", 1000)
+                        if selected_area_sensor
+                        else 1000
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=400, max=2000)),
             }
         )
 
@@ -757,17 +792,19 @@ async def async_step_sensor_control_config(
             f"{
                 _t_area(
                     'area_sensors_edit',
-                    'Define one local area sensor using temperature + humidity inputs. '
-                    'This will later drive derived absolute humidity '
-                    'and spike detection.',
+                    'Define one local area sensor using temperature + humidity and/or '
+                    'CO2 inputs. Humidity sensors drive spike detection. CO2 sensors '
+                    'drive CO2 control. Both can share the same zone_id.',
                 )
             } \
             \n\n"
             f"{
                 _t_area(
                     'area_sensors_entity_note',
-                    'Temperature entity and humidity entity should come from '
-                    'the same device, or be positioned very close together.',
+                    'Temperature and humidity entities should come from '
+                    'the same device. Enable area_sensor_enabled '
+                    'for humidity/temp, area_co2_enabled for CO2. '
+                    'Multiple area sensors can share the same zone_id.',
                 )
             }"
         )

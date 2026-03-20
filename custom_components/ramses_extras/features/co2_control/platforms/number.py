@@ -31,15 +31,19 @@ class CO2ControlNumber(ExtrasNumberEntity):
         """Initialize CO2 control number."""
         super().__init__(hass, device_id, number_type, config, config_entry)
         self._attr_native_min_value = config.get(
-            "min_value", self._attr_native_min_value
+            "min_value", getattr(self, "_attr_native_min_value", 0.0)
         )
         self._attr_native_max_value = config.get(
-            "max_value", self._attr_native_max_value
+            "max_value", getattr(self, "_attr_native_max_value", 100.0)
         )
-        self._attr_native_step = config.get("step", self._attr_native_step)
-        self._attr_native_value = config.get("default_value", self._native_value)
+        self._attr_native_step = config.get(
+            "step", getattr(self, "_attr_native_step", 1.0)
+        )
+        self._attr_native_value = config.get(
+            "default_value", getattr(self, "_native_value", None)
+        )
         self._attr_native_unit_of_measurement = config.get(
-            "unit", self._attr_native_unit_of_measurement
+            "unit", getattr(self, "_attr_native_unit_of_measurement", None)
         )
 
     @property

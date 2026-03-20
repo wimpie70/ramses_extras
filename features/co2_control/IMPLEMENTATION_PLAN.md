@@ -37,36 +37,47 @@ touch features/co2_control/platforms/{__init__.py,sensor.py,switch.py,number.py,
 
 ---
 
-### ✅ Phase 2: Sensor Control Extension (Day 1)
+### ✅ Phase 2: Sensor Control Extension (Day 1) - UNIFIED AREA SENSORS
 
-**2.1 Extend Sensor Control for CO2**
+**2.1 Extend Area Sensors for CO2**
+
+**Design Decision: Unified Area Sensors**
+
+- Area sensors can have humidity (temp+humidity) OR CO2 sensors OR both
+- `area_sensor_enabled` checkbox → opens humidity/temp fields
+- `area_co2_enabled` checkbox → opens CO2 sensor field
+- Same `zone_id` for both types in the same area
+- Multiple area sensors can share the same `zone_id`
 
 **Files to modify:**
 
-- `features/sensor_control/const.py` - Add CO2 metrics
-- `features/sensor_control/resolver.py` - Add CO2 resolution logic
-- `features/sensor_control/config_flow.py` - Add CO2 sensor selection
+- `features/sensor_control/config_flow.py` - Add CO2 fields to area sensor schema
 
 **Changes:**
 
 ```python
-# In sensor_control/const.py
-INTERNAL_SENSOR_MAPPINGS = {
+# In area sensor configuration
+updated_area_sensor: dict[str, Any] = {
+    "source_id": source_id,
+    "label": label,
+    "enabled": bool(user_input.get("area_sensor_enabled", True)),
+    "temperature_entity": str(user_input.get("temperature_entity") or ""),
+    "humidity_entity": str(user_input.get("humidity_entity") or ""),
+    "area_co2_enabled": bool(user_input.get("area_co2_enabled", False)),
+    "co2_entity": str(user_input.get("co2_entity") or ""),
+    "co2_threshold": int(user_input.get("co2_threshold") or 1000),
     ...
-    "co2_zone_1": "sensor.co2_zone_1_{device_id}",
-    "co2_zone_2": "sensor.co2_zone_2_{device_id}",
-    "co2_zone_3": "sensor.co2_zone_3_{device_id}",
 }
-
-# New metrics list
-SUPPORTED_METRICS.extend(["co2_zone_1", "co2_zone_2", "co2_zone_3"])
 ```
 
 **Key tasks:**
 
-- [ ] Add CO2 to supported metrics
-- [ ] Update resolver to handle CO2 entities
-- [ ] Add CO2 to config flow sensor selection
+- [x] Add `area_co2_enabled` checkbox to area sensor schema
+- [x] Add `co2_entity` field to area sensor schema
+- [x] Add `co2_threshold` field to area sensor schema
+- [x] Update `_describe_area_sensor` to show CO2 info
+- [ ] Update resolver to handle area CO2 entities
+- [ ] Update CO2 automation to read area sensors
 
 ---
 
@@ -208,74 +219,61 @@ class HumidityAutomationManager:
 
 ---
 
-### ✅ Phase 6: HVAC Fan Card UI (Day 3-4)
+### ✅ Phase 6: HVAC Fan Card UI (Day 3-4) - UNIFIED DISPLAY
 
 **6.1 Update Card Layout**
+
+**Design Decision: Unified Area Sensor Display**
+
+- TOP-RIGHT panel shows both Balance and CO2 status
+- Display format:
+  1. Balance → status (On/Off + Active/Passive)
+  2. CO2 → status (On/Off + Active/Passive)
+  3. Area labels with sensors (e.g., "Bathroom: 🌡️ 22°C 💧 65% 🌫️ 450ppm")
+  4. Zone Status (from CO2 zone manager)
+- Highlight triggered sensors (area OR internal device sensors)
 
 **Files to modify:**
 
 - `features/hvac_fan_card/www/hvac_fan_card/hvac-fan-card.js`
-- `features/hvac_fan_card/www/hvac_fan_card/card-styles.js`
 - `features/hvac_fan_card/www/hvac_fan_card/templates/top-section.js`
 
 **UI Changes:**
 
-1. **Left Panel - Add CO2 Sensors:**
+1. **TOP-RIGHT Panel - Unified Area Sensor Display:**
 
 ```javascript
-_createCO2SensorsList() {
-    const co2Zones = this._getCO2Zones();
-
-    return `
-        <div class="r-xtrs-hvac-fan-co2-divider"></div>
-        <div class="r-xtrs-hvac-fan-co2-sensors">
-            <div class="r-xtrs-hvac-fan-co2-title">CO2 Sensors</div>
-            ${co2Zones.map(zone => this._createCO2ZoneItem(zone)).join('')}
-        </div>
-    `;
+_createBalanceTriggersSection() {
+    // Show Balance status + area sensors with temp/humid
+    // Area sensors can also show CO2 if area_co2_enabled
 }
 
-_createCO2ZoneItem(zone) {
-    const isActive = zone.is_triggered;
-    const statusClass = isActive ? 'active' : '';
-
-    return `
-        <div class="r-xtrs-hvac-fan-co2-zone ${statusClass}">
-            <span class="zone-indicator">${isActive ? '●' : '○'}</span>
-            <span class="zone-name">${zone.name}</span>
-            <span class="co2-value">${zone.co2_value} ppm</span>
-        </div>
-    `;
+_createCO2ZonesSection() {
+    // Show CO2 status + area sensors with CO2 + zone status
+    // Filters area sensors where area_co2_enabled = true
 }
 ```
 
-2. **Top Buttons - Add CO2 Control:**
+2. **Area Sensor Display:**
 
 ```javascript
-// Update button grid from 3 to 4 columns
-.r-xtrs-hvac-fan-buttons {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);  /* Changed from 3 to 4 */
-    gap: 8px;
+// Each area sensor shows all enabled sensors
+const sensorValues = [`🌡️ ${item.tempValue}`, `💧 ${item.humidValue}`];
+if (item.co2Value !== null) {
+  sensorValues.push(`🌫️ ${item.co2Value}`);
 }
-
-// Add CO2 button
-<button class="r-xtrs-hvac-fan-button ${co2ControlEnabled ? 'active' : ''}"
-        @click="${() => this._toggleCO2Control()}">
-    <ha-icon icon="mdi:molecule-co2"></ha-icon>
-    <span>CO2 Control</span>
-</button>
 ```
 
 **Key tasks:**
 
-- [ ] Add CO2 sensor list to left panel
-- [ ] Implement horizontal divider below filter
-- [ ] Add CO2 control button to top row
-- [ ] Implement active zone highlighting
+- [x] Add CO2 control button to controls section
+- [x] Move CO2 zones to TOP-RIGHT panel with Balance triggers
+- [x] Update Balance triggers to show temp, humid, and CO2 per area
+- [x] Update CO2 zones to show area sensors with CO2 enabled
+- [x] Display unified status: Balance status, CO2 status, areas, zone status
+- [ ] Implement trigger highlighting for area sensors
+- [ ] Implement trigger highlighting for internal device sensors
 - [ ] Add real-time CO2 value updates
-- [ ] Update button grid to 4 columns
-- [ ] Add CSS styling for CO2 elements
 
 ---
 

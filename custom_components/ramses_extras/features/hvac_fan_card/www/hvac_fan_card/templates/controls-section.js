@@ -7,11 +7,12 @@
  * Render the card's controls section.
  *
  * @param {boolean} [dehumEntitiesAvailable=false] Whether dehumidify controls should be shown.
+ * @param {boolean} [co2ControlEntitiesAvailable=false] Whether CO2 control should be shown.
  * @param {Object} [config={}] Card configuration.
  * @param {Function} [t] Optional translation function.
  * @returns {string} HTML string.
  */
-export function createControlsSection(dehumEntitiesAvailable = false, config = {}, t) {
+export function createControlsSection(dehumEntitiesAvailable = false, co2ControlEntitiesAvailable = false, config = {}, t) {
   const tr = (key, fallback, options = {}) => {
     try {
       if (typeof t === 'function') {
@@ -43,6 +44,12 @@ export function createControlsSection(dehumEntitiesAvailable = false, config = {
         <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-dehumidify" data-entity-id="${config.dehum_mode_entity || 'switch.dehumidify_' + config.device_id.replace(/:/g, '_')}">
           <div class="r-xtrs-hvac-fan-control-icon">💧</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('controls.dehumidify', 'Balance')}</div>
+        </div>
+        ` : ''}
+        ${co2ControlEntitiesAvailable ? `
+        <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-co2-control" data-entity-id="${config.co2_control_entity || 'switch.co2_control_' + config.device_id.replace(/:/g, '_')}">
+          <div class="r-xtrs-hvac-fan-control-icon">🌫️</div>
+          <div class="r-xtrs-hvac-fan-control-label">${tr('controls.co2_control', 'CO2')}</div>
         </div>
         ` : ''}
       </div>
