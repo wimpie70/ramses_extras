@@ -122,6 +122,28 @@ class TestCO2AutomationManager:
         assert "bathroom" in trigger_ids
         assert "internal_co2" in trigger_ids
 
+    def test_is_automation_enabled_for_device_accepts_switch_on(self) -> None:
+        """Switch ON should enable evaluation even if config flag is false."""
+        self.manager.config.update_config({"automation_enabled": False})
+        self.hass.states.get.side_effect = lambda entity_id: {
+            "switch.co2_control_32_123456": _MockState("on")
+        }.get(entity_id)
+
+        assert self.manager._is_automation_enabled_for_device("32:123456") is True
+
+    @pytest.mark.asyncio
+    async def test_on_homeassistant_started_runs_initial_evaluation(self) -> None:
+        """Startup hook should evaluate current CO2 states once."""
+        self.manager._evaluate_co2_control = AsyncMock()
+
+        with patch(
+            "custom_components.ramses_extras.features.co2_control.automation.ExtrasBaseAutomation._on_homeassistant_started",  # noqa: E501
+            new=AsyncMock(),
+        ):
+            await self.manager._on_homeassistant_started(None)
+
+        self.manager._evaluate_co2_control.assert_called()
+
     @pytest.mark.asyncio
     async def test_update_automation_status_updates_entities(self) -> None:
         """Binary and status entities receive trigger metadata."""

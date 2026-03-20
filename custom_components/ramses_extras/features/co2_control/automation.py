@@ -130,9 +130,47 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
         await super().stop()
 
+    async def _on_homeassistant_started(self, event: Event | None) -> None:
+        """Initialize listeners then evaluate current CO2 states once."""
+        await super()._on_homeassistant_started(event)
+        if not self._automation_active or not self._is_feature_enabled():
+            return
+
+        for device_id in self._iter_candidate_device_ids():
+            try:
+                await self._evaluate_co2_control(device_id)
+            except Exception as err:
+                _LOGGER.error(
+                    "Startup CO2 evaluation failed for %s: %s", device_id, err
+                )
+
     def is_automation_active(self) -> bool:
         """Return whether CO2 automation manager is active."""
         return self._automation_active
+
+    def _iter_candidate_device_ids(self) -> list[str]:
+        """Return candidate device IDs for startup CO2 evaluation."""
+        ids: set[str] = set(self._zone_managers.keys())
+
+        devices = self.hass.data.get(DOMAIN, {}).get("devices", [])
+        for device in devices:
+            if isinstance(device, dict):
+                device_id = str(device.get("device_id") or "").strip()
+            else:
+                device_id = str(device)
+            if device_id:
+                ids.add(device_id)
+
+        return sorted(ids)
+
+    def _is_automation_enabled_for_device(self, device_id: str) -> bool:
+        """Return whether CO2 automation should run for this device."""
+        if self.config.automation_enabled:
+            return True
+
+        switch_entity = f"switch.co2_control_{device_id.replace(':', '_').lower()}"
+        switch_state = self.hass.states.get(switch_entity)
+        return bool(switch_state and switch_state.state == "on")
 
     async def _process_automation_logic(
         self, device_id: str, entity_states: Mapping[str, float | bool]
@@ -370,7 +408,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         Args:
             device_id: Device identifier
         """
-        if not self.config.automation_enabled:
+        if not self._is_automation_enabled_for_device(device_id):
             return
 
         zone_manager = self._zone_managers.get(device_id)
