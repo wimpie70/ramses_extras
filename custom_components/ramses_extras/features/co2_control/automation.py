@@ -61,6 +61,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self._automation_active = False
         self._zone_managers: dict[str, CO2ZoneManager] = {}
         self._state_change_listeners: list[Any] = []
+        self._source_listener_entities: dict[str, set[str]] = {}
         self._latest_sensor_control_context: dict[str, dict[str, Any] | None] = {}
         self._source_trigger_states: dict[str, dict[str, bool]] = {}
         self._trigger_meta: dict[str, dict[str, Any]] = {}
@@ -127,6 +128,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         for listener in self._state_change_listeners:
             listener()
         self._state_change_listeners.clear()
+        self._source_listener_entities.clear()
 
         await super().stop()
 
@@ -306,6 +308,14 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         """Set up listeners for area/internal CO2 sources from sensor_control."""
         sensor_ctx = await self._get_sensor_control_context(device_id)
         self._latest_sensor_control_context[device_id] = sensor_ctx
+        await self._register_source_listeners(device_id, sensor_ctx)
+
+    async def _register_source_listeners(
+        self,
+        device_id: str,
+        sensor_ctx: dict[str, Any] | None,
+    ) -> None:
+        """Register listeners for source entities discovered from sensor control."""
         if not sensor_ctx:
             return
 
@@ -323,15 +333,27 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if co2_entity:
                 entities.add(co2_entity)
 
+            threshold_entity = str(
+                area_sensor.get("co2_threshold_entity") or ""
+            ).strip()
+            if threshold_entity:
+                entities.add(threshold_entity)
+
         if not entities:
+            return
+
+        existing = self._source_listener_entities.setdefault(device_id, set())
+        new_entities = entities - existing
+        if not new_entities:
             return
 
         listener = async_track_state_change_event(
             self.hass,
-            list(entities),
+            list(new_entities),
             self._handle_co2_sensor_change,
         )
         self._state_change_listeners.append(listener)
+        existing.update(new_entities)
 
     async def _handle_co2_sensor_change(self, event: Event) -> None:
         """Handle CO2 sensor state change.
@@ -467,6 +489,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
         sensor_ctx = await self._get_sensor_control_context(device_id)
         self._latest_sensor_control_context[device_id] = sensor_ctx
+        await self._register_source_listeners(device_id, sensor_ctx)
         triggered_sources = self._evaluate_trigger_sources(device_id, sensor_ctx)
 
         was_active = self._co2_active
@@ -826,6 +849,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         for listener in self._state_change_listeners:
             listener()
         self._state_change_listeners.clear()
+        self._source_listener_entities.clear()
 
         _LOGGER.info("CO2 automation unloaded")
         return True
