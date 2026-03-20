@@ -193,7 +193,10 @@ class SensorControlResolver:
             label = str(item.get("label") or source_id or "Unnamed").strip()
             temperature_entity = str(item.get("temperature_entity") or "").strip()
             humidity_entity = str(item.get("humidity_entity") or "").strip()
+            co2_entity = str(item.get("co2_entity") or "").strip()
             zone_id = str(item.get("zone_id") or "").strip()
+            area_enabled = bool(item.get("enabled", True))
+            area_co2_enabled = bool(item.get("area_co2_enabled", False))
 
             temp_valid = bool(temperature_entity) and self._entity_exists(
                 temperature_entity
@@ -201,14 +204,21 @@ class SensorControlResolver:
             humidity_valid = bool(humidity_entity) and self._entity_exists(
                 humidity_entity
             )
-            valid = bool(source_id) and temp_valid and humidity_valid
+            co2_valid = (not area_co2_enabled) or (
+                bool(co2_entity) and self._entity_exists(co2_entity)
+            )
+            humidity_valid = (not area_enabled) or (temp_valid and humidity_valid)
+            valid = bool(source_id) and humidity_valid and co2_valid
 
             resolved_item: dict[str, Any] = {
                 "source_id": source_id,
                 "label": label,
-                "enabled": bool(item.get("enabled", True)),
+                "enabled": area_enabled,
                 "temperature_entity": temperature_entity or None,
                 "humidity_entity": humidity_entity or None,
+                "area_co2_enabled": area_co2_enabled,
+                "co2_entity": co2_entity or None,
+                "co2_threshold": item.get("co2_threshold"),
                 "spike_rise_percent": item.get("spike_rise_percent"),
                 "spike_window_minutes": item.get("spike_window_minutes"),
                 "check_interval_minutes": item.get("check_interval_minutes"),
