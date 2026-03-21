@@ -359,6 +359,18 @@ export const CARD_STYLE = `
   font-weight: 500;
 }
 
+.r-xtrs-hvac-fan-balance-info-row.active-co2 {
+  color: var(--primary-color);
+  text-shadow: 0 0 4px var(--primary-color);
+  font-weight: 600;
+}
+
+.r-xtrs-hvac-fan-balance-info-row.active-humidity {
+  color: var(--warning-color, #f4b400);
+  text-shadow: 0 0 4px var(--warning-color, #f4b400);
+  font-weight: 600;
+}
+
 .r-xtrs-hvac-fan-balance-divider {
   height: 1px;
   background: var(--divider-color);
@@ -398,6 +410,18 @@ export const CARD_STYLE = `
 .r-xtrs-hvac-fan-balance-trigger-item.disabled {
   opacity: 0.45;
   border-style: dashed;
+}
+
+.r-xtrs-hvac-fan-trigger-source {
+  font-weight: 500;
+}
+
+.r-xtrs-source-trigger {
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--primary-color);
+  text-underline-offset: 2px;
 }
 
 /* CO2 trigger value highlighting */

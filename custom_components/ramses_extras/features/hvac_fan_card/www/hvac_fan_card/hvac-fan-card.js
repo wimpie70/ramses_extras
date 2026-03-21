@@ -292,6 +292,16 @@ class HvacFanCard extends RamsesBaseCard {
 
     // create templateData for rendering
     const templateData = createTemplateData(rawData);
+    const dehumAttrs = this._getDehumidifyStatusAttributes();
+    const co2Attrs = co2ControlEntitiesAvailable
+      ? this.getEntityState(config.co2_zone_status_entity)?.attributes || {}
+      : {};
+    templateData.indoorHumidityClass = dehumAttrs.control_mode === 'balance'
+      ? 'r-xtrs-humid-trigger'
+      : '';
+    templateData.co2LevelClass = co2Attrs.internal_triggered === true
+      ? 'r-xtrs-co2-trigger'
+      : '';
     // Add airflow SVG to template data
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
@@ -777,6 +787,8 @@ class HvacFanCard extends RamsesBaseCard {
     const config = this.config || {};
     const dehumMode = this.getEntityState(config.dehum_mode_entity)?.state || 'off';
     const dehumActive = this.getEntityState(config.dehum_active_entity)?.state || 'off';
+    const attrs = this._getDehumidifyStatusAttributes();
+    const balanceTriggered = attrs.control_mode === 'balance' || attrs.control_mode === 'spike_boost';
 
     // Create compact balance status: "Balance → On + Active" or "Balance → Off"
     let balanceStatus = '';
@@ -791,7 +803,7 @@ class HvacFanCard extends RamsesBaseCard {
       <div class="r-xtrs-hvac-fan-balance-divider"></div>
       <div class="r-xtrs-hvac-fan-balance-triggers">
         <div class="r-xtrs-hvac-fan-balance-info">
-          <div class="r-xtrs-hvac-fan-balance-info-row">
+          <div class="r-xtrs-hvac-fan-balance-info-row ${balanceTriggered ? 'active-humidity' : ''}">
             <span>💧 ${balanceStatus}</span>
           </div>
         </div>
@@ -831,6 +843,11 @@ class HvacFanCard extends RamsesBaseCard {
       ? attrs.active_trigger_source_ids
       : [];
     const primaryTriggerSourceId = attrs.active_trigger_source_id;
+    const dehumAttrs = this._getDehumidifyStatusAttributes();
+    const humidityTriggerSourceIds = Array.isArray(dehumAttrs.active_trigger_source_ids)
+      ? dehumAttrs.active_trigger_source_ids
+      : [];
+    const co2StatusClass = activeTriggerSourceIds.length > 0 ? 'active-co2' : '';
 
     // Build area sensor items (humidity/temp and CO2 where enabled)
     const areaSensorItems = (this._areaSensors || [])
@@ -843,9 +860,11 @@ class HvacFanCard extends RamsesBaseCard {
         const isDisabled = areaSensor?.enabled === false;
         const areaCo2Enabled = areaSensor?.area_co2_enabled === true;
 
-        const isActive = !isDisabled && (
+        const co2Triggered = !isDisabled && (
           activeTriggerSourceIds.includes(sourceId) || primaryTriggerSourceId === sourceId
         );
+        const humidityTriggered = !isDisabled && humidityTriggerSourceIds.includes(sourceId);
+        const labelHighlighted = co2Triggered || humidityTriggered;
 
         let tempValue = null;
         let humidValue = null;
@@ -890,49 +909,20 @@ class HvacFanCard extends RamsesBaseCard {
         }
 
         const stateClass = [
-          isActive ? 'active' : '',
           isDisabled ? 'disabled' : '',
         ].filter(Boolean).join(' ');
 
         const sensorValues = [];
-
-        // Check each sensor type for independent triggering
-        let tempHighlighted = false;
-        let humidHighlighted = false;
-        let co2Highlighted = false;
-
-        if (isActive) {
-          // Get detailed trigger information to determine which sensor type is triggering
-          const co2ZoneStatusState = this.getEntityState(config.co2_zone_status_entity);
-          const triggerAttrs = co2ZoneStatusState?.attributes || {};
-          const triggeredSources = triggerAttrs.triggered_sources || [];
-
-          const myTrigger = triggeredSources.find(t => t.source_id === sourceId);
-          if (myTrigger) {
-            // For CO2 control, triggers are always CO2-based, but we can check the entity_id
-            // to determine if it's a temperature, humidity, or CO2 sensor
-            const entityId = myTrigger.entity_id || '';
-            if (entityId.includes('temp') || entityId.includes('temperature')) {
-              tempHighlighted = true;
-            } else if (entityId.includes('humid') || entityId.includes('humidity')) {
-              humidHighlighted = true;
-            } else {
-              co2Highlighted = true; // Default to CO2 for CO2 control
-            }
-          }
-        }
-
-        // Always show all values with independent highlighting
         if (tempValue !== null) {
-          const tempClass = tempHighlighted ? 'r-xtrs-temp-trigger' : '';
+          const tempClass = humidityTriggered ? 'r-xtrs-temp-trigger' : '';
           sensorValues.push(`<span class="${tempClass}">${tempValue}</span>`);
         }
         if (humidValue !== null) {
-          const humidClass = humidHighlighted ? 'r-xtrs-humid-trigger' : '';
+          const humidClass = humidityTriggered ? 'r-xtrs-humid-trigger' : '';
           sensorValues.push(`<span class="${humidClass}">${humidValue}</span>`);
         }
         if (areaCo2Enabled && co2Entity) {
-          const co2Class = co2Highlighted ? 'r-xtrs-co2-trigger' : '';
+          const co2Class = co2Triggered ? 'r-xtrs-co2-trigger' : '';
           sensorValues.push(`<span class="${co2Class}">${co2Value}</span>`);
         }
 
@@ -943,7 +933,8 @@ class HvacFanCard extends RamsesBaseCard {
         return `
           <div class="r-xtrs-hvac-fan-balance-trigger-item ${stateClass}">
             <div class="r-xtrs-hvac-fan-balance-trigger-values">
-              <span>${label}: </span>${sensorValues.join(' · ')}
+              <span class="r-xtrs-hvac-fan-trigger-source ${labelHighlighted ? 'r-xtrs-source-trigger' : ''}">${label}:</span>
+              ${sensorValues.join(' · ')}
             </div>
           </div>
         `;
@@ -968,11 +959,11 @@ class HvacFanCard extends RamsesBaseCard {
         }
       }
 
-      const internalActive = activeTriggerSourceIds.includes('internal_co2');
       internalItemHtml = `
-        <div class="r-xtrs-hvac-fan-balance-trigger-item ${internalActive ? 'active' : ''}">
+        <div class="r-xtrs-hvac-fan-balance-trigger-item">
           <div class="r-xtrs-hvac-fan-balance-trigger-values">
-            <span>Device CO2: ${internalValue}</span>
+            <span class="r-xtrs-hvac-fan-trigger-source r-xtrs-source-trigger">Device CO2:</span>
+            <span class="r-xtrs-co2-trigger">${internalValue}</span>
           </div>
         </div>
       `;
@@ -991,7 +982,7 @@ class HvacFanCard extends RamsesBaseCard {
     return `
       <div class="r-xtrs-hvac-fan-balance-triggers">
         <div class="r-xtrs-hvac-fan-balance-info">
-          <div class="r-xtrs-hvac-fan-balance-info-row">
+          <div class="r-xtrs-hvac-fan-balance-info-row ${co2StatusClass}">
             <span>🌫️ ${co2Status}</span>
           </div>
         </div>
@@ -1070,6 +1061,10 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Check dehumidify entity availability
     const dehumEntitiesAvailable = this.checkDehumidifyEntities();
+
+    // Check CO2 control entity availability
+    const hass = this._hass;
+    const co2ControlEntitiesAvailable = validateCO2ControlEntities(hass, config)?.available === true;
 
     // Get data from 31DA messages
     const da31Data = this.get31DAData();
@@ -1150,6 +1145,16 @@ class HvacFanCard extends RamsesBaseCard {
 
     // create templateData for rendering
     const templateData = createTemplateData(rawData);
+    const dehumAttrs = this._getDehumidifyStatusAttributes();
+    const co2Attrs = co2ControlEntitiesAvailable
+      ? this.getEntityState(config.co2_zone_status_entity)?.attributes || {}
+      : {};
+    templateData.indoorHumidityClass = dehumAttrs.control_mode === 'balance'
+      ? 'r-xtrs-humid-trigger'
+      : '';
+    templateData.co2LevelClass = co2Attrs.internal_triggered === true
+      ? 'r-xtrs-co2-trigger'
+      : '';
     // Add airflow SVG to template data
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;

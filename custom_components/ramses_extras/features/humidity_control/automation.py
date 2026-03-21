@@ -643,9 +643,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 # Activate dehumidification: set fan HIGH, binary sensor ON
                 await self._activate_dehumidification(device_id, decision)
             elif decision["action"] == "stop":
-                # Stop dehumidification: set fan LOW, binary sensor OFF
-                # BUT DON'T TOUCH THE SWITCH - it's for automation enable/disable
-                await self._set_fan_low_and_binary_off(device_id, decision)
+                if decision.get("control_mode") == "paused_for_co2":
+                    self._dehumidify_active = False
+                else:
+                    await self._set_fan_low_and_binary_off(device_id, decision)
 
             # Update indicator based on decision
             await self._update_automation_status(device_id, decision)
