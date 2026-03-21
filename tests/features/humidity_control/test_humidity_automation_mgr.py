@@ -224,6 +224,35 @@ class TestHumidityAutomationManager:
         mock_process.assert_called_once_with("32_123456", entity_states)
         mock_enforce.assert_not_called()
 
+    async def test_resume_from_co2_triggers_reconcile(self):
+        """Releasing CO2 priority should clear pause and re-evaluate humidity state."""
+        self.manager._paused_for_co2 = True
+
+        with patch.object(
+            self.manager,
+            "_reconcile_startup_states",
+            new=AsyncMock(),
+        ) as mock_reconcile:
+            await self.manager.resume_from_co2()
+
+        assert self.manager._paused_for_co2 is False
+        mock_reconcile.assert_awaited_once()
+
+    async def test_resume_from_co2_skips_reconcile_when_inactive(self):
+        """CO2 resume should not reconcile when humidity automation is inactive."""
+        self.manager._paused_for_co2 = True
+        self.manager._automation_active = False
+
+        with patch.object(
+            self.manager,
+            "_reconcile_startup_states",
+            new=AsyncMock(),
+        ) as mock_reconcile:
+            await self.manager.resume_from_co2()
+
+        assert self.manager._paused_for_co2 is False
+        mock_reconcile.assert_not_awaited()
+
     @patch(
         "custom_components.ramses_extras.features.humidity_control.automation.entity_registry"
     )

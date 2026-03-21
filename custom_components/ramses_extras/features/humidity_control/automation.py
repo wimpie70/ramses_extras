@@ -1713,6 +1713,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if self._paused_for_co2:
             self._paused_for_co2 = False
             _LOGGER.info("Humidity control resumed - CO2 control released priority")
+            if self._automation_active and self._is_feature_enabled():
+                await self._reconcile_startup_states()
 
     def check_priority(self) -> bool:
         """Check if humidity control has priority to operate.
