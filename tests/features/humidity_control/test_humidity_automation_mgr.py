@@ -132,10 +132,10 @@ class TestHumidityAutomationManager:
     @patch.object(HumidityAutomationManager, "_activate_dehumidification")
     @patch.object(HumidityAutomationManager, "_set_fan_low_and_binary_off")
     @patch.object(HumidityAutomationManager, "_update_automation_status")
-    async def test_process_automation_logic_paused_for_co2(
+    async def test_process_automation_logic_stop_uses_low_balance_demand(
         self, mock_update, mock_stop, mock_activate, mock_evaluate
     ):
-        """Paused-for-CO2 stop should not force the humidity low-speed path."""
+        """Stop decisions should keep humidity's low-speed demand active."""
         device_id = "32_123456"
         entity_states = {
             "indoor_rh": 50.0,
@@ -149,15 +149,15 @@ class TestHumidityAutomationManager:
 
         decision = {
             "action": "stop",
-            "reasoning": ["CO2 control has priority"],
+            "reasoning": ["Humidity in range for balance mode"],
             "confidence": 1.0,
-            "control_mode": "paused_for_co2",
+            "control_mode": "balance",
         }
         mock_evaluate.return_value = decision
 
         await self.manager._process_automation_logic(device_id, entity_states)
 
-        mock_stop.assert_not_called()
+        mock_stop.assert_called_once_with(device_id, decision)
         mock_activate.assert_not_called()
         mock_update.assert_called_once_with(device_id, decision)
         assert self.manager._dehumidify_active is False
@@ -225,8 +225,8 @@ class TestHumidityAutomationManager:
         mock_enforce.assert_not_called()
 
     async def test_resume_from_co2_triggers_reconcile(self):
-        """Releasing CO2 priority should clear pause and re-evaluate humidity state."""
-        self.manager._paused_for_co2 = True
+        """CO2 state changes should trigger a humidity re-evaluation."""
+        self.manager._paused_for_co2 = False
 
         with patch.object(
             self.manager,
@@ -237,6 +237,15 @@ class TestHumidityAutomationManager:
 
         assert self.manager._paused_for_co2 is False
         mock_reconcile.assert_awaited_once()
+
+    async def test_pause_for_co2_keeps_humidity_arbiter_managed(self):
+        """CO2 activation should no longer suppress humidity demand generation."""
+        self.manager._paused_for_co2 = True
+
+        await self.manager.pause_for_co2()
+
+        assert self.manager._paused_for_co2 is False
+        assert self.manager.check_priority() is True
 
     async def test_resume_from_co2_skips_reconcile_when_inactive(self):
         """CO2 resume should not reconcile when humidity automation is inactive."""

@@ -515,6 +515,52 @@ async def test_evaluate_co2_control_uses_trigger_fallback_when_no_zone_manager(
 
 
 @pytest.mark.asyncio
+async def test_adjust_fan_speed_uses_zone_manager_calculated_low_speed(
+    manager: CO2AutomationManager,
+) -> None:
+    """CO2 should submit the calculated low-speed demand when appropriate."""
+    zone_manager = MagicMock()
+    zone_manager.calculate_combined_fan_speed = AsyncMock(return_value=2)
+    manager._last_fan_speed = 1
+
+    await manager._adjust_fan_speed("32:123456", zone_manager)
+
+    zone_manager.calculate_combined_fan_speed.assert_awaited_once_with(2, 5)
+    manager.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
+        "32:123456",
+        feature_id="co2_control",
+        source_id="co2_control",
+        requested_speed="fan_low",
+        priority=30,
+        reason="co2_trigger",
+        metadata={"target_speed": 2},
+    )
+
+
+@pytest.mark.asyncio
+async def test_adjust_fan_speed_uses_zone_manager_calculated_medium_speed(
+    manager: CO2AutomationManager,
+) -> None:
+    """CO2 should submit the calculated medium-speed demand when appropriate."""
+    zone_manager = MagicMock()
+    zone_manager.calculate_combined_fan_speed = AsyncMock(return_value=3)
+    manager._last_fan_speed = 0
+
+    await manager._adjust_fan_speed("32:123456", zone_manager)
+
+    zone_manager.calculate_combined_fan_speed.assert_awaited_once_with(2, 5)
+    manager.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
+        "32:123456",
+        feature_id="co2_control",
+        source_id="co2_control",
+        requested_speed="fan_medium",
+        priority=30,
+        reason="co2_trigger",
+        metadata={"target_speed": 3},
+    )
+
+
+@pytest.mark.asyncio
 async def test_boost_return_idle_priority_and_unload_helpers(
     manager: CO2AutomationManager,
 ) -> None:
