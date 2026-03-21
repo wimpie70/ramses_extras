@@ -141,6 +141,51 @@ export function validateAbsoluteHumidityEntities(hass, config) {
 }
 
 /**
+ * Validate CO2 control entities
+ * @param {Object} hass - Home Assistant instance
+ * @param {Object} config - Card configuration
+ * @returns {Object} Validation results for CO2 control entities
+ */
+export function validateCO2ControlEntities(hass, config) {
+  if (!hass || !config) {
+    return {
+      available: false,
+      entities: [],
+      error: 'Missing hass or config'
+    };
+  }
+
+  const co2Entities = {
+    'CO2 Control': config.co2_control_entity,
+    'CO2 Active': config.co2_active_entity,
+  };
+
+  const missingCO2Entities = [];
+  const availableCO2Entities = [];
+
+  Object.entries(co2Entities).forEach(([name, entityId]) => {
+    if (entityId) {
+      if (entityExists(hass, entityId)) {
+        availableCO2Entities.push(name);
+      } else {
+        missingCO2Entities.push(name);
+      }
+    }
+  });
+
+  const entitiesAvailable = availableCO2Entities.length === Object.keys(co2Entities).length;
+
+  return {
+    available: entitiesAvailable,
+    entities: availableCO2Entities,
+    missing: missingCO2Entities,
+    controlEntity: config.co2_control_entity,
+    activeEntity: config.co2_active_entity,
+    zoneStatusEntity: config.co2_zone_status_entity
+  };
+}
+
+/**
  * Check if entity exists and is available
  * @param {Object} hass - Home Assistant instance
  * @param {string} entityId - Entity ID to check
@@ -162,26 +207,30 @@ export function getEntityValidationReport(hass, config) {
   const core = validateCoreEntities(hass, config);
   const dehumidify = validateDehumidifyEntities(hass, config);
   const absoluteHumidity = validateAbsoluteHumidityEntities(hass, config);
+  const co2Control = validateCO2ControlEntities(hass, config);
 
   return {
     overall: {
       valid: core.valid,
-      totalEntities: core.total + 2 + 2, // core + dehumidify + abs humidity
-      availableEntities: core.availableCount + dehumidify.entities.length + absoluteHumidity.available.length
+      totalEntities: core.total + 2 + 2 + 2, // core + dehumidify + abs humidity + co2
+      availableEntities: core.availableCount + dehumidify.entities.length + absoluteHumidity.available.length + co2Control.entities.length
     },
     core,
     dehumidify,
     absoluteHumidity,
+    co2Control,
     summary: {
       available: [
         ...core.available,
         ...dehumidify.entities,
-        ...absoluteHumidity.available
+        ...absoluteHumidity.available,
+        ...co2Control.entities
       ],
       missing: [
         ...core.missing,
         ...dehumidify.missing,
-        ...absoluteHumidity.missing
+        ...absoluteHumidity.missing,
+        ...co2Control.missing
       ]
     }
   };

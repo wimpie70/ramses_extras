@@ -88,13 +88,24 @@ FEATURE_DEFINITION = {
         "fan_mode_entity": "sensor.{device_id}_fan_mode",
         "supply_flow_entity": "sensor.{device_id}_supply_flow",
         "exhaust_flow_entity": "sensor.{device_id}_exhaust_flow",
-        # CO2 sensor
+        # CO2 sensor (ramses_cc integration)
         "co2_entity": "sensor.{device_id}_co2_level",
         # Bypass position
         "bypass_entity": "binary_sensor.{device_id}_bypass_position",
         # Dehumidify controls
         "dehum_mode_entity": "switch.dehumidify_{device_id}",
         "dehum_active_entity": "binary_sensor.dehumidifying_active_{device_id}",
+        # CO2 control entities
+        "co2_control_entity": "switch.co2_control_{device_id}",
+        "co2_threshold_entity": "number.co2_threshold_{device_id}",
+        "co2_activation_hysteresis_entity": (
+            "number.co2_activation_hysteresis_{device_id}"
+        ),
+        "co2_deactivation_hysteresis_entity": (
+            "number.co2_deactivation_hysteresis_{device_id}"
+        ),
+        "co2_active_entity": "binary_sensor.co2_active_{device_id}",
+        "co2_zone_status_entity": "sensor.co2_zone_status_{device_id}",
         # Comfort temperature parameter
         "comfort_temp_entity": "number.{device_id}_param_75",
     },

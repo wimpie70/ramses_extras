@@ -27,13 +27,13 @@ export function createTopSection(data, t) {
 
   const {
     outdoorTemp, outdoorHumidity, outdoorAbsHumidity,
-    indoorTemp, indoorHumidity, indoorAbsHumidity, comfortTemp, dehumMode, dehumActive,
-    dehumEntitiesAvailable, balanceTrackingLabel,
+    indoorTemp, indoorHumidity, indoorAbsHumidity, comfortTemp,
     supplyTemp, exhaustTemp,
     exhaustFanSpeed, supplyFanSpeed, fanMode,
     co2Level, supplyFlowRate, exhaustFlowRate, efficiency,
     timerMinutes, airflowSvg, filterDaysRemaining,
-    balanceTriggersHtml
+    balanceTriggersHtml, co2ZonesHtml,
+    indoorHumidityClass, co2LevelClass
   } = data;
 
   // Helper function to format humidity values
@@ -80,7 +80,7 @@ export function createTopSection(data, t) {
           </div>
           <div class="r-xtrs-hvac-fan-info-stack">
             <div>📊 ${efficiency}%</div>
-            <div>🫧 ${co2Level} ppm</div>
+            <div>🫧 <span class="${co2LevelClass || ''}">${co2Level}</span> ppm</div>
             <div>📅 ${filterDaysRemaining}d</div>
           </div>
         </div>
@@ -95,7 +95,7 @@ export function createTopSection(data, t) {
           </div>
           <div class="r-xtrs-hvac-fan-humidity-row">
             <span>💧</span>
-            <span id="indoorHumidity">${indoorHumidity}%</span>
+            <span id="indoorHumidity" class="${indoorHumidityClass || ''}">${indoorHumidity}%</span>
             <span class="r-xtrs-hvac-fan-arrow">→</span>
             <span id="indoorAbsHumidity">${formatHumidity(indoorAbsHumidity, ' g/m³')}</span>
           </div>
@@ -103,8 +103,9 @@ export function createTopSection(data, t) {
             <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temp')}: ${comfortTemp} °C</div>
           </div>
 
-          <!-- Balance Triggers Section -->
+          <!-- Balance Triggers & CO2 Zones Section (RIGHT panel) -->
           ${balanceTriggersHtml || ''}
+          ${co2ZonesHtml || ''}
         </div>
 
 

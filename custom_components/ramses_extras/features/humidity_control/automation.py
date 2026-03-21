@@ -73,6 +73,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._decision_count = 0
         self._active_cycles = 0
 
+        # CO2 priority coordination
+        self.co2_manager = None
+        self._paused_for_co2 = False
+
         _LOGGER.info("Enhanced Humidity Control automation initialized")
         _LOGGER.info("Feature enabled status: %s", self._is_feature_enabled())
 
@@ -639,9 +643,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 # Activate dehumidification: set fan HIGH, binary sensor ON
                 await self._activate_dehumidification(device_id, decision)
             elif decision["action"] == "stop":
-                # Stop dehumidification: set fan LOW, binary sensor OFF
-                # BUT DON'T TOUCH THE SWITCH - it's for automation enable/disable
-                await self._set_fan_low_and_binary_off(device_id, decision)
+                if decision.get("control_mode") == "paused_for_co2":
+                    self._dehumidify_active = False
+                else:
+                    await self._set_fan_low_and_binary_off(device_id, decision)
 
             # Update indicator based on decision
             await self._update_automation_status(device_id, decision)
@@ -732,6 +737,16 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Returns:
             Decision dictionary with action and reasoning
         """
+        # Check if CO2 control has priority
+        if not self.check_priority():
+            return {
+                "action": "stop",
+                "reasoning": ["CO2 control has priority"],
+                "values": {},
+                "confidence": 1.0,
+                "control_mode": "paused_for_co2",
+            }
+
         humidity_diff = outdoor_abs - indoor_abs
         adjusted_diff = humidity_diff + offset
         decision: dict[str, Any] = {
@@ -1645,7 +1660,47 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "is_active": self._automation_active,
             "is_dehumidifying": self._dehumidify_active,
             "recent_decisions": len(self._decision_history),
+            "paused_for_co2": self._paused_for_co2,
         }
+
+    def set_co2_manager(self, co2_manager: Any) -> None:
+        """Set reference to CO2 automation manager for priority coordination.
+
+        Args:
+            co2_manager: CO2AutomationManager instance
+        """
+        self.co2_manager = co2_manager
+        _LOGGER.debug("CO2 manager reference set for priority coordination")
+
+    async def pause_for_co2(self) -> None:
+        """Pause humidity control because CO2 control has taken priority."""
+        if not self._paused_for_co2:
+            self._paused_for_co2 = True
+            _LOGGER.info("Humidity control paused - CO2 control has priority")
+
+    async def resume_from_co2(self) -> None:
+        """Resume humidity control after CO2 control released priority."""
+        if self._paused_for_co2:
+            self._paused_for_co2 = False
+            _LOGGER.info("Humidity control resumed - CO2 control released priority")
+
+    def check_priority(self) -> bool:
+        """Check if humidity control has priority to operate.
+
+        Returns:
+            True if humidity control can operate, False if paused for CO2
+        """
+        if self._paused_for_co2:
+            _LOGGER.debug("Humidity control skipped - paused for CO2 priority")
+            return False
+
+        # Also check if CO2 manager is active
+        co2_mgr = self.co2_manager
+        if co2_mgr is not None and co2_mgr.is_active():  # type: ignore[unreachable]
+            _LOGGER.debug("Humidity control skipped - CO2 control is active")  # type: ignore[unreachable]
+            return False
+
+        return True
 
 
 # Feature registration

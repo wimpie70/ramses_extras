@@ -1124,6 +1124,13 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         self._selected_feature = "hello_world"
         return await self.async_step_feature_config(user_input)
 
+    async def async_step_feature_co2_control(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle CO2 control feature configuration."""
+        self._selected_feature = "co2_control"
+        return await self.async_step_feature_config(user_input)
+
     async def async_step_feature_sensor_control(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:

@@ -46,6 +46,7 @@
           "feature_humidity_control": "Feature: Humidity Control",
           "feature_hvac_fan_card": "Feature: Hvac Fan Card",
           "feature_hello_world": "Feature: Hello World",
+          "feature_co2_control": "Feature: CO2 Control",
           "feature_sensor_control": "Feature: Sensor Control",
           "feature_ramses_debugger": "Feature: Ramses Debugger"
         }
@@ -103,6 +104,10 @@
       "feature_hvac_fan_card": {
         "title": "HVAC Fan Card Configuration",
         "description": "Configure advanced fan card settings and controls"
+      },
+      "feature_co2_control": {
+        "title": "CO2 Control Configuration",
+        "description": "Configure CO2-driven ventilation automation and priority logic"
       },
       "feature_hello_world": {
         "title": "Hello World Card Configuration",
