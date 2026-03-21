@@ -30,6 +30,7 @@ import {
 import {
   // validateCoreEntities,
   validateDehumidifyEntities,
+  validateCO2ControlEntities,
   getEntityValidationReport,
 } from '../../helpers/card-validation.js';
 
@@ -220,6 +221,7 @@ class HvacFanCard extends RamsesBaseCard {
     // Collect live data
     const { da31Data, da10D0Data } = this._collectLiveData();
     const dehumEntitiesAvailable = validateDehumidifyEntities(hass, config)?.available === true;
+    const co2ControlEntitiesAvailable = validateCO2ControlEntities(hass, config)?.available === true;
 
     // Temperature data - prefer 31DA real-time, fall back to entity states
     const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp :
@@ -275,6 +277,13 @@ class HvacFanCard extends RamsesBaseCard {
       bypassPosition: da31Data.bypass_position !== undefined ? da31Data.bypass_position :
         (this.getEntityState(config.bypass_entity)?.state === 'on' ? 100 : null),
       dehumEntitiesAvailable,
+      co2ControlEntitiesAvailable,
+      co2Active: co2ControlEntitiesAvailable
+        ? this.getEntityState(config.co2_active_entity)?.state || 'off'
+        : null,
+      co2ZoneStatus: co2ControlEntitiesAvailable
+        ? this.getEntityState(config.co2_zone_status_entity)?.state || null
+        : null,
       dataSource31DA: da31Data.source === '31DA_message',
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
       filterDaysRemaining:
@@ -283,12 +292,24 @@ class HvacFanCard extends RamsesBaseCard {
 
     // create templateData for rendering
     const templateData = createTemplateData(rawData);
+    const dehumAttrs = this._getDehumidifyStatusAttributes();
+    const co2Attrs = co2ControlEntitiesAvailable
+      ? this.getEntityState(config.co2_zone_status_entity)?.attributes || {}
+      : {};
+    templateData.indoorHumidityClass = dehumAttrs.control_mode === 'balance'
+      ? 'r-xtrs-humid-trigger'
+      : '';
+    templateData.co2LevelClass = co2Attrs.internal_triggered === true
+      ? 'r-xtrs-co2-trigger'
+      : '';
     // Add airflow SVG to template data
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
     templateData.airflowSvg = selectedSvg;
     // Add balance triggers HTML to template data
     templateData.balanceTriggersHtml = this._createBalanceTriggersSection();
+    // Add CO2 zones HTML to template data
+    templateData.co2ZonesHtml = co2ControlEntitiesAvailable ? this._createCO2ZonesSection() : '';
 
     // Generate HTML using template functions
     const cardHtml = [
@@ -296,9 +317,10 @@ class HvacFanCard extends RamsesBaseCard {
       createTopSection(templateData, this.t?.bind(this)),
       createControlsSection(
         dehumEntitiesAvailable,
+        co2ControlEntitiesAvailable,
         config,
         this.t?.bind(this)
-      ), // Pass availability flag and config
+      ), // Pass availability flags and config
       createCardFooter(),
     ].join('');
 
@@ -586,6 +608,8 @@ class HvacFanCard extends RamsesBaseCard {
     const label = areaSensor?.label || sourceId;
     const tempEntity = areaSensor?.temperature_entity || 'n/a';
     const humidityEntity = areaSensor?.humidity_entity || 'n/a';
+    const co2Entity = areaSensor?.co2_entity || 'n/a';
+    const areaCo2Enabled = areaSensor?.area_co2_enabled === true;
     const zoneId = areaSensor?.zone_id || '—';
     const isEnabled = areaSensor?.enabled !== false;
     const triggersHighHumidity = ['true', true, 1, '1'].includes(
@@ -595,6 +619,7 @@ class HvacFanCard extends RamsesBaseCard {
     // Get current values
     let tempValue = '—';
     let humidValue = '—';
+    let co2Value = '—';
     let absValue = '—';
 
     if (tempEntity && tempEntity !== 'n/a') {
@@ -613,6 +638,16 @@ class HvacFanCard extends RamsesBaseCard {
         const numValue = parseFloat(humidState.state);
         if (!isNaN(numValue)) {
           humidValue = `${numValue.toFixed(1)} %`;
+        }
+      }
+    }
+
+    if (areaCo2Enabled && co2Entity && co2Entity !== 'n/a') {
+      const co2State = this.getEntityState(co2Entity);
+      if (co2State && co2State.state !== 'unavailable' && co2State.state !== 'unknown') {
+        const numValue = parseFloat(co2State.state);
+        if (!isNaN(numValue)) {
+          co2Value = `${numValue.toFixed(0)} ppm`;
         }
       }
     }
@@ -667,6 +702,14 @@ class HvacFanCard extends RamsesBaseCard {
           <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
             <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Absolute Humidity:</span>
             <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${absValue}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-label">Area CO2 Enabled:</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${areaCo2Enabled ? 'Yes' : 'No'}</span>
+          </div>
+          <div class="r-xtrs-hvac-fan-sensor-source-detail-row">
+            <span class="r-xtrs-hvac-fan-sensor-source-entity">${co2Entity}</span>
+            <span class="r-xtrs-hvac-fan-sensor-source-detail-value">${co2Value}</span>
           </div>
         </div>
       </div>
@@ -737,80 +780,15 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   /**
-   * Create balance triggers section for main card
-   * Shows all area sensors with current values and highlights active trigger
-   * @returns {string} HTML string for balance triggers section
+   * Create balance status section for main card.
+   * @returns {string} HTML string for balance status section.
    */
   _createBalanceTriggersSection() {
-    // Only show if we have area sensors configured
-    if (!this._areaSensors || this._areaSensors.length === 0) {
-      logger.debug('HvacFanCard: No area sensors configured, skipping balance triggers section');
-      return '';
-    }
-
-    logger.debug(`HvacFanCard: Creating balance triggers section with ${this._areaSensors.length} area sensor(s)`);
-    const attrs = this._getDehumidifyStatusAttributes();
-    const controlMode = attrs.control_mode;
-    logger.debug(`HvacFanCard: Control mode: ${controlMode}`);
-
-    // Get active trigger source IDs
-    const activeTriggerSourceIds = attrs.active_trigger_source_ids || [];
-    const primaryTriggerSourceId = attrs.active_trigger_source_id;
-
-    // Build trigger items from area sensors
-    const triggerItems = (this._areaSensors || []).map(areaSensor => {
-      const sourceId = areaSensor?.source_id || '';
-      const label = areaSensor?.label || sourceId;
-      const tempEntity = areaSensor?.temperature_entity;
-      const humidityEntity = areaSensor?.humidity_entity;
-      const isDisabled = areaSensor?.enabled === false;
-
-      // Check if this sensor is actively triggering
-      const isActive = !isDisabled && (activeTriggerSourceIds.includes(sourceId) ||
-                       primaryTriggerSourceId === sourceId);
-
-      // Get current values
-      let tempValue = '—';
-      let humidValue = '—';
-
-      if (tempEntity) {
-        const tempState = this.getEntityState(tempEntity);
-        if (tempState && tempState.state !== 'unavailable' && tempState.state !== 'unknown') {
-          const numValue = parseFloat(tempState.state);
-          if (!isNaN(numValue)) {
-            tempValue = `${numValue.toFixed(1)}°C`;
-          }
-        }
-      }
-
-      if (humidityEntity) {
-        const humidState = this.getEntityState(humidityEntity);
-        if (humidState && humidState.state !== 'unavailable' && humidState.state !== 'unknown') {
-          const numValue = parseFloat(humidState.state);
-          if (!isNaN(numValue)) {
-            humidValue = `${numValue.toFixed(0)}%`;
-          }
-        }
-      }
-
-      return {
-        sourceId,
-        label,
-        tempValue,
-        humidValue,
-        isActive,
-        isDisabled,
-      };
-    }).filter(item => item.sourceId); // Filter out invalid items
-
-    if (triggerItems.length === 0) {
-      return '';
-    }
-
-    // Get balance mode and activation status
     const config = this.config || {};
     const dehumMode = this.getEntityState(config.dehum_mode_entity)?.state || 'off';
     const dehumActive = this.getEntityState(config.dehum_active_entity)?.state || 'off';
+    const attrs = this._getDehumidifyStatusAttributes();
+    const balanceTriggered = attrs.control_mode === 'balance' || attrs.control_mode === 'spike_boost';
 
     // Create compact balance status: "Balance → On + Active" or "Balance → Off"
     let balanceStatus = '';
@@ -821,31 +799,195 @@ class HvacFanCard extends RamsesBaseCard {
       balanceStatus = `Balance → On + ${activeState}`;
     }
 
-    const itemsHtml = triggerItems.map(item => {
-      const stateClass = [
-        item.isActive ? 'active' : '',
-        item.isDisabled ? 'disabled' : '',
-      ].filter(Boolean).join(' ');
-      return `
-        <div class="r-xtrs-hvac-fan-balance-trigger-item ${stateClass}">
-          <span class="r-xtrs-hvac-fan-balance-trigger-label">${item.label}</span>
-          <div class="r-xtrs-hvac-fan-balance-trigger-values">
-            <span>🌡️ ${item.tempValue}</span>
-            <span>💧 ${item.humidValue}</span>
-          </div>
-        </div>
-      `;
-    }).join('');
-
     return `
       <div class="r-xtrs-hvac-fan-balance-divider"></div>
       <div class="r-xtrs-hvac-fan-balance-triggers">
         <div class="r-xtrs-hvac-fan-balance-info">
-          <div class="r-xtrs-hvac-fan-balance-info-row">
+          <div class="r-xtrs-hvac-fan-balance-info-row ${balanceTriggered ? 'active-humidity' : ''}">
             <span>💧 ${balanceStatus}</span>
           </div>
         </div>
-        ${itemsHtml}
+      </div>
+    `;
+  }
+
+  /**
+   * Create CO2 zones section showing tracked CO2 sensors
+   * Shows: CO2 status, area labels with sensors, zone status
+   * @returns {string} HTML string for CO2 zones section
+   */
+  _createCO2ZonesSection() {
+    const config = this.config || {};
+
+    if (!this._areaSensors || this._areaSensors.length === 0) {
+      return '';
+    }
+
+    // Get CO2 control status
+    const co2ControlMode = this.getEntityState(config.co2_control_entity)?.state || 'off';
+    const co2Active = this.getEntityState(config.co2_active_entity)?.state || 'off';
+    const co2ZoneStatus = this.getEntityState(config.co2_zone_status_entity)?.state || 'unknown';
+
+    // Create CO2 status: "CO2 → On + Active" or "CO2 → Off"
+    let co2Status = '';
+    if (co2ControlMode === 'off') {
+      co2Status = 'CO2 → Off';
+    } else {
+      const activeState = co2Active === 'on' ? 'Active' : 'Passive';
+      co2Status = `CO2 → On + ${activeState}`;
+    }
+
+    const co2StatusState = this.getEntityState(config.co2_zone_status_entity);
+    const attrs = co2StatusState?.attributes || {};
+    const activeTriggerSourceIds = Array.isArray(attrs.active_trigger_source_ids)
+      ? attrs.active_trigger_source_ids
+      : [];
+    const primaryTriggerSourceId = attrs.active_trigger_source_id;
+    const dehumAttrs = this._getDehumidifyStatusAttributes();
+    const humidityTriggerSourceIds = Array.isArray(dehumAttrs.active_trigger_source_ids)
+      ? dehumAttrs.active_trigger_source_ids
+      : [];
+    const co2StatusClass = activeTriggerSourceIds.length > 0 ? 'active-co2' : '';
+
+    // Build area sensor items (humidity/temp and CO2 where enabled)
+    const areaSensorItems = (this._areaSensors || [])
+      .map(areaSensor => {
+        const sourceId = areaSensor?.source_id || '';
+        const label = areaSensor?.label || areaSensor?.source_id || 'Unknown';
+        const tempEntity = areaSensor?.temperature_entity;
+        const humidityEntity = areaSensor?.humidity_entity;
+        const co2Entity = areaSensor?.co2_entity;
+        const isDisabled = areaSensor?.enabled === false;
+        const areaCo2Enabled = areaSensor?.area_co2_enabled === true;
+
+        const co2Triggered = !isDisabled && (
+          activeTriggerSourceIds.includes(sourceId) || primaryTriggerSourceId === sourceId
+        );
+        const humidityTriggered = !isDisabled && humidityTriggerSourceIds.includes(sourceId);
+        const labelHighlighted = co2Triggered || humidityTriggered;
+
+        let tempValue = null;
+        let humidValue = null;
+        let co2Value = '—';
+
+        if (tempEntity) {
+          const tempState = this.getEntityState(tempEntity);
+          if (tempState && tempState.state !== 'unavailable' && tempState.state !== 'unknown') {
+            const numValue = parseFloat(tempState.state);
+            if (!isNaN(numValue)) {
+              tempValue = `${numValue.toFixed(1)}C`;
+            }
+          }
+        }
+
+        if (humidityEntity) {
+          const humidState = this.getEntityState(humidityEntity);
+          if (
+            humidState &&
+            humidState.state !== 'unavailable' &&
+            humidState.state !== 'unknown'
+          ) {
+            const numValue = parseFloat(humidState.state);
+            if (!isNaN(numValue)) {
+              humidValue = `${numValue.toFixed(0)}%`;
+            }
+          }
+        }
+
+        if (co2Entity) {
+          const co2State = this.getEntityState(co2Entity);
+          if (
+            co2State &&
+            co2State.state !== 'unavailable' &&
+            co2State.state !== 'unknown'
+          ) {
+            const numValue = parseFloat(co2State.state);
+            if (!isNaN(numValue)) {
+              co2Value = `${numValue.toFixed(0)}ppm`;
+            }
+          }
+        }
+
+        const stateClass = [
+          isDisabled ? 'disabled' : '',
+        ].filter(Boolean).join(' ');
+
+        const sensorValues = [];
+        if (tempValue !== null) {
+          const tempClass = humidityTriggered ? 'r-xtrs-temp-trigger' : '';
+          sensorValues.push(`<span class="${tempClass}">${tempValue}</span>`);
+        }
+        if (humidValue !== null) {
+          const humidClass = humidityTriggered ? 'r-xtrs-humid-trigger' : '';
+          sensorValues.push(`<span class="${humidClass}">${humidValue}</span>`);
+        }
+        if (areaCo2Enabled && co2Entity) {
+          const co2Class = co2Triggered ? 'r-xtrs-co2-trigger' : '';
+          sensorValues.push(`<span class="${co2Class}">${co2Value}</span>`);
+        }
+
+        if (sensorValues.length === 0) {
+          return '';
+        }
+
+        return `
+          <div class="r-xtrs-hvac-fan-balance-trigger-item ${stateClass}">
+            <div class="r-xtrs-hvac-fan-balance-trigger-values">
+              <span class="r-xtrs-hvac-fan-trigger-source ${labelHighlighted ? 'r-xtrs-source-trigger' : ''}">${label}:</span>
+            </div>
+          </div>
+        `;
+      })
+      .filter(Boolean)
+      .join('');
+
+    // Only show internal device CO2 if it's the trigger
+    const internalEntity = attrs.internal_co2_entity;
+    let internalItemHtml = '';
+    if (internalEntity && activeTriggerSourceIds.includes('internal_co2')) {
+      let internalValue = '—';
+      const internalState = this.getEntityState(internalEntity);
+      if (
+        internalState &&
+        internalState.state !== 'unavailable' &&
+        internalState.state !== 'unknown'
+      ) {
+        const numValue = parseFloat(internalState.state);
+        if (!isNaN(numValue)) {
+          internalValue = `${numValue.toFixed(0)}ppm`;
+        }
+      }
+
+      internalItemHtml = `
+        <div class="r-xtrs-hvac-fan-balance-trigger-item">
+          <div class="r-xtrs-hvac-fan-balance-trigger-values">
+            <span class="r-xtrs-hvac-fan-trigger-source r-xtrs-source-trigger">Device CO2:</span>
+            <span class="r-xtrs-co2-trigger">${internalValue}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // Display zone status
+    const zoneStatusHtml = `
+      <div class="r-xtrs-hvac-fan-balance-trigger-item">
+        <span class="r-xtrs-hvac-fan-balance-trigger-label">Zone Status</span>
+        <div class="r-xtrs-hvac-fan-balance-trigger-values">
+          <span>${co2ZoneStatus}</span>
+        </div>
+      </div>
+    `;
+
+    return `
+      <div class="r-xtrs-hvac-fan-balance-triggers">
+        <div class="r-xtrs-hvac-fan-balance-info">
+          <div class="r-xtrs-hvac-fan-balance-info-row ${co2StatusClass}">
+            <span>🌫️ ${co2Status}</span>
+          </div>
+        </div>
+        ${areaSensorItems}
+        ${internalItemHtml}
+        ${zoneStatusHtml}
       </div>
     `;
   }
@@ -918,6 +1060,10 @@ class HvacFanCard extends RamsesBaseCard {
 
     // Check dehumidify entity availability
     const dehumEntitiesAvailable = this.checkDehumidifyEntities();
+
+    // Check CO2 control entity availability
+    const hass = this._hass;
+    const co2ControlEntitiesAvailable = validateCO2ControlEntities(hass, config)?.available === true;
 
     // Get data from 31DA messages
     const da31Data = this.get31DAData();
@@ -998,6 +1144,16 @@ class HvacFanCard extends RamsesBaseCard {
 
     // create templateData for rendering
     const templateData = createTemplateData(rawData);
+    const dehumAttrs = this._getDehumidifyStatusAttributes();
+    const co2Attrs = co2ControlEntitiesAvailable
+      ? this.getEntityState(config.co2_zone_status_entity)?.attributes || {}
+      : {};
+    templateData.indoorHumidityClass = dehumAttrs.control_mode === 'balance'
+      ? 'r-xtrs-humid-trigger'
+      : '';
+    templateData.co2LevelClass = co2Attrs.internal_triggered === true
+      ? 'r-xtrs-co2-trigger'
+      : '';
     // Add airflow SVG to template data
     const selectedSvg =
       rawData.bypassPosition !== null && rawData.bypassPosition > 0 ? BYPASS_OPEN_SVG : NORMAL_SVG;
@@ -1549,6 +1705,19 @@ class HvacFanCard extends RamsesBaseCard {
               }, 100);
             } catch (error) {
               logger.error(`Failed to toggle dehumidify ${entityId}:`, error);
+            }
+          } else if (action === 'toggle-co2-control' && entityId) {
+            // CO2 control toggle button
+            try {
+              await this._hass.callService('switch', 'toggle', { entity_id: entityId });
+              this._prevStates = null;
+              setTimeout(() => {
+                if (this._hass && this.config) {
+                  this.render();
+                }
+              }, 100);
+            } catch (error) {
+              logger.error(`Failed to toggle CO2 control ${entityId}:`, error);
             }
           }
         });

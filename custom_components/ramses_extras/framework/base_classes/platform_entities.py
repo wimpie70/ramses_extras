@@ -23,6 +23,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import ConfigType, StateType
 
 from ..helpers.entity.core import EntityHelpers
 from .base_entity import ExtrasBaseEntity
@@ -363,7 +364,7 @@ class ExtrasSensorEntity(ExtrasPlatformEntity, SensorEntity):
         self._attr_entity_category = config.get("entity_category")
 
         # Initialize state
-        self._attr_native_value: float | None = None
+        self._attr_native_value: StateType = None
 
     @property
     def state(self) -> Any:
@@ -371,11 +372,11 @@ class ExtrasSensorEntity(ExtrasPlatformEntity, SensorEntity):
         return self._attr_native_value
 
     @property
-    def native_value(self) -> float | None:
+    def native_value(self) -> StateType:
         """Return the native value of the sensor."""
         return self._attr_native_value
 
-    def set_native_value(self, value: float | None) -> None:
+    def set_native_value(self, value: StateType) -> None:
         """Set the native value of the sensor."""
         self._attr_native_value = value
         self.async_write_ha_state()

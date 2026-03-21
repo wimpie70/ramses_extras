@@ -1,0 +1,90 @@
+{
+  "title": "CO2 Controle",
+  "config": {
+    "step": {
+      "co2_setup": {
+        "title": "CO2 Controle Instellingen",
+        "description": "Configureer CO2-gebaseerde ventilatie controle",
+        "data": {
+          "enabled": "CO2 Controle Inschakelen",
+          "automation_enabled": "Automatisering Inschakelen",
+          "default_threshold": "Standaard CO2 Drempel (ppm)",
+          "activation_hysteresis": "Activatie Hysterese (ppm)",
+          "deactivation_hysteresis": "Deactivatie Hysterese (ppm)"
+        }
+      },
+      "co2_sensors": {
+        "title": "CO2 Sensoren",
+        "description": "Selecteer CO2 sensor entiteiten voor monitoring",
+        "data": {
+          "zone_count": "Aantal Zones"
+        }
+      },
+      "co2_zones": {
+        "title": "Zone Configuratie",
+        "description": "Configureer CO2 monitoring zones",
+        "data": {
+          "zone_name": "Zone Naam",
+          "sensor_entity": "CO2 Sensor Entiteit",
+          "threshold": "CO2 Drempel (ppm)",
+          "enabled": "Zone Ingeschakeld"
+        }
+      },
+      "co2_advanced": {
+        "title": "Geavanceerde Instellingen",
+        "description": "Configureer geavanceerde CO2 controle instellingen",
+        "data": {
+          "max_runtime_minutes": "Maximale Looptijd (minuten)",
+          "cooldown_period_minutes": "Afkoelperiode (minuten)",
+          "priority_over_humidity": "Prioriteit Boven Vochtigheidscontrole"
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "co2_control": {
+        "name": "CO2 Controle"
+      }
+    },
+    "number": {
+      "co2_threshold": {
+        "name": "CO2 Drempel"
+      },
+      "co2_activation_hysteresis": {
+        "name": "CO2 Activatie Hysterese"
+      },
+      "co2_deactivation_hysteresis": {
+        "name": "CO2 Deactivatie Hysterese"
+      }
+    },
+    "binary_sensor": {
+      "co2_active": {
+        "name": "CO2 Actief"
+      }
+    },
+    "sensor": {
+      "co2_zone_status": {
+        "name": "CO2 Zone Status"
+      }
+    }
+  },
+  "services": {
+    "enable_co2_control": {
+      "name": "CO2 Controle Inschakelen",
+      "description": "Schakel CO2-gebaseerde ventilatie controle in voor een apparaat"
+    },
+    "disable_co2_control": {
+      "name": "CO2 Controle Uitschakelen",
+      "description": "Schakel CO2-gebaseerde ventilatie controle uit voor een apparaat"
+    },
+    "set_zone_threshold": {
+      "name": "Zone Drempel Instellen",
+      "description": "Stel CO2 drempel in voor een specifieke zone"
+    },
+    "trigger_co2_boost": {
+      "name": "CO2 Boost Activeren",
+      "description": "Activeer handmatig CO2-gebaseerde boost modus"
+    }
+  }
+}

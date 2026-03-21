@@ -113,6 +113,15 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "allowed_device_slugs": ["FAN", "CO2"],
         "has_device_config": True,
     },
+    "co2_control": {
+        "name": "CO2 Control",
+        "description": "CO2-based ventilation control with multi-zone monitoring",
+        "feature_module": "features.co2_control",
+        "handler": "handle_hvac_ventilator",
+        "default_enabled": False,
+        "allowed_device_slugs": ["FAN"],
+        "has_device_config": True,
+    },
     "ramses_debugger": {
         "name": "Ramses Debugger",
         "description": "Traffic analyser + log explorer cards for debugging",

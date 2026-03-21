@@ -22,8 +22,6 @@ from .common import (
     create_validation_context,
     validate_device_id,
 )
-
-# Device helpers
 from .device import (
     ensure_ramses_cc_loaded,
     find_ramses_device,
@@ -40,6 +38,12 @@ from .entity import (
     get_entities_for_device,
     get_entity_device_id,
     parse_entity_id,
+)
+from .fan_speed_arbiter import (
+    FanSpeedArbiter,
+    FanSpeedDemand,
+    ResolvedFanSpeed,
+    get_fan_speed_arbiter,
 )
 
 # Ramses commands
@@ -66,6 +70,10 @@ __all__ = [
     "validate_device_entity_support",
     # Automation helpers
     "ExtrasBaseAutomation",
+    "FanSpeedArbiter",
+    "FanSpeedDemand",
+    "ResolvedFanSpeed",
+    "get_fan_speed_arbiter",
     # Ramses commands
     "RamsesCommands",
     "create_ramses_commands",

@@ -20,6 +20,8 @@ class TestSensorControlResolver:
     def setup_method(self):
         """Set up test fixtures."""
         self.hass = MagicMock(spec=HomeAssistant)
+        self.hass.config_entries = MagicMock()
+        self.hass.config_entries.async_entries = MagicMock(return_value=[])
         self.hass.data = {}
         self.hass.bus = MagicMock()
         self.hass.config = MagicMock()
@@ -159,6 +161,10 @@ class TestSensorControlResolver:
                             "label": "Bathroom",
                             "temperature_entity": "sensor.bath_temp",
                             "humidity_entity": "sensor.bath_humidity",
+                            "area_co2_enabled": True,
+                            "co2_entity": "sensor.bath_co2",
+                            "co2_threshold_entity": "input_number.bathroom_threshold",
+                            "co2_threshold": 900,
                             "spike_rise_percent": 15.0,
                             "spike_window_minutes": 3,
                             "check_interval_minutes": 1,
@@ -182,7 +188,12 @@ class TestSensorControlResolver:
         self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
         self.resolver._entity_exists = MagicMock(
             side_effect=lambda entity_id: (
-                entity_id in {"sensor.bath_temp", "sensor.bath_humidity"}
+                entity_id
+                in {
+                    "sensor.bath_temp",
+                    "sensor.bath_humidity",
+                    "sensor.bath_co2",
+                }
             )
         )
 
@@ -194,6 +205,13 @@ class TestSensorControlResolver:
         assert result["area_sensors"][0]["source_id"] == "bathroom"
         assert result["area_sensors"][0]["valid"] is True
         assert result["area_sensors"][0]["zone_id"] == "zone_1"
+        assert result["area_sensors"][0]["area_co2_enabled"] is True
+        assert result["area_sensors"][0]["co2_entity"] == "sensor.bath_co2"
+        assert (
+            result["area_sensors"][0]["co2_threshold_entity"]
+            == "input_number.bathroom_threshold"
+        )
+        assert result["area_sensors"][0]["co2_threshold"] == 900
         assert result["area_sensors"][1]["source_id"] == "broken"
         assert result["area_sensors"][1]["valid"] is False
 
@@ -224,6 +242,34 @@ class TestSensorControlResolver:
         self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
         result = self.resolver._get_sensor_control_config()
         assert result == sensor_control_config
+
+    def test_get_sensor_control_config_prefers_entry_with_device_key(self):
+        """Device-aware lookup should prefer the entry that contains the device."""
+        stale_entry = MagicMock()
+        stale_entry.options = {"sensor_control": {"area_sensors": {}}}
+        stale_entry.data = {}
+
+        active_config = {
+            "area_sensors": {
+                self.device_key: [
+                    {
+                        "source_id": "bathroom",
+                        "temperature_entity": "sensor.bath_temp",
+                        "humidity_entity": "sensor.bath_humidity",
+                    }
+                ]
+            }
+        }
+        active_entry = MagicMock()
+        active_entry.options = {"sensor_control": active_config}
+        active_entry.data = {}
+
+        self.hass.data = {"ramses_extras": {"config_entry": stale_entry}}
+        self.hass.config_entries.async_entries.return_value = [active_entry]
+
+        result = self.resolver._get_sensor_control_config(self.device_id)
+
+        assert result == active_config
 
     def test_get_sensor_control_config_exception(self):
         """Test getting sensor control config with exception."""

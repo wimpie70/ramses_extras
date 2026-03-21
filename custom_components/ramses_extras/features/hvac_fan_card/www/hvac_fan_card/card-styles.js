@@ -359,6 +359,18 @@ export const CARD_STYLE = `
   font-weight: 500;
 }
 
+.r-xtrs-hvac-fan-balance-info-row.active-co2 {
+  color: var(--primary-color);
+  text-shadow: 0 0 4px var(--primary-color);
+  font-weight: 600;
+}
+
+.r-xtrs-hvac-fan-balance-info-row.active-humidity {
+  color: var(--warning-color, #f4b400);
+  text-shadow: 0 0 4px var(--warning-color, #f4b400);
+  font-weight: 600;
+}
+
 .r-xtrs-hvac-fan-balance-divider {
   height: 1px;
   background: var(--divider-color);
@@ -400,6 +412,39 @@ export const CARD_STYLE = `
   border-style: dashed;
 }
 
+.r-xtrs-hvac-fan-trigger-source {
+  font-weight: 500;
+}
+
+.r-xtrs-source-trigger {
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--primary-color);
+  text-underline-offset: 2px;
+}
+
+/* CO2 trigger value highlighting */
+.r-xtrs-co2-trigger {
+  font-weight: 600;
+  color: var(--primary-color);
+  text-shadow: 0 0 4px var(--primary-color);
+}
+
+/* Temperature trigger value highlighting */
+.r-xtrs-temp-trigger {
+  font-weight: 600;
+  color: var(--error-color, #db4437);
+  text-shadow: 0 0 4px var(--error-color, #db4437);
+}
+
+/* Humidity trigger value highlighting */
+.r-xtrs-humid-trigger {
+  font-weight: 600;
+  color: var(--warning-color, #f4b400);
+  text-shadow: 0 0 4px var(--warning-color, #f4b400);
+}
+
 .r-xtrs-hvac-fan-balance-trigger-label {
   font-size: 9px;
   font-weight: 600;
@@ -409,7 +454,7 @@ export const CARD_STYLE = `
 
 .r-xtrs-hvac-fan-balance-trigger-values {
   display: flex;
-  gap: 8px;
+  gap: 1px;
   font-size: 9px;
   opacity: 0.8;
   white-space: nowrap;
