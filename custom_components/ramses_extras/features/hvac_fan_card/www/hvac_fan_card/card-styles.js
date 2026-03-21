@@ -274,6 +274,56 @@ export const CARD_STYLE = `
   gap: 20px;
 }
 
+/* ====== CONNECTION STATUS ====== */
+.r-xtrs-hvac-fan-connection-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  margin-left: 8px;
+}
+
+.r-xtrs-hvac-fan-connection-status.connected {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4CAF50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.r-xtrs-hvac-fan-connection-status.disconnected {
+  background: rgba(244, 67, 54, 0.15);
+  color: #F44336;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  animation: pulse-red 2s infinite;
+}
+
+.r-xtrs-hvac-fan-connection-icon {
+  font-size: 8px;
+  line-height: 1;
+}
+
+.r-xtrs-hvac-fan-connection-text {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+@keyframes pulse-red {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
 .r-xtrs-hvac-fan-stat-item {
   display: flex;
   flex-direction: column;

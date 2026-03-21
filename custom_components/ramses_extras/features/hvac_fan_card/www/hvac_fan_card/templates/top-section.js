@@ -33,7 +33,8 @@ export function createTopSection(data, t) {
     co2Level, supplyFlowRate, exhaustFlowRate, efficiency,
     timerMinutes, airflowSvg, filterDaysRemaining,
     balanceTriggersHtml, co2ZonesHtml,
-    indoorHumidityClass, co2LevelClass
+    indoorHumidityClass, co2LevelClass,
+    transportAvailable
   } = data;
 
   // Helper function to format humidity values
@@ -132,6 +133,17 @@ export function createTopSection(data, t) {
         <div class="r-xtrs-hvac-fan-bottom-stats">
           <div class="r-xtrs-hvac-fan-stats-top">
             <div class="r-xtrs-hvac-fan-fanmode" id="fanMode">${fanMode}</div>
+            <!-- Connection Status Indicator -->
+            <div class="r-xtrs-hvac-fan-connection-status ${transportAvailable ? 'connected' : 'disconnected'}"
+                 id="connectionStatus"
+                 title="${transportAvailable ? tr('connection.connected', 'Connected to WTW unit') : tr('connection.disconnected', 'WTW unit disconnected')}">
+              <span class="r-xtrs-hvac-fan-connection-icon">
+                ${transportAvailable ? '🟢' : '🔴'}
+              </span>
+              <span class="r-xtrs-hvac-fan-connection-text">
+                ${transportAvailable ? tr('connection.online', 'Online') : tr('connection.offline', 'Offline')}
+              </span>
+            </div>
           </div>
           <div class="r-xtrs-hvac-fan-stats-bottom">
             <div class="r-xtrs-hvac-fan-stat-item left">

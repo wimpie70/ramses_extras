@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
 from .commands.registry import get_command_registry
+from .transport_monitor import get_transport_monitor
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from custom_components.ramses_cc.coordinator import RamsesCoordinator
@@ -452,6 +453,14 @@ class RamsesCommands:
                 f"Sending Ramses command to {device_id}: {cmd_def['code']} "
                 f"{cmd_def['description']}"
             )
+
+            # Check transport state before attempting to send
+            transport_monitor = get_transport_monitor()
+            if not transport_monitor.is_transport_available:
+                _LOGGER.warning(
+                    f"Skipping command {cmd_def['code']} - transport unavailable"
+                )
+                return False
 
             # Get the ramses_cc coordinator
             coordinator = await self._get_ramses_cc_coordinator()

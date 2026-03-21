@@ -153,6 +153,18 @@ class FanSpeedArbiter:
         if self._last_applied_command.get(device_id) == command_name:
             return True
 
+        # Check transport state before sending command
+        from .transport_monitor import get_transport_monitor
+
+        transport_monitor = get_transport_monitor()
+        if not transport_monitor.is_transport_available:
+            _LOGGER.debug(
+                "Skipping fan command %s for %s - transport unavailable",
+                command_name,
+                device_id,
+            )
+            return False
+
         result = await self.ramses_commands.send_command(device_id, command_name)
         if not result.success:
             _LOGGER.warning(

@@ -37,11 +37,24 @@ DEFAULT_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {}
 DEFAULT_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {}
 DEFAULT_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
 
+# Binary sensor configurations
+DEFAULT_BINARY_SENSOR_CONFIGS = {
+    "transport_state": {
+        "name_template": "Transport State {device_id}",
+        "entity_category": EntityCategory.DIAGNOSTIC,
+        "icon": "mdi:network-strength-outline",
+        "device_class": "connectivity",
+        "supported_device_types": ["FAN"],
+        "entity_template": "transport_state_{device_id}",
+    },
+}
+
 # Base device type to entity mapping
 # Note: Default feature creates absolute humidity sensors for all devices
 DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
     "FAN": {
         "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        "binary_sensor": ["transport_state"],
         # Other entity types will be added by individual features
     },
 }
