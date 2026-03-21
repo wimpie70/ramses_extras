@@ -213,7 +213,7 @@ class SensorControlResolver:
                 humidity_entity
             )
             co2_valid = (not area_co2_enabled) or (
-                bool(co2_entity) and self._entity_exists(co2_entity)
+                not co2_entity or self._entity_exists(co2_entity)
             )
             humidity_valid = (not area_enabled) or (temp_valid and humidity_valid)
             valid = bool(source_id) and humidity_valid and co2_valid

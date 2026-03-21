@@ -215,6 +215,46 @@ class TestSensorControlResolver:
         assert result["area_sensors"][1]["source_id"] == "broken"
         assert result["area_sensors"][1]["valid"] is False
 
+    @pytest.mark.asyncio
+    async def test_resolve_entity_mappings_area_sensor_stays_valid_without_co2_entity(
+        self,
+    ):
+        """Area temp/humidity stays valid when CO2 is enabled but not configured."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "sensor_control": {
+                "area_sensors": {
+                    self.device_key: [
+                        {
+                            "source_id": "bathroom",
+                            "label": "Bathroom",
+                            "temperature_entity": "sensor.bath_temp",
+                            "humidity_entity": "sensor.bath_humidity",
+                            "area_co2_enabled": True,
+                            "co2_entity": "",
+                            "enabled": True,
+                        }
+                    ]
+                }
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+        self.resolver._entity_exists = MagicMock(
+            side_effect=lambda entity_id: (
+                entity_id in {"sensor.bath_temp", "sensor.bath_humidity"}
+            )
+        )
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert len(result["area_sensors"]) == 1
+        assert result["area_sensors"][0]["source_id"] == "bathroom"
+        assert result["area_sensors"][0]["valid"] is True
+        assert result["area_sensors"][0]["area_co2_enabled"] is True
+        assert result["area_sensors"][0]["co2_entity"] is None
+
     def test_resolve_area_sensors_ignores_invalid_input(self):
         """Non-list and non-dict area sensor config should be ignored."""
         assert self.resolver._resolve_area_sensors("invalid") == []
