@@ -934,7 +934,6 @@ class HvacFanCard extends RamsesBaseCard {
           <div class="r-xtrs-hvac-fan-balance-trigger-item ${stateClass}">
             <div class="r-xtrs-hvac-fan-balance-trigger-values">
               <span class="r-xtrs-hvac-fan-trigger-source ${labelHighlighted ? 'r-xtrs-source-trigger' : ''}">${label}:</span>
-              ${sensorValues.join(' · ')}
             </div>
           </div>
         `;

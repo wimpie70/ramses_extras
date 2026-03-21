@@ -454,7 +454,7 @@ export const CARD_STYLE = `
 
 .r-xtrs-hvac-fan-balance-trigger-values {
   display: flex;
-  gap: 8px;
+  gap: 1px;
   font-size: 9px;
   opacity: 0.8;
   white-space: nowrap;
