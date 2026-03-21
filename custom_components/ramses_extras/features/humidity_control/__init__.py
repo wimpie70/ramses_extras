@@ -58,6 +58,14 @@ _LOGGER = logging.getLogger(__name__)
 # Feature-specific brand customizers are now defined in const.py
 
 
+def _get_co2_automation(hass: HomeAssistant) -> Any | None:
+    features = hass.data.get("ramses_extras", {}).get("features", {})
+    co2_feature = features.get("co2_control") if isinstance(features, dict) else None
+    if isinstance(co2_feature, dict):
+        return co2_feature.get("automation")
+    return None
+
+
 class OrconDeviceCustomizer:
     """Handle Orcon-specific device customizations for humidity control."""
 
@@ -796,6 +804,12 @@ async def create_humidity_control_feature(
 
     # Also maintain compatibility with the original structure
     automation = enhanced_feature.automation  # Use the automation from enhanced feature
+    co2_automation = _get_co2_automation(hass)
+    if co2_automation is not None:
+        if hasattr(automation, "set_co2_manager"):
+            automation.set_co2_manager(co2_automation)
+        if hasattr(co2_automation, "set_humidity_manager"):
+            co2_automation.set_humidity_manager(automation)
 
     return {
         "automation": automation,

@@ -42,6 +42,9 @@ class TestCO2AutomationManager:
             }
         }
         self.hass.states = MagicMock()
+        self.fan_speed_arbiter = MagicMock()
+        self.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
+        self.fan_speed_arbiter.async_clear_demand = AsyncMock(return_value=True)
 
         self.config_entry = MagicMock()
         self.config_entry.options = {
@@ -52,8 +55,14 @@ class TestCO2AutomationManager:
             "enabled_features": {"co2_control": True, "sensor_control": True}
         }
 
-        with patch(
-            "custom_components.ramses_extras.features.co2_control.automation.RamsesCommands"
+        with (
+            patch(
+                "custom_components.ramses_extras.features.co2_control.automation.RamsesCommands"
+            ),
+            patch(
+                "custom_components.ramses_extras.features.co2_control.automation.get_fan_speed_arbiter",
+                return_value=self.fan_speed_arbiter,
+            ),
         ):
             self.manager = CO2AutomationManager(self.hass, self.config_entry)
 
@@ -237,6 +246,24 @@ class TestCO2AutomationManager:
             await self.manager._on_homeassistant_started(None)
 
         self.manager._evaluate_co2_control.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_adjust_fan_speed_uses_shared_arbiter(self) -> None:
+        """CO2 speed changes should be submitted through the shared arbiter."""
+        zone_manager = MagicMock()
+        zone_manager.calculate_combined_fan_speed = AsyncMock(return_value=4)
+
+        await self.manager._adjust_fan_speed("32:123456", zone_manager)
+
+        self.fan_speed_arbiter.async_set_demand.assert_awaited_once_with(
+            "32:123456",
+            feature_id="co2_control",
+            source_id="co2_control",
+            requested_speed="fan_high",
+            priority=30,
+            reason="co2_trigger",
+            metadata={"target_speed": 4},
+        )
 
     @pytest.mark.asyncio
     async def test_update_automation_status_updates_entities(self) -> None:
