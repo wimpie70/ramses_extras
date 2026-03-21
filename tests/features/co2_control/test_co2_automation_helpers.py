@@ -462,6 +462,38 @@ async def test_evaluate_co2_control_deactivates_and_returns_idle(
 
 
 @pytest.mark.asyncio
+async def test_evaluate_co2_control_disabled_device_clears_state(
+    manager: CO2AutomationManager,
+) -> None:
+    """Turning CO2 off for a device should clear status and release fan control."""
+    manager._co2_active = True
+    manager._last_fan_speed = 2
+    manager._source_trigger_states = {
+        "32:123456": {"bathroom": True, "internal_co2": True}
+    }
+    manager._latest_sensor_control_context = {
+        "32:123456": {"mappings": {"co2": "sensor.internal_co2"}, "area_sensors": []}
+    }
+    manager._update_automation_status = AsyncMock()
+    manager._notify_priority_release = AsyncMock()
+    manager._return_to_idle = AsyncMock()
+    manager._is_automation_enabled_for_device = MagicMock(return_value=False)
+
+    await manager._evaluate_co2_control("32:123456")
+
+    assert manager._co2_active is False
+    assert manager._source_trigger_states["32:123456"] == {}
+    manager._update_automation_status.assert_awaited_once_with(
+        "32:123456",
+        [],
+        [],
+        {"mappings": {"co2": "sensor.internal_co2"}, "area_sensors": []},
+    )
+    manager._notify_priority_release.assert_awaited_once()
+    manager._return_to_idle.assert_awaited_once_with("32:123456")
+
+
+@pytest.mark.asyncio
 async def test_evaluate_co2_control_uses_trigger_fallback_when_no_zone_manager(
     manager: CO2AutomationManager,
 ) -> None:

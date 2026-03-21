@@ -595,6 +595,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             clean_device_id = device_id.split(" (")[0]
 
         if not self._is_automation_enabled_for_device(clean_device_id):
+            await self._clear_disabled_co2_state(clean_device_id)
             return
 
         zone_manager = self._zone_managers.get(clean_device_id)
@@ -664,6 +665,21 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         else:
             # Return to idle/normal speed
             await self._return_to_idle(clean_device_id)
+
+    async def _clear_disabled_co2_state(self, device_id: str) -> None:
+        """Clear CO2 runtime state when per-device automation is disabled."""
+        was_active = self._co2_active
+        self._co2_active = False
+        self._source_trigger_states[device_id] = {}
+
+        sensor_ctx = self._latest_sensor_control_context.get(device_id)
+        await self._update_automation_status(device_id, [], [], sensor_ctx)
+
+        if was_active:
+            _LOGGER.info("CO2 control disabled for device %s", device_id)
+            await self._notify_priority_release()
+
+        await self._return_to_idle(device_id)
 
     def _evaluate_trigger_sources(
         self, device_id: str, sensor_ctx: dict[str, Any] | None
