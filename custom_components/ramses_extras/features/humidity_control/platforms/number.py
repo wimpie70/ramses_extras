@@ -140,7 +140,21 @@ class HumidityControlNumber(ExtrasNumberEntity):
         humidity_config = self.config_entry.options.get("humidity_control", {}).get(
             device_key, {}
         )
-        return float(humidity_config.get(self._entity_type, default_value))
+        stored_value = float(humidity_config.get(self._entity_type, default_value))
+
+        # Update legacy 66% max humidity to 60% for existing installations
+        if (
+            self._entity_type == "relative_humidity_maximum"
+            and abs(stored_value - 66.0) < 0.1
+        ):
+            _LOGGER.info(
+                "Updating legacy max humidity from 66%% to 60%% for device %s",
+                self._device_id,
+            )
+            # The updated value will be saved when the user changes it
+            return 60.0
+
+        return stored_value
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to Ramses RF device updates."""

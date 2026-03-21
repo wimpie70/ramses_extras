@@ -17,6 +17,9 @@ from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
+from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import (
+    get_fan_speed_arbiter,
+)
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
     RamsesCommands,
 )
@@ -55,6 +58,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
         # Initialize Ramses commands for direct device control
         self.ramses_commands = RamsesCommands(hass)
+        self.fan_speed_arbiter = get_fan_speed_arbiter(hass)
 
         # CO2-specific state tracking
         self._co2_active = False
@@ -591,6 +595,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             clean_device_id = device_id.split(" (")[0]
 
         if not self._is_automation_enabled_for_device(clean_device_id):
+            await self._clear_disabled_co2_state(clean_device_id)
             return
 
         zone_manager = self._zone_managers.get(clean_device_id)
@@ -660,6 +665,21 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         else:
             # Return to idle/normal speed
             await self._return_to_idle(clean_device_id)
+
+    async def _clear_disabled_co2_state(self, device_id: str) -> None:
+        """Clear CO2 runtime state when per-device automation is disabled."""
+        was_active = self._co2_active
+        self._co2_active = False
+        self._source_trigger_states[device_id] = {}
+
+        sensor_ctx = self._latest_sensor_control_context.get(device_id)
+        await self._update_automation_status(device_id, [], [], sensor_ctx)
+
+        if was_active:
+            _LOGGER.info("CO2 control disabled for device %s", device_id)
+            await self._notify_priority_release()
+
+        await self._return_to_idle(device_id)
 
     def _evaluate_trigger_sources(
         self, device_id: str, sensor_ctx: dict[str, Any] | None
@@ -871,8 +891,15 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if target_speed == self._last_fan_speed:
             return
 
-        result = await self.ramses_commands.send_command(device_id, "fan_medium")
-        if result.success:
+        success = await self.fan_speed_arbiter.async_set_demand(
+            device_id,
+            feature_id=self.feature_id,
+            source_id="co2_control",
+            requested_speed="fan_medium",
+            priority=30,
+            reason="co2_trigger",
+        )
+        if success:
             self._last_fan_speed = target_speed
 
     async def _adjust_fan_speed(
@@ -904,8 +931,16 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
         # Only send command if speed changed
         if target_speed != self._last_fan_speed:
-            result = await self.ramses_commands.send_command(device_id, command_name)
-            if result.success:
+            success = await self.fan_speed_arbiter.async_set_demand(
+                device_id,
+                feature_id=self.feature_id,
+                source_id="co2_control",
+                requested_speed=command_name,
+                priority=30,
+                reason="co2_trigger",
+                metadata={"target_speed": target_speed},
+            )
+            if success:
                 self._last_fan_speed = target_speed
                 _LOGGER.info(
                     "Set fan speed to %s for device %s (CO2 control)",
@@ -923,8 +958,12 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         """
         idle_speed = 1
         if self._last_fan_speed != idle_speed:
-            result = await self.ramses_commands.send_command(device_id, "fan_auto")
-            if result.success:
+            success = await self.fan_speed_arbiter.async_clear_demand(
+                device_id,
+                feature_id=self.feature_id,
+                source_id="co2_control",
+            )
+            if success:
                 self._last_fan_speed = idle_speed
                 _LOGGER.info("Returned fan to idle speed for device %s", device_id)
 
@@ -966,6 +1005,10 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             ),
             "last_fan_speed": self._last_fan_speed,
             "trigger_meta": self._trigger_meta,
+            "fan_arbiter": {
+                device_id: self.fan_speed_arbiter.get_device_debug_state(device_id)
+                for device_id in self._iter_candidate_device_ids()
+            },
             "zones": {
                 device_id: zone_manager.get_zone_status()
                 for device_id, zone_manager in self._zone_managers.items()

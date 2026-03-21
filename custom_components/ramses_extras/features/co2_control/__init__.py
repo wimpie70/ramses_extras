@@ -118,6 +118,14 @@ def _get_humidity_automation(hass: HomeAssistant) -> Any | None:
     return None
 
 
+def _get_co2_automation(hass: HomeAssistant) -> Any | None:
+    features = hass.data.get("ramses_extras", {}).get("features", {})
+    co2_feature = features.get("co2_control") if isinstance(features, dict) else None
+    if isinstance(co2_feature, dict):
+        return co2_feature.get("automation")
+    return None
+
+
 async def create_co2_control_feature(
     hass: HomeAssistant, config_entry: Any
 ) -> dict[str, Any]:
@@ -126,6 +134,8 @@ async def create_co2_control_feature(
     humidity_automation = _get_humidity_automation(hass)
     if humidity_automation is not None:
         automation.set_humidity_manager(humidity_automation)
+        if hasattr(humidity_automation, "set_co2_manager"):
+            humidity_automation.set_co2_manager(automation)
 
     return {
         "automation": automation,

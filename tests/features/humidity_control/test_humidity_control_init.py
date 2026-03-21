@@ -35,6 +35,17 @@ class TestCreateHumidityControlFeature:
         self, mock_enhanced, mock_config, mock_services, mock_entities, mock_automation
     ):
         """Test creating Humidity Control feature with basic setup."""
+        co2_automation = MagicMock()
+        self.hass.data = {
+            "ramses_extras": {
+                "features": {
+                    "co2_control": {
+                        "automation": co2_automation,
+                    }
+                }
+            }
+        }
+
         # Mock the managers
         mock_automation_instance = MagicMock()
         mock_automation_instance.start = AsyncMock()
@@ -50,6 +61,7 @@ class TestCreateHumidityControlFeature:
         mock_config.return_value = mock_config_instance
 
         mock_enhanced_instance = MagicMock()
+        mock_enhanced_instance.automation = mock_automation_instance
         mock_enhanced_instance.async_setup = AsyncMock()
         mock_enhanced.return_value = mock_enhanced_instance
 
@@ -68,6 +80,10 @@ class TestCreateHumidityControlFeature:
         # async_create_task is called during state changes, not setup
         # self.hass.async_create_task.assert_called_once()
         mock_enhanced_instance.async_setup.assert_called_once()
+        mock_automation_instance.set_co2_manager.assert_called_once_with(co2_automation)
+        co2_automation.set_humidity_manager.assert_called_once_with(
+            mock_automation_instance
+        )
 
     @patch(
         "custom_components.ramses_extras.features.humidity_control."

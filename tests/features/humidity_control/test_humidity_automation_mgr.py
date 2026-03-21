@@ -30,6 +30,9 @@ class TestHumidityAutomationManager:
         self.config_entry = MagicMock()
         self.config_entry.options = {}
         self.config_entry.data = {}
+        self.fan_speed_arbiter = MagicMock()
+        self.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
+        self.fan_speed_arbiter.async_clear_demand = AsyncMock(return_value=True)
 
         # Patch dependencies
         with (
@@ -41,6 +44,10 @@ class TestHumidityAutomationManager:
             ),
             patch(
                 "custom_components.ramses_extras.features.humidity_control.automation.HumidityServices"
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.automation.get_fan_speed_arbiter",
+                return_value=self.fan_speed_arbiter,
             ),
         ):
             self.manager = HumidityAutomationManager(self.hass, self.config_entry)
@@ -121,6 +128,40 @@ class TestHumidityAutomationManager:
         mock_stop.assert_called_once_with(device_id, decision)
         mock_update.assert_called_once_with(device_id, decision)
 
+    @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
+    @patch.object(HumidityAutomationManager, "_activate_dehumidification")
+    @patch.object(HumidityAutomationManager, "_set_fan_low_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_update_automation_status")
+    async def test_process_automation_logic_stop_uses_low_balance_demand(
+        self, mock_update, mock_stop, mock_activate, mock_evaluate
+    ):
+        """Stop decisions should keep humidity's low-speed demand active."""
+        device_id = "32_123456"
+        entity_states = {
+            "indoor_rh": 50.0,
+            "indoor_abs": 10.0,
+            "outdoor_abs": 10.0,
+            "min_humidity": 40.0,
+            "max_humidity": 60.0,
+            "offset": 0.0,
+            "dehumidify": True,
+        }
+
+        decision = {
+            "action": "stop",
+            "reasoning": ["Humidity in range for balance mode"],
+            "confidence": 1.0,
+            "control_mode": "balance",
+        }
+        mock_evaluate.return_value = decision
+
+        await self.manager._process_automation_logic(device_id, entity_states)
+
+        mock_stop.assert_called_once_with(device_id, decision)
+        mock_activate.assert_not_called()
+        mock_update.assert_called_once_with(device_id, decision)
+        assert self.manager._dehumidify_active is False
+
     async def test_process_automation_logic_switch_off(self):
         """Test processing automation logic when switch is off."""
         device_id = "32_123456"
@@ -182,6 +223,44 @@ class TestHumidityAutomationManager:
 
         mock_process.assert_called_once_with("32_123456", entity_states)
         mock_enforce.assert_not_called()
+
+    async def test_resume_from_co2_triggers_reconcile(self):
+        """CO2 state changes should trigger a humidity re-evaluation."""
+        self.manager._paused_for_co2 = False
+
+        with patch.object(
+            self.manager,
+            "_reconcile_startup_states",
+            new=AsyncMock(),
+        ) as mock_reconcile:
+            await self.manager.resume_from_co2()
+
+        assert self.manager._paused_for_co2 is False
+        mock_reconcile.assert_awaited_once()
+
+    async def test_pause_for_co2_keeps_humidity_arbiter_managed(self):
+        """CO2 activation should no longer suppress humidity demand generation."""
+        self.manager._paused_for_co2 = True
+
+        await self.manager.pause_for_co2()
+
+        assert self.manager._paused_for_co2 is False
+        assert self.manager.check_priority() is True
+
+    async def test_resume_from_co2_skips_reconcile_when_inactive(self):
+        """CO2 resume should not reconcile when humidity automation is inactive."""
+        self.manager._paused_for_co2 = True
+        self.manager._automation_active = False
+
+        with patch.object(
+            self.manager,
+            "_reconcile_startup_states",
+            new=AsyncMock(),
+        ) as mock_reconcile:
+            await self.manager.resume_from_co2()
+
+        assert self.manager._paused_for_co2 is False
+        mock_reconcile.assert_not_awaited()
 
     @patch(
         "custom_components.ramses_extras.features.humidity_control.automation.entity_registry"
@@ -633,6 +712,9 @@ class TestHumidityAutomationManager:
         self.manager._active_cycles = 2
         self.manager._automation_active = True
         self.manager._dehumidify_active = False
+        self.fan_speed_arbiter.get_debug_state.return_value = {
+            "devices": {"32_123456": {"last_applied_command": "fan_low"}}
+        }
 
         assert self.manager.get_decision_history(2) == [{"id": 2}, {"id": 3}]
 
@@ -640,6 +722,10 @@ class TestHumidityAutomationManager:
         assert stats["decisions_made"] == 7
         assert stats["active_cycles"] == 2
         assert stats["recent_decisions"] == 3
+        assert (
+            stats["fan_arbiter"]["devices"]["32_123456"]["last_applied_command"]
+            == "fan_low"
+        )
 
         created = create_humidity_control_automation(self.hass, self.config_entry)
         assert isinstance(created, HumidityAutomationManager)
@@ -885,10 +971,7 @@ class TestHumidityAutomationManager:
         device_id = "32_123456"
         decision = {"reasoning": ["Test"]}
 
-        # Mock success
-        mock_result = MagicMock()
-        mock_result.success = True
-        self.manager.ramses_commands.send_command = AsyncMock(return_value=mock_result)
+        self.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
         self.manager.services.async_activate_dehumidification = AsyncMock(
             return_value=True
         )
@@ -905,9 +988,7 @@ class TestHumidityAutomationManager:
         decision = {"reasoning": ["Test"]}
         self.manager._dehumidify_active = True
 
-        self.manager.ramses_commands.send_command = AsyncMock(
-            return_value=MagicMock(success=True)
-        )
+        self.fan_speed_arbiter.async_clear_demand = AsyncMock(return_value=True)
         self.manager.services.async_deactivate_dehumidification = AsyncMock(
             return_value=True
         )
@@ -1024,10 +1105,7 @@ class TestHumidityAutomationManager:
         device_id = "32_123456"
         decision = {"reasoning": ["Test"]}
 
-        # Command failure
-        self.manager.ramses_commands.send_command = AsyncMock(
-            return_value=MagicMock(success=False)
-        )
+        self.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=False)
         self.manager.services.async_deactivate_dehumidification = AsyncMock()
 
         await self.manager._activate_dehumidification(device_id, decision)
@@ -1037,7 +1115,7 @@ class TestHumidityAutomationManager:
         )
 
         # Exception path
-        self.manager.ramses_commands.send_command.side_effect = Exception("Test error")
+        self.fan_speed_arbiter.async_set_demand.side_effect = Exception("Test error")
         await self.manager._activate_dehumidification(device_id, decision)
         # Should log and continue
 
@@ -1047,21 +1125,17 @@ class TestHumidityAutomationManager:
         decision = {"reasoning": ["Test"]}
 
         # Success
-        self.manager.ramses_commands.send_command = AsyncMock(
-            return_value=MagicMock(success=True)
-        )
+        self.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
         await self.manager._set_fan_low_and_binary_off(device_id, decision)
         assert self.manager._dehumidify_active is False
 
         # Failure
-        self.manager.ramses_commands.send_command = AsyncMock(
-            return_value=MagicMock(success=False)
-        )
+        self.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=False)
         await self.manager._set_fan_low_and_binary_off(device_id, decision)
         # Should log and continue
 
         # Exception
-        self.manager.ramses_commands.send_command.side_effect = Exception("Test error")
+        self.fan_speed_arbiter.async_set_demand.side_effect = Exception("Test error")
         await self.manager._set_fan_low_and_binary_off(device_id, decision)
 
     async def test_stop_dehumidification_without_switch_change(self):
@@ -1075,9 +1149,7 @@ class TestHumidityAutomationManager:
         # Active -> Stop
         self.manager._dehumidify_active = True
         self.manager.services.async_deactivate_dehumidification = AsyncMock()
-        self.manager.ramses_commands.send_command = AsyncMock(
-            return_value=MagicMock(success=True)
-        )
+        self.fan_speed_arbiter.async_clear_demand = AsyncMock(return_value=True)
 
         await self.manager._stop_dehumidification_without_switch_change(device_id)
         assert self.manager._dehumidify_active is False

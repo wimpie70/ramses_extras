@@ -20,6 +20,9 @@ from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
+from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import (
+    get_fan_speed_arbiter,
+)
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
     RamsesCommands,
 )
@@ -58,6 +61,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         # Initialize Ramses commands for direct device control
         self.ramses_commands = RamsesCommands(hass)
+        self.fan_speed_arbiter = get_fan_speed_arbiter(hass)
 
         # Humidity-specific state tracking
         self._dehumidify_active = False
@@ -643,10 +647,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 # Activate dehumidification: set fan HIGH, binary sensor ON
                 await self._activate_dehumidification(device_id, decision)
             elif decision["action"] == "stop":
-                if decision.get("control_mode") == "paused_for_co2":
-                    self._dehumidify_active = False
-                else:
-                    await self._set_fan_low_and_binary_off(device_id, decision)
+                await self._set_fan_low_and_binary_off(device_id, decision)
 
             # Update indicator based on decision
             await self._update_automation_status(device_id, decision)
@@ -680,8 +681,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             await self._process_automation_logic(device_id, entity_states)
 
     async def _enforce_switch_off_state(self, device_id: str) -> None:
-        result = await self.ramses_commands.send_command(device_id, "fan_auto")
-        if not result.success:
+        success = await self.fan_speed_arbiter.async_clear_demand(
+            device_id,
+            feature_id=self.feature_id,
+        )
+        if not success:
             _LOGGER.warning(
                 "Failed to enforce OFF balance state for device %s during startup",
                 device_id,
@@ -737,16 +741,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Returns:
             Decision dictionary with action and reasoning
         """
-        # Check if CO2 control has priority
-        if not self.check_priority():
-            return {
-                "action": "stop",
-                "reasoning": ["CO2 control has priority"],
-                "values": {},
-                "confidence": 1.0,
-                "control_mode": "paused_for_co2",
-            }
-
         humidity_diff = outdoor_abs - indoor_abs
         adjusted_diff = humidity_diff + offset
         decision: dict[str, Any] = {
@@ -945,8 +939,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return  # Already active
 
         try:
-            result = await self.ramses_commands.send_command(device_id, "fan_high")
-            success = result.success
+            success = await self.fan_speed_arbiter.async_set_demand(
+                device_id,
+                feature_id=self.feature_id,
+                source_id="humidity_control",
+                requested_speed="fan_high",
+                priority=20,
+                reason="humidity_dehumidify",
+                metadata=decision,
+            )
             if success:
                 self._dehumidify_active = True
                 switch_success = await self.services.async_activate_dehumidification(
@@ -954,10 +955,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 )
                 if not switch_success:
                     self._dehumidify_active = False
-                    rollback = await self.ramses_commands.send_command(
-                        device_id, "fan_auto"
+                    rollback = await self.fan_speed_arbiter.async_clear_demand(
+                        device_id,
+                        feature_id=self.feature_id,
+                        source_id="humidity_control",
                     )
-                    if not rollback.success:
+                    if not rollback:
                         _LOGGER.warning(
                             "Failed to roll back fan state after switch activation "
                             "failure for device %s",
@@ -994,8 +997,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return  # Already inactive
 
         try:
-            result = await self.ramses_commands.send_command(device_id, "fan_auto")
-            success = result.success
+            success = await self.fan_speed_arbiter.async_clear_demand(
+                device_id,
+                feature_id=self.feature_id,
+                source_id="humidity_control",
+            )
             if not success:
                 _LOGGER.warning(
                     "Failed to set fan to auto mode for device %s",
@@ -1020,8 +1026,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             decision: Decision information
         """
         try:
-            result = await self.ramses_commands.send_command(device_id, "fan_low")
-            success = result.success
+            success = await self.fan_speed_arbiter.async_set_demand(
+                device_id,
+                feature_id=self.feature_id,
+                source_id="humidity_control",
+                requested_speed="fan_low",
+                priority=5,
+                reason="humidity_balance_idle",
+                metadata=decision,
+            )
             if not success:
                 _LOGGER.warning(
                     "Failed to set fan to low mode for device %s",
@@ -1053,8 +1066,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return  # Already inactive
 
         try:
-            result = await self.ramses_commands.send_command(device_id, "fan_auto")
-            success = result.success
+            success = await self.fan_speed_arbiter.async_clear_demand(
+                device_id,
+                feature_id=self.feature_id,
+                source_id="humidity_control",
+            )
             if not success:
                 _LOGGER.warning(
                     "Failed to set fan to auto mode for device %s",
@@ -1661,6 +1677,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "is_dehumidifying": self._dehumidify_active,
             "recent_decisions": len(self._decision_history),
             "paused_for_co2": self._paused_for_co2,
+            "fan_arbiter": self.fan_speed_arbiter.get_debug_state(),
         }
 
     def set_co2_manager(self, co2_manager: Any) -> None:
@@ -1673,16 +1690,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         _LOGGER.debug("CO2 manager reference set for priority coordination")
 
     async def pause_for_co2(self) -> None:
-        """Pause humidity control because CO2 control has taken priority."""
-        if not self._paused_for_co2:
-            self._paused_for_co2 = True
-            _LOGGER.info("Humidity control paused - CO2 control has priority")
+        """Record that CO2 became active while humidity stays arbiter-managed."""
+        self._paused_for_co2 = False
+        _LOGGER.debug("CO2 control active - humidity remains arbiter-managed")
 
     async def resume_from_co2(self) -> None:
-        """Resume humidity control after CO2 control released priority."""
-        if self._paused_for_co2:
-            self._paused_for_co2 = False
-            _LOGGER.info("Humidity control resumed - CO2 control released priority")
+        """Re-evaluate humidity control after CO2 control changed state."""
+        self._paused_for_co2 = False
+        if self._automation_active and self._is_feature_enabled():
+            await self._reconcile_startup_states()
 
     def check_priority(self) -> bool:
         """Check if humidity control has priority to operate.
@@ -1690,16 +1706,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Returns:
             True if humidity control can operate, False if paused for CO2
         """
-        if self._paused_for_co2:
-            _LOGGER.debug("Humidity control skipped - paused for CO2 priority")
-            return False
-
-        # Also check if CO2 manager is active
-        co2_mgr = self.co2_manager
-        if co2_mgr is not None and co2_mgr.is_active():  # type: ignore[unreachable]
-            _LOGGER.debug("Humidity control skipped - CO2 control is active")  # type: ignore[unreachable]
-            return False
-
         return True
 
 
