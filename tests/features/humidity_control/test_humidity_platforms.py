@@ -327,6 +327,10 @@ class TestHumidityPlatforms:
                 return_value=[self.device_id],
             ),
             patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.switch.is_supported_humidity_device",
+                return_value=True,
+            ),
+            patch(
                 "custom_components.ramses_extras.features.humidity_control.platforms.switch.create_humidity_switch",
                 new=AsyncMock(return_value=[mock_entity]),
             ),
@@ -336,6 +340,31 @@ class TestHumidityPlatforms:
             )
 
         async_add_entities.assert_called_once_with([mock_entity], True)
+
+    async def test_switch_async_setup_entry_skips_non_humidity_devices(self):
+        """Test switch platform ignores devices that are not HvacVentilator."""
+        async_add_entities = MagicMock()
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+                return_value=["18_130236"],
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.switch.is_supported_humidity_device",
+                return_value=False,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.switch.create_humidity_switch",
+                new=AsyncMock(return_value=[MagicMock()]),
+            ) as mock_create,
+        ):
+            await humidity_switch_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        mock_create.assert_not_awaited()
+        async_add_entities.assert_not_called()
 
     async def test_number_async_setup_entry_no_devices(self):
         """Test number platform setup with no filtered devices."""
@@ -362,6 +391,10 @@ class TestHumidityPlatforms:
                 return_value=[self.device_id],
             ),
             patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.number.is_supported_humidity_device",
+                return_value=True,
+            ),
+            patch(
                 "custom_components.ramses_extras.features.humidity_control.platforms.number.create_humidity_number",
                 new=AsyncMock(return_value=[mock_entity]),
             ),
@@ -371,6 +404,31 @@ class TestHumidityPlatforms:
             )
 
         async_add_entities.assert_called_once_with([mock_entity], True)
+
+    async def test_number_async_setup_entry_skips_non_humidity_devices(self):
+        """Test number platform ignores devices that are not HvacVentilator."""
+        async_add_entities = MagicMock()
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+                return_value=["29_176861"],
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.number.is_supported_humidity_device",
+                return_value=False,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.number.create_humidity_number",
+                new=AsyncMock(return_value=[MagicMock()]),
+            ) as mock_create,
+        ):
+            await humidity_number_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        mock_create.assert_not_awaited()
+        async_add_entities.assert_not_called()
 
     async def test_binary_sensor_async_setup_entry_no_devices(self):
         """Test binary sensor platform setup with no filtered devices."""
@@ -397,6 +455,10 @@ class TestHumidityPlatforms:
                 return_value=[self.device_id],
             ),
             patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor.is_supported_humidity_device",
+                return_value=True,
+            ),
+            patch(
                 "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor.create_humidity_control_binary_sensor",
                 new=AsyncMock(return_value=[mock_entity]),
             ),
@@ -410,6 +472,31 @@ class TestHumidityPlatforms:
 
         async_add_entities.assert_called_once_with([mock_entity], True)
         mock_store.assert_called_once_with(self.hass, [mock_entity])
+
+    async def test_binary_sensor_async_setup_entry_skips_non_humidity_devices(self):
+        """Test binary sensor platform ignores devices that are not HvacVentilator."""
+        async_add_entities = MagicMock()
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+                return_value=["18_149488"],
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor.is_supported_humidity_device",
+                return_value=False,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor.create_humidity_control_binary_sensor",
+                new=AsyncMock(return_value=[MagicMock()]),
+            ) as mock_create,
+        ):
+            await humidity_binary_sensor_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
+
+        mock_create.assert_not_awaited()
+        async_add_entities.assert_not_called()
 
     async def test_sensor_async_setup_entry_uses_platform_helper(self):
         """Test sensor platform setup delegates to platform helper."""

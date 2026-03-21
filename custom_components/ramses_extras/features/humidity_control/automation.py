@@ -20,6 +20,10 @@ from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
+from custom_components.ramses_extras.framework.helpers.device.core import (
+    find_ramses_device,
+    get_device_type,
+)
 from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import (
     get_fan_speed_arbiter,
 )
@@ -32,6 +36,12 @@ from .const import FEATURE_DEFINITION
 from .services import HumidityServices
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def is_supported_humidity_device(hass: object, device_id: str) -> bool:
+    normalized_device_id = device_id.replace("_", ":")
+    device = find_ramses_device(hass, normalized_device_id)
+    return get_device_type(device) == "HvacVentilator"
 
 
 class HumidityAutomationManager(ExtrasBaseAutomation):
@@ -665,6 +675,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 device_ids.add(device_id)
 
         for device_id in sorted(device_ids):
+            if not is_supported_humidity_device(self.hass, device_id):
+                _LOGGER.debug(
+                    "Skipping startup reconciliation for non-humidity device %s",
+                    device_id,
+                )
+                continue
+
             try:
                 entity_states = await self._get_device_entity_states(device_id)
             except ValueError as err:

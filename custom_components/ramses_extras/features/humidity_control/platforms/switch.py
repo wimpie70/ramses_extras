@@ -15,11 +15,21 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
     ExtrasSwitchEntity,
 )
+from custom_components.ramses_extras.framework.helpers.device.core import (
+    find_ramses_device,
+    get_device_type,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def is_supported_humidity_device(hass: object, device_id: str) -> bool:
+    normalized_device_id = device_id.replace("_", ":")
+    device = find_ramses_device(hass, normalized_device_id)
+    return get_device_type(device) == "HvacVentilator"
 
 
 async def async_setup_entry(
@@ -41,6 +51,9 @@ async def async_setup_entry(
 
     entities = []
     for device_id in filtered_devices:
+        if not is_supported_humidity_device(hass, device_id):
+            continue
+
         # Create humidity switch entities for this device
         try:
             device_entities = await create_humidity_switch(

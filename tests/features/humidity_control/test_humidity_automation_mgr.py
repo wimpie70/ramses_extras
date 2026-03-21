@@ -178,6 +178,10 @@ class TestHumidityAutomationManager:
         self.hass.states.async_all.return_value = [mock_switch]
 
         with (
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.automation.is_supported_humidity_device",
+                return_value=True,
+            ),
             patch.object(
                 self.manager,
                 "_get_device_entity_states",
@@ -207,6 +211,10 @@ class TestHumidityAutomationManager:
         entity_states = {"dehumidify": True, "indoor_rh": 55.0}
 
         with (
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.automation.is_supported_humidity_device",
+                return_value=True,
+            ),
             patch.object(
                 self.manager,
                 "_get_device_entity_states",
@@ -652,6 +660,28 @@ class TestHumidityAutomationManager:
         self.manager._process_automation_logic.assert_awaited_once_with(
             device_id, entity_states
         )
+
+    async def test_reconcile_startup_states_skips_non_humidity_device(self):
+        """Test startup reconciliation ignores stale dehumidify states."""
+        mock_switch = MagicMock()
+        mock_switch.entity_id = "switch.dehumidify_18_130236"
+        self.hass.states.async_all.return_value = [mock_switch]
+
+        self.manager._get_device_entity_states = AsyncMock()
+        self.manager._enforce_switch_off_state = AsyncMock()
+        self.manager._set_indicator_off = AsyncMock()
+        self.manager._process_automation_logic = AsyncMock()
+
+        with patch(
+            "custom_components.ramses_extras.features.humidity_control.automation.is_supported_humidity_device",
+            return_value=False,
+        ):
+            await self.manager._reconcile_startup_states()
+
+        self.manager._get_device_entity_states.assert_not_awaited()
+        self.manager._enforce_switch_off_state.assert_not_awaited()
+        self.manager._set_indicator_off.assert_not_awaited()
+        self.manager._process_automation_logic.assert_not_awaited()
 
     def test_evaluate_active_area_spike_guard_paths(self):
         """
