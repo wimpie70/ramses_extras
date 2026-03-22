@@ -1,11 +1,15 @@
 """Default feature - shared entity definitions."""
 
 from .const import (
+    DEFAULT_BINARY_SENSOR_CONFIGS,
     DEFAULT_BOOLEAN_CONFIGS,
     DEFAULT_DEVICE_ENTITY_MAPPING,
     DEFAULT_NUMBER_CONFIGS,
     DEFAULT_SENSOR_CONFIGS,
     DEFAULT_SWITCH_CONFIGS,
+)
+from .platforms.binary_sensor import (
+    async_setup_entry as binary_sensor_async_setup_entry,
 )
 from .platforms.sensor import async_setup_entry as sensor_async_setup_entry
 
@@ -15,8 +19,10 @@ __all__ = [
     "DEFAULT_SWITCH_CONFIGS",
     "DEFAULT_NUMBER_CONFIGS",
     "DEFAULT_BOOLEAN_CONFIGS",
+    "DEFAULT_BINARY_SENSOR_CONFIGS",
     "DEFAULT_DEVICE_ENTITY_MAPPING",
     "sensor_async_setup_entry",
+    "binary_sensor_async_setup_entry",
 ]
 
 # Note: WebSocket commands are now handled directly in websocket_integration.py

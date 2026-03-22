@@ -32,16 +32,29 @@ DEFAULT_SENSOR_CONFIGS = {
     },
 }
 
+# Binary sensor configurations
+DEFAULT_BINARY_SENSOR_CONFIGS = {
+    "transport_state": {
+        "name_template": "Transport State {device_id}",
+        "entity_category": EntityCategory.DIAGNOSTIC,
+        "icon": "mdi:network-strength-outline",
+        "device_class": "connectivity",
+        "supported_device_types": ["FAN"],
+        "entity_template": "transport_state_{device_id}",
+    },
+}
+
 # Empty base configs - features will define their own
 DEFAULT_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {}
 DEFAULT_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {}
-DEFAULT_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
+DEFAULT_BOOLEAN_CONFIGS = DEFAULT_BINARY_SENSOR_CONFIGS
 
 # Base device type to entity mapping
 # Note: Default feature creates absolute humidity sensors for all devices
 DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
     "FAN": {
         "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        "binary_sensor": ["transport_state"],
         # Other entity types will be added by individual features
     },
 }
@@ -80,11 +93,12 @@ FEATURE_DEFINITION = {
     "sensor_configs": DEFAULT_SENSOR_CONFIGS,
     "switch_configs": DEFAULT_SWITCH_CONFIGS,
     "number_configs": DEFAULT_NUMBER_CONFIGS,
-    "boolean_configs": DEFAULT_BOOLEAN_CONFIGS,
+    "boolean_configs": DEFAULT_BINARY_SENSOR_CONFIGS,
     "device_entity_mapping": DEFAULT_DEVICE_ENTITY_MAPPING,
     "websocket_commands": DEFAULT_WEBSOCKET_COMMANDS,
     "required_entities": {
         "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        "binary_sensor": ["transport_state"],
     },
 }
 
@@ -97,7 +111,7 @@ def load_feature() -> None:
     extras_registry.register_sensor_configs(DEFAULT_SENSOR_CONFIGS)
     extras_registry.register_switch_configs(DEFAULT_SWITCH_CONFIGS)
     extras_registry.register_number_configs(DEFAULT_NUMBER_CONFIGS)
-    extras_registry.register_boolean_configs(DEFAULT_BOOLEAN_CONFIGS)
+    extras_registry.register_boolean_configs(DEFAULT_BINARY_SENSOR_CONFIGS)
     extras_registry.register_device_mappings(DEFAULT_DEVICE_ENTITY_MAPPING)
 
     # Register WebSocket commands

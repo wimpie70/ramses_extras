@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
 from .commands.registry import get_command_registry
+from .transport_monitor import get_transport_monitor
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from custom_components.ramses_cc.coordinator import RamsesCoordinator
@@ -445,7 +446,6 @@ class RamsesCommands:
             True if packet sent successfully
         """
         try:
-            # Convert device_id format if needed (32_153289 -> 32:153289)
             device_id_formatted = device_id.replace("_", ":")
 
             _LOGGER.info(
@@ -453,7 +453,16 @@ class RamsesCommands:
                 f"{cmd_def['description']}"
             )
 
-            # Get the ramses_cc coordinator
+            transport_monitor = get_transport_monitor()
+            if (
+                transport_monitor.is_monitoring
+                and not transport_monitor.is_device_available(device_id_formatted)
+            ):
+                _LOGGER.warning(
+                    f"Skipping command {cmd_def['code']} - transport unavailable"
+                )
+                return False
+
             coordinator = await self._get_ramses_cc_coordinator()
             if not coordinator:
                 _LOGGER.error(
@@ -470,7 +479,6 @@ class RamsesCommands:
                 )
                 return False
 
-            # Prepare command parameters
             kwargs = {
                 "device_id": device_id_formatted,
                 "verb": cmd_def["verb"],
@@ -478,8 +486,6 @@ class RamsesCommands:
                 "payload": cmd_def["payload"],
             }
 
-            # Try to get the bound REM device as from_id (source address)
-            # This is required for FAN devices to respond to commands
             from_id = await self._get_bound_rem_device(device_id_formatted)
             if from_id:
                 kwargs["from_id"] = from_id
@@ -492,7 +498,6 @@ class RamsesCommands:
                     f"No bound REM device found for {device_id}, using default source"
                 )
 
-            # Handle HGI aliasing (same logic as ramses_cc service handler)
             if (
                 kwargs["device_id"] == "18:000730"
                 and kwargs.get("from_id", "18:000730") == "18:000730"
@@ -500,9 +505,11 @@ class RamsesCommands:
             ):
                 kwargs["device_id"] = coordinator.client.hgi.id
 
-            # Create and send the command directly via the client
             cmd = coordinator.client.create_cmd(**kwargs)
             await coordinator.client.async_send_cmd(cmd)
+
+            # Notify transport monitor that we sent a command
+            transport_monitor.notify_command_sent(device_id_formatted)
 
             _LOGGER.debug(f"Ramses command sent: {cmd_def['description']}")
             return True

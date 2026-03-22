@@ -25,8 +25,8 @@ async def async_setup_entry(
     enabled_features = hass.data["ramses_extras"]["enabled_features"]
 
     for feature_name, setup_func in platform_registry.get("binary_sensor", {}).items():
-        # Only call setup functions for enabled features
-        if enabled_features.get(feature_name, False):
+        # Always set up default feature, others only if explicitly enabled
+        if feature_name == "default" or enabled_features.get(feature_name, False):
             _LOGGER.info(
                 f"MAIN BINARY_SENSOR PLATFORM: Calling setup for enabled feature "
                 f"{feature_name}"

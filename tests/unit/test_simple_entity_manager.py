@@ -49,11 +49,12 @@ class TestSimpleEntityManager:
         """Test entity creation for feature/device combinations."""
         manager = SimpleEntityManager(mock_hass)
 
-        # Test successful creation
+        # Test successful creation (includes transport_state binary sensor)
         result = await manager.create_entities_for_feature("default", ["32:153289"])
         assert result == [
             "sensor.indoor_absolute_humidity_32_153289",
             "sensor.outdoor_absolute_humidity_32_153289",
+            "binary_sensor.transport_state_32_153289",
         ]
 
     async def test_remove_entities_for_feature(self, mock_hass):

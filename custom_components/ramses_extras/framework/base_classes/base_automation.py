@@ -29,6 +29,7 @@ from ..helpers.entity.core import (
     get_required_entities_from_feature_sync,
     get_required_entity_ids_for_feature_device,
 )
+from ..helpers.transport_monitor import get_transport_monitor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +87,10 @@ class ExtrasBaseAutomation(ABC):
         # Validation throttling
         self._last_validation_time: dict[str, float] = {}  # device_id -> timestamp
         self._validation_cooldown = 30  # seconds between validation for same device
+
+        # Transport state tracking
+        self._transport_available: bool = True
+        self._transport_monitor = get_transport_monitor()
 
         _LOGGER.info(
             f"ExtrasBaseAutomation initialized for feature: {feature_id}, "
@@ -148,6 +153,14 @@ class ExtrasBaseAutomation(ABC):
             # Register entity listeners after HA is ready
             await self._register_entity_listeners()
 
+            # Register transport state monitor callback
+            self._transport_monitor.register_callback(
+                f"automation_{self.feature_id}", self._on_transport_state_changed
+            )
+
+            # Start transport monitoring if ramses_cc is available
+            await self._start_transport_monitoring()
+
             self.hass.data.setdefault(DOMAIN, {}).setdefault("feature_ready", {})[
                 self.feature_id
             ] = True
@@ -185,6 +198,9 @@ class ExtrasBaseAutomation(ABC):
 
         # Cancel all debouncing timers
         await self._cancel_all_timers()
+
+        # Unregister transport monitor callback
+        self._transport_monitor.unregister_callback(f"automation_{self.feature_id}")
 
         self._active = False
         self._specific_entity_ids.clear()
@@ -735,6 +751,64 @@ class ExtrasBaseAutomation(ABC):
         except Exception as e:
             _LOGGER.error(f"Failed to toggle binary sensor {entity_id}: {e}")
             return False
+
+    # ==================== TRANSPORT MONITORING ====================
+
+    async def _start_transport_monitoring(self) -> None:
+        """Start transport monitoring if ramses_cc is available."""
+        try:
+            # Try to get ramses_cc coordinator
+            from ..helpers.ramses_client import get_ramses_cc_coordinator
+
+            coordinator = await get_ramses_cc_coordinator(self.hass)
+
+            if coordinator and coordinator.client:
+                await self._transport_monitor.start_monitoring(coordinator, self.hass)
+                _LOGGER.info(
+                    "Transport monitoring started for %s automation", self.feature_id
+                )
+            else:
+                _LOGGER.debug(
+                    "ramses_cc not available yet, transport monitoring will start later"
+                )
+        except Exception as e:
+            _LOGGER.debug(
+                "Could not start transport monitoring for %s: %s", self.feature_id, e
+            )
+
+    def _on_transport_state_changed(self, available: bool) -> None:
+        """Handle transport state changes.
+
+        Args:
+            available: True if transport is available, False otherwise
+        """
+        if available != self._transport_available:
+            self._transport_available = available
+            if available:
+                _LOGGER.info(
+                    "Transport restored for %s automation - resuming normal operation",
+                    self.feature_id,
+                )
+            else:
+                _LOGGER.warning(
+                    "Transport lost for %s automation - pausing command execution",
+                    self.feature_id,
+                )
+
+    @property
+    def is_transport_available(self) -> bool:
+        """Check if transport is currently available.
+
+        Returns:
+            True if transport is available, False otherwise
+        """
+        return self._transport_available
+
+    def is_device_transport_available(self, device_id: str) -> bool:
+        """Check if a specific target device is replying recently."""
+        if not self._transport_monitor.is_monitoring:
+            return True
+        return self._transport_monitor.is_device_available(device_id)
 
     # ==================== ABSTRACT METHODS ====================
 

@@ -231,6 +231,14 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if not self._automation_active or not self._is_feature_enabled():
             return
 
+        # Check transport availability before processing
+        if not self.is_device_transport_available(device_id):
+            _LOGGER.debug(
+                "Transport unavailable - skipping CO2 control logic for %s",
+                device_id,
+            )
+            return
+
         _ = entity_states
         await self._evaluate_co2_control(device_id)
 

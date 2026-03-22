@@ -601,11 +601,20 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             entity_states: Validated entity state values (float or bool)
         """
         _LOGGER.debug(
-            "_process_automation_logic: active=%s, enabled=%s",
+            "_process_automation_logic: active=%s, enabled=%s, transport=%s",
             self._automation_active,
             self._is_feature_enabled(),
+            self.is_device_transport_available(device_id),
         )
         if not self._automation_active or not self._is_feature_enabled():
+            return
+
+        # Check transport availability before processing
+        if not self.is_device_transport_available(device_id):
+            _LOGGER.debug(
+                "Transport unavailable - skipping humidity control logic for %s",
+                device_id,
+            )
             return
 
         # Check if switch is manually OFF - if so,

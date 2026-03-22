@@ -305,3 +305,39 @@ class TestCO2AutomationManager:
         await self.manager._process_automation_logic("32:123456", {})
 
         self.manager._evaluate_co2_control.assert_called_once_with("32:123456")
+
+    @pytest.mark.asyncio
+    async def test_automation_skips_when_device_offline(self) -> None:
+        """Test that automation skips processing when device is offline."""
+        device_id = "32:123456"
+
+        # Mock transport monitor to report device offline
+        with patch.object(
+            self.manager, "is_device_transport_available", return_value=False
+        ):
+            # Mock evaluate method to track if it was called
+            self.manager._evaluate_co2_control = AsyncMock()
+
+            # Process automation logic
+            await self.manager._process_automation_logic(device_id, {})
+
+            # Verify evaluate was NOT called (automation was skipped)
+            self.manager._evaluate_co2_control.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_automation_resumes_when_device_online(self) -> None:
+        """Test that automation resumes when device comes back online."""
+        device_id = "32:123456"
+
+        # Mock transport monitor to report device online
+        with patch.object(
+            self.manager, "is_device_transport_available", return_value=True
+        ):
+            # Mock evaluate method to track if it was called
+            self.manager._evaluate_co2_control = AsyncMock()
+
+            # Process automation logic
+            await self.manager._process_automation_logic(device_id, {})
+
+            # Verify evaluate WAS called (automation ran)
+            self.manager._evaluate_co2_control.assert_called_once_with(device_id)

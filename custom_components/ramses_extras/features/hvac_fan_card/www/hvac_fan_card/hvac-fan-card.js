@@ -223,6 +223,15 @@ class HvacFanCard extends RamsesBaseCard {
     const dehumEntitiesAvailable = validateDehumidifyEntities(hass, config)?.available === true;
     const co2ControlEntitiesAvailable = validateCO2ControlEntities(hass, config)?.available === true;
 
+    // Get transport state from entity
+    const transportStateEntity = config.transport_state_entity
+      || this._entityMappings?.transport_state_entity
+      || `binary_sensor.transport_state_${config.device_id.replace(/:/g, '_')}`;
+    const legacyTransportStateEntity = `binary_sensor.${config.device_id.replace(/:/g, '_')}_transport_state`;
+    const transportState = this.getEntityState(transportStateEntity)
+      || this.getEntityState(legacyTransportStateEntity);
+    const transportAvailable = transportState?.state === 'on';
+
     // Temperature data - prefer 31DA real-time, fall back to entity states
     const indoorTemp = da31Data.indoor_temp !== undefined ? da31Data.indoor_temp :
       this.getEntityStateAsNumber(config.indoor_temp_entity, null);
@@ -288,6 +297,9 @@ class HvacFanCard extends RamsesBaseCard {
       timerMinutes: da31Data.remaining_mins !== undefined ? da31Data.remaining_mins : 0,
       filterDaysRemaining:
         da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
+
+      // Transport connection status
+      transportAvailable
     };
 
     // create templateData for rendering
@@ -1066,6 +1078,15 @@ class HvacFanCard extends RamsesBaseCard {
     const hass = this._hass;
     const co2ControlEntitiesAvailable = validateCO2ControlEntities(hass, config)?.available === true;
 
+    // Get transport state from entity
+    const transportStateEntity = config.transport_state_entity
+      || this._entityMappings?.transport_state_entity
+      || `binary_sensor.transport_state_${config.device_id.replace(/:/g, '_')}`;
+    const legacyTransportStateEntity = `binary_sensor.${config.device_id.replace(/:/g, '_')}_transport_state`;
+    const transportState = this.getEntityState(transportStateEntity)
+      || this.getEntityState(legacyTransportStateEntity);
+    const transportAvailable = transportState?.state === 'on';
+
     // Get data from 31DA messages
     const da31Data = this.get31DAData();
 
@@ -1141,6 +1162,9 @@ class HvacFanCard extends RamsesBaseCard {
       filterDaysRemaining:
         da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
       // efficiency: 75   // Remove hardcoded value - let template calculate it
+
+      // Transport connection status
+      transportAvailable
     };
 
     // create templateData for rendering

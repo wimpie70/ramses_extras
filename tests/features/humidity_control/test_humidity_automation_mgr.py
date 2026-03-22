@@ -1251,3 +1251,59 @@ class TestHumidityAutomationManager:
         # Verify the entity ID starts with the expected prefix
         assert new_entity_id.startswith("sensor.fan_")
         assert new_entity_id.endswith("_indoor_humidity")
+
+    @pytest.mark.asyncio
+    async def test_automation_skips_when_device_offline(self):
+        """Test that automation skips processing when device is offline."""
+        device_id = "32:153289"
+
+        # Mock transport monitor to report device offline
+        with patch.object(
+            self.manager, "is_device_transport_available", return_value=False
+        ):
+            # Mock entity states
+            entity_states = {
+                "indoor_humidity": 75.0,
+                "outdoor_humidity": 60.0,
+                "dehumidify": True,
+            }
+
+            # Process automation logic
+            await self.manager._process_automation_logic(device_id, entity_states)
+
+            # Verify no fan speed demand was set (automation was skipped)
+            self.fan_speed_arbiter.async_set_demand.assert_not_called()
+            self.fan_speed_arbiter.async_clear_demand.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_automation_resumes_when_device_online(self):
+        """Test that automation resumes when device comes back online."""
+        device_id = "32:153289"
+
+        # Mock transport monitor to report device online
+        with patch.object(
+            self.manager, "is_device_transport_available", return_value=True
+        ):
+            # Mock entity states that should trigger dehumidify
+            entity_states = {
+                "indoor_humidity": 75.0,
+                "outdoor_humidity": 60.0,
+                "dehumidify": True,
+                "indoor_absolute_humidity": 15.0,
+                "outdoor_absolute_humidity": 10.0,
+            }
+
+            # Mock config to allow processing
+            self.manager.config.get_min_humidity = MagicMock(return_value=50.0)
+            self.manager.config.get_max_humidity = MagicMock(return_value=70.0)
+            self.manager.config.get_offset = MagicMock(return_value=5.0)
+
+            # Process automation logic
+            await self.manager._process_automation_logic(device_id, entity_states)
+
+            # Verify fan speed demand was processed (automation ran)
+            # Note: actual call depends on humidity logic, but it should not be skipped
+            assert (
+                self.fan_speed_arbiter.async_set_demand.called
+                or self.fan_speed_arbiter.async_clear_demand.called
+            )

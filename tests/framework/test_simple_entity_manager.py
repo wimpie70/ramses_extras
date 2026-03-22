@@ -101,8 +101,8 @@ async def test_calculate_required_entities_respects_matrix_and_disabled(hass) ->
     ):
         result = await manager._calculate_required_entities()
 
-    # hello disabled, so only default via matrix (none) → empty
-    assert result == []
+    # hello disabled, but default is always enabled (creates transport_state, etc.)
+    assert result == ["default.01:123456"]
 
 
 @pytest.mark.asyncio

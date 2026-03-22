@@ -68,8 +68,12 @@ export function createTemplateData(rawData) {
     indoorAbsHumidity, outdoorAbsHumidity,  // Integration-provided values (preferred)
     supplyTemp, exhaustTemp, exhaustFanSpeed, supplyFanSpeed, fanMode, co2Level, supplyFlowRate, exhaustFlowRate,
     dehumMode, dehumActive, dehumEntitiesAvailable, balanceTrackingLabel, comfortTemp, timerMinutes = 0, efficiency = 75,
-    filterDaysRemaining = null
+    filterDaysRemaining = null, transportAvailable = true
   } = rawData;
+
+  // If transportAvailable is not provided, assume true (connected)
+  // It will be updated asynchronously via WebSocket
+  const transportState = transportAvailable !== false;
 
   // Calculate efficiency from temperature data if not provided
   const calculatedEfficiency = efficiency !== 75
@@ -123,6 +127,9 @@ export function createTemplateData(rawData) {
     bypassState: 'auto', // This would come from actual bypass sensor
 
     // Filter days remaining from 10D0 message
-    filterDaysRemaining: filterDaysRemaining !== null ? filterDaysRemaining : '?'
+    filterDaysRemaining: filterDaysRemaining !== null ? filterDaysRemaining : '?',
+
+    // Transport connection status
+    transportAvailable: transportState
   };
 }
