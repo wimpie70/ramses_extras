@@ -282,10 +282,7 @@ describe('HvacFanCard', () => {
     test('should recognise fan-prefixed number parameter entities', () => {
       const deviceId = '32:153289';
       const deviceIdUnderscore = deviceId.replace(/:/g, '_');
-      const devicePrefixes = [
-        `number.${deviceIdUnderscore}_`,
-        `number.fan_${deviceIdUnderscore}_`,
-      ];
+      const devicePrefixes = [`number.${deviceIdUnderscore}_`, `number.fan_${deviceIdUnderscore}_`];
 
       const entityId = 'number.fan_32_153289_param_75';
       const devicePrefix = devicePrefixes.find((prefix) => entityId.startsWith(prefix));
@@ -342,8 +339,7 @@ describe('HvacFanCard', () => {
         },
       };
 
-      const attrs =
-        mockHass.states['binary_sensor.dehumidifying_active_32_153289'].attributes;
+      const attrs = mockHass.states['binary_sensor.dehumidifying_active_32_153289'].attributes;
 
       expect(attrs.control_mode).toBe('spike_boost');
       expect(attrs.active_trigger_source_id).toBe('bathroom');

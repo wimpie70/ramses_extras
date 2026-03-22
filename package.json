@@ -6,8 +6,8 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint custom_components/**/*.js --cache --config eslint.config.js --no-config-lookup",
     "lint:fix": "eslint custom_components/**/*.js --cache --fix --config eslint.config.js --no-config-lookup",
-    "format": "prettier --write ..",
-    "format:check": "prettier --check .."
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@babel/core": "^7.28.5",
