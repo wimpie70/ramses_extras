@@ -57,13 +57,17 @@ class TestDefaultConst:
 
         assert DEFAULT_NUMBER_CONFIGS == {}
 
-    def test_default_boolean_configs_empty(self):
-        """Test DEFAULT_BOOLEAN_CONFIGS is empty dict."""
+    def test_default_boolean_configs_has_transport_state(self):
+        """Test DEFAULT_BOOLEAN_CONFIGS contains transport_state binary sensor."""
         from custom_components.ramses_extras.features.default.const import (
             DEFAULT_BOOLEAN_CONFIGS,
         )
 
-        assert DEFAULT_BOOLEAN_CONFIGS == {}
+        assert "transport_state" in DEFAULT_BOOLEAN_CONFIGS
+        transport_config = DEFAULT_BOOLEAN_CONFIGS["transport_state"]
+        assert transport_config["name_template"] == "Transport State {device_id}"
+        assert transport_config["device_class"] == "connectivity"
+        assert "FAN" in transport_config["supported_device_types"]
 
     def test_default_device_entity_mapping(self):
         """Test DEFAULT_DEVICE_ENTITY_MAPPING has correct structure."""

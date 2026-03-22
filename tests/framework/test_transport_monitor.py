@@ -26,9 +26,9 @@ class TestTransportMonitor:
         monitor = TransportMonitor()
         callback = MagicMock()
 
-        monitor.register_callback("test", callback)
+        monitor.register_callback("test", callback, "32:153289")
         assert "test" in monitor._callbacks
-        assert monitor._callbacks["test"] == callback
+        assert monitor._callbacks["test"] == ("32:153289", callback)
 
     def test_unregister_callback(self):
         """Test unregistering callbacks."""
@@ -58,23 +58,20 @@ class TestTransportMonitor:
         assert monitor._monitor_task.cancelled()
 
     @pytest.mark.asyncio
-    async def test_force_check(self):
-        """Test forcing a transport state check."""
+    async def test_device_availability(self):
+        """Test device availability tracking."""
         monitor = TransportMonitor()
-        coordinator = MagicMock()
-        coordinator.client = MagicMock()
-        coordinator.client.transport = MagicMock()
-        coordinator.client.transport.state = MagicMock()
-        coordinator.client.transport.state.name = "Active"
-        hass = MagicMock()
 
-        await monitor.start_monitoring(coordinator, hass)
+        # Device should default to available (True) when no commands sent
+        assert monitor.is_device_available("32:153289") is True
 
-        # Force check should update state
-        result = await monitor.force_check()
-        assert isinstance(result, bool)
+        # After marking offline, should be unavailable
+        monitor._device_states["32:153289"] = False
+        assert monitor.is_device_available("32:153289") is False
 
-        await monitor.stop_monitoring()
+        # After marking online, should be available
+        monitor._device_states["32:153289"] = True
+        assert monitor.is_device_available("32:153289") is True
 
     @pytest.mark.asyncio
     async def test_callback_notification(self):
@@ -83,16 +80,15 @@ class TestTransportMonitor:
         callback1 = MagicMock()
         callback2 = MagicMock()
 
-        monitor.register_callback("test1", callback1)
-        monitor.register_callback("test2", callback2)
+        monitor.register_callback("test1", callback1, "32:153289")
+        monitor.register_callback("test2", callback2, "32:153290")
 
-        # Simulate state change
-        await monitor._check_transport_state()
+        # Simulate device state change
+        await monitor._notify_device_state_changed("32:153289", True)
 
-        # If state changed from default (False) to True, callbacks should be called
-        if monitor._transport_available:
-            callback1.assert_called_once_with(True)
-            callback2.assert_called_once_with(True)
+        # Only callback1 should be called (for device 32:153289)
+        callback1.assert_called_once_with(True)
+        callback2.assert_not_called()
 
     def test_is_transport_available_property(self):
         """Test the transport availability property."""
@@ -118,3 +114,126 @@ class TestTransportMonitor:
 
         # The task should be cancelled or done
         assert monitor._monitor_task.done() or monitor._monitor_task.cancelled()
+
+    @pytest.mark.asyncio
+    async def test_notify_command_sent(self):
+        """Test that notify_command_sent starts a timeout timer."""
+        monitor = TransportMonitor()
+        hass = MagicMock()
+        hass.async_create_task = MagicMock(
+            side_effect=lambda coro: asyncio.create_task(coro)
+        )
+        monitor._hass = hass
+
+        # Send command to device
+        monitor.notify_command_sent("32:153289")
+
+        # Should have created a timeout task
+        assert "32:153289" in monitor._device_timeout_tasks
+        assert monitor._device_timeout_tasks["32:153289"] is not None
+        assert not monitor._device_timeout_tasks["32:153289"].done()
+
+        # Clean up
+        monitor._device_timeout_tasks["32:153289"].cancel()
+        try:
+            await monitor._device_timeout_tasks["32:153289"]
+        except asyncio.CancelledError:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_notify_command_sent_does_not_restart_timer(self):
+        """Test that sending multiple commands doesn't restart the timer."""
+        monitor = TransportMonitor()
+        hass = MagicMock()
+        hass.async_create_task = MagicMock(
+            side_effect=lambda coro: asyncio.create_task(coro)
+        )
+        monitor._hass = hass
+
+        # Send first command
+        monitor.notify_command_sent("32:153289")
+        first_task = monitor._device_timeout_tasks["32:153289"]
+
+        # Send second command
+        monitor.notify_command_sent("32:153289")
+        second_task = monitor._device_timeout_tasks["32:153289"]
+
+        # Should be the same task (not restarted)
+        assert first_task is second_task
+
+        # Clean up
+        first_task.cancel()
+        try:
+            await first_task
+        except asyncio.CancelledError:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_device_timeout_marks_offline(self):
+        """Test that device is marked offline after timeout."""
+        monitor = TransportMonitor()
+        hass = MagicMock()
+        hass.async_create_task = MagicMock(
+            side_effect=lambda coro: asyncio.create_task(coro)
+        )
+        monitor._hass = hass
+        monitor._command_timeout = 0.05  # Short timeout for testing
+
+        callback = MagicMock()
+        monitor.register_callback("test", callback, "32:153289")
+
+        # Send command
+        monitor.notify_command_sent("32:153289")
+
+        # Wait for timeout
+        await asyncio.sleep(0.1)
+
+        # Device should be marked offline
+        assert monitor._device_states.get("32:153289") is False
+        callback.assert_called_once_with(False)
+
+    @pytest.mark.asyncio
+    async def test_update_device_message_received_cancels_timeout(self):
+        """Test that receiving a message cancels the timeout timer."""
+        monitor = TransportMonitor()
+        hass = MagicMock()
+        hass.loop = asyncio.get_event_loop()
+        hass.async_create_task = MagicMock(
+            side_effect=lambda coro: asyncio.create_task(coro)
+        )
+        monitor._hass = hass
+
+        callback = MagicMock()
+        monitor.register_callback("test", callback, "32:153289")
+
+        # Send command to start timer
+        monitor.notify_command_sent("32:153289")
+        task = monitor._device_timeout_tasks["32:153289"]
+
+        # Simulate device reply
+        monitor.update_device_message_received("32:153289")
+
+        # Give async operations time to complete
+        await asyncio.sleep(0.01)
+
+        # Timer should be cancelled
+        assert task.cancelled() or task.done()
+
+        # Device should be marked online
+        await asyncio.sleep(0.01)  # Wait for async callback
+        assert monitor._device_states.get("32:153289") is True
+
+    def test_device_id_normalization(self):
+        """Test that device IDs with underscores are normalized to colons."""
+        monitor = TransportMonitor()
+        callback = MagicMock()
+
+        # Register with underscores
+        monitor.register_callback("test", callback, "32_153289")
+
+        # Should be stored with colons
+        assert monitor._callbacks["test"] == ("32:153289", callback)
+
+        # Check availability with underscores
+        monitor._device_states["32:153289"] = False
+        assert monitor.is_device_available("32_153289") is False
