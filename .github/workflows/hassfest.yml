@@ -25,4 +25,4 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: home-assistant/actions@hassfest/v0.4.0
+      - uses: home-assistant/actions@v0.4.0
