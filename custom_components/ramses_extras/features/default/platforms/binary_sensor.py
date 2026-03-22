@@ -43,7 +43,7 @@ class TransportStateBinarySensor(BinarySensorEntity):
         self.hass = hass
         self._device_id = device_id
         normalized_device_id = device_id.replace(":", "_")
-        self.entity_id = f"binary_sensor.{normalized_device_id}_transport_state"
+        self.entity_id = f"binary_sensor.transport_state_{normalized_device_id}"
         self._attr_unique_id = f"{DOMAIN}_{normalized_device_id}_transport_state"
         self._attr_name = f"Transport State {normalized_device_id}"
 

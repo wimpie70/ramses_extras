@@ -261,11 +261,21 @@ class SimpleEntityManager:
                         required_entities.extend(entity_ids)
             return required_entities
 
-        # If matrix is NOT empty, use the matrix-defined combinations
+        # If matrix is NOT empty, always preserve default feature entities for all
+        # devices, then add any explicit matrix-defined feature/device combinations.
+        for device_id in device_ids:
+            entity_ids = await self._generate_entity_ids_for_combination(
+                "default", device_id
+            )
+            required_entities.extend(entity_ids)
+
+        # For non-default features, use the matrix-defined combinations
         combinations = self.device_feature_matrix.get_all_enabled_combinations()
 
         for device_id, feature_id in combinations:
-            if feature_id != "default" and enabled_features.get(feature_id) is not True:
+            if feature_id == "default":
+                continue
+            if enabled_features.get(feature_id) is not True:
                 continue
             # Generate entity IDs for this feature/device combination
             entity_ids = await self._generate_entity_ids_for_combination(
