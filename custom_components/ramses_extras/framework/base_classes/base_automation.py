@@ -804,6 +804,12 @@ class ExtrasBaseAutomation(ABC):
         """
         return self._transport_available
 
+    def is_device_transport_available(self, device_id: str) -> bool:
+        """Check if a specific target device is replying recently."""
+        if not self._transport_monitor.is_monitoring:
+            return True
+        return self._transport_monitor.is_device_available(device_id)
+
     # ==================== ABSTRACT METHODS ====================
 
     @abstractmethod

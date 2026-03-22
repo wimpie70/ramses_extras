@@ -456,7 +456,7 @@ class RamsesCommands:
             transport_monitor = get_transport_monitor()
             if (
                 transport_monitor.is_monitoring
-                and not transport_monitor.is_transport_available
+                and not transport_monitor.is_device_available(device_id_formatted)
             ):
                 _LOGGER.warning(
                     f"Skipping command {cmd_def['code']} - transport unavailable"
@@ -507,6 +507,9 @@ class RamsesCommands:
 
             cmd = coordinator.client.create_cmd(**kwargs)
             await coordinator.client.async_send_cmd(cmd)
+
+            # Notify transport monitor that we sent a command
+            transport_monitor.notify_command_sent(device_id_formatted)
 
             _LOGGER.debug(f"Ramses command sent: {cmd_def['description']}")
             return True

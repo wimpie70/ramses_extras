@@ -232,7 +232,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             return
 
         # Check transport availability before processing
-        if not self.is_transport_available:
+        if not self.is_device_transport_available(device_id):
             _LOGGER.debug(
                 "Transport unavailable - skipping CO2 control logic for %s",
                 device_id,

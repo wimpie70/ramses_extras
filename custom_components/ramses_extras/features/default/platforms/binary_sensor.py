@@ -5,7 +5,7 @@ including transport state for each fan device.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -72,6 +72,29 @@ def _migrate_legacy_transport_entity_id(hass: HomeAssistant, device_id: str) -> 
         )
 
 
+async def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
+    try:
+        ramses_cc_data = hass.data.get("ramses_cc", {})
+        for coordinator_instance in ramses_cc_data.values():
+            if hasattr(coordinator_instance, "client"):
+                return coordinator_instance
+    except Exception as err:
+        _LOGGER.debug("Could not get ramses_cc coordinator: %s", err)
+
+    return None
+
+
+async def _start_transport_monitoring(hass: HomeAssistant) -> None:
+    coordinator = await _get_ramses_cc_coordinator(hass)
+    if not coordinator or not getattr(coordinator, "client", None):
+        _LOGGER.debug("ramses_cc coordinator not available for transport monitoring")
+        return
+
+    transport_monitor = get_transport_monitor()
+    await transport_monitor.start_monitoring(coordinator, hass)
+    await transport_monitor.force_check()
+
+
 class TransportStateBinarySensor(ExtrasBinarySensorEntity):
     """Binary sensor for transport state of a Ramses device."""
 
@@ -90,8 +113,6 @@ class TransportStateBinarySensor(ExtrasBinarySensorEntity):
 
         self.hass = hass
         self._device_id = device_id
-        normalized_device_id = device_id.replace(":", "_")
-        self._attr_unique_id = f"{DOMAIN}_{normalized_device_id}_transport_state"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
         # Find the Ramses device for device info
@@ -118,25 +139,25 @@ class TransportStateBinarySensor(ExtrasBinarySensorEntity):
                 model="Unknown",
             )
 
-        # Get initial state
-        transport_monitor = get_transport_monitor()
-        self._attr_is_on = transport_monitor.is_transport_available
+        # Initialize as offline - will be set online when device replies
+        self._is_on = False
 
         # Register for transport state changes
+        transport_monitor = get_transport_monitor()
         transport_monitor.register_callback(
-            f"transport_sensor_{device_id}", self._on_transport_state_changed
+            f"transport_sensor_{device_id}",
+            self._on_transport_state_changed,
+            device_id,
         )
 
     def _on_transport_state_changed(self, available: bool) -> None:
         """Handle transport state changes."""
-        if self._attr_is_on != available:
-            self._attr_is_on = available
-            _LOGGER.debug(
-                "Transport state changed for %s: %s",
-                self._device_id,
-                "Online" if available else "Offline",
-            )
-            self.schedule_update_ha_state()
+        self._is_on = available
+        if available:
+            _LOGGER.debug("Transport state for %s: Online", self._device_id)
+        else:
+            _LOGGER.warning("Transport state for %s: Offline", self._device_id)
+        self.schedule_update_ha_state()
 
     @property
     def icon(self) -> str:
@@ -175,6 +196,8 @@ async def async_setup_entry(
 
     for device_id in devices:
         _migrate_legacy_transport_entity_id(hass, device_id)
+
+    await _start_transport_monitoring(hass)
 
     # Create binary sensors for each device
     entities = [TransportStateBinarySensor(hass, device_id) for device_id in devices]

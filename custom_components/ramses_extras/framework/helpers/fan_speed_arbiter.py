@@ -159,7 +159,7 @@ class FanSpeedArbiter:
         transport_monitor = get_transport_monitor()
         if (
             transport_monitor.is_monitoring
-            and not transport_monitor.is_transport_available
+            and not transport_monitor.is_device_available(device_id)
         ):
             _LOGGER.debug(
                 "Skipping fan command %s for %s - transport unavailable",
