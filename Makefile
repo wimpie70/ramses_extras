@@ -128,7 +128,7 @@ local-ci: env
 
 test-frontend: env
 	@echo "Running frontend tests..."
-	@bash -c "source ~/venvs/extras/bin/activate && npm test"
+	@bash -c "source ~/venvs/extras/bin/activate && npm test --prefix config"
 
 test-python: env
 	@echo "Running Python tests..."

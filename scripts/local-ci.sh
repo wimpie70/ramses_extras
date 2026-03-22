@@ -82,15 +82,15 @@ fi
 
 echo "📝 Running JavaScript checks..."
 
-# Check if node_modules exists
-if [ ! -d "node_modules" ]; then
-    print_warning "node_modules not found. Installing dependencies..."
-    npm install
+# Check if node_modules exists in config directory
+if [ ! -d "config/node_modules" ]; then
+    print_warning "config/node_modules not found. Installing dependencies..."
+    npm install --prefix config
 fi
 
 # Run ESLint
 echo "  🔍 Running ESLint..."
-if npm run lint 2>/dev/null; then
+if npm run lint --prefix config 2>/dev/null; then
     print_status "ESLint passed"
 else
     print_error "ESLint failed"
@@ -99,7 +99,7 @@ fi
 
 # Run Jest tests
 echo "  🧪 Running Jest..."
-if npm test 2>/dev/null; then
+if npm test --prefix config 2>/dev/null; then
     print_status "Jest passed"
 else
     print_error "Jest failed"

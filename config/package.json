@@ -4,8 +4,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "eslint custom_components --ext .js --cache --config config/eslint.config.js --no-config-lookup",
-    "lint:fix": "eslint custom_components --ext .js --cache --fix --config config/eslint.config.js --no-config-lookup",
+    "lint": "cd .. && eslint custom_components/**/*.js --cache --config eslint.config.js --no-config-lookup",
+    "lint:fix": "cd .. && eslint custom_components/**/*.js --cache --fix --config eslint.config.js --no-config-lookup",
     "format": "prettier --write ..",
     "format:check": "prettier --check .."
   },
@@ -31,6 +31,7 @@
   },
   "jest": {
     "testEnvironment": "jsdom",
+    "rootDir": "..",
     "setupFilesAfterEnv": [
       "<rootDir>/tests/frontend/setup.js"
     ],
@@ -38,9 +39,9 @@
       "<rootDir>/tests/frontend/**/test-*.js"
     ],
     "collectCoverageFrom": [
-      "custom_components/**/*.js",
-      "!custom_components/**/test-*.js",
-      "!custom_components/**/*..test.js"
+      "<rootDir>/custom_components/**/*.js",
+      "!<rootDir>/custom_components/**/test-*.js",
+      "!<rootDir>/custom_components/**/*..test.js"
     ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/$1"
