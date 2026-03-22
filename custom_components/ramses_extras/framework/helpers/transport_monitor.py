@@ -206,6 +206,11 @@ class TransportMonitor:
         """Check if transport is currently available."""
         return self._transport_available
 
+    @property
+    def is_monitoring(self) -> bool:
+        """Return whether transport monitoring is currently active."""
+        return self._monitor_task is not None and not self._monitor_task.done()
+
     async def force_check(self) -> bool:
         """Force an immediate transport state check.
 

@@ -157,7 +157,10 @@ class FanSpeedArbiter:
         from .transport_monitor import get_transport_monitor
 
         transport_monitor = get_transport_monitor()
-        if not transport_monitor.is_transport_available:
+        if (
+            transport_monitor.is_monitoring
+            and not transport_monitor.is_transport_available
+        ):
             _LOGGER.debug(
                 "Skipping fan command %s for %s - transport unavailable",
                 command_name,

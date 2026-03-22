@@ -18,7 +18,11 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from ....const import DOMAIN, register_feature_platform
-from ....framework.helpers.device.core import find_ramses_device, get_device_type
+from ....framework.helpers.device.core import (
+    extract_device_id_as_string,
+    find_ramses_device,
+    get_device_type,
+)
 from ....framework.helpers.transport_monitor import get_transport_monitor
 
 if TYPE_CHECKING:
@@ -113,7 +117,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up transport state binary sensors."""
     devices = []
-    for device_id in hass.data.get(DOMAIN, {}).get("devices", []):
+    for device in hass.data.get(DOMAIN, {}).get("devices", []):
+        device_id = extract_device_id_as_string(device)
         if _device_has_fan(hass, device_id):
             devices.append(device_id)
 
@@ -131,7 +136,7 @@ async def async_setup_entry(
 
 def _device_has_fan(hass: HomeAssistant, device_id: str) -> bool:
     """Check if a device has fan entities."""
-    normalized_device_id = device_id.replace("_", ":")
+    normalized_device_id = extract_device_id_as_string(device_id).replace("_", ":")
     device = find_ramses_device(hass, normalized_device_id)
     return get_device_type(device) == "HvacVentilator"
 
