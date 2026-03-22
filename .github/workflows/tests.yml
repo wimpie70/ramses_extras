@@ -96,15 +96,15 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: config/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install Node.js dependencies
         run: |
-          npm ci --prefix config
+          npm ci
 
       - name: Run prek
         run: |
-          cd config && npm run lint && npm run format:check
+          npm run lint && npm run format:check
 
   type:
     name: type (${{ matrix.python-version }})
