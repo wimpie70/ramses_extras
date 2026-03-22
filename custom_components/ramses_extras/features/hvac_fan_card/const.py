@@ -90,6 +90,8 @@ FEATURE_DEFINITION = {
         "exhaust_flow_entity": "sensor.{device_id}_exhaust_flow",
         # CO2 sensor (ramses_cc integration)
         "co2_entity": "sensor.{device_id}_co2_level",
+        # Transport / connection state
+        "transport_state_entity": "binary_sensor.{device_id}_transport_state",
         # Bypass position
         "bypass_entity": "binary_sensor.{device_id}_bypass_position",
         # Dehumidify controls
