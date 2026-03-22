@@ -763,7 +763,7 @@ class ExtrasBaseAutomation(ABC):
             coordinator = await get_ramses_cc_coordinator(self.hass)
 
             if coordinator and coordinator.client:
-                await self._transport_monitor.start_monitoring(coordinator)
+                await self._transport_monitor.start_monitoring(coordinator, self.hass)
                 _LOGGER.info(
                     "Transport monitoring started for %s automation", self.feature_id
                 )

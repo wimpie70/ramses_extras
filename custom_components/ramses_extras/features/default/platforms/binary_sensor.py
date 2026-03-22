@@ -17,8 +17,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from ....const import DOMAIN
-from ....framework.helpers.device.core import find_ramses_device
+from ....const import DOMAIN, register_feature_platform
+from ....framework.helpers.device.core import find_ramses_device, get_device_type
 from ....framework.helpers.transport_monitor import get_transport_monitor
 
 if TYPE_CHECKING:
@@ -32,13 +32,16 @@ class TransportStateBinarySensor(BinarySensorEntity):
 
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
     def __init__(self, hass: HomeAssistant, device_id: str) -> None:
         """Initialize the transport state binary sensor."""
         self.hass = hass
         self._device_id = device_id
-        self._attr_unique_id = f"{DOMAIN}_{device_id}_transport_state"
-        self._attr_name = "Transport State"
+        normalized_device_id = device_id.replace(":", "_")
+        self.entity_id = f"binary_sensor.{normalized_device_id}_transport_state"
+        self._attr_unique_id = f"{DOMAIN}_{normalized_device_id}_transport_state"
+        self._attr_name = f"Transport State {normalized_device_id}"
 
         # Find the Ramses device for device info
         device = find_ramses_device(hass, device_id.replace("_", ":"))
@@ -109,22 +112,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up transport state binary sensors."""
-    # Get the default feature instance
-    feature = hass.data.get(DOMAIN, {}).get("features", {}).get("default")
-    if not feature:
-        _LOGGER.warning("Default feature not found, cannot setup transport sensors")
-        return
-
-    # Get all devices that have fans
     devices = []
-
-    # Get devices from the device manager
-    device_manager = hass.data.get(DOMAIN, {}).get("device_manager")
-    if device_manager:
-        for device_id in device_manager.devices:
-            # Check if device has fan capabilities (has fan speed entities)
-            if _device_has_fan(hass, device_id):
-                devices.append(device_id)
+    for device_id in hass.data.get(DOMAIN, {}).get("devices", []):
+        if _device_has_fan(hass, device_id):
+            devices.append(device_id)
 
     if not devices:
         _LOGGER.debug("No fan devices found for transport state sensors")
@@ -140,4 +131,9 @@ async def async_setup_entry(
 
 def _device_has_fan(hass: HomeAssistant, device_id: str) -> bool:
     """Check if a device has fan entities."""
-    return True  # For now, assume all devices might have a fan
+    normalized_device_id = device_id.replace("_", ":")
+    device = find_ramses_device(hass, normalized_device_id)
+    return get_device_type(device) == "HvacVentilator"
+
+
+register_feature_platform("binary_sensor", "default", async_setup_entry)

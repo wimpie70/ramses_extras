@@ -45,9 +45,10 @@ class TestTransportMonitor:
         monitor = TransportMonitor()
         coordinator = MagicMock()
         coordinator.client = MagicMock()
+        hass = MagicMock()
 
         # Start monitoring
-        await monitor.start_monitoring(coordinator)
+        await monitor.start_monitoring(coordinator, hass)
         assert monitor._monitor_task is not None
         assert not monitor._monitor_task.done()
         assert monitor._coordinator == coordinator
@@ -65,8 +66,9 @@ class TestTransportMonitor:
         coordinator.client.transport = MagicMock()
         coordinator.client.transport.state = MagicMock()
         coordinator.client.transport.state.name = "Active"
+        hass = MagicMock()
 
-        await monitor.start_monitoring(coordinator)
+        await monitor.start_monitoring(coordinator, hass)
 
         # Force check should update state
         result = await monitor.force_check()
@@ -104,8 +106,9 @@ class TestTransportMonitor:
         monitor = TransportMonitor()
         coordinator = MagicMock()
         coordinator.client = MagicMock()
+        hass = MagicMock()
 
-        await monitor.start_monitoring(coordinator)
+        await monitor.start_monitoring(coordinator, hass)
 
         # Give the loop a moment to start
         await asyncio.sleep(0.01)
