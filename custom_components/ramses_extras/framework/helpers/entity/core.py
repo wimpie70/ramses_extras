@@ -847,6 +847,19 @@ async def _async_apply_entity_id_fallbacks(
         if registry.async_get(entity_id) is not None:
             continue
 
+        transport_entity_id = f"binary_sensor.transport_state_{device_id_underscore}"
+        legacy_transport_entity_id = (
+            f"binary_sensor.{device_id_underscore}_transport_state"
+        )
+        if entity_id == transport_entity_id:
+            if registry.async_get(legacy_transport_entity_id) is not None:
+                resolved[state_name] = legacy_transport_entity_id
+                continue
+        elif entity_id == legacy_transport_entity_id:
+            if registry.async_get(transport_entity_id) is not None:
+                resolved[state_name] = transport_entity_id
+                continue
+
         for candidate in iter_ramses_cc_entity_id_fallbacks(
             entity_id,
             device_id_underscore=device_id_underscore,

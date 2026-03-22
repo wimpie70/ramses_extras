@@ -224,8 +224,12 @@ class HvacFanCard extends RamsesBaseCard {
     const co2ControlEntitiesAvailable = validateCO2ControlEntities(hass, config)?.available === true;
 
     // Get transport state from entity
-    const transportStateEntity = `binary_sensor.${config.device_id.replace(/:/g, '_')}_transport_state`;
-    const transportState = this.getEntityState(transportStateEntity);
+    const transportStateEntity = config.transport_state_entity
+      || this._entityMappings?.transport_state_entity
+      || `binary_sensor.transport_state_${config.device_id.replace(/:/g, '_')}`;
+    const legacyTransportStateEntity = `binary_sensor.${config.device_id.replace(/:/g, '_')}_transport_state`;
+    const transportState = this.getEntityState(transportStateEntity)
+      || this.getEntityState(legacyTransportStateEntity);
     const transportAvailable = transportState?.state === 'on';
 
     // Temperature data - prefer 31DA real-time, fall back to entity states
@@ -1075,8 +1079,12 @@ class HvacFanCard extends RamsesBaseCard {
     const co2ControlEntitiesAvailable = validateCO2ControlEntities(hass, config)?.available === true;
 
     // Get transport state from entity
-    const transportStateEntity = `binary_sensor.${config.device_id.replace(/:/g, '_')}_transport_state`;
-    const transportState = this.getEntityState(transportStateEntity);
+    const transportStateEntity = config.transport_state_entity
+      || this._entityMappings?.transport_state_entity
+      || `binary_sensor.transport_state_${config.device_id.replace(/:/g, '_')}`;
+    const legacyTransportStateEntity = `binary_sensor.${config.device_id.replace(/:/g, '_')}_transport_state`;
+    const transportState = this.getEntityState(transportStateEntity)
+      || this.getEntityState(legacyTransportStateEntity);
     const transportAvailable = transportState?.state === 'on';
 
     // Get data from 31DA messages

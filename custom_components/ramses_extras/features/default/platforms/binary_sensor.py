@@ -9,15 +9,16 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
-    BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from ....const import DOMAIN, register_feature_platform
+from ....framework.base_classes.platform_entities import ExtrasBinarySensorEntity
 from ....framework.helpers.device.core import (
     extract_device_id_as_string,
     find_ramses_device,
@@ -31,7 +32,47 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-class TransportStateBinarySensor(BinarySensorEntity):
+def _legacy_transport_entity_id(device_id: str) -> str:
+    normalized_device_id = device_id.replace(":", "_")
+    return f"binary_sensor.{normalized_device_id}_transport_state"
+
+
+def _transport_entity_id(device_id: str) -> str:
+    normalized_device_id = device_id.replace(":", "_")
+    return f"binary_sensor.transport_state_{normalized_device_id}"
+
+
+def _migrate_legacy_transport_entity_id(hass: HomeAssistant, device_id: str) -> None:
+    registry = entity_registry.async_get(hass)
+    legacy_entity_id = _legacy_transport_entity_id(device_id)
+    new_entity_id = _transport_entity_id(device_id)
+
+    if registry.async_get(new_entity_id) is not None:
+        return
+
+    if registry.async_get(legacy_entity_id) is None:
+        return
+
+    try:
+        registry.async_update_entity(
+            legacy_entity_id,
+            new_entity_id=new_entity_id,
+        )
+        _LOGGER.info(
+            "Migrated legacy transport entity ID from %s to %s",
+            legacy_entity_id,
+            new_entity_id,
+        )
+    except ValueError as err:
+        _LOGGER.warning(
+            "Failed to migrate transport entity ID from %s to %s: %s",
+            legacy_entity_id,
+            new_entity_id,
+            err,
+        )
+
+
+class TransportStateBinarySensor(ExtrasBinarySensorEntity):
     """Binary sensor for transport state of a Ramses device."""
 
     _attr_should_poll = False
@@ -40,12 +81,18 @@ class TransportStateBinarySensor(BinarySensorEntity):
 
     def __init__(self, hass: HomeAssistant, device_id: str) -> None:
         """Initialize the transport state binary sensor."""
+        config = {
+            "entity_template": "transport_state_{device_id}",
+            "name_template": "Transport State {device_id}",
+            "device_class": BinarySensorDeviceClass.CONNECTIVITY,
+        }
+        super().__init__(hass, device_id, "transport_state", config)
+
         self.hass = hass
         self._device_id = device_id
         normalized_device_id = device_id.replace(":", "_")
-        self.entity_id = f"binary_sensor.transport_state_{normalized_device_id}"
         self._attr_unique_id = f"{DOMAIN}_{normalized_device_id}_transport_state"
-        self._attr_name = f"Transport State {normalized_device_id}"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
         # Find the Ramses device for device info
         device = find_ramses_device(hass, device_id.replace("_", ":"))
@@ -125,6 +172,9 @@ async def async_setup_entry(
     if not devices:
         _LOGGER.debug("No fan devices found for transport state sensors")
         return
+
+    for device_id in devices:
+        _migrate_legacy_transport_entity_id(hass, device_id)
 
     # Create binary sensors for each device
     entities = [TransportStateBinarySensor(hass, device_id) for device_id in devices]
