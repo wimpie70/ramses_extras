@@ -124,8 +124,8 @@ async def test_async_clear_demand_without_remaining_demands_returns_to_auto(arbi
 
 
 @pytest.mark.asyncio
-async def test_async_apply_dedupes_same_resolved_command(arbiter):
-    """Reapplying the same resolved command should not resend it."""
+async def test_async_apply_sends_same_command_multiple_times(arbiter):
+    """Arbiter should send command every time, even if same as previous."""
     success = await arbiter.async_set_demand(
         "32_123456",
         feature_id="co2_control",
@@ -148,7 +148,9 @@ async def test_async_apply_dedupes_same_resolved_command(arbiter):
     )
 
     assert success is True
-    arbiter.ramses_commands.send_command.assert_not_awaited()
+    arbiter.ramses_commands.send_command.assert_awaited_once_with(
+        "32_123456", "fan_medium"
+    )
 
 
 @pytest.mark.parametrize(
@@ -214,7 +216,6 @@ async def test_async_apply_returns_false_when_command_send_fails(arbiter):
     )
 
     assert success is False
-    assert "32_123456" not in arbiter._last_applied_command
 
 
 def test_normalize_speed_invalid_raises_value_error():
@@ -239,14 +240,13 @@ def test_speed_rank_and_debug_state(hass, arbiter):
             )
         }
     }
-    arbiter._last_applied_command["32_123456"] = "fan_medium"
 
     debug_state = arbiter.get_debug_state()
     device_state = arbiter.get_device_debug_state("32_123456")
 
-    assert debug_state["devices"]["32_123456"]["last_applied_command"] == "fan_medium"
     assert device_state["resolved_command"] == "fan_medium"
     assert device_state["winning_demand"]["feature_id"] == "co2_control"
+    assert len(debug_state["devices"]["32_123456"]["active_demands"]) == 1
 
 
 def test_get_fan_speed_arbiter_uses_fallback_attribute_for_mock_hass():

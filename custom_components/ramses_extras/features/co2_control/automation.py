@@ -134,6 +134,22 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self._state_change_listeners.clear()
         self._source_listener_entities.clear()
 
+        # Clear fan speed demands for all devices
+        devices_with_demands = self.fan_speed_arbiter.get_all_devices_with_demands()
+        for device_id in devices_with_demands:
+            # Check if this device has CO2 control demands
+            demands = self.fan_speed_arbiter.get_active_demands(device_id)
+            co2_demands = [d for d in demands if d.feature_id == self.feature_id]
+            if co2_demands:
+                _LOGGER.debug(
+                    "Clearing CO2 control fan demand for device %s",
+                    device_id,
+                )
+                await self.fan_speed_arbiter.async_clear_demand(
+                    device_id,
+                    feature_id=self.feature_id,
+                )
+
         await super().stop()
 
     async def _on_homeassistant_started(self, event: Event | None) -> None:
@@ -223,6 +239,50 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 continue
 
         return states
+
+    async def _async_handle_state_change(
+        self, entity_id: str, old_state: State | None, new_state: State | None
+    ) -> None:
+        """Handle state changes with automation-specific processing.
+
+        This method provides the async processing logic that derived classes
+        can extend or override for feature-specific needs.
+
+        Args:
+            entity_id: Entity that changed state
+            old_state: Previous state (if any)
+            new_state: New state
+        """
+        # Check if feature is still enabled first
+        if not self._is_feature_enabled():
+            _LOGGER.debug(
+                "Feature %s disabled, ignoring state change for %s",
+                self.feature_id,
+                entity_id,
+            )
+            return
+
+        # Handle CO2 switch changes immediately (bypass validation cooldown)
+        if "switch.co2_control_" in entity_id:
+            device_id = self._extract_device_id(entity_id)
+            if device_id:
+                _LOGGER.debug(
+                    "CO2 switch changed for %s, processing immediately",
+                    device_id,
+                )
+                try:
+                    entity_states = await self._get_device_entity_states(device_id)
+                    await self._process_automation_logic(device_id, entity_states)
+                except Exception as e:
+                    _LOGGER.error(
+                        "Error processing CO2 switch change for %s: %s",
+                        device_id,
+                        e,
+                    )
+                return
+
+        # Call parent implementation for other entities
+        await super()._async_handle_state_change(entity_id, old_state, new_state)
 
     async def _process_automation_logic(
         self, device_id: str, entity_states: Mapping[str, float | bool]

@@ -68,7 +68,6 @@ class FanSpeedArbiter:
         self.hass = hass
         self.ramses_commands = RamsesCommands(hass)
         self._demands: dict[str, dict[tuple[str, str], FanSpeedDemand]] = {}
-        self._last_applied_command: dict[str, str] = {}
 
     async def async_set_demand(
         self,
@@ -120,6 +119,10 @@ class FanSpeedArbiter:
         """Return active demands for a device."""
         return list(self._demands.get(device_id, {}).values())
 
+    def get_all_devices_with_demands(self) -> list[str]:
+        """Return list of all device IDs that have active demands."""
+        return list(self._demands.keys())
+
     def resolve(self, device_id: str) -> ResolvedFanSpeed:
         """Resolve the current fan command for a device."""
         active_demands = self.get_active_demands(device_id)
@@ -147,20 +150,26 @@ class FanSpeedArbiter:
         )
 
     async def async_apply(self, device_id: str) -> bool:
-        """Apply the resolved command for a device if it changed."""
+        """Apply the resolved command for a device."""
         resolved = self.resolve(device_id)
         command_name = resolved.command_name
-        if self._last_applied_command.get(device_id) == command_name:
-            return True
+
+        _LOGGER.debug(
+            "Arbiter applying command for %s: %s (priority=%s, source=%s)",
+            device_id,
+            command_name,
+            resolved.winning_demand.priority if resolved.winning_demand else "none",
+            resolved.winning_demand.source_id if resolved.winning_demand else "none",
+        )
 
         # Check transport state before sending command
         from .transport_monitor import get_transport_monitor
 
         transport_monitor = get_transport_monitor()
-        if (
-            transport_monitor.is_monitoring
-            and not transport_monitor.is_device_available(device_id)
-        ):
+        is_monitoring = transport_monitor.is_monitoring
+        is_available = transport_monitor.is_device_available(device_id)
+
+        if is_monitoring and not is_available:
             _LOGGER.debug(
                 "Skipping fan command %s for %s - transport unavailable",
                 command_name,
@@ -177,7 +186,6 @@ class FanSpeedArbiter:
             )
             return False
 
-        self._last_applied_command[device_id] = command_name
         return True
 
     @staticmethod
@@ -204,7 +212,6 @@ class FanSpeedArbiter:
         return {
             "devices": {
                 device_id: {
-                    "last_applied_command": self._last_applied_command.get(device_id),
                     "active_demands": [
                         {
                             "feature_id": demand.feature_id,
@@ -226,7 +233,6 @@ class FanSpeedArbiter:
         resolved = self.resolve(device_id)
         return {
             "resolved_command": resolved.command_name,
-            "last_applied_command": self._last_applied_command.get(device_id),
             "winning_demand": (
                 {
                     "feature_id": resolved.winning_demand.feature_id,

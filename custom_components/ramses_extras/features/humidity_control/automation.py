@@ -587,6 +587,23 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._automation_active = False
         for device_id in list(self._active_area_spikes):
             self._clear_active_area_spike(device_id)
+
+        # Clear fan speed demands for all devices
+        devices_with_demands = self.fan_speed_arbiter.get_all_devices_with_demands()
+        for device_id in devices_with_demands:
+            # Check if this device has humidity control demands
+            demands = self.fan_speed_arbiter.get_active_demands(device_id)
+            humidity_demands = [d for d in demands if d.feature_id == self.feature_id]
+            if humidity_demands:
+                _LOGGER.debug(
+                    "Clearing humidity control fan demand for device %s",
+                    device_id,
+                )
+                await self.fan_speed_arbiter.async_clear_demand(
+                    device_id,
+                    feature_id=self.feature_id,
+                )
+
         await super().stop()
 
         _LOGGER.info("Humidity control automation stopped")
@@ -620,20 +637,26 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         # Check if switch is manually OFF - if so,
         #  don't run automation but keep switch state
         switch_state = entity_states.get("dehumidify")
+        _LOGGER.debug(
+            "Balance switch state for %s: %s (dehumidify_active=%s)",
+            device_id,
+            switch_state,
+            self._dehumidify_active,
+        )
         if switch_state is not None:
             switch_is_on = bool(switch_state)
 
             # If switch is OFF, stop automation but don't turn the switch off
             #  (it's already off)
             if not switch_is_on:
-                _LOGGER.debug(
-                    "Switch is OFF for device %s - automation disabled",
+                _LOGGER.info(
+                    "Switch is OFF for device %s - clearing fan demand",
                     device_id,
                 )
-                if self._dehumidify_active:
-                    # Stop dehumidification but don't touch the switch
-                    #  (user manually turned it off)
-                    await self._stop_dehumidification_without_switch_change(device_id)
+                # Always clear fan demand when switch is OFF, regardless of
+                # dehumidify_active
+                # This ensures fan returns to AUTO even if dehum wasn't active
+                await self._stop_dehumidification_without_switch_change(device_id)
                 self._clear_active_area_spike(device_id)
                 # Just update binary sensor to reflect inactive state
                 await self._set_indicator_off(device_id)
@@ -707,10 +730,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             await self._process_automation_logic(device_id, entity_states)
 
     async def _enforce_switch_off_state(self, device_id: str) -> None:
+        _LOGGER.info(
+            "Balance switch OFF for %s - clearing humidity control fan demand",
+            device_id,
+        )
         success = await self.fan_speed_arbiter.async_clear_demand(
             device_id,
             feature_id=self.feature_id,
         )
+        _LOGGER.debug("Fan demand cleared for %s: success=%s", device_id, success)
         if not success:
             _LOGGER.warning(
                 "Failed to enforce OFF balance state for device %s during startup",
@@ -949,7 +977,33 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
             return
 
-        # Call parent implementation
+        # Handle balance switch changes immediately (bypass validation cooldown)
+        if "switch.dehumidify_" in entity_id:
+            device_id = self._extract_device_id(entity_id)
+            if device_id:
+                new_switch_state = new_state.state if new_state else "unknown"
+                _LOGGER.info(
+                    "Balance switch changed for %s: %s -> processing immediately",
+                    device_id,
+                    new_switch_state,
+                )
+                try:
+                    entity_states = await self._get_device_entity_states(device_id)
+                    _LOGGER.debug(
+                        "Balance switch %s: dehumidify=%s",
+                        device_id,
+                        entity_states.get("dehumidify"),
+                    )
+                    await self._process_automation_logic(device_id, entity_states)
+                except Exception as e:
+                    _LOGGER.error(
+                        "Error processing balance switch change for %s: %s",
+                        device_id,
+                        e,
+                    )
+                return
+
+        # Call parent implementation for other entities
         await super()._async_handle_state_change(entity_id, old_state, new_state)
 
     async def _activate_dehumidification(
@@ -1088,15 +1142,19 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         Args:
             device_id: Device identifier
         """
-        if not self._dehumidify_active:
-            return  # Already inactive
+        _LOGGER.info(
+            "Stopping dehumidification for %s (switch OFF) - clearing fan demand",
+            device_id,
+        )
 
         try:
+            _LOGGER.debug("Clearing humidity control fan demand for %s", device_id)
             success = await self.fan_speed_arbiter.async_clear_demand(
                 device_id,
                 feature_id=self.feature_id,
                 source_id="humidity_control",
             )
+            _LOGGER.info("Fan demand cleared for %s: success=%s", device_id, success)
             if not success:
                 _LOGGER.warning(
                     "Failed to set fan to auto mode for device %s",
