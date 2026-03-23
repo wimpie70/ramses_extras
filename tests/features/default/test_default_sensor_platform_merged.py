@@ -408,6 +408,108 @@ class TestDefaultHumiditySensor:
         assert temp is None  # Should be None due to invalid humidity
         assert humidity is None  # Should be None due to invalid range
 
+
+class TestFanControlModeSensor:
+    @pytest.fixture
+    def hass(self):
+        return MagicMock()
+
+    @pytest.fixture
+    def sensor_config(self):
+        return {
+            "name_template": "Fan Control Mode {device_id}",
+            "icon": "mdi:tune-variant",
+            "device_class": None,
+        }
+
+    def test_sensor_initialization(self, hass, sensor_config):
+        mock_arbiter = MagicMock()
+        mock_arbiter.get_control_mode.return_value = "auto_by_fan"
+
+        with patch(
+            "custom_components.ramses_extras.features.default.platforms.sensor.get_fan_speed_arbiter",
+            return_value=mock_arbiter,
+        ):
+            sensor = FanControlModeSensor(
+                hass, "32:153289", "fan_control_mode", sensor_config
+            )
+
+        assert sensor._device_id == "32:153289"
+        assert sensor._sensor_type == "fan_control_mode"
+        assert sensor.native_value == "auto_by_fan"
+
+    @pytest.mark.asyncio
+    async def test_async_added_to_hass_registers_callback(self, hass, sensor_config):
+        mock_arbiter = MagicMock()
+        mock_arbiter.get_control_mode.return_value = "auto_by_extras"
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.platforms.sensor.get_fan_speed_arbiter",
+                return_value=mock_arbiter,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.default.platforms.sensor.ExtrasSensorEntity.async_added_to_hass",
+                new=AsyncMock(),
+            ),
+        ):
+            sensor = FanControlModeSensor(
+                hass, "32:153289", "fan_control_mode", sensor_config
+            )
+            sensor.async_write_ha_state = MagicMock()
+            await sensor.async_added_to_hass()
+
+        mock_arbiter.register_callback.assert_called_once_with(
+            "fan_control_mode_32_153289",
+            sensor._handle_control_mode_changed,
+            "32:153289",
+        )
+        assert sensor.native_value == "auto_by_extras"
+
+    def test_control_mode_callback_updates_state(self, hass, sensor_config):
+        mock_arbiter = MagicMock()
+        mock_arbiter.get_control_mode.return_value = "auto_by_fan"
+
+        with patch(
+            "custom_components.ramses_extras.features.default.platforms.sensor.get_fan_speed_arbiter",
+            return_value=mock_arbiter,
+        ):
+            sensor = FanControlModeSensor(
+                hass, "32:153289", "fan_control_mode", sensor_config
+            )
+
+        sensor.async_write_ha_state = MagicMock()
+        sensor._handle_control_mode_changed("manual_override")
+
+        assert sensor.native_value == "manual_override"
+        sensor.async_write_ha_state.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_async_will_remove_from_hass_unregisters_callback(
+        self, hass, sensor_config
+    ):
+        mock_arbiter = MagicMock()
+        mock_arbiter.get_control_mode.return_value = "auto_by_fan"
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.default.platforms.sensor.get_fan_speed_arbiter",
+                return_value=mock_arbiter,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.default.platforms.sensor.ExtrasSensorEntity.async_will_remove_from_hass",
+                new=AsyncMock(),
+            ),
+        ):
+            sensor = FanControlModeSensor(
+                hass, "32:153289", "fan_control_mode", sensor_config
+            )
+            await sensor.async_will_remove_from_hass()
+
+        mock_arbiter.unregister_callback.assert_called_once_with(
+            "fan_control_mode_32_153289"
+        )
+
     def test_get_area_temp_and_humidity_result(self, hass, sensor_config):
         """Area sensors should calculate absolute humidity from configured inputs."""
         sensor = DefaultHumiditySensor(

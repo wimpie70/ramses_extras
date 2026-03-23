@@ -24,6 +24,7 @@ const mockHass = {
     'sensor.exhaust_temp_32_153289': { state: '18' },
     'sensor.fan_speed_32_153289': { state: 'medium' },
     'sensor.fan_mode_32_153289': { state: 'auto' },
+    'sensor.fan_control_mode_32_153289': { state: 'auto_by_extras' },
     'binary_sensor.bypass_position_32_153289': { state: 'off' },
     'switch.dehumidify_32_153289': { state: 'off' },
     'climate.32_153289_climate': {
@@ -65,6 +66,7 @@ describe('HvacFanCard', () => {
         exhaust_temp_entity: 'sensor.exhaust_temp_32_153289',
         fan_speed_entity: 'sensor.fan_speed_32_153289',
         fan_mode_entity: 'sensor.fan_mode_32_153289',
+        fan_control_mode_entity: 'sensor.fan_control_mode_32_153289',
         bypass_entity: 'binary_sensor.bypass_position_32_153289',
         dehum_mode_entity: 'switch.dehumidify_32_153289',
         dehum_active_entity: 'binary_sensor.dehumidifying_active_32_153289',
@@ -275,6 +277,30 @@ describe('HvacFanCard', () => {
       expect(card._areaSensors[0].source_id).toBe('bathroom');
       expect(card._areaSensors[0].label).toBe('Bathroom');
       expect(card._areaSensors[0].check_interval_minutes).toBe(1);
+    });
+  });
+
+  describe('fan control mode entity', () => {
+    test('should include fan control mode entity in card config', () => {
+      expect(card.config.fan_control_mode_entity).toBe(
+        'sensor.fan_control_mode_32_153289'
+      );
+    });
+
+    test('should read current backend fan control mode state', () => {
+      const controlMode = mockHass.states[card.config.fan_control_mode_entity]?.state || null;
+
+      expect(controlMode).toBe('auto_by_extras');
+    });
+
+    test('should allow manual override mode to flow through state lookup', () => {
+      mockHass.states[card.config.fan_control_mode_entity] = {
+        state: 'manual_override',
+      };
+
+      const controlMode = mockHass.states[card.config.fan_control_mode_entity]?.state || null;
+
+      expect(controlMode).toBe('manual_override');
     });
   });
 
