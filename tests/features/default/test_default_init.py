@@ -20,6 +20,7 @@ class TestDefaultFeatureConstants:
         expected_sensors = [
             "indoor_absolute_humidity",
             "outdoor_absolute_humidity",
+            "fan_control_mode",
         ]
         for sensor in expected_sensors:
             assert sensor in DEFAULT_SENSOR_CONFIGS, f"Missing sensor config: {sensor}"

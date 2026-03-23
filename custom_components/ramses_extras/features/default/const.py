@@ -30,6 +30,14 @@ DEFAULT_SENSOR_CONFIGS = {
         "supported_device_types": ["FAN"],
         "entity_template": "outdoor_absolute_humidity_{device_id}",
     },
+    "fan_control_mode": {
+        "name_template": "Fan Control Mode {device_id}",
+        "entity_category": EntityCategory.DIAGNOSTIC,
+        "icon": "mdi:tune-variant",
+        "device_class": None,
+        "supported_device_types": ["FAN"],
+        "entity_template": "fan_control_mode_{device_id}",
+    },
 }
 
 # Binary sensor configurations
@@ -53,7 +61,11 @@ DEFAULT_BOOLEAN_CONFIGS = DEFAULT_BINARY_SENSOR_CONFIGS
 # Note: Default feature creates absolute humidity sensors for all devices
 DEFAULT_DEVICE_ENTITY_MAPPING: dict[str, dict[str, Any]] = {
     "FAN": {
-        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        "sensor": [
+            "indoor_absolute_humidity",
+            "outdoor_absolute_humidity",
+            "fan_control_mode",
+        ],
         "binary_sensor": ["transport_state"],
         # Other entity types will be added by individual features
     },
@@ -97,7 +109,11 @@ FEATURE_DEFINITION = {
     "device_entity_mapping": DEFAULT_DEVICE_ENTITY_MAPPING,
     "websocket_commands": DEFAULT_WEBSOCKET_COMMANDS,
     "required_entities": {
-        "sensor": ["indoor_absolute_humidity", "outdoor_absolute_humidity"],
+        "sensor": [
+            "indoor_absolute_humidity",
+            "outdoor_absolute_humidity",
+            "fan_control_mode",
+        ],
         "binary_sensor": ["transport_state"],
     },
 }

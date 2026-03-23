@@ -56,6 +56,96 @@ async def test_send_fan_command_service(hass):
     call.data = {"device_id": "32:123456", "command": "fan_high"}
 
     with patch(
+        "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+    ) as mock_get_arbiter:
+        mock_arbiter = MagicMock()
+        mock_arbiter.async_set_manual_override = AsyncMock()
+        mock_arbiter.async_clear_demand = AsyncMock()
+        mock_get_arbiter.return_value = mock_arbiter
+
+        await send_command_func(call)
+
+        mock_arbiter.async_set_manual_override.assert_called_once_with(
+            "32:123456",
+            source_id="default_service",
+            requested_speed="fan_high",
+            reason="manual_card_command",
+            metadata={"origin": "service"},
+        )
+        assert mock_arbiter.async_clear_demand.await_count == 2
+        mock_arbiter.async_clear_demand.assert_any_await(
+            "32:123456", feature_id="humidity_control"
+        )
+        mock_arbiter.async_clear_demand.assert_any_await(
+            "32:123456", feature_id="co2_control"
+        )
+
+
+async def test_send_fan_command_service_auto_clears_manual_override(hass):
+    """Test fan_auto clears manual override through the arbiter."""
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+    hass.data[DOMAIN] = {
+        "features": {
+            "humidity_control": {
+                "automation": MagicMock(
+                    _reconcile_startup_states=AsyncMock(),
+                )
+            },
+            "co2_control": {
+                "automation": MagicMock(
+                    _evaluate_co2_control=AsyncMock(),
+                )
+            },
+        }
+    }
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_auto"}
+
+    with patch(
+        "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+    ) as mock_get_arbiter:
+        mock_arbiter = MagicMock()
+        mock_arbiter.async_clear_manual_override = AsyncMock()
+        mock_get_arbiter.return_value = mock_arbiter
+
+        await send_command_func(call)
+
+        mock_arbiter.async_clear_manual_override.assert_called_once_with("32:123456")
+        humidity_automation = hass.data[DOMAIN]["features"]["humidity_control"][
+            "automation"
+        ]
+        co2_automation = hass.data[DOMAIN]["features"]["co2_control"]["automation"]
+        humidity_automation._reconcile_startup_states.assert_awaited_once()
+        co2_automation._evaluate_co2_control.assert_awaited_once_with("32:123456")
+
+
+async def test_send_fan_command_service_requests_still_use_direct_path(hass):
+    """Test non-speed commands still use the direct command path."""
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_request31DA"}
+
+    with patch(
         "custom_components.ramses_extras.features.default.services.RamsesCommands"
     ) as mock_commands_class:
         mock_commands = MagicMock()
@@ -64,7 +154,9 @@ async def test_send_fan_command_service(hass):
 
         await send_command_func(call)
 
-        mock_commands.send_command.assert_called_once_with("32:123456", "fan_high")
+        mock_commands.send_command.assert_called_once_with(
+            "32:123456", "fan_request31DA"
+        )
 
 
 async def test_set_fan_parameter_service(hass):

@@ -28,6 +28,7 @@ class TestDefaultConst:
 
         assert "indoor_absolute_humidity" in DEFAULT_SENSOR_CONFIGS
         assert "outdoor_absolute_humidity" in DEFAULT_SENSOR_CONFIGS
+        assert "fan_control_mode" in DEFAULT_SENSOR_CONFIGS
 
         indoor_config = DEFAULT_SENSOR_CONFIGS["indoor_absolute_humidity"]
         assert indoor_config["name_template"] == "Indoor Absolute Humidity {device_id}"
@@ -84,6 +85,7 @@ class TestDefaultConst:
             "outdoor_absolute_humidity"
             in DEFAULT_DEVICE_ENTITY_MAPPING["FAN"]["sensor"]
         )
+        assert "fan_control_mode" in DEFAULT_DEVICE_ENTITY_MAPPING["FAN"]["sensor"]
 
     def test_entity_patterns(self):
         """Test ENTITY_PATTERNS maps sensor types to underlying entity patterns."""

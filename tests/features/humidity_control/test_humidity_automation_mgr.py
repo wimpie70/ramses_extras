@@ -33,6 +33,7 @@ class TestHumidityAutomationManager:
         self.fan_speed_arbiter = MagicMock()
         self.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
         self.fan_speed_arbiter.async_clear_demand = AsyncMock(return_value=True)
+        self.fan_speed_arbiter.is_manual_override_active.return_value = False
 
         # Patch dependencies
         with (
@@ -127,6 +128,25 @@ class TestHumidityAutomationManager:
 
         mock_stop.assert_called_once_with(device_id, decision)
         mock_update.assert_called_once_with(device_id, decision)
+
+    @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
+    @patch.object(HumidityAutomationManager, "_activate_dehumidification")
+    @patch.object(HumidityAutomationManager, "_set_fan_low_and_binary_off")
+    @patch.object(HumidityAutomationManager, "_update_automation_status")
+    async def test_process_automation_logic_skips_when_manual_override_active(
+        self, mock_update, mock_stop, mock_activate, mock_evaluate
+    ):
+        """Sticky manual override should short-circuit humidity automation."""
+        device_id = "32_123456"
+        entity_states = {"dehumidify": True}
+        self.fan_speed_arbiter.is_manual_override_active.return_value = True
+
+        await self.manager._process_automation_logic(device_id, entity_states)
+
+        mock_evaluate.assert_not_called()
+        mock_activate.assert_not_called()
+        mock_stop.assert_not_called()
+        mock_update.assert_not_called()
 
     @patch.object(HumidityAutomationManager, "_evaluate_humidity_conditions")
     @patch.object(HumidityAutomationManager, "_activate_dehumidification")

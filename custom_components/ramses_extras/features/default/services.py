@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
 from ...const import DOMAIN
+from ...framework.helpers.fan_speed_arbiter import get_fan_speed_arbiter
 from ...framework.helpers.ramses_commands import RamsesCommands
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,10 +25,53 @@ SVC_GET_QUEUE_STATISTICS = "get_queue_statistics"
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
+    async def _async_clear_feature_fan_demands(device_id: str) -> None:
+        arbiter = get_fan_speed_arbiter(hass)
+        for feature_id in ("humidity_control", "co2_control"):
+            await arbiter.async_clear_demand(device_id, feature_id=feature_id)
+
+    async def _async_resume_feature_control(device_id: str) -> None:
+        domain_data = hass.data.get(DOMAIN, {})
+        features = domain_data.get("features", {})
+        if not isinstance(features, dict):
+            return
+
+        humidity_feature = features.get("humidity_control")
+        if isinstance(humidity_feature, dict):
+            automation = humidity_feature.get("automation")
+            if automation is not None and hasattr(
+                automation, "_reconcile_startup_states"
+            ):
+                await automation._reconcile_startup_states()
+
+        co2_feature = features.get("co2_control")
+        if isinstance(co2_feature, dict):
+            automation = co2_feature.get("automation")
+            if automation is not None and hasattr(automation, "_evaluate_co2_control"):
+                await automation._evaluate_co2_control(device_id)
+
     async def _async_send_fan_command(call: ServiceCall) -> None:
         data = dict(call.data)
         device_id = data["device_id"]
         command = data["command"]
+
+        if command == "fan_auto":
+            arbiter = get_fan_speed_arbiter(hass)
+            await arbiter.async_clear_manual_override(device_id)
+            await _async_resume_feature_control(device_id)
+            return
+
+        if command in {"fan_low", "fan_medium", "fan_high"}:
+            arbiter = get_fan_speed_arbiter(hass)
+            await arbiter.async_set_manual_override(
+                device_id,
+                source_id="default_service",
+                requested_speed=command,
+                reason="manual_card_command",
+                metadata={"origin": "service"},
+            )
+            await _async_clear_feature_fan_demands(device_id)
+            return
 
         commands = RamsesCommands(hass)
         await commands.send_command(device_id, command)

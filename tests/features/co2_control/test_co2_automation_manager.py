@@ -45,6 +45,7 @@ class TestCO2AutomationManager:
         self.fan_speed_arbiter = MagicMock()
         self.fan_speed_arbiter.async_set_demand = AsyncMock(return_value=True)
         self.fan_speed_arbiter.async_clear_demand = AsyncMock(return_value=True)
+        self.fan_speed_arbiter.is_manual_override_active.return_value = False
 
         self.config_entry = MagicMock()
         self.config_entry.options = {
@@ -305,6 +306,18 @@ class TestCO2AutomationManager:
         await self.manager._process_automation_logic("32:123456", {})
 
         self.manager._evaluate_co2_control.assert_called_once_with("32:123456")
+
+    @pytest.mark.asyncio
+    async def test_process_automation_logic_skips_when_manual_override_active(
+        self,
+    ) -> None:
+        """Sticky manual override should short-circuit CO2 automation."""
+        self.manager._evaluate_co2_control = AsyncMock()
+        self.fan_speed_arbiter.is_manual_override_active.return_value = True
+
+        await self.manager._process_automation_logic("32:123456", {})
+
+        self.manager._evaluate_co2_control.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_automation_skips_when_device_offline(self) -> None:

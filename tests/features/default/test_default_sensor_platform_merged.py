@@ -14,6 +14,7 @@ from custom_components.ramses_extras.features.default.const import (
 )
 from custom_components.ramses_extras.features.default.platforms.sensor import (
     DefaultHumiditySensor,
+    FanControlModeSensor,
     _check_underlying_entities_exist,
     async_setup_entry,
     create_default_sensor,
@@ -840,18 +841,33 @@ class TestCreateDefaultSensor:
         """Test sensor creation for FAN devices."""
         sensors = await create_default_sensor(hass, "32:153289")
 
-        # Should create 2 sensors (indoor and outdoor absolute humidity)
-        assert len(sensors) == 2
+        # Should create 3 sensors including control mode
+        assert len(sensors) == 3
 
         # Verify sensor types
         sensor_types = {sensor._sensor_type for sensor in sensors}
-        assert sensor_types == {"indoor_absolute_humidity", "outdoor_absolute_humidity"}
+        assert sensor_types == {
+            "indoor_absolute_humidity",
+            "outdoor_absolute_humidity",
+            "fan_control_mode",
+        }
 
         # Verify sensor configuration
         for sensor in sensors:
-            assert isinstance(sensor, DefaultHumiditySensor)
             assert sensor._device_id == "32:153289"
+
+        humidity_sensors = [
+            sensor for sensor in sensors if isinstance(sensor, DefaultHumiditySensor)
+        ]
+        assert len(humidity_sensors) == 2
+        for sensor in humidity_sensors:
             assert sensor._attr_native_unit_of_measurement == "g/m³"
+
+        control_mode_sensors = [
+            sensor for sensor in sensors if isinstance(sensor, FanControlModeSensor)
+        ]
+        assert len(control_mode_sensors) == 1
+        assert control_mode_sensors[0].native_value == "auto_by_fan"
 
     async def test_create_default_sensor_with_area_sensors(self, hass):
         """Configured area sensors should create additional default sensors."""
@@ -876,6 +892,7 @@ class TestCreateDefaultSensor:
         sensor_types = {sensor._sensor_type for sensor in sensors}
         assert "indoor_absolute_humidity" in sensor_types
         assert "outdoor_absolute_humidity" in sensor_types
+        assert "fan_control_mode" in sensor_types
         assert "area_absolute_humidity_bathroom" in sensor_types
 
 

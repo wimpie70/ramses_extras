@@ -41,7 +41,8 @@ _LOGGER = logging.getLogger(__name__)
 def is_supported_humidity_device(hass: object, device_id: str) -> bool:
     normalized_device_id = device_id.replace("_", ":")
     device = find_ramses_device(hass, normalized_device_id)
-    return get_device_type(device) == "HvacVentilator"
+    device_type = get_device_type(device)
+    return bool(device_type == "HvacVentilator")
 
 
 class HumidityAutomationManager(ExtrasBaseAutomation):
@@ -624,6 +625,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             self.is_device_transport_available(device_id),
         )
         if not self._automation_active or not self._is_feature_enabled():
+            return
+
+        if self.fan_speed_arbiter.is_manual_override_active(device_id):
+            _LOGGER.debug(
+                "Manual override active - skipping humidity control logic for %s",
+                device_id,
+            )
             return
 
         # Check transport availability before processing
