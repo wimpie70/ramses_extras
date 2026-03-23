@@ -152,6 +152,11 @@ async def run_entry_setup_pipeline(hass: HomeAssistant, entry: ConfigEntry) -> N
 
     _LOGGER.debug("WebSocket functionality uses feature-centric architecture")
 
+    # Clear version cache to ensure fresh version lookup for downgrades
+    data = hass.data.setdefault(DOMAIN, {})
+    data.pop("_integration_version", None)
+    _LOGGER.debug("Cleared integration version cache for fresh lookup")
+
     await setup_card_files_and_config(hass, entry)
 
     await register_services(hass)

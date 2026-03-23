@@ -232,6 +232,7 @@ class DeviceCommandManager:
                 "rate_limit_interval": self._min_interval,
                 "total_devices": len(self._last_command_time),
             },
+            "failed_commands": {},  # DeviceCommandManager doesn't track failed commands
         }
 
 
@@ -250,6 +251,8 @@ class RamsesCommands:
         self._device_manager = DeviceCommandManager(self)
         # Track running update_fan_params tasks per device
         self._update_fan_params_tasks: dict[str, asyncio.Task] = {}
+        # Track failed commands for monitoring and retry logic
+        self._failed_commands: dict[str, dict[str, Any]] = {}
 
     async def send_fan_command(self, device_id: str, command: str) -> CommandResult:
         """Send a fan command to a Ramses RF device.
@@ -506,7 +509,49 @@ class RamsesCommands:
                 kwargs["device_id"] = coordinator.client.hgi.id
 
             cmd = coordinator.client.create_cmd(**kwargs)
-            await coordinator.client.async_send_cmd(cmd)
+
+            # Handle new timeout behavior in ramses_rf 0.55.6
+            # In version 0.55.6, async_send_cmd raises exceptions on timeout
+            # instead of silently failing. We need to handle this gracefully.
+            try:
+                await coordinator.client.async_send_cmd(cmd)
+            except Exception as e:
+                # Check if this is a timeout error from the new ramses_rf version
+                # These errors indicate the command was sent but no acknowledgment
+                # received
+                if "Expired global timer" in str(e) or "send_timeout" in str(e):
+                    # Log detailed command information for timeout monitoring
+                    # This helps with debugging and allows custom retry logic
+                    _LOGGER.warning(
+                        f"Command timeout for device {device_id_formatted}: "
+                        f"{cmd_def['code']} {cmd_def['verb']} {cmd_def['payload']} "
+                        f"({cmd_def['description']}) - {e}"
+                    )
+
+                    # Store failed command for potential retry or monitoring
+                    # This creates a history of timeouts that can be used by:
+                    # - Custom retry logic
+                    # - Health monitoring dashboards
+                    # - Automatic device recovery mechanisms
+                    if not hasattr(self, "_failed_commands"):
+                        self._failed_commands = {}
+                    self._failed_commands[device_id_formatted] = {
+                        "command": cmd_def,  # Full command definition for retry
+                        "timestamp": time.time(),  # When the timeout occurred
+                        "error": str(e),  # Full error details for analysis
+                    }
+
+                    # Still notify transport monitor and return True
+                    # The command was likely sent successfully, just no echo received
+                    # Not notifying would incorrectly mark the device as offline
+                    transport_monitor.notify_command_sent(device_id_formatted)
+                    _LOGGER.debug(
+                        f"Ramses command sent (with timeout): {cmd_def['description']}"
+                    )
+                    return True
+                # Re-raise non-timeout errors as they indicate real problems
+                # Examples: device not found, transport disconnected, etc.
+                raise
 
             # Notify transport monitor that we sent a command
             transport_monitor.notify_command_sent(device_id_formatted)
@@ -517,6 +562,66 @@ class RamsesCommands:
         except Exception as e:
             _LOGGER.error(f"Failed to send Ramses command {cmd_def['code']}: {e}")
             return False
+
+    def get_failed_commands(self) -> dict[str, dict[str, Any]]:
+        """Get failed commands for monitoring and potential retry.
+
+        This method provides access to the history of timed-out commands,
+        which can be used for:
+        - Health monitoring dashboards
+        - Custom retry logic
+        - Device availability analysis
+        - Troubleshooting communication issues
+
+        Returns:
+            Dictionary mapping device_id to failed command info containing:
+            - command: Full command definition (code, verb, payload, description)
+            - timestamp: When the timeout occurred (Unix timestamp)
+            - error: Full error message from ramses_rf
+
+        Note: Automatically cleans up failures older than 5 minutes
+        to prevent memory growth.
+        """
+        if not hasattr(self, "_failed_commands"):
+            return {}
+
+        # Clean up old failures (older than 5 minutes)
+        # This prevents the failed commands dict from growing indefinitely
+        # and ensures we only track recent issues
+        current_time = time.time()
+        cutoff_time = current_time - 300  # 5 minutes
+
+        self._failed_commands = {
+            device_id: info
+            for device_id, info in self._failed_commands.items()
+            if isinstance(info.get("timestamp"), (int, float))
+            and info["timestamp"] > cutoff_time
+        }
+
+        return self._failed_commands.copy()
+
+    def clear_failed_commands(self, device_id: str | None = None) -> None:
+        """Clear failed commands for monitoring.
+
+        Use this method to reset the failure tracking, typically after:
+        - Successfully retrying a failed command
+        - Device comes back online
+        - Manual intervention to fix communication issues
+
+        Args:
+            device_id: Specific device ID to clear (format: 32_153289 or 32:153289)
+                     If None, clears all failed commands for all devices
+        """
+        if not hasattr(self, "_failed_commands"):
+            return
+
+        if device_id:
+            # Convert device ID format to match what we store
+            device_id_formatted = device_id.replace("_", ":")
+            self._failed_commands.pop(device_id_formatted, None)
+        else:
+            # Clear all failures - useful for global reset or maintenance
+            self._failed_commands.clear()
 
     async def _get_ramses_cc_coordinator(self) -> "RamsesCoordinator | None":
         """Get the ramses_cc coordinator instance.
@@ -567,7 +672,9 @@ class RamsesCommands:
         Returns:
             Dictionary of command definitions with metadata
         """
-        return self._command_registry.get_registered_commands()
+        commands = self._command_registry.get_registered_commands()
+        # Type assertion to ensure correct return type
+        return commands if isinstance(commands, dict) else {}
 
     def get_command_description(self, command: str) -> str:
         """Get description for a command.
