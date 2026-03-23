@@ -151,6 +151,15 @@ class FanSpeedArbiter:
 
     async def async_apply(self, device_id: str) -> bool:
         """Apply the resolved command for a device."""
+        # Filter out HGI gateway devices - they're not controllable
+        normalized_device_id = device_id.replace("_", ":")
+        if normalized_device_id.startswith("18:"):
+            _LOGGER.debug(
+                "Skipping fan command for %s - HGI gateway is not controllable",
+                device_id,
+            )
+            return False
+
         resolved = self.resolve(device_id)
         command_name = resolved.command_name
 
