@@ -260,6 +260,12 @@ class HvacFanCard extends RamsesBaseCard {
     const fanControlMode = this.getEntityState(
       config.fan_control_mode_entity
     )?.state || null;
+    const fanRateEntityState = this.getEntityState(config.fan_speed_entity)?.state || null;
+    const fanModeDisplay = this._getDisplayFanMode(
+      da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
+      fanControlMode,
+      fanRateEntityState
+    );
 
     const rawData = {
       indoorTemp,
@@ -273,7 +279,7 @@ class HvacFanCard extends RamsesBaseCard {
       exhaustTemp,
       exhaustFanSpeed: this._getSpeedDisplay(da31Data.exhaust_fan_speed, config.exhaust_fan_speed_entity),
       supplyFanSpeed: this._getSpeedDisplay(da31Data.supply_fan_speed, config.supply_fan_speed_entity),
-      fanMode: da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
+      fanMode: fanModeDisplay,
       supplyFlowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow :
         this.getEntityStateAsNumber(config.supply_flow_entity, null),
       exhaustFlowRate: da31Data.exhaust_flow !== undefined ? da31Data.exhaust_flow :
@@ -803,12 +809,15 @@ class HvacFanCard extends RamsesBaseCard {
     const config = this.config || {};
     const dehumMode = this.getEntityState(config.dehum_mode_entity)?.state || 'off';
     const dehumActive = this.getEntityState(config.dehum_active_entity)?.state || 'off';
+    const fanControlMode = this.getEntityState(config.fan_control_mode_entity)?.state || null;
     const attrs = this._getDehumidifyStatusAttributes();
     const balanceTriggered = attrs.control_mode === 'balance' || attrs.control_mode === 'spike_boost';
 
-    // Create compact balance status: "Balance → On + Active" or "Balance → Off"
+    // Create compact balance status: "Balance → Manual", "Balance → On + Active", or "Balance → Off"
     let balanceStatus = '';
-    if (dehumMode === 'off') {
+    if (fanControlMode === 'manual_override') {
+      balanceStatus = 'Balance → Manual';
+    } else if (dehumMode === 'off') {
       balanceStatus = 'Balance → Off';
     } else {
       const activeState = dehumActive === 'on' ? 'Active' : 'Passive';
@@ -843,10 +852,13 @@ class HvacFanCard extends RamsesBaseCard {
     const co2ControlMode = this.getEntityState(config.co2_control_entity)?.state || 'off';
     const co2Active = this.getEntityState(config.co2_active_entity)?.state || 'off';
     const co2ZoneStatus = this.getEntityState(config.co2_zone_status_entity)?.state || 'unknown';
+    const fanControlMode = this.getEntityState(config.fan_control_mode_entity)?.state || null;
 
-    // Create CO2 status: "CO2 → On + Active" or "CO2 → Off"
+    // Create CO2 status: "CO2 → Manual", "CO2 → On + Active", or "CO2 → Off"
     let co2Status = '';
-    if (co2ControlMode === 'off') {
+    if (fanControlMode === 'manual_override') {
+      co2Status = 'CO2 → Manual';
+    } else if (co2ControlMode === 'off') {
       co2Status = 'CO2 → Off';
     } else {
       const activeState = co2Active === 'on' ? 'Active' : 'Passive';
@@ -1119,6 +1131,15 @@ class HvacFanCard extends RamsesBaseCard {
       config.outdoor_abs_humid_entity,
       null
     );
+    const fanControlMode = this.getEntityState(
+      config.fan_control_mode_entity
+    )?.state || null;
+    const fanRateEntityState = this.getEntityState(config.fan_speed_entity)?.state || null;
+    const fanModeDisplay = this._getDisplayFanMode(
+      da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
+      fanControlMode,
+      fanRateEntityState
+    );
 
     // Get 10D0 data for filter information
     const da10D0Data = this.get10D0Data();
@@ -1131,12 +1152,13 @@ class HvacFanCard extends RamsesBaseCard {
       outdoorHumidity,
       indoorAbsHumidity,
       outdoorAbsHumidity, // From integration sensor
+      fanControlMode,
       supplyTemp,
       exhaustTemp,
       // Fan data - prefer 31DA real-time, fall back to entity states
       exhaustFanSpeed: this._getSpeedDisplay(da31Data.exhaust_fan_speed, config.exhaust_fan_speed_entity),
       supplyFanSpeed: this._getSpeedDisplay(da31Data.supply_fan_speed, config.supply_fan_speed_entity),
-      fanMode: da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
+      fanMode: fanModeDisplay,
       // Flow data - prefer 31DA real-time, fall back to entity states
       supplyFlowRate: da31Data.supply_flow !== undefined ? da31Data.supply_flow :
         this.getEntityStateAsNumber(config.supply_flow_entity, null),
@@ -1667,6 +1689,25 @@ class HvacFanCard extends RamsesBaseCard {
   // Get fan mode from 31DA data - always show fan_info as-is
   _getFanMode(da31Data) {
     return da31Data.fan_info || null;
+  }
+
+  _getDisplayFanMode(fanMode, fanControlMode, fanRateEntityState) {
+    if (fanControlMode === 'manual_override') {
+      const normalizedRate = typeof fanRateEntityState === 'string'
+        ? fanRateEntityState.trim().toLowerCase()
+        : null;
+
+      if (normalizedRate === 'medium') {
+        return 'mid';
+      }
+      if (normalizedRate === 'low' || normalizedRate === 'mid' || normalizedRate === 'high') {
+        return normalizedRate;
+      }
+
+      return 'manual';
+    }
+
+    return fanMode || 'auto';
   }
 
   // Format speed value consistently (31DA raw values are 0-1)

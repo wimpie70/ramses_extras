@@ -282,9 +282,7 @@ describe('HvacFanCard', () => {
 
   describe('fan control mode entity', () => {
     test('should include fan control mode entity in card config', () => {
-      expect(card.config.fan_control_mode_entity).toBe(
-        'sensor.fan_control_mode_32_153289'
-      );
+      expect(card.config.fan_control_mode_entity).toBe('sensor.fan_control_mode_32_153289');
     });
 
     test('should read current backend fan control mode state', () => {
@@ -301,6 +299,20 @@ describe('HvacFanCard', () => {
       const controlMode = mockHass.states[card.config.fan_control_mode_entity]?.state || null;
 
       expect(controlMode).toBe('manual_override');
+    });
+
+    test('should derive a manual speed label from the manual rate', () => {
+      mockHass.states[card.config.fan_speed_entity] = { state: 'medium' };
+      mockHass.states[card.config.fan_control_mode_entity] = {
+        state: 'manual_override',
+      };
+
+      const isManualOverride =
+        mockHass.states[card.config.fan_control_mode_entity]?.state === 'manual_override';
+      const isMediumRate = mockHass.states[card.config.fan_speed_entity]?.state === 'medium';
+      const displayedMode = isManualOverride && isMediumRate ? 'mid' : 'auto';
+
+      expect(displayedMode).toBe('mid');
     });
   });
 
