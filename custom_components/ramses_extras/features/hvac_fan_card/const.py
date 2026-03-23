@@ -73,6 +73,7 @@ FEATURE_DEFINITION = {
         # Absolute humidity sensors provided by integration
         "indoor_abs_humid_entity": "sensor.indoor_absolute_humidity_{device_id}",
         "outdoor_abs_humid_entity": "sensor.outdoor_absolute_humidity_{device_id}",
+        "fan_control_mode_entity": "sensor.fan_control_mode_{device_id}",
         # Temperature sensors
         "indoor_temp_entity": "sensor.{device_id}_indoor_temp",
         "outdoor_temp_entity": "sensor.{device_id}_outdoor_temp",

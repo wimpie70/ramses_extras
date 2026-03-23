@@ -257,6 +257,9 @@ class HvacFanCard extends RamsesBaseCard {
       config.outdoor_abs_humid_entity,
       null
     );
+    const fanControlMode = this.getEntityState(
+      config.fan_control_mode_entity
+    )?.state || null;
 
     const rawData = {
       indoorTemp,
@@ -265,6 +268,7 @@ class HvacFanCard extends RamsesBaseCard {
       outdoorHumidity,
       indoorAbsHumidity,
       outdoorAbsHumidity,
+      fanControlMode,
       supplyTemp,
       exhaustTemp,
       exhaustFanSpeed: this._getSpeedDisplay(da31Data.exhaust_fan_speed, config.exhaust_fan_speed_entity),
