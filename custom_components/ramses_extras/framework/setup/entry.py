@@ -334,6 +334,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if DOMAIN in hass.data:
         domain_data = hass.data[DOMAIN]
         if isinstance(domain_data, dict):
+            remote_listener_unsubs = domain_data.get("_fan_remote_listener_unsubs", [])
+            if isinstance(remote_listener_unsubs, list):
+                for unsub in remote_listener_unsubs:
+                    try:
+                        if callable(unsub):
+                            unsub()
+                    except Exception as e:
+                        _LOGGER.warning("Failed to remove remote fan listener: %s", e)
+
             # Stop humidity_control automation if running
             if "humidity_automation" in domain_data:
                 try:

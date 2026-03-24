@@ -384,10 +384,9 @@ async def ws_traffic_subscribe_stats(
         )
         connection.send_message(websocket_api.event_message(msg["id"], snapshot))
 
-    def _on_message(event: Event[dict[str, Any]]) -> None:
+    def _on_message(payload: dict[str, Any]) -> None:
         nonlocal last_sent
 
-        payload = event.data or {}
         ev_src = payload.get("src")
         ev_dst = payload.get("dst")
         if device_id and device_id not in (ev_src, ev_dst):
@@ -418,7 +417,7 @@ async def ws_traffic_subscribe_stats(
         last_sent = now
         _send_snapshot()
 
-    unsub = hass.bus.async_listen("ramses_cc_message", _on_message)
+    unsub = collector.subscribe(_on_message)
 
     if not hasattr(connection, "subscriptions"):
         connection.subscriptions = {}

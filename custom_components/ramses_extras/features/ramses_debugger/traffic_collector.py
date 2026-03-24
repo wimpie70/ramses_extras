@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 
+from ...framework.helpers.ramses_commands import RamsesCommands
 from .messages_provider import TrafficBufferProvider
 
 _LOGGER = logging.getLogger(__name__)
@@ -69,7 +71,10 @@ class TrafficCollector:
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        self._unsub: CALLBACK_TYPE | None = None
+        self._event_unsub: CALLBACK_TYPE | None = None
+        self._msg_handler_unsub: CALLBACK_TYPE | None = None
+        self._subscribers: dict[int, Callable[[dict[str, Any]], None]] = {}
+        self._next_subscription_id = 0
 
         self._flows: dict[tuple[str, str], TrafficFlowStats] = {}
         self._max_flows: int = 2000
@@ -136,21 +141,44 @@ class TrafficCollector:
 
     def start(self) -> None:
         """Start listening for ``ramses_cc_message`` events."""
-        if self._unsub is not None:
+        if self._event_unsub is not None or self._msg_handler_unsub is not None:
             return
-        self._unsub = self._hass.bus.async_listen(
+        self._event_unsub = self._hass.bus.async_listen(
             "ramses_cc_message",
             self._handle_ramses_cc_message,
         )
+        self._hass.async_create_task(self._async_attach_client_listener())
         _LOGGER.debug("TrafficCollector started (listening for ramses_cc_message)")
 
     def stop(self) -> None:
         """Stop listening for ``ramses_cc_message`` events."""
-        if self._unsub is None:
-            return
-        self._unsub()
-        self._unsub = None
+        if self._event_unsub is not None:
+            self._event_unsub()
+            self._event_unsub = None
+        if self._msg_handler_unsub is not None:
+            self._msg_handler_unsub()
+            self._msg_handler_unsub = None
         _LOGGER.debug("TrafficCollector stopped")
+
+    async def _async_attach_client_listener(self) -> None:
+        commands = RamsesCommands(self._hass)
+        coordinator = await commands._get_ramses_cc_coordinator()
+        client = (
+            getattr(coordinator, "client", None) if coordinator is not None else None
+        )
+        add_msg_handler = getattr(client, "add_msg_handler", None)
+        if not callable(add_msg_handler) or self._msg_handler_unsub is not None:
+            return
+
+        msg_handler_unsub = add_msg_handler(self._handle_msg)
+        if callable(msg_handler_unsub):
+            self._msg_handler_unsub = msg_handler_unsub
+            if self._event_unsub is not None:
+                self._event_unsub()
+                self._event_unsub = None
+            _LOGGER.debug(
+                "TrafficCollector switched to direct ramses_cc client message handler"
+            )
 
     def reset(self) -> None:
         """Clear all collected counters and restart the session start time."""
@@ -219,11 +247,25 @@ class TrafficCollector:
         """Return the TrafficBufferProvider for message queries."""
         return self._buffer_provider
 
-    def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
-        raw = event.data or {}
-        data = dict(raw)
-        data["time_fired"] = event.time_fired.isoformat(timespec="microseconds")
+    def subscribe(self, callback: Callable[[dict[str, Any]], None]) -> CALLBACK_TYPE:
+        """Subscribe to live collector updates."""
+        subscription_id = self._next_subscription_id
+        self._next_subscription_id += 1
+        self._subscribers[subscription_id] = callback
 
+        def _unsub() -> None:
+            self._subscribers.pop(subscription_id, None)
+
+        return _unsub
+
+    def _notify_subscribers(self, data: dict[str, Any]) -> None:
+        for callback in list(self._subscribers.values()):
+            try:
+                callback(data)
+            except Exception as err:
+                _LOGGER.debug("TrafficCollector subscriber callback failed: %s", err)
+
+    def _ingest_message(self, data: dict[str, Any]) -> None:
         src = data.get("src")
         dst = data.get("dst")
         if not isinstance(src, str) or not isinstance(dst, str):
@@ -243,7 +285,6 @@ class TrafficCollector:
             if not isinstance(dtm, str):
                 dtm = None
 
-        # Ingest into buffer provider for message queries
         self._buffer_provider.ingest_event(data)
 
         self._total_count += 1
@@ -261,3 +302,28 @@ class TrafficCollector:
         flow.add_message(verb=verb, code=code, dtm=dtm)
 
         self._evict_flows_if_needed()
+        self._notify_subscribers(data)
+
+    def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
+        raw = event.data or {}
+        data = dict(raw)
+        data["time_fired"] = event.time_fired.isoformat(timespec="microseconds")
+
+        self._ingest_message(data)
+
+    def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        data = {
+            "src": getattr(getattr(msg, "src", None), "id", None),
+            "dst": getattr(getattr(msg, "dst", None), "id", None),
+            "verb": str(getattr(msg, "verb", "")) or None,
+            "code": str(getattr(msg, "code", "")) or None,
+            "payload": str(getattr(msg, "payload", "")) or None,
+        }
+
+        dtm = getattr(msg, "dtm", None)
+        if isinstance(dtm, datetime):
+            data["dtm"] = dtm.isoformat(timespec="microseconds")
+        elif isinstance(dtm, str):
+            data["dtm"] = dtm
+
+        self._ingest_message(data)

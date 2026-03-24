@@ -286,3 +286,25 @@ def test_collector_time_fired_used_when_missing_dtm(hass) -> None:
     assert stats["total_count"] == 1
     flow = stats["flows"][0]
     assert flow["last_seen"].startswith("2026-01-20T12:00:00")
+
+
+def test_collector_ingests_direct_client_messages(hass) -> None:
+    collector = TrafficCollector(hass)
+
+    msg = MagicMock()
+    msg.src.id = "32:153289"
+    msg.dst.id = "37:169161"
+    msg.verb = " I"
+    msg.code = "31DA"
+    msg.payload = "payload"
+    msg.dtm = datetime(2026, 1, 20, 12, 0, 1)
+
+    collector._handle_msg(msg)
+
+    stats = collector.get_stats()
+    assert stats["total_count"] == 1
+    assert stats["by_code"]["31DA"] == 1
+    assert stats["by_verb"][" I"] == 1
+    flow = stats["flows"][0]
+    assert flow["src"] == "32:153289"
+    assert flow["dst"] == "37:169161"

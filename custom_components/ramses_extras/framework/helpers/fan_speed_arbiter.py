@@ -71,6 +71,7 @@ class FanSpeedArbiter:
         self.hass = hass
         self.ramses_commands = RamsesCommands(hass)
         self._demands: dict[str, dict[tuple[str, str], FanSpeedDemand]] = {}
+        self._extras_control_enabled: dict[str, bool] = {}
         self._callbacks: dict[str, tuple[str, Any]] = {}
 
     @staticmethod
@@ -103,13 +104,114 @@ class FanSpeedArbiter:
                 )
 
     def get_control_mode(self, device_id: str) -> str:
-        """Return the current coarse control mode for a device."""
+        """Return a coarse control mode for UI/debugging."""
         normalized_device_id = self._normalize_device_id(device_id)
         if self.is_manual_override_active(normalized_device_id):
             return "manual_override"
-        if self.get_active_demands(normalized_device_id):
-            return "auto_by_extras"
-        return "auto_by_fan"
+        if not self.is_extras_control_enabled(normalized_device_id):
+            return "auto_by_fan"
+        return "auto_by_extras"
+
+    def is_extras_control_enabled(self, device_id: str) -> bool:
+        """Return whether extras automation is currently allowed to control a device."""
+        normalized_device_id = self._normalize_device_id(device_id)
+        return self._extras_control_enabled.get(normalized_device_id, True)
+
+    def set_extras_control_enabled(self, device_id: str, enabled: bool) -> None:
+        """Update whether extras automation may control a device."""
+        normalized_device_id = self._normalize_device_id(device_id)
+        self._extras_control_enabled[normalized_device_id] = enabled
+
+    def set_manual_override_state(
+        self,
+        device_id: str,
+        *,
+        source_id: str,
+        requested_speed: str | int,
+        reason: str = "manual_override",
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Update manual override demand state without applying commands."""
+        override_metadata = dict(metadata or {})
+        override_metadata.setdefault("manual", True)
+        self._set_demand_state(
+            device_id,
+            feature_id=_MANUAL_OVERRIDE_FEATURE_ID,
+            source_id=source_id,
+            requested_speed=requested_speed,
+            priority=_MANUAL_OVERRIDE_PRIORITY,
+            reason=reason,
+            metadata=override_metadata,
+        )
+
+    def clear_manual_override_state(self, device_id: str) -> None:
+        """Clear manual override state without applying commands."""
+        self._clear_demand_state(
+            device_id,
+            feature_id=_MANUAL_OVERRIDE_FEATURE_ID,
+        )
+
+    def clear_demand_state(
+        self,
+        device_id: str,
+        *,
+        feature_id: str,
+        source_id: str | None = None,
+    ) -> None:
+        """Clear demand state without applying commands."""
+        self._clear_demand_state(device_id, feature_id=feature_id, source_id=source_id)
+
+    async def async_commit_state(self, device_id: str, *, apply: bool = True) -> bool:
+        """Apply and publish pending state changes for a device."""
+        normalized_device_id = self._normalize_device_id(device_id)
+        result = True
+        if apply:
+            result = await self.async_apply(normalized_device_id)
+        self._notify_control_mode_changed(normalized_device_id)
+        return result
+
+    def _set_demand_state(
+        self,
+        device_id: str,
+        *,
+        feature_id: str,
+        source_id: str,
+        requested_speed: str | int,
+        priority: int = 0,
+        reason: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        normalized_device_id = self._normalize_device_id(device_id)
+        command_name = self.normalize_speed(requested_speed)
+        demand = FanSpeedDemand(
+            feature_id=feature_id,
+            source_id=source_id,
+            requested_speed=command_name,
+            priority=priority,
+            reason=reason,
+            metadata=metadata or {},
+        )
+        device_demands = self._demands.setdefault(normalized_device_id, {})
+        device_demands[(feature_id, source_id)] = demand
+
+    def _clear_demand_state(
+        self,
+        device_id: str,
+        *,
+        feature_id: str,
+        source_id: str | None = None,
+    ) -> None:
+        normalized_device_id = self._normalize_device_id(device_id)
+        device_demands = self._demands.get(normalized_device_id, {})
+        if source_id is None:
+            keys_to_remove = [key for key in device_demands if key[0] == feature_id]
+            for key in keys_to_remove:
+                device_demands.pop(key, None)
+        else:
+            device_demands.pop((feature_id, source_id), None)
+
+        if not device_demands:
+            self._demands.pop(normalized_device_id, None)
 
     async def async_set_manual_override(
         self,
@@ -159,21 +261,16 @@ class FanSpeedArbiter:
         metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Create or update a feature demand and apply the resolved command."""
-        normalized_device_id = self._normalize_device_id(device_id)
-        command_name = self.normalize_speed(requested_speed)
-        demand = FanSpeedDemand(
+        self._set_demand_state(
+            device_id,
             feature_id=feature_id,
             source_id=source_id,
-            requested_speed=command_name,
+            requested_speed=requested_speed,
             priority=priority,
             reason=reason,
-            metadata=metadata or {},
+            metadata=metadata,
         )
-        device_demands = self._demands.setdefault(normalized_device_id, {})
-        device_demands[(feature_id, source_id)] = demand
-        result = await self.async_apply(normalized_device_id)
-        self._notify_control_mode_changed(normalized_device_id)
-        return result
+        return await self.async_commit_state(device_id)
 
     async def async_clear_demand(
         self,
@@ -183,21 +280,8 @@ class FanSpeedArbiter:
         source_id: str | None = None,
     ) -> bool:
         """Clear one or more feature demands and apply the resolved command."""
-        normalized_device_id = self._normalize_device_id(device_id)
-        device_demands = self._demands.get(normalized_device_id, {})
-        if source_id is None:
-            keys_to_remove = [key for key in device_demands if key[0] == feature_id]
-            for key in keys_to_remove:
-                device_demands.pop(key, None)
-        else:
-            device_demands.pop((feature_id, source_id), None)
-
-        if not device_demands:
-            self._demands.pop(normalized_device_id, None)
-
-        result = await self.async_apply(normalized_device_id)
-        self._notify_control_mode_changed(normalized_device_id)
-        return result
+        self._clear_demand_state(device_id, feature_id=feature_id, source_id=source_id)
+        return await self.async_commit_state(device_id)
 
     def get_active_demands(self, device_id: str) -> list[FanSpeedDemand]:
         """Return active demands for a device."""
@@ -238,6 +322,14 @@ class FanSpeedArbiter:
                 device_id=normalized_device_id,
                 command_name=winning_demand.requested_speed,
                 winning_demand=winning_demand,
+                active_demands=active_demands,
+            )
+
+        if not self.is_extras_control_enabled(normalized_device_id):
+            return ResolvedFanSpeed(
+                device_id=normalized_device_id,
+                command_name="fan_auto",
+                winning_demand=None,
                 active_demands=active_demands,
             )
 
@@ -332,6 +424,7 @@ class FanSpeedArbiter:
             "devices": {
                 device_id: {
                     "control_mode": self.get_control_mode(device_id),
+                    "extras_control_enabled": self.is_extras_control_enabled(device_id),
                     "active_demands": [
                         {
                             "feature_id": demand.feature_id,
@@ -354,6 +447,9 @@ class FanSpeedArbiter:
         resolved = self.resolve(normalized_device_id)
         return {
             "control_mode": self.get_control_mode(normalized_device_id),
+            "extras_control_enabled": self.is_extras_control_enabled(
+                normalized_device_id
+            ),
             "resolved_command": resolved.command_name,
             "manual_override_active": self.is_manual_override_active(
                 normalized_device_id

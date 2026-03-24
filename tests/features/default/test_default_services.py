@@ -17,6 +17,8 @@ from custom_components.ramses_extras.features.default.services import (
 def hass():
     """Mock Home Assistant."""
     hass = MagicMock(spec=HomeAssistant)
+    hass.bus = MagicMock()
+    hass.bus.async_listen = MagicMock(return_value=MagicMock())
     hass.services = MagicMock()
     hass.data = {}
     return hass
@@ -59,30 +61,36 @@ async def test_send_fan_command_service(hass):
         "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
     ) as mock_get_arbiter:
         mock_arbiter = MagicMock()
-        mock_arbiter.async_set_manual_override = AsyncMock()
-        mock_arbiter.async_clear_demand = AsyncMock()
+        mock_arbiter.set_extras_control_enabled = MagicMock()
+        mock_arbiter.set_manual_override_state = MagicMock()
+        mock_arbiter.clear_demand_state = MagicMock()
+        mock_arbiter.async_commit_state = AsyncMock()
         mock_get_arbiter.return_value = mock_arbiter
 
         await send_command_func(call)
 
-        mock_arbiter.async_set_manual_override.assert_called_once_with(
+        mock_arbiter.set_extras_control_enabled.assert_called_once_with(
+            "32:123456", True
+        )
+        mock_arbiter.set_manual_override_state.assert_called_once_with(
             "32:123456",
             source_id="default_service",
             requested_speed="fan_high",
             reason="manual_card_command",
             metadata={"origin": "service"},
         )
-        assert mock_arbiter.async_clear_demand.await_count == 2
-        mock_arbiter.async_clear_demand.assert_any_await(
+        assert mock_arbiter.clear_demand_state.call_count == 2
+        mock_arbiter.clear_demand_state.assert_any_call(
             "32:123456", feature_id="humidity_control"
         )
-        mock_arbiter.async_clear_demand.assert_any_await(
+        mock_arbiter.clear_demand_state.assert_any_call(
             "32:123456", feature_id="co2_control"
         )
+        mock_arbiter.async_commit_state.assert_awaited_once_with("32:123456")
 
 
 async def test_send_fan_command_service_auto_clears_manual_override(hass):
-    """Test fan_auto clears manual override through the arbiter."""
+    """Test fan_auto from manual mode clears override and resumes extras."""
     hass.services.has_service.return_value = False
     await async_setup_services(hass)
     hass.data[DOMAIN] = {
@@ -115,18 +123,107 @@ async def test_send_fan_command_service_auto_clears_manual_override(hass):
         "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
     ) as mock_get_arbiter:
         mock_arbiter = MagicMock()
-        mock_arbiter.async_clear_manual_override = AsyncMock()
+        mock_arbiter.is_manual_override_active.return_value = True
+        mock_arbiter.set_extras_control_enabled = MagicMock()
+        mock_arbiter.clear_manual_override_state = MagicMock()
+        mock_arbiter.async_commit_state = AsyncMock()
         mock_get_arbiter.return_value = mock_arbiter
 
         await send_command_func(call)
 
-        mock_arbiter.async_clear_manual_override.assert_called_once_with("32:123456")
+        mock_arbiter.set_extras_control_enabled.assert_called_once_with(
+            "32:123456", True
+        )
+        mock_arbiter.clear_manual_override_state.assert_called_once_with("32:123456")
+        mock_arbiter.async_commit_state.assert_awaited_once_with("32:123456")
         humidity_automation = hass.data[DOMAIN]["features"]["humidity_control"][
             "automation"
         ]
         co2_automation = hass.data[DOMAIN]["features"]["co2_control"]["automation"]
         humidity_automation._reconcile_startup_states.assert_awaited_once()
         co2_automation._evaluate_co2_control.assert_awaited_once_with("32:123456")
+
+
+async def test_send_fan_command_service_auto_disables_extras_when_already_auto(hass):
+    """Test fan_auto toggles extras control off when already in auto mode."""
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_auto"}
+
+    with patch(
+        "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+    ) as mock_get_arbiter:
+        mock_arbiter = MagicMock()
+        mock_arbiter.is_manual_override_active.return_value = False
+        mock_arbiter.is_extras_control_enabled.return_value = True
+        mock_arbiter.set_extras_control_enabled = MagicMock()
+        mock_arbiter.clear_manual_override_state = MagicMock()
+        mock_arbiter.async_commit_state = AsyncMock()
+        mock_get_arbiter.return_value = mock_arbiter
+
+        await send_command_func(call)
+
+        mock_arbiter.set_extras_control_enabled.assert_called_once_with(
+            "32:123456", False
+        )
+        mock_arbiter.clear_manual_override_state.assert_called_once_with("32:123456")
+        mock_arbiter.async_commit_state.assert_awaited_once_with("32:123456")
+
+
+async def test_send_fan_command_service_away_disables_extras_before_direct_send(hass):
+    """Test away command updates shared control state before direct send."""
+    hass.services.has_service.return_value = False
+    await async_setup_services(hass)
+
+    send_command_func = None
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == SVC_SEND_FAN_COMMAND:
+            send_command_func = call.args[2]
+            break
+
+    assert send_command_func is not None
+
+    call = MagicMock()
+    call.data = {"device_id": "32:123456", "command": "fan_away"}
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.services.get_fan_speed_arbiter"
+        ) as mock_get_arbiter,
+        patch(
+            "custom_components.ramses_extras.features.default.services.RamsesCommands"
+        ) as mock_commands_class,
+    ):
+        mock_arbiter = MagicMock()
+        mock_arbiter.set_extras_control_enabled = MagicMock()
+        mock_arbiter.clear_manual_override_state = MagicMock()
+        mock_arbiter.async_commit_state = AsyncMock()
+        mock_get_arbiter.return_value = mock_arbiter
+
+        mock_commands = MagicMock()
+        mock_commands.send_command = AsyncMock()
+        mock_commands_class.return_value = mock_commands
+
+        await send_command_func(call)
+
+        mock_arbiter.set_extras_control_enabled.assert_called_once_with(
+            "32:123456", False
+        )
+        mock_arbiter.clear_manual_override_state.assert_called_once_with("32:123456")
+        mock_arbiter.async_commit_state.assert_awaited_once_with(
+            "32:123456", apply=False
+        )
+        mock_commands.send_command.assert_awaited_once_with("32:123456", "fan_away")
 
 
 async def test_send_fan_command_service_requests_still_use_direct_path(hass):

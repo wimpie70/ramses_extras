@@ -634,6 +634,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
             return
 
+        if not self.fan_speed_arbiter.is_extras_control_enabled(device_id):
+            _LOGGER.debug(
+                "Extras control disabled - skipping humidity control logic for %s",
+                device_id,
+            )
+            return
+
         # Check transport availability before processing
         if not self.is_device_transport_available(device_id):
             _LOGGER.debug(
