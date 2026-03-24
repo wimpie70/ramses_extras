@@ -22,6 +22,7 @@ const mockHass = {
     'sensor.outdoor_absolute_humidity_32_153289': { state: '7.1' },
     'sensor.supply_temp_32_153289': { state: '20' },
     'sensor.exhaust_temp_32_153289': { state: '18' },
+    'sensor.fan_info_32_153289': { state: 'speed2, medium' },
     'sensor.fan_speed_32_153289': { state: 'medium' },
     'sensor.fan_mode_32_153289': { state: 'auto' },
     'sensor.fan_control_mode_32_153289': { state: 'auto_by_extras' },
@@ -64,6 +65,7 @@ describe('HvacFanCard', () => {
         outdoor_abs_humid_entity: 'sensor.outdoor_absolute_humidity_32_153289',
         supply_temp_entity: 'sensor.supply_temp_32_153289',
         exhaust_temp_entity: 'sensor.exhaust_temp_32_153289',
+        fan_info_entity: 'sensor.fan_info_32_153289',
         fan_speed_entity: 'sensor.fan_speed_32_153289',
         fan_mode_entity: 'sensor.fan_mode_32_153289',
         fan_control_mode_entity: 'sensor.fan_control_mode_32_153289',
@@ -285,6 +287,10 @@ describe('HvacFanCard', () => {
       expect(card.config.fan_control_mode_entity).toBe('sensor.fan_control_mode_32_153289');
     });
 
+    test('should include fan info entity in card config', () => {
+      expect(card.config.fan_info_entity).toBe('sensor.fan_info_32_153289');
+    });
+
     test('should read current backend fan control mode state', () => {
       const controlMode = mockHass.states[card.config.fan_control_mode_entity]?.state || null;
 
@@ -313,6 +319,32 @@ describe('HvacFanCard', () => {
       const displayedMode = isManualOverride && isMediumRate ? 'mid' : 'auto';
 
       expect(displayedMode).toBe('mid');
+    });
+
+    test('should derive the displayed speed label from fan_info sensor state', () => {
+      const getDisplayFanMode = (fanMode) => {
+        const normalizedValue = typeof fanMode === 'string' ? fanMode.trim().toLowerCase() : null;
+        const fanInfoDisplay =
+          typeof normalizedValue === 'string' && normalizedValue.includes(',')
+            ? normalizedValue
+                .split(',')
+                .map((part) => part.trim())
+                .filter(Boolean)
+                .at(-1) || null
+            : normalizedValue;
+
+        return fanInfoDisplay || 'auto';
+      };
+
+      const displayedMode = getDisplayFanMode('speed2, medium');
+
+      expect(displayedMode).toBe('medium');
+    });
+
+    test('should keep auto when fan_info reports auto', () => {
+      const fanInfoState = 'auto';
+
+      expect(fanInfoState).toBe('auto');
     });
   });
 

@@ -71,6 +71,7 @@ describe('HvacFanCard Integration', () => {
         outdoor_abs_humid_entity: 'sensor.outdoor_absolute_humidity_32_153289',
         supply_temp_entity: 'sensor.supply_temp_32_153289',
         exhaust_temp_entity: 'sensor.exhaust_temp_32_153289',
+        fan_info_entity: 'sensor.fan_info_32_153289',
         fan_speed_entity: 'sensor.fan_speed_32_153289',
         fan_mode_entity: 'sensor.fan_mode_32_153289',
         bypass_entity: 'binary_sensor.bypass_position_32_153289',

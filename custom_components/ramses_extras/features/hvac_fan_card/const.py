@@ -83,6 +83,7 @@ FEATURE_DEFINITION = {
         "indoor_humidity_entity": "sensor.{device_id}_indoor_humidity",
         "outdoor_humidity_entity": "sensor.{device_id}_outdoor_humidity",
         # Fan / airflow sensors
+        "fan_info_entity": "sensor.{device_id}_fan_info",
         "fan_speed_entity": "sensor.{device_id}_fan_rate",
         "exhaust_fan_speed_entity": "sensor.{device_id}_exhaust_fan_speed",
         "supply_fan_speed_entity": "sensor.{device_id}_supply_fan_speed",

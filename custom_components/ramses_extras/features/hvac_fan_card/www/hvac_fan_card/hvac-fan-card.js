@@ -260,8 +260,12 @@ class HvacFanCard extends RamsesBaseCard {
     const fanControlModeState = this.getEntityState(config.fan_control_mode_entity);
     const fanControlMode = fanControlModeState?.state || null;
     const fanRateEntityState = this.getEntityState(config.fan_speed_entity)?.state || null;
+    const fanInfoEntityState = this.getEntityState(config.fan_info_entity)?.state || null;
     const fanModeDisplay = this._getDisplayFanMode(
-      da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
+      da31Data.fan_info
+        || fanInfoEntityState
+        || this.getEntityState(config.fan_mode_entity)?.state
+        || null,
       fanControlMode,
       fanRateEntityState,
       fanControlModeState?.attributes || {}
@@ -1134,8 +1138,12 @@ class HvacFanCard extends RamsesBaseCard {
     const fanControlModeState = this.getEntityState(config.fan_control_mode_entity);
     const fanControlMode = fanControlModeState?.state || null;
     const fanRateEntityState = this.getEntityState(config.fan_speed_entity)?.state || null;
+    const fanInfoEntityState = this.getEntityState(config.fan_info_entity)?.state || null;
     const fanModeDisplay = this._getDisplayFanMode(
-      da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
+      da31Data.fan_info
+        || fanInfoEntityState
+        || this.getEntityState(config.fan_mode_entity)?.state
+        || null,
       fanControlMode,
       fanRateEntityState,
       fanControlModeState?.attributes || {}
@@ -1692,28 +1700,66 @@ class HvacFanCard extends RamsesBaseCard {
   }
 
   _getDisplayFanMode(fanMode, fanControlMode, fanRateEntityState, fanControlAttrs = {}) {
+    const normalizeFanLabel = (value) => {
+      const normalizedValue = typeof value === 'string'
+        ? value.trim().toLowerCase()
+        : null;
+
+      const fanInfoDisplay = typeof normalizedValue === 'string' && normalizedValue.includes(',')
+        ? normalizedValue.split(',').map((part) => part.trim()).filter(Boolean).at(-1) || null
+        : normalizedValue;
+
+      if (
+        !fanInfoDisplay
+        || fanInfoDisplay === 'unknown'
+        || fanInfoDisplay === 'unavailable'
+        || fanInfoDisplay === 'none'
+        || fanInfoDisplay === 'null'
+      ) {
+        return null;
+      }
+
+      if (fanInfoDisplay === 'fan_low' || fanInfoDisplay === 'low') {
+        return 'low';
+      }
+      if (
+        fanInfoDisplay === 'fan_medium'
+        || fanInfoDisplay === 'medium'
+        || fanInfoDisplay === 'mid'
+      ) {
+        return 'medium';
+      }
+      if (fanInfoDisplay === 'fan_high' || fanInfoDisplay === 'high') {
+        return 'high';
+      }
+
+      return fanInfoDisplay;
+    };
+
     if (fanControlMode === 'manual_override') {
       const requestedSpeed = fanControlAttrs?.winning_demand?.requested_speed
         || fanControlAttrs?.resolved_command
         || fanRateEntityState;
-      const normalizedRate = typeof requestedSpeed === 'string'
-        ? requestedSpeed.trim().toLowerCase()
-        : null;
+      const normalizedRate = normalizeFanLabel(requestedSpeed);
 
-      if (normalizedRate === 'fan_low' || normalizedRate === 'low') {
-        return 'low';
-      }
-      if (normalizedRate === 'fan_medium' || normalizedRate === 'medium' || normalizedRate === 'mid') {
-        return 'medium';
-      }
-      if (normalizedRate === 'fan_high' || normalizedRate === 'high') {
-        return 'high';
+      if (normalizedRate === 'low' || normalizedRate === 'medium' || normalizedRate === 'high') {
+        return normalizedRate;
       }
 
       return 'manual';
     }
 
-    return fanMode || 'auto';
+    const normalizedFanMode = normalizeFanLabel(fanMode);
+    if (normalizedFanMode) {
+      return normalizedFanMode;
+    }
+
+    const normalizedRate = normalizeFanLabel(fanRateEntityState);
+    if (normalizedRate === 'low' || normalizedRate === 'medium' || normalizedRate === 'high') {
+      return normalizedRate;
+    }
+
+    return 'auto';
   }
 
   // Format speed value consistently (31DA raw values are 0-1)
