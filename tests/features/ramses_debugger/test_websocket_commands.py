@@ -892,6 +892,7 @@ class TestWsTrafficSubscribeStats:
         """Test successful traffic stats subscription."""
         mock_collector = MagicMock()
         mock_unsub = MagicMock()
+        mock_collector.subscribe.return_value = mock_unsub
 
         with (
             patch(
@@ -903,7 +904,6 @@ class TestWsTrafficSubscribeStats:
             ) as mock_ws_api,
         ):
             mock_ws_api.event_message.return_value = {"event": "stats"}
-            hass.bus.async_listen.return_value = mock_unsub
 
             await ws_traffic_subscribe_stats(
                 hass,
@@ -916,6 +916,7 @@ class TestWsTrafficSubscribeStats:
                 },
             )
 
+            mock_collector.subscribe.assert_called_once()
             assert conn.subscriptions["test-id"] == mock_unsub
             conn.send_result.assert_called_once_with(
                 "test-id", _with_version({"success": True})
