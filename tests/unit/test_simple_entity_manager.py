@@ -54,6 +54,7 @@ class TestSimpleEntityManager:
         assert result == [
             "sensor.indoor_absolute_humidity_32_153289",
             "sensor.outdoor_absolute_humidity_32_153289",
+            "sensor.fan_control_mode_32_153289",
             "binary_sensor.transport_state_32_153289",
         ]
 

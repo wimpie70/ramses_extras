@@ -291,6 +291,13 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if not self._automation_active or not self._is_feature_enabled():
             return
 
+        if self.fan_speed_arbiter.is_manual_override_active(device_id):
+            _LOGGER.debug(
+                "Manual override active - skipping CO2 control logic for %s",
+                device_id,
+            )
+            return
+
         # Check transport availability before processing
         if not self.is_device_transport_available(device_id):
             _LOGGER.debug(

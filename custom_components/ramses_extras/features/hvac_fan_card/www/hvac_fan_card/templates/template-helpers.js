@@ -57,6 +57,22 @@ function calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
   return Math.max(0, Math.min(100, Math.round(efficiency * 10) / 10));
 }
 
+function formatFanControlMode(mode) {
+  const normalizedMode = typeof mode === 'string' ? mode.trim() : '';
+
+  if (normalizedMode === 'manual_override') {
+    return 'Manual';
+  }
+  if (normalizedMode === 'auto_by_extras') {
+    return 'Extras Auto';
+  }
+  if (normalizedMode === 'auto_by_fan') {
+    return 'Unit Auto';
+  }
+
+  return normalizedMode || '?';
+}
+
 /**
  * Create template data object from raw values
  * @param {Object} rawData - Raw sensor values
@@ -66,7 +82,8 @@ export function createTemplateData(rawData) {
   const {
     indoorTemp, outdoorTemp, indoorHumidity, outdoorHumidity,
     indoorAbsHumidity, outdoorAbsHumidity,  // Integration-provided values (preferred)
-    supplyTemp, exhaustTemp, exhaustFanSpeed, supplyFanSpeed, fanMode, co2Level, supplyFlowRate, exhaustFlowRate,
+    supplyTemp, exhaustTemp, exhaustFanSpeed, supplyFanSpeed, fanMode, fanControlMode,
+    co2Level, supplyFlowRate, exhaustFlowRate,
     dehumMode, dehumActive, dehumEntitiesAvailable, balanceTrackingLabel, comfortTemp, timerMinutes = 0, efficiency = 75,
     filterDaysRemaining = null, transportAvailable = true
   } = rawData;
@@ -110,6 +127,7 @@ export function createTemplateData(rawData) {
     exhaustFanSpeed: exhaustFanSpeed || '?',
     supplyFanSpeed: supplyFanSpeed || '?',
     fanMode: fanMode || 'auto',
+    fanControlModeLabel: formatFanControlMode(fanControlMode),
     co2Level: co2Level || '?',
     supplyFlowRate: supplyFlowRate || '?',
     exhaustFlowRate: exhaustFlowRate || '?',

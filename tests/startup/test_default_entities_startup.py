@@ -40,6 +40,7 @@ class TestDefaultEntitiesStartup:
         expected_entities = [
             "sensor.indoor_absolute_humidity_32_153289",
             "sensor.outdoor_absolute_humidity_32_153289",
+            "sensor.fan_control_mode_32_153289",
         ]
 
         for expected_entity in expected_entities:

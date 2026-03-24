@@ -13,6 +13,9 @@ from .ramses_commands import RamsesCommands
 
 _LOGGER = logging.getLogger(__name__)
 
+_MANUAL_OVERRIDE_FEATURE_ID = "manual_override"
+_MANUAL_OVERRIDE_PRIORITY = 1000
+
 _SPEED_ORDER = {
     "fan_auto": 0,
     "fan_low": 1,
@@ -68,6 +71,81 @@ class FanSpeedArbiter:
         self.hass = hass
         self.ramses_commands = RamsesCommands(hass)
         self._demands: dict[str, dict[tuple[str, str], FanSpeedDemand]] = {}
+        self._callbacks: dict[str, tuple[str, Any]] = {}
+
+    @staticmethod
+    def _normalize_device_id(device_id: str) -> str:
+        """Normalize device IDs to colon format for internal storage."""
+        return str(device_id).replace("_", ":")
+
+    def register_callback(self, name: str, callback: Any, device_id: str) -> None:
+        """Register a callback for control-mode changes on a device."""
+        normalized_device_id = self._normalize_device_id(device_id)
+        self._callbacks[name] = (normalized_device_id, callback)
+
+    def unregister_callback(self, name: str) -> None:
+        """Unregister a control-mode callback."""
+        self._callbacks.pop(name, None)
+
+    def _notify_control_mode_changed(self, device_id: str) -> None:
+        """Notify device-scoped callbacks that control mode may have changed."""
+        control_mode = self.get_control_mode(device_id)
+        for callback_device_id, callback in self._callbacks.values():
+            if callback_device_id != device_id:
+                continue
+            try:
+                callback(control_mode)
+            except Exception as err:
+                _LOGGER.error(
+                    "Error in fan control callback for %s: %s",
+                    device_id,
+                    err,
+                )
+
+    def get_control_mode(self, device_id: str) -> str:
+        """Return the current coarse control mode for a device."""
+        normalized_device_id = self._normalize_device_id(device_id)
+        if self.is_manual_override_active(normalized_device_id):
+            return "manual_override"
+        if self.get_active_demands(normalized_device_id):
+            return "auto_by_extras"
+        return "auto_by_fan"
+
+    async def async_set_manual_override(
+        self,
+        device_id: str,
+        *,
+        source_id: str,
+        requested_speed: str | int,
+        reason: str = "manual_override",
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        """Create or update a manual override demand and apply it immediately."""
+        override_metadata = dict(metadata or {})
+        override_metadata.setdefault("manual", True)
+        return await self.async_set_demand(
+            device_id,
+            feature_id=_MANUAL_OVERRIDE_FEATURE_ID,
+            source_id=source_id,
+            requested_speed=requested_speed,
+            priority=_MANUAL_OVERRIDE_PRIORITY,
+            reason=reason,
+            metadata=override_metadata,
+        )
+
+    async def async_clear_manual_override(self, device_id: str) -> bool:
+        """Clear any manual override demands for a device."""
+        return await self.async_clear_demand(
+            device_id,
+            feature_id=_MANUAL_OVERRIDE_FEATURE_ID,
+        )
+
+    def is_manual_override_active(self, device_id: str) -> bool:
+        """Return whether a device currently has a manual override demand."""
+        return any(
+            demand.feature_id == _MANUAL_OVERRIDE_FEATURE_ID
+            for demand in self.get_active_demands(device_id)
+        )
 
     async def async_set_demand(
         self,
@@ -81,6 +159,7 @@ class FanSpeedArbiter:
         metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Create or update a feature demand and apply the resolved command."""
+        normalized_device_id = self._normalize_device_id(device_id)
         command_name = self.normalize_speed(requested_speed)
         demand = FanSpeedDemand(
             feature_id=feature_id,
@@ -90,9 +169,11 @@ class FanSpeedArbiter:
             reason=reason,
             metadata=metadata or {},
         )
-        device_demands = self._demands.setdefault(device_id, {})
+        device_demands = self._demands.setdefault(normalized_device_id, {})
         device_demands[(feature_id, source_id)] = demand
-        return await self.async_apply(device_id)
+        result = await self.async_apply(normalized_device_id)
+        self._notify_control_mode_changed(normalized_device_id)
+        return result
 
     async def async_clear_demand(
         self,
@@ -102,7 +183,8 @@ class FanSpeedArbiter:
         source_id: str | None = None,
     ) -> bool:
         """Clear one or more feature demands and apply the resolved command."""
-        device_demands = self._demands.get(device_id, {})
+        normalized_device_id = self._normalize_device_id(device_id)
+        device_demands = self._demands.get(normalized_device_id, {})
         if source_id is None:
             keys_to_remove = [key for key in device_demands if key[0] == feature_id]
             for key in keys_to_remove:
@@ -111,13 +193,16 @@ class FanSpeedArbiter:
             device_demands.pop((feature_id, source_id), None)
 
         if not device_demands:
-            self._demands.pop(device_id, None)
+            self._demands.pop(normalized_device_id, None)
 
-        return await self.async_apply(device_id)
+        result = await self.async_apply(normalized_device_id)
+        self._notify_control_mode_changed(normalized_device_id)
+        return result
 
     def get_active_demands(self, device_id: str) -> list[FanSpeedDemand]:
         """Return active demands for a device."""
-        return list(self._demands.get(device_id, {}).values())
+        normalized_device_id = self._normalize_device_id(device_id)
+        return list(self._demands.get(normalized_device_id, {}).values())
 
     def get_all_devices_with_demands(self) -> list[str]:
         """Return list of all device IDs that have active demands."""
@@ -125,13 +210,35 @@ class FanSpeedArbiter:
 
     def resolve(self, device_id: str) -> ResolvedFanSpeed:
         """Resolve the current fan command for a device."""
-        active_demands = self.get_active_demands(device_id)
+        normalized_device_id = self._normalize_device_id(device_id)
+        active_demands = self.get_active_demands(normalized_device_id)
         if not active_demands:
             return ResolvedFanSpeed(
-                device_id=device_id,
+                device_id=normalized_device_id,
                 command_name="fan_auto",
                 winning_demand=None,
                 active_demands=[],
+            )
+
+        manual_demands = [
+            demand
+            for demand in active_demands
+            if demand.feature_id == _MANUAL_OVERRIDE_FEATURE_ID
+        ]
+        if manual_demands:
+            winning_demand = max(
+                manual_demands,
+                key=lambda demand: (
+                    demand.priority,
+                    demand.updated_at,
+                    self.speed_rank(demand.requested_speed),
+                ),
+            )
+            return ResolvedFanSpeed(
+                device_id=normalized_device_id,
+                command_name=winning_demand.requested_speed,
+                winning_demand=winning_demand,
+                active_demands=active_demands,
             )
 
         winning_demand = max(
@@ -143,7 +250,7 @@ class FanSpeedArbiter:
             ),
         )
         return ResolvedFanSpeed(
-            device_id=device_id,
+            device_id=normalized_device_id,
             command_name=winning_demand.requested_speed,
             winning_demand=winning_demand,
             active_demands=active_demands,
@@ -152,20 +259,20 @@ class FanSpeedArbiter:
     async def async_apply(self, device_id: str) -> bool:
         """Apply the resolved command for a device."""
         # Filter out HGI gateway devices - they're not controllable
-        normalized_device_id = device_id.replace("_", ":")
+        normalized_device_id = self._normalize_device_id(device_id)
         if normalized_device_id.startswith("18:"):
             _LOGGER.debug(
                 "Skipping fan command for %s - HGI gateway is not controllable",
-                device_id,
+                normalized_device_id,
             )
             return False
 
-        resolved = self.resolve(device_id)
+        resolved = self.resolve(normalized_device_id)
         command_name = resolved.command_name
 
         _LOGGER.debug(
             "Arbiter applying command for %s: %s (priority=%s, source=%s)",
-            device_id,
+            normalized_device_id,
             command_name,
             resolved.winning_demand.priority if resolved.winning_demand else "none",
             resolved.winning_demand.source_id if resolved.winning_demand else "none",
@@ -176,22 +283,25 @@ class FanSpeedArbiter:
 
         transport_monitor = get_transport_monitor()
         is_monitoring = transport_monitor.is_monitoring
-        is_available = transport_monitor.is_device_available(device_id)
+        is_available = transport_monitor.is_device_available(normalized_device_id)
 
         if is_monitoring and not is_available:
             _LOGGER.debug(
                 "Skipping fan command %s for %s - transport unavailable",
                 command_name,
-                device_id,
+                normalized_device_id,
             )
             return False
 
-        result = await self.ramses_commands.send_command(device_id, command_name)
+        result = await self.ramses_commands.send_command(
+            normalized_device_id,
+            command_name,
+        )
         if not result.success:
             _LOGGER.warning(
                 "Failed to apply resolved fan command %s for %s",
                 command_name,
-                device_id,
+                normalized_device_id,
             )
             return False
 
@@ -221,6 +331,7 @@ class FanSpeedArbiter:
         return {
             "devices": {
                 device_id: {
+                    "control_mode": self.get_control_mode(device_id),
                     "active_demands": [
                         {
                             "feature_id": demand.feature_id,
@@ -239,9 +350,14 @@ class FanSpeedArbiter:
 
     def get_device_debug_state(self, device_id: str) -> dict[str, Any]:
         """Return current arbiter state for a single device."""
-        resolved = self.resolve(device_id)
+        normalized_device_id = self._normalize_device_id(device_id)
+        resolved = self.resolve(normalized_device_id)
         return {
+            "control_mode": self.get_control_mode(normalized_device_id),
             "resolved_command": resolved.command_name,
+            "manual_override_active": self.is_manual_override_active(
+                normalized_device_id
+            ),
             "winning_demand": (
                 {
                     "feature_id": resolved.winning_demand.feature_id,

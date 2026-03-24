@@ -15,6 +15,7 @@ from custom_components.ramses_extras.features.hvac_fan_card.const import (
     DOMAIN as HVAC_FAN_CARD_DOMAIN,
 )
 from custom_components.ramses_extras.features.hvac_fan_card.const import (
+    FEATURE_DEFINITION,
     HVAC_FAN_CARD_CONFIGS,
 )
 
@@ -176,3 +177,9 @@ class TestCreateHvacFanCardFeature:
         assert isinstance(result, dict)
         assert "card_manager" in result
         assert "feature_name" in result
+
+    def test_feature_definition_exposes_fan_control_mode_mapping(self):
+        assert (
+            FEATURE_DEFINITION["entity_mappings"]["fan_control_mode_entity"]
+            == "sensor.fan_control_mode_{device_id}"
+        )

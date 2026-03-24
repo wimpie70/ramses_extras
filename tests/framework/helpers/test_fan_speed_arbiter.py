@@ -95,7 +95,7 @@ async def test_async_clear_demand_preserves_other_feature_demand(arbiter):
 
     assert success is True
     arbiter.ramses_commands.send_command.assert_awaited_once_with(
-        "32_123456", "fan_low"
+        "32:123456", "fan_low"
     )
 
 
@@ -119,7 +119,7 @@ async def test_async_clear_demand_without_remaining_demands_returns_to_auto(arbi
 
     assert success is True
     arbiter.ramses_commands.send_command.assert_awaited_once_with(
-        "32_123456", "fan_auto"
+        "32:123456", "fan_auto"
     )
 
 
@@ -135,7 +135,7 @@ async def test_async_apply_sends_same_command_multiple_times(arbiter):
     )
     assert success is True
     arbiter.ramses_commands.send_command.assert_awaited_once_with(
-        "32_123456", "fan_medium"
+        "32:123456", "fan_medium"
     )
 
     arbiter.ramses_commands.send_command.reset_mock()
@@ -149,7 +149,7 @@ async def test_async_apply_sends_same_command_multiple_times(arbiter):
 
     assert success is True
     arbiter.ramses_commands.send_command.assert_awaited_once_with(
-        "32_123456", "fan_medium"
+        "32:123456", "fan_medium"
     )
 
 
@@ -218,6 +218,91 @@ async def test_async_apply_returns_false_when_command_send_fails(arbiter):
     assert success is False
 
 
+@pytest.mark.asyncio
+async def test_manual_override_wins_over_automation_demands(arbiter):
+    """Manual override should take precedence over automation demands."""
+    await arbiter.async_set_demand(
+        "32_123456",
+        feature_id="co2_control",
+        source_id="co2_control",
+        requested_speed="fan_high",
+        priority=30,
+    )
+
+    arbiter.ramses_commands.send_command.reset_mock()
+    success = await arbiter.async_set_manual_override(
+        "32_123456",
+        source_id="default_service",
+        requested_speed="fan_low",
+    )
+
+    assert success is True
+    assert arbiter.is_manual_override_active("32_123456") is True
+    arbiter.ramses_commands.send_command.assert_awaited_once_with(
+        "32:123456", "fan_low"
+    )
+
+    resolved = arbiter.resolve("32_123456")
+    assert resolved.command_name == "fan_low"
+    assert resolved.winning_demand is not None
+    assert resolved.winning_demand.feature_id == "manual_override"
+
+
+@pytest.mark.asyncio
+async def test_clear_manual_override_resumes_automation_demands(arbiter):
+    """Clearing manual override should resume the best remaining automation demand."""
+    await arbiter.async_set_demand(
+        "32_123456",
+        feature_id="humidity_control",
+        source_id="humidity_control",
+        requested_speed="fan_low",
+        priority=5,
+    )
+    await arbiter.async_set_manual_override(
+        "32_123456",
+        source_id="default_service",
+        requested_speed="fan_high",
+    )
+
+    arbiter.ramses_commands.send_command.reset_mock()
+    success = await arbiter.async_clear_manual_override("32_123456")
+
+    assert success is True
+    assert arbiter.is_manual_override_active("32_123456") is False
+    arbiter.ramses_commands.send_command.assert_awaited_once_with(
+        "32:123456", "fan_low"
+    )
+
+
+def test_get_control_mode_tracks_manual_and_extras(arbiter):
+    """Control mode should reflect manual override and active Extras demands."""
+    assert arbiter.get_control_mode("32_123456") == "auto_by_fan"
+
+    arbiter._demands = {
+        "32:123456": {
+            ("co2_control", "co2_control"): MagicMock(
+                feature_id="co2_control",
+                source_id="co2_control",
+                requested_speed="fan_medium",
+                priority=30,
+                reason="co2_trigger",
+                metadata={},
+            )
+        }
+    }
+    assert arbiter.get_control_mode("32_123456") == "auto_by_extras"
+
+    arbiter._demands["32:123456"][("manual_override", "default_service")] = MagicMock(
+        feature_id="manual_override",
+        source_id="default_service",
+        requested_speed="fan_low",
+        priority=1000,
+        reason="manual_override",
+        metadata={"manual": True},
+    )
+    assert arbiter.get_control_mode("32_123456") == "manual_override"
+
+
 def test_normalize_speed_invalid_raises_value_error():
     """Unsupported speeds should raise a clear error."""
     with pytest.raises(ValueError, match="Unsupported fan speed"):
@@ -229,7 +314,7 @@ def test_speed_rank_and_debug_state(hass, arbiter):
     assert FanSpeedArbiter.speed_rank("missing") == -1
 
     arbiter._demands = {
-        "32_123456": {
+        "32:123456": {
             ("co2_control", "co2_control"): MagicMock(
                 feature_id="co2_control",
                 source_id="co2_control",
@@ -245,8 +330,9 @@ def test_speed_rank_and_debug_state(hass, arbiter):
     device_state = arbiter.get_device_debug_state("32_123456")
 
     assert device_state["resolved_command"] == "fan_medium"
+    assert device_state["control_mode"] == "auto_by_extras"
     assert device_state["winning_demand"]["feature_id"] == "co2_control"
-    assert len(debug_state["devices"]["32_123456"]["active_demands"]) == 1
+    assert len(debug_state["devices"]["32:123456"]["active_demands"]) == 1
 
 
 def test_get_fan_speed_arbiter_uses_fallback_attribute_for_mock_hass():

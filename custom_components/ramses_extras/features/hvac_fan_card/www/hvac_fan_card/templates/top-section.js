@@ -29,7 +29,7 @@ export function createTopSection(data, t) {
     outdoorTemp, outdoorHumidity, outdoorAbsHumidity,
     indoorTemp, indoorHumidity, indoorAbsHumidity, comfortTemp,
     supplyTemp, exhaustTemp,
-    exhaustFanSpeed, supplyFanSpeed, fanMode,
+    exhaustFanSpeed, supplyFanSpeed, fanMode, fanControlModeLabel,
     co2Level, supplyFlowRate, exhaustFlowRate, efficiency,
     timerMinutes, airflowSvg, filterDaysRemaining,
     balanceTriggersHtml, co2ZonesHtml,
@@ -133,6 +133,13 @@ export function createTopSection(data, t) {
         <div class="r-xtrs-hvac-fan-bottom-stats">
           <div class="r-xtrs-hvac-fan-stats-top">
             <div class="r-xtrs-hvac-fan-fanmode" id="fanMode">${fanMode}</div>
+            <div
+              class="r-xtrs-hvac-fan-connection-status connected"
+              id="fanControlMode"
+              title="Current backend control source"
+            >
+              <span class="r-xtrs-hvac-fan-connection-text">${fanControlModeLabel}</span>
+            </div>
             <!-- Connection Status Indicator -->
             <div class="r-xtrs-hvac-fan-connection-status ${transportAvailable ? 'connected' : 'disconnected'}"
                  id="connectionStatus"

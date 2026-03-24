@@ -45,6 +45,7 @@ class TestTransportMonitor:
         monitor = TransportMonitor()
         coordinator = MagicMock()
         coordinator.client = MagicMock()
+        coordinator.client.add_msg_handler = MagicMock(return_value=MagicMock())
         hass = MagicMock()
 
         # Start monitoring
@@ -52,6 +53,7 @@ class TestTransportMonitor:
         assert monitor._monitor_task is not None
         assert not monitor._monitor_task.done()
         assert monitor._coordinator == coordinator
+        coordinator.client.add_msg_handler.assert_called_once_with(monitor._handle_msg)
 
         # Stop monitoring
         await monitor.stop_monitoring()
@@ -222,6 +224,32 @@ class TestTransportMonitor:
         # Device should be marked online
         await asyncio.sleep(0.01)  # Wait for async callback
         assert monitor._device_states.get("32:153289") is True
+
+    @pytest.mark.asyncio
+    async def test_handle_msg_marks_device_online(self):
+        """Test that live client messages mark a device online."""
+        monitor = TransportMonitor()
+        hass = MagicMock()
+        hass.loop = asyncio.get_event_loop()
+        hass.async_create_task = MagicMock(
+            side_effect=lambda coro: asyncio.create_task(coro)
+        )
+        monitor._hass = hass
+
+        callback = MagicMock()
+        monitor.register_callback("test", callback, "32:153289")
+        monitor.notify_command_sent("32:153289")
+
+        msg = MagicMock()
+        msg.src.id = "32:153289"
+        msg.dst.id = "37:168270"
+
+        monitor._handle_msg(msg)
+
+        await asyncio.sleep(0.01)
+
+        assert monitor._device_states.get("32:153289") is True
+        callback.assert_called_with(True)
 
     def test_device_id_normalization(self):
         """Test that device IDs with underscores are normalized to colons."""

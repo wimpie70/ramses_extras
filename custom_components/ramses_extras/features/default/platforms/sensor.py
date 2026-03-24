@@ -20,6 +20,9 @@ from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_entity import (
     ExtrasBaseEntity,
 )
+from custom_components.ramses_extras.framework.base_classes.platform_entities import (
+    ExtrasSensorEntity,
+)
 from custom_components.ramses_extras.framework.helpers.device.core import (
     extract_device_id_as_string,
 )
@@ -27,8 +30,10 @@ from custom_components.ramses_extras.framework.helpers.entity import (
     iter_ramses_cc_entity_ids,
 )
 from custom_components.ramses_extras.framework.helpers.entity.core import EntityHelpers
+from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import (
+    get_fan_speed_arbiter,
+)
 
-# Import entity patterns for absolute humidity sensors
 from ..const import ENTITY_PATTERNS
 
 _LOGGER = logging.getLogger(__name__)
@@ -165,6 +170,18 @@ async def create_default_sensor(
         if config.get("supported_device_types") and "FAN" in config.get(
             "supported_device_types", []
         ):
+            if sensor_type == "fan_control_mode":
+                sensor_entity = FanControlModeSensor(
+                    hass, device_id_str, sensor_type, config
+                )
+                sensor_list.append(sensor_entity)
+                _LOGGER.debug(
+                    "Created default %s sensor for device %s",
+                    sensor_type,
+                    device_id_str,
+                )
+                continue
+
             sensor_entity = DefaultHumiditySensor(
                 hass, device_id_str, sensor_type, config
             )
@@ -200,6 +217,51 @@ async def create_default_sensor(
         )
 
     return sensor_list
+
+
+class FanControlModeSensor(ExtrasSensorEntity):
+    """Diagnostic sensor showing the current coarse fan control mode."""
+
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        device_id: str,
+        sensor_type: str,
+        config: dict[str, Any],
+    ) -> None:
+        super().__init__(hass, device_id, sensor_type, config)
+        self._device_id = device_id
+        self._sensor_type = sensor_type
+        self._arbiter = get_fan_speed_arbiter(hass)
+        self._attr_native_value = self._arbiter.get_control_mode(device_id)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._arbiter.register_callback(
+            f"fan_control_mode_{self._device_id.replace(':', '_')}",
+            self._handle_control_mode_changed,
+            self._device_id,
+        )
+        self.set_native_value(self._arbiter.get_control_mode(self._device_id))
+
+    async def async_will_remove_from_hass(self) -> None:
+        self._arbiter.unregister_callback(
+            f"fan_control_mode_{self._device_id.replace(':', '_')}"
+        )
+        await super().async_will_remove_from_hass()
+
+    def _handle_control_mode_changed(self, control_mode: str) -> None:
+        self.set_native_value(control_mode)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        base_attrs = super().extra_state_attributes
+        return {
+            **base_attrs,
+            **self._arbiter.get_device_debug_state(self._device_id),
+        }
 
 
 async def _check_underlying_entities_exist(

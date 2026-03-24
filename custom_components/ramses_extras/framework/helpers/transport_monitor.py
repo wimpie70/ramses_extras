@@ -7,7 +7,7 @@ implements graceful degradation when the transport is unavailable.
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from homeassistant.core import Event, HomeAssistant
 
@@ -45,6 +45,7 @@ class TransportMonitor:
         self._command_timeout: float = 61.0  # Wait 61s for reply after sending command
         self._hass: HomeAssistant | None = None
         self._event_unsub: Callable[[], None] | None = None
+        self._msg_handler_unsub: Callable[[], None] | None = None
 
     def register_callback(
         self,
@@ -195,7 +196,15 @@ class TransportMonitor:
             self._coordinator = coordinator
             self._hass = hass
 
-            # Set up event listener for device messages
+            client = getattr(self._coordinator, "client", None)
+            add_msg_handler = getattr(client, "add_msg_handler", None)
+
+            if callable(add_msg_handler) and self._msg_handler_unsub is None:
+                self._msg_handler_unsub = add_msg_handler(self._handle_msg)
+                _LOGGER.debug(
+                    "Transport monitor listening via ramses_cc client message handler"
+                )
+
             if self._hass and not self._event_unsub:
                 self._event_unsub = self._hass.bus.async_listen(
                     "ramses_cc_message",
@@ -223,6 +232,11 @@ class TransportMonitor:
                 self._event_unsub()
                 self._event_unsub = None
                 _LOGGER.debug("Stopped listening for ramses_cc_message events")
+
+            if self._msg_handler_unsub:
+                self._msg_handler_unsub()
+                self._msg_handler_unsub = None
+                _LOGGER.debug("Stopped listening via ramses_cc client message handler")
 
     async def _monitor_loop(self) -> None:
         """Main monitoring loop - just keeps transport state updated."""
@@ -271,6 +285,20 @@ class TransportMonitor:
                     self.update_device_message_received(src)
         except Exception as e:
             _LOGGER.error("Error handling ramses_cc_message event: %s", e)
+
+    def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        """Handle live ramses_cc client messages to track device replies."""
+        try:
+            src = getattr(getattr(msg, "src", None), "id", None)
+            dst = getattr(getattr(msg, "dst", None), "id", None)
+
+            if isinstance(src, str) and ":" in src:
+                normalized_src = src.replace("_", ":")
+                if normalized_src in self._device_timeout_tasks:
+                    _LOGGER.debug("Message FROM %s (TO %s) - processing", src, dst)
+                    self.update_device_message_received(src)
+        except Exception as e:
+            _LOGGER.error("Error handling ramses_cc client message: %s", e)
 
     def _is_transport_active(self) -> bool:
         if not self._coordinator or not self._coordinator.client:
