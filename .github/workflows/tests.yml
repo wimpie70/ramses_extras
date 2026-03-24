@@ -54,9 +54,9 @@ jobs:
 
       - name: Run tests
         env:
-          PYTEST_ADDOPTS: '--color=yes'
+          PYTEST_ADDOPTS: ''
         run: |
-          python -m pytest tests/ --cov=custom_components/ramses_extras --cov-report=xml:coverage.xml
+          python -m pytest -o addopts="--color=yes" tests/ --cov=custom_components/ramses_extras --cov-report=xml:coverage.xml --cov-fail-under=40 -q
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
