@@ -85,7 +85,7 @@ export function createTemplateData(rawData) {
     supplyTemp, exhaustTemp, exhaustFanSpeed, supplyFanSpeed, fanMode, fanControlMode,
     co2Level, supplyFlowRate, exhaustFlowRate,
     dehumMode, dehumActive, dehumEntitiesAvailable, balanceTrackingLabel, comfortTemp, timerMinutes = 0, efficiency = 75,
-    filterDaysRemaining = null, transportAvailable = true
+    filterDaysRemaining = null, transportAvailable = true, extrasControlEnabled = true
   } = rawData;
 
   // If transportAvailable is not provided, assume true (connected)
@@ -128,6 +128,7 @@ export function createTemplateData(rawData) {
     supplyFanSpeed: supplyFanSpeed || '?',
     fanMode: fanMode || 'auto',
     fanControlModeLabel: formatFanControlMode(fanControlMode),
+    extrasControlEnabled,
     co2Level: co2Level || '?',
     supplyFlowRate: supplyFlowRate || '?',
     exhaustFlowRate: exhaustFlowRate || '?',

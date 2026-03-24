@@ -623,6 +623,15 @@ export const CARD_STYLE = `
   border-color: var(--primary-color);
 }
 
+.r-xtrs-hvac-fan-control-button.active {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px var(--primary-color);
+}
+
+.r-xtrs-hvac-fan-control-button.inactive {
+  opacity: 0.75;
+}
+
 .r-xtrs-hvac-fan-control-icon {
   font-size: 32px;
   color: var(--primary-color);

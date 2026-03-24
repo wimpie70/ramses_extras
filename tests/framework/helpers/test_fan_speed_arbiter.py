@@ -303,6 +303,48 @@ def test_get_control_mode_tracks_manual_and_extras(arbiter):
     assert arbiter.get_control_mode("32_123456") == "manual_override"
 
 
+def test_get_control_mode_reports_unit_auto_when_extras_disabled(arbiter):
+    """Disabling extras control should report unit-native auto mode."""
+    arbiter._demands = {
+        "32:123456": {
+            ("co2_control", "co2_control"): MagicMock(
+                feature_id="co2_control",
+                source_id="co2_control",
+                requested_speed="fan_medium",
+                priority=30,
+                reason="co2_trigger",
+                metadata={},
+            )
+        }
+    }
+    arbiter.set_extras_control_enabled("32_123456", False)
+
+    assert arbiter.get_control_mode("32_123456") == "auto_by_fan"
+
+
+def test_resolve_returns_fan_auto_when_extras_disabled(arbiter):
+    """Active automation demands should be ignored while extras control is disabled."""
+    arbiter._demands = {
+        "32:123456": {
+            ("co2_control", "co2_control"): MagicMock(
+                feature_id="co2_control",
+                source_id="co2_control",
+                requested_speed="fan_medium",
+                priority=30,
+                reason="co2_trigger",
+                metadata={},
+            )
+        }
+    }
+    arbiter.set_extras_control_enabled("32_123456", False)
+
+    resolved = arbiter.resolve("32_123456")
+
+    assert resolved.command_name == "fan_auto"
+    assert resolved.winning_demand is None
+    assert len(resolved.active_demands) == 1
+
+
 def test_normalize_speed_invalid_raises_value_error():
     """Unsupported speeds should raise a clear error."""
     with pytest.raises(ValueError, match="Unsupported fan speed"):

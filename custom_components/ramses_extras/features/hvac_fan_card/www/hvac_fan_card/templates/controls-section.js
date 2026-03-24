@@ -10,9 +10,16 @@
  * @param {boolean} [co2ControlEntitiesAvailable=false] Whether CO2 control should be shown.
  * @param {Object} [config={}] Card configuration.
  * @param {Function} [t] Optional translation function.
+ * @param {boolean} [extrasControlEnabled=true] Whether extras control is enabled.
  * @returns {string} HTML string.
  */
-export function createControlsSection(dehumEntitiesAvailable = false, co2ControlEntitiesAvailable = false, config = {}, t) {
+export function createControlsSection(
+  dehumEntitiesAvailable = false,
+  co2ControlEntitiesAvailable = false,
+  config = {},
+  t,
+  extrasControlEnabled = true
+) {
   const tr = (key, fallback, options = {}) => {
     try {
       if (typeof t === 'function') {
@@ -27,6 +34,14 @@ export function createControlsSection(dehumEntitiesAvailable = false, co2Control
     return fallback;
   };
 
+  const autoButtonClasses = [
+    'r-xtrs-hvac-fan-control-button',
+    extrasControlEnabled ? 'active' : 'inactive',
+  ].join(' ');
+  const autoStatus = extrasControlEnabled
+    ? tr('controls.extras_on', 'Extras On')
+    : tr('controls.extras_off', 'Extras Off');
+
   return `
     <!-- Control Buttons - 4 rows -->
     <div class="r-xtrs-hvac-fan-controls-container">
@@ -36,9 +51,9 @@ export function createControlsSection(dehumEntitiesAvailable = false, co2Control
           <div class="r-xtrs-hvac-fan-control-icon">🏠</div>
           <div class="r-xtrs-hvac-fan-control-label">${tr('status.away', 'Away')}</div>
         </div>
-        <div class="r-xtrs-hvac-fan-control-button" data-command="fan_auto" data-device-id="${config.device_id}">
+        <div class="${autoButtonClasses}" data-command="fan_auto" data-device-id="${config.device_id}">
           <div class="r-xtrs-hvac-fan-control-icon">🌀</div>
-          <div class="r-xtrs-hvac-fan-control-label">${tr('status.auto2', 'Auto')}</div>
+          <div class="r-xtrs-hvac-fan-control-label">${tr('status.auto2', 'Auto')} · ${autoStatus}</div>
         </div>
         ${dehumEntitiesAvailable ? `
         <div class="r-xtrs-hvac-fan-control-button" data-action="toggle-dehumidify" data-entity-id="${config.dehum_mode_entity || 'switch.dehumidify_' + config.device_id.replace(/:/g, '_')}">
