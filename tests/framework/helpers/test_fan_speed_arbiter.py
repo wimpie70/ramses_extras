@@ -276,7 +276,7 @@ async def test_clear_manual_override_resumes_automation_demands(arbiter):
 
 def test_get_control_mode_tracks_manual_and_extras(arbiter):
     """Control mode should reflect manual override and active Extras demands."""
-    assert arbiter.get_control_mode("32_123456") == "auto_by_fan"
+    assert arbiter.get_control_mode("32_123456") == "auto_by_extras"
 
     arbiter._demands = {
         "32:123456": {
@@ -375,6 +375,14 @@ def test_speed_rank_and_debug_state(hass, arbiter):
     assert device_state["control_mode"] == "auto_by_extras"
     assert device_state["winning_demand"]["feature_id"] == "co2_control"
     assert len(debug_state["devices"]["32:123456"]["active_demands"]) == 1
+
+
+def test_debug_state_reports_extras_auto_without_active_demands(arbiter):
+    """Enabled extras control should still report Extras Auto without demands."""
+    device_state = arbiter.get_device_debug_state("32_123456")
+
+    assert device_state["control_mode"] == "auto_by_extras"
+    assert device_state["resolved_command"] == "fan_auto"
 
 
 def test_get_fan_speed_arbiter_uses_fallback_attribute_for_mock_hass():

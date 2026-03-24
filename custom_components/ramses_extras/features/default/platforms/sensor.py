@@ -254,7 +254,6 @@ class FanControlModeSensor(ExtrasSensorEntity):
 
     def _handle_control_mode_changed(self, control_mode: str) -> None:
         self.set_native_value(control_mode)
-        self.async_write_ha_state()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

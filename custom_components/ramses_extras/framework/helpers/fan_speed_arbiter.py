@@ -104,15 +104,13 @@ class FanSpeedArbiter:
                 )
 
     def get_control_mode(self, device_id: str) -> str:
-        """Return the current coarse control mode for a device."""
+        """Return a coarse control mode for UI/debugging."""
         normalized_device_id = self._normalize_device_id(device_id)
         if self.is_manual_override_active(normalized_device_id):
             return "manual_override"
         if not self.is_extras_control_enabled(normalized_device_id):
             return "auto_by_fan"
-        if self.get_active_demands(normalized_device_id):
-            return "auto_by_extras"
-        return "auto_by_fan"
+        return "auto_by_extras"
 
     def is_extras_control_enabled(self, device_id: str) -> bool:
         """Return whether extras automation is currently allowed to control a device."""
