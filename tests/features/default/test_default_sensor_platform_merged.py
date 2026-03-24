@@ -969,7 +969,7 @@ class TestCreateDefaultSensor:
             sensor for sensor in sensors if isinstance(sensor, FanControlModeSensor)
         ]
         assert len(control_mode_sensors) == 1
-        assert control_mode_sensors[0].native_value == "auto_by_fan"
+        assert control_mode_sensors[0].native_value == "auto_by_extras"
 
     async def test_create_default_sensor_with_area_sensors(self, hass):
         """Configured area sensors should create additional default sensors."""
