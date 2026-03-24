@@ -257,14 +257,14 @@ class HvacFanCard extends RamsesBaseCard {
       config.outdoor_abs_humid_entity,
       null
     );
-    const fanControlMode = this.getEntityState(
-      config.fan_control_mode_entity
-    )?.state || null;
+    const fanControlModeState = this.getEntityState(config.fan_control_mode_entity);
+    const fanControlMode = fanControlModeState?.state || null;
     const fanRateEntityState = this.getEntityState(config.fan_speed_entity)?.state || null;
     const fanModeDisplay = this._getDisplayFanMode(
       da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
       fanControlMode,
-      fanRateEntityState
+      fanRateEntityState,
+      fanControlModeState?.attributes || {}
     );
 
     const rawData = {
@@ -1131,14 +1131,14 @@ class HvacFanCard extends RamsesBaseCard {
       config.outdoor_abs_humid_entity,
       null
     );
-    const fanControlMode = this.getEntityState(
-      config.fan_control_mode_entity
-    )?.state || null;
+    const fanControlModeState = this.getEntityState(config.fan_control_mode_entity);
+    const fanControlMode = fanControlModeState?.state || null;
     const fanRateEntityState = this.getEntityState(config.fan_speed_entity)?.state || null;
     const fanModeDisplay = this._getDisplayFanMode(
       da31Data.fan_info || this.getEntityState(config.fan_mode_entity)?.state || null,
       fanControlMode,
-      fanRateEntityState
+      fanRateEntityState,
+      fanControlModeState?.attributes || {}
     );
 
     // Get 10D0 data for filter information
@@ -1691,17 +1691,23 @@ class HvacFanCard extends RamsesBaseCard {
     return da31Data.fan_info || null;
   }
 
-  _getDisplayFanMode(fanMode, fanControlMode, fanRateEntityState) {
+  _getDisplayFanMode(fanMode, fanControlMode, fanRateEntityState, fanControlAttrs = {}) {
     if (fanControlMode === 'manual_override') {
-      const normalizedRate = typeof fanRateEntityState === 'string'
-        ? fanRateEntityState.trim().toLowerCase()
+      const requestedSpeed = fanControlAttrs?.winning_demand?.requested_speed
+        || fanControlAttrs?.resolved_command
+        || fanRateEntityState;
+      const normalizedRate = typeof requestedSpeed === 'string'
+        ? requestedSpeed.trim().toLowerCase()
         : null;
 
-      if (normalizedRate === 'medium') {
-        return 'mid';
+      if (normalizedRate === 'fan_low' || normalizedRate === 'low') {
+        return 'low';
       }
-      if (normalizedRate === 'low' || normalizedRate === 'mid' || normalizedRate === 'high') {
-        return normalizedRate;
+      if (normalizedRate === 'fan_medium' || normalizedRate === 'medium' || normalizedRate === 'mid') {
+        return 'medium';
+      }
+      if (normalizedRate === 'fan_high' || normalizedRate === 'high') {
+        return 'high';
       }
 
       return 'manual';
