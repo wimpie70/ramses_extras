@@ -382,6 +382,9 @@ This should come after the model is stable, not before.
 
 ### Phase 3 - first consumers
 
+- completed for `sensor_control`: runtime readers and config-flow summaries now read the canonical shared model with legacy compatibility
+- completed for `sensor_control`: config-flow persistence now writes canonical `ramses_extras.features.sensor_control` while temporarily mirroring legacy top-level `sensor_control`
+- completed for `sensor_control`: focused tests cover canonical-read compatibility and dual-write persistence for config-flow edits
 - migrate remote binding plan to the shared model
 - migrate zones plan to the shared model
 - align sensor-related feature config where needed
@@ -435,6 +438,7 @@ This should come after the model is stable, not before.
 - The first export format should be strict YAML generated from the structured model.
 - Import should come later, after migrations are proven.
 - Remote binding and zones should be edited under a FAN-oriented configuration area, likely by evolving the current `sensor_control` UX toward a broader `FAN Configuration` concept.
+- During the transition, `sensor_control` should follow Option C: config flows persist canonical `ramses_extras.features.sensor_control` while mirroring legacy top-level `sensor_control` until legacy storage is retired.
 - Shared discovery results from `ramses_cc` should be treated as hints and not persisted unless explicitly accepted into config.
 - Security-sensitive values such as passwords must be excluded from export, along with other runtime-only/transient state.
 - Discovery candidates are not the only valid source of configuration, because external/manual devices and entities must also remain possible.

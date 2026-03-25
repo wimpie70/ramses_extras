@@ -30,6 +30,11 @@ This file tracks *big picture* cleanup and refactoring work across the integrati
   - Removed unused legacy `RamsesSensorEntity` from `framework/base_classes/base_entity.py`.
   - Updated tests to remove the obsolete `RamsesSensorEntity` test suite and add coverage for `ExtrasBaseEntity`.
 
+- Config strategy progress:
+  - `sensor_control` runtime readers now accept the canonical shared model with legacy compatibility.
+  - `sensor_control` config flows now persist canonical `ramses_extras.features.sensor_control` and mirror legacy top-level `sensor_control` during the transition.
+  - Focused tests cover the canonical-read and dual-write transition behavior.
+
 - Architecture review (initial findings):
   - Enabled-feature resolution is duplicated across:
     - `__init__.py` (entry setup + feature instance creation)

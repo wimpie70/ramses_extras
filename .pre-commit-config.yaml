@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: eslint
         name: ESLint
-        entry: npm --prefix config exec -- eslint --cache --ext .js
+        entry: npm --prefix config exec -- eslint --config config/eslint.config.js --cache --ext .js
         language: system
         types: [file]
         files: \.(js|jsx|ts|tsx)$
