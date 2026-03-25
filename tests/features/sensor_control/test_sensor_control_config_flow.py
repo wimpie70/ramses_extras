@@ -195,6 +195,60 @@ async def test_async_step_sensor_control_config_select_device_with_area_sensor_o
     assert "max RH trigger" in info_text
 
 
+async def test_async_step_sensor_control_config_select_device_with_canonical_root_overview(  # noqa: E501
+    flow, helper
+):
+    """The overview should also read canonical-root sensor_control config."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "select_device"
+    flow._config_entry.options = {
+        "ramses_extras": {
+            "schema_version": 1,
+            "features": {
+                "sensor_control": {
+                    "devices": {
+                        "32:123456": {
+                            "sources": {
+                                "indoor_temperature": {
+                                    "kind": "external",
+                                    "entity_id": "sensor.test",
+                                }
+                            },
+                            "abs_humidity_inputs": {
+                                "indoor_abs_humidity": {
+                                    "temperature": {
+                                        "kind": "external_abs",
+                                        "entity_id": "sensor.abs",
+                                    },
+                                    "humidity": {"kind": "none"},
+                                }
+                            },
+                            "area_sensors": [
+                                {
+                                    "source_id": "bathroom",
+                                    "label": "Bathroom",
+                                    "temperature_entity": "sensor.bath_temp",
+                                    "humidity_entity": "sensor.bath_humidity",
+                                    "trigger_on_high_humidity": True,
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    }
+
+    await async_step_sensor_control_config(flow, None)
+
+    info_text = flow.async_show_form.call_args[1]["description_placeholders"]["info"]
+    assert "Existing Sensor Control Mappings" in info_text
+    assert "Device 32:123456" in info_text
+    assert "sensor.test" in info_text
+    assert "external abs  sensor.abs" in info_text
+    assert "area sensor Bathroom" in info_text
+
+
 async def test_async_step_sensor_control_config_select_device_refresh(flow, helper):
     """Test that config entry is refreshed if possible."""
     flow._get_config_flow_helper.return_value = helper

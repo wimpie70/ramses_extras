@@ -51,6 +51,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from ...const import DOMAIN
+from ...framework.helpers.config.model import get_sensor_control_device_section
 from ...framework.helpers.entity.entity_id_fallbacks import iter_ramses_cc_entity_ids
 from .const import INTERNAL_SENSOR_MAPPINGS, SUPPORTED_METRICS
 
@@ -90,10 +91,12 @@ class SensorControlResolver:
             - abs_humidity_inputs: Absolute humidity input mappings
             - area_sensors: Validated area sensor summaries
         """
-        device_key = device_id.replace(":", "_")
-
         # Get sensor control configuration
         sensor_control_config = self._get_sensor_control_config(device_id)
+        device_section = get_sensor_control_device_section(
+            sensor_control_config or {},
+            device_id,
+        )
 
         # Get base internal mappings for this device type
         internal_mappings = self._get_internal_mappings(device_id, device_type)
@@ -108,22 +111,20 @@ class SensorControlResolver:
         }
 
         # Get device-specific overrides if available
-        device_overrides = {}
-        if sensor_control_config and "sources" in sensor_control_config:
-            device_overrides = sensor_control_config["sources"].get(device_key, {})
+        device_overrides = device_section.get("sources", {})
+        if not isinstance(device_overrides, dict):
+            device_overrides = {}
 
         # Get absolute humidity input mappings
-        abs_humidity_inputs = {}
-        if sensor_control_config and "abs_humidity_inputs" in sensor_control_config:
-            abs_humidity_inputs = sensor_control_config["abs_humidity_inputs"].get(
-                device_key, {}
-            )
+        abs_humidity_inputs = device_section.get("abs_humidity_inputs", {})
+        if not isinstance(abs_humidity_inputs, dict):
+            abs_humidity_inputs = {}
 
         result["abs_humidity_inputs"] = abs_humidity_inputs
 
-        area_sensors = []
-        if sensor_control_config and "area_sensors" in sensor_control_config:
-            area_sensors = sensor_control_config["area_sensors"].get(device_key, [])
+        area_sensors = device_section.get("area_sensors", [])
+        if not isinstance(area_sensors, list):
+            area_sensors = []
 
         result["area_sensors"] = self._resolve_area_sensors(area_sensors)
         self._logger.debug(
@@ -292,9 +293,9 @@ class SensorControlResolver:
 
                 options = getattr(entry, "options", {}) or {}
                 data = getattr(entry, "data", {}) or {}
-                sensor_control = options.get("sensor_control") or data.get(
-                    "sensor_control"
-                )
+                sensor_control = self._extract_sensor_control_section(
+                    options
+                ) or self._extract_sensor_control_section(data)
                 if not isinstance(sensor_control, dict):
                     continue
 
@@ -311,7 +312,12 @@ class SensorControlResolver:
                     )
                     return sensor_control
 
-                for config_key in ("sources", "abs_humidity_inputs", "area_sensors"):
+                for config_key in (
+                    "sources",
+                    "abs_humidity_inputs",
+                    "area_sensors",
+                    "devices",
+                ):
                     section = sensor_control.get(config_key) or {}
                     if not isinstance(section, dict):
                         continue
@@ -339,6 +345,25 @@ class SensorControlResolver:
         except Exception as err:
             self._logger.error("Failed to get sensor_control config: %s", err)
             return None
+
+    def _extract_sensor_control_section(
+        self,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        sensor_control = payload.get("sensor_control")
+        if isinstance(sensor_control, dict):
+            return sensor_control
+
+        root_section = payload.get("ramses_extras")
+        if not isinstance(root_section, dict):
+            return None
+
+        features = root_section.get("features")
+        if not isinstance(features, dict):
+            return None
+
+        sensor_control = features.get("sensor_control")
+        return sensor_control if isinstance(sensor_control, dict) else None
 
     def _get_internal_mappings(
         self, device_id: str, device_type: str

@@ -20,6 +20,13 @@ from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
+from custom_components.ramses_extras.framework.helpers.config.migration import (
+    get_migrated_feature_section,
+)
+from custom_components.ramses_extras.framework.helpers.config.model import (
+    CONFIG_DEVICES_KEY,
+    SENSOR_CONTROL_AREA_SENSORS_KEY,
+)
 from custom_components.ramses_extras.framework.helpers.device.core import (
     find_ramses_device,
     get_device_type,
@@ -132,25 +139,22 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "sensor.fan_*_indoor_humidity",
         ]
 
-        sensor_control_config = (
-            self.config_entry.options.get("sensor_control")
-            or self.config_entry.data.get("sensor_control")
-            or {}
-        )
-        area_sensor_map = sensor_control_config.get("area_sensors") or {}
-        if isinstance(area_sensor_map, dict):
-            for area_sensors in area_sensor_map.values():
-                if not isinstance(area_sensors, list):
+        devices = self._get_sensor_control_devices()
+        for device_section in devices.values():
+            if not isinstance(device_section, dict):
+                continue
+            area_sensors = device_section.get(SENSOR_CONTROL_AREA_SENSORS_KEY)
+            if not isinstance(area_sensors, list):
+                continue
+            for item in area_sensors:
+                if not isinstance(item, dict):
                     continue
-                for item in area_sensors:
-                    if not isinstance(item, dict):
-                        continue
-                    temp_entity = str(item.get("temperature_entity") or "").strip()
-                    humidity_entity = str(item.get("humidity_entity") or "").strip()
-                    if temp_entity:
-                        patterns.append(temp_entity)
-                    if humidity_entity:
-                        patterns.append(humidity_entity)
+                temp_entity = str(item.get("temperature_entity") or "").strip()
+                humidity_entity = str(item.get("humidity_entity") or "").strip()
+                if temp_entity:
+                    patterns.append(temp_entity)
+                if humidity_entity:
+                    patterns.append(humidity_entity)
 
         _LOGGER.debug(
             "Generated %s entity patterns for humidity control",
@@ -164,16 +168,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         if isinstance(device_id, str) and device_id:
             return device_id
 
-        sensor_control_config = (
-            self.config_entry.options.get("sensor_control")
-            or self.config_entry.data.get("sensor_control")
-            or {}
-        )
-        area_sensor_map = sensor_control_config.get("area_sensors") or {}
-        if not isinstance(area_sensor_map, dict):
-            return None
-
-        for raw_device_id, area_sensors in area_sensor_map.items():
+        for raw_device_id, device_section in self._get_sensor_control_devices().items():
+            if not isinstance(device_section, dict):
+                continue
+            area_sensors = device_section.get(SENSOR_CONTROL_AREA_SENSORS_KEY)
             if not isinstance(area_sensors, list):
                 continue
             for item in area_sensors:
@@ -183,9 +181,19 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                     str(item.get("temperature_entity") or "").strip(),
                     str(item.get("humidity_entity") or "").strip(),
                 }:
-                    return cast(str, raw_device_id).replace(":", "_")
+                    return str(raw_device_id).replace(":", "_")
 
         return None
+
+    def _get_sensor_control_devices(self) -> dict[str, Any]:
+        merged_config = dict(self.config_entry.data or {})
+        merged_config.update(self.config_entry.options or {})
+        sensor_control_section = get_migrated_feature_section(
+            merged_config,
+            "sensor_control",
+        )
+        devices = sensor_control_section.get(CONFIG_DEVICES_KEY)
+        return devices if isinstance(devices, dict) else {}
 
     async def _check_any_device_ready(self) -> bool:
         """Check if any device has all required humidity control entities ready.

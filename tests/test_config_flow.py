@@ -307,6 +307,87 @@ class TestRamsesExtrasOptionsFlowHandler:
         assert "external abs" in info
 
     @pytest.mark.asyncio
+    async def test_sensor_control_overview_reads_canonical_root_model(self, hass):
+        mock_config_entry = MagicMock()
+        mock_config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            "32:123456": {
+                                "sources": {
+                                    "indoor_temperature": {
+                                        "kind": "external_entity",
+                                        "entity_id": "sensor.room_temp",
+                                    }
+                                },
+                                "abs_humidity_inputs": {
+                                    "indoor_abs_humidity": {
+                                        "temperature": {
+                                            "kind": "external_abs",
+                                            "entity_id": "sensor.abs",
+                                        },
+                                        "humidity": {"kind": "none"},
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+        options_flow.hass = hass
+
+        result = await options_flow.async_step_sensor_control_overview()
+        info = result["description_placeholders"]["info"]
+
+        assert "32:123456" in info
+        assert "sensor.room_temp" in info
+        assert "external abs" in info
+
+    @pytest.mark.asyncio
+    async def test_confirm_step_sensor_control_summary_reads_canonical_root_model(
+        self, hass
+    ):
+        mock_config_entry = MagicMock()
+        mock_config_entry.data = {
+            "enabled_features": {"default": True, "sensor_control": True},
+            "device_feature_matrix": {},
+        }
+        mock_config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            "32:123456": {
+                                "sources": {
+                                    "indoor_temperature": {
+                                        "kind": "external_entity",
+                                        "entity_id": "sensor.room_temp",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        options_flow = RamsesExtrasOptionsFlowHandler(mock_config_entry)
+        options_flow.hass = hass
+        options_flow._pending_data = {}
+
+        with patch.object(options_flow, "_get_config_flow_helper") as mock_helper:
+            mock_helper.return_value.get_feature_device_summary.return_value = "Summary"
+            result = await options_flow.async_step_confirm(None)
+
+        info = result["description_placeholders"]["info"]
+        assert "32:123456" in info
+        assert "Sensor control mappings are configured for devices" in info
+
+    @pytest.mark.asyncio
     async def test_generic_step_logic(self, hass):
         """Test generic_step_feature_config branches."""
         mock_config_entry = MagicMock()
@@ -419,7 +500,10 @@ class TestRamsesExtrasOptionsFlowHandler:
     @pytest.mark.asyncio
     async def test_cleanup_orphaned_devices(self, hass):
         """Test orphaned device removal logic."""
-        config_entry = SimpleNamespace(entry_id="ramses_extras_cleanup_entry")
+        config_entry = SimpleNamespace(
+            entry_id="ramses_extras_cleanup_entry",
+            disabled_by=None,
+        )
         options_flow = RamsesExtrasOptionsFlowHandler(config_entry)
         options_flow.hass = hass
 
@@ -428,7 +512,10 @@ class TestRamsesExtrasOptionsFlowHandler:
         with patch.object(
             hass.config_entries,
             "async_get_entry",
-            return_value=SimpleNamespace(entry_id=config_entry.entry_id),
+            return_value=SimpleNamespace(
+                entry_id=config_entry.entry_id,
+                disabled_by=None,
+            ),
         ):
             device_entry = device_registry.async_get_or_create(
                 config_entry_id=config_entry.entry_id,

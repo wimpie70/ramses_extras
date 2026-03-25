@@ -787,6 +787,59 @@ class TestHumidityAutomationManager:
         assert "switch.dehumidify_*" in patterns
         assert "sensor.*_indoor_humidity" in patterns
 
+    def test_generate_entity_patterns_reads_canonical_sensor_control(self):
+        """Canonical sensor_control config should contribute external area sensors."""
+        self.config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            "32:123456": {
+                                "area_sensors": [
+                                    {
+                                        "temperature_entity": "sensor.bath_temp",
+                                        "humidity_entity": "sensor.bath_humidity",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+            }
+        }
+
+        patterns = self.manager._generate_entity_patterns()
+
+        assert "sensor.bath_temp" in patterns
+        assert "sensor.bath_humidity" in patterns
+
+    def test_extract_device_id_reads_canonical_sensor_control(self):
+        """Canonical sensor_control config should map area entities back to a device."""
+        self.config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            "32:123456": {
+                                "area_sensors": [
+                                    {
+                                        "temperature_entity": "sensor.bath_temp",
+                                        "humidity_entity": "sensor.bath_humidity",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+            }
+        }
+
+        result = self.manager._extract_device_id("sensor.bath_humidity")
+
+        assert result == "32_123456"
+
     async def test_start_stop(self):
         """Test start and stop methods."""
         with (

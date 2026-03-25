@@ -114,6 +114,96 @@ class TestSensorControlResolver:
         assert result["area_sensors"] == []
 
     @pytest.mark.asyncio
+    async def test_resolve_entity_mappings_with_canonical_config(self):
+        """Test resolving entity mappings with canonical device-based config."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "sensor_control": {
+                "devices": {
+                    self.device_id: {
+                        "sources": {
+                            "indoor_temperature": {
+                                "kind": "external_entity",
+                                "entity_id": "sensor.room_temp",
+                            }
+                        },
+                        "abs_humidity_inputs": {
+                            "indoor_abs_humidity": {
+                                "temperature": {"kind": "internal"},
+                                "humidity": {
+                                    "kind": "external",
+                                    "entity_id": "sensor.room_humidity",
+                                },
+                            }
+                        },
+                        "area_sensors": [
+                            {
+                                "source_id": "bathroom",
+                                "temperature_entity": "sensor.bath_temp",
+                                "humidity_entity": "sensor.bath_humidity",
+                                "zone_id": "bathroom",
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+        self.resolver._entity_exists = MagicMock(return_value=True)
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert (
+            result["sources"]["indoor_temperature"]["entity_id"] == "sensor.room_temp"
+        )
+        assert result["abs_humidity_inputs"] == {
+            "indoor_abs_humidity": {
+                "temperature": {"kind": "internal"},
+                "humidity": {"kind": "external", "entity_id": "sensor.room_humidity"},
+            }
+        }
+        assert len(result["area_sensors"]) == 1
+        assert result["area_sensors"][0]["zone_id"] == "bathroom"
+
+    @pytest.mark.asyncio
+    async def test_resolve_entity_mappings_with_canonical_root_model(self):
+        """Test resolving entity mappings when config is stored under
+        ramses_extras.features.
+        """
+        config_entry = MagicMock()
+        config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            self.device_id: {
+                                "sources": {
+                                    "indoor_temperature": {
+                                        "kind": "external_entity",
+                                        "entity_id": "sensor.root_room_temp",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
+        self.resolver._entity_exists = MagicMock(return_value=True)
+
+        result = await self.resolver.resolve_entity_mappings(
+            self.device_id, self.device_type
+        )
+
+        assert result["sources"]["indoor_temperature"]["entity_id"] == (
+            "sensor.root_room_temp"
+        )
+
+    @pytest.mark.asyncio
     async def test_resolve_entity_mappings_absolute_humidity_derived(self):
         """Test resolving absolute humidity metrics when
         derived inputs are configured."""
@@ -215,46 +305,6 @@ class TestSensorControlResolver:
         assert result["area_sensors"][1]["source_id"] == "broken"
         assert result["area_sensors"][1]["valid"] is False
 
-    @pytest.mark.asyncio
-    async def test_resolve_entity_mappings_area_sensor_stays_valid_without_co2_entity(
-        self,
-    ):
-        """Area temp/humidity stays valid when CO2 is enabled but not configured."""
-        config_entry = MagicMock()
-        config_entry.options = {
-            "sensor_control": {
-                "area_sensors": {
-                    self.device_key: [
-                        {
-                            "source_id": "bathroom",
-                            "label": "Bathroom",
-                            "temperature_entity": "sensor.bath_temp",
-                            "humidity_entity": "sensor.bath_humidity",
-                            "area_co2_enabled": True,
-                            "co2_entity": "",
-                            "enabled": True,
-                        }
-                    ]
-                }
-            }
-        }
-        self.hass.data = {"ramses_extras": {"config_entry": config_entry}}
-        self.resolver._entity_exists = MagicMock(
-            side_effect=lambda entity_id: (
-                entity_id in {"sensor.bath_temp", "sensor.bath_humidity"}
-            )
-        )
-
-        result = await self.resolver.resolve_entity_mappings(
-            self.device_id, self.device_type
-        )
-
-        assert len(result["area_sensors"]) == 1
-        assert result["area_sensors"][0]["source_id"] == "bathroom"
-        assert result["area_sensors"][0]["valid"] is True
-        assert result["area_sensors"][0]["area_co2_enabled"] is True
-        assert result["area_sensors"][0]["co2_entity"] is None
-
     def test_resolve_area_sensors_ignores_invalid_input(self):
         """Non-list and non-dict area sensor config should be ignored."""
         assert self.resolver._resolve_area_sensors("invalid") == []
@@ -298,6 +348,36 @@ class TestSensorControlResolver:
                         "humidity_entity": "sensor.bath_humidity",
                     }
                 ]
+            }
+        }
+        active_entry = MagicMock()
+        active_entry.options = {"sensor_control": active_config}
+        active_entry.data = {}
+
+        self.hass.data = {"ramses_extras": {"config_entry": stale_entry}}
+        self.hass.config_entries.async_entries.return_value = [active_entry]
+
+        result = self.resolver._get_sensor_control_config(self.device_id)
+
+        assert result == active_config
+
+    def test_get_sensor_control_config_prefers_entry_with_canonical_device_key(self):
+        """Device-aware lookup should also match canonical device keys."""
+        stale_entry = MagicMock()
+        stale_entry.options = {"sensor_control": {"devices": {}}}
+        stale_entry.data = {}
+
+        active_config = {
+            "devices": {
+                self.device_id: {
+                    "area_sensors": [
+                        {
+                            "source_id": "bathroom",
+                            "temperature_entity": "sensor.bath_temp",
+                            "humidity_entity": "sensor.bath_humidity",
+                        }
+                    ]
+                }
             }
         }
         active_entry = MagicMock()

@@ -11,6 +11,8 @@ import voluptuous as vol
 from homeassistant.helpers import selector
 
 from ...const import AVAILABLE_FEATURES, DOMAIN
+from ...framework.helpers.config.migration import get_migrated_feature_section
+from ...framework.helpers.config.model import CONFIG_DEVICES_KEY
 from ...framework.helpers.device.filter import DeviceFilter
 from .const import SUPPORTED_METRICS
 from .device_types import DEVICE_TYPE_HANDLERS
@@ -247,29 +249,32 @@ async def async_step_sensor_control_config(
         overview_lines: list[str] = []
         try:
             options = dict(flow._config_entry.options)  # noqa: SLF001
-            sensor_control_options = options.get("sensor_control") or {}
-            sources: dict[str, dict[str, dict[str, Any]]] = sensor_control_options.get(
-                "sources", {}
+            sensor_control_section = get_migrated_feature_section(
+                options,
+                "sensor_control",
             )
-            abs_inputs: dict[str, dict[str, Any]] = sensor_control_options.get(
-                "abs_humidity_inputs", {}
-            )
-            area_sensor_cfgs: dict[str, list[dict[str, Any]]] = (
-                sensor_control_options.get("area_sensors") or {}
-            )
+            devices = sensor_control_section.get(CONFIG_DEVICES_KEY)
+            if not isinstance(devices, dict):
+                devices = {}
 
-            device_keys = (
-                set(sources.keys())
-                | set(abs_inputs.keys())
-                | set(area_sensor_cfgs.keys())
-            )
+            device_keys = set(devices.keys())
 
             if device_keys:
                 overview_lines.append("Existing Sensor Control Mappings\n")
                 for device_key in sorted(device_keys):
-                    device_sources = sources.get(device_key) or {}
-                    device_abs_inputs = abs_inputs.get(device_key) or {}
-                    device_id = device_key.replace("_", ":")
+                    device_section = devices.get(device_key) or {}
+                    if not isinstance(device_section, dict):
+                        continue
+                    device_sources = device_section.get("sources") or {}
+                    device_abs_inputs = device_section.get("abs_humidity_inputs") or {}
+                    area_sensor_cfgs = device_section.get("area_sensors") or []
+                    if not isinstance(device_sources, dict):
+                        device_sources = {}
+                    if not isinstance(device_abs_inputs, dict):
+                        device_abs_inputs = {}
+                    if not isinstance(area_sensor_cfgs, list):
+                        area_sensor_cfgs = []
+                    device_id = device_key
 
                     device_lines: list[str] = []
 
@@ -327,17 +332,10 @@ async def async_step_sensor_control_config(
                             device_lines.append(f"- {metric}: {summary}")
 
                     if not device_lines:
-                        area_sensor_list = _validate_area_sensor_entries(
-                            area_sensor_cfgs.get(device_key)
-                        )
-                        if not area_sensor_list:
+                        if not area_sensor_cfgs:
                             continue
-                    else:
-                        area_sensor_list = _validate_area_sensor_entries(
-                            area_sensor_cfgs.get(device_key)
-                        )
 
-                    for area_sensor in area_sensor_list:
+                    for area_sensor in area_sensor_cfgs:
                         device_lines.append(_describe_area_sensor(area_sensor))
 
                     overview_lines.append(f"**Device {device_id}** ({device_key}):")

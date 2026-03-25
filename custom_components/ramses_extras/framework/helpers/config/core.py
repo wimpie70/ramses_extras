@@ -5,6 +5,7 @@ by features to provide generic configuration management functionality.
 """
 
 import logging
+from copy import deepcopy
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -14,6 +15,22 @@ from homeassistant.const import (
     CONF_NAME,
 )
 from homeassistant.core import HomeAssistant
+
+from .export import build_exportable_config, export_config_to_yaml
+from .migration import migrate_to_canonical_config
+from .model import (
+    FEATURE_SENSOR_CONTROL,
+    get_fan_ids,
+    get_sensor_control_device_section,
+    normalize_device_id,
+)
+from .model import (
+    get_feature_section as get_canonical_feature_section,
+)
+from .model import (
+    set_feature_section as set_canonical_feature_section,
+)
+from .validation import ConfigValidator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -183,6 +200,99 @@ class ExtrasConfigManager:
             Complete configuration dictionary
         """
         return self._config.copy()
+
+    def get_canonical_config(self) -> dict[str, Any]:
+        return migrate_to_canonical_config(self.get_all())
+
+    def get_exportable_config(self) -> dict[str, Any]:
+        return build_exportable_config(self.get_all())
+
+    def export_config_as_yaml(self) -> str:
+        return export_config_to_yaml(self.get_all())
+
+    def validate_canonical_config(self) -> tuple[bool, list[str]]:
+        validator = ConfigValidator(self.feature_id)
+        return validator.validate_canonical_config(self.get_canonical_config())
+
+    def validate_feature_section_canonical(
+        self, feature_id: str
+    ) -> tuple[bool, list[str]]:
+        validator = ConfigValidator(feature_id)
+        canonical_config = self.get_canonical_config()
+
+        if feature_id == "zones":
+            return validator.validate_zone_fans(
+                self.get_feature_section(feature_id, canonical=True),
+                self.get_feature_section("sensor_control", canonical=True),
+            )
+
+        if feature_id == "remote_binding":
+            return validator.validate_remote_binding_fans(
+                self.get_feature_section(feature_id, canonical=True),
+            )
+
+        return validator.validate_canonical_config(canonical_config)
+
+    def get_feature_section(
+        self, feature_id: str, *, canonical: bool = False
+    ) -> dict[str, Any]:
+        if canonical:
+            return get_canonical_feature_section(
+                self.get_canonical_config(), feature_id
+            )
+
+        section = self._config.get(feature_id)
+        if isinstance(section, dict):
+            return deepcopy(section)
+
+        root_section = get_canonical_feature_section(self._config, feature_id)
+        if root_section:
+            return deepcopy(root_section)
+        return {}
+
+    def set_feature_section(
+        self,
+        feature_id: str,
+        section_data: dict[str, Any],
+        *,
+        canonical: bool = False,
+    ) -> None:
+        if canonical:
+            canonical_config = self.get_canonical_config()
+            set_canonical_feature_section(canonical_config, feature_id, section_data)
+            self._config = canonical_config
+            return
+
+        if get_canonical_feature_section(self._config, feature_id):
+            set_canonical_feature_section(self._config, feature_id, section_data)
+            return
+
+        self._config[feature_id] = deepcopy(section_data)
+
+    def get_fan_section(
+        self, feature_id: str, device_id: str, *, canonical: bool = True
+    ) -> dict[str, Any] | list[Any]:
+        section = self.get_feature_section(feature_id, canonical=canonical)
+        normalized_device_id = normalize_device_id(device_id)
+
+        if feature_id == FEATURE_SENSOR_CONTROL:
+            return get_sensor_control_device_section(section, normalized_device_id)
+
+        for key in ("FANs", "devices", "fans"):
+            fan_mapping = section.get(key)
+            if not isinstance(fan_mapping, dict):
+                continue
+            fan_section = fan_mapping.get(normalized_device_id)
+            if isinstance(fan_section, (dict, list)):
+                return deepcopy(fan_section)
+
+        return {}
+
+    def list_configured_fans(
+        self, feature_id: str, *, canonical: bool = True
+    ) -> list[str]:
+        section = self.get_feature_section(feature_id, canonical=canonical)
+        return get_fan_ids(section)
 
     def update(self, updates: Any) -> None:
         """Update multiple configuration values.
