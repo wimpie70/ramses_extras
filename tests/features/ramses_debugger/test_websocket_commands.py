@@ -944,7 +944,7 @@ class TestWsPacketLogGetMessages:
             )
         ]
 
-        hass.async_add_executor_job.reset(mock=True)
+        hass.async_add_executor_job.reset_mock()
         hass.async_add_executor_job.side_effect = [
             Path("/config/packet_logs/packet.log"),
         ]
