@@ -105,8 +105,9 @@ jobs:
           cd config && npm ci
 
       - name: Run prek
+        working-directory: config
         run: |
-          cd config && npm run lint && npm run format:check
+          npm run lint && npm run format:check
 
   type:
     name: type (${{ matrix.python-version }})
