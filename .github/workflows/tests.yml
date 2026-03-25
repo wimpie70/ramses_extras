@@ -35,6 +35,8 @@ jobs:
   test:
     name: test (${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     strategy:
       matrix:
         python-version: ['3.13']
@@ -103,6 +105,7 @@ jobs:
           cd config && npm ci
 
       - name: Run prek
+        working-directory: config
         run: |
           cd config && npm run lint && npm run format:check
 

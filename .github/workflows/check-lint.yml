@@ -62,12 +62,14 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: config/package-lock.json
 
       - name: Install Node.js dependencies
-        run: npm ci
+        run: |
+          cd config && npm ci
 
       - name: Run prek
+        working-directory: config
         run: |
           npm run lint && npm run format:check
 

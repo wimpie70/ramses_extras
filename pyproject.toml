@@ -116,3 +116,7 @@ line-ending = "auto"
 [tool.pytest.ini_options]
   asyncio_mode = "auto"
   addopts = "--cov=custom_components --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=40"
+  filterwarnings = [
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+    "ignore::RuntimeWarning:.*coroutine.*",
+  ]
