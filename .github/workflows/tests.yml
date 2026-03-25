@@ -35,6 +35,8 @@ jobs:
   test:
     name: test (${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     strategy:
       matrix:
         python-version: ['3.13']
@@ -60,8 +62,6 @@ jobs:
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
           file: ./coverage.xml
           flags: unittests
