@@ -105,6 +105,36 @@ def test_validate_zone_fans_rejects_duplicate_zone_and_unknown_area_reference() 
     )
 
 
+def test_validate_zone_fans_normalizes_trimmed_zone_ids() -> None:
+    validator = ConfigValidator("test_feature")
+    zones_section = {
+        "FANs": {
+            "32_153289": [
+                {
+                    "zone_id": " bathroom ",
+                    "actuator": {"min_position": 15, "max_position": 90},
+                }
+            ]
+        }
+    }
+    sensor_control_section = {
+        "devices": {
+            "32:153289": {
+                "area_sensors": [
+                    {"zone_id": "bathroom", "temperature_entity": "sensor.bath_temp"}
+                ]
+            }
+        }
+    }
+
+    is_valid, errors = validator.validate_zone_fans(
+        zones_section, sensor_control_section
+    )
+
+    assert is_valid is True
+    assert errors == []
+
+
 def test_validate_remote_binding_fans_rejects_duplicates() -> None:
     validator = ConfigValidator("test_feature")
     remote_binding_section = {

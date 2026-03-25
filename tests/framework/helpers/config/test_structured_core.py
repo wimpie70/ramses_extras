@@ -81,6 +81,28 @@ def test_list_configured_fans_from_canonical_section() -> None:
     assert result == ["32:111111", "32:153289"]
 
 
+def test_get_fan_section_for_remote_binding_legacy_fan_key() -> None:
+    manager = _make_manager()
+    manager._config = {
+        "ramses_extras": {
+            "schema_version": 1,
+            "features": {
+                FEATURE_REMOTE_BINDING: {
+                    CONFIG_FANS_KEY: {
+                        "32_153289": {
+                            "REMs": [{"rem_id": "37:169161", "role": "primary"}]
+                        }
+                    }
+                }
+            },
+        }
+    }
+
+    result = manager.get_fan_section(FEATURE_REMOTE_BINDING, "32:153289")
+
+    assert result == {"REMs": [{"rem_id": "37:169161", "role": "primary"}]}
+
+
 def test_set_feature_section_canonical_promotes_root_model() -> None:
     manager = _make_manager()
     manager._config = {
@@ -168,5 +190,38 @@ def test_validate_feature_section_canonical_for_zones() -> None:
     assert is_valid is False
     assert (
         "zone 'bathroom' for FAN 32:153289: 'min_position' must be <= 'max_position'"
+        in errors
+    )
+
+
+def test_validate_feature_section_canonical_for_remote_binding_legacy_remote_id() -> (
+    None
+):
+    manager = _make_manager()
+    manager._config = {
+        "ramses_extras": {
+            "schema_version": 1,
+            "features": {
+                FEATURE_REMOTE_BINDING: {
+                    CONFIG_FANS_KEY: {
+                        "32_153289": {
+                            "REMs": [{"remote_id": "37_169161", "role": "primary"}]
+                        },
+                        "32:111111": {
+                            "REMs": [{"remote_id": "37:169161", "role": "primary"}]
+                        },
+                    }
+                }
+            },
+        }
+    }
+
+    is_valid, errors = manager.validate_feature_section_canonical(
+        FEATURE_REMOTE_BINDING
+    )
+
+    assert is_valid is False
+    assert (
+        "primary REM '37:169161' cannot be assigned to both 32:153289 and 32:111111"
         in errors
     )

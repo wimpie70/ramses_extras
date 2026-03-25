@@ -122,10 +122,49 @@ def get_device_section_mapping(section: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def get_fan_section(
+    section: dict[str, Any], device_id: str
+) -> dict[str, Any] | list[Any]:
+    normalized_device_id = normalize_device_id(device_id)
+    mapping = get_device_section_mapping(section)
+
+    fan_section = mapping.get(normalized_device_id)
+    if isinstance(fan_section, (dict, list)):
+        return deepcopy(fan_section)
+
+    legacy_device_id = legacy_device_key(normalized_device_id)
+    fan_section = mapping.get(legacy_device_id)
+    if isinstance(fan_section, (dict, list)):
+        return deepcopy(fan_section)
+
+    return {}
+
+
 def get_fan_ids(section: dict[str, Any]) -> list[str]:
     mapping = get_device_section_mapping(section)
     normalized_ids = {normalize_device_id(device_id) for device_id in mapping}
     return sorted(normalized_ids)
+
+
+def set_fan_section(
+    section: dict[str, Any],
+    device_id: str,
+    fan_section: dict[str, Any] | list[Any],
+) -> dict[str, Any]:
+    mapping_key = (
+        CONFIG_DEVICES_KEY if CONFIG_DEVICES_KEY in section else CONFIG_FANS_KEY
+    )
+    if mapping_key not in section or not isinstance(section.get(mapping_key), dict):
+        if CONFIG_FANS_KEY in section and not isinstance(
+            section.get(CONFIG_FANS_KEY), dict
+        ):
+            mapping_key = CONFIG_DEVICES_KEY
+        section[mapping_key] = {}
+
+    mapping = section[mapping_key]
+    normalized_device_id = normalize_device_id(device_id)
+    mapping[normalized_device_id] = deepcopy(fan_section)
+    return deepcopy(mapping[normalized_device_id])
 
 
 def get_sensor_control_device_section(
@@ -138,17 +177,99 @@ def get_sensor_control_device_section(
         if isinstance(device_section, dict):
             return deepcopy(device_section)
 
-    legacy_key = legacy_device_key(normalized_device_id)
+    legacy_device_id = legacy_device_key(normalized_device_id)
     device_config: dict[str, Any] = {}
     for config_key in SENSOR_CONTROL_SECTION_KEYS:
         config_group = section.get(config_key)
         if not isinstance(config_group, dict):
             continue
-        value = config_group.get(legacy_key)
+        value = config_group.get(legacy_device_id)
         if value is not None:
             device_config[config_key] = deepcopy(value)
 
     return device_config
+
+
+def get_remote_binding_rems(
+    section: dict[str, Any], device_id: str
+) -> list[dict[str, Any]]:
+    fan_section = get_fan_section(section, device_id)
+    if not isinstance(fan_section, dict):
+        return []
+
+    rems = fan_section.get(CONFIG_REMS_KEY)
+    if not isinstance(rems, list):
+        return []
+
+    normalized_rems: list[dict[str, Any]] = []
+    for rem in rems:
+        if not isinstance(rem, dict):
+            continue
+        rem_section = deepcopy(rem)
+        rem_id = rem_section.get(REMOTE_BINDING_REM_ID_KEY) or rem_section.get(
+            REMOTE_BINDING_REMOTE_ID_KEY
+        )
+        if isinstance(rem_id, str):
+            rem_section[REMOTE_BINDING_REM_ID_KEY] = normalize_device_id(rem_id)
+        rem_section.pop(REMOTE_BINDING_REMOTE_ID_KEY, None)
+        normalized_rems.append(rem_section)
+
+    return normalized_rems
+
+
+def get_remote_binding_rem_ids(section: dict[str, Any], device_id: str) -> list[str]:
+    rem_ids: list[str] = []
+    for rem in get_remote_binding_rems(section, device_id):
+        rem_id = rem.get(REMOTE_BINDING_REM_ID_KEY)
+        if isinstance(rem_id, str) and rem_id not in rem_ids:
+            rem_ids.append(rem_id)
+    return rem_ids
+
+
+def get_primary_rem_id(section: dict[str, Any], device_id: str) -> str | None:
+    for rem in get_remote_binding_rems(section, device_id):
+        if rem.get("role") != "primary":
+            continue
+        rem_id = rem.get(REMOTE_BINDING_REM_ID_KEY)
+        if isinstance(rem_id, str) and rem_id:
+            return rem_id
+    return None
+
+
+def get_zones_for_fan(section: dict[str, Any], device_id: str) -> list[dict[str, Any]]:
+    fan_section = get_fan_section(section, device_id)
+    if not isinstance(fan_section, list):
+        return []
+
+    normalized_zones: list[dict[str, Any]] = []
+    for zone in fan_section:
+        if not isinstance(zone, dict):
+            continue
+        zone_section = deepcopy(zone)
+        zone_id = zone_section.get(ZONE_ID_KEY)
+        if isinstance(zone_id, str):
+            zone_section[ZONE_ID_KEY] = zone_id.strip()
+        normalized_zones.append(zone_section)
+
+    return normalized_zones
+
+
+def get_zone_ids_for_fan(section: dict[str, Any], device_id: str) -> list[str]:
+    zone_ids: list[str] = []
+    for zone in get_zones_for_fan(section, device_id):
+        zone_id = zone.get(ZONE_ID_KEY)
+        if isinstance(zone_id, str) and zone_id and zone_id not in zone_ids:
+            zone_ids.append(zone_id)
+    return zone_ids
+
+
+def find_zone_for_fan(
+    section: dict[str, Any], device_id: str, zone_id: str
+) -> dict[str, Any] | None:
+    for zone in get_zones_for_fan(section, device_id):
+        if zone.get(ZONE_ID_KEY) == zone_id:
+            return zone
+    return None
 
 
 def find_areas_for_zone(
@@ -209,15 +330,23 @@ __all__ = [
     "SENSOR_CONTROL_SECTION_KEYS",
     "SENSOR_CONTROL_SOURCES_KEY",
     "ZONE_ID_KEY",
+    "find_zone_for_fan",
     "find_areas_for_zone",
     "find_entities_for_zone",
     "get_fan_ids",
+    "get_fan_section",
     "get_feature_section",
     "get_features_container",
+    "get_primary_rem_id",
+    "get_remote_binding_rem_ids",
+    "get_remote_binding_rems",
     "get_root_model",
     "get_sensor_control_device_section",
+    "get_zone_ids_for_fan",
+    "get_zones_for_fan",
     "legacy_device_key",
     "make_empty_config_model",
     "normalize_device_id",
+    "set_fan_section",
     "set_feature_section",
 ]

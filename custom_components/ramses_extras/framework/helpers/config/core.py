@@ -25,6 +25,9 @@ from .model import (
     normalize_device_id,
 )
 from .model import (
+    get_fan_section as get_model_fan_section,
+)
+from .model import (
     get_feature_section as get_canonical_feature_section,
 )
 from .model import (
@@ -278,15 +281,7 @@ class ExtrasConfigManager:
         if feature_id == FEATURE_SENSOR_CONTROL:
             return get_sensor_control_device_section(section, normalized_device_id)
 
-        for key in ("FANs", "devices", "fans"):
-            fan_mapping = section.get(key)
-            if not isinstance(fan_mapping, dict):
-                continue
-            fan_section = fan_mapping.get(normalized_device_id)
-            if isinstance(fan_section, (dict, list)):
-                return deepcopy(fan_section)
-
-        return {}
+        return get_model_fan_section(section, normalized_device_id)
 
     def list_configured_fans(
         self, feature_id: str, *, canonical: bool = True

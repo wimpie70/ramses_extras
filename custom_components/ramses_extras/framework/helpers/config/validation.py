@@ -18,7 +18,9 @@ from .model import (
     SENSOR_CONTROL_AREA_SENSORS_KEY,
     ZONE_ID_KEY,
     get_feature_section,
+    get_remote_binding_rems,
     get_sensor_control_device_section,
+    get_zones_for_fan,
     normalize_device_id,
 )
 
@@ -437,14 +439,16 @@ class ConfigValidator:
                 )
                 continue
 
-            zone_ids: set[str] = set()
             for index, zone in enumerate(zones):
-                if not isinstance(zone, dict):
-                    errors.append(
-                        f"zone entry {index} for FAN {normalized_fan_id} must be a dict"
-                    )
+                if isinstance(zone, dict):
                     continue
+                errors.append(
+                    f"zone entry {index} for FAN {normalized_fan_id} must be a dict"
+                )
 
+            zone_ids: set[str] = set()
+            normalized_zones = get_zones_for_fan(zones_section, normalized_fan_id)
+            for index, zone in enumerate(normalized_zones):
                 zone_id = zone.get(ZONE_ID_KEY)
                 if not isinstance(zone_id, str) or not zone_id.strip():
                     errors.append(
@@ -518,14 +522,18 @@ class ConfigValidator:
                 )
                 continue
 
-            rem_ids_for_fan: set[str] = set()
             for index, rem in enumerate(rems):
-                if not isinstance(rem, dict):
-                    errors.append(
-                        f"REM entry {index} for FAN {normalized_fan_id} must be a dict"
-                    )
+                if isinstance(rem, dict):
                     continue
+                errors.append(
+                    f"REM entry {index} for FAN {normalized_fan_id} must be a dict"
+                )
 
+            rem_ids_for_fan: set[str] = set()
+            normalized_rems = get_remote_binding_rems(
+                remote_binding_section, normalized_fan_id
+            )
+            for index, rem in enumerate(normalized_rems):
                 rem_id = rem.get(REMOTE_BINDING_REM_ID_KEY)
                 is_valid_rem_id, rem_id_error = self.validate_device_id_value(
                     rem_id, REMOTE_BINDING_REM_ID_KEY
