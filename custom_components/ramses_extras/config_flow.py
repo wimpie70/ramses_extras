@@ -28,12 +28,13 @@ from .const import (
     GITHUB_WIKI_URL,
     INTEGRATION_DIR,
 )
+from .extras_registry import extras_registry
 from .features.sensor_control.const import SUPPORTED_METRICS
+from .framework.helpers.config.migration import get_migrated_feature_section
+from .framework.helpers.config.model import CONFIG_DEVICES_KEY
 from .framework.helpers.config_flow import ConfigFlowHelper
 from .framework.helpers.device.filter import DeviceFilter
-from .framework.helpers.entity.simple_entity_manager import (
-    SimpleEntityManager,
-)
+from .framework.helpers.entity.simple_entity_manager import SimpleEntityManager
 from .framework.helpers.paths import DEPLOYMENT_PATHS
 
 if TYPE_CHECKING:
@@ -82,7 +83,6 @@ async def _manage_cards_config_flow(
             continue
 
         # Get card info from the registry
-        from .extras_registry import extras_registry
 
         card_info = extras_registry.get_card_config(feature_key) or {}
 
@@ -384,15 +384,15 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         self._refresh_config_entry(self.hass)
 
         options = dict(self._config_entry.options)
-        sensor_control_options = options.get("sensor_control") or {}
-        sources: dict[str, dict[str, dict[str, Any]]] = sensor_control_options.get(
-            "sources", {}
+        sensor_control_section = get_migrated_feature_section(
+            options,
+            "sensor_control",
         )
-        abs_inputs: dict[str, dict[str, Any]] = sensor_control_options.get(
-            "abs_humidity_inputs", {}
-        )
+        devices = sensor_control_section.get(CONFIG_DEVICES_KEY)
+        if not isinstance(devices, dict):
+            devices = {}
 
-        device_keys = set(sources.keys()) | set(abs_inputs.keys())
+        device_keys = set(devices.keys())
 
         if not device_keys:
             info_text = (
@@ -412,10 +412,16 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
         # Sort device keys for stable display
         for device_key in sorted(device_keys):
-            device_sources = sources.get(device_key) or {}
-            device_abs_inputs = abs_inputs.get(device_key) or {}
-            # Convert back to colon-separated device id for readability
-            device_id = device_key.replace("_", ":")
+            device_section = devices.get(device_key) or {}
+            if not isinstance(device_section, dict):
+                continue
+            device_sources = device_section.get("sources") or {}
+            device_abs_inputs = device_section.get("abs_humidity_inputs") or {}
+            if not isinstance(device_sources, dict):
+                device_sources = {}
+            if not isinstance(device_abs_inputs, dict):
+                device_abs_inputs = {}
+            device_id = device_key
 
             device_lines: list[str] = []
 
@@ -664,12 +670,13 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         sensor_control_summary = ""
         try:
             options = dict(self._config_entry.options)
-            sensor_control_options = options.get("sensor_control") or {}
-            sources: dict[str, dict[str, Any]] = sensor_control_options.get(
-                "sources", {}
+            sensor_control_section = get_migrated_feature_section(
+                options,
+                "sensor_control",
             )
-            if sources:
-                device_ids = [key.replace("_", ":") for key in sorted(sources.keys())]
+            devices = sensor_control_section.get(CONFIG_DEVICES_KEY)
+            if isinstance(devices, dict) and devices:
+                device_ids = sorted(devices.keys())
                 joined_ids = ", ".join(device_ids)
                 sensor_control_summary = (
                     "\nSensor control mappings are configured for devices: "

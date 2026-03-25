@@ -408,8 +408,47 @@ async def test_sensor_control_context_helpers(manager: CO2AutomationManager) -> 
     assert context["area_sensors"] == [{"co2_entity": "sensor.fallback"}]
 
 
+def test_sensor_control_config_helpers_read_canonical_root_model(
+    manager: CO2AutomationManager,
+) -> None:
+    """CO2 helper lookups should support canonical sensor_control storage."""
+    canonical_sensor_control = {
+        "devices": {
+            "32:123456": {
+                "area_sensors": [
+                    {
+                        "source_id": "bathroom",
+                        "temperature_entity": "sensor.bath_temp",
+                        "humidity_entity": "sensor.bath_humidity",
+                        "area_co2_enabled": True,
+                        "co2_entity": "sensor.bath_co2",
+                    }
+                ]
+            }
+        }
+    }
+    manager.config_entry.options = {
+        "ramses_extras": {
+            "schema_version": 1,
+            "features": {
+                "sensor_control": canonical_sensor_control,
+            },
+        }
+    }
+
+    sensor_control = manager._get_sensor_control_config("32:123456")
+    area_sensors = manager._get_raw_area_sensors_from_options("32:123456")
+
+    assert sensor_control == {
+        "devices": {"32:123456": canonical_sensor_control["devices"]["32:123456"]}
+    }
+    assert (
+        area_sensors == canonical_sensor_control["devices"]["32:123456"]["area_sensors"]
+    )
+
+
 def test_get_status_includes_fan_arbiter(manager: CO2AutomationManager) -> None:
-    """Status should include fan arbiter debug information."""
+    """Status should include fan arbiter debug metadata when available."""
     status = manager.get_status()
     assert "fan_arbiter" in status
     assert status["fan_arbiter"]["32:123456"]["resolved_command"] == "fan_auto"

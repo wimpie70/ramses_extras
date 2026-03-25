@@ -1,5 +1,6 @@
 """Tests for sensor_control feature config flow."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,6 +36,14 @@ def helper():
     helper = MagicMock()
     helper.get_devices_for_feature_selection.return_value = ["32:123456"]
     return helper
+
+
+def _get_persisted_sensor_control_sections(
+    options: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    legacy = options["sensor_control"]
+    canonical = options["ramses_extras"]["features"]["sensor_control"]
+    return legacy, canonical
 
 
 def test_device_key():
@@ -105,13 +114,13 @@ async def test_async_step_sensor_control_config_select_device_with_overview(
                         "kind": "external",
                         "entity_id": "sensor.test",
                     }
-                }
+                },
             },
             "abs_humidity_inputs": {
                 "32_123456": {
                     "indoor_abs_humidity": {
-                        "temperature": {"kind": "external", "entity_id": "sensor.temp"},
-                        "humidity": {"kind": "external", "entity_id": "sensor.hum"},
+                        "temperature": {"kind": "external", "entity_id": "sensor.abs"},
+                        "humidity": {"kind": "internal"},
                     }
                 }
             },
@@ -123,8 +132,8 @@ async def test_async_step_sensor_control_config_select_device_with_overview(
     info_text = flow.async_show_form.call_args[1]["description_placeholders"]["info"]
     assert "Existing Sensor Control Mappings" in info_text
     assert "Device 32:123456" in info_text
-    assert "indoor_temperature: external  sensor.test" in info_text
-    assert "indoor_abs_humidity" in info_text
+    assert "sensor.test" in info_text
+    assert "temp: external  sensor.abs" in info_text
 
 
 async def test_select_device_abs_overview_variants(
@@ -193,6 +202,60 @@ async def test_async_step_sensor_control_config_select_device_with_area_sensor_o
     assert "area sensor Bathroom" in info_text
     assert "spike: 12.0%/3m" in info_text
     assert "max RH trigger" in info_text
+
+
+async def test_async_step_sensor_control_config_select_device_with_canonical_root_overview(  # noqa: E501
+    flow, helper
+):
+    """The overview should also read canonical-root sensor_control config."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "select_device"
+    flow._config_entry.options = {
+        "ramses_extras": {
+            "schema_version": 1,
+            "features": {
+                "sensor_control": {
+                    "devices": {
+                        "32:123456": {
+                            "sources": {
+                                "indoor_temperature": {
+                                    "kind": "external",
+                                    "entity_id": "sensor.test",
+                                }
+                            },
+                            "abs_humidity_inputs": {
+                                "indoor_abs_humidity": {
+                                    "temperature": {
+                                        "kind": "external_abs",
+                                        "entity_id": "sensor.abs",
+                                    },
+                                    "humidity": {"kind": "none"},
+                                }
+                            },
+                            "area_sensors": [
+                                {
+                                    "source_id": "bathroom",
+                                    "label": "Bathroom",
+                                    "temperature_entity": "sensor.bath_temp",
+                                    "humidity_entity": "sensor.bath_humidity",
+                                    "trigger_on_high_humidity": True,
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    }
+
+    await async_step_sensor_control_config(flow, None)
+
+    info_text = flow.async_show_form.call_args[1]["description_placeholders"]["info"]
+    assert "Existing Sensor Control Mappings" in info_text
+    assert "Device 32:123456" in info_text
+    assert "sensor.test" in info_text
+    assert "external abs  sensor.abs" in info_text
+    assert "area sensor Bathroom" in info_text
 
 
 async def test_async_step_sensor_control_config_select_device_refresh(flow, helper):
@@ -297,7 +360,8 @@ async def test_async_step_sensor_control_config_configure_group(flow, helper):
 
         # Post-processing - Submit configuration
         user_input = {
-            "indoor_temperature_kind": "internal",
+            "indoor_temperature_kind": "external",
+            "indoor_temperature_entity": "sensor.indoor_temp",
             "indoor_humidity_kind": "internal",
         }
         await async_step_sensor_control_config(flow, user_input)
@@ -306,6 +370,22 @@ async def test_async_step_sensor_control_config_configure_group(flow, helper):
         assert flow._sensor_control_group_stage == "select_group"
         # Verify config entry update called
         flow.hass.config_entries.async_update_entry.assert_called_once()
+
+    options = flow.hass.config_entries.async_update_entry.call_args.kwargs["options"]
+    legacy, canonical = _get_persisted_sensor_control_sections(options)
+    assert legacy["sources"]["32_123456"]["indoor_temperature"]["kind"] == "external"
+    assert (
+        legacy["sources"]["32_123456"]["indoor_temperature"]["entity_id"]
+        == "sensor.indoor_temp"
+    )
+    assert (
+        canonical["devices"]["32:123456"]["sources"]["indoor_temperature"]["kind"]
+        == "external"
+    )
+    assert (
+        canonical["devices"]["32:123456"]["sources"]["indoor_temperature"]["entity_id"]
+        == "sensor.indoor_temp"
+    )
 
 
 async def test_async_step_sensor_control_config_area_sensors_edit_selection(
@@ -346,23 +426,30 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         user_input = {
             "area_sensor_label": "Bathroom",
             "area_sensor_enabled": True,
-            "zone_id": "zone_1",
-            "temperature_entity": "sensor.bath_temp",
-            "humidity_entity": "sensor.bath_humidity",
+            "temperature_entity": "input_number.temp_helper",
+            "humidity_entity": "input_number.humid_helper",
             "trigger_on_high_humidity": True,
-            "spike_rise_percent": 15.0,
+            "spike_rise_percent": 5.0,
             "spike_window_minutes": 3,
+            "area_co2_enabled": True,
+            "co2_entity": "input_number.co2_helper",
+            "co2_threshold_entity": "input_number.bathroom_co2_threshold",
+            "co2_threshold": 800,
         }
         await async_step_sensor_control_config(flow, user_input)
 
         options = flow.hass.config_entries.async_update_entry.call_args.kwargs[
             "options"
         ]
-        area_sensors = options["sensor_control"]["area_sensors"]["32_123456"]
-        assert len(area_sensors) == 1
-        assert area_sensors[0]["source_id"] == "bathroom"
-        assert area_sensors[0]["zone_id"] == "zone_1"
-        assert area_sensors[0]["trigger_on_high_humidity"] is True
+        legacy, canonical = _get_persisted_sensor_control_sections(options)
+        area_sensor = legacy["area_sensors"]["32_123456"][0]
+        assert area_sensor["source_id"] == "bathroom"
+        assert area_sensor["co2_entity"] == "input_number.co2_helper"
+        assert (
+            area_sensor["co2_threshold_entity"] == "input_number.bathroom_co2_threshold"
+        )
+        assert area_sensor["co2_threshold"] == 800
+        assert canonical["devices"]["32:123456"]["area_sensors"][0] == area_sensor
         assert flow._sensor_control_group_stage == "area_sensors_menu"
 
         flow._config_entry.options = options
@@ -385,14 +472,19 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         edited_options = flow.hass.config_entries.async_update_entry.call_args.kwargs[
             "options"
         ]
-        edited_area_sensor = edited_options["sensor_control"]["area_sensors"][
-            "32_123456"
-        ][0]
+        edited_legacy, edited_canonical = _get_persisted_sensor_control_sections(
+            edited_options
+        )
+        edited_area_sensor = edited_legacy["area_sensors"]["32_123456"][0]
         assert edited_area_sensor["source_id"] == "bathroom"
         assert edited_area_sensor["label"] == "Bathroom Shower"
         assert edited_area_sensor["enabled"] is False
         assert edited_area_sensor["zone_id"] == "zone_2"
         assert edited_area_sensor["trigger_on_high_humidity"] is False
+        assert (
+            edited_canonical["devices"]["32:123456"]["area_sensors"][0]
+            == edited_area_sensor
+        )
 
 
 async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
@@ -426,11 +518,13 @@ async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
         )
 
     options = flow.hass.config_entries.async_update_entry.call_args.kwargs["options"]
-    area_sensor = options["sensor_control"]["area_sensors"]["32_123456"][0]
+    legacy, canonical = _get_persisted_sensor_control_sections(options)
+    area_sensor = legacy["area_sensors"]["32_123456"][0]
     assert area_sensor["source_id"] == "bathroom"
     assert area_sensor["co2_entity"] == "input_number.co2_helper"
     assert area_sensor["co2_threshold_entity"] == "input_number.bathroom_co2_threshold"
     assert area_sensor["co2_threshold"] == 800
+    assert canonical["devices"]["32:123456"]["area_sensors"][0] == area_sensor
 
 
 async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper):
@@ -447,7 +541,6 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
                     {
                         "source_id": "bathroom",
                         "label": "Bathroom",
-                        "enabled": True,
                         "temperature_entity": "input_number.temp_helper",
                         "humidity_entity": "input_number.humid_helper",
                         "area_co2_enabled": True,
@@ -461,7 +554,6 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
                     {
                         "source_id": "kitchen",
                         "label": "Kitchen",
-                        "enabled": True,
                         "temperature_entity": "sensor.kitchen_temp",
                         "humidity_entity": "sensor.kitchen_humidity",
                         "area_co2_enabled": True,
@@ -501,11 +593,17 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
     updated = flow.hass.config_entries.async_update_entry.call_args.kwargs["options"][
         "sensor_control"
     ]["area_sensors"]["32_123456"]
+    legacy, canonical = _get_persisted_sensor_control_sections(
+        flow.hass.config_entries.async_update_entry.call_args.kwargs["options"]
+    )
     assert updated[0]["source_id"] == "bathroom"
     assert updated[0]["co2_threshold"] == 820
     assert updated[1]["source_id"] == "kitchen"
     assert updated[1]["co2_threshold"] == 950
     assert updated[1]["co2_entity"] == "sensor.kitchen_co2"
+    assert updated[1]["co2_threshold_entity"] == "input_number.kitchen_co2_threshold"
+    assert legacy["area_sensors"]["32_123456"] == updated
+    assert canonical["devices"]["32:123456"]["area_sensors"] == updated
 
 
 async def test_async_step_sensor_control_config_area_sensors_edit_preserves_others(
@@ -608,7 +706,9 @@ async def test_async_step_sensor_control_config_area_sensors_delete(flow, helper
         options = flow.hass.config_entries.async_update_entry.call_args.kwargs[
             "options"
         ]
-        assert options["sensor_control"]["area_sensors"]["32_123456"] == []
+        legacy, canonical = _get_persisted_sensor_control_sections(options)
+        assert legacy["area_sensors"]["32_123456"] == []
+        assert canonical["devices"]["32:123456"]["area_sensors"] == []
 
 
 async def test_async_step_sensor_control_config_area_sensors_menu_back(flow, helper):

@@ -23,6 +23,13 @@ from custom_components.ramses_extras.framework.base_classes.base_entity import (
 from custom_components.ramses_extras.framework.base_classes.platform_entities import (
     ExtrasSensorEntity,
 )
+from custom_components.ramses_extras.framework.helpers.config.migration import (
+    get_migrated_feature_section,
+)
+from custom_components.ramses_extras.framework.helpers.config.model import (
+    SENSOR_CONTROL_AREA_SENSORS_KEY,
+    get_sensor_control_device_section,
+)
 from custom_components.ramses_extras.framework.helpers.device.core import (
     extract_device_id_as_string,
 )
@@ -48,10 +55,16 @@ def _get_area_sensors_config(
     if entry is None:
         return []
 
-    sensor_control_options = entry.options.get("sensor_control") or {}
-    area_sensor_map = sensor_control_options.get("area_sensors") or {}
-    device_key = extract_device_id_as_string(device_id).replace(":", "_")
-    area_sensors = area_sensor_map.get(device_key)
+    merged_config = dict(getattr(entry, "data", {}) or {})
+    merged_config.update(getattr(entry, "options", {}) or {})
+    sensor_control_section = get_migrated_feature_section(
+        merged_config,
+        "sensor_control",
+    )
+    area_sensors = get_sensor_control_device_section(
+        sensor_control_section,
+        extract_device_id_as_string(device_id),
+    ).get(SENSOR_CONTROL_AREA_SENSORS_KEY)
     if not isinstance(area_sensors, list):
         return []
 

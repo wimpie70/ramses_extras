@@ -997,6 +997,36 @@ class TestCreateDefaultSensor:
         assert "fan_control_mode" in sensor_types
         assert "area_absolute_humidity_bathroom" in sensor_types
 
+    async def test_create_default_sensor_with_canonical_area_sensors(self, hass):
+        """Canonical sensor_control config should also create area humidity sensors."""
+        config_entry = MagicMock()
+        config_entry.options = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    "sensor_control": {
+                        "devices": {
+                            "32:153289": {
+                                "area_sensors": [
+                                    {
+                                        "source_id": "bathroom",
+                                        "label": "Bathroom",
+                                        "temperature_entity": "sensor.bath_temp",
+                                        "humidity_entity": "sensor.bath_humidity",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+            }
+        }
+
+        sensors = await create_default_sensor(hass, "32:153289", config_entry)
+
+        sensor_types = {sensor._sensor_type for sensor in sensors}
+        assert "area_absolute_humidity_bathroom" in sensor_types
+
 
 class TestEntityPatterns:
     """Test entity pattern configurations."""

@@ -17,6 +17,14 @@ from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.framework.base_classes.base_automation import (
     ExtrasBaseAutomation,
 )
+from custom_components.ramses_extras.framework.helpers.config.migration import (
+    migrate_feature_section,
+)
+from custom_components.ramses_extras.framework.helpers.config.model import (
+    FEATURE_SENSOR_CONTROL,
+    SENSOR_CONTROL_AREA_SENSORS_KEY,
+    get_sensor_control_device_section,
+)
 from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import (
     get_fan_speed_arbiter,
 )
@@ -411,7 +419,10 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if internal_entity:
             entities.add(internal_entity)
 
-        area_sensors = cast(list[dict[str, Any]], sensor_ctx.get("area_sensors") or [])
+        area_sensors = cast(
+            list[dict[str, Any]],
+            (sensor_ctx or {}).get("area_sensors") or [],
+        )
         for area_sensor in area_sensors:
             if not bool(area_sensor.get("area_co2_enabled", False)):
                 continue
@@ -476,7 +487,10 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if entity_id == str(mappings.get("co2") or ""):
             return True
 
-        area_sensors = cast(list[dict[str, Any]], sensor_ctx.get("area_sensors") or [])
+        area_sensors = cast(
+            list[dict[str, Any]],
+            (sensor_ctx or {}).get("area_sensors") or [],
+        )
         for area_sensor in area_sensors:
             if not bool(area_sensor.get("area_co2_enabled", False)):
                 continue
@@ -507,7 +521,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             )
 
             resolved_area_sensors = cast(
-                list[dict[str, Any]], sensor_result.get("area_sensors") or []
+                list[dict[str, Any]],
+                (sensor_result or {}).get("area_sensors") or [],
             )
             if not resolved_area_sensors:
                 resolved_area_sensors = self._get_raw_area_sensors_from_options(
@@ -515,9 +530,9 @@ class CO2AutomationManager(ExtrasBaseAutomation):
                 )
 
             return {
-                "mappings": sensor_result.get("mappings") or {},
-                "sources": sensor_result.get("sources") or {},
-                "raw_internal": sensor_result.get("raw_internal") or {},
+                "mappings": (sensor_result or {}).get("mappings") or {},
+                "sources": (sensor_result or {}).get("sources") or {},
+                "raw_internal": (sensor_result or {}).get("raw_internal") or {},
                 "area_sensors": resolved_area_sensors,
             }
         except Exception as err:
@@ -540,22 +555,14 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         if not sensor_control:
             return []
 
-        area_map = cast(dict[str, Any], sensor_control.get("area_sensors") or {})
-
-        raw = None
-        for key in {
-            str(clean_device_id),
-            str(clean_device_id).replace(":", "_"),
-            str(clean_device_id).replace("_", ":"),
-        }:
-            raw = area_map.get(key)
-            if raw is not None:
-                break
-
-        if not isinstance(raw, list):
+        area_sensors = get_sensor_control_device_section(
+            sensor_control,
+            clean_device_id,
+        ).get(SENSOR_CONTROL_AREA_SENSORS_KEY)
+        if not isinstance(area_sensors, list):
             return []
 
-        return [item for item in raw if isinstance(item, dict)]
+        return [item for item in area_sensors if isinstance(item, dict)]
 
     def _get_sensor_control_config(
         self,
@@ -598,9 +605,16 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
             options = getattr(entry, "options", {}) or {}
             data = getattr(entry, "data", {}) or {}
-            sensor_control = options.get("sensor_control") or data.get("sensor_control")
+            sensor_control = self._extract_sensor_control_section(
+                options
+            ) or self._extract_sensor_control_section(data)
             if not isinstance(sensor_control, dict):
                 continue
+
+            sensor_control = migrate_feature_section(
+                FEATURE_SENSOR_CONTROL,
+                sensor_control,
+            )
 
             if fallback_config is None:
                 fallback_config = sensor_control
@@ -608,14 +622,31 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if not normalized_keys:
                 return sensor_control
 
-            for config_key in ("sources", "abs_humidity_inputs", "area_sensors"):
-                section = sensor_control.get(config_key) or {}
-                if not isinstance(section, dict):
-                    continue
-                if any(key in section for key in normalized_keys):
-                    return sensor_control
+            if device_id and get_sensor_control_device_section(
+                sensor_control, device_id
+            ):
+                return sensor_control
 
         return fallback_config or {}
+
+    def _extract_sensor_control_section(
+        self,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        sensor_control = payload.get("sensor_control")
+        if isinstance(sensor_control, dict):
+            return sensor_control
+
+        root_section = payload.get("ramses_extras")
+        if not isinstance(root_section, dict):
+            return None
+
+        features = root_section.get("features")
+        if not isinstance(features, dict):
+            return None
+
+        sensor_control = features.get("sensor_control")
+        return sensor_control if isinstance(sensor_control, dict) else None
 
     def _get_device_type_for_sensor_control(self, device_id: str) -> str | None:
         devices = self.hass.data.get(DOMAIN, {}).get("devices", [])

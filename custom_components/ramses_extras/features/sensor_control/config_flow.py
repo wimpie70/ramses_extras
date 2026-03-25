@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,17 @@ import voluptuous as vol
 from homeassistant.helpers import selector
 
 from ...const import AVAILABLE_FEATURES, DOMAIN
+from ...framework.helpers.config.migration import get_migrated_feature_section
+from ...framework.helpers.config.model import (
+    CONFIG_DEVICES_KEY,
+    FEATURE_SENSOR_CONTROL,
+    SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
+    SENSOR_CONTROL_AREA_SENSORS_KEY,
+    SENSOR_CONTROL_SOURCES_KEY,
+    legacy_device_key,
+    normalize_device_id,
+    set_feature_section,
+)
 from ...framework.helpers.device.filter import DeviceFilter
 from .const import SUPPORTED_METRICS
 from .device_types import DEVICE_TYPE_HANDLERS
@@ -94,6 +106,50 @@ def _get_area_sensor_by_id(
         if isinstance(item, dict) and str(item.get("source_id") or "") == source_id:
             return item
     return None
+
+
+def _build_legacy_sensor_control_section(
+    sensor_control_section: dict[str, Any],
+) -> dict[str, Any]:
+    legacy_section: dict[str, dict[str, Any]] = {
+        SENSOR_CONTROL_SOURCES_KEY: {},
+        SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY: {},
+        SENSOR_CONTROL_AREA_SENSORS_KEY: {},
+    }
+    devices = sensor_control_section.get(CONFIG_DEVICES_KEY)
+    if not isinstance(devices, dict):
+        return {}
+
+    for device_id, device_section in devices.items():
+        if not isinstance(device_section, dict):
+            continue
+        device_key = legacy_device_key(normalize_device_id(str(device_id)))
+        for section_key in (
+            SENSOR_CONTROL_SOURCES_KEY,
+            SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
+            SENSOR_CONTROL_AREA_SENSORS_KEY,
+        ):
+            value = device_section.get(section_key)
+            if value is not None:
+                legacy_section[section_key][device_key] = deepcopy(value)
+
+    return {key: value for key, value in legacy_section.items() if value}
+
+
+def _persist_sensor_control_section(
+    flow: Any,
+    options: dict[str, Any],
+    sensor_control_section: dict[str, Any],
+) -> None:
+    canonical_section = deepcopy(sensor_control_section)
+    options[FEATURE_SENSOR_CONTROL] = _build_legacy_sensor_control_section(
+        canonical_section
+    )
+    set_feature_section(options, FEATURE_SENSOR_CONTROL, canonical_section)
+    flow.hass.config_entries.async_update_entry(  # noqa: SLF001
+        flow._config_entry,  # noqa: SLF001
+        options=options,
+    )
 
 
 def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
@@ -190,7 +246,7 @@ def _get_device_type(flow: Any, device_id: str) -> str | None:
 async def async_step_sensor_control_config(
     flow: Any, user_input: dict[str, Any] | None
 ) -> Any:
-    feature_id = "sensor_control"
+    feature_id = FEATURE_SENSOR_CONTROL
     feature_config = AVAILABLE_FEATURES.get(feature_id, {})
 
     # Make sure we work with the latest config entry/options state
@@ -247,29 +303,38 @@ async def async_step_sensor_control_config(
         overview_lines: list[str] = []
         try:
             options = dict(flow._config_entry.options)  # noqa: SLF001
-            sensor_control_options = options.get("sensor_control") or {}
-            sources: dict[str, dict[str, dict[str, Any]]] = sensor_control_options.get(
-                "sources", {}
+            sensor_control_section = get_migrated_feature_section(
+                options,
+                "sensor_control",
             )
-            abs_inputs: dict[str, dict[str, Any]] = sensor_control_options.get(
-                "abs_humidity_inputs", {}
-            )
-            area_sensor_cfgs: dict[str, list[dict[str, Any]]] = (
-                sensor_control_options.get("area_sensors") or {}
-            )
+            devices = sensor_control_section.get(CONFIG_DEVICES_KEY)
+            if not isinstance(devices, dict):
+                devices = {}
 
-            device_keys = (
-                set(sources.keys())
-                | set(abs_inputs.keys())
-                | set(area_sensor_cfgs.keys())
-            )
+            device_keys = set(devices.keys())
 
             if device_keys:
                 overview_lines.append("Existing Sensor Control Mappings\n")
                 for device_key in sorted(device_keys):
-                    device_sources = sources.get(device_key) or {}
-                    device_abs_inputs = abs_inputs.get(device_key) or {}
-                    device_id = device_key.replace("_", ":")
+                    device_section = devices.get(device_key) or {}
+                    if not isinstance(device_section, dict):
+                        continue
+                    device_sources = (
+                        device_section.get(SENSOR_CONTROL_SOURCES_KEY) or {}
+                    )
+                    device_abs_inputs = (
+                        device_section.get(SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY) or {}
+                    )
+                    area_sensor_cfgs = (
+                        device_section.get(SENSOR_CONTROL_AREA_SENSORS_KEY) or []
+                    )
+                    if not isinstance(device_sources, dict):
+                        device_sources = {}
+                    if not isinstance(device_abs_inputs, dict):
+                        device_abs_inputs = {}
+                    if not isinstance(area_sensor_cfgs, list):
+                        area_sensor_cfgs = []
+                    device_id = device_key
 
                     device_lines: list[str] = []
 
@@ -281,29 +346,33 @@ async def async_step_sensor_control_config(
                             temp_kind = str(temp_cfg.get("kind") or "internal")
                             hum_kind = str(hum_cfg.get("kind") or "internal")
 
-                            abs_parts: list[str] = []
+                            device_abs_parts: list[str] = []
                             if temp_kind == "external_abs":
                                 ent = temp_cfg.get("entity_id")
                                 if ent:
-                                    abs_parts.append(f"external abs  {ent}")
+                                    device_abs_parts.append(f"external abs  {ent}")
                                 else:
-                                    abs_parts.append("external abs (no entity)")
+                                    device_abs_parts.append("external abs (no entity)")
                             else:
                                 if temp_kind in ("external", "external_temp"):
                                     ent = temp_cfg.get("entity_id")
                                     if ent:
-                                        abs_parts.append(f"temp: external  {ent}")
+                                        device_abs_parts.append(
+                                            f"temp: external  {ent}"
+                                        )
                                 if hum_kind == "external":
                                     ent = hum_cfg.get("entity_id")
                                     if ent:
-                                        abs_parts.append(f"humidity: external  {ent}")
+                                        device_abs_parts.append(
+                                            f"humidity: external  {ent}"
+                                        )
                                 if hum_kind == "none":
-                                    abs_parts.append("humidity: none")
+                                    device_abs_parts.append("humidity: none")
 
-                            if not abs_parts:
+                            if not device_abs_parts:
                                 continue
 
-                            summary = "; ".join(abs_parts)
+                            summary = "; ".join(device_abs_parts)
                             device_lines.append(f"- {metric}: {summary}")
                         else:
                             override = device_sources.get(metric) or {}
@@ -327,17 +396,10 @@ async def async_step_sensor_control_config(
                             device_lines.append(f"- {metric}: {summary}")
 
                     if not device_lines:
-                        area_sensor_list = _validate_area_sensor_entries(
-                            area_sensor_cfgs.get(device_key)
-                        )
-                        if not area_sensor_list:
+                        if not area_sensor_cfgs:
                             continue
-                    else:
-                        area_sensor_list = _validate_area_sensor_entries(
-                            area_sensor_cfgs.get(device_key)
-                        )
 
-                    for area_sensor in area_sensor_list:
+                    for area_sensor in area_sensor_cfgs:
                         device_lines.append(_describe_area_sensor(area_sensor))
 
                     overview_lines.append(f"**Device {device_id}** ({device_key}):")
@@ -364,27 +426,32 @@ async def async_step_sensor_control_config(
         return await async_step_sensor_control_config(flow, None)
 
     options = dict(flow._config_entry.options)  # noqa: SLF001
-    sensor_control_options = dict(options.get(feature_id, {}))
+    sensor_control_section = get_migrated_feature_section(options, feature_id)
+    devices_config = sensor_control_section.get(CONFIG_DEVICES_KEY)
+    if not isinstance(devices_config, dict):
+        devices_config = {}
+    normalized_device_id = normalize_device_id(selected_device_id)
+    device_section = devices_config.get(normalized_device_id)
+    if not isinstance(device_section, dict):
+        device_section = {}
 
     _LOGGER.debug(
-        "Loaded raw sensor_control options from config_entry for %s: %s",
+        "Loaded canonical sensor_control section from config_entry for %s: %s",
         selected_device_id,
-        sensor_control_options,
+        sensor_control_section,
     )
 
-    sources = dict(sensor_control_options.get("sources", {}))
-    abs_inputs = dict(sensor_control_options.get("abs_humidity_inputs", {}))
-    area_sensors = dict(sensor_control_options.get("area_sensors", {}))
-
-    dkey = _device_key(selected_device_id)
-    device_sources = dict(sources.get(dkey, {}))
-    device_abs_inputs = dict(abs_inputs.get(dkey, {}))
-    device_area_sensors = _validate_area_sensor_entries(area_sensors.get(dkey))
+    device_sources = dict(device_section.get(SENSOR_CONTROL_SOURCES_KEY) or {})
+    device_abs_inputs = dict(
+        device_section.get(SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY) or {}
+    )
+    device_area_sensors = _validate_area_sensor_entries(
+        device_section.get(SENSOR_CONTROL_AREA_SENSORS_KEY)
+    )
 
     _LOGGER.debug(
-        "Loaded device_sources for %s (key=%s): %s",
+        "Loaded device_sources for %s: %s",
         selected_device_id,
-        dkey,
         device_sources,
     )
 
@@ -452,31 +519,29 @@ async def async_step_sensor_control_config(
                         temp_kind = str(temp_cfg.get("kind") or "internal")
                         hum_kind = str(hum_cfg.get("kind") or "internal")
 
-                        device_abs_parts: list[str] = []
+                        abs_parts: list[str] = []
                         if temp_kind == "external_abs":
                             ent = temp_cfg.get("entity_id")
                             if ent:
-                                device_abs_parts.append(f"external abs  {ent}")
+                                abs_parts.append(f"external abs  {ent}")
                             else:
-                                device_abs_parts.append("external abs (no entity)")
+                                abs_parts.append("external abs (no entity)")
                         else:
                             if temp_kind in ("external", "external_temp"):
                                 ent = temp_cfg.get("entity_id")
                                 if ent:
-                                    device_abs_parts.append(f"temp: external  {ent}")
+                                    abs_parts.append(f"temp: external  {ent}")
                             if hum_kind == "external":
                                 ent = hum_cfg.get("entity_id")
                                 if ent:
-                                    device_abs_parts.append(
-                                        f"humidity: external  {ent}"
-                                    )
+                                    abs_parts.append(f"humidity: external  {ent}")
                             if hum_kind == "none":
-                                device_abs_parts.append("humidity: none")
+                                abs_parts.append("humidity: none")
 
-                        if not device_abs_parts:
+                        if not abs_parts:
                             continue
 
-                        summary = "; ".join(device_abs_parts)
+                        summary = "; ".join(abs_parts)
                         device_overview.append(f"- {metric}: {summary}")
                     else:
                         override = device_sources.get(metric) or {}
@@ -543,12 +608,20 @@ async def async_step_sensor_control_config(
                     for item in device_area_sensors
                     if str(item.get("source_id") or "") != delete_id
                 ]
-                area_sensors[dkey] = device_area_sensors
-                sensor_control_options["area_sensors"] = area_sensors
-                options[feature_id] = sensor_control_options
-                flow.hass.config_entries.async_update_entry(  # noqa: SLF001
-                    flow._config_entry,  # noqa: SLF001
-                    options=options,
+                device_section = deepcopy(
+                    devices_config.get(normalized_device_id) or {}
+                )
+                device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
+                device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = (
+                    device_abs_inputs
+                )
+                device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = device_area_sensors
+                devices_config[normalized_device_id] = device_section
+                sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
+                _persist_sensor_control_section(
+                    flow,
+                    options,
+                    sensor_control_section,
                 )
                 return await async_step_sensor_control_config(flow, None)
 
@@ -668,12 +741,16 @@ async def async_step_sensor_control_config(
             if not replaced:
                 new_area_sensors.append(updated_area_sensor)
 
-            area_sensors[dkey] = new_area_sensors
-            sensor_control_options["area_sensors"] = area_sensors
-            options[feature_id] = sensor_control_options
-            flow.hass.config_entries.async_update_entry(  # noqa: SLF001
-                flow._config_entry,  # noqa: SLF001
-                options=options,
+            device_section = deepcopy(devices_config.get(normalized_device_id) or {})
+            device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
+            device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = device_abs_inputs
+            device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = new_area_sensors
+            devices_config[normalized_device_id] = device_section
+            sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
+            _persist_sensor_control_section(
+                flow,
+                options,
+                sensor_control_section,
             )
             flow._sensor_control_area_sensor_id = None
             flow._sensor_control_group_stage = "area_sensors_menu"
@@ -847,25 +924,27 @@ async def async_step_sensor_control_config(
         )
 
         # Persist updates for this device
-        sources[dkey] = device_sources
-        abs_inputs[dkey] = device_abs_inputs
-
-        sensor_control_options["sources"] = sources
-        sensor_control_options["abs_humidity_inputs"] = abs_inputs
-        options[feature_id] = sensor_control_options
+        device_section = deepcopy(devices_config.get(normalized_device_id) or {})
+        device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
+        device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = device_abs_inputs
+        if device_area_sensors or SENSOR_CONTROL_AREA_SENSORS_KEY in device_section:
+            device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = device_area_sensors
+        devices_config[normalized_device_id] = device_section
+        sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
 
         _LOGGER.debug(
             "Saving sensor_control overrides for %s (group=%s): %s",
             selected_device_id,
             group_stage,
-            sensor_control_options,
+            sensor_control_section,
         )
 
         # async_update_entry is not a coroutine in this HA version; it returns a
         # bool and must not be awaited.
-        flow.hass.config_entries.async_update_entry(  # noqa: SLF001
-            flow._config_entry,  # noqa: SLF001
-            options=options,
+        _persist_sensor_control_section(
+            flow,
+            options,
+            sensor_control_section,
         )
 
         # After saving this group, return to the group selection menu
