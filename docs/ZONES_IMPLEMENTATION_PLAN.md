@@ -230,15 +230,15 @@ Later:
 
 ## Phased implementation
 
-### Phase 1 - normalized read model
+### Phase 1 - normalized read model ✅ COMPLETE
 
-- introduce zone registry
-- define the `zones` structured feature section
-- support static config for ORCON and custom zones using that section
-- add config flow support for editing that section inside the FAN-oriented configuration UX
-- expose zone metadata to cards/diagnostics
-- no automatic actuation required yet
-- keep `zone_id` as the shared link to area-like sensor config
+- [x] introduce zone registry
+- [x] define the `zones` structured feature section
+- [x] support static config for ORCON and custom zones using that section
+- [ ] add config flow support for editing that section inside the FAN-oriented configuration UX
+- [x] expose zone metadata to cards/diagnostics
+- [ ] no automatic actuation required yet
+- [x] keep `zone_id` as the shared link to area-like sensor config
 
 ### Phase 2 - actuator adapters
 

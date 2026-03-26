@@ -708,6 +708,64 @@ async def ws_get_binding_suggestions(
         connection.send_error(msg["id"], "get_binding_suggestions_failed", str(err))
 
 
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_zones",
+        vol.Optional("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_zones(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return zone configuration for FAN devices."""
+    from ...framework.helpers.zones import get_zone_registry
+
+    try:
+        registry = get_zone_registry(hass)
+        device_id = msg.get("device_id")
+
+        if device_id:
+            result = {
+                "device_id": device_id,
+                "zones": registry.get_zones_for_fan(device_id),
+            }
+        else:
+            result = {
+                "zones_by_fan": registry.list_all_zones(),
+            }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get zones: %s", err)
+        connection.send_error(msg["id"], "get_zones_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/export_zones",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_export_zones(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Export zones as strict YAML for support/debugging."""
+    from ...framework.helpers.zones import get_zone_registry
+
+    try:
+        registry = get_zone_registry(hass)
+
+        result: dict[str, Any] = {
+            "yaml": registry.export_zones_yaml(),
+        }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to export zones: %s", err)
+        connection.send_error(msg["id"], "export_zones_failed", str(err))
+
+
 def register_default_websocket_commands() -> dict[str, str]:
     """Register WebSocket commands for the default feature.
 
