@@ -107,8 +107,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if not normalized_src or not normalized_dst or not command:
             return
 
+        # Check binding: first try device-reported, then Extras registry
         commands = RamsesCommands(hass)
         bound_rem = await commands._get_bound_rem_device(normalized_dst)
+
+        # Fallback to Extras binding registry if device doesn't report binding
+        if not bound_rem:
+            from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+            registry = get_remote_binding_registry(hass)
+            registry_rem = registry.get_rem_id_for_fan(normalized_dst)
+            if registry_rem:
+                bound_rem = registry_rem
+
         if bound_rem != normalized_src:
             return
 

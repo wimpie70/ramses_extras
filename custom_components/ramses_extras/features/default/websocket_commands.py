@@ -419,12 +419,34 @@ async def ws_get_available_devices(
 async def ws_get_bound_rem(
     hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
-    """Return the bound REM/DIS device for a FAN device, if any."""
+    """Return the bound REM/DIS device for a FAN device, if any.
+
+    Provides both device-reported binding (from ramses_cc) and
+    Extras-configured binding (from remote_binding registry).
+    """
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
 
     device_id = str(msg["device_id"])
     commands = RamsesCommands(hass)
+
+    # Get device-reported binding
     bound = await commands._get_bound_rem_device(device_id)
-    connection.send_result(msg["id"], {"device_id": device_id, "bound_rem": bound})
+
+    # Get Extras registry binding
+    registry = get_remote_binding_registry(hass)
+    extras_binding = registry.get_binding_for_fan(device_id)
+    extras_rem_id = registry.get_rem_id_for_fan(device_id)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "device_id": device_id,
+            "bound_rem": bound,
+            "extras_binding": extras_binding,
+            "extras_rem_id": extras_rem_id,
+            "source": "device" if bound else ("extras" if extras_rem_id else None),
+        },
+    )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -506,6 +528,49 @@ async def ws_get_fan_config_associations(
     except Exception as err:
         _LOGGER.error("Failed to get FAN config associations: %s", err)
         connection.send_error(msg["id"], "get_fan_config_associations_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_remote_bindings",
+        vol.Optional("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_remote_bindings(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return remote binding registry state.
+
+    If device_id is provided, returns binding for that specific FAN.
+    Otherwise returns all bindings.
+    """
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+    try:
+        registry = get_remote_binding_registry(hass)
+        device_id = msg.get("device_id")
+
+        if device_id:
+            # Return binding for specific FAN
+            binding = registry.get_binding_for_fan(str(device_id))
+            result = {
+                "device_id": device_id,
+                "binding": binding,
+                "rem_id": registry.get_rem_id_for_fan(str(device_id)),
+            }
+        else:
+            # Return all bindings
+            all_bindings = registry.list_bindings()
+            result = {
+                "bindings": all_bindings,
+                "count": len(all_bindings),
+            }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get remote bindings: %s", err)
+        connection.send_error(msg["id"], "get_remote_bindings_failed", str(err))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
