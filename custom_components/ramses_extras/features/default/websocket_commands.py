@@ -575,6 +575,45 @@ async def ws_get_remote_bindings(
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
+        vol.Required("type"): "ramses_extras/get_binding_diagnostics",
+        vol.Optional("rem_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_binding_diagnostics(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return binding diagnostics including last-seen timestamps and unmatched."""
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+    try:
+        registry = get_remote_binding_registry(hass)
+        rem_id = msg.get("rem_id")
+
+        result: dict[str, Any] = {
+            "diagnostics": registry.get_diagnostics(),
+        }
+
+        if rem_id:
+            # Return specific REM info
+            from datetime import datetime
+
+            last_seen = registry.get_last_seen(str(rem_id))
+            result["rem_id"] = rem_id
+            result["last_seen"] = last_seen.isoformat() if last_seen else None
+            result["bound_fan"] = registry.find_fan_for_rem(str(rem_id))
+        else:
+            # Return unmatched traffic
+            result["unmatched_traffic"] = registry.get_unmatched_traffic(limit=50)
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get binding diagnostics: %s", err)
+        connection.send_error(msg["id"], "get_binding_diagnostics_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
         vol.Required("type"): "ramses_extras/get_2411_schema",
         vol.Required("device_id"): str,
     }

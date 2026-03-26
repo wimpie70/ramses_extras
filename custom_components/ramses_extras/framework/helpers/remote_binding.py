@@ -8,6 +8,7 @@ feature section.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
@@ -35,6 +36,89 @@ class RemoteBindingRegistry:
         """
         self._hass = hass
         self._cache: dict[str, dict[str, Any]] = {}
+        self._last_seen: dict[str, datetime] = {}
+        self._unmatched_traffic: list[dict[str, Any]] = []
+
+    def record_remote_activity(
+        self,
+        rem_id: str,
+        fan_id: str | None = None,
+        command: str | None = None,
+        matched: bool = True,
+    ) -> None:
+        """Record remote button press activity.
+
+        Args:
+            rem_id: REM device ID
+            fan_id: Target FAN device ID if known
+            command: Command that was sent
+            matched: Whether the REM was matched to a FAN
+        """
+        normalized_rem = rem_id.replace("_", ":").strip()
+        now = datetime.now()
+
+        # Update last seen timestamp
+        self._last_seen[normalized_rem] = now
+
+        # Record unmatched traffic for diagnostics
+        if not matched:
+            self._unmatched_traffic.append(
+                {
+                    "rem_id": normalized_rem,
+                    "fan_id": fan_id,
+                    "command": command,
+                    "timestamp": now.isoformat(),
+                }
+            )
+            # Keep only last 100 unmatched entries
+            if len(self._unmatched_traffic) > 100:
+                self._unmatched_traffic = self._unmatched_traffic[-100:]
+            _LOGGER.debug("Unmatched remote traffic from %s", normalized_rem)
+
+    def get_last_seen(self, rem_id: str) -> datetime | None:
+        """Get last seen timestamp for a REM.
+
+        Args:
+            rem_id: REM device ID
+
+        Returns:
+            Last seen datetime or None if never seen
+        """
+        normalized_rem = rem_id.replace("_", ":").strip()
+        return self._last_seen.get(normalized_rem)
+
+    def get_unmatched_traffic(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Get recent unmatched remote traffic.
+
+        Args:
+            limit: Maximum number of entries to return
+
+        Returns:
+            List of unmatched traffic entries
+        """
+        return self._unmatched_traffic[-limit:]
+
+    def clear_unmatched_traffic(self) -> None:
+        """Clear unmatched traffic history."""
+        self._unmatched_traffic.clear()
+        _LOGGER.debug("Unmatched traffic history cleared")
+
+    def get_diagnostics(self) -> dict[str, Any]:
+        """Get diagnostic information about bindings.
+
+        Returns:
+            Dictionary with binding diagnostics
+        """
+        all_bindings = self.list_bindings()
+        total_bindings = sum(len(b) for b in all_bindings.values())
+
+        return {
+            "bindings_count": len(all_bindings),
+            "total_entries": total_bindings,
+            "last_seen_count": len(self._last_seen),
+            "unmatched_count": len(self._unmatched_traffic),
+            "cache_size": len(self._cache),
+        }
 
     def _get_config_manager(self) -> ExtrasConfigManager | None:
         """Get the default feature's config manager.

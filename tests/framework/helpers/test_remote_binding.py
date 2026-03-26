@@ -249,3 +249,113 @@ class TestGetRemoteBindingRegistry:
         result = get_remote_binding_registry(hass)
 
         assert result is existing
+
+
+class TestRemoteBindingDiagnostics:
+    """Test RemoteBindingRegistry diagnostics features."""
+
+    def test_record_remote_activity_matched(self, registry, hass):
+        """Test recording matched remote activity."""
+        registry.record_remote_activity(
+            rem_id="37:654321",
+            fan_id="32:123456",
+            command="fan_auto",
+            matched=True,
+        )
+
+        # Should record last seen
+        last_seen = registry.get_last_seen("37:654321")
+        assert last_seen is not None
+
+        # Should not add to unmatched traffic
+        unmatched = registry.get_unmatched_traffic()
+        assert len(unmatched) == 0
+
+    def test_record_remote_activity_unmatched(self, registry, hass):
+        """Test recording unmatched remote activity."""
+        registry.record_remote_activity(
+            rem_id="37:999999",
+            fan_id="32:123456",
+            command="fan_low",
+            matched=False,
+        )
+
+        # Should record last seen
+        last_seen = registry.get_last_seen("37:999999")
+        assert last_seen is not None
+
+        # Should add to unmatched traffic
+        unmatched = registry.get_unmatched_traffic()
+        assert len(unmatched) == 1
+        assert unmatched[0]["rem_id"] == "37:999999"
+        assert unmatched[0]["command"] == "fan_low"
+
+    def test_get_unmatched_traffic_limit(self, registry, hass):
+        """Test unmatched traffic limit."""
+        # Add 10 unmatched entries
+        for i in range(10):
+            registry.record_remote_activity(
+                rem_id=f"37:{i:06d}",
+                fan_id="32:123456",
+                command="fan_low",
+                matched=False,
+            )
+
+        # Get with limit
+        result = registry.get_unmatched_traffic(limit=5)
+        assert len(result) == 5
+
+    def test_clear_unmatched_traffic(self, registry, hass):
+        """Test clearing unmatched traffic."""
+        registry.record_remote_activity(
+            rem_id="37:999999",
+            fan_id="32:123456",
+            command="fan_low",
+            matched=False,
+        )
+
+        assert len(registry.get_unmatched_traffic()) == 1
+
+        registry.clear_unmatched_traffic()
+
+        assert len(registry.get_unmatched_traffic()) == 0
+
+    def test_get_diagnostics(self, registry, hass):
+        """Test get_diagnostics returns expected data."""
+        # Add some activity
+        registry.record_remote_activity(
+            rem_id="37:654321",
+            fan_id="32:123456",
+            command="fan_auto",
+            matched=True,
+        )
+        registry.record_remote_activity(
+            rem_id="37:999999",
+            fan_id="32:123456",
+            command="fan_low",
+            matched=False,
+        )
+
+        diagnostics = registry.get_diagnostics()
+
+        assert "bindings_count" in diagnostics
+        assert "last_seen_count" in diagnostics
+        assert "unmatched_count" in diagnostics
+        assert "cache_size" in diagnostics
+        assert diagnostics["last_seen_count"] == 2
+        assert diagnostics["unmatched_count"] == 1
+
+    def test_unmatched_traffic_limit_100(self, registry, hass):
+        """Test unmatched traffic is capped at 100 entries."""
+        # Add 105 unmatched entries
+        for i in range(105):
+            registry.record_remote_activity(
+                rem_id=f"37:{i:06d}",
+                fan_id="32:123456",
+                command="fan_low",
+                matched=False,
+            )
+
+        result = registry.get_unmatched_traffic(limit=200)
+        # Should be capped at 100
+        assert len(result) == 100

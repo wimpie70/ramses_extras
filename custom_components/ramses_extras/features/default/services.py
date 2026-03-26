@@ -120,7 +120,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             if registry_rem:
                 bound_rem = registry_rem
 
-        if bound_rem != normalized_src:
+        # Record activity for diagnostics
+        from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+        activity_registry = get_remote_binding_registry(hass)
+        is_matched = bound_rem == normalized_src
+        activity_registry.record_remote_activity(
+            rem_id=normalized_src,
+            fan_id=normalized_dst,
+            command=command,
+            matched=is_matched,
+        )
+
+        if not is_matched:
             return
 
         domain_data = hass.data.setdefault(DOMAIN, {})
