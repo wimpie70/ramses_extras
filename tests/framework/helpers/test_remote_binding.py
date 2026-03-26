@@ -359,3 +359,88 @@ class TestRemoteBindingDiagnostics:
         result = registry.get_unmatched_traffic(limit=200)
         # Should be capped at 100
         assert len(result) == 100
+
+    def test_detect_conflicts_no_conflict(self, registry, hass):
+        """Test detect_conflicts returns empty when no conflicts."""
+        all_bindings = {
+            "32:111111": [{"rem_id": "37:111111", "role": "primary", "enabled": True}],
+            "32:222222": [{"rem_id": "37:222222", "role": "primary", "enabled": True}],
+        }
+
+        with patch.object(registry, "list_bindings") as mock_list:
+            mock_list.return_value = all_bindings
+            conflicts = registry.detect_conflicts()
+
+            assert len(conflicts) == 0
+
+    def test_detect_conflicts_multi_fan(self, registry, hass):
+        """Test detect_conflicts finds REM bound to multiple FANs."""
+        all_bindings = {
+            "32:111111": [{"rem_id": "37:999999", "role": "primary", "enabled": True}],
+            "32:222222": [{"rem_id": "37:999999", "role": "primary", "enabled": True}],
+        }
+
+        with patch.object(registry, "list_bindings") as mock_list:
+            mock_list.return_value = all_bindings
+            conflicts = registry.detect_conflicts()
+
+            assert len(conflicts) == 1
+            assert conflicts[0]["rem_id"] == "37:999999"
+            assert conflicts[0]["conflict_type"] == "multi_fan"
+            assert "32:111111" in conflicts[0]["bound_fans"]
+            assert "32:222222" in conflicts[0]["bound_fans"]
+
+    def test_detect_conflicts_ignores_disabled(self, registry, hass):
+        """Test detect_conflicts ignores disabled bindings."""
+        all_bindings = {
+            "32:111111": [{"rem_id": "37:999999", "role": "primary", "enabled": True}],
+            "32:222222": [{"rem_id": "37:999999", "role": "primary", "enabled": False}],
+        }
+
+        with patch.object(registry, "list_bindings") as mock_list:
+            mock_list.return_value = all_bindings
+            conflicts = registry.detect_conflicts()
+
+            # Only one enabled binding, no conflict
+            assert len(conflicts) == 0
+
+    def test_export_bindings_yaml(self, registry, hass):
+        """Test export_bindings_yaml returns valid structure."""
+        all_bindings = {
+            "32:123456": [
+                {
+                    "rem_id": "37:654321",
+                    "role": "primary",
+                    "enabled": True,
+                    "source": "manual_config",
+                }
+            ],
+        }
+
+        with patch.object(registry, "list_bindings") as mock_list:
+            mock_list.return_value = all_bindings
+            yaml_str = registry.export_bindings_yaml()
+
+            assert "features" in yaml_str
+            assert "remote_binding" in yaml_str
+            assert "32:123456" in yaml_str
+            assert "37:654321" in yaml_str
+            assert "REMs" in yaml_str
+
+    def test_export_bindings_yaml_sorted(self, registry, hass):
+        """Test export_bindings_yaml sorts FANs for consistency."""
+        all_bindings = {
+            "32:333333": [{"rem_id": "37:333333", "role": "primary", "enabled": True}],
+            "32:111111": [{"rem_id": "37:111111", "role": "primary", "enabled": True}],
+            "32:222222": [{"rem_id": "37:222222", "role": "primary", "enabled": True}],
+        }
+
+        with patch.object(registry, "list_bindings") as mock_list:
+            mock_list.return_value = all_bindings
+            yaml_str = registry.export_bindings_yaml()
+
+            # Check that output is sorted (111111 should come before 222222)
+            pos1 = yaml_str.find("32:111111")
+            pos2 = yaml_str.find("32:222222")
+            pos3 = yaml_str.find("32:333333")
+            assert pos1 < pos2 < pos3

@@ -254,6 +254,71 @@ class RemoteBindingRegistry:
 
         return None
 
+    def detect_conflicts(self) -> list[dict[str, Any]]:
+        """Detect binding conflicts where one REM is bound to multiple FANs.
+
+        Returns:
+            List of conflict dictionaries with rem_id and list of bound FANs
+        """
+        conflicts: list[dict[str, Any]] = []
+        all_bindings = self.list_bindings()
+
+        # Map each REM to all FANs it's bound to
+        rem_to_fans: dict[str, list[str]] = {}
+        for fan_id, fan_bindings in all_bindings.items():
+            for binding in fan_bindings:
+                if not binding.get("enabled", True):
+                    continue
+                rem_id = binding.get("rem_id", "").replace("_", ":").strip()
+                if rem_id:
+                    if rem_id not in rem_to_fans:
+                        rem_to_fans[rem_id] = []
+                    rem_to_fans[rem_id].append(fan_id)
+
+        # Find REMs bound to multiple FANs
+        for rem_id, fan_list in rem_to_fans.items():
+            if len(fan_list) > 1:
+                conflicts.append(
+                    {
+                        "rem_id": rem_id,
+                        "bound_fans": fan_list,
+                        "conflict_type": "multi_fan",
+                        "description": f"REM {rem_id} is bound to {len(fan_list)} FANs",
+                    }
+                )
+
+        return conflicts
+
+    def export_bindings_yaml(self) -> str:
+        """Export all bindings as strict YAML for support/debugging.
+
+        Returns:
+            YAML string representing the remote_binding feature section
+        """
+        import json
+
+        all_bindings = self.list_bindings()
+
+        # Build canonical feature section structure
+        export_data: dict[str, Any] = {"features": {"remote_binding": {"FANs": {}}}}
+        fans_section = export_data["features"]["remote_binding"]["FANs"]
+
+        for fan_id, bindings in sorted(all_bindings.items()):
+            fans_section[fan_id] = {"REMs": []}
+            for binding in bindings:
+                rem_entry: dict[str, Any] = {
+                    "rem_id": binding.get("rem_id"),
+                    "role": binding.get("role", "primary"),
+                    "enabled": binding.get("enabled", True),
+                }
+                if "source" in binding:
+                    rem_entry["source"] = binding["source"]
+                fans_section[fan_id]["REMs"].append(rem_entry)
+
+        # Use JSON as a simple YAML-compatible serialization
+        # For true YAML, we'd use PyYAML, but this keeps dependencies minimal
+        return json.dumps(export_data, indent=2, sort_keys=True)
+
     def invalidate_cache(self) -> None:
         """Clear the binding cache.
 

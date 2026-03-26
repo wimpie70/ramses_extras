@@ -592,6 +592,7 @@ async def ws_get_binding_diagnostics(
 
         result: dict[str, Any] = {
             "diagnostics": registry.get_diagnostics(),
+            "conflicts": registry.detect_conflicts(),
         }
 
         if rem_id:
@@ -610,6 +611,32 @@ async def ws_get_binding_diagnostics(
     except Exception as err:
         _LOGGER.error("Failed to get binding diagnostics: %s", err)
         connection.send_error(msg["id"], "get_binding_diagnostics_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/export_bindings",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_export_bindings(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Export bindings as strict YAML for support/debugging."""
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+    try:
+        registry = get_remote_binding_registry(hass)
+
+        result: dict[str, Any] = {
+            "yaml": registry.export_bindings_yaml(),
+            "conflicts": registry.detect_conflicts(),
+        }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to export bindings: %s", err)
+        connection.send_error(msg["id"], "export_bindings_failed", str(err))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
