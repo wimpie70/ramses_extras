@@ -31,7 +31,17 @@ from .const import (
 from .extras_registry import extras_registry
 from .features.sensor_control.const import SUPPORTED_METRICS
 from .framework.helpers.config.migration import get_migrated_feature_section
-from .framework.helpers.config.model import CONFIG_DEVICES_KEY
+from .framework.helpers.config.model import (
+    CONFIG_DEVICES_KEY,
+    FEATURE_ZONES,
+    get_feature_section,
+    set_feature_section,
+)
+from .framework.helpers.config.zones_yaml import (
+    export_zones_to_yaml,
+    merge_zones_config,
+    parse_zones_yaml,
+)
 from .framework.helpers.config_flow import ConfigFlowHelper
 from .framework.helpers.device.filter import DeviceFilter
 from .framework.helpers.entity.simple_entity_manager import SimpleEntityManager
@@ -502,6 +512,20 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         if user_input is not None:
             new_options = dict(self._config_entry.options)
 
+            action = user_input.get("action", "save")
+
+            if action == "back":
+                return await self.async_step_main_menu()
+
+            if action == "export_yaml":
+                self._advanced_settings_action = "export_yaml"
+                return await self.async_step_advanced_yaml_export(user_input)
+
+            if action == "import_yaml":
+                self._advanced_settings_action = "import_yaml"
+                return await self.async_step_advanced_yaml_import(user_input)
+
+            # Handle save action (default)
             frontend_log_level = user_input.get("frontend_log_level")
             if isinstance(frontend_log_level, str) and frontend_log_level:
                 new_options["frontend_log_level"] = frontend_log_level
@@ -566,12 +590,183 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Required("action", default="save"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="save", label="Save settings"
+                            ),
+                            selector.SelectOptionDict(
+                                value="export_yaml", label="Export config to YAML"
+                            ),
+                            selector.SelectOptionDict(
+                                value="import_yaml", label="Import config from YAML"
+                            ),
+                            selector.SelectOptionDict(
+                                value="back", label="Back to main menu"
+                            ),
+                        ],
+                        mode="list",
+                    )
+                ),
             }
         )
 
         return self.async_show_form(
             step_id="advanced_settings",
             data_schema=data_schema,
+        )
+
+    async def async_step_advanced_yaml_export(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle YAML export from Advanced Settings."""
+        self._refresh_config_entry(self.hass)
+
+        if user_input is not None:
+            action = user_input.get("action")
+            if action == "back":
+                return await self.async_step_advanced_settings()
+
+        # Build comprehensive YAML export of configuration
+        options = dict(self._config_entry.options)
+
+        # Collect all zones from zones section
+        zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
+        all_zones = zones_section.get("zones", [])
+
+        yaml_content = export_zones_to_yaml(all_zones)
+
+        schema = vol.Schema(
+            {
+                vol.Optional("yaml_preview"): selector.TextSelector(
+                    selector.TextSelectorConfig(multiline=True)
+                ),
+                vol.Required("action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="back", label="Back to Advanced Settings"
+                            ),
+                        ],
+                        mode="list",
+                    )
+                ),
+            }
+        )
+
+        info_text = (
+            "📤 **Export Configuration to YAML**\n\n"
+            "Copy the YAML below to save your configuration:\n\n"
+            f"```yaml\n{yaml_content}\n```"
+        )
+
+        return self.async_show_form(
+            step_id="advanced_yaml_export",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    async def async_step_advanced_yaml_import(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle YAML import from Advanced Settings."""
+        self._refresh_config_entry(self.hass)
+
+        import_errors: dict[str, str] = {}
+
+        if user_input is not None:
+            action = user_input.get("action")
+
+            if action == "back":
+                return await self.async_step_advanced_settings()
+
+            if action == "import":
+                yaml_content = user_input.get("yaml_content", "")
+                overwrite = user_input.get("overwrite_existing", False)
+
+                if not yaml_content or not yaml_content.strip():
+                    import_errors["yaml_content"] = "YAML content is required"
+                else:
+                    try:
+                        parsed = parse_zones_yaml(yaml_content)
+                        imported_zones = parsed.get("zones", [])
+
+                        if not imported_zones:
+                            import_errors["yaml_content"] = "No zones found in YAML"
+                        else:
+                            # Merge with existing zones
+                            options = dict(self._config_entry.options)
+
+                            zones_section = get_migrated_feature_section(
+                                options, FEATURE_ZONES
+                            )
+                            existing_zones = zones_section.get("zones", [])
+
+                            merged_zones = merge_zones_config(
+                                existing_zones,
+                                imported_zones,
+                                "",  # No specific FAN for general import
+                                overwrite_existing=overwrite,
+                            )
+
+                            zones_section["zones"] = merged_zones
+                            set_feature_section(options, FEATURE_ZONES, zones_section)
+
+                            self.hass.config_entries.async_update_entry(
+                                self._config_entry,
+                                options=options,
+                            )
+
+                            return await self.async_step_advanced_settings()
+
+                    except ValueError as e:
+                        import_errors["yaml_content"] = str(e)
+
+        schema = vol.Schema(
+            {
+                vol.Required("yaml_content"): selector.TextSelector(
+                    selector.TextSelectorConfig(multiline=True)
+                ),
+                vol.Required(
+                    "overwrite_existing", default=False
+                ): selector.BooleanSelector(),
+                vol.Required("action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="import", label="Import zones"
+                            ),
+                            selector.SelectOptionDict(
+                                value="back", label="Cancel / Back"
+                            ),
+                        ],
+                        mode="list",
+                    )
+                ),
+            }
+        )
+
+        info_text = (
+            "📥 **Import Configuration from YAML**\n\n"
+            "Paste your YAML zone configuration below.\n\n"
+            "The import will validate the YAML structure "
+            "and merge zones with existing ones.\n"
+            "Enable 'Overwrite existing' to replace zones with the same zone_id."
+        )
+
+        if import_errors:
+            return self.async_show_form(
+                step_id="advanced_yaml_import",
+                data_schema=schema,
+                errors=import_errors,
+                description_placeholders={"info": info_text},
+            )
+
+        return self.async_show_form(
+            step_id="advanced_yaml_import",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
         )
 
     async def async_step_feature_ramses_debugger(
