@@ -419,12 +419,224 @@ async def ws_get_available_devices(
 async def ws_get_bound_rem(
     hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
 ) -> None:
-    """Return the bound REM/DIS device for a FAN device, if any."""
+    """Return the bound REM/DIS device for a FAN device, if any.
+
+    Provides both device-reported binding (from ramses_cc) and
+    Extras-configured binding (from remote_binding registry).
+    """
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
 
     device_id = str(msg["device_id"])
     commands = RamsesCommands(hass)
+
+    # Get device-reported binding
     bound = await commands._get_bound_rem_device(device_id)
-    connection.send_result(msg["id"], {"device_id": device_id, "bound_rem": bound})
+
+    # Get Extras registry binding
+    registry = get_remote_binding_registry(hass)
+    extras_binding = registry.get_binding_for_fan(device_id)
+    extras_rem_id = registry.get_rem_id_for_fan(device_id)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "device_id": device_id,
+            "bound_rem": bound,
+            "extras_binding": extras_binding,
+            "extras_rem_id": extras_rem_id,
+            "source": "device" if bound else ("extras" if extras_rem_id else None),
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_fan_config_associations",
+        vol.Required("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_fan_config_associations(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return config-based zone and REM associations for a FAN device.
+
+    Uses the shared FAN-oriented config helpers for normalized lookups.
+    This provides the configuration perspective (as opposed to runtime binding).
+    """
+    from ...framework.helpers.config.migration import migrate_to_canonical_config
+    from ...framework.helpers.config.model import (
+        FEATURE_REMOTE_BINDING,
+        FEATURE_ZONES,
+        get_feature_section,
+        get_remote_binding_rem_ids,
+        get_remote_binding_rems,
+        get_zone_ids_for_fan,
+        get_zones_for_fan,
+    )
+
+    device_id = str(msg["device_id"])
+
+    try:
+        config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        if config_entry is None:
+            connection.send_result(
+                msg["id"],
+                {
+                    "device_id": device_id,
+                    "zones": [],
+                    "zone_ids": [],
+                    "remote_bindings": [],
+                    "remote_binding_ids": [],
+                    "source": "config",
+                },
+            )
+            return
+
+        # Get raw config from config entry and migrate to canonical form
+        raw_config: dict[str, Any] = {}
+        if getattr(config_entry, "data", None):
+            raw_config.update(dict(config_entry.data))
+        if getattr(config_entry, "options", None):
+            raw_config.update(dict(config_entry.options))
+
+        canonical_config = migrate_to_canonical_config(raw_config)
+
+        zones_section = get_feature_section(canonical_config, FEATURE_ZONES)
+        remote_binding_section = get_feature_section(
+            canonical_config, FEATURE_REMOTE_BINDING
+        )
+
+        zones = get_zones_for_fan(zones_section, device_id)
+        zone_ids = get_zone_ids_for_fan(zones_section, device_id)
+        remote_bindings = get_remote_binding_rems(remote_binding_section, device_id)
+        remote_binding_ids = get_remote_binding_rem_ids(
+            remote_binding_section, device_id
+        )
+
+        connection.send_result(
+            msg["id"],
+            {
+                "device_id": device_id,
+                "zones": zones,
+                "zone_ids": zone_ids,
+                "remote_bindings": remote_bindings,
+                "remote_binding_ids": remote_binding_ids,
+                "source": "config",
+            },
+        )
+    except Exception as err:
+        _LOGGER.error("Failed to get FAN config associations: %s", err)
+        connection.send_error(msg["id"], "get_fan_config_associations_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_remote_bindings",
+        vol.Optional("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_remote_bindings(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return remote binding registry state.
+
+    If device_id is provided, returns binding for that specific FAN.
+    Otherwise returns all bindings.
+    """
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+    try:
+        registry = get_remote_binding_registry(hass)
+        device_id = msg.get("device_id")
+
+        if device_id:
+            # Return binding for specific FAN
+            binding = registry.get_binding_for_fan(str(device_id))
+            result = {
+                "device_id": device_id,
+                "binding": binding,
+                "rem_id": registry.get_rem_id_for_fan(str(device_id)),
+            }
+        else:
+            # Return all bindings
+            all_bindings = registry.list_bindings()
+            result = {
+                "bindings": all_bindings,
+                "count": len(all_bindings),
+            }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get remote bindings: %s", err)
+        connection.send_error(msg["id"], "get_remote_bindings_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_binding_diagnostics",
+        vol.Optional("rem_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_binding_diagnostics(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return binding diagnostics including last-seen timestamps and unmatched."""
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+    try:
+        registry = get_remote_binding_registry(hass)
+        rem_id = msg.get("rem_id")
+
+        result: dict[str, Any] = {
+            "diagnostics": registry.get_diagnostics(),
+            "conflicts": registry.detect_conflicts(),
+        }
+
+        if rem_id:
+            # Return specific REM info
+            from datetime import datetime
+
+            last_seen = registry.get_last_seen(str(rem_id))
+            result["rem_id"] = rem_id
+            result["last_seen"] = last_seen.isoformat() if last_seen else None
+            result["bound_fan"] = registry.find_fan_for_rem(str(rem_id))
+        else:
+            # Return unmatched traffic
+            result["unmatched_traffic"] = registry.get_unmatched_traffic(limit=50)
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get binding diagnostics: %s", err)
+        connection.send_error(msg["id"], "get_binding_diagnostics_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/export_bindings",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_export_bindings(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Export bindings as strict YAML for support/debugging."""
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+    try:
+        registry = get_remote_binding_registry(hass)
+
+        result: dict[str, Any] = {
+            "yaml": registry.export_bindings_yaml(),
+            "conflicts": registry.detect_conflicts(),
+        }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to export bindings: %s", err)
+        connection.send_error(msg["id"], "export_bindings_failed", str(err))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -469,6 +681,31 @@ async def ws_get_2411_schema(
         }
 
     connection.send_result(msg["id"], schema)
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_binding_suggestions",
+        vol.Optional("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_binding_suggestions(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return binding suggestions from observed unmatched traffic."""
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+    try:
+        registry = get_remote_binding_registry(hass)
+        device_id = msg.get("device_id")
+
+        result = registry.get_binding_suggestions(device_id)
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get binding suggestions: %s", err)
+        connection.send_error(msg["id"], "get_binding_suggestions_failed", str(err))
 
 
 def register_default_websocket_commands() -> dict[str, str]:

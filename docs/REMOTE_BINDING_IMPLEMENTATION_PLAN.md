@@ -194,28 +194,28 @@ Design rule:
 
 ## Phased implementation
 
-### Phase 1 - explicit FAN -> REM binding
+### Phase 1 - explicit FAN -> REM binding ✅ COMPLETE
 
-- add runtime binding registry
-- define the `remote_binding` structured feature section
-- add config flow support for one REM per FAN as an editor for that section inside the FAN-oriented configuration UX
-- use registry in remote command attribution
-- expose binding in diagnostics/debug state
+- [x] add runtime binding registry
+- [x] define the `remote_binding` structured feature section
+- [x] add config flow support for one REM per FAN as an editor for that section inside the FAN-oriented configuration UX
+- [x] use registry in remote command attribution
+- [x] expose binding in diagnostics/debug state
 
-### Phase 2 - reconciliation and observability
+### Phase 2 - reconciliation and observability ✅ COMPLETE
 
-- add last-seen remote timestamp
-- add diagnostics for unmatched remote traffic
-- add binding conflict detection
-- add WebSocket/debugger endpoint for reading bindings
-- add strict YAML export shape for support/debugging
+- [x] add last-seen remote timestamp
+- [x] add diagnostics for unmatched remote traffic
+- [x] add binding conflict detection
+- [x] add WebSocket/debugger endpoint for reading bindings
+- [x] add strict YAML export shape for support/debugging
 
-### Phase 3 - richer remote model
+### Phase 3 - richer remote model ✅ COMPLETE
 
-- multiple remotes per FAN
-- role support (`primary`, `secondary`, `boost_only`)
-- optional learned binding suggestions from observed traffic
-- optional validated YAML import for advanced users after migrations are proven
+- [x] multiple remotes per FAN
+- [x] role support (`primary`, `secondary`, `boost_only`)
+- [x] optional learned binding suggestions from observed traffic
+- [ ] optional validated YAML import for advanced users after migrations are proven
 
 ## Risks
 

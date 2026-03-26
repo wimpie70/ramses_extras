@@ -14,6 +14,8 @@ from custom_components.ramses_extras.features.default.websocket_commands import 
     ws_get_cards_enabled,
     ws_get_enabled_features,
     ws_get_entity_mappings,
+    ws_get_fan_config_associations,
+    ws_get_remote_bindings,
     ws_websocket_info,
 )
 
@@ -26,6 +28,8 @@ ws_get_all_feature_entities = ws_get_all_feature_entities.__wrapped__
 ws_get_available_devices = ws_get_available_devices.__wrapped__
 ws_get_bound_rem = ws_get_bound_rem.__wrapped__
 ws_get_2411_schema = ws_get_2411_schema.__wrapped__
+ws_get_fan_config_associations = ws_get_fan_config_associations.__wrapped__
+ws_get_remote_bindings = ws_get_remote_bindings.__wrapped__
 
 
 @pytest.fixture
@@ -236,17 +240,45 @@ async def test_ws_get_available_devices_with_slugs(hass, connection):
 
 
 async def test_ws_get_bound_rem(hass, connection):
-    """Test ws_get_bound_rem command."""
+    """Test ws_get_bound_rem returns both device and Extras bindings."""
     msg = {"id": 1, "type": "ramses_extras/get_bound_rem", "device_id": "32:123456"}
-    with patch(
-        "custom_components.ramses_extras.features.default.websocket_commands.RamsesCommands"
-    ) as MockCommands:  # noqa: N806
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.RamsesCommands"
+        ) as mock_cls,
+        patch(  # noqa: N806
+            "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry"
+        ) as mock_get_registry,
+    ):
         mock_commands = MagicMock()
         mock_commands._get_bound_rem_device = AsyncMock(return_value="37:654321")
-        MockCommands.return_value = mock_commands
+        mock_cls.return_value = mock_commands
+
+        mock_registry = MagicMock()
+        mock_registry.get_binding_for_fan.return_value = {
+            "rem_id": "37:654321",
+            "role": "primary",
+            "enabled": True,
+        }
+        mock_registry.get_rem_id_for_fan.return_value = "37:654321"
+        mock_get_registry.return_value = mock_registry
+
         await ws_get_bound_rem(hass, connection, msg)
+
         connection.send_result.assert_called_once_with(
-            1, {"device_id": "32:123456", "bound_rem": "37:654321"}
+            1,
+            {
+                "device_id": "32:123456",
+                "bound_rem": "37:654321",
+                "extras_binding": {
+                    "rem_id": "37:654321",
+                    "role": "primary",
+                    "enabled": True,
+                },
+                "extras_rem_id": "37:654321",
+                "source": "device",
+            },
         )
 
 
@@ -306,3 +338,214 @@ async def test_ws_get_2411_schema_fan_prefixed_params(hass, connection):
     assert "75" in schema
     assert schema["75"]["min_value"] == 5
     assert schema["75"]["max_value"] == 35
+
+
+async def test_ws_get_fan_config_associations_no_config_entry(connection):
+    """Test ws_get_fan_config_associations returns empty when no config entry."""
+    hass = MagicMock()
+    hass.data = {DOMAIN: {}}  # No config_entry
+
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/get_fan_config_associations",
+        "device_id": "32:123456",
+    }
+    await ws_get_fan_config_associations(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "device_id": "32:123456",
+            "zones": [],
+            "zone_ids": [],
+            "remote_bindings": [],
+            "remote_binding_ids": [],
+            "source": "config",
+        },
+    )
+
+
+async def test_ws_get_fan_config_associations_with_config(connection):
+    """Test ws_get_fan_config_associations returns zones and REMs from config."""
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "config_entry": MagicMock(
+                data={
+                    "ramses_extras": {
+                        "schema_version": 1,
+                        "features": {
+                            "zones": {
+                                "FANs": {
+                                    "32:123456": [
+                                        {
+                                            "zone_id": "bathroom",
+                                            "actuator": {"min_position": 15},
+                                        },
+                                        {"zone_id": "office"},
+                                    ]
+                                }
+                            },
+                            "remote_binding": {
+                                "FANs": {
+                                    "32:123456": {
+                                        "REMs": [
+                                            {
+                                                "rem_id": "37_654321",
+                                                "role": "primary",
+                                            },
+                                        ]
+                                    }
+                                }
+                            },
+                        },
+                    }
+                },
+                options={},
+            )
+        }
+    }
+
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/get_fan_config_associations",
+        "device_id": "32:123456",
+    }
+    await ws_get_fan_config_associations(hass, connection, msg)
+
+    connection.send_result.assert_called_once()
+    result = connection.send_result.call_args[0][1]
+
+    assert result["device_id"] == "32:123456"
+    assert result["zone_ids"] == ["bathroom", "office"]
+    assert len(result["zones"]) == 2
+    assert result["zones"][0]["zone_id"] == "bathroom"
+    assert result["remote_binding_ids"] == ["37:654321"]
+    assert len(result["remote_bindings"]) == 1
+    assert result["remote_bindings"][0]["rem_id"] == "37:654321"
+    assert result["source"] == "config"
+
+
+async def test_ws_get_fan_config_associations_legacy_remote_id(connection):
+    """Test ws_get_fan_config_associations normalizes legacy remote_id values."""
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "config_entry": MagicMock(
+                data={
+                    "ramses_extras": {
+                        "schema_version": 1,
+                        "features": {
+                            "remote_binding": {
+                                "FANs": {
+                                    "32:123456": {
+                                        "REMs": [
+                                            {
+                                                "remote_id": "37_654321",
+                                                "role": "primary",
+                                            },
+                                        ]
+                                    }
+                                }
+                            },
+                        },
+                    }
+                },
+                options={},
+            )
+        }
+    }
+
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/get_fan_config_associations",
+        "device_id": "32:123456",
+    }
+    await ws_get_fan_config_associations(hass, connection, msg)
+
+    result = connection.send_result.call_args[0][1]
+
+    # Legacy remote_id should be normalized to rem_id
+    assert result["remote_binding_ids"] == ["37:654321"]
+    assert result["remote_bindings"][0]["rem_id"] == "37:654321"
+    assert "remote_id" not in result["remote_bindings"][0]
+
+
+async def test_ws_get_remote_bindings_all(connection):
+    """Test ws_get_remote_bindings returns all bindings."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.list_bindings.return_value = {
+        "32:123456": [{"rem_id": "37:654321", "role": "primary"}],
+        "32:789012": [{"rem_id": "37:987654", "role": "primary"}],
+    }
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        return_value=mock_registry,
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_remote_bindings"}
+        await ws_get_remote_bindings(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "bindings": {
+                "32:123456": [{"rem_id": "37:654321", "role": "primary"}],
+                "32:789012": [{"rem_id": "37:987654", "role": "primary"}],
+            },
+            "count": 2,
+        },
+    )
+
+
+async def test_ws_get_remote_bindings_for_device(connection):
+    """Test ws_get_remote_bindings returns binding for specific device."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.get_binding_for_fan.return_value = {
+        "rem_id": "37:654321",
+        "role": "primary",
+        "enabled": True,
+    }
+    mock_registry.get_rem_id_for_fan.return_value = "37:654321"
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_remote_bindings",
+            "device_id": "32:123456",
+        }
+        await ws_get_remote_bindings(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "device_id": "32:123456",
+            "binding": {
+                "rem_id": "37:654321",
+                "role": "primary",
+                "enabled": True,
+            },
+            "rem_id": "37:654321",
+        },
+    )
+
+
+async def test_ws_get_remote_bindings_error(connection):
+    """Test ws_get_remote_bindings handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        side_effect=Exception("Registry error"),
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_remote_bindings"}
+        await ws_get_remote_bindings(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "get_remote_bindings_failed", "Registry error"
+    )
