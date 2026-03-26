@@ -869,6 +869,156 @@ async def ws_get_zone_adapter_diagnostics(
         )
 
 
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_zone_coordinator_state",
+        vol.Required("fan_id"): str,
+        vol.Optional("zone_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_zone_coordinator_state(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return zone coordinator state for a FAN."""
+    from ...framework.helpers.zone_coordinator import (
+        get_zone_coordinator,
+    )
+
+    try:
+        fan_id = msg["fan_id"]
+        zone_id = msg.get("zone_id")
+
+        coordinator = get_zone_coordinator(hass, fan_id)
+
+        if zone_id:
+            # Single zone state
+            state = coordinator.get_zone_states().get(zone_id)
+            if state:
+                result: dict[str, Any] = {
+                    "fan_id": fan_id,
+                    "zone_id": zone_id,
+                    "state": {
+                        "position": state.position,
+                        "available": state.is_available,
+                        "controllable": state.is_controllable,
+                        "source": state.demand_source.value,
+                        "reason": state.demand_reason,
+                    },
+                }
+            else:
+                result = {
+                    "fan_id": fan_id,
+                    "zone_id": zone_id,
+                    "error": "Zone state not found",
+                }
+        else:
+            # Full coordinator state
+            result = {
+                "fan_id": fan_id,
+                "enabled": coordinator.is_enabled,
+                "states": {
+                    zid: {
+                        "position": s.position,
+                        "available": s.is_available,
+                        "source": s.demand_source.value,
+                        "reason": s.demand_reason,
+                    }
+                    for zid, s in coordinator.get_zone_states().items()
+                },
+                "diagnostics": coordinator.get_diagnostics(),
+            }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get zone coordinator state: %s", err)
+        connection.send_error(msg["id"], "get_zone_coordinator_state_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/set_zone_demand",
+        vol.Required("fan_id"): str,
+        vol.Required("zone_id"): str,
+        vol.Required("fan_speed"): str,
+        vol.Optional("reason"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_set_zone_demand(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Set a manual zone demand."""
+    from ...framework.helpers.zone_coordinator import (
+        get_zone_coordinator,
+    )
+
+    try:
+        fan_id = msg["fan_id"]
+        zone_id = msg["zone_id"]
+        fan_speed = msg["fan_speed"]
+        reason = msg.get("reason", "Manual WebSocket demand")
+
+        coordinator = get_zone_coordinator(hass, fan_id)
+
+        # Ensure zone is configured
+        if zone_id not in coordinator.get_zone_states():
+            coordinator.configure_zone(zone_id)
+
+        success = await coordinator.async_set_manual_zone_demand(
+            zone_id=zone_id,
+            fan_speed=fan_speed,
+            reason=reason,
+        )
+
+        result: dict[str, Any] = {
+            "fan_id": fan_id,
+            "zone_id": zone_id,
+            "fan_speed": fan_speed,
+            "applied": success,
+        }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to set zone demand: %s", err)
+        connection.send_error(msg["id"], "set_zone_demand_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/clear_zone_demand",
+        vol.Required("fan_id"): str,
+        vol.Required("zone_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_clear_zone_demand(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Clear a manual zone demand."""
+    from ...framework.helpers.zone_coordinator import (
+        get_zone_coordinator,
+    )
+
+    try:
+        fan_id = msg["fan_id"]
+        zone_id = msg["zone_id"]
+
+        coordinator = get_zone_coordinator(hass, fan_id)
+        success = await coordinator.async_clear_manual_zone_demand(zone_id)
+
+        result: dict[str, Any] = {
+            "fan_id": fan_id,
+            "zone_id": zone_id,
+            "cleared": success,
+        }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to clear zone demand: %s", err)
+        connection.send_error(msg["id"], "clear_zone_demand_failed", str(err))
+
+
 def register_default_websocket_commands() -> dict[str, str]:
     """Register WebSocket commands for the default feature.
 
