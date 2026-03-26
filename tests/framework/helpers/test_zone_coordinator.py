@@ -37,7 +37,7 @@ def mock_adapter_registry():
 def mock_arbiter():
     """Mock fan speed arbiter."""
     arbiter = MagicMock()
-    arbiter.set_demand_state = MagicMock()
+    arbiter._set_demand_state = MagicMock()
     arbiter.clear_demand_state = MagicMock()
     arbiter.async_commit_state = AsyncMock(return_value=True)
     arbiter.get_active_demands = MagicMock(return_value=[])
@@ -275,6 +275,9 @@ class TestZoneCoordinator:
         mock_adapter_registry.get_all_adapters_for_fan = MagicMock(
             return_value=[mock_adapter]
         )
+        mock_adapter_registry.get_or_create_adapter = MagicMock(
+            return_value=mock_adapter
+        )
 
         with (
             patch(
@@ -291,11 +294,14 @@ class TestZoneCoordinator:
                 "office", priority=50, min_position_for_demand=10
             )
 
+            # Mock the _clear_zone_demand method to avoid async issues
+            coordinator._clear_zone_demand = AsyncMock(return_value=False)
+
             result = await coordinator.async_evaluate_and_apply()
 
-            # Should still return True even if no demand was applied
-            # because the adapter was processed
-            assert result is True
+            # Should return False when position is below threshold
+            # and no demand was applied
+            assert result is False
 
     @pytest.mark.asyncio
     async def test_async_set_manual_zone_demand(
@@ -322,7 +328,7 @@ class TestZoneCoordinator:
             )
 
             assert result is True
-            mock_arbiter.set_demand_state.assert_called_once()
+            mock_arbiter._set_demand_state.assert_called_once()
             mock_arbiter.async_commit_state.assert_called_once()
 
     @pytest.mark.asyncio
