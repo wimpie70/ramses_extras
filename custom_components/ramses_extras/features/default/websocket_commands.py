@@ -429,6 +429,87 @@ async def ws_get_bound_rem(
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
+        vol.Required("type"): "ramses_extras/get_fan_config_associations",
+        vol.Required("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_fan_config_associations(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return config-based zone and REM associations for a FAN device.
+
+    Uses the shared FAN-oriented config helpers for normalized lookups.
+    This provides the configuration perspective (as opposed to runtime binding).
+    """
+    from ...framework.helpers.config.migration import migrate_to_canonical_config
+    from ...framework.helpers.config.model import (
+        FEATURE_REMOTE_BINDING,
+        FEATURE_ZONES,
+        get_feature_section,
+        get_remote_binding_rem_ids,
+        get_remote_binding_rems,
+        get_zone_ids_for_fan,
+        get_zones_for_fan,
+    )
+
+    device_id = str(msg["device_id"])
+
+    try:
+        config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        if config_entry is None:
+            connection.send_result(
+                msg["id"],
+                {
+                    "device_id": device_id,
+                    "zones": [],
+                    "zone_ids": [],
+                    "remote_bindings": [],
+                    "remote_binding_ids": [],
+                    "source": "config",
+                },
+            )
+            return
+
+        # Get raw config from config entry and migrate to canonical form
+        raw_config: dict[str, Any] = {}
+        if getattr(config_entry, "data", None):
+            raw_config.update(dict(config_entry.data))
+        if getattr(config_entry, "options", None):
+            raw_config.update(dict(config_entry.options))
+
+        canonical_config = migrate_to_canonical_config(raw_config)
+
+        zones_section = get_feature_section(canonical_config, FEATURE_ZONES)
+        remote_binding_section = get_feature_section(
+            canonical_config, FEATURE_REMOTE_BINDING
+        )
+
+        zones = get_zones_for_fan(zones_section, device_id)
+        zone_ids = get_zone_ids_for_fan(zones_section, device_id)
+        remote_bindings = get_remote_binding_rems(remote_binding_section, device_id)
+        remote_binding_ids = get_remote_binding_rem_ids(
+            remote_binding_section, device_id
+        )
+
+        connection.send_result(
+            msg["id"],
+            {
+                "device_id": device_id,
+                "zones": zones,
+                "zone_ids": zone_ids,
+                "remote_bindings": remote_bindings,
+                "remote_binding_ids": remote_binding_ids,
+                "source": "config",
+            },
+        )
+    except Exception as err:
+        _LOGGER.error("Failed to get FAN config associations: %s", err)
+        connection.send_error(msg["id"], "get_fan_config_associations_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
         vol.Required("type"): "ramses_extras/get_2411_schema",
         vol.Required("device_id"): str,
     }

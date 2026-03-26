@@ -19,9 +19,15 @@ from homeassistant.core import HomeAssistant
 from .export import build_exportable_config, export_config_to_yaml
 from .migration import migrate_to_canonical_config
 from .model import (
+    FEATURE_REMOTE_BINDING,
     FEATURE_SENSOR_CONTROL,
+    FEATURE_ZONES,
     get_fan_ids,
+    get_remote_binding_rem_ids,
+    get_remote_binding_rems,
     get_sensor_control_device_section,
+    get_zone_ids_for_fan,
+    get_zones_for_fan,
     normalize_device_id,
 )
 from .model import (
@@ -288,6 +294,62 @@ class ExtrasConfigManager:
     ) -> list[str]:
         section = self.get_feature_section(feature_id, canonical=canonical)
         return get_fan_ids(section)
+
+    def get_fan_zones(self, device_id: str) -> list[dict[str, Any]]:
+        """Get zones configured for a FAN device.
+
+        Uses the shared zones helper for normalized FAN→zone lookup.
+
+        Args:
+            device_id: FAN device ID (canonical or legacy format)
+
+        Returns:
+            List of zone configuration dictionaries
+        """
+        section = self.get_feature_section(FEATURE_ZONES, canonical=True)
+        return get_zones_for_fan(section, device_id)
+
+    def get_fan_zone_ids(self, device_id: str) -> list[str]:
+        """Get zone IDs configured for a FAN device.
+
+        Uses the shared zones helper for normalized zone ID extraction.
+
+        Args:
+            device_id: FAN device ID (canonical or legacy format)
+
+        Returns:
+            List of unique zone IDs
+        """
+        section = self.get_feature_section(FEATURE_ZONES, canonical=True)
+        return get_zone_ids_for_fan(section, device_id)
+
+    def get_fan_remote_bindings(self, device_id: str) -> list[dict[str, Any]]:
+        """Get REM bindings configured for a FAN device.
+
+        Uses the shared remote_binding helper for normalized FAN→REM lookup.
+
+        Args:
+            device_id: FAN device ID (canonical or legacy format)
+
+        Returns:
+            List of REM binding dictionaries with normalized rem_id
+        """
+        section = self.get_feature_section(FEATURE_REMOTE_BINDING, canonical=True)
+        return get_remote_binding_rems(section, device_id)
+
+    def get_fan_remote_binding_ids(self, device_id: str) -> list[str]:
+        """Get REM IDs bound to a FAN device.
+
+        Uses the shared remote_binding helper for normalized REM ID extraction.
+
+        Args:
+            device_id: FAN device ID (canonical or legacy format)
+
+        Returns:
+            List of unique REM IDs
+        """
+        section = self.get_feature_section(FEATURE_REMOTE_BINDING, canonical=True)
+        return get_remote_binding_rem_ids(section, device_id)
 
     def update(self, updates: Any) -> None:
         """Update multiple configuration values.

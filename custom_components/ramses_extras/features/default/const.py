@@ -87,6 +87,7 @@ WS_CMD_GET_ENABLED_FEATURES = "ramses_extras/default/get_enabled_features"
 WS_CMD_GET_CARDS_ENABLED = "ramses_extras/default/get_cards_enabled"
 WS_CMD_GET_ENTITY_MAPPINGS = "ramses_extras/get_entity_mappings"
 WS_CMD_GET_ALL_FEATURE_ENTITIES = "ramses_extras/get_all_feature_entities"
+WS_CMD_GET_FAN_CONFIG_ASSOCIATIONS = "ramses_extras/get_fan_config_associations"
 
 # WebSocket commands for the default feature
 DEFAULT_WEBSOCKET_COMMANDS = {
@@ -97,6 +98,7 @@ DEFAULT_WEBSOCKET_COMMANDS = {
     "get_cards_enabled": WS_CMD_GET_CARDS_ENABLED,
     "get_entity_mappings": WS_CMD_GET_ENTITY_MAPPINGS,
     "get_all_feature_entities": WS_CMD_GET_ALL_FEATURE_ENTITIES,
+    "get_fan_config_associations": WS_CMD_GET_FAN_CONFIG_ASSOCIATIONS,
 }
 
 # Default feature constant configuration for EntityManager
@@ -156,6 +158,7 @@ __all__ = [
     "WS_CMD_GET_CARDS_ENABLED",
     "WS_CMD_GET_ENTITY_MAPPINGS",
     "WS_CMD_GET_ALL_FEATURE_ENTITIES",
+    "WS_CMD_GET_FAN_CONFIG_ASSOCIATIONS",
     "DEFAULT_WEBSOCKET_COMMANDS",
     "load_feature",
 ]

@@ -14,6 +14,7 @@ from custom_components.ramses_extras.features.default.websocket_commands import 
     ws_get_cards_enabled,
     ws_get_enabled_features,
     ws_get_entity_mappings,
+    ws_get_fan_config_associations,
     ws_websocket_info,
 )
 
@@ -26,6 +27,7 @@ ws_get_all_feature_entities = ws_get_all_feature_entities.__wrapped__
 ws_get_available_devices = ws_get_available_devices.__wrapped__
 ws_get_bound_rem = ws_get_bound_rem.__wrapped__
 ws_get_2411_schema = ws_get_2411_schema.__wrapped__
+ws_get_fan_config_associations = ws_get_fan_config_associations.__wrapped__
 
 
 @pytest.fixture
@@ -306,3 +308,134 @@ async def test_ws_get_2411_schema_fan_prefixed_params(hass, connection):
     assert "75" in schema
     assert schema["75"]["min_value"] == 5
     assert schema["75"]["max_value"] == 35
+
+
+async def test_ws_get_fan_config_associations_no_config_entry(connection):
+    """Test ws_get_fan_config_associations returns empty when no config entry."""
+    hass = MagicMock()
+    hass.data = {DOMAIN: {}}  # No config_entry
+
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/get_fan_config_associations",
+        "device_id": "32:123456",
+    }
+    await ws_get_fan_config_associations(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "device_id": "32:123456",
+            "zones": [],
+            "zone_ids": [],
+            "remote_bindings": [],
+            "remote_binding_ids": [],
+            "source": "config",
+        },
+    )
+
+
+async def test_ws_get_fan_config_associations_with_config(connection):
+    """Test ws_get_fan_config_associations returns zones and REMs from config."""
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "config_entry": MagicMock(
+                data={
+                    "ramses_extras": {
+                        "schema_version": 1,
+                        "features": {
+                            "zones": {
+                                "FANs": {
+                                    "32:123456": [
+                                        {
+                                            "zone_id": "bathroom",
+                                            "actuator": {"min_position": 15},
+                                        },
+                                        {"zone_id": "office"},
+                                    ]
+                                }
+                            },
+                            "remote_binding": {
+                                "FANs": {
+                                    "32:123456": {
+                                        "REMs": [
+                                            {
+                                                "rem_id": "37_654321",
+                                                "role": "primary",
+                                            },
+                                        ]
+                                    }
+                                }
+                            },
+                        },
+                    }
+                },
+                options={},
+            )
+        }
+    }
+
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/get_fan_config_associations",
+        "device_id": "32:123456",
+    }
+    await ws_get_fan_config_associations(hass, connection, msg)
+
+    connection.send_result.assert_called_once()
+    result = connection.send_result.call_args[0][1]
+
+    assert result["device_id"] == "32:123456"
+    assert result["zone_ids"] == ["bathroom", "office"]
+    assert len(result["zones"]) == 2
+    assert result["zones"][0]["zone_id"] == "bathroom"
+    assert result["remote_binding_ids"] == ["37:654321"]
+    assert len(result["remote_bindings"]) == 1
+    assert result["remote_bindings"][0]["rem_id"] == "37:654321"
+    assert result["source"] == "config"
+
+
+async def test_ws_get_fan_config_associations_legacy_remote_id(connection):
+    """Test ws_get_fan_config_associations normalizes legacy remote_id values."""
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "config_entry": MagicMock(
+                data={
+                    "ramses_extras": {
+                        "schema_version": 1,
+                        "features": {
+                            "remote_binding": {
+                                "FANs": {
+                                    "32:123456": {
+                                        "REMs": [
+                                            {
+                                                "remote_id": "37_654321",
+                                                "role": "primary",
+                                            },
+                                        ]
+                                    }
+                                }
+                            },
+                        },
+                    }
+                },
+                options={},
+            )
+        }
+    }
+
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/get_fan_config_associations",
+        "device_id": "32:123456",
+    }
+    await ws_get_fan_config_associations(hass, connection, msg)
+
+    result = connection.send_result.call_args[0][1]
+
+    # Legacy remote_id should be normalized to rem_id
+    assert result["remote_binding_ids"] == ["37:654321"]
+    assert result["remote_bindings"][0]["rem_id"] == "37:654321"
+    assert "remote_id" not in result["remote_bindings"][0]
