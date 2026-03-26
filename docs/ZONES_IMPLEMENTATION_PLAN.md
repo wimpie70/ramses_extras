@@ -235,7 +235,7 @@ Later:
 - [x] introduce zone registry
 - [x] define the `zones` structured feature section
 - [x] support static config for ORCON and custom zones using that section
-- [ ] add config flow support for editing that section inside the FAN-oriented configuration UX
+- [x] add config flow support for editing that section inside the FAN-oriented configuration UX
 - [x] expose zone metadata to cards/diagnostics
 - [ ] no automatic actuation required yet
 - [x] keep `zone_id` as the shared link to area-like sensor config
@@ -249,12 +249,12 @@ Later:
 - [x] support `min_position` / `max_position` safety limits for controllable valves
 - [x] add strict YAML export shape for support/debugging
 
-### Phase 3 - FAN-level coordination (NEXT)
+### Phase 3 - FAN-level coordination ✅ COMPLETE
 
-- [ ] create zone coordinator per FAN
-- [ ] convert zone state into FAN-level demands
-- [ ] feed arbiter through a single feature id
-- [ ] add conflict rules with humidity / CO2 / manual override
+- [x] create zone coordinator per FAN
+- [x] convert zone state into FAN-level demands
+- [x] feed arbiter through a single feature id
+- [x] add conflict rules with humidity / CO2 / manual override
 
 ### Phase 4 - richer editing and portability
 

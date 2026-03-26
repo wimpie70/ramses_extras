@@ -16,9 +16,11 @@ from ...framework.helpers.config.migration import get_migrated_feature_section
 from ...framework.helpers.config.model import (
     CONFIG_DEVICES_KEY,
     FEATURE_SENSOR_CONTROL,
+    FEATURE_ZONES,
     SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
     SENSOR_CONTROL_AREA_SENSORS_KEY,
     SENSOR_CONTROL_SOURCES_KEY,
+    get_zones_for_fan,
     legacy_device_key,
     normalize_device_id,
     set_feature_section,
@@ -152,6 +154,20 @@ def _persist_sensor_control_section(
     )
 
 
+def _persist_zones_section(
+    flow: Any,
+    options: dict[str, Any],
+    zones_section: dict[str, Any],
+) -> None:
+    """Persist zones section to config options."""
+    canonical_section = deepcopy(zones_section)
+    set_feature_section(options, FEATURE_ZONES, canonical_section)
+    flow.hass.config_entries.async_update_entry(  # noqa: SLF001
+        flow._config_entry,  # noqa: SLF001
+        options=options,
+    )
+
+
 def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
     label = str(area_sensor.get("label") or area_sensor.get("source_id") or "Unnamed")
     temp_entity = str(area_sensor.get("temperature_entity") or "missing")
@@ -193,6 +209,70 @@ def _validate_area_sensor_entries(area_sensors: Any) -> list[dict[str, Any]]:
     if not isinstance(area_sensors, list):
         return []
     return [item for item in area_sensors if isinstance(item, dict)]
+
+
+def _unique_zone_id(label: str, existing_zones: list[dict[str, Any]]) -> str:
+    """Generate a unique zone_id from a label."""
+    base = re.sub(r"[^a-z0-9_]+", "_", label.strip().lower())
+    base = base.strip("_")
+    if not base:
+        base = "zone"
+
+    existing_ids = {
+        str(item.get("zone_id"))
+        for item in existing_zones
+        if isinstance(item, dict) and item.get("zone_id")
+    }
+    if base not in existing_ids:
+        return base
+
+    suffix = 2
+    while f"{base}_{suffix}" in existing_ids:
+        suffix += 1
+    return f"{base}_{suffix}"
+
+
+def _get_zone_by_id(
+    zones: list[dict[str, Any]], zone_id: str | None
+) -> dict[str, Any] | None:
+    """Find a zone by its zone_id."""
+    if not zone_id:
+        return None
+    for item in zones:
+        if isinstance(item, dict) and str(item.get("zone_id") or "") == zone_id:
+            return item
+    return None
+
+
+def _describe_zone(zone: dict[str, Any]) -> str:
+    """Generate a description string for a zone."""
+    zone_id = str(zone.get("zone_id") or "Unnamed")
+    zone_type = str(zone.get("type") or "unknown")
+    enabled = bool(zone.get("enabled", True))
+
+    details = [f"type: {zone_type}"]
+
+    if zone_type == "orcon_native":
+        native_id = str(zone.get("native_zone_id") or "")
+        if native_id:
+            details.append(f"native ID: {native_id}")
+    elif zone_type in ("custom_valve", "shelly_2pm_gen3"):
+        open_entity = str(zone.get("open_entity") or "")
+        close_entity = str(zone.get("close_entity") or "")
+        if open_entity:
+            details.append(f"open: {open_entity}")
+        if close_entity:
+            details.append(f"close: {close_entity}")
+
+    details.append("enabled" if enabled else "disabled")
+
+    return f"- zone {zone_id}: " + "; ".join(details)
+
+
+def _validate_zone_entries(zones: Any) -> list[dict[str, Any]]:
+    if not isinstance(zones, list):
+        return []
+    return [item for item in zones if isinstance(item, dict)]
 
 
 def _get_device_type(flow: Any, device_id: str) -> str | None:
@@ -485,9 +565,12 @@ async def async_step_sensor_control_config(
                 return await flow.async_step_main_menu()
 
             # Switch to the selected group configuration step
-            flow._sensor_control_group_stage = (
-                "area_sensors_menu" if action == "area_sensors" else action
-            )
+            if action == "area_sensors":
+                flow._sensor_control_group_stage = "area_sensors_menu"
+            elif action == "zones":
+                flow._sensor_control_group_stage = "zones_menu"
+            else:
+                flow._sensor_control_group_stage = action
             return await async_step_sensor_control_config(flow, None)
 
         group_options = handler.get_group_options(selected_device_id)
@@ -908,6 +991,276 @@ async def async_step_sensor_control_config(
                 )
             }"
         )
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    # ------------------------------------------------------------------
+    # Zones menu: list zones for this FAN and allow add/edit/delete
+    # ------------------------------------------------------------------
+    if group_stage == "zones_menu":
+        options = flow.hass.data[DOMAIN]["config_entry"].options
+        zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
+        fan_zones = get_zones_for_fan(zones_section, selected_device_id)
+
+        if user_input is not None:
+            zones_action: str | None = user_input.get("action")
+
+            if zones_action == "add":
+                flow._sensor_control_editing_zone_id = None
+                flow._sensor_control_group_stage = "zones_edit"
+                return await async_step_sensor_control_config(flow, None)
+
+            if zones_action == "edit":
+                selected_zone_id: str | None = user_input.get("zone_id")
+                if selected_zone_id:
+                    flow._sensor_control_editing_zone_id = selected_zone_id
+                    flow._sensor_control_group_stage = "zones_edit"
+                    return await async_step_sensor_control_config(flow, None)
+
+            if zones_action == "delete":
+                delete_zone_id: str | None = user_input.get("zone_id")
+                if delete_zone_id:
+                    zones_list = _validate_zone_entries(zones_section.get("zones"))
+                    new_zones = [
+                        z for z in zones_list if z.get("zone_id") != delete_zone_id
+                    ]
+                    # Update zones for this FAN
+                    fan_normalized = normalize_device_id(selected_device_id)
+                    zones_by_fan: dict[str, Any] = {}
+                    for z in _validate_zone_entries(zones_section.get("zones")):
+                        fan_key = str(z.get("fan_id", ""))
+                        if fan_key:
+                            if fan_key not in zones_by_fan:
+                                zones_by_fan[fan_key] = []
+                            if z.get("zone_id") != delete_zone_id:
+                                zones_by_fan[fan_key].append(z)
+                    # Rebuild zones list
+                    final_zones: list[dict[str, Any]] = []
+                    for fan_key, fan_zones_list in zones_by_fan.items():
+                        if fan_key != fan_normalized:
+                            final_zones.extend(fan_zones_list)
+                        else:
+                            # This is our FAN, use filtered list
+                            final_zones.extend(
+                                [
+                                    z
+                                    for z in fan_zones_list
+                                    if z.get("zone_id") != zone_id
+                                ]
+                            )
+                    zones_section["zones"] = final_zones
+                    _persist_zones_section(flow, options, zones_section)
+                return await async_step_sensor_control_config(flow, None)
+
+            if action == "back":
+                flow._sensor_control_group_stage = "select_group"
+                return await async_step_sensor_control_config(flow, None)
+
+        # Build zone list for display
+        zone_descriptions = []
+        zone_select_options = []
+        for zone in fan_zones:
+            zone_id = str(zone.get("zone_id") or "unnamed")
+            zone_descriptions.append(_describe_zone(zone))
+            zone_select_options.append(
+                selector.SelectOptionDict(value=zone_id, label=f"Zone: {zone_id}")
+            )
+
+        zones_info = (
+            "\n".join(zone_descriptions)
+            if zone_descriptions
+            else "No zones configured."
+        )
+
+        schema = vol.Schema(
+            {
+                vol.Required("action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value="add", label="Add zone"),
+                            selector.SelectOptionDict(value="edit", label="Edit zone"),
+                            selector.SelectOptionDict(
+                                value="delete", label="Delete zone"
+                            ),
+                            selector.SelectOptionDict(value="back", label="Back"),
+                        ],
+                        mode="list",
+                    )
+                ),
+                vol.Optional("zone_id"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=zone_select_options,
+                        mode="dropdown",
+                    )
+                ),
+            }
+        )
+
+        info_text = (
+            "🧭 **Zone Configuration**\n\n"
+            f"Configuring zones for FAN: `{selected_device_id}`\n\n"
+            f"**Existing zones:**\n{zones_info}"
+        )
+
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    # ------------------------------------------------------------------
+    # Zones edit: add or edit a specific zone
+    # ------------------------------------------------------------------
+    if group_stage == "zones_edit":
+        options = flow.hass.data[DOMAIN]["config_entry"].options
+        zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
+        fan_zones = get_zones_for_fan(zones_section, selected_device_id)
+
+        editing_zone_id = getattr(flow, "_sensor_control_editing_zone_id", None)
+        existing_zone = None
+        if editing_zone_id:
+            existing_zone = _get_zone_by_id(fan_zones, editing_zone_id)
+
+        if user_input is not None:
+            zone_id = str(user_input.get("zone_id") or "").strip()
+            zone_type = str(user_input.get("type") or "custom_valve")
+            enabled = bool(user_input.get("enabled", True))
+
+            # Build zone entry
+            zone_entry: dict[str, Any] = {
+                "zone_id": zone_id,
+                "type": zone_type,
+                "enabled": enabled,
+                "fan_id": normalize_device_id(selected_device_id),
+            }
+
+            # Add type-specific fields
+            if zone_type == "orcon_native":
+                native_zone_id = user_input.get("native_zone_id")
+                if native_zone_id is not None:
+                    zone_entry["native_zone_id"] = str(native_zone_id).strip()
+            elif zone_type in ("custom_valve", "shelly_2pm_gen3"):
+                open_entity = user_input.get("open_entity")
+                close_entity = user_input.get("close_entity")
+                position_entity = user_input.get("position_entity")
+                min_position = user_input.get("min_position", 0)
+                max_position = user_input.get("max_position", 100)
+
+                if open_entity:
+                    zone_entry["open_entity"] = str(open_entity).strip()
+                if close_entity:
+                    zone_entry["close_entity"] = str(close_entity).strip()
+                if position_entity:
+                    zone_entry["position_entity"] = str(position_entity).strip()
+                zone_entry["min_position"] = int(min_position)
+                zone_entry["max_position"] = int(max_position)
+
+            # Validate unique zone_id within this FAN
+            errors: dict[str, str] = {}
+            if not zone_id:
+                errors["zone_id"] = "Zone ID is required"
+            elif existing_zone is None or existing_zone.get("zone_id") != zone_id:
+                # Check for duplicates
+                if _get_zone_by_id(fan_zones, zone_id):
+                    errors["zone_id"] = "Zone ID already exists for this FAN"
+
+            if not errors:
+                # Update zones list
+                zones_list = _validate_zone_entries(zones_section.get("zones"))
+                new_zones = [
+                    z for z in zones_list if z.get("zone_id") != editing_zone_id
+                ]
+                new_zones.append(zone_entry)
+                zones_section["zones"] = new_zones
+                _persist_zones_section(flow, options, zones_section)
+
+                flow._sensor_control_group_stage = "zones_menu"
+                return await async_step_sensor_control_config(flow, None)
+
+        # Build schema for zone editing
+        zone_id_default = existing_zone.get("zone_id") if existing_zone else ""
+        zone_type_default = (
+            existing_zone.get("type") if existing_zone else "custom_valve"
+        )
+        enabled_default = existing_zone.get("enabled", True) if existing_zone else True
+
+        type_options = [
+            selector.SelectOptionDict(value="orcon_native", label="Orcon Native"),
+            selector.SelectOptionDict(value="custom_valve", label="Custom Valve"),
+            selector.SelectOptionDict(value="shelly_2pm_gen3", label="Shelly 2PM Gen3"),
+        ]
+
+        entity_selector = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain=["button", "switch", "sensor"])
+        )
+
+        schema_fields: dict[Any, Any] = {
+            vol.Required("zone_id", default=zone_id_default): selector.TextSelector(),
+            vol.Required("type", default=zone_type_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=type_options, mode="dropdown")
+            ),
+            vol.Required(
+                "enabled", default=enabled_default
+            ): selector.BooleanSelector(),
+        }
+
+        # Add type-specific fields with defaults from existing zone
+        if zone_type_default == "orcon_native":
+            native_default = (
+                existing_zone.get("native_zone_id") if existing_zone else ""
+            )
+            schema_fields[vol.Optional("native_zone_id", default=native_default)] = (
+                selector.TextSelector()
+            )
+        elif zone_type_default in ("custom_valve", "shelly_2pm_gen3"):
+            open_default = existing_zone.get("open_entity") if existing_zone else ""
+            close_default = existing_zone.get("close_entity") if existing_zone else ""
+            pos_default = existing_zone.get("position_entity") if existing_zone else ""
+            min_default = existing_zone.get("min_position", 0) if existing_zone else 0
+            max_default = (
+                existing_zone.get("max_position", 100) if existing_zone else 100
+            )
+
+            schema_fields[vol.Optional("open_entity", default=open_default)] = (
+                entity_selector
+            )
+            schema_fields[vol.Optional("close_entity", default=close_default)] = (
+                entity_selector
+            )
+            schema_fields[vol.Optional("position_entity", default=pos_default)] = (
+                entity_selector
+            )
+            schema_fields[vol.Optional("min_position", default=min_default)] = (
+                selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=0, max=100, step=1)
+                )
+            )
+            schema_fields[vol.Optional("max_position", default=max_default)] = (
+                selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=0, max=100, step=1)
+                )
+            )
+
+        schema = vol.Schema(schema_fields)
+
+        info_text = (
+            f"{'Edit' if existing_zone else 'Add'} Zone\n\n"
+            f"Configure a zone for FAN: `{selected_device_id}`\n\n"
+            "Zone ID must be unique within this FAN.\n"
+            "Select the zone type and configure the appropriate entities."
+        )
+
+        if errors:
+            return flow.async_show_form(
+                step_id="feature_config",
+                data_schema=schema,
+                errors=errors,
+                description_placeholders={"info": info_text},
+            )
+
         return flow.async_show_form(
             step_id="feature_config",
             data_schema=schema,
