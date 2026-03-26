@@ -444,3 +444,178 @@ class TestRemoteBindingDiagnostics:
             pos2 = yaml_str.find("32:222222")
             pos3 = yaml_str.find("32:333333")
             assert pos1 < pos2 < pos3
+
+
+class TestRemoteBindingRoles:
+    """Test RemoteBindingRegistry role support."""
+
+    def test_get_bindings_for_fan_by_role_primary(self, registry, hass):
+        """Test get_bindings_for_fan_by_role with primary filter."""
+        bindings = [
+            {"rem_id": "37:111111", "role": "primary", "enabled": True},
+            {"rem_id": "37:222222", "role": "secondary", "enabled": True},
+        ]
+
+        with patch.object(registry, "_get_config_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.get_fan_remote_bindings.return_value = bindings
+            mock_get_manager.return_value = mock_manager
+
+            result = registry.get_bindings_for_fan_by_role("32:123456", role="primary")
+
+            assert len(result) == 1
+            assert result[0]["rem_id"] == "37:111111"
+
+    def test_get_bindings_for_fan_by_role_all(self, registry, hass):
+        """Test get_bindings_for_fan_by_role returns all enabled bindings."""
+        bindings = [
+            {"rem_id": "37:111111", "role": "primary", "enabled": True},
+            {"rem_id": "37:222222", "role": "secondary", "enabled": True},
+            {"rem_id": "37:333333", "role": "boost_only", "enabled": True},
+        ]
+
+        with patch.object(registry, "_get_config_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.get_fan_remote_bindings.return_value = bindings
+            mock_get_manager.return_value = mock_manager
+
+            result = registry.get_bindings_for_fan_by_role("32:123456")
+
+            assert len(result) == 3
+
+    def test_get_bindings_for_fan_by_role_ignores_disabled(self, registry, hass):
+        """Test get_bindings_for_fan_by_role ignores disabled bindings."""
+        bindings = [
+            {"rem_id": "37:111111", "role": "primary", "enabled": True},
+            {"rem_id": "37:222222", "role": "secondary", "enabled": False},
+        ]
+
+        with patch.object(registry, "_get_config_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.get_fan_remote_bindings.return_value = bindings
+            mock_get_manager.return_value = mock_manager
+
+            result = registry.get_bindings_for_fan_by_role("32:123456")
+
+            assert len(result) == 1
+            assert result[0]["rem_id"] == "37:111111"
+
+    def test_get_all_rem_ids_for_fan(self, registry, hass):
+        """Test get_all_rem_ids_for_fan returns all REM IDs."""
+        bindings = [
+            {"rem_id": "37:111111", "role": "primary", "enabled": True},
+            {"rem_id": "37:222222", "role": "secondary", "enabled": True},
+        ]
+
+        with patch.object(registry, "_get_config_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.get_fan_remote_bindings.return_value = bindings
+            mock_get_manager.return_value = mock_manager
+
+            result = registry.get_all_rem_ids_for_fan("32:123456")
+
+            assert len(result) == 2
+            assert "37:111111" in result
+            assert "37:222222" in result
+
+
+class TestBindingSuggestions:
+    """Test learned binding suggestions from observed traffic."""
+
+    def test_get_binding_suggestions_empty(self, registry, hass):
+        """Test get_binding_suggestions returns empty when no traffic."""
+        result = registry.get_binding_suggestions()
+
+        assert result["total_suggestions"] == 0
+        assert result["suggestions_by_fan"] == {}
+
+    def test_get_binding_suggestions_from_unmatched(self, registry, hass):
+        """Test get_binding_suggestions generates suggestions from traffic."""
+        # Record 3 unmatched observations from same REM to same FAN
+        for _ in range(3):
+            registry.record_remote_activity(
+                rem_id="37:999999",
+                fan_id="32:123456",
+                command="fan_low",
+                matched=False,
+            )
+
+        result = registry.get_binding_suggestions()
+
+        assert result["total_suggestions"] == 1
+        assert "32:123456" in result["suggestions_by_fan"]
+        suggestion = result["suggestions_by_fan"]["32:123456"][0]
+        assert suggestion["rem_id"] == "37:999999"
+        assert suggestion["observed_count"] == 3
+        assert suggestion["suggested_role"] == "secondary"
+
+    def test_get_binding_suggestions_below_threshold(self, registry, hass):
+        """Test get_binding_suggestions only suggests with 3+ observations."""
+        # Only 2 observations - below threshold
+        for _ in range(2):
+            registry.record_remote_activity(
+                rem_id="37:999999",
+                fan_id="32:123456",
+                command="fan_low",
+                matched=False,
+            )
+
+        result = registry.get_binding_suggestions()
+
+        assert result["total_suggestions"] == 0
+
+    def test_get_binding_suggestions_for_specific_fan(self, registry, hass):
+        """Test get_binding_suggestions with specific fan_id filter."""
+        # Record traffic for two FANs
+        for _ in range(3):
+            registry.record_remote_activity(
+                rem_id="37:111111",
+                fan_id="32:111111",
+                command="fan_low",
+                matched=False,
+            )
+        for _ in range(3):
+            registry.record_remote_activity(
+                rem_id="37:222222",
+                fan_id="32:222222",
+                command="fan_low",
+                matched=False,
+            )
+
+        result = registry.get_binding_suggestions(fan_id="32:111111")
+
+        assert result["fan_id"] == "32:111111"
+        assert len(result["suggestions"]) == 1
+        assert result["suggestions"][0]["rem_id"] == "37:111111"
+
+    def test_get_binding_suggestions_confidence(self, registry, hass):
+        """Test get_binding_suggestions confidence calculation."""
+        # Record 5 observations
+        for _ in range(5):
+            registry.record_remote_activity(
+                rem_id="37:999999",
+                fan_id="32:123456",
+                command="fan_low",
+                matched=False,
+            )
+
+        result = registry.get_binding_suggestions()
+
+        suggestion = result["suggestions_by_fan"]["32:123456"][0]
+        assert suggestion["confidence"] == 0.5  # 5/10
+
+    def test_get_binding_suggestions_max_confidence(self, registry, hass):
+        """Test get_binding_suggestions confidence caps at 1.0."""
+        # Record 20 observations (more than 10)
+        for _ in range(20):
+            registry.record_remote_activity(
+                rem_id="37:999999",
+                fan_id="32:123456",
+                command="fan_low",
+                matched=False,
+            )
+
+        result = registry.get_binding_suggestions()
+
+        suggestion = result["suggestions_by_fan"]["32:123456"][0]
+        assert suggestion["confidence"] == 1.0  # capped at 1.0

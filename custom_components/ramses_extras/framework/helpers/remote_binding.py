@@ -319,6 +319,122 @@ class RemoteBindingRegistry:
         # For true YAML, we'd use PyYAML, but this keeps dependencies minimal
         return json.dumps(export_data, indent=2, sort_keys=True)
 
+    def get_bindings_for_fan_by_role(
+        self, device_id: str, role: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Get REM bindings for a FAN, optionally filtered by role.
+
+        Args:
+            device_id: FAN device ID
+            role: Optional role filter (primary, secondary, boost_only)
+
+        Returns:
+            List of binding dicts
+        """
+        normalized_id = device_id.replace("_", ":").strip()
+
+        manager = self._get_config_manager()
+        if manager is None:
+            return []
+
+        bindings = manager.get_fan_remote_bindings(normalized_id)
+        if not bindings:
+            return []
+
+        # Filter by enabled and optional role
+        result = []
+        for binding in bindings:
+            if not binding.get("enabled", True):
+                continue
+            if role is not None and binding.get("role", "primary") != role:
+                continue
+            result.append(binding)
+
+        return result
+
+    def get_all_rem_ids_for_fan(self, device_id: str) -> list[str]:
+        """Get all REM device IDs bound to a FAN.
+
+        Args:
+            device_id: FAN device ID
+
+        Returns:
+            List of REM device IDs
+        """
+        bindings = self.get_bindings_for_fan_by_role(device_id)
+        return [str(b.get("rem_id")) for b in bindings if b.get("rem_id")]
+
+    def _get_suggested_bindings(self) -> dict[str, list[dict[str, Any]]]:
+        """Analyze unmatched traffic to suggest potential bindings.
+
+        Returns:
+            Dict mapping FAN IDs to lists of suggested REM bindings
+        """
+        suggestions: dict[str, list[dict[str, Any]]] = {}
+
+        # Group unmatched traffic by FAN
+        fan_rems: dict[str, dict[str, dict[str, Any]]] = {}
+        for entry in self._unmatched_traffic:
+            fan_id = entry.get("fan_id")
+            rem_id = entry.get("rem_id")
+            if not fan_id or not rem_id:
+                continue
+
+            if fan_id not in fan_rems:
+                fan_rems[fan_id] = {}
+
+            if rem_id not in fan_rems[fan_id]:
+                fan_rems[fan_id][rem_id] = {
+                    "rem_id": rem_id,
+                    "commands": [],
+                    "first_seen": entry.get("timestamp"),
+                    "count": 0,
+                }
+
+            fan_rems[fan_id][rem_id]["commands"].append(entry.get("command"))
+            fan_rems[fan_id][rem_id]["count"] += 1
+
+        # Build suggestions for FANs with frequent unmatched traffic
+        for fan_id, rem_data in fan_rems.items():
+            suggestions[fan_id] = []
+            for rem_id, data in rem_data.items():
+                # Only suggest if we have at least 3 observations
+                if data["count"] >= 3:
+                    suggestions[fan_id].append(
+                        {
+                            "rem_id": rem_id,
+                            "observed_count": data["count"],
+                            "commands_observed": list(set(data["commands"]))[-5:],
+                            "suggested_role": "secondary",
+                            "confidence": min(data["count"] / 10.0, 1.0),
+                        }
+                    )
+
+        return suggestions
+
+    def get_binding_suggestions(self, fan_id: str | None = None) -> dict[str, Any]:
+        """Get binding suggestions from observed traffic.
+
+        Args:
+            fan_id: Optional FAN to filter suggestions for
+
+        Returns:
+            Dict with suggested bindings and analysis info
+        """
+        all_suggestions = self._get_suggested_bindings()
+
+        if fan_id:
+            normalized = fan_id.replace("_", ":").strip()
+            return {
+                "fan_id": fan_id,
+                "suggestions": all_suggestions.get(normalized, []),
+            }
+
+        return {
+            "suggestions_by_fan": all_suggestions,
+            "total_suggestions": sum(len(v) for v in all_suggestions.values()),
+        }
+
     def invalidate_cache(self) -> None:
         """Clear the binding cache.
 

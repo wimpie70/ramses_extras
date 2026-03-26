@@ -91,6 +91,7 @@ WS_CMD_GET_FAN_CONFIG_ASSOCIATIONS = "ramses_extras/get_fan_config_associations"
 WS_CMD_GET_REMOTE_BINDINGS = "ramses_extras/get_remote_bindings"
 WS_CMD_GET_BINDING_DIAGNOSTICS = "ramses_extras/get_binding_diagnostics"
 WS_CMD_EXPORT_BINDINGS = "ramses_extras/export_bindings"
+WS_CMD_GET_BINDING_SUGGESTIONS = "ramses_extras/get_binding_suggestions"
 
 # WebSocket commands for the default feature
 DEFAULT_WEBSOCKET_COMMANDS = {
@@ -105,6 +106,7 @@ DEFAULT_WEBSOCKET_COMMANDS = {
     "get_remote_bindings": WS_CMD_GET_REMOTE_BINDINGS,
     "get_binding_diagnostics": WS_CMD_GET_BINDING_DIAGNOSTICS,
     "export_bindings": WS_CMD_EXPORT_BINDINGS,
+    "get_binding_suggestions": WS_CMD_GET_BINDING_SUGGESTIONS,
 }
 
 # Default feature constant configuration for EntityManager
@@ -168,6 +170,7 @@ __all__ = [
     "WS_CMD_GET_REMOTE_BINDINGS",
     "WS_CMD_GET_BINDING_DIAGNOSTICS",
     "WS_CMD_EXPORT_BINDINGS",
+    "WS_CMD_GET_BINDING_SUGGESTIONS",
     "DEFAULT_WEBSOCKET_COMMANDS",
     "load_feature",
 ]

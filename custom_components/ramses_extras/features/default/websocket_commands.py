@@ -683,6 +683,31 @@ async def ws_get_2411_schema(
     connection.send_result(msg["id"], schema)
 
 
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_binding_suggestions",
+        vol.Optional("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_binding_suggestions(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return binding suggestions from observed unmatched traffic."""
+    from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+    try:
+        registry = get_remote_binding_registry(hass)
+        device_id = msg.get("device_id")
+
+        result = registry.get_binding_suggestions(device_id)
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get binding suggestions: %s", err)
+        connection.send_error(msg["id"], "get_binding_suggestions_failed", str(err))
+
+
 def register_default_websocket_commands() -> dict[str, str]:
     """Register WebSocket commands for the default feature.
 
