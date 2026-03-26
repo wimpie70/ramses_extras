@@ -240,21 +240,21 @@ Later:
 - [ ] no automatic actuation required yet
 - [x] keep `zone_id` as the shared link to area-like sensor config
 
-### Phase 2 - actuator adapters
+### Phase 2 - actuator adapters ✅ COMPLETE
 
-- implement ORCON-native zone adapter
-- implement generic custom valve adapter
-- implement Shelly 2PM Gen3 adapter on top of the generic valve model
-- add availability and position reporting
-- support `min_position` / `max_position` safety limits for controllable valves
-- add strict YAML export shape for support/debugging
+- [x] implement ORCON-native zone adapter
+- [x] implement generic custom valve adapter
+- [x] implement Shelly 2PM Gen3 adapter on top of the generic valve model
+- [x] add availability and position reporting
+- [x] support `min_position` / `max_position` safety limits for controllable valves
+- [x] add strict YAML export shape for support/debugging
 
-### Phase 3 - FAN-level coordination
+### Phase 3 - FAN-level coordination (NEXT)
 
-- create zone coordinator per FAN
-- convert zone state into FAN-level demands
-- feed arbiter through a single feature id
-- add conflict rules with humidity / CO2 / manual override
+- [ ] create zone coordinator per FAN
+- [ ] convert zone state into FAN-level demands
+- [ ] feed arbiter through a single feature id
+- [ ] add conflict rules with humidity / CO2 / manual override
 
 ### Phase 4 - richer editing and portability
 

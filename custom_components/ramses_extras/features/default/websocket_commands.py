@@ -766,6 +766,109 @@ async def ws_export_zones(
         connection.send_error(msg["id"], "export_zones_failed", str(err))
 
 
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_zone_position",
+        vol.Required("fan_id"): str,
+        vol.Required("zone_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_zone_position(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return current zone position from its adapter."""
+    from ...framework.helpers.zone_adapters import get_zone_adapter_registry
+
+    try:
+        registry = get_zone_adapter_registry(hass)
+        fan_id = msg["fan_id"]
+        zone_id = msg["zone_id"]
+
+        adapter = registry.get_or_create_adapter(fan_id, zone_id)
+
+        if adapter is None:
+            connection.send_result(
+                msg["id"],
+                {
+                    "fan_id": fan_id,
+                    "zone_id": zone_id,
+                    "error": "Zone not found or no adapter available",
+                },
+            )
+            return
+
+        position = await adapter.async_get_position()
+
+        result: dict[str, Any] = {
+            "fan_id": fan_id,
+            "zone_id": zone_id,
+            "position": position.position,
+            "target_position": position.target_position,
+            "is_available": position.is_available,
+            "source": position.source,
+            "adapter_available": adapter.is_available,
+        }
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get zone position: %s", err)
+        connection.send_error(msg["id"], "get_zone_position_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/get_zone_adapter_diagnostics",
+        vol.Optional("fan_id"): str,
+        vol.Optional("zone_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_zone_adapter_diagnostics(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Return zone adapter diagnostics."""
+    from ...framework.helpers.zone_adapters import get_zone_adapter_registry
+
+    try:
+        registry = get_zone_adapter_registry(hass)
+        fan_id = msg.get("fan_id")
+        zone_id = msg.get("zone_id")
+
+        if fan_id and zone_id:
+            # Single adapter diagnostics
+            adapter = registry.get_adapter(fan_id, zone_id)
+            if adapter:
+                result = {
+                    "fan_id": fan_id,
+                    "zone_id": zone_id,
+                    "adapter": adapter.get_diagnostics(),
+                }
+            else:
+                result = {
+                    "fan_id": fan_id,
+                    "zone_id": zone_id,
+                    "error": "Adapter not found",
+                }
+        elif fan_id:
+            # All adapters for a FAN
+            adapters = registry.get_all_adapters_for_fan(fan_id)
+            result = {
+                "fan_id": fan_id,
+                "adapters": [a.get_diagnostics() for a in adapters],
+            }
+        else:
+            # Global diagnostics
+            result = registry.get_diagnostics()
+
+        connection.send_result(msg["id"], result)
+    except Exception as err:
+        _LOGGER.error("Failed to get zone adapter diagnostics: %s", err)
+        connection.send_error(
+            msg["id"], "get_zone_adapter_diagnostics_failed", str(err)
+        )
+
+
 def register_default_websocket_commands() -> dict[str, str]:
     """Register WebSocket commands for the default feature.
 
