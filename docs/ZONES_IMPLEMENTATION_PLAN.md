@@ -256,10 +256,10 @@ Later:
 - [x] feed arbiter through a single feature id
 - [x] add conflict rules with humidity / CO2 / manual override
 
-### Phase 4 - richer editing and portability
+### Phase 4 - richer editing and portability ✅ COMPLETE
 
-- add optional validated YAML import for advanced users after migrations are proven
-- add richer frontend editing if the structured model is stable enough
+- [x] add optional validated YAML import for advanced users after migrations are proven
+- [x] add richer frontend editing if the structured model is stable enough
 
 ### Phase 5 - advanced behavior
 

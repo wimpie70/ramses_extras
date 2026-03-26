@@ -25,6 +25,11 @@ from ...framework.helpers.config.model import (
     normalize_device_id,
     set_feature_section,
 )
+from ...framework.helpers.config.zones_yaml import (
+    export_zones_to_yaml,
+    merge_zones_config,
+    parse_zones_yaml,
+)
 from ...framework.helpers.device.filter import DeviceFilter
 from .const import SUPPORTED_METRICS
 from .device_types import DEVICE_TYPE_HANDLERS
@@ -1048,14 +1053,22 @@ async def async_step_sensor_control_config(
                                 [
                                     z
                                     for z in fan_zones_list
-                                    if z.get("zone_id") != zone_id
+                                    if z.get("zone_id") != delete_zone_id
                                 ]
                             )
                     zones_section["zones"] = final_zones
                     _persist_zones_section(flow, options, zones_section)
                 return await async_step_sensor_control_config(flow, None)
 
-            if action == "back":
+            if zones_action == "export":
+                flow._sensor_control_group_stage = "zones_export"
+                return await async_step_sensor_control_config(flow, None)
+
+            if zones_action == "import":
+                flow._sensor_control_group_stage = "zones_import"
+                return await async_step_sensor_control_config(flow, None)
+
+            if zones_action == "back":
                 flow._sensor_control_group_stage = "select_group"
                 return await async_step_sensor_control_config(flow, None)
 
@@ -1084,6 +1097,12 @@ async def async_step_sensor_control_config(
                             selector.SelectOptionDict(value="edit", label="Edit zone"),
                             selector.SelectOptionDict(
                                 value="delete", label="Delete zone"
+                            ),
+                            selector.SelectOptionDict(
+                                value="export", label="Export to YAML"
+                            ),
+                            selector.SelectOptionDict(
+                                value="import", label="Import from YAML"
                             ),
                             selector.SelectOptionDict(value="back", label="Back"),
                         ],
@@ -1258,6 +1277,155 @@ async def async_step_sensor_control_config(
                 step_id="feature_config",
                 data_schema=schema,
                 errors=errors,
+                description_placeholders={"info": info_text},
+            )
+
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    # ------------------------------------------------------------------
+    # Zones export: export current zones to YAML
+    # ------------------------------------------------------------------
+    if group_stage == "zones_export":
+        options = flow.hass.data[DOMAIN]["config_entry"].options
+        zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
+        fan_zones = get_zones_for_fan(zones_section, selected_device_id)
+
+        if user_input is not None:
+            export_action: str | None = user_input.get("action")
+            if export_action == "back":
+                flow._sensor_control_group_stage = "zones_menu"
+                return await async_step_sensor_control_config(flow, None)
+
+        # Generate YAML export
+        normalized_fan_id = normalize_device_id(selected_device_id)
+        yaml_content = export_zones_to_yaml(fan_zones, normalized_fan_id)
+
+        schema = vol.Schema(
+            {
+                vol.Optional("yaml_preview"): selector.TextSelector(
+                    selector.TextSelectorConfig(multiline=True)
+                ),
+                vol.Required("action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="back", label="Back to zones menu"
+                            ),
+                        ],
+                        mode="list",
+                    )
+                ),
+            }
+        )
+
+        info_text = (
+            "🧭 **Export Zones to YAML**\n\n"
+            f"FAN: `{selected_device_id}`\n\n"
+            "Copy the YAML below to save your zone configuration:\n\n"
+            f"```yaml\n{yaml_content}\n```"
+        )
+
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    # ------------------------------------------------------------------
+    # Zones import: import zones from YAML
+    # ------------------------------------------------------------------
+    if group_stage == "zones_import":
+        options = flow.hass.data[DOMAIN]["config_entry"].options
+        zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
+
+        import_errors: dict[str, str] = {}
+
+        if user_input is not None:
+            import_action: str | None = user_input.get("action")
+
+            if import_action == "back":
+                flow._sensor_control_group_stage = "zones_menu"
+                return await async_step_sensor_control_config(flow, None)
+
+            if import_action == "import":
+                yaml_content = user_input.get("yaml_content", "")
+                overwrite = user_input.get("overwrite_existing", False)
+
+                if not yaml_content or not yaml_content.strip():
+                    import_errors["yaml_content"] = "YAML content is required"
+                else:
+                    try:
+                        parsed = parse_zones_yaml(yaml_content)
+                        imported_zones = parsed.get("zones", [])
+
+                        if not imported_zones:
+                            import_errors["yaml_content"] = "No zones found in YAML"
+                        else:
+                            # Merge with existing zones
+                            existing_zones = _validate_zone_entries(
+                                zones_section.get("zones")
+                            )
+                            normalized_fan_id = normalize_device_id(selected_device_id)
+
+                            merged_zones = merge_zones_config(
+                                existing_zones,
+                                imported_zones,
+                                normalized_fan_id,
+                                overwrite_existing=overwrite,
+                            )
+
+                            zones_section["zones"] = merged_zones
+                            _persist_zones_section(flow, options, zones_section)
+
+                            # Return to zones menu after successful import
+                            flow._sensor_control_group_stage = "zones_menu"
+                            return await async_step_sensor_control_config(flow, None)
+
+                    except ValueError as e:
+                        import_errors["yaml_content"] = str(e)
+
+        schema = vol.Schema(
+            {
+                vol.Required("yaml_content"): selector.TextSelector(
+                    selector.TextSelectorConfig(multiline=True)
+                ),
+                vol.Required(
+                    "overwrite_existing", default=False
+                ): selector.BooleanSelector(),
+                vol.Required("action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="import", label="Import zones"
+                            ),
+                            selector.SelectOptionDict(
+                                value="back", label="Cancel / Back"
+                            ),
+                        ],
+                        mode="list",
+                    )
+                ),
+            }
+        )
+
+        info_text = (
+            "🧭 **Import Zones from YAML**\n\n"
+            f"FAN: `{selected_device_id}`\n\n"
+            "Paste your YAML zone configuration below.\n\n"
+            "The import will validate the YAML structure "
+            "and merge zones with existing ones.\n"
+            "Enable 'Overwrite existing' to replace zones with the same zone_id."
+        )
+
+        if import_errors:
+            return flow.async_show_form(
+                step_id="feature_config",
+                data_schema=schema,
+                errors=import_errors,
                 description_placeholders={"info": info_text},
             )
 
