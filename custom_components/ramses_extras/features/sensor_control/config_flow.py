@@ -1060,14 +1060,6 @@ async def async_step_sensor_control_config(
                     _persist_zones_section(flow, options, zones_section)
                 return await async_step_sensor_control_config(flow, None)
 
-            if zones_action == "export":
-                flow._sensor_control_group_stage = "zones_export"
-                return await async_step_sensor_control_config(flow, None)
-
-            if zones_action == "import":
-                flow._sensor_control_group_stage = "zones_import"
-                return await async_step_sensor_control_config(flow, None)
-
             if zones_action == "back":
                 flow._sensor_control_group_stage = "select_group"
                 return await async_step_sensor_control_config(flow, None)
@@ -1097,12 +1089,6 @@ async def async_step_sensor_control_config(
                             selector.SelectOptionDict(value="edit", label="Edit zone"),
                             selector.SelectOptionDict(
                                 value="delete", label="Delete zone"
-                            ),
-                            selector.SelectOptionDict(
-                                value="export", label="Export to YAML"
-                            ),
-                            selector.SelectOptionDict(
-                                value="import", label="Import from YAML"
                             ),
                             selector.SelectOptionDict(value="back", label="Back"),
                         ],
@@ -1199,12 +1185,15 @@ async def async_step_sensor_control_config(
                 flow._sensor_control_group_stage = "zones_menu"
                 return await async_step_sensor_control_config(flow, None)
 
-        # Build schema for zone editing
-        zone_id_default = existing_zone.get("zone_id") if existing_zone else ""
-        zone_type_default = (
-            existing_zone.get("type") if existing_zone else "custom_valve"
-        )
-        enabled_default = existing_zone.get("enabled", True) if existing_zone else True
+            # Show form with errors
+            # Build schema for zone editing (with errors)
+            zone_id_default = existing_zone.get("zone_id") if existing_zone else ""
+            zone_type_default = (
+                existing_zone.get("type") if existing_zone else "custom_valve"
+            )
+            enabled_default = (
+                existing_zone.get("enabled", True) if existing_zone else True
+            )
 
         type_options = [
             selector.SelectOptionDict(value="orcon_native", label="Orcon Native"),
