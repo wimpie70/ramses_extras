@@ -23,6 +23,7 @@ from ...framework.helpers.config.model import (
     get_zones_for_fan,
     legacy_device_key,
     normalize_device_id,
+    set_fan_section,
     set_feature_section,
 )
 from ...framework.helpers.config.zones_yaml import (
@@ -330,6 +331,9 @@ def _get_device_type(flow: Any, device_id: str) -> str | None:
 async def async_step_sensor_control_config(
     flow: Any, user_input: dict[str, Any] | None
 ) -> Any:
+    _LOGGER.debug(
+        "async_step_sensor_control_config called with user_input=%s", user_input
+    )
     feature_id = FEATURE_SENSOR_CONTROL
     feature_config = AVAILABLE_FEATURES.get(feature_id, {})
 
@@ -514,8 +518,8 @@ async def async_step_sensor_control_config(
     devices_config = sensor_control_section.get(CONFIG_DEVICES_KEY)
     if not isinstance(devices_config, dict):
         devices_config = {}
-    normalized_device_id = normalize_device_id(selected_device_id)
-    device_section = devices_config.get(normalized_device_id)
+    norm_device_id = normalize_device_id(selected_device_id)
+    device_section = devices_config.get(norm_device_id)
     if not isinstance(device_section, dict):
         device_section = {}
 
@@ -556,6 +560,12 @@ async def async_step_sensor_control_config(
 
     # Submenu-style grouping: select which group of metrics to configure
     group_stage = getattr(flow, "_sensor_control_group_stage", "select_group")
+    _LOGGER.debug(
+        "sensor_control_config: stage=%s, group_stage=%s, selected_device=%s",
+        stage,
+        group_stage,
+        selected_device_id,
+    )
 
     # Handle group selection menu
     if group_stage == "select_group":
@@ -695,15 +705,13 @@ async def async_step_sensor_control_config(
                     for item in device_area_sensors
                     if str(item.get("source_id") or "") != delete_id
                 ]
-                device_section = deepcopy(
-                    devices_config.get(normalized_device_id) or {}
-                )
+                device_section = deepcopy(devices_config.get(norm_device_id) or {})
                 device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
                 device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = (
                     device_abs_inputs
                 )
                 device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = device_area_sensors
-                devices_config[normalized_device_id] = device_section
+                devices_config[norm_device_id] = device_section
                 sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
                 _persist_sensor_control_section(
                     flow,
@@ -828,11 +836,11 @@ async def async_step_sensor_control_config(
             if not replaced:
                 new_area_sensors.append(updated_area_sensor)
 
-            device_section = deepcopy(devices_config.get(normalized_device_id) or {})
+            device_section = deepcopy(devices_config.get(norm_device_id) or {})
             device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
             device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = device_abs_inputs
             device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = new_area_sensors
-            devices_config[normalized_device_id] = device_section
+            devices_config[norm_device_id] = device_section
             sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
             _persist_sensor_control_section(
                 flow,
@@ -1008,6 +1016,12 @@ async def async_step_sensor_control_config(
         options = flow.hass.data[DOMAIN]["config_entry"].options
         zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
         fan_zones = get_zones_for_fan(zones_section, selected_device_id)
+        _LOGGER.debug(
+            "Zones menu for FAN %s: found %d zones, zones_section keys: %s",
+            selected_device_id,
+            len(fan_zones),
+            list(zones_section.keys()),
+        )
 
         if user_input is not None:
             zones_action: str | None = user_input.get("action")
@@ -1027,35 +1041,16 @@ async def async_step_sensor_control_config(
             if zones_action == "delete":
                 delete_zone_id: str | None = user_input.get("zone_id")
                 if delete_zone_id:
-                    zones_list = _validate_zone_entries(zones_section.get("zones"))
+                    # Use canonical structure for delete
+                    from ...framework.helpers.config.model import set_fan_section
+
+                    existing_zones = get_zones_for_fan(
+                        zones_section, selected_device_id
+                    )
                     new_zones = [
-                        z for z in zones_list if z.get("zone_id") != delete_zone_id
+                        z for z in existing_zones if z.get("zone_id") != delete_zone_id
                     ]
-                    # Update zones for this FAN
-                    fan_normalized = normalize_device_id(selected_device_id)
-                    zones_by_fan: dict[str, Any] = {}
-                    for z in _validate_zone_entries(zones_section.get("zones")):
-                        fan_key = str(z.get("fan_id", ""))
-                        if fan_key:
-                            if fan_key not in zones_by_fan:
-                                zones_by_fan[fan_key] = []
-                            if z.get("zone_id") != delete_zone_id:
-                                zones_by_fan[fan_key].append(z)
-                    # Rebuild zones list
-                    final_zones: list[dict[str, Any]] = []
-                    for fan_key, fan_zones_list in zones_by_fan.items():
-                        if fan_key != fan_normalized:
-                            final_zones.extend(fan_zones_list)
-                        else:
-                            # This is our FAN, use filtered list
-                            final_zones.extend(
-                                [
-                                    z
-                                    for z in fan_zones_list
-                                    if z.get("zone_id") != delete_zone_id
-                                ]
-                            )
-                    zones_section["zones"] = final_zones
+                    set_fan_section(zones_section, selected_device_id, new_zones)
                     _persist_zones_section(flow, options, zones_section)
                 return await async_step_sensor_control_config(flow, None)
 
@@ -1185,10 +1180,19 @@ async def async_step_sensor_control_config(
                     zone_entry["max_position"] = int(max_position)
 
                 # Update zones list using set_fan_section for canonical structure
-                from .framework.helpers.config.model import set_fan_section
+                from ...framework.helpers.config.model import set_fan_section
 
                 # Get existing zones for this fan
                 existing_zones = get_zones_for_fan(zones_section, selected_device_id)
+                _LOGGER.debug(
+                    "zones_edit: Saving zone %s for FAN %s (normalized: %s), "
+                    "existing zones: %d, section keys: %s",
+                    zone_id,
+                    selected_device_id,
+                    normalize_device_id(selected_device_id),
+                    len(existing_zones),
+                    list(zones_section.keys()),
+                )
                 new_zones = [
                     z for z in existing_zones if z.get("zone_id") != editing_zone_id
                 ]
@@ -1196,6 +1200,16 @@ async def async_step_sensor_control_config(
 
                 # Store using canonical structure (by fan_id in devices)
                 set_fan_section(zones_section, selected_device_id, new_zones)
+                _LOGGER.debug(
+                    "zones_edit: Stored %d zones for FAN %s, section now has keys: %s,"
+                    " fans: %s",
+                    len(new_zones),
+                    selected_device_id,
+                    list(zones_section.keys()),
+                    list(zones_section.get("fans", {}).keys())
+                    if ("fans" in zones_section)
+                    else "no fans key",
+                )
                 _persist_zones_section(flow, options, zones_section)
 
                 # Refresh config entry reference to get updated options
@@ -1433,12 +1447,12 @@ async def async_step_sensor_control_config(
         )
 
         # Persist updates for this device
-        device_section = deepcopy(devices_config.get(normalized_device_id) or {})
+        device_section = deepcopy(devices_config.get(norm_device_id) or {})
         device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
         device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = device_abs_inputs
         if device_area_sensors or SENSOR_CONTROL_AREA_SENSORS_KEY in device_section:
             device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = device_area_sensors
-        devices_config[normalized_device_id] = device_section
+        devices_config[norm_device_id] = device_section
         sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
 
         _LOGGER.debug(

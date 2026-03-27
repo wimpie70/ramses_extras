@@ -36,6 +36,7 @@ from .framework.helpers.config.model import (
     CONFIG_DEVICES_KEY,
     FEATURE_ZONES,
     get_feature_section,
+    normalize_device_id,
     set_feature_section,
 )
 from .framework.helpers.config.zones_yaml import (
@@ -1042,7 +1043,9 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             feature_config_flow_module = "custom_components.ramses_extras.features."
             feature_config_flow_module += f"{feature_id}.config_flow"
 
+            _LOGGER.debug(f"Importing {feature_config_flow_module}")
             feature_config_flow = __import__(feature_config_flow_module, fromlist=[""])
+            _LOGGER.debug(f"Successfully imported {feature_config_flow_module}")
 
             # Look for a function named async_step_{feature_id}_config
             config_function_name = f"async_step_{feature_id}_config"
@@ -1063,13 +1066,14 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 f"Feature {feature_id} has config_flow.py but no "
                 f"{config_function_name} function"
             )
-        except ImportError:
+        except ImportError as e:
             _LOGGER.debug(
-                f"No feature-specific config flow found for {feature_id}, "
+                f"No feature-specific config flow found for {feature_id}: {e}, "
                 f"using generic flow"
             )
         except Exception as e:
             _LOGGER.warning(f"Error loading feature config flow for {feature_id}: {e}")
+            _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
 
         return await self.generic_step_feature_config(user_input)
 
