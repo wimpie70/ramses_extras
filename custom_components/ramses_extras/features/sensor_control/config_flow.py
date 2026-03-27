@@ -1131,6 +1131,13 @@ async def async_step_sensor_control_config(
 
         errors: dict[str, str] = {}
 
+        # Set defaults for form fields
+        zone_id_default = existing_zone.get("zone_id") if existing_zone else ""
+        zone_type_default = (
+            existing_zone.get("type") if existing_zone else "custom_valve"
+        )
+        enabled_default = existing_zone.get("enabled", True) if existing_zone else True
+
         if user_input is not None:
             zone_id = str(user_input.get("zone_id") or "").strip()
             zone_type = str(user_input.get("type") or "custom_valve")
@@ -1185,16 +1192,6 @@ async def async_step_sensor_control_config(
 
                 flow._sensor_control_group_stage = "zones_menu"
                 return await async_step_sensor_control_config(flow, None)
-
-            # Show form with errors
-            # Build schema for zone editing (with errors)
-            zone_id_default = existing_zone.get("zone_id") if existing_zone else ""
-            zone_type_default = (
-                existing_zone.get("type") if existing_zone else "custom_valve"
-            )
-            enabled_default = (
-                existing_zone.get("enabled", True) if existing_zone else True
-            )
 
         type_options = [
             selector.SelectOptionDict(value="orcon_native", label="Orcon Native"),
