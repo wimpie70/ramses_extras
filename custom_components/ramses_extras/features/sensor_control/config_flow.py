@@ -1129,6 +1129,8 @@ async def async_step_sensor_control_config(
         if editing_zone_id:
             existing_zone = _get_zone_by_id(fan_zones, editing_zone_id)
 
+        errors: dict[str, str] = {}
+
         if user_input is not None:
             zone_id = str(user_input.get("zone_id") or "").strip()
             zone_type = str(user_input.get("type") or "custom_valve")
@@ -1164,7 +1166,6 @@ async def async_step_sensor_control_config(
                 zone_entry["max_position"] = int(max_position)
 
             # Validate unique zone_id within this FAN
-            errors: dict[str, str] = {}
             if not zone_id:
                 errors["zone_id"] = "Zone ID is required"
             elif existing_zone is None or existing_zone.get("zone_id") != zone_id:
