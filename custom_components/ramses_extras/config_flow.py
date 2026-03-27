@@ -30,6 +30,7 @@ from .const import (
 )
 from .extras_registry import extras_registry
 from .features.sensor_control.const import SUPPORTED_METRICS
+from .framework.helpers.config.export import export_config_to_yaml
 from .framework.helpers.config.migration import get_migrated_feature_section
 from .framework.helpers.config.model import (
     CONFIG_DEVICES_KEY,
@@ -38,7 +39,6 @@ from .framework.helpers.config.model import (
     set_feature_section,
 )
 from .framework.helpers.config.zones_yaml import (
-    export_zones_to_yaml,
     merge_zones_config,
     parse_zones_yaml,
 )
@@ -631,17 +631,13 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         # Build comprehensive YAML export of configuration
         options = dict(self._config_entry.options)
 
-        # Collect all zones from zones section
-        zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
-        all_zones = zones_section.get("zones", [])
-
-        yaml_content = export_zones_to_yaml(all_zones)
+        yaml_content = export_config_to_yaml(options)
 
         schema = vol.Schema(
             {
-                vol.Optional("yaml_preview"): selector.TextSelector(
-                    selector.TextSelectorConfig(multiline=True)
-                ),
+                vol.Optional(
+                    "yaml_preview", default=yaml_content
+                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
                 vol.Required("action"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
