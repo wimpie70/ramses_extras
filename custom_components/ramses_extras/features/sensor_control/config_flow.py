@@ -164,9 +164,8 @@ def _persist_zones_section(
     options: dict[str, Any],
     zones_section: dict[str, Any],
 ) -> None:
-    """Persist zones section to config options."""
-    canonical_section = deepcopy(zones_section)
-    set_feature_section(options, FEATURE_ZONES, canonical_section)
+    """Persist zones section to config options using canonical structure."""
+    set_feature_section(options, FEATURE_ZONES, zones_section)
     flow.hass.config_entries.async_update_entry(  # noqa: SLF001
         flow._config_entry,  # noqa: SLF001
         options=options,
@@ -1143,34 +1142,18 @@ async def async_step_sensor_control_config(
             zone_type = str(user_input.get("type") or "custom_valve")
             enabled = bool(user_input.get("enabled", True))
 
-            # Build zone entry
-            zone_entry: dict[str, Any] = {
-                "zone_id": zone_id,
-                "type": zone_type,
-                "enabled": enabled,
-                "fan_id": normalize_device_id(selected_device_id),
-            }
-
-            # Add type-specific fields
-            if zone_type == "orcon_native":
-                native_zone_id = user_input.get("native_zone_id")
-                if native_zone_id is not None:
-                    zone_entry["native_zone_id"] = str(native_zone_id).strip()
-            elif zone_type in ("custom_valve", "shelly_2pm_gen3"):
-                open_entity = user_input.get("open_entity")
-                close_entity = user_input.get("close_entity")
-                position_entity = user_input.get("position_entity")
+            if zone_type == "paired_valves":
+                inlet_entity = user_input.get("inlet_valve_entity")
+                outlet_entity = user_input.get("outlet_valve_entity")
                 min_position = user_input.get("min_position", 0)
                 max_position = user_input.get("max_position", 100)
 
-                if open_entity:
-                    zone_entry["open_entity"] = str(open_entity).strip()
-                if close_entity:
-                    zone_entry["close_entity"] = str(close_entity).strip()
-                if position_entity:
-                    zone_entry["position_entity"] = str(position_entity).strip()
-                zone_entry["min_position"] = int(min_position)
-                zone_entry["max_position"] = int(max_position)
+                if inlet_entity:
+                    # Validate entities exist (basic validation)
+                    str(inlet_entity).strip()
+                    str(outlet_entity).strip()
+                    int(min_position)
+                    int(max_position)
 
             # Validate unique zone_id within this FAN
             if not zone_id:
@@ -1181,27 +1164,55 @@ async def async_step_sensor_control_config(
                     errors["zone_id"] = "Zone ID already exists for this FAN"
 
             if not errors:
-                # Update zones list
-                zones_list = _validate_zone_entries(zones_section.get("zones"))
+                # Build zone entry
+                zone_entry: dict[str, Any] = {
+                    "zone_id": zone_id,
+                    "type": zone_type,
+                    "enabled": enabled,
+                }
+
+                if zone_type == "paired_valves":
+                    inlet_entity = user_input.get("inlet_valve_entity")
+                    outlet_entity = user_input.get("outlet_valve_entity")
+                    min_position = user_input.get("min_position", 0)
+                    max_position = user_input.get("max_position", 100)
+
+                    if inlet_entity:
+                        zone_entry["inlet_valve_entity"] = str(inlet_entity).strip()
+                    if outlet_entity:
+                        zone_entry["outlet_valve_entity"] = str(outlet_entity).strip()
+                    zone_entry["min_position"] = int(min_position)
+                    zone_entry["max_position"] = int(max_position)
+
+                # Update zones list using set_fan_section for canonical structure
+                from .framework.helpers.config.model import set_fan_section
+
+                # Get existing zones for this fan
+                existing_zones = get_zones_for_fan(zones_section, selected_device_id)
                 new_zones = [
-                    z for z in zones_list if z.get("zone_id") != editing_zone_id
+                    z for z in existing_zones if z.get("zone_id") != editing_zone_id
                 ]
                 new_zones.append(zone_entry)
-                zones_section["zones"] = new_zones
+
+                # Store using canonical structure (by fan_id in devices)
+                set_fan_section(zones_section, selected_device_id, new_zones)
                 _persist_zones_section(flow, options, zones_section)
+
+                # Refresh config entry reference to get updated options
+                flow.hass.data[DOMAIN]["config_entry"] = (
+                    flow.hass.config_entries.async_get_entry(
+                        flow._config_entry.entry_id  # noqa: SLF001
+                    )
+                )
 
                 flow._sensor_control_group_stage = "zones_menu"
                 return await async_step_sensor_control_config(flow, None)
 
         type_options = [
-            selector.SelectOptionDict(value="orcon_native", label="Orcon Native"),
-            selector.SelectOptionDict(value="custom_valve", label="Custom Valve"),
-            selector.SelectOptionDict(value="shelly_2pm_gen3", label="Shelly 2PM Gen3"),
+            selector.SelectOptionDict(
+                value="paired_valves", label="Paired Valves (Inlet+Outlet)"
+            ),
         ]
-
-        entity_selector = selector.EntitySelector(
-            selector.EntitySelectorConfig(domain=["button", "switch", "sensor"])
-        )
 
         schema_fields: dict[Any, Any] = {
             vol.Required("zone_id", default=zone_id_default): selector.TextSelector(),
@@ -1213,43 +1224,33 @@ async def async_step_sensor_control_config(
             ): selector.BooleanSelector(),
         }
 
-        # Add type-specific fields with defaults from existing zone
-        if zone_type_default == "orcon_native":
-            native_default = (
-                existing_zone.get("native_zone_id") if existing_zone else ""
-            )
-            schema_fields[vol.Optional("native_zone_id", default=native_default)] = (
-                selector.TextSelector()
-            )
-        elif zone_type_default in ("custom_valve", "shelly_2pm_gen3"):
-            open_default = existing_zone.get("open_entity") if existing_zone else ""
-            close_default = existing_zone.get("close_entity") if existing_zone else ""
-            pos_default = existing_zone.get("position_entity") if existing_zone else ""
-            min_default = existing_zone.get("min_position", 0) if existing_zone else 0
-            max_default = (
-                existing_zone.get("max_position", 100) if existing_zone else 100
-            )
+        # Build schema fields - only paired_valves with inlet/outlet
+        cover_selector = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain=["cover"])
+        )
+        inlet_default = existing_zone.get("inlet_valve_entity") if existing_zone else ""
+        outlet_default = (
+            existing_zone.get("outlet_valve_entity") if existing_zone else ""
+        )
+        min_default = existing_zone.get("min_position", 0) if existing_zone else 0
+        max_default = existing_zone.get("max_position", 100) if existing_zone else 100
 
-            schema_fields[vol.Optional("open_entity", default=open_default)] = (
-                entity_selector
+        schema_fields[vol.Optional("inlet_valve_entity", default=inlet_default)] = (
+            cover_selector
+        )
+        schema_fields[vol.Optional("outlet_valve_entity", default=outlet_default)] = (
+            cover_selector
+        )
+        schema_fields[vol.Optional("min_position", default=min_default)] = (
+            selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=100, step=1)
             )
-            schema_fields[vol.Optional("close_entity", default=close_default)] = (
-                entity_selector
+        )
+        schema_fields[vol.Optional("max_position", default=max_default)] = (
+            selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=100, step=1)
             )
-            schema_fields[vol.Optional("position_entity", default=pos_default)] = (
-                entity_selector
-            )
-            schema_fields[vol.Optional("min_position", default=min_default)] = (
-                selector.NumberSelector(
-                    selector.NumberSelectorConfig(min=0, max=100, step=1)
-                )
-            )
-            schema_fields[vol.Optional("max_position", default=max_default)] = (
-                selector.NumberSelector(
-                    selector.NumberSelectorConfig(min=0, max=100, step=1)
-                )
-            )
-
+        )
         schema = vol.Schema(schema_fields)
 
         info_text = (

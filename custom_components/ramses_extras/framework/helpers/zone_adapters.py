@@ -392,6 +392,166 @@ class Shelly2PMGen3ZoneAdapter(CustomValveZoneAdapter):
         return diag
 
 
+class PairedValvesZoneAdapter(ZoneAdapterBase):
+    """Adapter for paired inlet/outlet valves that move together.
+
+    Controls two HA cover entities (inlet and outlet valves) as a single zone,
+    setting both to the same position percentage simultaneously.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config: ZoneAdapterConfig,
+    ) -> None:
+        """Initialize paired valves adapter."""
+        super().__init__(hass, config)
+        self._inlet_entity: str | None = (
+            config.extra_config.get("inlet_valve_entity")
+            if config.extra_config
+            else None
+        )
+        self._outlet_entity: str | None = (
+            config.extra_config.get("outlet_valve_entity")
+            if config.extra_config
+            else None
+        )
+        self._invert_logic: bool = True  # Shelly 2PM typically needs inversion
+
+    def _check_availability(self) -> bool:
+        """Check if both valve entities are available."""
+        if not self._inlet_entity or not self._outlet_entity:
+            return False
+
+        inlet = self._hass.states.get(self._inlet_entity)
+        outlet = self._hass.states.get(self._outlet_entity)
+
+        if inlet is None or outlet is None:
+            return False
+
+        # Check if both entities are available
+        return inlet.state not in (
+            "unavailable",
+            "unknown",
+            "none",
+        ) and outlet.state not in ("unavailable", "unknown", "none")
+
+    def _position_from_state(self, state: str, attributes: dict[str, Any]) -> int:
+        """Extract position from entity state.
+
+        Args:
+            state: Entity state string
+            attributes: Entity attributes
+
+        Returns:
+            Position as percentage (0-100)
+        """
+        # Try current_position attribute first (standard for covers)
+        if "current_position" in attributes:
+            pos = attributes["current_position"]
+            if isinstance(pos, (int, float)):
+                return int(pos)
+
+        # Map state to position
+        state_lower = state.lower()
+        if state_lower in ("open", "on"):
+            return 100
+        if state_lower in ("closed", "off"):
+            return 0
+
+        # Default to unknown (middle)
+        return 50
+
+    async def async_get_position(self) -> ZonePosition:
+        """Get current zone position from valve states."""
+        from datetime import datetime
+
+        inlet = (
+            self._hass.states.get(self._inlet_entity) if self._inlet_entity else None
+        )
+        outlet = (
+            self._hass.states.get(self._outlet_entity) if self._outlet_entity else None
+        )
+
+        if inlet is None or outlet is None:
+            position = ZonePosition(
+                position=50,
+                is_available=False,
+                last_updated=datetime.now(),
+                source="paired_valves",
+            )
+        else:
+            inlet_pos = self._position_from_state(inlet.state, inlet.attributes)
+            outlet_pos = self._position_from_state(outlet.state, outlet.attributes)
+
+            # Use average of both positions
+            avg_pos = (inlet_pos + outlet_pos) // 2
+
+            # Invert if configured
+            if self._invert_logic:
+                avg_pos = 100 - avg_pos
+
+            position = ZonePosition(
+                position=avg_pos,
+                is_available=self.is_available,
+                last_updated=datetime.now(),
+                source="paired_valves",
+            )
+
+        self._last_position = position
+        return position
+
+    async def async_set_position(self, position: int) -> bool:
+        """Set both valve positions via HA service call."""
+        from datetime import datetime
+
+        if not self._inlet_entity or not self._outlet_entity:
+            return False
+
+        clamped = self.clamp_position(position)
+
+        # Invert if configured
+        if self._invert_logic:
+            clamped = 100 - clamped
+
+        # Set both valves to the same position
+        try:
+            await self._hass.services.async_call(
+                "cover",
+                "set_cover_position",
+                {"entity_id": self._inlet_entity, "position": clamped},
+                blocking=False,
+            )
+            await self._hass.services.async_call(
+                "cover",
+                "set_cover_position",
+                {"entity_id": self._outlet_entity, "position": clamped},
+                blocking=False,
+            )
+
+            self._last_command_time = datetime.now()
+            _LOGGER.debug(
+                "Paired valves set to %d%% (inlet: %s, outlet: %s)",
+                clamped,
+                self._inlet_entity,
+                self._outlet_entity,
+            )
+            return True
+
+        except Exception as err:
+            _LOGGER.error("Failed to set paired valve position: %s", err)
+            return False
+
+    def get_diagnostics(self) -> dict[str, Any]:
+        """Return diagnostic information for paired valves."""
+        diag = super().get_diagnostics()
+        diag["inlet_entity"] = self._inlet_entity
+        diag["outlet_entity"] = self._outlet_entity
+        diag["invert_logic"] = self._invert_logic
+        diag["device_type"] = "paired_valves"
+        return diag
+
+
 class ZoneAdapterFactory:
     """Factory for creating zone adapters based on source type."""
 
@@ -399,6 +559,7 @@ class ZoneAdapterFactory:
         "orcon_native": OrconNativeZoneAdapter,
         "custom_valve": CustomValveZoneAdapter,
         "shelly_2pm_gen3": Shelly2PMGen3ZoneAdapter,
+        "paired_valves": PairedValvesZoneAdapter,
     }
 
     @classmethod
@@ -481,6 +642,15 @@ class ZoneAdapterRegistry:
         actuator = zone.get("actuator", {})
         capabilities = zone.get("capabilities", {})
 
+        # For paired_valves, pass inlet/outlet entities as extra_config
+        extra_config = zone.get("extra_config", {})
+        if source_type == "paired_valves":
+            extra_config = {
+                **extra_config,
+                "inlet_valve_entity": zone.get("inlet_valve_entity"),
+                "outlet_valve_entity": zone.get("outlet_valve_entity"),
+            }
+
         config = ZoneAdapterConfig(
             zone_id=zone_id,
             fan_id=fan_id,
@@ -489,7 +659,7 @@ class ZoneAdapterRegistry:
             min_position=capabilities.get("min_position", 0),
             max_position=capabilities.get("max_position", 100),
             enabled=zone.get("enabled", True),
-            extra_config=zone.get("extra_config"),
+            extra_config=extra_config,
         )
 
         # Create adapter
@@ -586,6 +756,7 @@ __all__ = [
     "OrconNativeZoneAdapter",
     "CustomValveZoneAdapter",
     "Shelly2PMGen3ZoneAdapter",
+    "PairedValvesZoneAdapter",
     "ZoneAdapterFactory",
     "ZoneAdapterRegistry",
     "ZoneAdapterConfig",
