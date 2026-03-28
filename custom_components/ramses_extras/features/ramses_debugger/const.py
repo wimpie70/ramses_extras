@@ -21,6 +21,8 @@ RAMSES_DEBUGGER_WEBSOCKET_COMMANDS: dict[str, str] = {
     "messages_get_messages": "ramses_extras/ramses_debugger/messages/get_messages",
     "cache_get_stats": "ramses_extras/ramses_debugger/cache/get_stats",
     "cache_clear": "ramses_extras/ramses_debugger/cache/clear",
+    "config_export": "ramses_extras/ramses_debugger/config/export",
+    "config_diagnostics": "ramses_extras/ramses_debugger/config/diagnostics",
 }
 
 RAMSES_DEBUGGER_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {
