@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 
+# Import the modules to ensure coverage tracking
 from custom_components.ramses_extras.features.humidity_control.platforms import (
     binary_sensor as humidity_binary_sensor_platform,
 )
@@ -292,6 +293,101 @@ class TestHumidityPlatforms:
         assert isinstance(
             sensors[0], humidity_binary_sensor_platform.HumidityControlBinarySensor
         )
+
+    async def test_humidity_binary_sensor_async_added_to_hass(self):
+        """Test HumidityControlBinarySensor async_added_to_hass."""
+        config = {
+            "name": "Balance Active",
+            "supported_device_types": ["HvacVentilator"],
+            "entity_template": "dehumidifying_active_{device_id}",
+        }
+        entity = humidity_binary_sensor_platform.HumidityControlBinarySensor(
+            self.hass, self.device_id, "dehumidifying_active", config
+        )
+
+        # Mock the base class method
+        with patch.object(
+            entity.__class__.__bases__[0], "async_added_to_hass", new=AsyncMock()
+        ):
+            await entity.async_added_to_hass()
+
+    async def test_humidity_binary_sensor_handle_update(self):
+        """Test HumidityControlBinarySensor _handle_update."""
+        config = {
+            "name": "Balance Active",
+            "supported_device_types": ["HvacVentilator"],
+            "entity_template": "dehumidifying_active_{device_id}",
+        }
+        entity = humidity_binary_sensor_platform.HumidityControlBinarySensor(
+            self.hass, self.device_id, "dehumidifying_active", config
+        )
+
+        # Mock async_write_ha_state
+        entity.async_write_ha_state = MagicMock()
+
+        # Test handle update
+        await entity._handle_update()
+        entity.async_write_ha_state.assert_called_once()
+
+    def test_is_supported_humidity_device(self):
+        """Test is_supported_humidity_device function."""
+        # Mock find_ramses_device and get_device_type
+        with (
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor.find_ramses_device"
+            ) as mock_find,
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor.get_device_type"
+            ) as mock_get_type,
+        ):
+            # Test supported device
+            mock_device = MagicMock()
+            mock_find.return_value = mock_device
+            mock_get_type.return_value = "HvacVentilator"
+
+            result = humidity_binary_sensor_platform.is_supported_humidity_device(
+                self.hass, "18:149488"
+            )
+            assert result is True
+            mock_find.assert_called_once_with(self.hass, "18:149488")
+            mock_get_type.assert_called_once_with(mock_device)
+
+            # Test unsupported device
+            mock_get_type.return_value = "OtherDevice"
+            result = humidity_binary_sensor_platform.is_supported_humidity_device(
+                self.hass, "18:149488"
+            )
+            assert result is False
+
+            # Test device not found
+            mock_find.return_value = None
+            result = humidity_binary_sensor_platform.is_supported_humidity_device(
+                self.hass, "18:149488"
+            )
+            assert result is False
+
+    async def test_binary_sensor_async_setup_entry_with_exception(self):
+        """Test binary sensor platform setup handles exceptions."""
+        async_add_entities = MagicMock()
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.platform.PlatformSetup.get_filtered_devices_for_feature",
+                return_value=[self.device_id],
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor.is_supported_humidity_device",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.ramses_extras.features.humidity_control.platforms.binary_sensor.create_humidity_control_binary_sensor",
+                side_effect=Exception("Test error"),
+            ),
+        ):
+            # Should handle exception gracefully
+            await humidity_binary_sensor_platform.async_setup_entry(
+                self.hass, self.config_entry, async_add_entities
+            )
 
     async def test_create_humidity_sensor_placeholder(self):
         """Test create_humidity_sensor (placeholder)."""

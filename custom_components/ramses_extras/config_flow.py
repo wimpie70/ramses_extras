@@ -30,8 +30,19 @@ from .const import (
 )
 from .extras_registry import extras_registry
 from .features.sensor_control.const import SUPPORTED_METRICS
+from .framework.helpers.config.export import export_config_to_yaml
 from .framework.helpers.config.migration import get_migrated_feature_section
-from .framework.helpers.config.model import CONFIG_DEVICES_KEY
+from .framework.helpers.config.model import (
+    CONFIG_DEVICES_KEY,
+    FEATURE_ZONES,
+    get_feature_section,
+    normalize_device_id,
+    set_feature_section,
+)
+from .framework.helpers.config.zones_yaml import (
+    merge_zones_config,
+    parse_zones_yaml,
+)
 from .framework.helpers.config_flow import ConfigFlowHelper
 from .framework.helpers.device.filter import DeviceFilter
 from .framework.helpers.entity.simple_entity_manager import SimpleEntityManager
@@ -258,19 +269,12 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
         for static_item, static_label in static_menu_items.items():
             menu_options.append(static_item)
-            # _LOGGER.info(f"DEBUG: Added static menu item: {static_item}
-            #  -> {static_label}")
 
         # Add dynamic feature options for features with config flows
         # Only list features that are actually enabled in the config entry
         dynamic_features_found = []
         current_features = (self._config_entry.data or {}).get("enabled_features", {})
         for feature_id, feature_config in AVAILABLE_FEATURES.items():
-            # Don't Skip default feature from menu (we may have settings for it)
-            # if feature_id == "default":
-            #     _LOGGER.info("DEBUG: Skipping default feature from menu")
-            #     continue
-
             if feature_id == "ramses_debugger":
                 if current_features.get(feature_id):
                     step_id = f"feature_{feature_id}"
@@ -282,9 +286,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             if feature_config.get("has_device_config", False):
                 # Skip features that are not enabled
                 if not current_features.get(feature_id):
-                    # _LOGGER.info(
-                    #     "DEBUG: Feature %s is not enabled, skipping", feature_id
-                    # )
                     continue
 
                 # Use feature-specific step IDs that map to
@@ -292,10 +293,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 step_id = f"feature_{feature_id}"
                 menu_options.append(step_id)
                 dynamic_features_found.append(feature_id)
-                # _LOGGER.info(
-                #     f"DEBUG: Added dynamic menu item: {step_id} -> "
-                #     f"{feature_config.get('name', feature_id)}"
-                # )
             else:
                 _LOGGER.debug(
                     f"Feature {feature_id} does not have "
@@ -502,6 +499,20 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         if user_input is not None:
             new_options = dict(self._config_entry.options)
 
+            action = user_input.get("action", "save")
+
+            if action == "back":
+                return await self.async_step_main_menu()
+
+            if action == "export_yaml":
+                self._advanced_settings_action = "export_yaml"
+                return await self.async_step_advanced_yaml_export(user_input)
+
+            if action == "import_yaml":
+                self._advanced_settings_action = "import_yaml"
+                return await self.async_step_advanced_yaml_import(user_input)
+
+            # Handle save action (default)
             frontend_log_level = user_input.get("frontend_log_level")
             if isinstance(frontend_log_level, str) and frontend_log_level:
                 new_options["frontend_log_level"] = frontend_log_level
@@ -566,12 +577,179 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Required("action", default="save"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="save", label="Save settings"
+                            ),
+                            selector.SelectOptionDict(
+                                value="export_yaml", label="Export config to YAML"
+                            ),
+                            selector.SelectOptionDict(
+                                value="import_yaml", label="Import config from YAML"
+                            ),
+                            selector.SelectOptionDict(
+                                value="back", label="Back to main menu"
+                            ),
+                        ],
+                        mode="list",
+                    )
+                ),
             }
         )
 
         return self.async_show_form(
             step_id="advanced_settings",
             data_schema=data_schema,
+        )
+
+    async def async_step_advanced_yaml_export(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle YAML export from Advanced Settings."""
+        self._refresh_config_entry(self.hass)
+
+        if user_input is not None:
+            action = user_input.get("action")
+            if action == "back":
+                return await self.async_step_advanced_settings()
+
+        # Build comprehensive YAML export of configuration
+        options = dict(self._config_entry.options)
+
+        yaml_content = export_config_to_yaml(options)
+
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    "yaml_preview", default=yaml_content
+                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
+                vol.Required("action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="back", label="Back to Advanced Settings"
+                            ),
+                        ],
+                        mode="list",
+                    )
+                ),
+            }
+        )
+
+        info_text = (
+            "📤 **Export Configuration to YAML**\n\n"
+            "Copy the YAML below to save your configuration:\n\n"
+            f"```yaml\n{yaml_content}\n```"
+        )
+
+        return self.async_show_form(
+            step_id="advanced_yaml_export",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    async def async_step_advanced_yaml_import(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle YAML import from Advanced Settings."""
+        self._refresh_config_entry(self.hass)
+
+        import_errors: dict[str, str] = {}
+
+        if user_input is not None:
+            action = user_input.get("action")
+
+            if action == "back":
+                return await self.async_step_advanced_settings()
+
+            if action == "import":
+                yaml_content = user_input.get("yaml_content", "")
+                overwrite = user_input.get("overwrite_existing", False)
+
+                if not yaml_content or not yaml_content.strip():
+                    import_errors["yaml_content"] = "YAML content is required"
+                else:
+                    try:
+                        parsed = parse_zones_yaml(yaml_content)
+                        imported_zones = parsed.get("zones", [])
+
+                        if not imported_zones:
+                            import_errors["yaml_content"] = "No zones found in YAML"
+                        else:
+                            # Merge with existing zones
+                            options = dict(self._config_entry.options)
+
+                            zones_section = get_migrated_feature_section(
+                                options, FEATURE_ZONES
+                            )
+                            existing_zones = zones_section.get("zones", [])
+
+                            merged_zones = merge_zones_config(
+                                existing_zones,
+                                imported_zones,
+                                "",  # No specific FAN for general import
+                                overwrite_existing=overwrite,
+                            )
+
+                            zones_section["zones"] = merged_zones
+                            set_feature_section(options, FEATURE_ZONES, zones_section)
+
+                            self.hass.config_entries.async_update_entry(
+                                self._config_entry,
+                                options=options,
+                            )
+
+                            return await self.async_step_advanced_settings()
+
+                    except ValueError as e:
+                        import_errors["yaml_content"] = str(e)
+
+        schema = vol.Schema(
+            {
+                vol.Required("yaml_content"): selector.TextSelector(
+                    selector.TextSelectorConfig(multiline=True)
+                ),
+                vol.Required(
+                    "overwrite_existing", default=False
+                ): selector.BooleanSelector(),
+                vol.Required("action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="import", label="Import zones"
+                            ),
+                            selector.SelectOptionDict(
+                                value="back", label="Cancel / Back"
+                            ),
+                        ],
+                        mode="list",
+                    )
+                ),
+            }
+        )
+
+        info_text = (
+            "📥 **Import Configuration from YAML**\n\n"
+            "Paste your YAML zone configuration below.\n\n"
+            "The import will validate the YAML structure "
+            "and merge zones with existing ones.\n"
+            "Enable 'Overwrite existing' to replace zones with the same zone_id."
+        )
+
+        if import_errors:
+            return self.async_show_form(
+                step_id="advanced_yaml_import",
+                data_schema=schema,
+                errors=import_errors,
+                description_placeholders={"info": info_text},
+            )
+
+        return self.async_show_form(
+            step_id="advanced_yaml_import",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
         )
 
     async def async_step_feature_ramses_debugger(
@@ -733,7 +911,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         else:
             _LOGGER.debug("No matrix state found, starting with empty matrix")
 
-        _LOGGER.debug(f"matrix state: {matrix_state}")
         # Save the matrix state to be used for comparison to the flow
         # Use deepcopy, or helper.set_enabled_devices_for_feature will modify flow
         self._old_matrix_state = deepcopy(matrix_state)
@@ -771,10 +948,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 selected_device_ids,
                 sorted(temp_matrix_state.keys()),
             )
-
-            # Log the matrix state for debugging
-            _LOGGER.debug(f"self.temp matrix state: {self._temp_matrix_state}")
-            _LOGGER.debug(f"self.old_matrix_state: {self._old_matrix_state}")
 
             # Log entity tracking attributes, check if they exist first
             entities_to_create = getattr(self, "_matrix_entities_to_create", [])
@@ -851,7 +1024,9 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             feature_config_flow_module = "custom_components.ramses_extras.features."
             feature_config_flow_module += f"{feature_id}.config_flow"
 
+            _LOGGER.debug(f"Importing {feature_config_flow_module}")
             feature_config_flow = __import__(feature_config_flow_module, fromlist=[""])
+            _LOGGER.debug(f"Successfully imported {feature_config_flow_module}")
 
             # Look for a function named async_step_{feature_id}_config
             config_function_name = f"async_step_{feature_id}_config"
@@ -872,13 +1047,18 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 f"Feature {feature_id} has config_flow.py but no "
                 f"{config_function_name} function"
             )
-        except ImportError:
+        except ImportError as e:
             _LOGGER.debug(
-                f"No feature-specific config flow found for {feature_id}, "
+                f"No feature-specific config flow found for {feature_id}: {e}, "
                 f"using generic flow"
             )
         except Exception as e:
             _LOGGER.warning(f"Error loading feature config flow for {feature_id}: {e}")
+            try:
+                _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+            except Exception:
+                # In tests with mocked imports, traceback.format_exc() might fail
+                pass
 
         return await self.generic_step_feature_config(user_input)
 

@@ -151,14 +151,9 @@ def set_fan_section(
     device_id: str,
     fan_section: dict[str, Any] | list[Any],
 ) -> dict[str, Any]:
-    mapping_key = (
-        CONFIG_DEVICES_KEY if CONFIG_DEVICES_KEY in section else CONFIG_FANS_KEY
-    )
+    # Always use FANS_KEY for canonical structure
+    mapping_key = CONFIG_FANS_KEY
     if mapping_key not in section or not isinstance(section.get(mapping_key), dict):
-        if CONFIG_FANS_KEY in section and not isinstance(
-            section.get(CONFIG_FANS_KEY), dict
-        ):
-            mapping_key = CONFIG_DEVICES_KEY
         section[mapping_key] = {}
 
     mapping = section[mapping_key]
