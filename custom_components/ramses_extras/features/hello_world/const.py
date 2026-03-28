@@ -166,6 +166,11 @@ def load_feature() -> None:
 
     extras_registry.register_feature("hello_world")
 
+    # Load YAML validator and import/export functions
+    from .hello_world_yaml import load_validator
+
+    load_validator()
+
 
 __all__ = [
     "DOMAIN",

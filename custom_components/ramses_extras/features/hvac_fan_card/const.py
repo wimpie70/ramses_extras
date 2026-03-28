@@ -134,6 +134,11 @@ def load_feature() -> None:
 
     extras_registry.register_feature("hvac_fan_card")
 
+    # Load YAML validator and import/export functions
+    from .hvac_fan_card_yaml import load_validator
+
+    load_validator()
+
 
 __all__ = [
     "HVAC_FAN_CARD_SENSOR_CONFIGS",

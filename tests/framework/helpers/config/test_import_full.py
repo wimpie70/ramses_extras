@@ -36,14 +36,6 @@ FEATURE_REMOTE_BINDING = "remote_binding"
 FEATURE_SENSOR_CONTROL = "sensor_control"
 
 
-@pytest.fixture(autouse=True)
-def reset_validators():
-    """Reset validators before each test to ensure clean state."""
-    _feature_validators.clear()
-    yield
-    _feature_validators.clear()
-
-
 @pytest.fixture
 def register_test_validators():
     """Register test validators for feature validation tests."""

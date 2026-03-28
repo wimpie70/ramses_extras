@@ -28,14 +28,14 @@ from ...framework.helpers.config.validation import (
     FEATURE_SENSOR_CONTROL,
     FEATURE_ZONES,
 )
-from ...framework.helpers.config.zones_yaml import (
+from ...framework.helpers.device.filter import DeviceFilter
+from .const import SUPPORTED_METRICS
+from .device_types import DEVICE_TYPE_HANDLERS
+from .zones_yaml import (
     export_zones_to_yaml,
     merge_zones_config,
     parse_zones_yaml,
 )
-from ...framework.helpers.device.filter import DeviceFilter
-from .const import SUPPORTED_METRICS
-from .device_types import DEVICE_TYPE_HANDLERS
 
 _LOGGER = logging.getLogger(__name__)
 

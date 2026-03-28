@@ -435,6 +435,9 @@ def test_format_validation_errors_mixed() -> None:
 
 def test_no_built_in_validators_by_default() -> None:
     """Test that framework has no built-in validators - features register their own."""
+    # Reset to clean state to test framework defaults
+    _feature_validators.clear()
+
     validators = get_registered_validators()
     # Framework is now feature-agnostic; validators are registered by features
     assert len(validators) == 0

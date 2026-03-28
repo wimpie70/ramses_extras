@@ -97,6 +97,11 @@ def load_feature() -> None:
 
     extras_registry.register_feature(FEATURE_ID)
 
+    # Load YAML validator and import/export functions
+    from .ramses_debugger_yaml import load_validator
+
+    load_validator()
+
 
 __all__ = [
     "FEATURE_ID",

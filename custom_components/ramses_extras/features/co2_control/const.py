@@ -222,6 +222,11 @@ def load_feature() -> None:
 
     extras_registry.register_feature("co2_control")
 
+    # Load YAML validator and import/export functions
+    from .co2_control_yaml import load_validator
+
+    load_validator()
+
 
 __all__ = [
     "FEATURE_ID",

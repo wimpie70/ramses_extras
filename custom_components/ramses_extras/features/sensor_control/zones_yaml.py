@@ -1,4 +1,4 @@
-"""Zone configuration YAML export/import utilities for Phase 4.
+"""Zone configuration YAML export/import utilities.
 
 Provides validated YAML handling for zones configuration,
 enabling advanced users to export and import zone setups.
@@ -10,6 +10,12 @@ from typing import Any
 
 import voluptuous as vol
 import yaml
+
+from ...framework.helpers.config.import_validation import (
+    register_config_schema,
+    register_config_validator,
+)
+from .const import FEATURE_ID
 
 # Schema for validating zone entries on import
 ZONE_ENTRY_SCHEMA = vol.Schema(
@@ -33,15 +39,64 @@ ZONE_ENTRY_SCHEMA = vol.Schema(
             int, vol.Range(min=0, max=100)
         ),
     },
-    extra=vol.ALLOW_EXTRA,  # Allow future extensibility
+    extra=vol.PREVENT_EXTRA,
 )
 
 ZONES_CONFIG_SCHEMA = vol.Schema(
     {
         vol.Optional("version", default=1): int,
-        vol.Required("zones"): [ZONE_ENTRY_SCHEMA],
+        vol.Required("FANs"): {str: [ZONE_ENTRY_SCHEMA]},
     }
 )
+
+
+def zones_validator(section: dict, hass: Any | None = None) -> list[str]:
+    """Validate zones configuration section.
+
+    Args:
+        section: The zones configuration section (with FANs dict structure)
+        hass: Home Assistant instance (optional)
+
+    Returns:
+        List of validation error messages
+    """
+    errors = []
+
+    # Handle FANs structure: FANs: {fan_id: [zone_entries]}
+    fans = section.get("FANs", {})
+    if not isinstance(fans, dict):
+        errors.append("FANs must be a dictionary")
+        return errors
+
+    for fan_id, zones in fans.items():
+        if not isinstance(zones, list):
+            errors.append(f"FAN '{fan_id}': zones must be a list")
+            continue
+
+        for zone in zones:
+            if not isinstance(zone, dict):
+                errors.append(f"FAN '{fan_id}': zone entry must be a dict")
+                continue
+
+            zone_id = zone.get("zone_id")
+            if not zone_id:
+                errors.append(f"FAN '{fan_id}': missing zone_id")
+                continue
+
+            zone_type = zone.get("type")
+            if zone_type not in ("orcon_native", "custom_valve", "shelly_2pm_gen3"):
+                errors.append(f"Zone '{zone_id}': invalid type '{zone_type}'")
+
+            # Validate min/max position
+            min_pos = zone.get("min_position", 0)
+            max_pos = zone.get("max_position", 100)
+            if min_pos > max_pos:
+                errors.append(
+                    f"Zone '{zone_id}': min_position ({min_pos}) > "
+                    f"max_position ({max_pos})"
+                )
+
+    return errors
 
 
 def export_zones_to_yaml(
@@ -199,11 +254,19 @@ def validate_zone_references(
     return errors
 
 
+def load_validator() -> None:
+    """Register the zones validator and schema with the framework."""
+    register_config_validator("zones", zones_validator)
+    register_config_schema("zones", ZONES_CONFIG_SCHEMA)
+
+
 __all__ = [
     "export_zones_to_yaml",
     "parse_zones_yaml",
     "merge_zones_config",
     "validate_zone_references",
+    "zones_validator",
     "ZONE_ENTRY_SCHEMA",
     "ZONES_CONFIG_SCHEMA",
+    "load_validator",
 ]

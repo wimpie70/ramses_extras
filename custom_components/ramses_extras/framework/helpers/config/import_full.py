@@ -47,11 +47,11 @@ def _build_features_schema() -> vol.Schema:
     """Build features schema dynamically from registered schemas."""
     from .import_validation import get_registered_schemas
 
-    feature_schemas: dict[Any, Any] = {str: vol.Any(dict, list)}
+    feature_schemas: dict[Any, Any] = {}
     for feature_id, schema in get_registered_schemas().items():
         feature_schemas[vol.Optional(feature_id)] = schema
 
-    return vol.Schema(feature_schemas, extra=vol.ALLOW_EXTRA)
+    return vol.Schema(feature_schemas, extra=vol.PREVENT_EXTRA)
 
 
 # Feature validators are registered dynamically by features
@@ -78,9 +78,23 @@ def parse_full_config_yaml(yaml_content: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError("YAML content must be a dictionary")
 
-    # Validate against schema
+    # Build dynamic schema with registered feature schemas
+    features_schema = _build_features_schema()
+    full_schema = vol.Schema(
+        {
+            vol.Required(CONFIG_ROOT_KEY): {
+                vol.Optional(CONFIG_SCHEMA_VERSION_KEY, default=1): vol.All(
+                    int, vol.Range(min=1, max=1)
+                ),
+                vol.Optional(CONFIG_FEATURES_KEY): features_schema,
+            }
+        },
+        extra=vol.ALLOW_EXTRA,
+    )
+
+    # Apply schema validation
     try:
-        validated: dict[str, Any] = RAMSES_EXTRAS_CONFIG_SCHEMA(parsed)
+        validated: dict[str, Any] = full_schema(parsed)
     except vol.MultipleInvalid as e:
         raise ValueError(f"Schema validation failed: {e}") from e
 

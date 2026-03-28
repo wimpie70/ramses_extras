@@ -160,7 +160,10 @@ def load_feature() -> None:
     # Also register the websocket_commands module for auto-discovery
     from custom_components.ramses_extras.features.default import websocket_commands
 
-    extras_registry.register_feature("default")
+    # Load YAML validator and import/export functions
+    from .default_yaml import load_validator
+
+    load_validator()
 
 
 __all__ = [
