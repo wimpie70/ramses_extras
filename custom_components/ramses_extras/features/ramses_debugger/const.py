@@ -23,6 +23,7 @@ RAMSES_DEBUGGER_WEBSOCKET_COMMANDS: dict[str, str] = {
     "cache_clear": "ramses_extras/ramses_debugger/cache/clear",
     "config_export": "ramses_extras/ramses_debugger/config/export",
     "config_diagnostics": "ramses_extras/ramses_debugger/config/diagnostics",
+    "config_import": "ramses_extras/ramses_debugger/config/import",
 }
 
 RAMSES_DEBUGGER_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {

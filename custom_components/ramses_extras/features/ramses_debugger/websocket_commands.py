@@ -1218,3 +1218,138 @@ async def ws_config_diagnostics(
             },
         ),
     )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/config/import",
+        vol.Required("yaml_content"): str,
+        vol.Optional("dry_run", default=True): bool,
+        vol.Optional("merge_strategy", default="merge"): vol.In(["merge", "replace"]),
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_config_import(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    """Import full ramses_extras configuration from YAML.
+
+    Validates the YAML and optionally applies the configuration.
+    By default runs in dry-run mode for safety.
+    """
+    from ...framework.helpers.config.import_full import (
+        merge_full_config,
+        parse_full_config_yaml,
+        validate_full_config_import,
+    )
+    from ...framework.helpers.config.migration import migrate_to_canonical_config
+
+    yaml_content = msg.get("yaml_content", "")
+    dry_run = msg.get("dry_run", True)
+    merge_strategy = msg.get("merge_strategy", "merge")
+
+    # Parse and validate
+    try:
+        imported_config = parse_full_config_yaml(yaml_content)
+    except ValueError as e:
+        connection.send_error(msg["id"], "invalid_yaml", str(e))
+        return
+
+    # Validate the import
+    validation_errors = validate_full_config_import(imported_config, hass)
+
+    domain_data = hass.data.get(DOMAIN)
+    if not isinstance(domain_data, dict):
+        connection.send_error(
+            msg["id"], "integration_not_loaded", "Ramses Extras not loaded"
+        )
+        return
+
+    entry = domain_data.get("config_entry")
+    if not entry:
+        connection.send_error(
+            msg["id"], "no_config_entry", "No configuration entry found"
+        )
+        return
+
+    # Get current config
+    raw_config: dict[str, Any] = {}
+    if getattr(entry, "data", None):
+        raw_config.update(dict(entry.data))
+    if getattr(entry, "options", None):
+        raw_config.update(dict(entry.options))
+
+    canonical_config = migrate_to_canonical_config(raw_config)
+
+    # Merge configs
+    merged_config = merge_full_config(
+        canonical_config, imported_config, merge_strategy=merge_strategy
+    )
+
+    # Calculate what would change
+    changes_summary = _calculate_config_changes(canonical_config, merged_config)
+
+    if dry_run:
+        connection.send_result(
+            msg["id"],
+            _inject_version(
+                hass,
+                {
+                    "dry_run": True,
+                    "valid": len(validation_errors) == 0,
+                    "validation_errors": validation_errors,
+                    "changes": changes_summary,
+                    "merged_config_preview": merged_config,
+                },
+            ),
+        )
+        return
+
+    # Apply the configuration
+    try:
+        # Update config entry options with merged config
+        hass.config_entries.async_update_entry(entry, options=merged_config)
+
+        connection.send_result(
+            msg["id"],
+            _inject_version(
+                hass,
+                {
+                    "dry_run": False,
+                    "applied": True,
+                    "valid": len(validation_errors) == 0,
+                    "validation_warnings": validation_errors,
+                    "changes": changes_summary,
+                },
+            ),
+        )
+    except Exception as e:
+        _LOGGER.exception("Failed to apply config import")
+        connection.send_error(
+            msg["id"], "apply_failed", f"Failed to apply configuration: {e}"
+        )
+
+
+def _calculate_config_changes(
+    old_config: dict[str, Any], new_config: dict[str, Any]
+) -> dict[str, Any]:
+    """Calculate summary of changes between old and new config."""
+    old_features = old_config.get("ramses_extras", {}).get("features", {})
+    new_features = new_config.get("ramses_extras", {}).get("features", {})
+
+    added_features = [f for f in new_features if f not in old_features]
+    removed_features = [f for f in old_features if f not in new_features]
+    modified_features = [
+        f
+        for f in new_features
+        if f in old_features and old_features[f] != new_features[f]
+    ]
+
+    return {
+        "added_features": added_features,
+        "removed_features": removed_features,
+        "modified_features": modified_features,
+        "total_features_after": len(new_features),
+    }
