@@ -272,6 +272,13 @@ def _describe_zone(zone: dict[str, Any]) -> str:
         native_id = str(zone.get("native_zone_id") or "")
         if native_id:
             details.append(f"native ID: {native_id}")
+    elif zone_type == "paired_valves":
+        inlet_entity = str(zone.get("inlet_valve_entity") or "")
+        outlet_entity = str(zone.get("outlet_valve_entity") or "")
+        if inlet_entity:
+            details.append(f"inlet: {inlet_entity}")
+        if outlet_entity:
+            details.append(f"outlet: {outlet_entity}")
     elif zone_type in ("custom_valve", "shelly_2pm_gen3"):
         open_entity = str(zone.get("open_entity") or "")
         close_entity = str(zone.get("close_entity") or "")
