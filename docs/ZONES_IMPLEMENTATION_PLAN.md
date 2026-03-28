@@ -192,7 +192,9 @@ Required support includes:
 - actuator safety validation for `min_position` and `max_position`
 - section-aware migrations as the zone schema evolves
 - strict YAML export helpers for support and debugging
-- delayed validated import after migrations are proven
+- **feature-level validated import via the framework validation registry**
+- `import_validation.py` with `register_config_validator()` for per-feature validation
+- `validate_full_config_import_detailed()` with per-feature error reporting
 
 ## Integration with fan control
 
@@ -319,5 +321,7 @@ For Shelly 2PM Gen3 specifically:
 - Discovery candidates are not the only valid option, because external/manual devices and entities must also be supported.
 - `zone_id` should be the shared source-of-truth link between zones and area-like sensor config.
 - Controllable zone valves should support `min_position` and `max_position` safety limits.
-- Export should be strict YAML.
-- Import should come later, after migrations are proven.
+- Export uses strict YAML via `export_config_to_yaml()`.
+- Import uses the **framework validation registry** with per-feature validators registered via `register_config_validator()`.
+- Import validates against schema, cross-references entities, checks constraints before saving.
+- Config flow shows per-feature validation errors: `[zones]`, `[remote_binding]`, `[sensor_control]`.

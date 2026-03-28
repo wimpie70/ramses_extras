@@ -2,15 +2,21 @@
 
 Provides validated YAML import for the complete ramses_extras configuration,
 enabling advanced users to import full setups from YAML files.
+
+Each feature validates its own section via registered validators.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 import yaml
 
+from .import_validation import (
+    register_config_validator,
+    validate_import_config,
+)
 from .model import (
     CONFIG_FEATURES_KEY,
     CONFIG_ROOT_KEY,
@@ -20,6 +26,10 @@ from .model import (
     FEATURE_ZONES,
 )
 from .zones_yaml import ZONE_ENTRY_SCHEMA
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
 
 # Schema for sensor_control sources
 SENSOR_SOURCE_SCHEMA = vol.Schema(
@@ -133,6 +143,214 @@ RAMSES_EXTRAS_CONFIG_SCHEMA = vol.Schema(
 )
 
 
+def _validate_zones_section(
+    section: dict[str, Any], hass: HomeAssistant | None
+) -> list[str]:
+    """Validate zones feature section.
+
+    Args:
+        section: The zones feature configuration section
+        hass: Optional Home Assistant instance
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors: list[str] = []
+
+    for fan_id, zone_list in section.get("FANs", {}).items():
+        if not isinstance(zone_list, list):
+            errors.append(f"FAN '{fan_id}': zones must be a list")
+            continue
+
+        for zone in zone_list:
+            if not isinstance(zone, dict):
+                errors.append(f"FAN '{fan_id}': invalid zone entry")
+                continue
+
+            zone_id = zone.get("zone_id")
+            zone_type = zone.get("type")
+
+            if not zone_id:
+                errors.append(f"FAN '{fan_id}': zone missing zone_id")
+                continue
+
+            # Validate zone type
+            valid_types = ["orcon_native", "custom_valve", "shelly_2pm_gen3"]
+            if zone_type not in valid_types:
+                errors.append(
+                    f"Zone '{zone_id}' (FAN {fan_id}): "
+                    f"invalid type '{zone_type}'. Must be one of: {valid_types}"
+                )
+                continue
+
+            # Validate min/max positions for controllable valves
+            if zone_type in ("custom_valve", "shelly_2pm_gen3"):
+                min_pos = zone.get("min_position", 0)
+                max_pos = zone.get("max_position", 100)
+
+                if not (0 <= min_pos <= 100) or not (0 <= max_pos <= 100):
+                    errors.append(
+                        f"Zone '{zone_id}' (FAN {fan_id}): "
+                        f"positions must be between 0-100"
+                    )
+                elif min_pos > max_pos:
+                    errors.append(
+                        f"Zone '{zone_id}' (FAN {fan_id}): "
+                        f"min_position ({min_pos}) > max_position ({max_pos})"
+                    )
+
+            # Validate entity references if hass available
+            if hass is not None:
+                for entity_key in ["open_entity", "close_entity", "position_entity"]:
+                    entity_id = zone.get(entity_key)
+                    if entity_id and not hass.states.get(entity_id):
+                        errors.append(
+                            f"Zone '{zone_id}' (FAN {fan_id}): "
+                            f"{entity_key} '{entity_id}' not found"
+                        )
+
+    return errors
+
+
+def _validate_remote_binding_section(
+    section: dict[str, Any], hass: HomeAssistant | None
+) -> list[str]:
+    """Validate remote_binding feature section.
+
+    Args:
+        section: The remote_binding feature configuration section
+        hass: Optional Home Assistant instance
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors: list[str] = []
+    seen_rems: set[str] = set()
+
+    for fan_id, fan_data in section.get("FANs", {}).items():
+        if not isinstance(fan_data, dict):
+            errors.append(f"FAN '{fan_id}': invalid binding data")
+            continue
+
+        rems = fan_data.get("REMs", [])
+        if not isinstance(rems, list):
+            errors.append(f"FAN '{fan_id}': REMs must be a list")
+            continue
+
+        for rem in rems:
+            if not isinstance(rem, dict):
+                errors.append(f"FAN '{fan_id}': invalid REM entry")
+                continue
+
+            rem_id = rem.get("rem_id")
+            if not rem_id:
+                errors.append(f"FAN '{fan_id}': REM missing rem_id")
+                continue
+
+            # Check for duplicate REM assignments
+            if rem_id in seen_rems:
+                errors.append(
+                    f"REM '{rem_id}' assigned to multiple FANs "
+                    f"(conflict with FAN {fan_id})"
+                )
+            seen_rems.add(rem_id)
+
+            # Validate role
+            valid_roles = ["primary", "secondary", "boost_only"]
+            role = rem.get("role", "primary")
+            if role not in valid_roles:
+                errors.append(
+                    f"REM '{rem_id}' (FAN {fan_id}): "
+                    f"invalid role '{role}'. Must be one of: {valid_roles}"
+                )
+
+    return errors
+
+
+def _validate_sensor_control_section(
+    section: dict[str, Any], hass: HomeAssistant | None
+) -> list[str]:
+    """Validate sensor_control feature section.
+
+    Args:
+        section: The sensor_control feature configuration section
+        hass: Optional Home Assistant instance
+
+    Returns:
+        List of validation errors (empty if valid)
+    """
+    errors: list[str] = []
+
+    # Validate abs_humidity_inputs
+    for input_id, input_data in section.get("abs_humidity_inputs", {}).items():
+        if not isinstance(input_data, dict):
+            errors.append(f"Abs humidity input '{input_id}': invalid data format")
+            continue
+
+        for sensor_type in ["temperature", "humidity"]:
+            sensor_config = input_data.get(sensor_type)
+            if not isinstance(sensor_config, dict):
+                errors.append(
+                    f"Abs humidity input '{input_id}': "
+                    f"missing {sensor_type} configuration"
+                )
+                continue
+
+            kind = sensor_config.get("kind")
+            if kind not in ("internal", "external"):
+                errors.append(
+                    f"Abs humidity input '{input_id}' {sensor_type}: "
+                    f"invalid kind '{kind}'. Must be 'internal' or 'external'"
+                )
+
+            # Validate entity references if hass available
+            if hass is not None:
+                entity_id = sensor_config.get("entity_id")
+                if entity_id and not hass.states.get(entity_id):
+                    errors.append(
+                        f"Abs humidity input '{input_id}' {sensor_type}: "
+                        f"entity '{entity_id}' not found"
+                    )
+
+    # Validate area_sensors
+    for fan_id, areas in section.get("area_sensors", {}).items():
+        if not isinstance(areas, list):
+            errors.append(f"Area sensors FAN '{fan_id}': must be a list of areas")
+            continue
+
+        for area in areas:
+            if not isinstance(area, dict):
+                errors.append(f"Area sensors FAN '{fan_id}': invalid area entry")
+                continue
+
+            source_id = area.get("source_id")
+            if not source_id:
+                errors.append(f"Area sensors FAN '{fan_id}': area missing source_id")
+                continue
+
+            # Validate entity references if hass available
+            if hass is not None:
+                for entity_key in [
+                    "temperature_entity",
+                    "humidity_entity",
+                    "co2_entity",
+                ]:
+                    entity_id = area.get(entity_key)
+                    if entity_id and not hass.states.get(entity_id):
+                        errors.append(
+                            f"Area '{source_id}' (FAN {fan_id}): "
+                            f"{entity_key} '{entity_id}' not found"
+                        )
+
+    return errors
+
+
+# Register feature validators
+register_config_validator(FEATURE_ZONES, _validate_zones_section)
+register_config_validator(FEATURE_REMOTE_BINDING, _validate_remote_binding_section)
+register_config_validator(FEATURE_SENSOR_CONTROL, _validate_sensor_control_section)
+
+
 def parse_full_config_yaml(yaml_content: str) -> dict[str, Any]:
     """Parse and validate full ramses_extras YAML configuration.
 
@@ -162,145 +380,11 @@ def parse_full_config_yaml(yaml_content: str) -> dict[str, Any]:
     return validated
 
 
-def merge_full_config(
-    existing_config: dict[str, Any],
-    imported_config: dict[str, Any],
-    *,
-    merge_strategy: str = "merge",
-) -> dict[str, Any]:
-    """Merge imported full config with existing configuration.
-
-    Args:
-        existing_config: Current configuration dictionary
-        imported_config: New configuration to import
-        merge_strategy: How to merge - "merge" (combine) or "replace" (overwrite)
-
-    Returns:
-        Merged configuration dictionary
-    """
-    if merge_strategy == "replace":
-        return dict(imported_config)
-
-    # Merge strategy
-    result = dict(existing_config)
-
-    # Get root sections
-    existing_root = existing_config.get(CONFIG_ROOT_KEY, {})
-    imported_root = imported_config.get(CONFIG_ROOT_KEY, {})
-
-    # Merge features
-    existing_features = existing_root.get(CONFIG_FEATURES_KEY, {})
-    imported_features = imported_root.get(CONFIG_FEATURES_KEY, {})
-
-    merged_features = dict(existing_features)
-
-    for feature_id, feature_data in imported_features.items():
-        if feature_id in merged_features:
-            # Deep merge feature sections
-            merged_features[feature_id] = _deep_merge_feature(
-                merged_features[feature_id], feature_data, feature_id
-            )
-        else:
-            merged_features[feature_id] = dict(feature_data)
-
-    # Build result
-    result[CONFIG_ROOT_KEY] = {
-        CONFIG_SCHEMA_VERSION_KEY: existing_root.get(CONFIG_SCHEMA_VERSION_KEY, 1),
-        CONFIG_FEATURES_KEY: merged_features,
-    }
-
-    return result
-
-
-def _deep_merge_feature(
-    existing: dict[str, Any],
-    imported: dict[str, Any],
-    feature_id: str,
-) -> dict[str, Any]:
-    """Deep merge a single feature section.
-
-    Feature-specific merge logic:
-    - sensor_control: merge per-device sections
-    - remote_binding: merge per-FAN REM lists, avoid duplicates
-    - zones: merge per-FAN zone lists, avoid duplicates
-    """
-    result = dict(existing)
-
-    if feature_id == FEATURE_SENSOR_CONTROL:
-        # Merge per-device sections
-        for key in ["devices", "sources", "abs_humidity_inputs", "area_sensors"]:
-            if key in imported:
-                existing_section = result.get(key, {})
-                imported_section = imported[key]
-                if isinstance(existing_section, dict) and isinstance(
-                    imported_section, dict
-                ):
-                    merged_section = dict(existing_section)
-                    merged_section.update(imported_section)
-                    result[key] = merged_section
-                else:
-                    result[key] = imported_section
-
-    elif feature_id == FEATURE_REMOTE_BINDING:
-        # Merge FAN bindings, avoiding duplicate REM IDs
-        existing_fans = result.get("FANs", {})
-        imported_fans = imported.get("FANs", {})
-
-        merged_fans = dict(existing_fans)
-        for fan_id, fan_data in imported_fans.items():
-            if fan_id not in merged_fans:
-                merged_fans[fan_id] = fan_data
-            else:
-                # Merge REMs, avoiding duplicates by rem_id
-                existing_rems = {
-                    r.get("rem_id"): r
-                    for r in merged_fans[fan_id].get("REMs", [])
-                    if r.get("rem_id")
-                }
-                for rem in fan_data.get("REMs", []):
-                    rem_id = rem.get("rem_id")
-                    if rem_id and rem_id not in existing_rems:
-                        if "REMs" not in merged_fans[fan_id]:
-                            merged_fans[fan_id]["REMs"] = []
-                        merged_fans[fan_id]["REMs"].append(rem)
-                        existing_rems[rem_id] = rem
-
-        result["FANs"] = merged_fans
-
-    elif feature_id == FEATURE_ZONES:
-        # Merge zones per FAN, avoiding duplicate zone_ids
-        existing_fans = result.get("FANs", {})
-        imported_fans = imported.get("FANs", {})
-
-        merged_fans = dict(existing_fans)
-        for fan_id, zones in imported_fans.items():
-            if fan_id not in merged_fans:
-                merged_fans[fan_id] = list(zones)
-            else:
-                # Merge zones, avoiding duplicates by zone_id
-                existing_zone_ids = {
-                    z.get("zone_id"): z for z in merged_fans[fan_id] if z.get("zone_id")
-                }
-                for zone in zones:
-                    zone_id = zone.get("zone_id")
-                    if zone_id and zone_id not in existing_zone_ids:
-                        merged_fans[fan_id].append(zone)
-                        existing_zone_ids[zone_id] = zone
-
-        result["FANs"] = merged_fans
-
-    else:
-        # Generic shallow merge for unknown features
-        result.update(imported)
-
-    return result
-
-
 def validate_full_config_import(
     config: dict[str, Any],
     hass: Any | None = None,
 ) -> list[str]:
-    """Validate a full configuration import.
+    """Validate a full configuration import using registered validators.
 
     Args:
         config: Configuration dictionary to validate
@@ -309,71 +393,37 @@ def validate_full_config_import(
     Returns:
         List of validation warnings/errors (empty if valid)
     """
-    errors: list[str] = []
+    from .import_validation import format_validation_errors
 
-    root = config.get(CONFIG_ROOT_KEY, {})
-    features = root.get(CONFIG_FEATURES_KEY, {})
+    result = validate_import_config(config, hass)
+    return format_validation_errors(result)
 
-    # Validate zones
-    zones = features.get(FEATURE_ZONES, {})
-    for fan_id, zone_list in zones.get("FANs", {}).items():
-        for zone in zone_list:
-            zone_id = zone.get("zone_id")
-            zone_type = zone.get("type")
 
-            # Validate min/max positions for controllable valves
-            if zone_type in ("custom_valve", "shelly_2pm_gen3"):
-                min_pos = zone.get("min_position", 0)
-                max_pos = zone.get("max_position", 100)
-                if min_pos > max_pos:
-                    errors.append(
-                        f"Zone '{zone_id}' (FAN {fan_id}): "
-                        f"min_position ({min_pos}) > max_position ({max_pos})"
-                    )
-                if not (0 <= min_pos <= 100) or not (0 <= max_pos <= 100):
-                    errors.append(
-                        f"Zone '{zone_id}' (FAN {fan_id}): "
-                        f"positions must be between 0-100"
-                    )
+def validate_full_config_import_detailed(
+    config: dict[str, Any],
+    hass: Any | None = None,
+) -> dict[str, Any]:
+    """Validate a full configuration import with detailed results.
 
-    # Validate remote bindings
-    bindings = features.get(FEATURE_REMOTE_BINDING, {})
-    seen_rems: set[str] = set()
-    for fan_id, fan_data in bindings.get("FANs", {}).items():
-        for rem in fan_data.get("REMs", []):
-            rem_id = rem.get("rem_id")
-            if rem_id:
-                if rem_id in seen_rems:
-                    # Warn about duplicate REM assignments
-                    errors.append(
-                        f"REM '{rem_id}' assigned to multiple FANs "
-                        f"(conflict with FAN {fan_id})"
-                    )
-                seen_rems.add(rem_id)
+    Args:
+        config: Configuration dictionary to validate
+        hass: Optional Home Assistant instance for entity/device validation
 
-    # Validate sensor_control references if hass available
-    if hass is not None:
-        sensor_control = features.get(FEATURE_SENSOR_CONTROL, {})
-        for fan_id, areas in sensor_control.get("area_sensors", {}).items():
-            for area in areas:
-                for entity_key in [
-                    "temperature_entity",
-                    "humidity_entity",
-                    "co2_entity",
-                ]:
-                    entity_id = area.get(entity_key)
-                    if entity_id and not hass.states.get(entity_id):
-                        errors.append(
-                            f"Area '{area.get('source_id')}' (FAN {fan_id}): "
-                            f"{entity_key} '{entity_id}' not found"
-                        )
-
-    return errors
+    Returns:
+        Detailed validation result with per-feature breakdown:
+        {
+            "valid": bool,
+            "framework_errors": list[str],
+            "feature_errors": dict[str, list[str]],
+            "total_errors": int,
+        }
+    """
+    return validate_import_config(config, hass)
 
 
 __all__ = [
-    "merge_full_config",
     "parse_full_config_yaml",
     "RAMSES_EXTRAS_CONFIG_SCHEMA",
     "validate_full_config_import",
+    "validate_full_config_import_detailed",
 ]

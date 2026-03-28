@@ -33,7 +33,7 @@ from .features.sensor_control.const import SUPPORTED_METRICS
 from .framework.helpers.config.export import export_config_to_yaml
 from .framework.helpers.config.import_full import (
     parse_full_config_yaml,
-    validate_full_config_import,
+    validate_full_config_import_detailed,
 )
 from .framework.helpers.config.migration import get_migrated_feature_section
 from .framework.helpers.config.model import (
@@ -672,18 +672,32 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                         # Full config import - always replaces entire config
                         imported_config = parse_full_config_yaml(yaml_content)
 
-                        # Validate
-                        validation_errors = validate_full_config_import(
+                        # Validate with detailed per-feature feedback
+                        validation_result = validate_full_config_import_detailed(
                             imported_config, self.hass
                         )
-                        if validation_errors:
-                            import_errors["yaml_content"] = "; ".join(
-                                validation_errors[:3]
-                            )
-                            if len(validation_errors) > 3:
-                                import_errors["yaml_content"] += (
-                                    f" (+{len(validation_errors) - 3} more)"
-                                )
+
+                        if not validation_result["valid"]:
+                            # Build detailed error message
+                            error_parts: list[str] = []
+
+                            # Framework errors
+                            for err in validation_result.get("framework_errors", []):
+                                error_parts.append(f"[Framework] {err}")
+
+                            # Feature-specific errors
+                            for feature_id, errs in validation_result.get(
+                                "feature_errors", {}
+                            ).items():
+                                for err in errs[:3]:  # Max 3 per feature
+                                    error_parts.append(f"[{feature_id}] {err}")
+                                remaining = len(errs) - 3
+                                if remaining > 0:
+                                    error_parts.append(
+                                        f"[{feature_id}] ... and {remaining} more"
+                                    )
+
+                            import_errors["yaml_content"] = "; ".join(error_parts)
                         else:
                             # Replace entire config with imported
                             self.hass.config_entries.async_update_entry(

@@ -157,11 +157,11 @@ This plan depends on framework work described in `docs/CONFIGURATION_STRATEGY.md
 Required support includes:
 
 - shared structured config storage for feature-owned sections
-- nested validation for binding entries
+- nested validation for binding entries via `register_config_validator()`
 - cross-reference validation against known FAN and REM device references
-- uniqueness validation so one REM is not accidentally assigned as primary to multiple FAN devices
+- uniqueness validation (one REM not assigned to multiple FANs)
 - strict YAML export helpers for support and debugging
-- delayed validated import after migrations are proven
+- **validated import via framework validation registry**
 
 ### 5. Message attribution pipeline
 
@@ -215,7 +215,7 @@ Design rule:
 - [x] multiple remotes per FAN
 - [x] role support (`primary`, `secondary`, `boost_only`)
 - [x] optional learned binding suggestions from observed traffic
-- [ ] optional validated YAML import for advanced users after migrations are proven
+- [x] validated YAML import via framework validation registry (`register_config_validator()`)
 
 ## Risks
 
@@ -244,5 +244,5 @@ Design rule:
 - Discovery from `ramses_cc` should be used as a hint source only, and not persisted unless explicitly accepted into config.
 - Discovery candidates are not the only valid option, because external/manual devices must also remain possible.
 - REM-aware naming such as `rem_id` is preferred over more generic field names where practical.
-- Export should be strict YAML.
-- Import should come later, after migrations are proven.
+- Export uses strict YAML via `export_config_to_yaml()`.
+- Import uses the framework validation registry (`register_config_validator()`) with per-feature validation.

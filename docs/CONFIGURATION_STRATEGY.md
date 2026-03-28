@@ -215,6 +215,7 @@ The current framework already provides useful pieces:
 - feature/device enablement matrix support in config flow helpers
 - basic per-feature config helper patterns in `framework/helpers/config/core.py`
 - validation utilities in `framework/helpers/config/validation.py`
+- **feature-level import validation registry in `framework/helpers/config/import_validation.py`**
 - dynamic discovery of feature-specific config flow implementations in `framework/helpers/config_flow.py`
 - central options flow structure in `custom_components/ramses_extras/config_flow.py`
 
@@ -227,9 +228,8 @@ The current framework still lacks the main pieces needed for the hybrid model:
 - a typed shared config model
 - a stable storage layout for feature-owned structured sections
 - config schema versioning and migrations for structured feature sections
-- a unified import/export layer
+- a unified import/export layer (validation framework exists, needs integration)
 - shared device-reference helpers for feature config sections
-- framework-level section validation and merge logic
 - debugger/config inspection support for the full structured config
 
 ## Framework work needed
@@ -258,18 +258,23 @@ Needed work:
 - clear distinction between persisted config and runtime cached state
 - helper lookups for relationships such as `find_areas_for_zone()` and `find_entities_for_zone()`
 
-## 3. Add section-aware validation
+## 3. Section-aware validation
 
-The current validator is useful for simple scalar checks, but remote binding and zones need more structure.
+The framework now provides a **feature-level validation registry** where each feature can register its own config validator. This keeps validation logic co-located with the feature that owns the config section.
 
-Needed work:
+Implemented:
+- `register_config_validator(feature_id, validator)` in `framework/helpers/config/import_validation.py`
+- Per-feature validators for `zones`, `remote_binding`, `sensor_control`
+- Detailed validation results: `{"valid": bool, "framework_errors": [], "feature_errors": {}}`
+- Pre-save validation in config flow with per-feature error reporting
 
-- nested object validation
-- cross-reference validation between sections and shared device references
-- uniqueness constraints such as one REM not being primary for multiple FANs
-- per-FAN zone uniqueness rules
-- zone actuator safety validation such as `min_position` and `max_position`
-- better surfaced validation errors for config flow and future import
+Validation rules enforced:
+- Nested object validation for feature sections
+- Cross-reference validation (e.g., entity IDs exist in Home Assistant)
+- Uniqueness constraints (e.g., REM IDs not assigned to multiple FANs)
+- Per-FAN zone uniqueness rules
+- Zone actuator safety validation (`min_position`, `max_position`)
+- Type validation for zone types, REM roles, etc.
 
 ## 4. Add schema migration support
 
@@ -404,14 +409,14 @@ This should come after the model is stable, not before.
 
 ## Framework
 
-- define canonical structured config shape
-- define section ownership rules
-- define shared device reference rules
-- add schema versioning
-- add migration hooks
-- extend validation for nested/cross-section data
-- add import/export helpers
-- add debugger config visibility
+- [x] define canonical structured config shape
+- [x] define section ownership rules
+- [x] define shared device reference rules
+- [ ] add schema versioning
+- [ ] add migration hooks
+- [x] extend validation for nested/cross-section data
+- [x] add import/export helpers
+- [x] add debugger config visibility
 
 ## Export rules
 

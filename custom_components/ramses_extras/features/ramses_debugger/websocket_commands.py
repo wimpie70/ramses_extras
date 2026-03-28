@@ -1225,7 +1225,6 @@ async def ws_config_diagnostics(
         vol.Required("type"): "ramses_extras/ramses_debugger/config/import",
         vol.Required("yaml_content"): str,
         vol.Optional("dry_run", default=True): bool,
-        vol.Optional("merge_strategy", default="merge"): vol.In(["merge", "replace"]),
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -1240,7 +1239,6 @@ async def ws_config_import(
     By default runs in dry-run mode for safety.
     """
     from ...framework.helpers.config.import_full import (
-        merge_full_config,
         parse_full_config_yaml,
         validate_full_config_import,
     )
@@ -1248,7 +1246,6 @@ async def ws_config_import(
 
     yaml_content = msg.get("yaml_content", "")
     dry_run = msg.get("dry_run", True)
-    merge_strategy = msg.get("merge_strategy", "merge")
 
     # Parse and validate
     try:
@@ -1283,13 +1280,9 @@ async def ws_config_import(
 
     canonical_config = migrate_to_canonical_config(raw_config)
 
-    # Merge configs
-    merged_config = merge_full_config(
-        canonical_config, imported_config, merge_strategy=merge_strategy
-    )
-
+    # Always replace entire config with imported
     # Calculate what would change
-    changes_summary = _calculate_config_changes(canonical_config, merged_config)
+    changes_summary = _calculate_config_changes(canonical_config, imported_config)
 
     if dry_run:
         connection.send_result(
@@ -1301,7 +1294,7 @@ async def ws_config_import(
                     "valid": len(validation_errors) == 0,
                     "validation_errors": validation_errors,
                     "changes": changes_summary,
-                    "merged_config_preview": merged_config,
+                    "config_preview": imported_config,
                 },
             ),
         )
@@ -1309,8 +1302,8 @@ async def ws_config_import(
 
     # Apply the configuration
     try:
-        # Update config entry options with merged config
-        hass.config_entries.async_update_entry(entry, options=merged_config)
+        # Update config entry options with imported config
+        hass.config_entries.async_update_entry(entry, options=imported_config)
 
         connection.send_result(
             msg["id"],
