@@ -28,9 +28,19 @@ from .const import (
 
 AREA_SENSOR_SCHEMA = vol.Schema(
     {
-        vol.Required("entity_id"): str,
-        vol.Optional("weight", default=1.0): vol.Coerce(float),
-        vol.Optional("area_name"): str,
+        vol.Required("source_id"): str,
+        vol.Optional("label"): str,
+        vol.Optional("zone_id"): str,
+        vol.Optional("enabled", default=True): bool,
+        vol.Optional("temperature_entity"): str,
+        vol.Optional("humidity_entity"): str,
+        vol.Optional("co2_entity"): str,
+        vol.Optional("co2_threshold"): vol.All(int, vol.Range(min=0)),
+        vol.Optional("area_co2_enabled", default=False): bool,
+        vol.Optional("spike_rise_percent"): vol.All(float, vol.Range(min=0)),
+        vol.Optional("spike_window_minutes"): vol.All(int, vol.Range(min=1)),
+        vol.Optional("trigger_on_high_humidity", default=False): bool,
+        vol.Optional("co2_threshold_entity"): str,
     }
 )
 
@@ -67,9 +77,7 @@ SOURCE_SCHEMA = vol.Schema(
 FAN_CONFIG_SCHEMA = vol.Schema(
     {
         vol.Required("sources"): {str: SOURCE_SCHEMA},
-        vol.Optional(SENSOR_CONTROL_AREA_SENSORS_KEY): {
-            vol.Optional(str): AREA_SENSOR_SCHEMA
-        },
+        vol.Optional(SENSOR_CONTROL_AREA_SENSORS_KEY): [AREA_SENSOR_SCHEMA],
         vol.Optional(SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY): {
             vol.Optional(str): ABS_HUMIDITY_INPUT_SCHEMA
         },
@@ -82,7 +90,7 @@ SENSOR_CONTROL_CONFIG_SCHEMA = vol.Schema(
             vol.Optional(str): ABS_HUMIDITY_INPUT_SCHEMA
         },
         vol.Optional(SENSOR_CONTROL_AREA_SENSORS_KEY): {
-            vol.Optional(str): AREA_SENSOR_SCHEMA
+            vol.Optional(str): [AREA_SENSOR_SCHEMA]
         },
         vol.Optional("devices"): {str: FAN_CONFIG_SCHEMA},
         vol.Optional("FANs"): {str: FAN_CONFIG_SCHEMA},

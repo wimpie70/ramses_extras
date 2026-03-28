@@ -110,16 +110,16 @@ def register_test_schemas():
             vol.Optional("min_position"): vol.All(int, vol.Range(min=0, max=100)),
             vol.Optional("max_position"): vol.All(int, vol.Range(min=0, max=100)),
         },
-        extra=vol.ALLOW_EXTRA,
+        extra=vol.PREVENT_EXTRA,
     )
 
     zones_schema = vol.Schema(
         {
             vol.Optional("FANs"): vol.Schema(
-                {str: [zone_entry_schema]}, extra=vol.ALLOW_EXTRA
+                {str: [zone_entry_schema]}, extra=vol.PREVENT_EXTRA
             ),
         },
-        extra=vol.ALLOW_EXTRA,
+        extra=vol.PREVENT_EXTRA,
     )
 
     register_config_schema("zones", zones_schema)
@@ -235,18 +235,18 @@ def test_schema_validation_valid_zone_types() -> None:
 
 def test_schema_validation_invalid_zone_type(register_test_schemas: None) -> None:
     """Test that invalid zone types are rejected by schema validation."""
-    config = {
-        "ramses_extras": {
-            "schema_version": 1,
-            "features": {
-                FEATURE_ZONES: {
-                    "FANs": {"32:153289": [{"zone_id": "test", "type": "invalid_type"}]}
-                }
-            },
-        }
-    }
-    with pytest.raises(vol.MultipleInvalid):
-        RAMSES_EXTRAS_CONFIG_SCHEMA(config)
+    yaml_content = """
+ramses_extras:
+  schema_version: 1
+  features:
+    zones:
+      FANs:
+        "32:153289":
+          - zone_id: test
+            type: invalid_type
+"""
+    with pytest.raises(ValueError, match="Schema validation failed"):
+        parse_full_config_yaml(yaml_content)
 
 
 def test_schema_validation_remote_binding_roles() -> None:
@@ -483,6 +483,7 @@ ramses_extras:
     sensor_control:
       abs_humidity_inputs:
         input1:
+          entity_id: sensor.input1
           temperature:
             kind: internal
           humidity:
@@ -772,6 +773,7 @@ ramses_extras:
               kind: internal
           abs_humidity_inputs:
             outdoor:
+              entity_id: sensor.outdoor
               temperature:
                 kind: external
                 entity_id: sensor.outdoor_temp
@@ -867,10 +869,8 @@ def test_export_import_roundtrip() -> None:
                     {
                         "zone_id": "bathroom",
                         "type": "orcon_native",  # Required by schema
-                        "actuator": {
-                            "min_position": 15,
-                            "max_position": 90,
-                        },
+                        "min_position": 15,
+                        "max_position": 90,
                     }
                 ]
             }

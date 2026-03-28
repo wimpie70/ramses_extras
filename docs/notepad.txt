@@ -1,0 +1,51 @@
+ramses_extras:
+  schema_version: 1
+  features:
+    FANs:
+      32:153289: []
+    device_feature_matrix:
+      32:153289:
+        co2_control: true
+        default: true
+        humidity_control: true
+    humidity_control:
+      '32_153289':
+        absolute_humidity_offset: 0.2
+        relative_humidity_maximum: 66.0
+    sensor_control:
+      devices:
+        32:153289:
+          area_sensors:
+          - area_co2_enabled: true
+            co2_entity: input_number.co2_helper
+            co2_threshold: 800
+            enabled: true
+            humidity_entity: input_number.humid_helper
+            label: Bathroom
+            source_id: bathroom
+            spike_rise_percent: 5.0
+            spike_window_minutes: 3
+            temperature_entity: input_number.temp_helper
+            trigger_on_high_humidity: true
+          - area_co2_enabled: true
+            co2_entity: ''
+            co2_threshold: 1000
+            co2_threshold_entity: ''
+            enabled: true
+            humidity_entity: input_number.humid_helper
+            label: badk prive
+            source_id: badk_prive
+            spike_rise_percent: 10.0
+            spike_window_minutes: 3
+            temperature_entity: input_number.temp_helper
+            trigger_on_high_humidity: true
+    zones:
+      FANs:
+        32:153289:
+        - zone_id: y
+          type: paired_valves
+          enabled: true
+          inlet_valve_entity: cover.klep_1_shelly2pmg3_48f6eeabcf68
+          outlet_valve_entity: cover.klep_2_shelly2pmg3_48f6eeaa00f4
+          min_position: 8
+          max_position: 89

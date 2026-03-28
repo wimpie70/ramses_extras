@@ -22,7 +22,10 @@ REM_ENTRY_SCHEMA = vol.Schema(
     {
         vol.Required("rem_id"): str,
         vol.Required("role"): vol.In(["primary", "secondary", "boost_only"]),
-    }
+        vol.Optional("enabled", default=True): bool,
+        vol.Optional("source"): str,
+    },
+    extra=vol.PREVENT_EXTRA,
 )
 
 FAN_REM_CONFIG_SCHEMA = vol.Schema(
