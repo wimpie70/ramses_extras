@@ -6,9 +6,6 @@ from typing import Any
 from .model import (
     CONFIG_DEVICES_KEY,
     CONFIG_FANS_KEY,
-    FEATURE_REMOTE_BINDING,
-    FEATURE_SENSOR_CONTROL,
-    FEATURE_ZONES,
     REMOTE_BINDING_BINDINGS_KEY,
     REMOTE_BINDING_REM_ID_KEY,
     REMOTE_BINDING_REMOTE_ID_KEY,
@@ -18,6 +15,11 @@ from .model import (
     normalize_device_id,
     set_feature_section,
 )
+
+# Feature IDs used by this module
+FEATURE_SENSOR_CONTROL = "sensor_control"
+FEATURE_ZONES = "zones"
+FEATURE_REMOTE_BINDING = "remote_binding"
 
 
 def migrate_to_canonical_config(raw_config: dict[str, Any]) -> dict[str, Any]:

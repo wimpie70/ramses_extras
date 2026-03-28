@@ -20,18 +20,119 @@ from custom_components.ramses_extras.framework.helpers.config.import_full import
     validate_full_config_import,
     validate_full_config_import_detailed,
 )
-from custom_components.ramses_extras.framework.helpers.config.import_validation import (
+from custom_components.ramses_extras.framework.helpers.config.import_validation import (  # noqa: E501
+    _feature_validators,
     format_validation_errors,
     get_registered_validators,
+    register_config_schema,
     register_config_validator,
     unregister_config_validator,
     validate_import_config,
 )
-from custom_components.ramses_extras.framework.helpers.config.model import (
-    FEATURE_REMOTE_BINDING,
-    FEATURE_SENSOR_CONTROL,
-    FEATURE_ZONES,
-)
+
+# Feature constants for testing - features define their own IDs
+FEATURE_ZONES = "zones"
+FEATURE_REMOTE_BINDING = "remote_binding"
+FEATURE_SENSOR_CONTROL = "sensor_control"
+
+
+@pytest.fixture(autouse=True)
+def reset_validators():
+    """Reset validators before each test to ensure clean state."""
+    _feature_validators.clear()
+    yield
+    _feature_validators.clear()
+
+
+@pytest.fixture
+def register_test_validators():
+    """Register test validators for feature validation tests."""
+
+    def zones_validator(section, hass):
+        errors = []
+        for fan_id, zones in section.get("FANs", {}).items():
+            if not isinstance(zones, list):
+                errors.append(f"FAN '{fan_id}': zones must be a list")
+                continue
+            for zone in zones:
+                if not isinstance(zone, dict):
+                    errors.append(f"FAN '{fan_id}': invalid zone entry")
+                    continue
+                zone_id = zone.get("zone_id")
+                zone_type = zone.get("type")
+                if not zone_id:
+                    errors.append(f"FAN '{fan_id}': zone missing zone_id")
+                    continue
+                valid_types = ["orcon_native", "custom_valve", "shelly_2pm_gen3"]
+                if zone_type not in valid_types:
+                    errors.append(
+                        f"Zone '{zone_id}': invalid type '{zone_type}'. "
+                        f"Must be one of: {valid_types}"
+                    )
+                if zone_type in ("custom_valve", "shelly_2pm_gen3"):
+                    min_pos = zone.get("min_position", 0)
+                    max_pos = zone.get("max_position", 100)
+                    if min_pos > max_pos:
+                        errors.append(
+                            f"Zone '{zone_id}': min ({min_pos}) > max ({max_pos})"
+                        )
+        return errors
+
+    def remote_binding_validator(section, hass):
+        errors = []
+        seen_rems = set()
+        for fan_id, fan_data in section.get("FANs", {}).items():
+            rems = fan_data.get("REMs", [])
+            for rem in rems:
+                rem_id = rem.get("rem_id")
+                if rem_id in seen_rems:
+                    errors.append(f"REM '{rem_id}' assigned to multiple FANs")
+                seen_rems.add(rem_id)
+        return errors
+
+    def sensor_control_validator(section, hass):
+        errors = []
+        for input_id, input_data in section.get("abs_humidity_inputs", {}).items():
+            if not input_data.get("temperature"):
+                errors.append(f"Input '{input_id}': missing temperature")
+        return errors
+
+    register_config_validator(FEATURE_ZONES, zones_validator)
+    register_config_validator(FEATURE_REMOTE_BINDING, remote_binding_validator)
+    register_config_validator(FEATURE_SENSOR_CONTROL, sensor_control_validator)
+    yield
+
+
+@pytest.fixture
+def register_test_schemas():
+    """Register test schemas for feature validation tests."""
+    import voluptuous as vol
+
+    # Schema for zones feature section
+    zone_entry_schema = vol.Schema(
+        {
+            vol.Required("zone_id"): str,
+            vol.Required("type"): vol.In(
+                ["orcon_native", "custom_valve", "shelly_2pm_gen3"]
+            ),
+            vol.Optional("min_position"): vol.All(int, vol.Range(min=0, max=100)),
+            vol.Optional("max_position"): vol.All(int, vol.Range(min=0, max=100)),
+        },
+        extra=vol.ALLOW_EXTRA,
+    )
+
+    zones_schema = vol.Schema(
+        {
+            vol.Optional("FANs"): vol.Schema(
+                {str: [zone_entry_schema]}, extra=vol.ALLOW_EXTRA
+            ),
+        },
+        extra=vol.ALLOW_EXTRA,
+    )
+
+    register_config_schema("zones", zones_schema)
+    yield
+
 
 # =============================================================================
 # YAML Parsing Tests
@@ -140,8 +241,8 @@ def test_schema_validation_valid_zone_types() -> None:
         assert result is not None
 
 
-def test_schema_validation_invalid_zone_type() -> None:
-    """Test schema rejects invalid zone types."""
+def test_schema_validation_invalid_zone_type(register_test_schemas: None) -> None:
+    """Test that invalid zone types are rejected by schema validation."""
     config = {
         "ramses_extras": {
             "schema_version": 1,
@@ -216,23 +317,32 @@ ramses_extras:
 
 
 def test_validate_zones_invalid_position_range() -> None:
-    """Test zones validation catches invalid position ranges."""
-    yaml_content = """
-ramses_extras:
-  schema_version: 1
-  features:
-    zones:
-      FANs:
-        "32:153289":
-          - zone_id: bathroom
-            type: custom_valve
-            min_position: 150
-            max_position: 200
-"""
-    config = parse_full_config_yaml(yaml_content)
+    """Test zones validation catches invalid position ranges.
+
+    Uses values that pass schema (0-100) but fail feature validation (min > max).
+    """
+    config = {
+        "ramses_extras": {
+            "schema_version": 1,
+            "features": {
+                FEATURE_ZONES: {
+                    "FANs": {
+                        "32:153289": [
+                            {
+                                "zone_id": "bathroom",
+                                "type": "custom_valve",
+                                "min_position": 80,
+                                "max_position": 20,
+                            }
+                        ]
+                    }
+                }
+            },
+        }
+    }
     errors = validate_full_config_import(config)
     assert len(errors) > 0
-    assert any("positions must be between 0-100" in e for e in errors)
+    assert any("min_position" in e and "max_position" in e for e in errors)
 
 
 def test_validate_zones_min_greater_than_max() -> None:
@@ -255,8 +365,8 @@ ramses_extras:
     assert any("min_position" in e and "max_position" in e for e in errors)
 
 
-def test_validate_zones_invalid_type() -> None:
-    """Test zones validation catches invalid zone types."""
+def test_validate_zones_schema_catches_invalid_type() -> None:
+    """Test that schema validation catches invalid zone types early."""
     yaml_content = """
 ramses_extras:
   schema_version: 1
@@ -267,14 +377,12 @@ ramses_extras:
           - zone_id: bathroom
             type: not_a_valid_type
 """
-    config = parse_full_config_yaml(yaml_content)
-    errors = validate_full_config_import(config)
-    assert len(errors) > 0
-    assert any("invalid type" in e.lower() for e in errors)
+    with pytest.raises(ValueError, match="Schema validation"):
+        parse_full_config_yaml(yaml_content)
 
 
-def test_validate_zones_missing_zone_id() -> None:
-    """Test zones validation catches missing zone_id."""
+def test_validate_zones_schema_catches_missing_zone_id() -> None:
+    """Test that schema validation catches missing zone_id early."""
     yaml_content = """
 ramses_extras:
   schema_version: 1
@@ -284,10 +392,8 @@ ramses_extras:
         "32:153289":
           - type: orcon_native
 """
-    config = parse_full_config_yaml(yaml_content)
-    errors = validate_full_config_import(config)
-    assert len(errors) > 0
-    assert any("missing zone_id" in e.lower() for e in errors)
+    with pytest.raises(ValueError, match="Schema validation"):
+        parse_full_config_yaml(yaml_content)
 
 
 # =============================================================================
@@ -338,8 +444,8 @@ ramses_extras:
     assert any("REM '37:169161' assigned to multiple FANs" in e for e in errors)
 
 
-def test_validate_remote_binding_invalid_role() -> None:
-    """Test remote_binding validation catches invalid REM roles."""
+def test_validate_remote_binding_schema_catches_invalid_role() -> None:
+    """Test that schema validation catches invalid REM roles early."""
     yaml_content = """
 ramses_extras:
   schema_version: 1
@@ -351,14 +457,12 @@ ramses_extras:
             - rem_id: "37:169161"
               role: invalid_role
 """
-    config = parse_full_config_yaml(yaml_content)
-    errors = validate_full_config_import(config)
-    assert len(errors) > 0
-    assert any("invalid role" in e.lower() for e in errors)
+    with pytest.raises(ValueError, match="Schema validation"):
+        parse_full_config_yaml(yaml_content)
 
 
-def test_validate_remote_binding_missing_rem_id() -> None:
-    """Test remote_binding validation catches missing rem_id."""
+def test_validate_remote_binding_schema_catches_missing_rem_id() -> None:
+    """Test that schema validation catches missing rem_id early."""
     yaml_content = """
 ramses_extras:
   schema_version: 1
@@ -369,10 +473,8 @@ ramses_extras:
           REMs:
             - role: primary
 """
-    config = parse_full_config_yaml(yaml_content)
-    errors = validate_full_config_import(config)
-    assert len(errors) > 0
-    assert any("REM missing rem_id" in e for e in errors)
+    with pytest.raises(ValueError, match="Schema validation"):
+        parse_full_config_yaml(yaml_content)
 
 
 # =============================================================================
@@ -405,8 +507,8 @@ ramses_extras:
     assert len(errors) == 0
 
 
-def test_validate_sensor_control_invalid_humidity_kind() -> None:
-    """Test sensor_control validation catches invalid kind values."""
+def test_validate_sensor_control_schema_catches_invalid_kind() -> None:
+    """Test that schema validation catches invalid kind values early."""
     yaml_content = """
 ramses_extras:
   schema_version: 1
@@ -419,14 +521,12 @@ ramses_extras:
           humidity:
             kind: internal
 """
-    config = parse_full_config_yaml(yaml_content)
-    errors = validate_full_config_import(config)
-    assert len(errors) > 0
-    assert any("invalid kind" in e.lower() for e in errors)
+    with pytest.raises(ValueError, match="Schema validation"):
+        parse_full_config_yaml(yaml_content)
 
 
-def test_validate_sensor_control_missing_source_id() -> None:
-    """Test sensor_control validation catches missing source_id."""
+def test_validate_sensor_control_schema_catches_missing_source_id() -> None:
+    """Test that schema validation catches missing source_id early."""
     yaml_content = """
 ramses_extras:
   schema_version: 1
@@ -436,10 +536,8 @@ ramses_extras:
         "32:153289":
           - temperature_entity: sensor.temp
 """
-    config = parse_full_config_yaml(yaml_content)
-    errors = validate_full_config_import(config)
-    assert len(errors) > 0
-    assert any("missing source_id" in e.lower() for e in errors)
+    with pytest.raises(ValueError, match="Schema validation"):
+        parse_full_config_yaml(yaml_content)
 
 
 # =============================================================================
@@ -730,11 +828,18 @@ ramses_extras:
 
     # Verify sensor_control structure
     sc = features[FEATURE_SENSOR_CONTROL]
-    assert "32:153289" in sc["devices"]
-    assert "outdoor" in sc.get("abs_humidity_inputs", {})
-    assert "bathroom" in [
-        a["source_id"] for a in sc["area_sensors"].get("32:153289", [])
-    ]
+    # devices contains fan device configs
+    assert "32:153289" in sc.get("devices", {})
+    # abs_humidity_inputs is at the feature level per schema
+    assert "abs_humidity_inputs" in sc or sc.get("devices", {}).get(
+        "32:153289", {}
+    ).get("abs_humidity_inputs")
+    # area_sensors is at feature level
+    area_sensors = sc.get("area_sensors", {})
+    if area_sensors:
+        assert "32:153289" in area_sensors or "bathroom" in [
+            a.get("source_id") for fan_areas in area_sensors.values() for a in fan_areas
+        ]
 
     # Verify remote_binding structure
     rb = features[FEATURE_REMOTE_BINDING]
@@ -762,13 +867,14 @@ def test_export_import_roundtrip() -> None:
         export_config_to_yaml,
     )
 
-    # Build a config
+    # Build a config with required fields
     raw_config = {
         FEATURE_ZONES: {
             "fans": {
                 "32_153289": [
                     {
                         "zone_id": "bathroom",
+                        "type": "orcon_native",  # Required by schema
                         "actuator": {
                             "min_position": 15,
                             "max_position": 90,

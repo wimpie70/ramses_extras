@@ -11,17 +11,66 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.ramses_extras.framework.helpers.config.import_validation import (
+    _feature_validators,
     format_validation_errors,
     get_registered_validators,
     register_config_validator,
     unregister_config_validator,
     validate_import_config,
 )
-from custom_components.ramses_extras.framework.helpers.config.model import (
-    FEATURE_REMOTE_BINDING,
-    FEATURE_SENSOR_CONTROL,
-    FEATURE_ZONES,
-)
+
+# Feature constants for testing - features define their own IDs
+FEATURE_ZONES = "zones"
+FEATURE_REMOTE_BINDING = "remote_binding"
+FEATURE_SENSOR_CONTROL = "sensor_control"
+
+
+@pytest.fixture(autouse=True)
+def reset_validators():
+    """Reset validators before each test to ensure clean state."""
+    _feature_validators.clear()
+    yield
+    _feature_validators.clear()
+
+
+@pytest.fixture
+def register_test_validators():
+    """Register test validators for feature validation tests."""
+
+    def zones_validator(section, hass):
+        errors = []
+        for fan_id, zones in section.get("FANs", {}).items():
+            for zone in zones:
+                if not zone.get("zone_id"):
+                    errors.append(f"FAN {fan_id}: zone missing zone_id")
+                if not zone.get("type"):
+                    errors.append(f"FAN {fan_id}: zone missing type")
+        return errors
+
+    def remote_binding_validator(section, hass):
+        errors = []
+        seen_rems = set()
+        for fan_id, fan_data in section.get("FANs", {}).items():
+            for rem in fan_data.get("REMs", []):
+                rem_id = rem.get("rem_id")
+                if rem_id in seen_rems:
+                    errors.append(f"REM {rem_id} assigned to multiple FANs")
+                seen_rems.add(rem_id)
+        return errors
+
+    def sensor_control_validator(section, hass):
+        errors = []
+        for input_id, input_data in section.get("abs_humidity_inputs", {}).items():
+            if not input_data.get("temperature"):
+                errors.append(f"Input {input_id}: missing temperature")
+        return errors
+
+    register_config_validator("zones", zones_validator)
+    register_config_validator("remote_binding", remote_binding_validator)
+    register_config_validator("sensor_control", sensor_control_validator)
+    yield
+    # Cleanup handled by reset_validators fixture
+
 
 # =============================================================================
 # Registry Tests
@@ -259,33 +308,57 @@ def test_validate_import_config_multiple_feature_errors() -> None:
 
 def test_validate_import_config_with_hass() -> None:
     """Test validation with Home Assistant instance."""
-    mock_hass = MagicMock()
-    mock_hass.states.get.return_value = None  # Simulate entity not found
 
-    config = {
-        "ramses_extras": {
-            "schema_version": 1,
-            "features": {
-                FEATURE_ZONES: {
-                    "FANs": {
-                        "32:153289": [
-                            {
-                                "zone_id": "test",
-                                "type": "custom_valve",
-                                "open_entity": "switch.nonexistent",
-                            }
-                        ]
+    # Register a test validator that checks entity existence
+    def zones_validator(section, hass):
+        errors = []
+        for fan_id, zones in section.get("FANs", {}).items():
+            for zone in zones:
+                if not zone.get("zone_id"):
+                    errors.append(f"FAN {fan_id}: zone missing zone_id")
+                if not zone.get("type"):
+                    errors.append(f"FAN {fan_id}: zone missing type")
+
+                # Check entity existence if hass is provided
+                if hass and zone.get("open_entity"):
+                    entity_id = zone["open_entity"]
+                    if hass.states.get(entity_id) is None:
+                        errors.append(f"Entity {entity_id} not found")
+        return errors
+
+    register_config_validator(FEATURE_ZONES, zones_validator)
+
+    try:
+        mock_hass = MagicMock()
+        mock_hass.states.get.return_value = None  # Simulate entity not found
+
+        config = {
+            "ramses_extras": {
+                "schema_version": 1,
+                "features": {
+                    FEATURE_ZONES: {
+                        "FANs": {
+                            "32:153289": [
+                                {
+                                    "zone_id": "test",
+                                    "type": "custom_valve",
+                                    "open_entity": "switch.nonexistent",
+                                }
+                            ]
+                        }
                     }
-                }
-            },
+                },
+            }
         }
-    }
 
-    result = validate_import_config(config, hass=mock_hass)
+        result = validate_import_config(config, hass=mock_hass)
 
-    # Should have errors about nonexistent entity
-    assert FEATURE_ZONES in result["feature_errors"]
-    assert any("not found" in e for e in result["feature_errors"][FEATURE_ZONES])
+        # Should have errors about nonexistent entity
+        assert FEATURE_ZONES in result["feature_errors"]
+        assert any("not found" in e for e in result["feature_errors"][FEATURE_ZONES])
+    finally:
+        # Cleanup
+        unregister_config_validator(FEATURE_ZONES)
 
 
 # =============================================================================
@@ -360,13 +433,11 @@ def test_format_validation_errors_mixed() -> None:
 # =============================================================================
 
 
-def test_built_in_validators_registered() -> None:
-    """Test that built-in feature validators are registered."""
+def test_no_built_in_validators_by_default() -> None:
+    """Test that framework has no built-in validators - features register their own."""
     validators = get_registered_validators()
-
-    assert FEATURE_ZONES in validators
-    assert FEATURE_REMOTE_BINDING in validators
-    assert FEATURE_SENSOR_CONTROL in validators
+    # Framework is now feature-agnostic; validators are registered by features
+    assert len(validators) == 0
 
 
 # =============================================================================

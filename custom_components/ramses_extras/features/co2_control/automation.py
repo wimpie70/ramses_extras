@@ -21,7 +21,6 @@ from custom_components.ramses_extras.framework.helpers.config.migration import (
     migrate_feature_section,
 )
 from custom_components.ramses_extras.framework.helpers.config.model import (
-    FEATURE_SENSOR_CONTROL,
     SENSOR_CONTROL_AREA_SENSORS_KEY,
     get_sensor_control_device_section,
 )
@@ -35,6 +34,9 @@ from custom_components.ramses_extras.framework.helpers.ramses_commands import (
 from .config import CO2Config
 from .const import FEATURE_DEFINITION
 from .zone_manager import CO2ZoneManager
+
+# Feature ID used by this module
+FEATURE_SENSOR_CONTROL = "sensor_control"
 
 _LOGGER = logging.getLogger(__name__)
 

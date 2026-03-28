@@ -466,14 +466,16 @@ async def ws_get_fan_config_associations(
     """
     from ...framework.helpers.config.migration import migrate_to_canonical_config
     from ...framework.helpers.config.model import (
-        FEATURE_REMOTE_BINDING,
-        FEATURE_ZONES,
         get_feature_section,
         get_remote_binding_rem_ids,
         get_remote_binding_rems,
         get_zone_ids_for_fan,
         get_zones_for_fan,
     )
+
+    # Feature IDs used locally
+    feature_remote_binding = "remote_binding"
+    feature_zones = "zones"
 
     device_id = str(msg["device_id"])
 
@@ -502,9 +504,9 @@ async def ws_get_fan_config_associations(
 
         canonical_config = migrate_to_canonical_config(raw_config)
 
-        zones_section = get_feature_section(canonical_config, FEATURE_ZONES)
+        zones_section = get_feature_section(canonical_config, feature_zones)
         remote_binding_section = get_feature_section(
-            canonical_config, FEATURE_REMOTE_BINDING
+            canonical_config, feature_remote_binding
         )
 
         zones = get_zones_for_fan(zones_section, device_id)

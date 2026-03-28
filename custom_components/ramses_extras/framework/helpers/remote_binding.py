@@ -198,12 +198,11 @@ class RemoteBindingRegistry:
 
         # Import here to avoid circular imports
         from ...framework.helpers.config.model import (
-            FEATURE_REMOTE_BINDING,
             get_fan_ids,
             get_feature_section,
         )
 
-        section = get_feature_section(manager._config, FEATURE_REMOTE_BINDING)
+        section = get_feature_section(manager._config, "remote_binding")
         fan_ids = get_fan_ids(section)
 
         result: dict[str, list[dict[str, Any]]] = {}

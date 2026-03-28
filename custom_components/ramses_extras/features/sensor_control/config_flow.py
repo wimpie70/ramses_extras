@@ -15,8 +15,6 @@ from ...const import AVAILABLE_FEATURES, DOMAIN
 from ...framework.helpers.config.migration import get_migrated_feature_section
 from ...framework.helpers.config.model import (
     CONFIG_DEVICES_KEY,
-    FEATURE_SENSOR_CONTROL,
-    FEATURE_ZONES,
     SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
     SENSOR_CONTROL_AREA_SENSORS_KEY,
     SENSOR_CONTROL_SOURCES_KEY,
@@ -25,6 +23,10 @@ from ...framework.helpers.config.model import (
     normalize_device_id,
     set_fan_section,
     set_feature_section,
+)
+from ...framework.helpers.config.validation import (
+    FEATURE_SENSOR_CONTROL,
+    FEATURE_ZONES,
 )
 from ...framework.helpers.config.zones_yaml import (
     export_zones_to_yaml,

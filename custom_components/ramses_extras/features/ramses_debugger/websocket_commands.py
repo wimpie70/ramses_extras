@@ -1101,13 +1101,12 @@ async def ws_config_diagnostics(
     devices in ramses_extras, highlighting mismatches.
     """
     from ...framework.helpers.config.migration import migrate_to_canonical_config
-    from ...framework.helpers.config.model import (
-        FEATURE_REMOTE_BINDING,
-        FEATURE_SENSOR_CONTROL,
-        FEATURE_ZONES,
-        get_fan_ids,
-        get_feature_section,
-    )
+    from ...framework.helpers.config.model import get_fan_ids, get_feature_section
+
+    # Feature IDs used locally
+    feature_remote_binding = "remote_binding"
+    feature_sensor_control = "sensor_control"
+    feature_zones = "zones"
 
     domain_data = hass.data.get(DOMAIN)
     if not isinstance(domain_data, dict):
@@ -1152,11 +1151,11 @@ async def ws_config_diagnostics(
         canonical_config = migrate_to_canonical_config(raw_config)
 
         # Get sensor_control configured devices
-        sensor_section = get_feature_section(canonical_config, FEATURE_SENSOR_CONTROL)
+        sensor_section = get_feature_section(canonical_config, feature_sensor_control)
         configured_fan_ids.update(get_fan_ids(sensor_section))
 
         # Get remote_binding configured devices
-        binding_section = get_feature_section(canonical_config, FEATURE_REMOTE_BINDING)
+        binding_section = get_feature_section(canonical_config, feature_remote_binding)
         configured_fan_ids.update(get_fan_ids(binding_section))
         # Extract REM IDs from bindings
         for fan_id in get_fan_ids(binding_section):
@@ -1168,7 +1167,7 @@ async def ws_config_diagnostics(
                     configured_rem_ids.add(str(rem_id).replace("_", ":"))
 
         # Get zones configured devices
-        zones_section = get_feature_section(canonical_config, FEATURE_ZONES)
+        zones_section = get_feature_section(canonical_config, feature_zones)
         zone_fan_ids = get_fan_ids(zones_section)
         configured_fan_ids.update(zone_fan_ids)
         configured_zone_fans.update(zone_fan_ids)

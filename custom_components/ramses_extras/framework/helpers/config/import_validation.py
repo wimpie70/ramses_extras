@@ -19,6 +19,9 @@ _feature_validators: dict[
     Callable[[dict[str, Any], HomeAssistant | None], list[str]],
 ] = {}
 
+# Registry of feature schemas: feature_id -> voluptuous schema
+_feature_schemas: dict[str, Any] = {}
+
 
 def register_config_validator(
     feature_id: str,
@@ -43,9 +46,33 @@ def register_config_validator(
     _feature_validators[feature_id] = validator
 
 
+def register_config_schema(feature_id: str, schema: Any) -> None:
+    """Register a voluptuous schema for a feature's config section.
+
+    Args:
+        feature_id: Feature identifier (e.g., 'zones', 'sensor_control')
+        schema: Voluptuous schema for validating the feature's config
+
+    Example:
+        import voluptuous as vol
+
+        ZONES_SCHEMA = vol.Schema({
+            vol.Optional("FANs"): {str: [dict]},
+        }, extra=vol.ALLOW_EXTRA)
+
+        register_config_schema("zones", ZONES_SCHEMA)
+    """
+    _feature_schemas[feature_id] = schema
+
+
 def unregister_config_validator(feature_id: str) -> None:
     """Remove a registered validator."""
     _feature_validators.pop(feature_id, None)
+
+
+def unregister_config_schema(feature_id: str) -> None:
+    """Remove a registered schema."""
+    _feature_schemas.pop(feature_id, None)
 
 
 def get_registered_validators() -> dict[
@@ -53,6 +80,11 @@ def get_registered_validators() -> dict[
 ]:
     """Get all registered validators."""
     return dict(_feature_validators)
+
+
+def get_registered_schemas() -> dict[str, Any]:
+    """Get all registered schemas."""
+    return dict(_feature_schemas)
 
 
 def validate_import_config(
@@ -154,9 +186,12 @@ def format_validation_errors(result: dict[str, Any]) -> list[str]:
 
 
 __all__ = [
-    "format_validation_errors",
-    "get_registered_validators",
     "register_config_validator",
+    "register_config_schema",
     "unregister_config_validator",
+    "unregister_config_schema",
+    "get_registered_validators",
+    "get_registered_schemas",
     "validate_import_config",
+    "format_validation_errors",
 ]

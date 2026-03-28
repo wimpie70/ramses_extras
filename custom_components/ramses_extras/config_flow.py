@@ -38,13 +38,15 @@ from .framework.helpers.config.import_full import (
 from .framework.helpers.config.migration import get_migrated_feature_section
 from .framework.helpers.config.model import (
     CONFIG_DEVICES_KEY,
-    FEATURE_ZONES,
     set_feature_section,
 )
 from .framework.helpers.config_flow import ConfigFlowHelper
 from .framework.helpers.device.filter import DeviceFilter
 from .framework.helpers.entity.simple_entity_manager import SimpleEntityManager
 from .framework.helpers.paths import DEPLOYMENT_PATHS
+
+# Feature IDs used locally
+FEATURE_ZONES = "zones"
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant

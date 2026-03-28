@@ -112,12 +112,11 @@ class ZoneRegistry:
 
         # Import here to avoid circular imports
         from ...framework.helpers.config.model import (
-            FEATURE_ZONES,
             get_fan_ids,
             get_feature_section,
         )
 
-        section = get_feature_section(manager._config, FEATURE_ZONES)
+        section = get_feature_section(manager._config, "zones")
         fan_ids = get_fan_ids(section)
 
         result: dict[str, list[dict[str, Any]]] = {}
