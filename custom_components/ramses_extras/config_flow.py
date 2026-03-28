@@ -269,19 +269,12 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
         for static_item, static_label in static_menu_items.items():
             menu_options.append(static_item)
-            # _LOGGER.info(f"DEBUG: Added static menu item: {static_item}
-            #  -> {static_label}")
 
         # Add dynamic feature options for features with config flows
         # Only list features that are actually enabled in the config entry
         dynamic_features_found = []
         current_features = (self._config_entry.data or {}).get("enabled_features", {})
         for feature_id, feature_config in AVAILABLE_FEATURES.items():
-            # Don't Skip default feature from menu (we may have settings for it)
-            # if feature_id == "default":
-            #     _LOGGER.info("DEBUG: Skipping default feature from menu")
-            #     continue
-
             if feature_id == "ramses_debugger":
                 if current_features.get(feature_id):
                     step_id = f"feature_{feature_id}"
@@ -293,9 +286,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             if feature_config.get("has_device_config", False):
                 # Skip features that are not enabled
                 if not current_features.get(feature_id):
-                    # _LOGGER.info(
-                    #     "DEBUG: Feature %s is not enabled, skipping", feature_id
-                    # )
                     continue
 
                 # Use feature-specific step IDs that map to
@@ -303,10 +293,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 step_id = f"feature_{feature_id}"
                 menu_options.append(step_id)
                 dynamic_features_found.append(feature_id)
-                # _LOGGER.info(
-                #     f"DEBUG: Added dynamic menu item: {step_id} -> "
-                #     f"{feature_config.get('name', feature_id)}"
-                # )
             else:
                 _LOGGER.debug(
                     f"Feature {feature_id} does not have "
@@ -925,7 +911,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         else:
             _LOGGER.debug("No matrix state found, starting with empty matrix")
 
-        _LOGGER.debug(f"matrix state: {matrix_state}")
         # Save the matrix state to be used for comparison to the flow
         # Use deepcopy, or helper.set_enabled_devices_for_feature will modify flow
         self._old_matrix_state = deepcopy(matrix_state)
@@ -963,10 +948,6 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 selected_device_ids,
                 sorted(temp_matrix_state.keys()),
             )
-
-            # Log the matrix state for debugging
-            _LOGGER.debug(f"self.temp matrix state: {self._temp_matrix_state}")
-            _LOGGER.debug(f"self.old_matrix_state: {self._old_matrix_state}")
 
             # Log entity tracking attributes, check if they exist first
             entities_to_create = getattr(self, "_matrix_entities_to_create", [])
@@ -1073,7 +1054,11 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             )
         except Exception as e:
             _LOGGER.warning(f"Error loading feature config flow for {feature_id}: {e}")
-            _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+            try:
+                _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+            except Exception:
+                # In tests with mocked imports, traceback.format_exc() might fail
+                pass
 
         return await self.generic_step_feature_config(user_input)
 

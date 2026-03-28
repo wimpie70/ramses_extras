@@ -151,8 +151,8 @@ def set_fan_section(
     device_id: str,
     fan_section: dict[str, Any] | list[Any],
 ) -> dict[str, Any]:
-    # Match lookup order from get_device_section_mapping: FANS_KEY, then DEVICES_KEY
-    mapping_key = CONFIG_FANS_KEY if CONFIG_FANS_KEY in section else CONFIG_DEVICES_KEY
+    # Always use FANS_KEY for canonical structure
+    mapping_key = CONFIG_FANS_KEY
     if mapping_key not in section or not isinstance(section.get(mapping_key), dict):
         section[mapping_key] = {}
 

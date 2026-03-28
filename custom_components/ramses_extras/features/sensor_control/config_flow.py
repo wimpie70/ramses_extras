@@ -166,7 +166,18 @@ def _persist_zones_section(
     zones_section: dict[str, Any],
 ) -> None:
     """Persist zones section to config options using canonical structure."""
-    set_feature_section(options, FEATURE_ZONES, zones_section)
+    # Create a writable copy of options to avoid mappingproxy error
+    options = dict(options)
+
+    # Use set_fan_section to store zones in the canonical structure
+    # where get_zones_for_fan expects to find them
+
+    # Get the selected device ID from the flow
+    selected_device_id = getattr(flow, "_sensor_control_selected_device", None)
+    if selected_device_id:
+        # Store zones using the canonical structure in the options dict
+        set_fan_section(options, selected_device_id, zones_section.get("zones", []))
+
     flow.hass.config_entries.async_update_entry(  # noqa: SLF001
         flow._config_entry,  # noqa: SLF001
         options=options,
@@ -523,24 +534,12 @@ async def async_step_sensor_control_config(
     if not isinstance(device_section, dict):
         device_section = {}
 
-    _LOGGER.debug(
-        "Loaded canonical sensor_control section from config_entry for %s: %s",
-        selected_device_id,
-        sensor_control_section,
-    )
-
     device_sources = dict(device_section.get(SENSOR_CONTROL_SOURCES_KEY) or {})
     device_abs_inputs = dict(
         device_section.get(SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY) or {}
     )
     device_area_sensors = _validate_area_sensor_entries(
         device_section.get(SENSOR_CONTROL_AREA_SENSORS_KEY)
-    )
-
-    _LOGGER.debug(
-        "Loaded device_sources for %s: %s",
-        selected_device_id,
-        device_sources,
     )
 
     # Resolve device type and select an appropriate handler. For now we support
@@ -550,22 +549,8 @@ async def async_step_sensor_control_config(
     device_type = str(raw_device_type).upper()
     handler = DEVICE_TYPE_HANDLERS.get(device_type) or DEVICE_TYPE_HANDLERS["FAN"]
 
-    _LOGGER.debug(
-        "Sensor control handler for device %s (type=%s -> key=%s): %s",
-        selected_device_id,
-        raw_device_type,
-        device_type,
-        getattr(handler, "__name__", repr(handler)),
-    )
-
     # Submenu-style grouping: select which group of metrics to configure
     group_stage = getattr(flow, "_sensor_control_group_stage", "select_group")
-    _LOGGER.debug(
-        "sensor_control_config: stage=%s, group_stage=%s, selected_device=%s",
-        stage,
-        group_stage,
-        selected_device_id,
-    )
 
     # Handle group selection menu
     if group_stage == "select_group":
@@ -1016,12 +1001,6 @@ async def async_step_sensor_control_config(
         options = flow.hass.data[DOMAIN]["config_entry"].options
         zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
         fan_zones = get_zones_for_fan(zones_section, selected_device_id)
-        _LOGGER.debug(
-            "Zones menu for FAN %s: found %d zones, zones_section keys: %s",
-            selected_device_id,
-            len(fan_zones),
-            list(zones_section.keys()),
-        )
 
         if user_input is not None:
             zones_action: str | None = user_input.get("action")
@@ -1159,7 +1138,7 @@ async def async_step_sensor_control_config(
                     errors["zone_id"] = "Zone ID already exists for this FAN"
 
             if not errors:
-                # Build zone entry
+                # Build zone entry and store for confirmation step
                 zone_entry: dict[str, Any] = {
                     "zone_id": zone_id,
                     "type": zone_type,
@@ -1179,47 +1158,10 @@ async def async_step_sensor_control_config(
                     zone_entry["min_position"] = int(min_position)
                     zone_entry["max_position"] = int(max_position)
 
-                # Update zones list using set_fan_section for canonical structure
-                from ...framework.helpers.config.model import set_fan_section
-
-                # Get existing zones for this fan
-                existing_zones = get_zones_for_fan(zones_section, selected_device_id)
-                _LOGGER.debug(
-                    "zones_edit: Saving zone %s for FAN %s (normalized: %s), "
-                    "existing zones: %d, section keys: %s",
-                    zone_id,
-                    selected_device_id,
-                    normalize_device_id(selected_device_id),
-                    len(existing_zones),
-                    list(zones_section.keys()),
-                )
-                new_zones = [
-                    z for z in existing_zones if z.get("zone_id") != editing_zone_id
-                ]
-                new_zones.append(zone_entry)
-
-                # Store using canonical structure (by fan_id in devices)
-                set_fan_section(zones_section, selected_device_id, new_zones)
-                _LOGGER.debug(
-                    "zones_edit: Stored %d zones for FAN %s, section now has keys: %s,"
-                    " fans: %s",
-                    len(new_zones),
-                    selected_device_id,
-                    list(zones_section.keys()),
-                    list(zones_section.get("fans", {}).keys())
-                    if ("fans" in zones_section)
-                    else "no fans key",
-                )
-                _persist_zones_section(flow, options, zones_section)
-
-                # Refresh config entry reference to get updated options
-                flow.hass.data[DOMAIN]["config_entry"] = (
-                    flow.hass.config_entries.async_get_entry(
-                        flow._config_entry.entry_id  # noqa: SLF001
-                    )
-                )
-
-                flow._sensor_control_group_stage = "zones_menu"
+                # Store pending zone for confirmation step
+                flow._sensor_control_pending_zone = zone_entry
+                flow._sensor_control_pending_zone_editing_id = editing_zone_id
+                flow._sensor_control_group_stage = "zones_confirm"
                 return await async_step_sensor_control_config(flow, None)
 
         type_options = [
@@ -1281,6 +1223,106 @@ async def async_step_sensor_control_config(
                 errors=errors,
                 description_placeholders={"info": info_text},
             )
+
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            description_placeholders={"info": info_text},
+        )
+
+    # ------------------------------------------------------------------
+    # Zones confirm: confirm zone before saving
+    # ------------------------------------------------------------------
+    if group_stage == "zones_confirm":
+        # Get pending zone data
+        zone_entry = getattr(flow, "_sensor_control_pending_zone", None) or {}
+        editing_zone_id = getattr(flow, "_sensor_control_pending_zone_editing_id", None)
+
+        if not zone_entry:
+            _LOGGER.error("No pending zone data in zones_confirm")
+            flow._sensor_control_group_stage = "zones_menu"
+            return await async_step_sensor_control_config(flow, None)
+
+        if user_input is not None:
+            confirm_action = user_input.get("confirm")
+
+            if confirm_action == "save":
+                # Actually save the zone
+                options = flow.hass.data[DOMAIN]["config_entry"].options
+                zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
+
+                # Get existing zones for this fan
+                existing_zones = get_zones_for_fan(zones_section, selected_device_id)
+
+                # Remove old version if editing
+                new_zones = [
+                    z for z in existing_zones if z.get("zone_id") != editing_zone_id
+                ]
+                new_zones.append(zone_entry)
+
+                # Store using set_fan_section
+                from ...framework.helpers.config.model import set_fan_section
+
+                set_fan_section(zones_section, selected_device_id, new_zones)
+
+                # Update options with modified section before persisting
+                options = dict(options)  # Create a writable copy
+                options[FEATURE_ZONES] = zones_section
+                _persist_zones_section(flow, options, zones_section)
+
+                # Clear pending zone
+                flow._sensor_control_pending_zone = None
+                flow._sensor_control_pending_zone_editing_id = None
+
+                # Refresh config entry reference
+                flow.hass.data[DOMAIN]["config_entry"] = (
+                    flow.hass.config_entries.async_get_entry(
+                        flow._config_entry.entry_id  # noqa: SLF001
+                    )
+                )
+
+                flow._sensor_control_group_stage = "zones_menu"
+                return await async_step_sensor_control_config(flow, None)
+
+            if confirm_action == "edit":
+                # Go back to edit
+                flow._sensor_control_group_stage = "zones_edit"
+                return await async_step_sensor_control_config(flow, None)
+
+            if confirm_action == "cancel":
+                # Cancel and go back to menu
+                flow._sensor_control_pending_zone = None
+                flow._sensor_control_pending_zone_editing_id = None
+                flow._sensor_control_group_stage = "zones_menu"
+                return await async_step_sensor_control_config(flow, None)
+
+        # Build confirmation display
+        zone_info_lines = ["**Zone Details:**"]
+        for key, value in zone_entry.items():
+            zone_info_lines.append(f"- {key}: `{value}`")
+        zone_info = "\n".join(zone_info_lines)
+
+        schema = vol.Schema(
+            {
+                vol.Required("confirm"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value="save", label="Save zone"),
+                            selector.SelectOptionDict(value="edit", label="Edit again"),
+                            selector.SelectOptionDict(value="cancel", label="Cancel"),
+                        ],
+                        mode="list",
+                    )
+                ),
+            }
+        )
+
+        info_text = (
+            "🧭 **Confirm Zone Configuration**\n\n"
+            f"FAN: `{selected_device_id}`\n\n"
+            f"{zone_info}\n\n"
+            "Review the zone details above before saving."
+        )
 
         return flow.async_show_form(
             step_id="feature_config",
@@ -1381,6 +1423,9 @@ async def async_step_sensor_control_config(
                             )
 
                             zones_section["zones"] = merged_zones
+                            # Create writable copy to avoid mappingproxy error
+                            options = dict(options)
+                            options[FEATURE_ZONES] = zones_section
                             _persist_zones_section(flow, options, zones_section)
 
                             # Return to zones menu after successful import

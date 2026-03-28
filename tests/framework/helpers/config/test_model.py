@@ -118,7 +118,7 @@ def test_get_fan_section_reads_legacy_fan_mapping_keys() -> None:
 
 
 def test_set_fan_section_normalizes_device_id_into_devices_mapping() -> None:
-    section = {CONFIG_DEVICES_KEY: {}}
+    section = {CONFIG_FANS_KEY: {}}
 
     stored = set_fan_section(
         section,
@@ -128,7 +128,7 @@ def test_set_fan_section_normalizes_device_id_into_devices_mapping() -> None:
 
     assert stored == {"sources": {"indoor_temperature": {"kind": "internal"}}}
     assert section == {
-        CONFIG_DEVICES_KEY: {
+        CONFIG_FANS_KEY: {
             "32:153289": {"sources": {"indoor_temperature": {"kind": "internal"}}}
         }
     }
