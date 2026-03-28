@@ -1030,6 +1030,9 @@ async def async_step_sensor_control_config(
                         z for z in existing_zones if z.get("zone_id") != delete_zone_id
                     ]
                     set_fan_section(zones_section, selected_device_id, new_zones)
+                    # Create writable copy to avoid mappingproxy error
+                    options = dict(options)
+                    options[FEATURE_ZONES] = zones_section
                     _persist_zones_section(flow, options, zones_section)
                 return await async_step_sensor_control_config(flow, None)
 
