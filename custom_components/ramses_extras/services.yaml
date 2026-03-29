@@ -175,3 +175,61 @@ trigger_co2_boost:
           max: 120
           step: 5
           unit_of_measurement: minutes
+
+# Zone testing services (Phase 5 hardware testing)
+set_zone_demand:
+  name: Set Zone Demand
+  description: Manually set zone demand for hardware testing
+  fields:
+    device_id:
+      name: Device ID
+      description: FAN device ID (e.g., 32:153289)
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    zone_id:
+      name: Zone ID
+      description: Zone identifier
+      required: true
+      example: "zone 1 + 2"
+      selector:
+        text:
+    has_demand:
+      name: Has Demand
+      description: Set to true to trigger demand, false to clear
+      required: false
+      default: true
+      selector:
+        boolean:
+
+clear_zone_demand:
+  name: Clear Zone Demand
+  description: Clear manual zone demand for hardware testing
+  fields:
+    device_id:
+      name: Device ID
+      description: FAN device ID (e.g., 32:153289)
+      required: true
+      example: "32:153289"
+      selector:
+        text:
+    zone_id:
+      name: Zone ID
+      description: Zone identifier (optional - clears all if not provided)
+      required: false
+      example: "zone 1 + 2"
+      selector:
+        text:
+
+run_zone_actuation:
+  name: Run Zone Actuation
+  description: Trigger zone actuation cycle for hardware testing
+  fields:
+    device_id:
+      name: Device ID
+      description: FAN device ID (e.g., 32:153289)
+      required: true
+      example: "32:153289"
+      selector:
+        text:

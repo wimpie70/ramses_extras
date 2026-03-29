@@ -16,6 +16,8 @@ from homeassistant.helpers import config_validation as cv
 from ...const import DOMAIN
 from ...framework.helpers.fan_speed_arbiter import get_fan_speed_arbiter
 from ...framework.helpers.ramses_commands import RamsesCommands
+from ...framework.helpers.zone_coordinator import get_zone_coordinator
+from ...framework.helpers.zone_demand import DemandSource, get_zone_demand_registry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,6 +25,9 @@ SVC_SEND_FAN_COMMAND = "send_fan_command"
 SVC_SET_FAN_PARAMETER = "set_fan_parameter"
 SVC_UPDATE_FAN_PARAMS = "update_fan_params"
 SVC_GET_QUEUE_STATISTICS = "get_queue_statistics"
+SVC_SET_ZONE_DEMAND = "set_zone_demand"
+SVC_CLEAR_ZONE_DEMAND = "clear_zone_demand"
+SVC_RUN_ZONE_ACTUATION = "run_zone_actuation"
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
@@ -347,4 +352,97 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             SVC_GET_QUEUE_STATISTICS,
             _async_get_queue_statistics,
             schema=vol.Schema({}, extra=vol.PREVENT_EXTRA),
+        )
+
+    # Zone testing services (Phase 5 hardware testing)
+    if not hass.services.has_service(DOMAIN, SVC_SET_ZONE_DEMAND):
+
+        async def _async_set_zone_demand(call: ServiceCall) -> None:
+            """Set manual zone demand for testing."""
+            fan_id = call.data["device_id"]
+            zone_id = call.data["zone_id"]
+            has_demand = call.data.get("has_demand", True)
+
+            demand_registry = get_zone_demand_registry(hass)
+            demand_registry.set_demand(
+                fan_id=fan_id,
+                zone_id=zone_id,
+                source=DemandSource.MANUAL,
+                has_demand=has_demand,
+            )
+            _LOGGER.info(
+                "Manual zone demand set: %s:%s = %s", fan_id, zone_id, has_demand
+            )
+
+        hass.services.async_register(
+            DOMAIN,
+            SVC_SET_ZONE_DEMAND,
+            _async_set_zone_demand,
+            schema=vol.Schema(
+                {
+                    vol.Required("device_id"): cv.string,
+                    vol.Required("zone_id"): cv.string,
+                    vol.Optional("has_demand", default=True): cv.boolean,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_CLEAR_ZONE_DEMAND):
+
+        async def _async_clear_zone_demand(call: ServiceCall) -> None:
+            """Clear manual zone demand for testing."""
+            fan_id = call.data["device_id"]
+            zone_id = call.data.get("zone_id")
+
+            demand_registry = get_zone_demand_registry(hass)
+            if zone_id:
+                demand_registry.clear_demand(fan_id, zone_id, DemandSource.MANUAL)
+            else:
+                # Clear all manual demands for this FAN
+                zones = demand_registry.get_all_demands_for_fan(fan_id)
+                for zid in zones:
+                    demand_registry.clear_demand(fan_id, zid, DemandSource.MANUAL)
+            _LOGGER.info("Manual zone demand cleared: %s:%s", fan_id, zone_id or "all")
+
+        hass.services.async_register(
+            DOMAIN,
+            SVC_CLEAR_ZONE_DEMAND,
+            _async_clear_zone_demand,
+            schema=vol.Schema(
+                {
+                    vol.Required("device_id"): cv.string,
+                    vol.Optional("zone_id"): cv.string,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
+        )
+
+    if not hass.services.has_service(DOMAIN, SVC_RUN_ZONE_ACTUATION):
+
+        async def _async_run_zone_actuation(call: ServiceCall) -> None:
+            """Run zone actuation cycle for testing."""
+            fan_id = call.data["device_id"]
+
+            coordinator = get_zone_coordinator(hass, fan_id)
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            _LOGGER.info("Zone actuation cycle completed for %s: %s", fan_id, results)
+
+            # Return results via event for UI feedback
+            hass.bus.fire(
+                "ramses_extras_zone_actuation_completed",
+                {"fan_id": fan_id, "results": results},
+            )
+
+        hass.services.async_register(
+            DOMAIN,
+            SVC_RUN_ZONE_ACTUATION,
+            _async_run_zone_actuation,
+            schema=vol.Schema(
+                {
+                    vol.Required("device_id"): cv.string,
+                },
+                extra=vol.PREVENT_EXTRA,
+            ),
         )
