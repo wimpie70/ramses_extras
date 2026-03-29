@@ -217,6 +217,24 @@ Design rule:
 - [x] optional learned binding suggestions from observed traffic
 - [x] validated YAML import via framework validation registry (`register_config_validator()`)
 
+### Phase 4 - integration completion 🔄 IN PROGRESS
+
+- [x] import validation registered in `features/sensor_control/remote_binding_yaml.py`
+- [x] export support via `export_config_to_yaml()`
+- [ ] final integration testing with live REM devices
+- [ ] documentation update with examples
+
+## Status
+
+**Last Updated:** March 2026
+
+- **Implementation:** Phases 1-3 complete. Phase 4 (final integration) in progress.
+- **Schema definition:** ✅ Complete in `docs/FAN_CONFIGURATION_SCHEMA_DRAFT.md`
+- **Feature section:** ✅ Defined and persisted via `features.sensor_control.remote_binding`
+- **Config flow integration:** ✅ Available under FAN-oriented configuration
+- **YAML export:** ✅ Supported via `export_config_to_yaml()`
+- **YAML import validation:** ✅ Registered validator in `remote_binding_yaml.py`
+
 ## Risks
 
 - duplicate handling if both event-bus and direct-client messages are seen

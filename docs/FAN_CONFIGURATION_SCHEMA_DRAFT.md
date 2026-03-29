@@ -406,5 +406,18 @@ It should be:
 
 ## Status
 
-This document is the first concrete schema draft for the hybrid configuration strategy.
-It is intended to guide the next implementation slices and reduce the risk of ad hoc config growth.
+**Last Updated:** March 2026
+
+This document is the first concrete schema draft for the hybrid configuration strategy. It is intended to guide the next implementation slices and reduce the risk of ad hoc config growth.
+
+### Implementation Status
+
+The schema defined in this document has been largely implemented:
+
+- **Canonical config model** (`framework/helpers/config/model.py`): ✅ Implemented with `CONFIG_SCHEMA_VERSION = 1`, feature section helpers (`get_feature_section`, `set_feature_section`), FAN-scoped lookups (`get_fan_section`, `set_fan_section`), and zone/remote binding accessors
+- **Device ID normalization** (`normalize_device_id`, `legacy_device_key`): ✅ Implemented with colon-style canonical IDs and underscore legacy support
+- **Feature section patterns**: ✅ Implemented - `sensor_control.devices[device_id]`, `zones.FANs[device_id]`, `remote_binding.FANs[device_id].REMs[]`
+- **Zone ID as shared link**: ✅ Implemented via `find_areas_for_zone()` and `find_entities_for_zone()` helpers
+- **Actuator safety limits**: ✅ Implemented - `min_position`/`max_position` validated in config flow
+- **Discovery rules**: ✅ Implemented - discovery from `ramses_cc` treated as hints only
+- **Export rules**: ✅ Implemented in `framework/helpers/config/export.py` with sensitive key redaction and runtime-only field exclusion

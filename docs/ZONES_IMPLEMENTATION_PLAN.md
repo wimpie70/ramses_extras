@@ -263,12 +263,25 @@ Later:
 - [x] add optional validated YAML import for advanced users after migrations are proven
 - [x] add richer frontend editing if the structured model is stable enough
 
-### Phase 5 - advanced behavior
+### Phase 5 - advanced behavior 🔄 PENDING
 
-- learned airflow weighting
-- zone priorities
-- occupancy-aware logic
-- manual per-zone override handling
+- [ ] learned airflow weighting
+- [ ] zone priorities
+- [ ] occupancy-aware logic
+- [ ] manual per-zone override handling
+
+## Status
+
+**Last Updated:** March 2026
+
+- **Implementation:** Phases 1-4 complete. Phase 5 (advanced behavior) pending.
+- **Zone registry:** ✅ Implemented in `framework/helpers/zones.py`
+- **Hardware adapters:** ✅ Implemented in `framework/helpers/zone_adapters.py` (ORCON native, generic valve, Shelly 2PM Gen3)
+- **Zone coordinator:** ✅ Implemented in `framework/helpers/zone_coordinator.py`
+- **Safety limits:** ✅ `min_position`/`max_position` validated in config flow
+- **YAML export:** ✅ Supported via `export_config_to_yaml()`
+- **YAML import validation:** ✅ Registered validator in `features/sensor_control/zones_yaml.py`
+- **Integration:** Zones feed FAN-level demand to the arbiter (same boundary as humidity/CO2 control)
 
 ## Configuration UX proposal
 
