@@ -130,7 +130,9 @@ def load_feature() -> None:
 
     # Register each card configuration for feature-centric card management
     for card_config in HVAC_FAN_CARD_CONFIGS:
-        extras_registry.register_card_config("hvac_fan_card", card_config)
+        extras_registry.register_card_config(
+            "hvac_fan_card", {"card_id": card_config["card_id"]}
+        )
 
     extras_registry.register_feature("hvac_fan_card")
 

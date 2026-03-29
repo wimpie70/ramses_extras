@@ -93,7 +93,9 @@ def load_feature() -> None:
     )
 
     for card_config in RAMSES_DEBUGGER_CARD_CONFIGS:
-        extras_registry.register_card_config(FEATURE_ID, card_config)
+        extras_registry.register_card_config(
+            FEATURE_ID, {"card_id": card_config["card_id"]}
+        )
 
     extras_registry.register_feature(FEATURE_ID)
 
