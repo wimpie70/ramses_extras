@@ -60,7 +60,7 @@ from custom_components.ramses_extras.features.humidity_control.humidity_control_
 from custom_components.ramses_extras.features.humidity_control.humidity_control_yaml import (  # noqa: E501
     load_validator as load_humidity_validator,
 )
-from custom_components.ramses_extras.features.hvac_fan_card.hvac_fan_card_yaml import (  # noqa: E501
+from custom_components.ramses_extras.features.hvac_fan_card.hvac_fan_card_yaml import (
     HVAC_FAN_CARD_CONFIG_SCHEMA,
     export_hvac_fan_card_to_yaml,
     hvac_fan_card_validator,
@@ -79,6 +79,18 @@ from custom_components.ramses_extras.features.ramses_debugger.ramses_debugger_ya
 )
 from custom_components.ramses_extras.features.ramses_debugger.ramses_debugger_yaml import (  # noqa: E501
     load_validator as load_ramses_debugger_validator,
+)
+from custom_components.ramses_extras.features.sensor_control.remote_binding_yaml import (  # noqa: E501
+    FAN_REM_CONFIG_SCHEMA,
+    REM_ENTRY_SCHEMA,
+    REMOTE_BINDING_CONFIG_SCHEMA,
+    export_remote_binding_to_yaml,
+    merge_remote_binding_config,
+    parse_remote_binding_yaml,
+    remote_binding_validator,
+)
+from custom_components.ramses_extras.features.sensor_control.remote_binding_yaml import (  # noqa: E501
+    load_validator as load_remote_binding_validator,
 )
 from custom_components.ramses_extras.features.sensor_control.sensor_control_yaml import (  # noqa: E501
     ABS_HUMIDITY_INPUT_SCHEMA,
@@ -103,7 +115,7 @@ from custom_components.ramses_extras.features.sensor_control.zones_yaml import (
     validate_zone_references,
     zones_validator,
 )
-from custom_components.ramses_extras.features.sensor_control.zones_yaml import (
+from custom_components.ramses_extras.features.sensor_control.zones_yaml import (  # noqa: E501
     load_validator as load_zones_validator,
 )
 
@@ -1254,6 +1266,506 @@ FANs:
         # Should not raise any exceptions
 
 
+class TestRemoteBindingYAML:
+    """Test cases for Remote Binding YAML validation."""
+
+    def test_rem_entry_schema_valid(self):
+        """Test valid REM entry schema."""
+        # Valid REM entry
+        rem_data = {
+            "rem_id": "37:123456",
+            "role": "primary",
+            "enabled": True,
+            "source": "manual",
+        }
+
+        # Should not raise any exceptions
+        validated = REM_ENTRY_SCHEMA(rem_data)
+        assert validated["rem_id"] == "37:123456"
+        assert validated["role"] == "primary"
+        assert validated["enabled"] is True
+
+    def test_rem_entry_schema_minimal(self):
+        """Test REM entry schema with minimal required fields."""
+        rem_data = {
+            "rem_id": "37:123456",
+            "role": "secondary",
+        }
+
+        validated = REM_ENTRY_SCHEMA(rem_data)
+        assert validated["rem_id"] == "37:123456"
+        assert validated["role"] == "secondary"
+        assert validated["enabled"] is True  # Default value
+
+    def test_rem_entry_schema_invalid_role(self):
+        """Test REM entry schema with invalid role."""
+        rem_data = {
+            "rem_id": "37:123456",
+            "role": "invalid_role",
+        }
+
+        with pytest.raises(vol.MultipleInvalid):
+            REM_ENTRY_SCHEMA(rem_data)
+
+    def test_rem_entry_schema_missing_required(self):
+        """Test REM entry schema missing required fields."""
+        rem_data = {
+            "enabled": True,
+        }
+
+        with pytest.raises(vol.MultipleInvalid):
+            REM_ENTRY_SCHEMA(rem_data)
+
+    def test_rem_entry_schema_extra_fields(self):
+        """Test REM entry schema rejects extra fields."""
+        rem_data = {
+            "rem_id": "37:123456",
+            "role": "primary",
+            "extra_field": "not_allowed",
+        }
+
+        with pytest.raises(vol.MultipleInvalid):
+            REM_ENTRY_SCHEMA(rem_data)
+
+    def test_fan_rem_config_schema_valid(self):
+        """Test valid FAN REM config schema."""
+        fan_config = {
+            "REMs": [
+                {
+                    "rem_id": "37:123456",
+                    "role": "primary",
+                },
+                {
+                    "rem_id": "37:789012",
+                    "role": "secondary",
+                },
+            ]
+        }
+
+        validated = FAN_REM_CONFIG_SCHEMA(fan_config)
+        assert len(validated["REMs"]) == 2
+
+    def test_fan_rem_config_schema_empty_rems(self):
+        """Test FAN REM config with empty REMs list."""
+        fan_config = {
+            "REMs": [],
+        }
+
+        validated = FAN_REM_CONFIG_SCHEMA(fan_config)
+        assert validated["REMs"] == []
+
+    def test_remote_binding_config_schema_valid(self):
+        """Test valid remote binding config schema."""
+        config = {
+            "version": 1,
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:123456",
+                            "role": "primary",
+                        }
+                    ]
+                },
+                "32:789012": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:789012",
+                            "role": "secondary",
+                        }
+                    ]
+                },
+            },
+        }
+
+        validated = REMOTE_BINDING_CONFIG_SCHEMA(config)
+        assert validated["version"] == 1
+        assert len(validated["FANs"]) == 2
+
+    def test_remote_binding_config_schema_defaults(self):
+        """Test remote binding config schema with defaults."""
+        config = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:123456",
+                            "role": "primary",
+                        }
+                    ]
+                }
+            },
+        }
+
+        validated = REMOTE_BINDING_CONFIG_SCHEMA(config)
+        assert validated["version"] == 1  # Default value
+
+    def test_remote_binding_validator_valid(self):
+        """Test remote binding validator with valid config."""
+        section = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:123456",
+                            "role": "primary",
+                        },
+                        {
+                            "rem_id": "37:789012",
+                            "role": "secondary",
+                        },
+                    ]
+                },
+                "32:111111": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:111111",
+                            "role": "boost_only",
+                        }
+                    ]
+                },
+            },
+        }
+
+        errors = remote_binding_validator(section)
+        assert errors == []
+
+    def test_remote_binding_validator_duplicate_rem(self):
+        """Test remote binding validator detects duplicate REMs."""
+        section = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:123456",
+                            "role": "primary",
+                        }
+                    ]
+                },
+                "32:789012": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:123456",  # Same REM ID
+                            "role": "secondary",
+                        }
+                    ]
+                },
+            },
+        }
+
+        errors = remote_binding_validator(section)
+        assert len(errors) == 1
+        assert "REM '37:123456' assigned to multiple FANs" in errors[0]
+
+    def test_remote_binding_validator_invalid_structure(self):
+        """Test remote binding validator with invalid structure."""
+        section = "not_a_dict"
+
+        errors = remote_binding_validator(section)
+        assert len(errors) == 1
+        assert "must be a dictionary" in errors[0]
+
+    def test_remote_binding_validator_invalid_fans_structure(self):
+        """Test remote binding validator with invalid FANs structure."""
+        section = {
+            "FANs": "not_a_dict",
+        }
+
+        errors = remote_binding_validator(section)
+        assert len(errors) == 1
+        assert "FANs must be a dictionary" in errors[0]
+
+    def test_remote_binding_validator_invalid_fan_config(self):
+        """Test remote binding validator with invalid FAN config."""
+        section = {
+            "FANs": {
+                "32:123456": "not_a_dict",
+            },
+        }
+
+        errors = remote_binding_validator(section)
+        assert len(errors) == 1
+        assert "FAN '32:123456': configuration must be a dictionary" in errors[0]
+
+    def test_remote_binding_validator_invalid_rems_structure(self):
+        """Test remote binding validator with invalid REMs structure."""
+        section = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": "not_a_list",
+                },
+            },
+        }
+
+        errors = remote_binding_validator(section)
+        assert len(errors) == 1
+        assert "FAN '32:123456': REMs must be a list" in errors[0]
+
+    def test_remote_binding_validator_missing_rem_id(self):
+        """Test remote binding validator with missing rem_id."""
+        section = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "role": "primary",
+                        }
+                    ],
+                },
+            },
+        }
+
+        errors = remote_binding_validator(section)
+        assert len(errors) == 1
+        assert "FAN '32:123456': REM missing rem_id" in errors[0]
+
+    def test_remote_binding_validator_invalid_rem_role(self):
+        """Test remote binding validator with invalid REM role."""
+        section = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:123456",
+                            "role": "invalid_role",
+                        }
+                    ],
+                },
+            },
+        }
+
+        errors = remote_binding_validator(section)
+        assert len(errors) == 1
+        assert "invalid role 'invalid_role'" in errors[0]
+
+    def test_export_remote_binding_to_yaml(self):
+        """Test export remote binding to YAML."""
+        bindings = {
+            "32:123456": {
+                "REMs": [
+                    {
+                        "rem_id": "37:123456",
+                        "role": "primary",
+                        "enabled": True,
+                    }
+                ]
+            },
+            "32:789012": {
+                "REMs": [
+                    {
+                        "rem_id": "37:789012",
+                        "role": "secondary",
+                        "enabled": False,
+                    }
+                ]
+            },
+        }
+
+        yaml_str = export_remote_binding_to_yaml(bindings)
+
+        assert "version: 1" in yaml_str
+        assert "FANs:" in yaml_str
+        assert "32:123456:" in yaml_str
+        assert "37:123456" in yaml_str
+        assert "role: primary" in yaml_str
+
+    def test_parse_remote_binding_yaml_valid(self):
+        """Test parse valid remote binding YAML."""
+        yaml_content = """
+version: 1
+FANs:
+  32:123456:
+    REMs:
+      - rem_id: 37:123456
+        role: primary
+        enabled: true
+      - rem_id: 37:789012
+        role: secondary
+"""
+
+        parsed = parse_remote_binding_yaml(yaml_content)
+
+        assert parsed["version"] == 1
+        assert "32:123456" in parsed["FANs"]
+        assert len(parsed["FANs"]["32:123456"]["REMs"]) == 2
+        assert parsed["FANs"]["32:123456"]["REMs"][0]["rem_id"] == "37:123456"
+
+    def test_parse_remote_binding_yaml_invalid_yaml(self):
+        """Test parse invalid YAML syntax."""
+        yaml_content = """
+version: 1
+FANs:
+  32:123456:
+    REMs:
+      - rem_id: 37:123456
+        role: primary
+        enabled: true
+      - rem_id: 37:789012  # Missing role
+    invalid_yaml: [unclosed
+"""
+
+        with pytest.raises(ValueError, match="Invalid YAML syntax"):
+            parse_remote_binding_yaml(yaml_content)
+
+    def test_parse_remote_binding_yaml_not_dict(self):
+        """Test parse YAML that is not a dictionary."""
+        yaml_content = """
+- item1
+- item2
+- item3
+"""
+
+        with pytest.raises(ValueError, match="YAML content must be a dictionary"):
+            parse_remote_binding_yaml(yaml_content)
+
+    def test_parse_remote_binding_yaml_schema_validation(self):
+        """Test parse YAML that fails schema validation."""
+        yaml_content = """
+version: 1
+FANs:
+  32:123456:
+    REMs:
+      - rem_id: 37:123456
+        role: invalid_role  # Invalid role
+"""
+
+        with pytest.raises(ValueError, match="Schema validation failed"):
+            parse_remote_binding_yaml(yaml_content)
+
+    def test_merge_remote_binding_config_new_fans(self):
+        """Test merge remote binding config with new FANs."""
+        existing = {
+            "FANs": {
+                "32:111111": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:111111",
+                            "role": "primary",
+                        }
+                    ]
+                }
+            }
+        }
+
+        imported = {
+            "FANs": {
+                "32:222222": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:222222",
+                            "role": "secondary",
+                        }
+                    ]
+                }
+            }
+        }
+
+        merged = merge_remote_binding_config(existing, imported)
+
+        assert len(merged["FANs"]) == 2
+        assert "32:111111" in merged["FANs"]
+        assert "32:222222" in merged["FANs"]
+
+    def test_merge_remote_binding_config_existing_fans_no_overwrite(self):
+        """Test merge config without overwriting existing FANs."""
+        existing = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:111111",
+                            "role": "primary",
+                        }
+                    ]
+                }
+            }
+        }
+
+        imported = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:222222",
+                            "role": "secondary",
+                        }
+                    ]
+                }
+            }
+        }
+
+        merged = merge_remote_binding_config(
+            existing, imported, overwrite_existing=False
+        )
+
+        # Should keep existing config
+        assert len(merged["FANs"]) == 1
+        assert merged["FANs"]["32:123456"]["REMs"][0]["rem_id"] == "37:111111"
+
+    def test_merge_remote_binding_config_existing_fans_overwrite(self):
+        """Test merge config with overwriting existing FANs."""
+        existing = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:111111",
+                            "role": "primary",
+                        }
+                    ]
+                }
+            }
+        }
+
+        imported = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:222222",
+                            "role": "secondary",
+                        }
+                    ]
+                }
+            }
+        }
+
+        merged = merge_remote_binding_config(
+            existing, imported, overwrite_existing=True
+        )
+
+        # Should have imported config
+        assert len(merged["FANs"]) == 1
+        assert merged["FANs"]["32:123456"]["REMs"][0]["rem_id"] == "37:222222"
+
+    def test_merge_remote_binding_config_no_existing_fans(self):
+        """Test merge config when existing has no FANs."""
+        existing = {}
+
+        imported = {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "37:123456",
+                            "role": "primary",
+                        }
+                    ]
+                }
+            }
+        }
+
+        merged = merge_remote_binding_config(existing, imported)
+
+        assert len(merged["FANs"]) == 1
+        assert "32:123456" in merged["FANs"]
+
+    def test_load_remote_binding_validator(self):
+        """Test load_validator function."""
+        # Should not raise any exceptions
+        load_remote_binding_validator()
+
+
 class TestYAMLValidationIntegration:
     """Integration tests for YAML validation modules."""
 
@@ -1339,8 +1851,10 @@ class TestYAMLValidationIntegration:
         load_humidity_validator()
         load_default_validator()
         load_hello_world_validator()
+        load_humidity_validator()
         load_hvac_fan_card_validator()
         load_ramses_debugger_validator()
+        load_remote_binding_validator()
         load_sensor_control_validator()
         load_zones_validator()
 

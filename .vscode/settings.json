@@ -1,4 +1,6 @@
 {
     "python.languageServer": "None",
-    "python.defaultInterpreterPath": "/home/willem/venvs/extras/bin/python"
+    "python.defaultInterpreterPath": "/home/willem/venvs/extras/bin/python",
+    "files.autoSave": "off",
+    "files.saveConflictResolution": "overwriteFileOnDisk"
 }
