@@ -5,6 +5,7 @@ including utility commands that can be used by any feature.
 """
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -984,6 +985,44 @@ async def ws_set_zone_demand(
     except Exception as err:
         _LOGGER.error("Failed to set zone demand: %s", err)
         connection.send_error(msg["id"], "set_zone_demand_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/run_zone_actuation",
+        vol.Required("fan_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_run_zone_actuation(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Trigger zone actuation cycle for a FAN.
+
+    This runs the demand-driven min/max actuation for all zones
+    associated with the specified FAN device.
+    """
+    from ...framework.helpers.zone_coordinator import get_zone_coordinator
+
+    try:
+        fan_id = msg["fan_id"]
+
+        coordinator = get_zone_coordinator(hass, fan_id)
+
+        # Run the actuation cycle
+        results = await coordinator.async_run_zone_actuation_cycle()
+
+        connection.send_result(
+            msg["id"],
+            {
+                "fan_id": fan_id,
+                "results": results,
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
+    except Exception as err:
+        _LOGGER.error("Failed to run zone actuation: %s", err)
+        connection.send_error(msg["id"], "run_zone_actuation_failed", str(err))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
