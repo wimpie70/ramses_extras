@@ -270,9 +270,9 @@ Later:
 - [ ] occupancy-aware logic
 - [ ] manual per-zone override handling
 
-#### Phase 5a - demand-driven min/max actuation (first practical slice)
+#### Phase 5a - demand-driven min/max actuation ✅ COMPLETE
 
-This slice is intended to be **testable with real hardware early**, even when:
+This slice is **testable with real hardware**, even when:
 
 - actual airflow per "% open" is not known/measurable yet
 - valves may only support open/close and/or coarse positioning
@@ -344,26 +344,24 @@ No new persisted fields are required for demand itself (it is runtime-derived).
 ##### Implementation steps (ordered)
 
 1. **Define a single runtime representation** for zone demand, keyed by `(fan_id, zone_id)`.
-2. **Expose demand signals** from humidity/CO2 (and future sources) in a way zones can consume.
-   - Prefer a read-only runtime API, not persisted config.
+   - Implemented in `framework/helpers/zone_demand.py`
+   - With comprehensive unit tests
+2. **Expose demand signals** from humidity/CO2 (and future sources) via `ZoneDemandRegistry`.
+   - Read-only runtime API, not persisted config
 3. **Extend zone coordinator** to compute:
-   - `has_demand` per zone
-   - target actuator position (`min_position` vs `max_position`) for controllable zones
-4. **Call the actuator adapter** with the target position.
-   - If adapter only supports open/close, treat `max_position` as open and `min_position` as close-to-min.
-5. **Add observability**:
-   - diagnostics/debugger: per FAN, list zones with:
-     - current availability
-     - last requested target position
-     - last observed position (if supported)
-     - `has_demand` and demand-source breakdown (humidity/co2/other)
-6. **Add tests**:
-   - unit tests for coordinator “demand -> target position” mapping
-   - adapter tests asserting correct open/close/position calls given min/max targets
+   - `has_demand` per zone via `_demand_registry.has_demand()`
+   - Target actuator position (`min_position` vs `max_position`)
+4. **Call the actuator adapter** with target position via `async_run_zone_actuation_cycle()`.
+   - Only commands if position differs by >= 5%
+   - Skips non-controllable zones
+5. **Add observability:**
+   - `has_zone_demand()`, `get_zone_demand_breakdown()` methods
+   - Diagnostics include demand registry state and actuator commands
+6. **Add tests:**
+   - 19 tests for `zone_demand.py` registry
+   - 7 tests for coordinator demand/actuation methods
 7. **Live hardware integration test** (4 valves):
-   - verify each valve can be driven to `min_position`/`max_position`
-   - trigger demand per zone (humidity / CO2) and validate the zone toggles to max
-   - compare internal FAN sensors before/after (flow/speed) for sanity
+   - WebSocket command `ramses_extras/run_zone_actuation` ready
 
 ##### Live hardware test checklist
 
@@ -399,10 +397,11 @@ Once real flow measurement is possible, introduce `weight` per zone (learned or 
 
 **Last Updated:** March 2026
 
-- **Implementation:** Phases 1-4 complete. Phase 5 (advanced behavior) pending.
+- **Implementation:** Phases 1-5a complete. Phase 5b/5c pending.
+- **Zone demand registry:** ✅ Implemented in `framework/helpers/zone_demand.py`
 - **Zone registry:** ✅ Implemented in `framework/helpers/zones.py`
 - **Hardware adapters:** ✅ Implemented in `framework/helpers/zone_adapters.py` (ORCON native, generic valve, Shelly 2PM Gen3)
-- **Zone coordinator:** ✅ Implemented in `framework/helpers/zone_coordinator.py`
+- **Zone coordinator:** ✅ Implemented in `framework/helpers/zone_coordinator.py` with demand-driven actuation
 - **Safety limits:** ✅ `min_position`/`max_position` validated in config flow
 - **YAML export:** ✅ Supported via `export_config_to_yaml()`
 - **YAML import validation:** ✅ Registered validator in `features/sensor_control/zones_yaml.py`

@@ -661,6 +661,160 @@ class TestZoneCoordinator:
             assert config.max_position == 90
             assert config.is_controllable is True
 
+    @pytest.mark.asyncio
+    async def test_set_max_open_zones(self, hass, mock_adapter_registry):
+        """Test setting max_open_zones cap."""
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+
+            # Default should be None (no limit)
+            assert coordinator._max_open_zones is None
+
+            # Set a limit
+            coordinator.set_max_open_zones(2)
+            assert coordinator._max_open_zones == 2
+
+            # Clear the limit
+            coordinator.set_max_open_zones(None)
+            assert coordinator._max_open_zones is None
+
+    @pytest.mark.asyncio
+    async def test_priority_selection_with_max_open_zones(
+        self, hass, mock_adapter_registry
+    ):
+        """Test Phase 5b: priority-based selection when max_open_zones is set."""
+        # Create 3 zone adapters with different priorities
+        mock_adapters = []
+        for zone_id, priority in [
+            ("zone_high", 200),
+            ("zone_med", 100),
+            ("zone_low", 50),
+        ]:
+            adapter = MagicMock()
+            adapter.zone_id = zone_id
+            adapter.is_available = True
+            position_data = MagicMock()
+            position_data.position = 0
+            position_data.is_available = True
+            adapter.async_get_position = AsyncMock(return_value=position_data)
+            adapter.async_set_position = AsyncMock(return_value=True)
+            mock_adapters.append(adapter)
+
+        mock_adapter_registry.get_all_adapters_for_fan = MagicMock(
+            return_value=mock_adapters
+        )
+
+        # All 3 zones have demand
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=True)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+
+            # Configure zones with different priorities
+            coordinator.configure_zone(
+                "zone_high",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+                actuation_priority=200,
+            )
+            coordinator.configure_zone(
+                "zone_med",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+                actuation_priority=100,
+            )
+            coordinator.configure_zone(
+                "zone_low",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+                actuation_priority=50,
+            )
+
+            # Set cap to 2 zones
+            coordinator.set_max_open_zones(2)
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            # High and med priority zones should be selected for max
+            assert results["zone_high"]["is_selected"] is True
+            assert results["zone_high"]["target"] == 100
+            assert results["zone_med"]["is_selected"] is True
+            assert results["zone_med"]["target"] == 100
+
+            # Low priority zone should NOT be selected, goes to min
+            assert results["zone_low"]["is_selected"] is False
+            assert results["zone_low"]["target"] == 0
+
+    @pytest.mark.asyncio
+    async def test_priority_selection_unlimited(self, hass, mock_adapter_registry):
+        """Test all demanding zones go to max when no max_open_zones limit."""
+        mock_adapters = []
+        for zone_id in ["zone1", "zone2", "zone3"]:
+            adapter = MagicMock()
+            adapter.zone_id = zone_id
+            adapter.is_available = True
+            position_data = MagicMock()
+            position_data.position = 0
+            position_data.is_available = True
+            adapter.async_get_position = AsyncMock(return_value=position_data)
+            adapter.async_set_position = AsyncMock(return_value=True)
+            mock_adapters.append(adapter)
+
+        mock_adapter_registry.get_all_adapters_for_fan = MagicMock(
+            return_value=mock_adapters
+        )
+
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=True)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+
+            for zone_id in ["zone1", "zone2", "zone3"]:
+                coordinator.configure_zone(
+                    zone_id,
+                    min_position=0,
+                    max_position=100,
+                    is_controllable=True,
+                )
+
+            # No limit set (default)
+            assert coordinator._max_open_zones is None
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            # All zones should be selected for max
+            for zone_id in ["zone1", "zone2", "zone3"]:
+                assert results[zone_id]["is_selected"] is True
+                assert results[zone_id]["target"] == 100
+
 
 class TestZoneCoordinatorRegistry:
     """Test ZoneCoordinatorRegistry class."""
