@@ -901,6 +901,19 @@ async def async_step_sensor_control_config(
                 default=co2_threshold_entity_default,
             )
         )
+        # Get zones for this FAN to populate zone dropdown
+        zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
+        fan_zones = get_zones_for_fan(zones_section, selected_device_id)
+        zone_options = [
+            selector.SelectOptionDict(
+                value=str(z.get("zone_id")), label=str(z.get("zone_id"))
+            )
+            for z in fan_zones
+            if z.get("zone_id")
+        ]
+        # Add empty option for no zone
+        zone_options.insert(0, selector.SelectOptionDict(value="", label="(no zone)"))
+
         zone_key = (
             vol.Optional("zone_id")
             if not zone_default
@@ -920,7 +933,9 @@ async def async_step_sensor_control_config(
                         else True
                     ),
                 ): bool,
-                zone_key: str,
+                zone_key: selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=zone_options, mode="dropdown")
+                ),
                 temp_key: area_sensor_selector,
                 humidity_key: area_sensor_selector,
                 vol.Required(
@@ -993,7 +1008,9 @@ async def async_step_sensor_control_config(
                     'Temperature and humidity entities should come from '
                     'the same device. Enable area_sensor_enabled '
                     'for humidity/temp, area_co2_enabled for CO2. '
-                    'Multiple area sensors can share the same zone_id.',
+                    'Multiple area sensors can share the same zone_id. '
+                    'CO2 threshold: use entity for dynamic value (e.g., input_number), '
+                    'or just set the number as static fallback.',
                 )
             }"
         )
