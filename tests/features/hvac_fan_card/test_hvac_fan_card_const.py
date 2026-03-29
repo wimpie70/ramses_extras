@@ -141,6 +141,7 @@ class TestHvacFanCardConst:
         """Test load_feature function registers components correctly."""
         from custom_components.ramses_extras.features.hvac_fan_card.const import (
             HVAC_FAN_CARD_BOOLEAN_CONFIGS,
+            HVAC_FAN_CARD_CONFIGS,
             HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
             HVAC_FAN_CARD_NUMBER_CONFIGS,
             HVAC_FAN_CARD_SENSOR_CONFIGS,
@@ -175,11 +176,14 @@ class TestHvacFanCardConst:
             )
             mock_registry.register_feature.assert_called_once_with("hvac_fan_card")
 
-            # Check card config registration
-            assert mock_registry.register_card_config.call_count == 1
-            mock_registry.register_card_config.assert_called_with(
-                "hvac_fan_card", {"card_id": "hvac-fan-card"}
+            # Check card config registration - should register ALL cards
+            assert mock_registry.register_card_config.call_count == len(
+                HVAC_FAN_CARD_CONFIGS
             )
+            for card_config in HVAC_FAN_CARD_CONFIGS:
+                mock_registry.register_card_config.assert_any_call(
+                    "hvac_fan_card", card_config
+                )
 
             # Check validator loading
             mock_load_validator.assert_called_once()

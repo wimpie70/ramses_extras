@@ -71,11 +71,14 @@ def test_register_device_mappings(registry):
 
 
 def test_register_card_config(registry):
-    """Test registering card configuration."""
-    config = {"type": "custom:ramses-card"}
+    """Test registering card configuration with card_id."""
+    config = {"card_id": "test-card", "type": "custom:ramses-card"}
     registry.register_card_config("feature1", config)
     assert registry.get_card_config("feature1") == config
-    assert registry.get_all_card_configs() == {"feature1": config}
+    # get_all_card_configs now returns nested dict: {feature_id: {card_id: config}}
+    assert registry.get_all_card_configs() == {"feature1": {"test-card": config}}
+    # get_card_configs returns just the cards dict for the feature
+    assert registry.get_card_configs("feature1") == {"test-card": config}
 
 
 def test_register_feature(registry):
@@ -119,7 +122,7 @@ def test_load_feature_definitions_with_feature_definition_dict(registry):
         "number_configs": {"n1": {"name": "N1"}},
         "boolean_configs": {"b1": {"name": "B1"}},
         "device_entity_mapping": {"32": {"sensor": ["s1"]}},
-        "card_config": {"type": "card1"},
+        "card_config": {"card_id": "card1", "type": "card1"},
         "websocket_commands": websocket_commands,
     }
 
@@ -132,7 +135,9 @@ def test_load_feature_definitions_with_feature_definition_dict(registry):
     assert "n1" in registry.get_all_number_configs()
     assert "b1" in registry.get_all_boolean_configs()
     assert registry.get_all_device_mappings()["32"]["sensor"] == ["s1"]
-    assert registry.get_card_config("test_feature") == {"type": "card1"}
+    # Card config is now stored by card_id
+    result = registry.get_card_config("test_feature")
+    assert result == {"card_id": "card1", "type": "card1"}
     assert (
         registry.get_websocket_commands_for_feature("test_feature")
         == websocket_commands
