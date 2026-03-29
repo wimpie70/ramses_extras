@@ -153,9 +153,24 @@ def migrate_zones_section(section: dict[str, Any]) -> dict[str, Any]:
         fan_groups = section.get("fans")
 
     if not isinstance(fan_groups, dict):
-        return {CONFIG_FANS_KEY: {}}
+        legacy_zones = section.get("zones")
+        if not isinstance(legacy_zones, list):
+            return {CONFIG_FANS_KEY: {}}
 
-    migrated_fans: dict[str, Any] = {}
+        migrated_fans: dict[str, Any] = {}
+        fallback_fan_id = section.get("fan_id")
+        for zone in legacy_zones:
+            if not isinstance(zone, dict):
+                continue
+            fan_id = zone.get("fan_id") or fallback_fan_id
+            if not isinstance(fan_id, str) or not fan_id.strip():
+                continue
+            normalized_fan_id = normalize_device_id(fan_id)
+            migrated_fans.setdefault(normalized_fan_id, []).append(deepcopy(zone))
+
+        return {CONFIG_FANS_KEY: migrated_fans}
+
+    migrated_fans = {}
     for fan_id, zones in fan_groups.items():
         if not isinstance(zones, list):
             continue

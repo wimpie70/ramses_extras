@@ -140,6 +140,7 @@ async def run_entry_setup_pipeline(hass: HomeAssistant, entry: ConfigEntry) -> N
     5. Validate startup entities
     6. Cleanup orphaned devices
     7. Create and start feature instances
+    8. Configure zones from YAML in zone coordinators
 
     :param hass: Home Assistant instance
     :param entry: Configuration entry for the integration
@@ -168,6 +169,82 @@ async def run_entry_setup_pipeline(hass: HomeAssistant, entry: ConfigEntry) -> N
     await cleanup_orphaned_devices(hass, entry)
 
     await create_and_start_feature_instances(hass, entry)
+
+    # Configure zones from YAML in zone coordinators
+    await configure_zones_from_yaml(hass)
+
+
+async def configure_zones_from_yaml(hass: HomeAssistant) -> None:
+    """Configure zones from YAML in zone coordinators.
+
+    Loads zones from the configuration and configures them in the
+    appropriate zone coordinators with their valve entity settings.
+
+    :param hass: Home Assistant instance
+    """
+    from ..helpers.zone_coordinator import get_zone_coordinator
+    from ..helpers.zones import get_zone_registry
+
+    _LOGGER.debug("Configuring zones from YAML...")
+
+    zone_registry = get_zone_registry(hass)
+    all_zones = zone_registry.list_all_zones()
+
+    _LOGGER.debug("Found %s FANs with zones", len(all_zones))
+
+    for fan_id, zones in all_zones.items():
+        _LOGGER.debug("Processing FAN %s with %s zones", fan_id, len(zones))
+        coordinator = get_zone_coordinator(hass, fan_id)
+        for zone in zones:
+            zone_id = zone.get("zone_id")
+            if not zone_id:
+                _LOGGER.warning("Zone missing zone_id for FAN %s", fan_id)
+                continue
+
+            zone_type = zone.get("type", "paired_valves")
+            inlet_entity = zone.get("inlet_valve_entity")
+            outlet_entity = zone.get("outlet_valve_entity")
+            min_position = zone.get("min_position", 0)
+            max_position = zone.get("max_position", 100)
+
+            _LOGGER.debug(
+                "Zone %s:%s - type=%s, inlet=%s, outlet=%s",
+                fan_id,
+                zone_id,
+                zone_type,
+                inlet_entity,
+                outlet_entity,
+            )
+
+            # Only configure controllable zones with valve entities
+            if zone_type in ("paired_valves", "custom_valve", "shelly_2pm_gen3"):
+                if not inlet_entity or not outlet_entity:
+                    _LOGGER.warning(
+                        "Zone %s:%s missing valve entities, skipping",
+                        fan_id,
+                        zone_id,
+                    )
+                    continue
+
+                coordinator.configure_zone(
+                    zone_id=zone_id,
+                    zone_type=zone_type,
+                    inlet_valve_entity=inlet_entity,
+                    outlet_valve_entity=outlet_entity,
+                    min_position=min_position,
+                    max_position=max_position,
+                    is_controllable=True,
+                )
+                _LOGGER.info(
+                    "Configured zone %s:%s with type=%s, inlet=%s, outlet=%s",
+                    fan_id,
+                    zone_id,
+                    zone_type,
+                    inlet_entity,
+                    outlet_entity,
+                )
+
+    _LOGGER.info("Configured zones from YAML for %s FANs", len(all_zones))
 
 
 async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:

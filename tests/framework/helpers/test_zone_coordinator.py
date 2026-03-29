@@ -30,7 +30,18 @@ def hass():
 @pytest.fixture
 def mock_adapter_registry():
     """Mock zone adapter registry."""
-    return MagicMock()
+    registry = MagicMock()
+    mock_adapter = MagicMock()
+    mock_adapter.zone_id = "office"
+    mock_adapter.is_available = True
+    # Default position data that won't cause errors
+    position_data = MagicMock()
+    position_data.position = 50
+    position_data.is_available = True
+    mock_adapter.async_get_position = AsyncMock(return_value=position_data)
+    mock_adapter.async_set_position = AsyncMock(return_value=True)
+    registry.get_or_create_adapter = MagicMock(return_value=mock_adapter)
+    return registry
 
 
 @pytest.fixture
@@ -410,8 +421,8 @@ class TestZoneCoordinator:
         mock_adapter.async_get_position = AsyncMock(return_value=mock_position)
         mock_adapter.async_set_position = AsyncMock(return_value=True)
 
-        mock_adapter_registry.get_all_adapters_for_fan = MagicMock(
-            return_value=[mock_adapter]
+        mock_adapter_registry.get_or_create_adapter = MagicMock(
+            return_value=mock_adapter
         )
 
         mock_demand_registry = MagicMock()
@@ -438,70 +449,26 @@ class TestZoneCoordinator:
             results = await coordinator.async_run_zone_actuation_cycle()
 
             assert "office" in results
-            assert results["office"]["has_demand"] is True
+            assert results["office"]["success"] is True
+            assert results["office"]["target"] == 100
             mock_adapter.async_set_position.assert_called_once_with(100)
 
     @pytest.mark.asyncio
     async def test_async_run_zone_actuation_cycle_no_demand(
         self, hass, mock_adapter_registry
     ):
-        """Test actuation cycle drives to min when zone has no demand."""
+        """Test actuation cycle commands zones without demand to min position."""
         mock_adapter = MagicMock()
         mock_adapter.zone_id = "office"
         mock_adapter.is_available = True
-        mock_position = MagicMock()
-        mock_position.position = 50
-        mock_position.is_available = True
-        mock_adapter.async_get_position = AsyncMock(return_value=mock_position)
+        position_data = MagicMock()
+        position_data.position = 100
+        position_data.is_available = True
+        mock_adapter.async_get_position = AsyncMock(return_value=position_data)
         mock_adapter.async_set_position = AsyncMock(return_value=True)
 
-        mock_adapter_registry.get_all_adapters_for_fan = MagicMock(
-            return_value=[mock_adapter]
-        )
-
-        mock_demand_registry = MagicMock()
-        mock_demand_registry.has_demand = MagicMock(return_value=False)  # No demand
-
-        with (
-            patch(
-                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
-                return_value=mock_adapter_registry,
-            ),
-            patch(
-                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
-                return_value=mock_demand_registry,
-            ),
-        ):
-            coordinator = ZoneCoordinator(hass, "18:000730")
-            coordinator.configure_zone(
-                "office",
-                min_position=0,
-                max_position=100,
-                is_controllable=True,
-            )
-
-            results = await coordinator.async_run_zone_actuation_cycle()
-
-            assert "office" in results
-            assert results["office"]["has_demand"] is False
-            mock_adapter.async_set_position.assert_called_once_with(0)
-
-    @pytest.mark.asyncio
-    async def test_async_run_zone_actuation_cycle_skips_when_close(
-        self, hass, mock_adapter_registry
-    ):
-        """Test actuation skips when position already close to target."""
-        mock_adapter = MagicMock()
-        mock_adapter.zone_id = "office"
-        mock_adapter.is_available = True
-        mock_position = MagicMock()
-        mock_position.position = 2  # Close to min_position=0
-        mock_position.is_available = True
-        mock_adapter.async_get_position = AsyncMock(return_value=mock_position)
-        mock_adapter.async_set_position = AsyncMock(return_value=True)
-
-        mock_adapter_registry.get_all_adapters_for_fan = MagicMock(
-            return_value=[mock_adapter]
+        mock_adapter_registry.get_or_create_adapter = MagicMock(
+            return_value=mock_adapter
         )
 
         mock_demand_registry = MagicMock()
@@ -528,7 +495,57 @@ class TestZoneCoordinator:
             results = await coordinator.async_run_zone_actuation_cycle()
 
             assert "office" in results
-            assert results["office"]["skipped"] is True
+            assert results["office"]["success"] is True
+            assert results["office"]["target"] == 0
+            mock_adapter.async_set_position.assert_called_once_with(0)
+
+    @pytest.mark.asyncio
+    async def test_async_run_zone_actuation_cycle_skips_when_close(
+        self, hass, mock_adapter_registry
+    ):
+        """Test actuation skips when position difference is small."""
+        mock_adapter = MagicMock()
+        mock_adapter.zone_id = "office"
+        mock_adapter.is_available = True
+        position_data = MagicMock()
+        position_data.position = 98  # Already very close to max (100)
+        position_data.is_available = True
+        mock_adapter.async_get_position = AsyncMock(return_value=position_data)
+        mock_adapter.async_set_position = AsyncMock(return_value=True)
+
+        mock_adapter_registry.get_or_create_adapter = MagicMock(
+            return_value=mock_adapter
+        )
+
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=True)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            coordinator.configure_zone(
+                "office",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+            )
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            # Zone should be in results but not moved (already close enough)
+            assert "office" in results
+            # Returns success, just no action
+            assert results["office"]["success"] is True
+            assert results["office"]["target"] == 100
+            # Should NOT call set_position since already within 5% of target
             mock_adapter.async_set_position.assert_not_called()
 
     @pytest.mark.asyncio

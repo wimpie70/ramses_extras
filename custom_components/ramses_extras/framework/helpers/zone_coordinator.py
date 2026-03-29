@@ -73,6 +73,10 @@ class ZoneConfig:
     is_controllable: bool = False  # Whether zone has controllable actuators
     # Phase 5b: Priority for demand resolution when max_open_zones limits active zones
     actuation_priority: int = 100  # Higher = more likely to be selected (default 100)
+    # Hardware actuator configuration
+    zone_type: str = "paired_valves"  # Type of zone adapter
+    inlet_valve_entity: str | None = None  # Inlet valve entity ID
+    outlet_valve_entity: str | None = None  # Outlet valve entity ID
 
 
 class ZoneCoordinator:
@@ -144,6 +148,9 @@ class ZoneCoordinator:
         max_position: int | None = None,
         is_controllable: bool | None = None,
         actuation_priority: int | None = None,
+        zone_type: str | None = None,
+        inlet_valve_entity: str | None = None,
+        outlet_valve_entity: str | None = None,
     ) -> None:
         """Configure zone coordination parameters.
 
@@ -158,6 +165,9 @@ class ZoneCoordinator:
             is_controllable: Whether this zone has controllable actuators
             actuation_priority: Priority for demand resolution (higher = selected first
                                when max_open_zones limits active zones)
+            zone_type: Type of zone adapter (e.g., "paired_valves")
+            inlet_valve_entity: Entity ID for inlet valve
+            outlet_valve_entity: Entity ID for outlet valve
         """
         existing = self._zone_configs.get(zone_id)
         self._zone_configs[zone_id] = ZoneConfig(
@@ -183,6 +193,15 @@ class ZoneCoordinator:
             actuation_priority=actuation_priority
             if actuation_priority is not None
             else (existing.actuation_priority if existing else 100),
+            zone_type=zone_type
+            if zone_type is not None
+            else (existing.zone_type if existing else "paired_valves"),
+            inlet_valve_entity=inlet_valve_entity
+            if inlet_valve_entity is not None
+            else (existing.inlet_valve_entity if existing else None),
+            outlet_valve_entity=outlet_valve_entity
+            if outlet_valve_entity is not None
+            else (existing.outlet_valve_entity if existing else None),
         )
         _LOGGER.debug(
             "Configured zone %s:%s with priority %s, min=%s, max=%s, controllable=%s",
@@ -557,19 +576,22 @@ class ZoneCoordinator:
 
         results: dict[str, Any] = {}
 
-        # Get all zone adapters for this FAN
-        adapters = self._adapter_registry.get_all_adapters_for_fan(self._fan_id)
+        # Get all zone configs for this FAN
+        all_zone_ids = list(self._zone_configs.keys())
+        if not all_zone_ids:
+            _LOGGER.debug("No zones configured for FAN %s", self._fan_id)
+            return results
+
+        _LOGGER.debug(
+            "Running actuation cycle for FAN %s with %s zones",
+            self._fan_id,
+            len(all_zone_ids),
+        )
 
         # Phase 5b: First pass - collect zones with demand and their priorities
         zones_with_demand: list[tuple[str, int]] = []  # (zone_id, actuation_priority)
 
-        for adapter in adapters:
-            zone_id = adapter.zone_id
-
-            # Check if zone is available and controllable
-            if not adapter.is_available:
-                continue
-
+        for zone_id in all_zone_ids:
             # Get zone config
             zone_config = self._zone_configs.get(zone_id)
             if zone_config is None or not zone_config.is_controllable:
@@ -578,6 +600,12 @@ class ZoneCoordinator:
             # Check if zone has demand
             if self._demand_registry.has_demand(self._fan_id, zone_id):
                 zones_with_demand.append((zone_id, zone_config.actuation_priority))
+                _LOGGER.debug(
+                    "Zone %s:%s has demand (priority=%s)",
+                    self._fan_id,
+                    zone_id,
+                    zone_config.actuation_priority,
+                )
 
         # Phase 5b: Select zones to open based on priority if max_open_zones is set
         selected_for_max: set[str] = set()
@@ -602,16 +630,32 @@ class ZoneCoordinator:
                 selected_for_max = {zone_id for zone_id, _ in zones_with_demand}
 
         # Second pass - actuate each zone
-        for adapter in adapters:
-            zone_id = adapter.zone_id
-
-            # Check if zone is available and controllable
-            if not adapter.is_available:
-                continue
-
+        for zone_id in all_zone_ids:
             # Get zone config for safety limits
             zone_config = self._zone_configs.get(zone_id)
             if zone_config is None or not zone_config.is_controllable:
+                continue
+
+            # Get or create adapter for this zone
+            adapter = self._adapter_registry.get_or_create_adapter(
+                fan_id=self._fan_id,
+                zone_id=zone_id,
+                zone_type=zone_config.zone_type,
+                inlet_entity=zone_config.inlet_valve_entity,
+                outlet_entity=zone_config.outlet_valve_entity,
+            )
+
+            if adapter is None:
+                _LOGGER.warning(
+                    "Failed to get/create adapter for zone %s:%s", self._fan_id, zone_id
+                )
+                continue
+
+            # Check if zone is available
+            if not adapter.is_available:
+                _LOGGER.debug(
+                    "Zone %s:%s adapter not available, skipping", self._fan_id, zone_id
+                )
                 continue
 
             # Determine target position based on demand and priority selection

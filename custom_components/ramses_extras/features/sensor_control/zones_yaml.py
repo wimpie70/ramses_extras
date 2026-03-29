@@ -22,7 +22,7 @@ ZONE_ENTRY_SCHEMA = vol.Schema(
     {
         vol.Required("zone_id"): str,
         vol.Required("type"): vol.In(
-            ["orcon_native", "custom_valve", "shelly_2pm_gen3"]
+            ["orcon_native", "custom_valve", "shelly_2pm_gen3", "paired_valves"]
         ),
         vol.Optional("enabled", default=True): bool,
         vol.Optional("fan_id"): str,
@@ -32,6 +32,9 @@ ZONE_ENTRY_SCHEMA = vol.Schema(
         vol.Optional("open_entity"): vol.Maybe(str),
         vol.Optional("close_entity"): vol.Maybe(str),
         vol.Optional("position_entity"): vol.Maybe(str),
+        # paired_valves specific (inlet/outlet valve pairs)
+        vol.Optional("inlet_valve_entity"): vol.Maybe(str),
+        vol.Optional("outlet_valve_entity"): vol.Maybe(str),
         vol.Optional("min_position", default=0): vol.All(
             int, vol.Range(min=0, max=100)
         ),
@@ -84,7 +87,12 @@ def zones_validator(section: dict, hass: Any | None = None) -> list[str]:
                 continue
 
             zone_type = zone.get("type")
-            if zone_type not in ("orcon_native", "custom_valve", "shelly_2pm_gen3"):
+            if zone_type not in (
+                "orcon_native",
+                "custom_valve",
+                "shelly_2pm_gen3",
+                "paired_valves",
+            ):
                 errors.append(f"Zone '{zone_id}': invalid type '{zone_type}'")
 
             # Validate min/max position
@@ -249,6 +257,19 @@ def validate_zone_references(
             if position_entity and not hass.states.get(position_entity):
                 errors.append(
                     f"Zone '{zone_id}': position_entity '{position_entity}' not found"
+                )
+
+        if zone_type == "paired_valves":
+            inlet_entity = zone.get("inlet_valve_entity")
+            outlet_entity = zone.get("outlet_valve_entity")
+
+            if inlet_entity and not hass.states.get(inlet_entity):
+                errors.append(
+                    f"Zone '{zone_id}': inlet_valve_entity '{inlet_entity}' not found"
+                )
+            if outlet_entity and not hass.states.get(outlet_entity):
+                errors.append(
+                    f"Zone '{zone_id}': outlet_valve_entity '{outlet_entity}' not found"
                 )
 
     return errors
