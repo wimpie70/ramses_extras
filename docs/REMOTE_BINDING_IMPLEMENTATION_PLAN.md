@@ -224,6 +224,73 @@ Design rule:
 - [ ] final integration testing with live REM devices
 - [ ] documentation update with examples
 
+#### Phase 4a - live REM integration test plan (detailed)
+
+This phase is intentionally focused on validating the end-to-end behavior with **real REM hardware**.
+
+The primary design rule remains:
+
+- REM -> FAN control must work without Home Assistant
+- Extras acts as a **state synchronization layer** when HA is online
+
+##### Test prerequisites
+
+- A known FAN device id (canonical `xx:xxxxxx` format)
+- At least one REM device to bind
+- Remote binding configured via the FAN-oriented config flow (or strict YAML import)
+- Logging enabled for troubleshooting
+
+##### What to validate (ordered)
+
+1. **Binding resolution order**
+   - Confirm explicit Extras binding is used when present.
+   - Confirm `_get_bound_rem_device()` is only used as fallback.
+   - Confirm unmatched REM traffic is correctly surfaced as diagnostics (but does not mutate persisted config).
+
+2. **Command attribution correctness**
+   - Press REM buttons for:
+     - `Auto`
+     - speed changes
+     - `Away`
+     - timer actions
+   - Confirm the observed command is attributed to the correct FAN.
+
+3. **Debounce / duplicate protection**
+   - Confirm repeated packets do not create repeated state transitions.
+   - Confirm `RQ` polling traffic is ignored.
+
+4. **Arbiter synchronization (no command echo loops)**
+   - Confirm a REM-originated action updates arbiter state.
+   - Confirm Extras does not "echo" the same command back to the FAN.
+
+5. **Conflict detection**
+   - Validate that one REM cannot be assigned to multiple FANs.
+   - Validate diagnostics/error handling when conflicts are present.
+
+6. **Offline/online behavior**
+   - With HA offline, confirm the physical REM still controls the FAN.
+   - After HA comes online, confirm arbiter state converges toward the real-world observed state.
+
+##### Observability checklist
+
+During tests, capture:
+
+- the effective binding map (per FAN)
+- last-seen timestamps
+- unmatched REM traffic counters
+- arbiter effective mode/speed and any manual override state
+
+##### Documentation updates (examples)
+
+Update documentation with:
+
+- a minimal example config snippet for one FAN / one REM
+- an example for multiple REMs with roles (`primary`, `secondary`, `boost_only`)
+- a short troubleshooting section:
+  - "REM presses not reflected in HA"
+  - "REM traffic unmatched"
+  - "binding conflict detected"
+
 ## Status
 
 **Last Updated:** March 2026

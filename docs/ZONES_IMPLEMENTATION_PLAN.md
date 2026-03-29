@@ -270,6 +270,131 @@ Later:
 - [ ] occupancy-aware logic
 - [ ] manual per-zone override handling
 
+#### Phase 5a - demand-driven min/max actuation (first practical slice)
+
+This slice is intended to be **testable with real hardware early**, even when:
+
+- actual airflow per "% open" is not known/measurable yet
+- valves may only support open/close and/or coarse positioning
+
+The key behavior for this slice is:
+
+- determine which FAN zones have **active demand** (humidity / CO2 / future area sensors)
+- drive zone actuators to either:
+  - a configured `max_position` (open)
+  - or a configured `min_position` (safe minimum open)
+
+This gives an actionable end-to-end workflow for 4 physical valves without requiring a flow model.
+
+##### Goals
+
+- Provide a deterministic and safe zone-actuation policy that responds to demand sources.
+- Keep the **fan-speed arbiter** as the single authority for FAN-level speed; this slice only controls zone actuators.
+- Make behavior observable and debuggable by comparing:
+  - which zones were deemed "demanding"
+  - which zones were driven to min/max
+  - internal FAN sensors (e.g., flow/speed/pressure if available) before/after actuation
+
+##### Non-goals (deferred)
+
+- Estimating airflow contribution per zone position.
+- Continuous proportional control.
+- Occupancy-aware behavior.
+- Manual per-zone override UI.
+
+##### Proposed control rule (initial)
+
+For each FAN:
+
+1. Compute a per-zone boolean `has_demand`.
+2. If `has_demand` is true for a controllable zone, request actuator position `max_position`.
+3. Otherwise, request actuator position `min_position`.
+4. If a zone is not controllable, do not attempt actuation.
+5. If actuator availability is false, do not attempt actuation and surface a diagnostic.
+
+Notes:
+
+- This policy does not require weighting. It only requires a reliable `has_demand` signal.
+- When multiple zones have demand, multiple zones will be driven to `max_position`.
+
+##### Where demand comes from
+
+The initial implementation should treat demand as a union of known signals, per zone:
+
+- **Humidity demand**: zone contributes if it is the active humidity contributor for that FAN.
+- **CO2 demand**: zone contributes if it is the active CO2 contributor for that FAN.
+- **Future**: any additional area-sensor derived demand should expose the same `zone_id`.
+
+The precise wiring should prefer **existing feature outputs** over duplicating logic in zones:
+
+- zones consumes “zone_id is demanding” signals
+- the producing feature remains owner of its own thresholds and logic
+
+##### Data model additions (minimal)
+
+To support Phase 5a without introducing flow weighting, add optional config fields:
+
+- `zones.FANs[device_id][*].policy`
+  - `mode`: `demand_minmax` (default for controllable zones)
+  - `min_position`: already exists (safety)
+  - `max_position`: already exists (safety)
+
+No new persisted fields are required for demand itself (it is runtime-derived).
+
+##### Implementation steps (ordered)
+
+1. **Define a single runtime representation** for zone demand, keyed by `(fan_id, zone_id)`.
+2. **Expose demand signals** from humidity/CO2 (and future sources) in a way zones can consume.
+   - Prefer a read-only runtime API, not persisted config.
+3. **Extend zone coordinator** to compute:
+   - `has_demand` per zone
+   - target actuator position (`min_position` vs `max_position`) for controllable zones
+4. **Call the actuator adapter** with the target position.
+   - If adapter only supports open/close, treat `max_position` as open and `min_position` as close-to-min.
+5. **Add observability**:
+   - diagnostics/debugger: per FAN, list zones with:
+     - current availability
+     - last requested target position
+     - last observed position (if supported)
+     - `has_demand` and demand-source breakdown (humidity/co2/other)
+6. **Add tests**:
+   - unit tests for coordinator “demand -> target position” mapping
+   - adapter tests asserting correct open/close/position calls given min/max targets
+7. **Live hardware integration test** (4 valves):
+   - verify each valve can be driven to `min_position`/`max_position`
+   - trigger demand per zone (humidity / CO2) and validate the zone toggles to max
+   - compare internal FAN sensors before/after (flow/speed) for sanity
+
+##### Live hardware test checklist
+
+For each FAN:
+
+1. Confirm each zone’s actuator entities are available.
+2. Confirm each controllable zone has `min_position` and `max_position` set.
+3. Force a single-zone demand (e.g., raise humidity/CO2 in one zone).
+4. Observe:
+   - zone coordinator marks exactly that `zone_id` as demanding
+   - that zone drives to max, all other controllable zones drive to min
+   - FAN internal sensors respond plausibly (directional validation, not calibration)
+5. Repeat for each zone.
+
+#### Phase 5b - priorities (still without weighting)
+
+Add per-zone `priority` (integer) to resolve cases where not all demanding zones should open to max.
+
+Initial policy option:
+
+- allow a per-FAN cap like `max_open_zones` (optional)
+- if more zones demand than the cap, open the highest priority ones
+
+#### Phase 5c - learned weighting (future)
+
+Once real flow measurement is possible, introduce `weight` per zone (learned or configured) to support:
+
+- selecting the best subset of zones to open
+- distributing opening across zones
+- producing a stable FAN-level demand estimate
+
 ## Status
 
 **Last Updated:** March 2026

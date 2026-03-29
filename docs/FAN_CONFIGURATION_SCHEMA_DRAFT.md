@@ -152,6 +152,22 @@ This matches the current user preference:
 - keep remote binding and zones under a FAN-oriented config area
 - do not force them into separate top-level user concepts
 
+## Card configuration note (multiple cards per feature)
+
+Some features (e.g. the debugger) expose multiple dashboard cards.
+
+Recommended direction:
+
+- treat card configuration as **a list of card descriptors per feature**
+- keep feature ownership (the feature defines its own cards)
+- keep a stable per-card identity via `card_id`
+
+This implies that the registry and any installation logic should support:
+
+- `feature_id -> [card_config, ...]`
+
+and should not silently drop additional cards.
+
 ## Relationship to current sensor_control storage
 
 Today `sensor_control` is already the closest thing to a FAN-oriented configuration area.

@@ -348,6 +348,16 @@ Needed work:
 - expose structured config diagnostics separately from live runtime state
 - optionally show discovery suggestions and unresolved mappings
 
+## Card features (multiple cards per feature)
+
+Some features may expose multiple frontend cards (e.g. debugger).
+
+Recommended direction:
+
+- support **multiple card configs per feature** (keyed by `card_id`)
+- treat card configs as feature-owned definitions
+- keep install/remove logic and registry storage compatible with more than one card
+
 ## Config flow and frontend direction
 
 ## Near-term UI direction
