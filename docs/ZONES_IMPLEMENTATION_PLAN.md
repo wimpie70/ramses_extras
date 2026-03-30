@@ -376,7 +376,7 @@ For each FAN:
    - FAN internal sensors respond plausibly (directional validation, not calibration)
 5. Repeat for each zone.
 
-#### Phase 5b - priorities (still without weighting)
+#### Phase 5b - priorities (next, without weighting)
 
 Add per-zone `priority` (integer) to resolve cases where not all demanding zones should open to max.
 
@@ -392,6 +392,13 @@ Once real flow measurement is possible, introduce `weight` per zone (learned or 
 - selecting the best subset of zones to open
 - distributing opening across zones
 - producing a stable FAN-level demand estimate
+
+**Preparation without hardware:** We can prepare a theoretical lookup table based on:
+- Pipe diameter (e.g., 150mm round)
+- Fan speed settings (low/medium/high with known flow rates)
+- Valve position vs. estimated flow curves
+
+This gives a starting weight model that can be refined once real flow sensors are available.
 
 ## Status
 

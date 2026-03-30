@@ -301,6 +301,27 @@ def find_entities_for_zone(
     return entities
 
 
+def get_fan_max_open_zones(section: dict[str, Any], device_id: str) -> int | None:
+    """Get max_open_zones setting for a FAN.
+
+    Args:
+        section: Zones feature section
+        device_id: FAN device ID
+
+    Returns:
+        Maximum number of zones that can be open simultaneously,
+        or None if no limit is set
+    """
+    fan_section = get_fan_section(section, device_id)
+    if not isinstance(fan_section, dict):
+        return None
+
+    max_open = fan_section.get("max_open_zones")
+    if isinstance(max_open, int) and max_open > 0:
+        return max_open
+    return None
+
+
 __all__ = [
     "CONFIG_DEVICES_KEY",
     "CONFIG_FANS_KEY",
@@ -321,6 +342,7 @@ __all__ = [
     "find_areas_for_zone",
     "find_entities_for_zone",
     "get_fan_ids",
+    "get_fan_max_open_zones",
     "get_fan_section",
     "get_feature_section",
     "get_features_container",

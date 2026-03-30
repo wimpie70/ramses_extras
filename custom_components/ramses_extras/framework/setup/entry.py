@@ -182,6 +182,7 @@ async def configure_zones_from_yaml(hass: HomeAssistant) -> None:
 
     :param hass: Home Assistant instance
     """
+    from ..helpers.config.model import get_fan_max_open_zones
     from ..helpers.zone_coordinator import get_zone_coordinator
     from ..helpers.zones import get_zone_registry
 
@@ -192,9 +193,27 @@ async def configure_zones_from_yaml(hass: HomeAssistant) -> None:
 
     _LOGGER.debug("Found %s FANs with zones", len(all_zones))
 
+    # Get zones section for max_open_zones lookup
+    from ..helpers.config.migration import get_migrated_feature_section
+
+    config_entry = hass.data.get(DOMAIN, {}).get("config_entry")
+    raw_config: dict = {}
+    if config_entry:
+        if config_entry.data:
+            raw_config.update(config_entry.data)
+        if config_entry.options:
+            raw_config.update(config_entry.options)
+    zones_section = get_migrated_feature_section(raw_config, "zones")
+
     for fan_id, zones in all_zones.items():
         _LOGGER.debug("Processing FAN %s with %s zones", fan_id, len(zones))
         coordinator = get_zone_coordinator(hass, fan_id)
+
+        # Set max_open_zones from config
+        max_open_zones = get_fan_max_open_zones(zones_section, fan_id)
+        if max_open_zones is not None:
+            coordinator.set_max_open_zones(max_open_zones)
+            _LOGGER.info("Set max_open_zones=%s for FAN %s", max_open_zones, fan_id)
         for zone in zones:
             zone_id = zone.get("zone_id")
             if not zone_id:
@@ -206,14 +225,16 @@ async def configure_zones_from_yaml(hass: HomeAssistant) -> None:
             outlet_entity = zone.get("outlet_valve_entity")
             min_position = zone.get("min_position", 0)
             max_position = zone.get("max_position", 100)
+            actuation_priority = zone.get("actuation_priority", 100)
 
             _LOGGER.debug(
-                "Zone %s:%s - type=%s, inlet=%s, outlet=%s",
+                "Zone %s:%s - type=%s, inlet=%s, outlet=%s, priority=%s",
                 fan_id,
                 zone_id,
                 zone_type,
                 inlet_entity,
                 outlet_entity,
+                actuation_priority,
             )
 
             # Only configure controllable zones with valve entities
@@ -234,14 +255,16 @@ async def configure_zones_from_yaml(hass: HomeAssistant) -> None:
                     min_position=min_position,
                     max_position=max_position,
                     is_controllable=True,
+                    actuation_priority=actuation_priority,
                 )
                 _LOGGER.info(
-                    "Configured zone %s:%s with type=%s, inlet=%s, outlet=%s",
+                    "Configured zone %s:%s type=%s inlet=%s outlet=%s priority=%s",
                     fan_id,
                     zone_id,
                     zone_type,
                     inlet_entity,
                     outlet_entity,
+                    actuation_priority,
                 )
 
     _LOGGER.info("Configured zones from YAML for %s FANs", len(all_zones))
