@@ -539,6 +539,21 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     outlet_pos,
                 )
 
+            # Helper to check if Shelly is online
+            async def _is_shelly_available(ip: str, timeout: int = 5) -> bool:
+                """Check if Shelly device is reachable via HTTP."""
+                import aiohttp
+
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f"http://{ip}/rpc/Shelly.GetStatus",
+                            timeout=aiohttp.ClientTimeout(total=timeout),
+                        ):
+                            return True
+                except Exception:
+                    return False
+
             # Helper to get IP from entity's device
             async def _get_shelly_ip(entity_id: str | None) -> str | None:
                 """Get IP address from Shelly device entity."""
@@ -607,8 +622,25 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     )
                     calibration_results[f"{zone_id}_outlet"] = "ip_not_found"
 
+                # Check availability before attempting calibration
+                inlet_available = inlet_ip and await _is_shelly_available(inlet_ip)
+                outlet_available = outlet_ip and await _is_shelly_available(outlet_ip)
+
+                if inlet_ip and not inlet_available:
+                    _LOGGER.warning(
+                        "Inlet Shelly at %s is offline, skipping calibration", inlet_ip
+                    )
+                    calibration_results[f"{zone_id}_inlet"] = "device_offline"
+
+                if outlet_ip and not outlet_available:
+                    _LOGGER.warning(
+                        "Outlet Shelly at %s is offline, skipping calibration",
+                        outlet_ip,
+                    )
+                    calibration_results[f"{zone_id}_outlet"] = "device_offline"
+
                 # Calibrate inlet valve
-                if inlet_ip:
+                if inlet_available:
                     try:
                         _LOGGER.debug("Calibrating inlet valve at %s", inlet_ip)
                         await hass.services.async_call(
@@ -626,7 +658,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         calibration_results[f"{zone_id}_inlet"] = str(err)
 
                 # Calibrate outlet valve
-                if outlet_ip:
+                if outlet_available:
                     try:
                         _LOGGER.debug("Calibrating outlet valve at %s", outlet_ip)
                         await hass.services.async_call(
