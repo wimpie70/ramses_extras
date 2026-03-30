@@ -3,8 +3,15 @@ docs/REMOTE_BINDING_IMPLEMENTATION_PLAN.md
 docs/ZONES_IMPLEMENTATION_PLAN.md
 docs/CONFIGURATION_STRATEGY.md
 
-Pending:
+zone ventilation:
+on demand, we want the other zones to keep the same ventilation
+as would be on low, but, we want extra ventilation on the demand zone.
+So, when we set a fan to eg. high, and open up the valves for zone 1 (with the demand),
+we want the other zones to close their valves to maintain the same ventilation as would be on low.
+Or at least about the same.
 
-Remote binding Phase 4: final integration testing with live REM devices
-Zones Phase 5: learned airflow weighting, zone priorities, occupancy-aware logic, manual per-zone override
-CONFIGURATION_STRATEGY Phase 5: richer frontend editing (deferred)
+What kind of calculation or test do we need to do to determine the valve positions?
+We have round 150 mm pipes. The fan now gives:
+low: 13 l/s (at 15%)
+medium: 41.63 l/s (at 50%)
+high: 83 l/s (at 100%)

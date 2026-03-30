@@ -100,6 +100,22 @@ class ZoneDemandRegistry:
             has_demand,
         )
 
+        # Fire event for automation triggers
+        _LOGGER.debug(
+            "Firing ramses_extras_zone_demand_changed event for %s:%s",
+            fan_id,
+            zone_id,
+        )
+        self._hass.bus.fire(
+            "ramses_extras_zone_demand_changed",
+            {
+                "fan_id": fan_id,
+                "zone_id": zone_id,
+                "source": source.name,
+                "has_demand": has_demand,
+            },
+        )
+
     def clear_demand(
         self,
         fan_id: str,

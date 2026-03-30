@@ -1,0 +1,311 @@
+# Testing package for ramses_extras zone control
+# Place this file in your Home Assistant packages folder (e.g., packages/ramses_extras_zone_testing.yaml)
+# and enable packages in configuration.yaml
+
+input_button:
+  # Zone 1 controls
+  ramses_extras_zone1_demand_on:
+    name: "Zone 1 Demand ON"
+    icon: mdi:valve-open
+  ramses_extras_zone1_demand_off:
+    name: "Zone 1 Demand OFF"
+    icon: mdi:valve-closed
+  ramses_extras_zone1_actuate:
+    name: "Zone 1 Actuate"
+    icon: mdi:play-circle
+
+  # Zone 2 controls (add more zones as needed)
+  ramses_extras_zone2_demand_on:
+    name: "Zone 2 Demand ON"
+    icon: mdi:valve-open
+  ramses_extras_zone2_demand_off:
+    name: "Zone 2 Demand OFF"
+    icon: mdi:valve-closed
+  ramses_extras_zone2_actuate:
+    name: "Zone 2 Actuate"
+    icon: mdi:play-circle
+
+  # Global controls
+  ramses_extras_all_zones_actuate:
+    name: "Run All Zone Actuation"
+    icon: mdi:fan
+  ramses_extras_clear_all_demands:
+    name: "Clear All Zone Demands"
+    icon: mdi:close-circle
+
+  # Calibration button only (IPs come from zone config)
+  ramses_extras_calibrate_all_valves:
+    name: "Calibrate All Valves"
+    icon: mdi:tape-measure
+
+input_text:
+  # Configurable FAN device ID for testing
+  ramses_extras_test_fan_id:
+    name: "FAN Device ID"
+    initial: "32:153289"
+    max: 20
+
+  # Calibration state tracking (set by automations, read by binary_sensor)
+  ramses_extras_calibration_state:
+    name: "Calibration State"
+    initial: "idle"
+    max: 20
+
+input_boolean:
+  # Toggle to enable auto-actuation when demand changes
+  ramses_extras_auto_actuation:
+    name: "Auto-actuate on demand change"
+    icon: mdi:auto-fix
+    initial: true
+
+# Modern template syntax for binary_sensor (replaces legacy platform: template)
+template:
+  - binary_sensor:
+      # Calibration status indicator (read-only, shows when calibration is active)
+      - name: "Valve Calibration In Progress"
+        unique_id: ramses_extras_calibrating
+        icon: mdi:tape-measure
+        state: "{{ states('input_text.ramses_extras_calibration_state') == 'calibrating' }}"
+
+rest_command:
+  # Shelly Gen 2/3 calibration (used by backend service)
+  shelly_calibrate_cover_0:
+    url: "http://{{ ip }}/rpc/Cover.Calibrate?id=0"
+    method: GET
+
+automation:
+  # Zone 1: Set demand ON when button pressed
+  - id: ramses_extras_zone1_demand_on
+    alias: "Zone 1 Demand ON"
+    trigger:
+      - platform: state
+        entity_id: input_button.ramses_extras_zone1_demand_on
+    action:
+      - service: ramses_extras.set_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+          zone_id: "zone 1 + 2"
+          has_demand: true
+
+  # Zone 1: Set demand OFF when button pressed
+  - id: ramses_extras_zone1_demand_off
+    alias: "Zone 1 Demand OFF"
+    trigger:
+      - platform: state
+        entity_id: input_button.ramses_extras_zone1_demand_off
+    action:
+      - service: ramses_extras.set_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+          zone_id: "zone 1 + 2"
+          has_demand: false
+      - service: ramses_extras.clear_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+          zone_id: "zone 1 + 2"
+
+  # Zone 1: Run actuation when button pressed (actuates ALL zones for this FAN)
+  - id: ramses_extras_zone1_actuate
+    alias: "Zone 1 Actuate (All Zones)"
+    trigger:
+      - platform: state
+        entity_id: input_button.ramses_extras_zone1_actuate
+    action:
+      - service: ramses_extras.run_zone_actuation
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+
+  # Zone 2: Set demand ON when button pressed
+  - id: ramses_extras_zone2_demand_on
+    alias: "Zone 2 Demand ON"
+    trigger:
+      - platform: state
+        entity_id: input_button.ramses_extras_zone2_demand_on
+    action:
+      - service: ramses_extras.set_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+          zone_id: "zone 2 + 3"
+          has_demand: true
+
+  # Zone 2: Set demand OFF when button pressed
+  - id: ramses_extras_zone2_demand_off
+    alias: "Zone 2 Demand OFF"
+    trigger:
+      - platform: state
+        entity_id: input_button.ramses_extras_zone2_demand_off
+    action:
+      - service: ramses_extras.set_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+          zone_id: "zone 2 + 3"
+          has_demand: false
+      - service: ramses_extras.clear_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+          zone_id: "zone 2 + 3"
+
+  # Zone 2: Run actuation when button pressed (actuates ALL zones for this FAN)
+  - id: ramses_extras_zone2_actuate
+    alias: "Zone 2 Actuate (All Zones)"
+    trigger:
+      - platform: state
+        entity_id: input_button.ramses_extras_zone2_actuate
+    action:
+      - service: ramses_extras.run_zone_actuation
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+
+  # Auto-actuation: Run actuation cycle after demand changes (if enabled)
+  - id: ramses_extras_auto_actuation_on_demand
+    alias: "Auto-actuate on zone demand change"
+    mode: parallel
+    trigger:
+      - platform: event
+        event_type: ramses_extras_zone_demand_changed
+    condition:
+      - condition: state
+        entity_id: input_boolean.ramses_extras_auto_actuation
+        state: "on"
+    action:
+      - delay:
+          seconds: 1
+      - service: ramses_extras.run_zone_actuation
+        data:
+          device_id: "{{ trigger.event.data.fan_id }}"
+
+  # Run all zone actuation
+  - id: ramses_extras_all_zones_actuate
+    alias: "Run All Zone Actuation"
+    trigger:
+      - platform: state
+        entity_id: input_button.ramses_extras_all_zones_actuate
+    action:
+      - service: ramses_extras.run_zone_actuation
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+
+  # Clear all demands
+  - id: ramses_extras_clear_all_demands
+    alias: "Clear All Zone Demands"
+    trigger:
+      - platform: state
+        entity_id: input_button.ramses_extras_clear_all_demands
+    action:
+      - service: ramses_extras.clear_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+
+  # Calibration automations - using backend service
+  - id: ramses_extras_calibrate_all
+    alias: "Calibrate All Valves"
+    trigger:
+      - platform: state
+        entity_id: input_button.ramses_extras_calibrate_all_valves
+    action:
+      - service: ramses_extras.calibrate_all_valves
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+
+  # Set calibration status when calibration starts
+  - id: ramses_extras_calibrate_start
+    alias: "Calibration Started"
+    trigger:
+      - platform: event
+        event_type: ramses_extras_valve_calibration_started
+    action:
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.ramses_extras_calibration_state
+        data:
+          value: "calibrating"
+
+  # Clear calibration status when calibration completes
+  - id: ramses_extras_calibrate_complete
+    alias: "Calibration Completed"
+    trigger:
+      - platform: event
+        event_type: ramses_extras_valve_calibration_completed
+    action:
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.ramses_extras_calibration_state
+        data:
+          value: "idle"
+
+script:
+  # Quick test sequence: set demand + run actuation
+  ramses_extras_quick_zone_test:
+    alias: "Quick Zone Test"
+    sequence:
+      - service: ramses_extras.set_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+          zone_id: "{{ zone_id | default('zone 1 + 2') }}"
+          has_demand: true
+      - delay:
+          seconds: 1
+      - service: ramses_extras.run_zone_actuation
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+
+  # Full cycle test: open then close
+  ramses_extras_full_cycle_test:
+    alias: "Full Zone Cycle Test"
+    sequence:
+      - service: ramses_extras.set_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+          zone_id: "{{ zone_id | default('zone 1 + 2') }}"
+          has_demand: true
+      - delay:
+          seconds: 2
+      - service: ramses_extras.run_zone_actuation
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+      - delay:
+          seconds: 10
+      - service: ramses_extras.clear_zone_demand
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+          zone_id: "{{ zone_id | default('zone 1 + 2') }}"
+      - delay:
+          seconds: 2
+      - service: ramses_extras.run_zone_actuation
+        data:
+          device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
+
+sensor:
+  # Zone demand status display
+  - platform: template
+    sensors:
+      ramses_extras_zone1_demand_status:
+        friendly_name: "Zone 1 Demand Status"
+        value_template: "{{ 'DEMAND' if states('binary_sensor.ramses_extras_zone_1_2_demand') == 'on' else 'NO DEMAND' }}"
+        icon_template: "{% if states('binary_sensor.ramses_extras_zone_1_2_demand') == 'on' %}mdi:valve-open{% else %}mdi:valve-closed{% endif %}"
+
+      ramses_extras_zone2_demand_status:
+        friendly_name: "Zone 2 Demand Status"
+        value_template: "{{ 'DEMAND' if states('binary_sensor.ramses_extras_zone_3_4_demand') == 'on' else 'NO DEMAND' }}"
+        icon_template: "{% if states('binary_sensor.ramses_extras_zone_3_4_demand') == 'on' %}mdi:valve-open{% else %}mdi:valve-closed{% endif %}"
+
+homeassistant:
+  customize:
+    input_button.ramses_extras_zone1_demand_on:
+      order: 1
+    input_button.ramses_extras_zone1_demand_off:
+      order: 2
+    input_button.ramses_extras_zone1_actuate:
+      order: 3
+    input_button.ramses_extras_zone2_demand_on:
+      order: 4
+    input_button.ramses_extras_zone2_demand_off:
+      order: 5
+    input_button.ramses_extras_zone2_actuate:
+      order: 6
+    input_button.ramses_extras_all_zones_actuate:
+      order: 10
+    input_button.ramses_extras_clear_all_demands:
+      order: 11
+    input_button.ramses_extras_calibrate_all_valves:
+      order: 20

@@ -300,6 +300,13 @@ export const CARD_STYLE = `
   animation: pulse-red 2s infinite;
 }
 
+.r-xtrs-hvac-fan-connection-status.calibrating {
+  background: rgba(255, 193, 7, 0.15);
+  color: #f4b400;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  animation: pulse-yellow 1.5s infinite;
+}
+
 .r-xtrs-hvac-fan-connection-icon {
   font-size: 8px;
   line-height: 1;
@@ -318,6 +325,18 @@ export const CARD_STYLE = `
   }
   50% {
     opacity: 0.6;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-yellow {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
   }
   100% {
     opacity: 1;

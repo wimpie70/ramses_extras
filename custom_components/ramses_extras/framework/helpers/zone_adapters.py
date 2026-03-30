@@ -416,7 +416,8 @@ class PairedValvesZoneAdapter(ZoneAdapterBase):
             if config.extra_config
             else None
         )
-        self._invert_logic: bool = True  # Shelly 2PM typically needs inversion
+        self._invert_logic: bool = False  # Set to True if your valves are
+        # wired opposite (0% = open, 100% = closed)
 
     def _check_availability(self) -> bool:
         """Check if both valve entities are available."""
