@@ -376,7 +376,7 @@ For each FAN:
    - FAN internal sensors respond plausibly (directional validation, not calibration)
 5. Repeat for each zone.
 
-#### Phase 5b - priorities (next, without weighting)
+#### Phase 5b - priorities ✅ COMPLETE
 
 Add per-zone `priority` (integer) to resolve cases where not all demanding zones should open to max.
 
@@ -384,6 +384,8 @@ Initial policy option:
 
 - allow a per-FAN cap like `max_open_zones` (optional)
 - if more zones demand than the cap, open the highest priority ones
+
+**Implementation:** `actuation_priority` in `ZoneConfig`, `_max_open_zones` in `ZoneCoordinator`, priority sorting in `async_run_zone_actuation_cycle()`
 
 #### Phase 5c - learned weighting (future)
 
@@ -404,12 +406,13 @@ This gives a starting weight model that can be refined once real flow sensors ar
 
 **Last Updated:** March 2026
 
-- **Implementation:** Phases 1-5a complete. Phase 5b/5c pending.
+- **Implementation:** Phases 1-5b complete. Phase 5c pending (requires flow measurement hardware).
 - **Zone demand registry:** ✅ Implemented in `framework/helpers/zone_demand.py`
 - **Zone registry:** ✅ Implemented in `framework/helpers/zones.py`
 - **Hardware adapters:** ✅ Implemented in `framework/helpers/zone_adapters.py` (ORCON native, generic valve, Shelly 2PM Gen3)
-- **Zone coordinator:** ✅ Implemented in `framework/helpers/zone_coordinator.py` with demand-driven actuation
+- **Zone coordinator:** ✅ Implemented in `framework/helpers/zone_coordinator.py` with demand-driven actuation and priority-based selection
 - **Safety limits:** ✅ `min_position`/`max_position` validated in config flow
+- **Phase 5b priorities:** ✅ `actuation_priority` and `max_open_zones` implemented with tests
 - **YAML export:** ✅ Supported via `export_config_to_yaml()`
 - **YAML import validation:** ✅ Registered validator in `features/sensor_control/zones_yaml.py`
 - **Integration:** Zones feed FAN-level demand to the arbiter (same boundary as humidity/CO2 control)

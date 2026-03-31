@@ -198,7 +198,7 @@ class SensorControlResolver:
                 continue
 
             source_id = str(item.get("source_id") or "").strip()
-            label = str(item.get("label") or source_id or "Unnamed").strip()
+            area_id = str(item.get("area_id") or source_id or "Unnamed").strip()
             temperature_entity = str(item.get("temperature_entity") or "").strip()
             humidity_entity = str(item.get("humidity_entity") or "").strip()
             co2_entity = str(item.get("co2_entity") or "").strip()
@@ -221,7 +221,7 @@ class SensorControlResolver:
 
             resolved_item: dict[str, Any] = {
                 "source_id": source_id,
-                "label": label,
+                "area_id": area_id,
                 "enabled": area_enabled,
                 "temperature_entity": temperature_entity or None,
                 "humidity_entity": humidity_entity or None,

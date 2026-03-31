@@ -312,6 +312,10 @@ class RemoteBindingRegistry:
                 }
                 if "source" in binding:
                     rem_entry["source"] = binding["source"]
+                if "zone_id" in binding:
+                    rem_entry["zone_id"] = binding["zone_id"]
+                if "area_id" in binding:
+                    rem_entry["area_id"] = binding["area_id"]
                 fans_section[fan_id]["REMs"].append(rem_entry)
 
         # Use JSON as a simple YAML-compatible serialization

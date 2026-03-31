@@ -783,7 +783,7 @@ ramses_extras:
       area_sensors:
         "32:153289":
           - source_id: bathroom
-            label: Bathroom
+            area_id: Bathroom
             zone_id: bathroom
             temperature_entity: sensor.bathroom_temp
             humidity_entity: sensor.bathroom_hum

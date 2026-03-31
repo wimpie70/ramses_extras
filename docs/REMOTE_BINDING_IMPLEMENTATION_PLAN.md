@@ -18,7 +18,9 @@ This plan covers:
 - feeding shared HA/arbiter state from remote commands
 - exposing binding state to diagnostics and cards where useful
 
-This plan does not try to move the source of truth into `ramses_rf`. The binding is intentionally maintained in Extras for now.
+This plan does not try to provision bindings into devices or move the source of truth into `ramses_rf`.
+
+The association is intentionally maintained in Extras.
 
 ## Goals
 
@@ -102,15 +104,20 @@ Suggested storage location:
 - a structured `remote_binding` feature section in persisted config
 - mirrored into `hass.data[DOMAIN]` at runtime for fast lookup
 
+Future direction (deferred): the same REM entry may be extended to carry optional
+location metadata (`zone_id`, `area_id`) and, potentially, sensor references
+(temperature/humidity/CO2) for a single “control point” concept.
+
+We keep the feature id `remote_binding` for now to avoid unnecessary migrations.
+
 ### 2. Binding resolution order
 
 When Extras needs to determine whether a remote belongs to a FAN:
 
 1. explicit Extras binding
-2. live lookup via `_get_bound_rem_device()`
-3. no match -> ignore as unrelated traffic
+2. no match -> ignore as unrelated traffic
 
-This gives a stable user-configured path while still benefiting from device-reported information if present.
+Device-reported binding (when available) is treated as **informational/diagnostic** only.
 
 ### 3. Runtime service API
 

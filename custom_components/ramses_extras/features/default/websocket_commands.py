@@ -445,7 +445,7 @@ async def ws_get_bound_rem(
             "bound_rem": bound,
             "extras_binding": extras_binding,
             "extras_rem_id": extras_rem_id,
-            "source": "device" if bound else ("extras" if extras_rem_id else None),
+            "source": "extras" if extras_rem_id else ("device" if bound else None),
         },
     )
 

@@ -413,6 +413,15 @@ class TestRemoteBindingDiagnostics:
                     "role": "primary",
                     "enabled": True,
                     "source": "manual_config",
+                    "zone_id": "bathroom",
+                    "area_id": "bathroom",
+                }
+            ],
+            "32:789012": [
+                {
+                    "rem_id": "37:987654",
+                    "role": "secondary",
+                    "enabled": True,
                 }
             ],
         }
@@ -423,6 +432,9 @@ class TestRemoteBindingDiagnostics:
 
             assert "features" in yaml_str
             assert "remote_binding" in yaml_str
+            assert "zone_id" in yaml_str
+            assert "area_id" in yaml_str
+            assert "bathroom" in yaml_str
             assert "32:123456" in yaml_str
             assert "37:654321" in yaml_str
             assert "REMs" in yaml_str

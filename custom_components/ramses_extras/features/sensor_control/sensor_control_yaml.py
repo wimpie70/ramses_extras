@@ -29,7 +29,7 @@ from .const import (
 AREA_SENSOR_SCHEMA = vol.Schema(
     {
         vol.Required("source_id"): str,
-        vol.Optional("label"): str,
+        vol.Optional("area_id"): str,
         vol.Optional("zone_id"): str,
         vol.Optional("enabled", default=True): bool,
         vol.Optional("temperature_entity"): str,

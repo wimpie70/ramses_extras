@@ -765,7 +765,7 @@ class TestSensorControlYAML:
         """Test area sensor schema with valid data."""
         sensor_data = {
             "source_id": "bathroom",
-            "label": "Bathroom",
+            "area_id": "Bathroom",
             "zone_id": "bathroom",
             "enabled": True,
             "temperature_entity": "sensor.bathroom_temp",
@@ -776,6 +776,7 @@ class TestSensorControlYAML:
 
         result = AREA_SENSOR_SCHEMA(sensor_data)
         assert result["source_id"] == "bathroom"
+        assert result["area_id"] == "Bathroom"
         assert result["zone_id"] == "bathroom"
         assert result["co2_threshold"] == 1000
 
@@ -1277,6 +1278,8 @@ class TestRemoteBindingYAML:
             "role": "primary",
             "enabled": True,
             "source": "manual",
+            "zone_id": "bathroom",
+            "area_id": "bathroom",
         }
 
         # Should not raise any exceptions
@@ -1284,6 +1287,8 @@ class TestRemoteBindingYAML:
         assert validated["rem_id"] == "37:123456"
         assert validated["role"] == "primary"
         assert validated["enabled"] is True
+        assert validated["zone_id"] == "bathroom"
+        assert validated["area_id"] == "bathroom"
 
     def test_rem_entry_schema_minimal(self):
         """Test REM entry schema with minimal required fields."""

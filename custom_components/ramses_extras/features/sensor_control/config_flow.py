@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 
 from ...const import AVAILABLE_FEATURES, DOMAIN
@@ -18,6 +19,7 @@ from ...framework.helpers.config.model import (
     SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
     SENSOR_CONTROL_AREA_SENSORS_KEY,
     SENSOR_CONTROL_SOURCES_KEY,
+    get_remote_binding_rems,
     get_zones_for_fan,
     legacy_device_key,
     normalize_device_id,
@@ -25,6 +27,7 @@ from ...framework.helpers.config.model import (
     set_feature_section,
 )
 from ...framework.helpers.config.validation import (
+    FEATURE_REMOTE_BINDING,
     FEATURE_SENSOR_CONTROL,
     FEATURE_ZONES,
 )
@@ -162,6 +165,22 @@ def _persist_sensor_control_section(
     )
 
 
+def _persist_remote_binding_section(
+    flow: Any,
+    options: dict[str, Any],
+    remote_binding_section: dict[str, Any],
+) -> None:
+    canonical_section = deepcopy(remote_binding_section)
+
+    options = dict(options)
+    options[FEATURE_REMOTE_BINDING] = canonical_section
+    set_feature_section(options, FEATURE_REMOTE_BINDING, canonical_section)
+    flow.hass.config_entries.async_update_entry(  # noqa: SLF001
+        flow._config_entry,  # noqa: SLF001
+        options=options,
+    )
+
+
 def _persist_zones_section(
     flow: Any,
     options: dict[str, Any],
@@ -187,7 +206,9 @@ def _persist_zones_section(
 
 
 def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
-    label = str(area_sensor.get("label") or area_sensor.get("source_id") or "Unnamed")
+    area_id = str(
+        area_sensor.get("area_id") or area_sensor.get("source_id") or "Unnamed"
+    )
     temp_entity = str(area_sensor.get("temperature_entity") or "missing")
     humidity_entity = str(area_sensor.get("humidity_entity") or "missing")
     spike_rise = area_sensor.get("spike_rise_percent")
@@ -220,7 +241,26 @@ def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
     if zone_id:
         details.append(f"zone: {zone_id}")
 
-    return f"- area sensor {label}: " + "; ".join(details)
+    return f"- area sensor {area_id}: " + "; ".join(details)
+
+
+def _describe_remote_binding(rem: dict[str, Any]) -> str:
+    rem_id = str(rem.get("rem_id") or "missing")
+    role = str(rem.get("role") or "unknown")
+    enabled = bool(rem.get("enabled", True))
+    zone_id = str(rem.get("zone_id") or "").strip()
+    area_id = str(rem.get("area_id") or "").strip()
+
+    parts = [
+        f"rem_id: {rem_id}",
+        f"role: {role}",
+        "enabled" if enabled else "disabled",
+    ]
+    if zone_id:
+        parts.append(f"zone_id: {zone_id}")
+    if area_id:
+        parts.append(f"area_id: {area_id}")
+    return "- " + "; ".join(parts)
 
 
 def _validate_area_sensor_entries(area_sensors: Any) -> list[dict[str, Any]]:
@@ -577,6 +617,8 @@ async def async_step_sensor_control_config(
                 flow._sensor_control_group_stage = "area_sensors_menu"
             elif action == "zones":
                 flow._sensor_control_group_stage = "zones_menu"
+            elif action == "rems":
+                flow._sensor_control_group_stage = "rems_menu"
             else:
                 flow._sensor_control_group_stage = action
             return await async_step_sensor_control_config(flow, None)
@@ -719,19 +761,19 @@ async def async_step_sensor_control_config(
         ]
         for area_sensor in device_area_sensors:
             source_id = str(area_sensor.get("source_id") or "")
-            label = str(area_sensor.get("label") or source_id or "Unnamed")
+            area_id = str(area_sensor.get("area_id") or source_id or "Unnamed")
             if not source_id:
                 continue
             area_sensor_options.append(
                 selector.SelectOptionDict(
                     value=f"edit:{source_id}",
-                    label=f"Edit: {label}",
+                    label=f"Edit: {area_id}",
                 )
             )
             area_sensor_options.append(
                 selector.SelectOptionDict(
                     value=f"delete:{source_id}",
-                    label=f"Delete: {label}",
+                    label=f"Delete: {area_id}",
                 )
             )
         area_sensor_options.append(
@@ -788,16 +830,16 @@ async def async_step_sensor_control_config(
             return val if isinstance(val, str) and val else default
 
         if user_input is not None:
-            label = str(user_input.get("area_sensor_label") or "").strip()
+            area_id = str(user_input.get("area_id") or "").strip()
             source_id = (
                 str(selected_area_sensor.get("source_id"))
                 if selected_area_sensor and selected_area_sensor.get("source_id")
-                else _unique_area_sensor_id(label, device_area_sensors)
+                else _unique_area_sensor_id(area_id, device_area_sensors)
             )
 
             updated_area_sensor: dict[str, Any] = {
                 "source_id": source_id,
-                "label": label,
+                "area_id": area_id,
                 "enabled": bool(user_input.get("area_sensor_enabled", True)),
                 "temperature_entity": str(user_input.get("temperature_entity") or ""),
                 "humidity_entity": str(user_input.get("humidity_entity") or ""),
@@ -818,6 +860,9 @@ async def async_step_sensor_control_config(
             zone_id = str(user_input.get("zone_id") or "").strip()
             if zone_id:
                 updated_area_sensor["zone_id"] = zone_id
+            area_id = str(user_input.get("area_id") or "").strip()
+            if area_id:
+                updated_area_sensor["area_id"] = area_id
 
             replaced = False
             new_area_sensors: list[dict[str, Any]] = []
@@ -845,9 +890,9 @@ async def async_step_sensor_control_config(
             flow._sensor_control_group_stage = "area_sensors_menu"
             return await async_step_sensor_control_config(flow, None)
 
-        label_default = (
-            str(selected_area_sensor.get("label"))
-            if selected_area_sensor and selected_area_sensor.get("label")
+        area_id_default = (
+            str(selected_area_sensor.get("area_id"))
+            if selected_area_sensor and selected_area_sensor.get("area_id")
             else "Bathroom"
         )
         zone_default = (
@@ -922,7 +967,7 @@ async def async_step_sensor_control_config(
 
         schema = vol.Schema(
             {
-                vol.Required("area_sensor_label", default=label_default): vol.All(
+                vol.Required("area_id", default=area_id_default): vol.All(
                     str, vol.Length(min=1)
                 ),
                 vol.Required(
@@ -1511,86 +1556,647 @@ async def async_step_sensor_control_config(
             description_placeholders={"info": info_text},
         )
 
-    # Handle submissions for each group step via the per-device-type handler
-    if user_input is not None:
-        device_sources, device_abs_inputs = handler.handle_group_submission(
-            group_stage,
-            user_input,
-            device_sources,
-            device_abs_inputs,
+    if group_stage == "rems_menu":
+        options = flow.hass.data[DOMAIN]["config_entry"].options
+        remote_binding_section = get_migrated_feature_section(
+            options, FEATURE_REMOTE_BINDING
+        )
+        fan_rems = get_remote_binding_rems(remote_binding_section, selected_device_id)
+
+        if user_input is not None:
+            action = str(user_input.get("rem_action") or "")
+            if action == "back":
+                flow._sensor_control_group_stage = "select_group"
+                return await async_step_sensor_control_config(flow, None)
+            if action == "add":
+                flow._sensor_control_editing_rem_id = None
+                flow._sensor_control_group_stage = "rems_edit"
+                return await async_step_sensor_control_config(flow, None)
+            if action.startswith("edit:"):
+                flow._sensor_control_editing_rem_id = action.split(":", 1)[1]
+                flow._sensor_control_group_stage = "rems_edit"
+                return await async_step_sensor_control_config(flow, None)
+            if action.startswith("delete:"):
+                delete_id = normalize_device_id(action.split(":", 1)[1])
+                new_rems = [
+                    rem
+                    for rem in fan_rems
+                    if normalize_device_id(str(rem.get("rem_id") or "")) != delete_id
+                ]
+                set_fan_section(
+                    remote_binding_section,
+                    selected_device_id,
+                    {"REMs": new_rems},
+                )
+                _persist_remote_binding_section(
+                    flow,
+                    dict(options),
+                    remote_binding_section,
+                )
+                flow._sensor_control_group_stage = "rems_menu"
+                return await async_step_sensor_control_config(flow, None)
+
+        rem_action_options = [selector.SelectOptionDict(value="add", label="Add REM")]
+        for rem in fan_rems:
+            rem_id = str(rem.get("rem_id") or "")
+            if not rem_id:
+                continue
+            rem_action_options.append(
+                selector.SelectOptionDict(
+                    value=f"edit:{rem_id}",
+                    label=f"Edit: {rem_id}",
+                )
+            )
+            rem_action_options.append(
+                selector.SelectOptionDict(
+                    value=f"delete:{rem_id}",
+                    label=f"Delete: {rem_id}",
+                )
+            )
+        rem_action_options.append(
+            selector.SelectOptionDict(value="back", label="Back to device groups")
         )
 
-        # Persist updates for this device
-        device_section = deepcopy(devices_config.get(norm_device_id) or {})
-        device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
-        device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = device_abs_inputs
-        if device_area_sensors or SENSOR_CONTROL_AREA_SENSORS_KEY in device_section:
-            device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = device_area_sensors
-        devices_config[norm_device_id] = device_section
-        sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
-
-        _LOGGER.debug(
-            "Saving sensor_control overrides for %s (group=%s): %s",
-            selected_device_id,
-            group_stage,
-            sensor_control_section,
+        menu_schema = vol.Schema(
+            {
+                vol.Required("rem_action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=rem_action_options,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                )
+            }
         )
 
-        # async_update_entry is not a coroutine in this HA version; it returns a
-        # bool and must not be awaited.
-        _persist_sensor_control_section(
-            flow,
-            options,
-            sensor_control_section,
+        info_lines = [
+            "Sensor Control",
+            "",
+            f"Configuring REM bindings for device: `{selected_device_id}`",
+            "",
+            (
+                "These associations are managed by Extras (administrative), not device "
+                "provisioning."
+            ),
+        ]
+        if fan_rems:
+            info_lines.extend(["", "Configured REMs:"])
+            info_lines.extend(_describe_remote_binding(item) for item in fan_rems)
+        else:
+            info_lines.extend(["", "No REMs configured yet."])
+
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=menu_schema,
+            description_placeholders={"info": "\n".join(info_lines)},
         )
 
-        # After saving this group, return to the group selection menu
-        flow._sensor_control_group_stage = "select_group"
-        return await async_step_sensor_control_config(flow, None)
+    if group_stage == "rems_edit":
+        return await _async_handle_rems_edit(
+            flow, handler, selected_device_id, user_input
+        )
 
-    kind_options = [
-        selector.SelectOptionDict(value="internal", label="Internal (default)"),
-        selector.SelectOptionDict(value="external", label="External entity"),
-    ]
+    # Fallback for unknown group stages
+    _LOGGER.warning("Unknown group_stage: %s", group_stage)
+    flow._sensor_control_group_stage = "select_group"
+    return await async_step_sensor_control_config(flow, None)
 
-    kind_options_with_none = kind_options + [
-        selector.SelectOptionDict(value="none", label="None"),
-    ]
 
-    sensor_selector = selector.EntitySelector(
-        selector.EntitySelectorConfig(domain=["sensor", "number", "input_number"])
+def _get_persisted_sensor_control_sections(
+    options: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return (legacy_section, canonical_section) for sensor_control config.
+
+    The legacy section is the old top-level sensor_control dict.
+    The canonical section is the new ramses_extras.features.sensor_control dict.
+    """
+    # Legacy (top-level) section
+    legacy_section = options.get(FEATURE_SENSOR_CONTROL, {})
+
+    # Canonical (feature) section
+    canonical_section = get_migrated_feature_section(options, FEATURE_SENSOR_CONTROL)
+
+    return legacy_section, canonical_section
+
+
+def _get_area_id_options(
+    options: dict[str, Any], selected_device_id: str
+) -> list[selector.SelectOptionDict]:
+    """Get list of area_id values from configured area sensors for the dropdown."""
+    area_id_options: list[selector.SelectOptionDict] = []
+    seen_area_ids: set[str] = set()
+
+    # Add empty option
+    area_id_options.append(selector.SelectOptionDict(value="", label="(no area)"))
+
+    # Get area sensors from both legacy and canonical sections
+    legacy, canonical = _get_persisted_sensor_control_sections(options)
+
+    # Check legacy section
+    area_sensors_legacy = legacy.get("area_sensors", {}).get(
+        selected_device_id.replace(":", "_"), []
     )
+    for area_sensor in area_sensors_legacy:
+        area_id = str(area_sensor.get("area_id", "")).strip()
+        if area_id and area_id not in seen_area_ids:
+            seen_area_ids.add(area_id)
+            area_id_options.append(
+                selector.SelectOptionDict(value=area_id, label=area_id)
+            )
 
-    info_suffix_translations = (
-        await _async_load_sensor_control_info_suffix_translations(flow.hass)
-    )
+    # Check canonical section
+    canonical_devices = canonical.get("devices", {})
+    device_config = canonical_devices.get(selected_device_id, {})
+    area_sensors_canonical = device_config.get("area_sensors", [])
+    for area_sensor in area_sensors_canonical:
+        area_id = str(area_sensor.get("area_id", "")).strip()
+        if area_id and area_id not in seen_area_ids:
+            seen_area_ids.add(area_id)
+            area_id_options.append(
+                selector.SelectOptionDict(value=area_id, label=area_id)
+            )
 
-    def _t(key: str, default: str) -> str:
-        val = info_suffix_translations.get(key)
-        return val if isinstance(val, str) and val else default
+    return area_id_options
 
-    # Per-group schemas via the per-device-type handler
+
+def _get_rem_device_options(hass: HomeAssistant) -> list[selector.SelectOptionDict]:
+    """Get list of discovered REM device IDs for the combobox dropdown.
+
+    Collects REM/DIS devices from the broker and already configured REMs,
+    returning them as SelectOptionDict items for the dropdown.
+    """
+    options: list[selector.SelectOptionDict] = []
+    seen_ids: set[str] = set()
+
+    # Helper to normalize and add device ID
+    def add_device_id(device_id: str, label: str | None = None) -> None:
+        if not device_id:
+            return
+        normalized = normalize_device_id(device_id)
+        if normalized in seen_ids:
+            return
+        seen_ids.add(normalized)
+        display = label if label else normalized
+        options.append(selector.SelectOptionDict(value=normalized, label=display))
+
+    # Get discovered devices from the broker
+    domain_data = hass.data.get(DOMAIN, {})
+    devices = domain_data.get("devices", [])
+
+    for device in devices:
+        if isinstance(device, str):
+            # For plain string devices, check if it looks like a REM ID
+            # REM IDs are typically 2-digit prefixes like 18, 22, 29, 30
+            device_id = str(device).replace("_", ":").strip()
+            if len(device_id) >= 9 and device_id[:2] in (
+                "18",
+                "22",
+                "29",
+                "30",
+            ):
+                add_device_id(device_id)
+            continue
+
+        # Check device type/slug for DIS/REM
+        slugs: list[str] = []
+
+        # Get slugs from various attributes
+        if hasattr(device, "slugs"):
+            raw = device.slugs
+            if isinstance(raw, list):
+                slugs.extend(str(s) for s in raw)
+            else:
+                slugs.append(str(raw))
+
+        slug_attr = device._SLUG if hasattr(device, "_SLUG") else None
+        if slug_attr:
+            name = slug_attr.name if hasattr(slug_attr, "name") else None
+            slugs.append(str(name or slug_attr))
+
+        if hasattr(device, "device_type"):
+            slugs.append(str(device.device_type))
+        if hasattr(device, "type"):
+            slugs.append(str(device.type))
+
+        # Check if any slug indicates a DIS/REM device
+        is_rem = any(
+            slug in ("DIS", "REM", "DIS", "HRC", "remote", "display") for slug in slugs
+        )
+
+        if is_rem:
+            rem_id: str | None = device.id if hasattr(device, "id") else None
+            if rem_id:
+                add_device_id(str(rem_id), f"{str(rem_id)} ({', '.join(slugs)})")
+
+    # Also get REMs from already configured bindings
     try:
-        schema, info_suffix = handler.build_group_schema(
-            group_stage,
-            device_sources,
-            device_abs_inputs,
-            kind_options,
-            kind_options_with_none,
-            sensor_selector,
-            translate=_t,
-        )
+        config_entry = domain_data.get("config_entry")
+        if config_entry is not None:
+            from ...framework.helpers.config.migration import (
+                migrate_to_canonical_config,
+            )
+            from ...framework.helpers.config.model import (
+                get_feature_section,
+                get_remote_binding_rem_ids,
+            )
+
+            raw_config: dict[str, Any] = {}
+            if getattr(config_entry, "data", None):
+                raw_config.update(dict(config_entry.data))
+            if getattr(config_entry, "options", None):
+                raw_config.update(dict(config_entry.options))
+
+            canonical_config = migrate_to_canonical_config(raw_config)
+            remote_binding_section = get_feature_section(
+                canonical_config, FEATURE_REMOTE_BINDING
+            )
+
+            # Get all configured REM IDs across all FANs
+            fan_ids = list(remote_binding_section.get("FANs", {}).keys())
+            for fan_id in fan_ids:
+                rem_ids = get_remote_binding_rem_ids(remote_binding_section, fan_id)
+                for rem_id in rem_ids:
+                    add_device_id(rem_id)
     except Exception:
-        # If the handler does not support this group (or any other error
-        # occurs), fall back to the group menu to avoid breaking the flow.
-        flow._sensor_control_group_stage = "select_group"
-        return await async_step_sensor_control_config(flow, None)
+        pass  # Don't let config reading break the dropdown
+
+    # Sort by label
+    return sorted(options, key=lambda x: x["label"])
+
+
+def _get_area_id_options_from_legacy(
+    options: dict[str, Any], selected_device_id: str
+) -> list[selector.SelectOptionDict]:
+    """Get list of area_ids from existing area_sensors for the dropdown.
+
+    Collects area_id values from area_sensors configured for this device.
+    """
+    area_ids: set[str] = set()
+
+    _LOGGER.debug(
+        "_get_area_id_options called for device %s, options keys: %s",
+        selected_device_id,
+        list(options.keys()),
+    )
+
+    # Get sensor_control section to find area_sensors
+    sensor_control_section = get_migrated_feature_section(
+        options, FEATURE_SENSOR_CONTROL
+    )
+    _LOGGER.debug(
+        "sensor_control_section keys: %s",
+        list(sensor_control_section.keys()),
+    )
+
+    devices = sensor_control_section.get(CONFIG_DEVICES_KEY, {})
+    _LOGGER.debug(
+        "devices type: %s, keys: %s",
+        type(devices).__name__,
+        list(devices.keys()) if isinstance(devices, dict) else "N/A",
+    )
+
+    if isinstance(devices, dict):
+        norm_device_id = normalize_device_id(selected_device_id)
+        _LOGGER.debug(
+            "Looking for device %s (normalized: %s)",
+            selected_device_id,
+            norm_device_id,
+        )
+        device_section = devices.get(selected_device_id) or devices.get(norm_device_id)
+        _LOGGER.debug(
+            "device_section type: %s",
+            type(device_section).__name__,
+        )
+        if isinstance(device_section, dict):
+            area_sensors = device_section.get(SENSOR_CONTROL_AREA_SENSORS_KEY, [])
+            _LOGGER.debug(
+                "area_sensors type: %s, len: %s",
+                type(area_sensors).__name__,
+                len(area_sensors) if isinstance(area_sensors, list) else "N/A",
+            )
+            if isinstance(area_sensors, list):
+                for sensor in area_sensors:
+                    if isinstance(sensor, dict):
+                        area_id = str(sensor.get("area_id") or "").strip()
+                        _LOGGER.debug(
+                            "Found sensor with area_id: %s",
+                            area_id,
+                        )
+                        if area_id:
+                            area_ids.add(area_id)
+
+    _LOGGER.debug("Collected area_ids from area_sensors: %s", area_ids)
+
+    # Also collect area_ids from REM bindings for this FAN
+    remote_binding_section = get_migrated_feature_section(
+        options, FEATURE_REMOTE_BINDING
+    )
+    fan_rems = get_remote_binding_rems(remote_binding_section, selected_device_id)
+    _LOGGER.debug("Found %d REMs for device", len(fan_rems))
+    for rem in fan_rems:
+        if isinstance(rem, dict):
+            area_id = str(rem.get("area_id") or "").strip()
+            _LOGGER.debug("Found REM with area_id: %s", area_id)
+            if area_id:
+                area_ids.add(area_id)
+
+    _LOGGER.debug("Final collected area_ids: %s", area_ids)
+
+    # Build options list, sorted
+    result: list[selector.SelectOptionDict] = [
+        selector.SelectOptionDict(value="", label="(no area)"),
+    ]
+    for area_id in sorted(area_ids):
+        result.append(selector.SelectOptionDict(value=area_id, label=area_id))
+
+    _LOGGER.debug("Returning area_id_options: %s", result)
+    return result
+
+
+async def _async_handle_rems_menu(
+    flow: Any,
+    handler: Any,
+    selected_device_id: str,
+    user_input: dict[str, Any] | None,
+) -> Any:
+    """Handle the rems_menu group stage for managing REM bindings."""
+    options = flow.hass.data[DOMAIN]["config_entry"].options
+    remote_binding_section = get_migrated_feature_section(
+        options, FEATURE_REMOTE_BINDING
+    )
+    fan_rems = get_remote_binding_rems(remote_binding_section, selected_device_id)
+
+    # Handle user input from the menu
+    if user_input is not None:
+        action = user_input.get("action")
+        if action == "add":
+            flow._sensor_control_editing_rem_id = None
+            flow._sensor_control_group_stage = "rems_edit"
+            return await async_step_sensor_control_config(flow, None)
+
+        if action == "back":
+            flow._sensor_control_group_stage = "select_group"
+            return await async_step_sensor_control_config(flow, None)
+
+        if isinstance(action, str) and action.startswith("edit:"):
+            rem_id = action.removeprefix("edit:")
+            flow._sensor_control_editing_rem_id = rem_id
+            flow._sensor_control_group_stage = "rems_edit"
+            return await async_step_sensor_control_config(flow, None)
+
+        if isinstance(action, str) and action.startswith("delete:"):
+            rem_id = action.removeprefix("delete:")
+            # Remove this REM from the list
+            new_rems = [
+                r
+                for r in fan_rems
+                if normalize_device_id(str(r.get("rem_id", "")))
+                != normalize_device_id(rem_id)
+            ]
+            set_fan_section(
+                remote_binding_section,
+                selected_device_id,
+                {"REMs": new_rems},
+            )
+            _persist_remote_binding_section(
+                flow,
+                dict(options),
+                remote_binding_section,
+            )
+            # Stay on the menu page
+            return await async_step_sensor_control_config(flow, None)
+
+    # Build menu options
+    menu_options: list[selector.SelectOptionDict] = [
+        selector.SelectOptionDict(value="add", label="➕ Add REM"),
+    ]
+
+    for item in fan_rems:
+        rem_id = str(item.get("rem_id", "Unknown"))
+        role = str(item.get("role", "primary"))
+        enabled = bool(item.get("enabled", True))
+        status = "✓" if enabled else "✗"
+        menu_options.append(
+            selector.SelectOptionDict(
+                value=f"edit:{rem_id}",
+                label=f"{status} {rem_id} ({role})",
+            )
+        )
+        menu_options.append(
+            selector.SelectOptionDict(
+                value=f"delete:{rem_id}",
+                label=f"  🗑️ Delete {rem_id}",
+            )
+        )
+
+    menu_options.append(
+        selector.SelectOptionDict(value="back", label="⬅️ Back to groups")
+    )
+
+    menu_schema = vol.Schema(
+        {
+            vol.Required("action"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=menu_options,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            )
+        }
+    )
+
+    info_lines = [
+        "Sensor Control",
+        "",
+        f"Configuring REM bindings for device: `{selected_device_id}`",
+        "",
+        (
+            "These associations are managed by Extras (administrative), not device "
+            "provisioning."
+        ),
+    ]
+    if fan_rems:
+        info_lines.extend(["", "Configured REMs:"])
+        info_lines.extend(_describe_remote_binding(item) for item in fan_rems)
+    else:
+        info_lines.extend(["", "No REMs configured yet."])
+
+    return flow.async_show_form(
+        step_id="feature_config",
+        data_schema=menu_schema,
+        description_placeholders={"info": "\n".join(info_lines)},
+    )
+
+
+async def _async_handle_rems_edit(
+    flow: Any,
+    handler: Any,
+    selected_device_id: str,
+    user_input: dict[str, Any] | None,
+) -> Any:
+    """Handle the rems_edit group stage for editing a REM binding."""
+    options = flow.hass.data[DOMAIN]["config_entry"].options
+    remote_binding_section = get_migrated_feature_section(
+        options, FEATURE_REMOTE_BINDING
+    )
+    fan_rems = get_remote_binding_rems(remote_binding_section, selected_device_id)
+    editing_rem_id_raw = getattr(flow, "_sensor_control_editing_rem_id", None)
+    editing_rem_id = None
+    if editing_rem_id_raw:
+        editing_rem_id = normalize_device_id(str(editing_rem_id_raw))
+
+    existing_rem = None
+    if editing_rem_id:
+        for rem in fan_rems:
+            rem_id = rem.get("rem_id")
+            if (
+                isinstance(rem_id, str)
+                and normalize_device_id(rem_id) == editing_rem_id
+            ):
+                existing_rem = rem
+                break
+
+    errors: dict[str, str] = {}
+
+    if user_input is not None:
+        rem_id = normalize_device_id(str(user_input.get("rem_id") or "").strip())
+        role = str(user_input.get("role") or "").strip()
+        enabled = bool(user_input.get("enabled", True))
+        zone_id = str(user_input.get("zone_id") or "").strip()
+        area_id = str(user_input.get("area_id") or "").strip()
+
+        if not rem_id:
+            errors["rem_id"] = "REM ID is required"
+
+        valid_roles = ("primary", "secondary", "boost_only")
+        if role not in valid_roles:
+            errors["role"] = "Invalid role"
+
+        if rem_id and (editing_rem_id is None or rem_id != editing_rem_id):
+            for rem in fan_rems:
+                existing_id = rem.get("rem_id")
+                if (
+                    isinstance(existing_id, str)
+                    and normalize_device_id(existing_id) == rem_id
+                ):
+                    errors["rem_id"] = "REM ID already exists for this FAN"
+                    break
+
+        if not errors:
+            updated_rem: dict[str, Any] = {
+                "rem_id": rem_id,
+                "role": role,
+                "enabled": enabled,
+            }
+            if zone_id:
+                updated_rem["zone_id"] = zone_id
+            if area_id:
+                updated_rem["area_id"] = area_id
+
+            new_rems: list[dict[str, Any]] = []
+            for rem in fan_rems:
+                existing_id = rem.get("rem_id")
+                if editing_rem_id and isinstance(existing_id, str):
+                    if normalize_device_id(existing_id) == editing_rem_id:
+                        continue
+                new_rems.append(rem)
+            new_rems.append(updated_rem)
+
+            set_fan_section(
+                remote_binding_section,
+                selected_device_id,
+                {"REMs": new_rems},
+            )
+            _persist_remote_binding_section(
+                flow,
+                dict(options),
+                remote_binding_section,
+            )
+
+            flow._sensor_control_editing_rem_id = None
+            flow._sensor_control_group_stage = "rems_menu"
+            return await async_step_sensor_control_config(flow, None)
+
+    rem_id_default = str(existing_rem.get("rem_id") if existing_rem else "").strip()
+    role_default = str(existing_rem.get("role") if existing_rem else "primary")
+    enabled_default = bool(existing_rem.get("enabled", True)) if existing_rem else True
+    zone_default = str(existing_rem.get("zone_id") if existing_rem else "").strip()
+    area_default = str(existing_rem.get("area_id") if existing_rem else "").strip()
+
+    zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
+    fan_zones = get_zones_for_fan(zones_section, selected_device_id)
+    zone_options = [
+        selector.SelectOptionDict(value="", label="(no zone)"),
+        *[
+            selector.SelectOptionDict(
+                value=str(z.get("zone_id")),
+                label=str(z.get("zone_id")),
+            )
+            for z in fan_zones
+            if z.get("zone_id")
+        ],
+    ]
+
+    zone_key: Any = vol.Optional("zone_id")
+    if zone_default:
+        zone_key = vol.Optional("zone_id", default=zone_default)
+
+    # Get discovered REM options for the combobox
+    rem_options = _get_rem_device_options(flow.hass)
+
+    # Get area_id options from configured area sensors
+    area_id_options = _get_area_id_options(options, selected_device_id)
+
+    schema = vol.Schema(
+        {
+            vol.Required("rem_id", default=rem_id_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=rem_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    custom_value=True,
+                )
+            ),
+            vol.Required("role", default=role_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="primary", label="Primary"),
+                        selector.SelectOptionDict(value="secondary", label="Secondary"),
+                        selector.SelectOptionDict(
+                            value="boost_only", label="Boost only"
+                        ),
+                    ],
+                    mode="dropdown",
+                )
+            ),
+            vol.Required(
+                "enabled",
+                default=enabled_default,
+            ): selector.BooleanSelector(),
+            zone_key: selector.SelectSelector(
+                selector.SelectSelectorConfig(options=zone_options, mode="dropdown")
+            ),
+            vol.Optional("area_id", default=area_default): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=area_id_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    custom_value=True,
+                )
+            ),
+        }
+    )
 
     info_text = (
-        "🧭 **Sensor Control**\n\n"
-        f"Configuring device: `{selected_device_id}`\n\n"
-        f"{info_suffix}"
+        f"{'Edit' if existing_rem else 'Add'} REM\n\n"
+        f"Configure a REM association for FAN: `{selected_device_id}`\n\n"
+        "Use zone_id / area_id optionally to pinpoint location."
     )
+
+    if errors:
+        return flow.async_show_form(
+            step_id="feature_config",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"info": info_text},
+        )
 
     return flow.async_show_form(
         step_id="feature_config",

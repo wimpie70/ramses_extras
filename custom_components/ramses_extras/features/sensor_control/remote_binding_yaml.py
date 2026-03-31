@@ -24,6 +24,8 @@ REM_ENTRY_SCHEMA = vol.Schema(
         vol.Required("role"): vol.In(["primary", "secondary", "boost_only"]),
         vol.Optional("enabled", default=True): bool,
         vol.Optional("source"): str,
+        vol.Optional("zone_id"): str,
+        vol.Optional("area_id"): str,
     },
     extra=vol.PREVENT_EXTRA,
 )
@@ -93,6 +95,18 @@ def remote_binding_validator(section: dict, hass: Any | None = None) -> list[str
             valid_roles = ("primary", "secondary", "boost_only")
             if role not in valid_roles:
                 errors.append(f"FAN '{fan_id}', REM '{rem_id}': invalid role '{role}'")
+
+            zone_id = rem.get("zone_id")
+            if zone_id is not None and (not isinstance(zone_id, str) or not zone_id):
+                errors.append(
+                    f"FAN '{fan_id}', REM '{rem_id}': invalid zone_id '{zone_id}'"
+                )
+
+            area_id = rem.get("area_id")
+            if area_id is not None and (not isinstance(area_id, str) or not area_id):
+                errors.append(
+                    f"FAN '{fan_id}', REM '{rem_id}': invalid area_id '{area_id}'"
+                )
 
     return errors
 

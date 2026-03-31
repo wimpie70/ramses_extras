@@ -4,7 +4,17 @@ Practical examples for configuring REM (remote) to FAN bindings in Ramses Extras
 
 ## Overview
 
-Remote binding allows you to associate physical REM devices with FAN units so that button presses are correctly attributed and reflected in Home Assistant.
+Remote binding is an **Extras-managed association** between REM devices and FAN units.
+
+It is **not** a device/protocol pairing operation.
+
+- Extras uses this mapping to attribute observed REM traffic to the right FAN and update HA/arbiter state.
+- The physical REM→FAN control path must still work without Home Assistant.
+
+Optionally, each REM entry can be annotated with:
+
+- `zone_id` (logical zone within a FAN system)
+- `area_id` (Home Assistant area identifier, as a more precise location hint)
 
 ## Configuration Methods
 
@@ -36,6 +46,8 @@ features:
             role: primary
             enabled: true
             source: manual_config
+            zone_id: bathroom
+            area_id: bathroom
 ```
 
 ## Example 2: Multiple REMs per FAN (Different Roles)
