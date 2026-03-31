@@ -114,8 +114,8 @@
         "description": "Configure the template feature for demonstration purposes"
       },
       "feature_sensor_control": {
-        "title": "Sensor Control Configuration",
-        "description": "Configure sensor source selection (indoor/outdoor/CO2 + abs humidity)"
+        "title": "FAN Configuration",
+        "description": "Configure sensor source selection (indoor/outdoor/CO2 + abs humidity), zones, and remote binding"
       }
     }
   }
