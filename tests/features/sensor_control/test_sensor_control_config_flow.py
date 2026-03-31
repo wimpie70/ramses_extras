@@ -130,7 +130,7 @@ async def test_async_step_sensor_control_config_select_device_with_overview(
     await async_step_sensor_control_config(flow, None)
     flow.async_show_form.assert_called_once()
     info_text = flow.async_show_form.call_args[1]["description_placeholders"]["info"]
-    assert "Existing Sensor Control Mappings" in info_text
+    assert "Existing FAN Configuration Mappings" in info_text
     assert "Device 32:123456" in info_text
     assert "sensor.test" in info_text
     assert "temp: external  sensor.abs" in info_text
@@ -251,7 +251,7 @@ async def test_async_step_sensor_control_config_select_device_with_canonical_roo
     await async_step_sensor_control_config(flow, None)
 
     info_text = flow.async_show_form.call_args[1]["description_placeholders"]["info"]
-    assert "Existing Sensor Control Mappings" in info_text
+    assert "Existing FAN Configuration Mappings" in info_text
     assert "Device 32:123456" in info_text
     assert "sensor.test" in info_text
     assert "external abs  sensor.abs" in info_text

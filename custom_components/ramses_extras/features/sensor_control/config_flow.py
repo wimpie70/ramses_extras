@@ -462,7 +462,7 @@ async def async_step_sensor_control_config(
             device_keys = set(devices.keys())
 
             if device_keys:
-                overview_lines.append("Existing Sensor Control Mappings\n")
+                overview_lines.append("Existing FAN Configuration Mappings\n")
                 for device_key in sorted(device_keys):
                     device_section = devices.get(device_key) or {}
                     if not isinstance(device_section, dict):
@@ -560,7 +560,7 @@ async def async_step_sensor_control_config(
         if overview_lines:
             info_text += "\n".join(overview_lines) + "\n\n"
 
-        info_text += "Sensor Control\n\n"
+        info_text += "FAN Configuration\n\n"
         info_text += "Select a device to configure sensor sources."
         return flow.async_show_form(
             step_id="feature_config",
@@ -708,7 +708,7 @@ async def async_step_sensor_control_config(
             info_text += "\n".join(device_overview) + "\n\n"
 
         info_text += (
-            "Sensor Control\n\n"
+            "FAN Configuration\n\n"
             f"Configuring device: `{selected_device_id}`\n\n"
             "Select which group of sensors to configure. You can return here to "
             "configure other groups or choose Finish when done."
@@ -793,7 +793,7 @@ async def async_step_sensor_control_config(
         )
 
         info_lines = [
-            "Sensor Control",
+            "FAN Configuration",
             "",
             f"Configuring area sensors for device: `{selected_device_id}`",
             "",
@@ -1036,7 +1036,7 @@ async def async_step_sensor_control_config(
         )
 
         info_text = (
-            "🧭 **Sensor Control**\n\n"
+            "🧭 **FAN Configuration**\n\n"
             f"Configuring device: `{selected_device_id}`\n\n"
             f"{
                 _t_area(
@@ -1064,6 +1064,21 @@ async def async_step_sensor_control_config(
             data_schema=schema,
             description_placeholders={"info": info_text},
         )
+
+    # ------------------------------------------------------------------
+    # Internal fan sensors: indoor/outdoor temp/humidity + abs humidity
+    # ------------------------------------------------------------------
+    if group_stage == "internal_fan_sensors":
+        _LOGGER.debug(
+            "Routing to handle_internal_fan_sensors for device %s", selected_device_id
+        )
+        try:
+            return await handler.handle_internal_fan_sensors(
+                flow, selected_device_id, device_sources, device_abs_inputs, user_input
+            )
+        except Exception as e:
+            _LOGGER.error("Error in handle_internal_fan_sensors: %s", e, exc_info=True)
+            raise
 
     # ------------------------------------------------------------------
     # Zones menu: list zones for this FAN and allow add/edit/delete
@@ -1564,91 +1579,94 @@ async def async_step_sensor_control_config(
         fan_rems = get_remote_binding_rems(remote_binding_section, selected_device_id)
 
         if user_input is not None:
-            action = str(user_input.get("rem_action") or "")
-            if action == "back":
-                flow._sensor_control_group_stage = "select_group"
-                return await async_step_sensor_control_config(flow, None)
+            action = str(user_input.get("action") or "")
+
             if action == "add":
                 flow._sensor_control_editing_rem_id = None
                 flow._sensor_control_group_stage = "rems_edit"
                 return await async_step_sensor_control_config(flow, None)
-            if action.startswith("edit:"):
-                flow._sensor_control_editing_rem_id = action.split(":", 1)[1]
-                flow._sensor_control_group_stage = "rems_edit"
-                return await async_step_sensor_control_config(flow, None)
-            if action.startswith("delete:"):
-                delete_id = normalize_device_id(action.split(":", 1)[1])
-                new_rems = [
-                    rem
-                    for rem in fan_rems
-                    if normalize_device_id(str(rem.get("rem_id") or "")) != delete_id
-                ]
-                set_fan_section(
-                    remote_binding_section,
-                    selected_device_id,
-                    {"REMs": new_rems},
-                )
-                _persist_remote_binding_section(
-                    flow,
-                    dict(options),
-                    remote_binding_section,
-                )
-                flow._sensor_control_group_stage = "rems_menu"
+
+            if action == "edit":
+                selected_rem_id: str | None = user_input.get("rem_id")
+                if selected_rem_id:
+                    flow._sensor_control_editing_rem_id = selected_rem_id
+                    flow._sensor_control_group_stage = "rems_edit"
+                    return await async_step_sensor_control_config(flow, None)
+
+            if action == "delete":
+                delete_rem_id: str | None = user_input.get("rem_id")
+                if delete_rem_id:
+                    delete_id_normalized = normalize_device_id(delete_rem_id)
+                    new_rems = [
+                        rem
+                        for rem in fan_rems
+                        if normalize_device_id(str(rem.get("rem_id") or ""))
+                        != delete_id_normalized
+                    ]
+                    set_fan_section(
+                        remote_binding_section,
+                        selected_device_id,
+                        {"REMs": new_rems},
+                    )
+                    _persist_remote_binding_section(
+                        flow,
+                        dict(options),
+                        remote_binding_section,
+                    )
                 return await async_step_sensor_control_config(flow, None)
 
-        rem_action_options = [selector.SelectOptionDict(value="add", label="Add REM")]
+            if action == "back":
+                flow._sensor_control_group_stage = "select_group"
+                return await async_step_sensor_control_config(flow, None)
+
+        # Build REM list for display
+        rem_descriptions = []
+        rem_select_options = []
         for rem in fan_rems:
-            rem_id = str(rem.get("rem_id") or "")
-            if not rem_id:
-                continue
-            rem_action_options.append(
-                selector.SelectOptionDict(
-                    value=f"edit:{rem_id}",
-                    label=f"Edit: {rem_id}",
-                )
+            rem_id = str(rem.get("rem_id") or "unnamed")
+            rem_descriptions.append(_describe_remote_binding(rem))
+            rem_select_options.append(
+                selector.SelectOptionDict(value=rem_id, label=f"REM: {rem_id}")
             )
-            rem_action_options.append(
-                selector.SelectOptionDict(
-                    value=f"delete:{rem_id}",
-                    label=f"Delete: {rem_id}",
-                )
-            )
-        rem_action_options.append(
-            selector.SelectOptionDict(value="back", label="Back to device groups")
+
+        rems_info = (
+            "\n".join(rem_descriptions) if rem_descriptions else "No REMs configured."
         )
 
-        menu_schema = vol.Schema(
+        schema = vol.Schema(
             {
-                vol.Required("rem_action"): selector.SelectSelector(
+                vol.Required("action"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=rem_action_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        options=[
+                            selector.SelectOptionDict(value="add", label="Add REM"),
+                            selector.SelectOptionDict(value="edit", label="Edit REM"),
+                            selector.SelectOptionDict(
+                                value="delete", label="Delete REM"
+                            ),
+                            selector.SelectOptionDict(value="back", label="Back"),
+                        ],
+                        mode="list",
                     )
-                )
+                ),
+                vol.Optional("rem_id"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=rem_select_options,
+                        mode="dropdown",
+                    )
+                ),
             }
         )
 
-        info_lines = [
-            "Sensor Control",
-            "",
-            f"Configuring REM bindings for device: `{selected_device_id}`",
-            "",
-            (
-                "These associations are managed by Extras (administrative), not device "
-                "provisioning."
-            ),
-        ]
-        if fan_rems:
-            info_lines.extend(["", "Configured REMs:"])
-            info_lines.extend(_describe_remote_binding(item) for item in fan_rems)
-        else:
-            info_lines.extend(["", "No REMs configured yet."])
+        info_text = (
+            "🧭 **REM Configuration**\n\n"
+            f"Configuring REM bindings for FAN: `{selected_device_id}`\n\n"
+            f"**Existing REMs:**\n{rems_info}"
+        )
 
         return flow.async_show_form(
             step_id="feature_config",
-            data_schema=menu_schema,
-            description_placeholders={"info": "\n".join(info_lines)},
+            data_schema=schema,
+            description_placeholders={"info": info_text},
         )
 
     if group_stage == "rems_edit":
@@ -2005,7 +2023,7 @@ async def _async_handle_rems_menu(
     )
 
     info_lines = [
-        "Sensor Control",
+        "FAN Configuration",
         "",
         f"Configuring REM bindings for device: `{selected_device_id}`",
         "",

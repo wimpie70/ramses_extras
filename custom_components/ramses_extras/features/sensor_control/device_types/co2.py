@@ -63,3 +63,14 @@ def build_group_schema(
     else:
         info_suffix = default_suffix
     return schema, info_suffix
+
+
+async def handle_internal_fan_sensors(
+    flow: Any,
+    selected_device_id: str,
+    device_sources: dict[str, Any],
+    device_abs_inputs: dict[str, Any],
+    user_input: dict[str, Any] | None,
+) -> Any:
+    """CO2 devices don't support internal fan sensors configuration."""
+    raise NotImplementedError("CO2 devices do not support FAN sensor configuration")
