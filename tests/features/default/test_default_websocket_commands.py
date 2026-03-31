@@ -277,7 +277,7 @@ async def test_ws_get_bound_rem(hass, connection):
                     "enabled": True,
                 },
                 "extras_rem_id": "37:654321",
-                "source": "device",
+                "source": "extras",
             },
         )
 

@@ -215,6 +215,7 @@ The current framework already provides useful pieces:
 - feature/device enablement matrix support in config flow helpers
 - basic per-feature config helper patterns in `framework/helpers/config/core.py`
 - validation utilities in `framework/helpers/config/validation.py`
+- **feature-level import validation registry in `framework/helpers/config/import_validation.py`**
 - dynamic discovery of feature-specific config flow implementations in `framework/helpers/config_flow.py`
 - central options flow structure in `custom_components/ramses_extras/config_flow.py`
 
@@ -227,9 +228,8 @@ The current framework still lacks the main pieces needed for the hybrid model:
 - a typed shared config model
 - a stable storage layout for feature-owned structured sections
 - config schema versioning and migrations for structured feature sections
-- a unified import/export layer
+- a unified import/export layer (validation framework exists, needs integration)
 - shared device-reference helpers for feature config sections
-- framework-level section validation and merge logic
 - debugger/config inspection support for the full structured config
 
 ## Framework work needed
@@ -258,18 +258,23 @@ Needed work:
 - clear distinction between persisted config and runtime cached state
 - helper lookups for relationships such as `find_areas_for_zone()` and `find_entities_for_zone()`
 
-## 3. Add section-aware validation
+## 3. Section-aware validation
 
-The current validator is useful for simple scalar checks, but remote binding and zones need more structure.
+The framework now provides a **feature-level validation registry** where each feature can register its own config validator. This keeps validation logic co-located with the feature that owns the config section.
 
-Needed work:
+Implemented:
+- `register_config_validator(feature_id, validator)` in `framework/helpers/config/import_validation.py`
+- Per-feature validators for `zones`, `remote_binding`, `sensor_control`
+- Detailed validation results: `{"valid": bool, "framework_errors": [], "feature_errors": {}}`
+- Pre-save validation in config flow with per-feature error reporting
 
-- nested object validation
-- cross-reference validation between sections and shared device references
-- uniqueness constraints such as one REM not being primary for multiple FANs
-- per-FAN zone uniqueness rules
-- zone actuator safety validation such as `min_position` and `max_position`
-- better surfaced validation errors for config flow and future import
+Validation rules enforced:
+- Nested object validation for feature sections
+- Cross-reference validation (e.g., entity IDs exist in Home Assistant)
+- Uniqueness constraints (e.g., REM IDs not assigned to multiple FANs)
+- Per-FAN zone uniqueness rules
+- Zone actuator safety validation (`min_position`, `max_position`)
+- Type validation for zone types, REM roles, etc.
 
 ## 4. Add schema migration support
 
@@ -343,6 +348,16 @@ Needed work:
 - expose structured config diagnostics separately from live runtime state
 - optionally show discovery suggestions and unresolved mappings
 
+## Card features (multiple cards per feature)
+
+Some features may expose multiple frontend cards (e.g. debugger).
+
+Recommended direction:
+
+- support **multiple card configs per feature** (keyed by `card_id`)
+- treat card configs as feature-owned definitions
+- keep install/remove logic and registry storage compatible with more than one card
+
 ## Config flow and frontend direction
 
 ## Near-term UI direction
@@ -404,34 +419,35 @@ This should come after the model is stable, not before.
 
 ## Framework
 
-- define canonical structured config shape
-- define section ownership rules
-- define shared device reference rules
-- add schema versioning
-- add migration hooks
-- extend validation for nested/cross-section data
-- add import/export helpers
-- add debugger config visibility
+- [x] define canonical structured config shape
+- [x] define section ownership rules
+- [x] define shared device reference rules
+- [x] add schema versioning (`CONFIG_SCHEMA_VERSION = 1` in `model.py`)
+- [x] add migration hooks (`migration.py` with `migrate_to_canonical_config()`, `migrate_feature_section()`)
+- [x] extend validation for nested/cross-section data
+- [x] add import/export helpers (`export_config_to_yaml()`, `register_config_validator()`)
+- [x] add debugger config visibility
 
 ## Export rules
 
-- export the effective canonical config shape as strict YAML
-- exclude security-sensitive values such as passwords
-- exclude transient runtime-only data such as caches, last-seen timestamps, transport snapshots, and inferred discovery hints that were never explicitly accepted into config
-- keep the export stable enough for support, diffing, and future import
+- [x] export the effective canonical config shape as strict YAML
+- [x] exclude security-sensitive values such as passwords
+- [x] exclude transient runtime-only data such as caches, last-seen timestamps, transport snapshots, and inferred discovery hints that were never explicitly accepted into config
+- [x] keep the export stable enough for support, diffing, and future import
 
 ## Remote binding
 
-- define `remote_binding` section schema
-- add structured storage helpers
-- align config flow with shared model
-- add diagnostics/export shape
+- [x] define `remote_binding` section schema (in `FAN_CONFIGURATION_SCHEMA_DRAFT.md`)
+- [x] add structured storage helpers (`get_remote_binding_rems()`, `set_fan_section()` in `model.py`)
+- [x] align config flow with shared model
+- [x] add diagnostics/export shape (`export_config_to_yaml()`, validators in `remote_binding_yaml.py`)
 
 ## Zones
-- define `zones` section schema
-- define adapter-specific nested config shapes
-- align config flow with shared model
-- add diagnostics/export shape
+
+- [x] define `zones` section schema (in `FAN_CONFIGURATION_SCHEMA_DRAFT.md`)
+- [x] define adapter-specific nested config shapes (`zone_adapters.py`)
+- [x] align config flow with shared model
+- [x] add diagnostics/export shape (`export_config_to_yaml()`, validators in `zones_yaml.py`)
 
 ## Decisions made
 
@@ -444,6 +460,30 @@ This should come after the model is stable, not before.
 - Discovery candidates are not the only valid source of configuration, because external/manual devices and entities must also remain possible.
 - `zone_id` should be a shared source-of-truth link so areas/entities can be found from a zone consistently.
 - Zone valves should support safety limits such as minimum and maximum position to help protect the FAN.
+
+## Status
+
+**Last Updated:** March 2026
+
+The hybrid configuration strategy has been largely implemented:
+
+- **Phase 1 (Model establishment):** ✅ Complete
+- **Phase 2 (Framework enablement):** ✅ Complete - all core helpers in `framework/helpers/config/`
+- **Phase 3 (First consumers):** ✅ `sensor_control` migrated, `remote_binding` and `zones` implemented
+- **Phase 4 (Support/debug tooling):** ✅ YAML export, debugger visibility, validation framework complete
+- **Phase 5 (Advanced editing):** 🔄 Pending - validated YAML import ready, richer frontend editing deferred
+
+### Key implementation locations
+
+| Component | Location |
+|-----------|----------|
+| Config model | `framework/helpers/config/model.py` |
+| Migration | `framework/helpers/config/migration.py` |
+| Validation | `framework/helpers/config/validation.py`, `import_validation.py` |
+| Export | `framework/helpers/config/export.py` |
+| Zones | `framework/helpers/zones.py`, `zone_adapters.py`, `zone_coordinator.py` |
+| Remote binding | `features/sensor_control/remote_binding_yaml.py` |
+| Zone config | `features/sensor_control/zones_yaml.py` |
 
 ## Relationship to other docs
 

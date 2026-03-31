@@ -67,7 +67,10 @@ FEATURE_DEFINITION = {
     "boolean_configs": HVAC_FAN_CARD_BOOLEAN_CONFIGS,
     "device_entity_mapping": HVAC_FAN_CARD_DEVICE_ENTITY_MAPPING,
     "websocket_commands": HVAC_FAN_CARD_WEBSOCKET_COMMANDS,
+    # Support both single card_config (backward compat)
+    # and card_configs list (multi-card)
     "card_config": HVAC_FAN_CARD_CONFIGS[0] if HVAC_FAN_CARD_CONFIGS else {},
+    "card_configs": HVAC_FAN_CARD_CONFIGS,
     "required_entities": {},
     "entity_mappings": {
         # Absolute humidity sensors provided by integration
@@ -129,10 +132,16 @@ def load_feature() -> None:
     )
 
     # Register each card configuration for feature-centric card management
+    # Now passes full card config dict which includes card_id
     for card_config in HVAC_FAN_CARD_CONFIGS:
         extras_registry.register_card_config("hvac_fan_card", card_config)
 
     extras_registry.register_feature("hvac_fan_card")
+
+    # Load YAML validator and import/export functions
+    from .hvac_fan_card_yaml import load_validator
+
+    load_validator()
 
 
 __all__ = [

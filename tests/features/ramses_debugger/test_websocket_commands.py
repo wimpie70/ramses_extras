@@ -22,6 +22,10 @@ ws_log_get_tail = websocket_commands.ws_log_get_tail.__wrapped__
 ws_log_search = websocket_commands.ws_log_search.__wrapped__
 ws_cache_get_stats = websocket_commands.ws_cache_get_stats.__wrapped__
 ws_cache_clear = websocket_commands.ws_cache_clear.__wrapped__
+ws_log_get_lines = websocket_commands.ws_log_get_lines.__wrapped__
+ws_config_export = websocket_commands.ws_config_export.__wrapped__
+ws_config_diagnostics = websocket_commands.ws_config_diagnostics.__wrapped__
+ws_config_import = websocket_commands.ws_config_import.__wrapped__
 
 
 def _with_version(result: dict) -> dict:
@@ -999,3 +1003,335 @@ class TestWsPacketLogGetMessages:
                         "parse_warnings": [],
                     }
                 ]
+
+
+class TestWsLogGetLines:
+    """Test ws_log_get_lines websocket command."""
+
+    @pytest.mark.asyncio
+    async def test_log_get_lines_success(self, hass, conn):
+        """Test successful log line range retrieval."""
+        mock_lines = ["Line 1", "Line 2", "Line 3"]
+
+        hass.async_add_executor_job.reset_mock()
+        hass.async_add_executor_job.side_effect = [
+            Path("/config/logs/home-assistant.log"),
+            mock_lines,
+        ]
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.get_configured_log_path",
+                return_value="/config/logs",
+            ),
+            patch(
+                "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.resolve_log_file_id",
+                return_value=Path("/config/logs/home-assistant.log"),
+            ),
+        ):
+            await ws_log_get_lines(
+                hass,
+                conn,
+                {
+                    "id": "test-id",
+                    "type": "ramses_extras/ramses_debugger/log/get_lines",
+                    "file_id": "home-assistant.log",
+                    "start_line": 1,
+                    "end_line": 3,
+                },
+            )
+
+            conn.send_result.assert_called_once_with(
+                "test-id", _with_version({"lines": mock_lines})
+            )
+
+    @pytest.mark.asyncio
+    async def test_log_get_lines_invalid_range(self, hass, conn):
+        """Test log line retrieval with invalid range."""
+        with (
+            patch(
+                "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.get_configured_log_path",
+                return_value="/config/logs",
+            ),
+            patch(
+                "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.resolve_log_file_id",
+                return_value=Path("/config/logs/home-assistant.log"),
+            ),
+        ):
+            await ws_log_get_lines(
+                hass,
+                conn,
+                {
+                    "id": "test-id",
+                    "type": "ramses_extras/ramses_debugger/log/get_lines",
+                    "file_id": "home-assistant.log",
+                    "start_line": 10,
+                    "end_line": 5,  # Invalid: start > end
+                },
+            )
+
+            conn.send_error.assert_called_once_with(
+                "test-id", "invalid_line_range", "start_line must be <= end_line"
+            )
+
+
+class TestWsConfigExport:
+    """Test ws_config_export websocket command."""
+
+    @pytest.mark.asyncio
+    async def test_config_export_success(self, hass, conn):
+        """Test successful config export."""
+        mock_entry = MagicMock()
+        mock_entry.options = {"test": "config"}
+        hass.data = {"ramses_extras": {"config_entry": mock_entry}}
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.export_config_to_yaml",
+                return_value="yaml: content",
+            ),
+        ):
+            await ws_config_export(
+                hass,
+                conn,
+                {
+                    "id": "test-id",
+                    "type": "ramses_extras/ramses_debugger/config/export",
+                    "include_sensitive": False,
+                },
+            )
+
+            conn.send_result.assert_called_once_with(
+                "test-id",
+                _with_version({"yaml": "yaml: content", "empty": False}),
+            )
+
+    @pytest.mark.asyncio
+    async def test_config_export_no_config_entry(self, hass, conn):
+        """Test config export when no config entry."""
+        hass.data = {"ramses_extras": {}}
+
+        await ws_config_export(
+            hass,
+            conn,
+            {
+                "id": "test-id",
+                "type": "ramses_extras/ramses_debugger/config/export",
+            },
+        )
+
+        conn.send_error.assert_called_once_with(
+            "test-id", "no_config_entry", "No configuration entry found"
+        )
+
+
+class TestWsConfigDiagnostics:
+    """Test ws_config_diagnostics websocket command."""
+
+    @pytest.mark.asyncio
+    async def test_config_diagnostics_success(self, hass, conn):
+        """Test successful config diagnostics."""
+        mock_entry = MagicMock()
+        mock_entry.data = {"feature1": {"enabled": True}}
+        mock_entry.options = {"feature2": {"enabled": False}}
+        hass.data = {
+            "ramses_extras": {
+                "config_entry": mock_entry,
+                "devices": [
+                    {"device_id": "01:123456", "type": "FAN"},
+                    {"device_id": "02:789012", "type": "REM"},
+                ],
+            }
+        }
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.config.migration.migrate_to_canonical_config",
+                return_value={
+                    "ramses_extras": {
+                        "features": {
+                            "sensor_control": {"FANs": {"01:123456": {}}},
+                            "remote_binding": {
+                                "FANs": {
+                                    "01:123456": {"REMs": [{"rem_id": "02:789012"}]}
+                                }
+                            },
+                            "zones": {"FANs": {"01:123456": []}},
+                        }
+                    }
+                },
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.config.model.get_feature_section",
+                return_value={"FANs": {}},
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.config.model.get_fan_ids",
+                return_value=["01:123456"],
+            ),
+        ):
+            await ws_config_diagnostics(
+                hass,
+                conn,
+                {
+                    "id": "test-id",
+                    "type": "ramses_extras/ramses_debugger/config/diagnostics",
+                },
+            )
+
+            conn.send_result.assert_called_once()
+            args = conn.send_result.call_args[0][1]
+            assert "discovered" in args
+            assert "configured" in args
+            assert "mismatches" in args
+            assert "summary" in args
+
+
+class TestWsConfigImport:
+    """Test ws_config_import websocket command."""
+
+    @pytest.mark.asyncio
+    async def test_config_import_dry_run_success(self, hass, conn):
+        """Test successful config import in dry run mode."""
+        mock_entry = MagicMock()
+        mock_entry.data = {}
+        mock_entry.options = {}
+        hass.data = {"ramses_extras": {"config_entry": mock_entry}}
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.config.import_full.parse_full_config_yaml",
+                return_value={
+                    "ramses_extras": {"features": {"test": {"enabled": True}}}
+                },
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.config.import_full.validate_full_config_import",
+                return_value=[],
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.config.migration.migrate_to_canonical_config",
+                return_value={},
+            ),
+        ):
+            await ws_config_import(
+                hass,
+                conn,
+                {
+                    "id": "test-id",
+                    "type": "ramses_extras/ramses_debugger/config/import",
+                    "yaml_content": (
+                        "ramses_extras:\n  features:\n    test:\n      enabled: true"
+                    ),
+                    "dry_run": True,
+                },
+            )
+
+            conn.send_result.assert_called_once()
+            args = conn.send_result.call_args[0][1]
+            assert args["dry_run"] is True
+            assert args["valid"] is True
+
+    @pytest.mark.asyncio
+    async def test_config_import_invalid_yaml(self, hass, conn):
+        """Test config import with invalid YAML."""
+        mock_entry = MagicMock()
+        hass.data = {"ramses_extras": {"config_entry": mock_entry}}
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.config.import_full.parse_full_config_yaml",
+                side_effect=ValueError("Invalid YAML"),
+            ),
+        ):
+            await ws_config_import(
+                hass,
+                conn,
+                {
+                    "id": "test-id",
+                    "type": "ramses_extras/ramses_debugger/config/import",
+                    "yaml_content": "invalid: yaml: content: [",
+                },
+            )
+
+            conn.send_error.assert_called_once_with(
+                "test-id", "invalid_yaml", "Invalid YAML"
+            )
+
+
+class TestHelperFunctions:
+    """Test helper functions."""
+
+    def test_inject_version_with_dict(self, hass):
+        """Test version injection for dict results."""
+        hass.data = {"ramses_extras": {"_integration_version": "1.2.3"}}
+        result = {"data": "test"}
+
+        injected = websocket_commands._inject_version(hass, result)
+
+        assert injected == {"data": "test", "_backend_version": "1.2.3"}
+
+    def test_inject_version_without_dict(self, hass):
+        """Test version injection for non-dict results."""
+        result = "string_result"
+
+        injected = websocket_commands._inject_version(hass, result)
+
+        assert injected == "string_result"
+
+    def test_get_cache_success(self, hass):
+        """Test successful cache retrieval."""
+        mock_cache = MagicMock()
+
+        with patch.object(websocket_commands, "_get_cache", return_value=mock_cache):
+            cache = websocket_commands._get_cache(hass)
+
+        assert cache is mock_cache
+
+    def test_get_traffic_collector_success(self, hass):
+        """Test successful traffic collector retrieval."""
+        mock_collector = MagicMock()
+
+        with patch.object(
+            websocket_commands, "_get_traffic_collector", return_value=mock_collector
+        ):
+            collector = websocket_commands._get_traffic_collector(hass)
+
+        assert collector is mock_collector
+
+    def test_file_state_exists(self, tmp_path):
+        """Test file state for existing file."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("test content")
+
+        state = websocket_commands._file_state(test_file)
+
+        assert state is not None
+        assert len(state) == 2
+
+    def test_calculate_config_changes(self):
+        """Test config changes calculation."""
+        old_config = {
+            "ramses_extras": {
+                "features": {
+                    "feature1": {"enabled": True},
+                    "feature2": {"enabled": False},
+                }
+            }
+        }
+        new_config = {
+            "ramses_extras": {
+                "features": {
+                    "feature1": {"enabled": True},  # Same
+                    "feature3": {"enabled": True},  # Added
+                    "feature2": {"enabled": True},  # Modified
+                }
+            }
+        }
+
+        changes = websocket_commands._calculate_config_changes(old_config, new_config)
+
+        assert changes["added_features"] == ["feature3"]
+        assert changes["removed_features"] == []
+        assert changes["modified_features"] == ["feature2"]
+        assert changes["total_features_after"] == 3

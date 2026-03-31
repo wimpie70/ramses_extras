@@ -8,11 +8,13 @@ from custom_components.ramses_extras.framework.helpers.config.migration import (
 from custom_components.ramses_extras.framework.helpers.config.model import (
     CONFIG_DEVICES_KEY,
     CONFIG_FANS_KEY,
+    SENSOR_CONTROL_AREA_SENSORS_KEY,
+    SENSOR_CONTROL_SOURCES_KEY,
+)
+from custom_components.ramses_extras.framework.helpers.config.validation import (
     FEATURE_REMOTE_BINDING,
     FEATURE_SENSOR_CONTROL,
     FEATURE_ZONES,
-    SENSOR_CONTROL_AREA_SENSORS_KEY,
-    SENSOR_CONTROL_SOURCES_KEY,
 )
 
 

@@ -315,7 +315,10 @@ class HvacFanCard extends RamsesBaseCard {
         da10D0Data.days_remaining !== undefined ? da10D0Data.days_remaining : null,
 
       // Transport connection status
-      transportAvailable
+      transportAvailable,
+
+      // Calibration status from binary_sensor (modern template syntax entity ID)
+      isCalibrating: this.getEntityState('binary_sensor.valve_calibration_in_progress')?.state === 'on'
     };
 
     // create templateData for rendering

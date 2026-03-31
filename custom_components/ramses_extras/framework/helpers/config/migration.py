@@ -6,9 +6,6 @@ from typing import Any
 from .model import (
     CONFIG_DEVICES_KEY,
     CONFIG_FANS_KEY,
-    FEATURE_REMOTE_BINDING,
-    FEATURE_SENSOR_CONTROL,
-    FEATURE_ZONES,
     REMOTE_BINDING_BINDINGS_KEY,
     REMOTE_BINDING_REM_ID_KEY,
     REMOTE_BINDING_REMOTE_ID_KEY,
@@ -18,6 +15,11 @@ from .model import (
     normalize_device_id,
     set_feature_section,
 )
+
+# Feature IDs used by this module
+FEATURE_SENSOR_CONTROL = "sensor_control"
+FEATURE_ZONES = "zones"
+FEATURE_REMOTE_BINDING = "remote_binding"
 
 
 def migrate_to_canonical_config(raw_config: dict[str, Any]) -> dict[str, Any]:
@@ -151,9 +153,24 @@ def migrate_zones_section(section: dict[str, Any]) -> dict[str, Any]:
         fan_groups = section.get("fans")
 
     if not isinstance(fan_groups, dict):
-        return {CONFIG_FANS_KEY: {}}
+        legacy_zones = section.get("zones")
+        if not isinstance(legacy_zones, list):
+            return {CONFIG_FANS_KEY: {}}
 
-    migrated_fans: dict[str, Any] = {}
+        migrated_fans: dict[str, Any] = {}
+        fallback_fan_id = section.get("fan_id")
+        for zone in legacy_zones:
+            if not isinstance(zone, dict):
+                continue
+            fan_id = zone.get("fan_id") or fallback_fan_id
+            if not isinstance(fan_id, str) or not fan_id.strip():
+                continue
+            normalized_fan_id = normalize_device_id(fan_id)
+            migrated_fans.setdefault(normalized_fan_id, []).append(deepcopy(zone))
+
+        return {CONFIG_FANS_KEY: migrated_fans}
+
+    migrated_fans = {}
     for fan_id, zones in fan_groups.items():
         if not isinstance(zones, list):
             continue

@@ -29,6 +29,7 @@ def get_group_options(device_id: str) -> list[selector.SelectOptionDict]:
         ),
         selector.SelectOptionDict(value="area_sensors", label="Area sensors"),
         selector.SelectOptionDict(value="zones", label="Zones"),
+        selector.SelectOptionDict(value="rems", label="REMs"),
         selector.SelectOptionDict(value="done", label="Finish editing device"),
     ]
 

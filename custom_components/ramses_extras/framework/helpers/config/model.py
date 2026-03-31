@@ -10,10 +10,6 @@ CONFIG_FEATURES_KEY = "features"
 CONFIG_FANS_KEY = "FANs"
 CONFIG_REMS_KEY = "REMs"
 CONFIG_DEVICES_KEY = "devices"
-FEATURE_DEFAULT = "default"
-FEATURE_SENSOR_CONTROL = "sensor_control"
-FEATURE_REMOTE_BINDING = "remote_binding"
-FEATURE_ZONES = "zones"
 SENSOR_CONTROL_SOURCES_KEY = "sources"
 SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY = "abs_humidity_inputs"
 SENSOR_CONTROL_AREA_SENSORS_KEY = "area_sensors"
@@ -305,6 +301,27 @@ def find_entities_for_zone(
     return entities
 
 
+def get_fan_max_open_zones(section: dict[str, Any], device_id: str) -> int | None:
+    """Get max_open_zones setting for a FAN.
+
+    Args:
+        section: Zones feature section
+        device_id: FAN device ID
+
+    Returns:
+        Maximum number of zones that can be open simultaneously,
+        or None if no limit is set
+    """
+    fan_section = get_fan_section(section, device_id)
+    if not isinstance(fan_section, dict):
+        return None
+
+    max_open = fan_section.get("max_open_zones")
+    if isinstance(max_open, int) and max_open > 0:
+        return max_open
+    return None
+
+
 __all__ = [
     "CONFIG_DEVICES_KEY",
     "CONFIG_FANS_KEY",
@@ -313,10 +330,6 @@ __all__ = [
     "CONFIG_ROOT_KEY",
     "CONFIG_SCHEMA_VERSION",
     "CONFIG_SCHEMA_VERSION_KEY",
-    "FEATURE_DEFAULT",
-    "FEATURE_REMOTE_BINDING",
-    "FEATURE_SENSOR_CONTROL",
-    "FEATURE_ZONES",
     "REMOTE_BINDING_BINDINGS_KEY",
     "REMOTE_BINDING_REM_ID_KEY",
     "REMOTE_BINDING_REMOTE_ID_KEY",
@@ -329,6 +342,7 @@ __all__ = [
     "find_areas_for_zone",
     "find_entities_for_zone",
     "get_fan_ids",
+    "get_fan_max_open_zones",
     "get_fan_section",
     "get_feature_section",
     "get_features_container",

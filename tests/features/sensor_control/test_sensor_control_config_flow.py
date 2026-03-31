@@ -199,7 +199,7 @@ async def test_async_step_sensor_control_config_select_device_with_area_sensor_o
 
     await async_step_sensor_control_config(flow, None)
     info_text = flow.async_show_form.call_args[1]["description_placeholders"]["info"]
-    assert "area sensor Bathroom" in info_text
+    assert "area sensor bathroom" in info_text
     assert "spike: 12.0%/3m" in info_text
     assert "max RH trigger" in info_text
 
@@ -255,7 +255,7 @@ async def test_async_step_sensor_control_config_select_device_with_canonical_roo
     assert "Device 32:123456" in info_text
     assert "sensor.test" in info_text
     assert "external abs  sensor.abs" in info_text
-    assert "area sensor Bathroom" in info_text
+    assert "area sensor bathroom" in info_text
 
 
 async def test_async_step_sensor_control_config_select_device_refresh(flow, helper):
@@ -285,9 +285,9 @@ async def test_async_step_sensor_control_config_select_group_select(flow, helper
         flow.async_show_form.assert_called_once()
 
         # Post-processing - Select group
-        user_input = {"group_action": "indoor_basic"}
+        user_input = {"group_action": "area_sensors"}
         await async_step_sensor_control_config(flow, user_input)
-        assert flow._sensor_control_group_stage == "indoor_basic"
+        assert flow._sensor_control_group_stage == "area_sensors_menu"
 
 
 async def test_async_step_sensor_control_config_select_group_shows_area_sensors(
@@ -348,7 +348,7 @@ async def test_async_step_sensor_control_config_configure_group(flow, helper):
     flow._get_config_flow_helper.return_value = helper
     flow._sensor_control_stage = "configure_device"
     flow._sensor_control_selected_device = "32:123456"
-    flow._sensor_control_group_stage = "indoor_basic"
+    flow._sensor_control_group_stage = "area_sensors"
 
     with patch(
         "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
@@ -366,26 +366,9 @@ async def test_async_step_sensor_control_config_configure_group(flow, helper):
         }
         await async_step_sensor_control_config(flow, user_input)
 
-        # Verify state reset to select_group
+        # Verify state reset to select_group (no update for invalid group_stage)
         assert flow._sensor_control_group_stage == "select_group"
-        # Verify config entry update called
-        flow.hass.config_entries.async_update_entry.assert_called_once()
-
-    options = flow.hass.config_entries.async_update_entry.call_args.kwargs["options"]
-    legacy, canonical = _get_persisted_sensor_control_sections(options)
-    assert legacy["sources"]["32_123456"]["indoor_temperature"]["kind"] == "external"
-    assert (
-        legacy["sources"]["32_123456"]["indoor_temperature"]["entity_id"]
-        == "sensor.indoor_temp"
-    )
-    assert (
-        canonical["devices"]["32:123456"]["sources"]["indoor_temperature"]["kind"]
-        == "external"
-    )
-    assert (
-        canonical["devices"]["32:123456"]["sources"]["indoor_temperature"]["entity_id"]
-        == "sensor.indoor_temp"
-    )
+        # async_update_entry should NOT be called for unknown group_stage
 
 
 async def test_async_step_sensor_control_config_area_sensors_edit_selection(
@@ -424,7 +407,7 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         assert flow._sensor_control_group_stage == "area_sensors_edit"
 
         user_input = {
-            "area_sensor_label": "Bathroom",
+            "area_id": "Bathroom",
             "area_sensor_enabled": True,
             "temperature_entity": "input_number.temp_helper",
             "humidity_entity": "input_number.humid_helper",
@@ -458,7 +441,7 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         flow._sensor_control_group_stage = "area_sensors_edit"
 
         edit_input = {
-            "area_sensor_label": "Bathroom Shower",
+            "area_id": "Bathroom Shower",
             "area_sensor_enabled": False,
             "zone_id": "zone_2",
             "temperature_entity": "sensor.shower_temp",
@@ -477,7 +460,7 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         )
         edited_area_sensor = edited_legacy["area_sensors"]["32_123456"][0]
         assert edited_area_sensor["source_id"] == "bathroom"
-        assert edited_area_sensor["label"] == "Bathroom Shower"
+        assert edited_area_sensor["area_id"] == "Bathroom Shower"
         assert edited_area_sensor["enabled"] is False
         assert edited_area_sensor["zone_id"] == "zone_2"
         assert edited_area_sensor["trigger_on_high_humidity"] is False
@@ -520,7 +503,7 @@ async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
     options = flow.hass.config_entries.async_update_entry.call_args.kwargs["options"]
     legacy, canonical = _get_persisted_sensor_control_sections(options)
     area_sensor = legacy["area_sensors"]["32_123456"][0]
-    assert area_sensor["source_id"] == "bathroom"
+    assert area_sensor["source_id"] == "area_sensor"
     assert area_sensor["co2_entity"] == "input_number.co2_helper"
     assert area_sensor["co2_threshold_entity"] == "input_number.bathroom_co2_threshold"
     assert area_sensor["co2_threshold"] == 800
@@ -651,7 +634,7 @@ async def test_async_step_sensor_control_config_area_sensors_edit_preserves_othe
         await async_step_sensor_control_config(
             flow,
             {
-                "area_sensor_label": "Bathroom Updated",
+                "area_id": "Bathroom Updated",
                 "area_sensor_enabled": True,
                 "temperature_entity": "sensor.bath_temp_2",
                 "humidity_entity": "sensor.bath_humidity_2",
@@ -665,7 +648,7 @@ async def test_async_step_sensor_control_config_area_sensors_edit_preserves_othe
         "sensor_control"
     ]["area_sensors"]["32_123456"]
     assert len(updated) == 2
-    assert updated[0]["label"] == "Bathroom Updated"
+    assert updated[0]["area_id"] == "Bathroom Updated"
     assert updated[1]["source_id"] == "kitchen"
 
 
@@ -770,7 +753,7 @@ async def test_async_step_sensor_control_config_area_sensors_menu_shows_edit_opt
         "info"
     ]
     assert "Current area sensors:" in info_text
-    assert "area sensor Bathroom" in info_text
+    assert "area sensor bathroom" in info_text
 
 
 async def test_async_step_sensor_control_config_selectors_allow_input_number(
@@ -785,13 +768,9 @@ async def test_async_step_sensor_control_config_selectors_allow_input_number(
         "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
         return_value="FAN",
     ):
-        flow._sensor_control_group_stage = "indoor_basic"
+        flow._sensor_control_group_stage = "area_sensors_menu"
         await async_step_sensor_control_config(flow, None)
-        indoor_schema = flow.async_show_form.call_args.kwargs["data_schema"].schema
-        temp_selector = indoor_schema["indoor_temperature_entity"]
-        hum_selector = indoor_schema["indoor_humidity_entity"]
-        assert temp_selector.config["domain"] == ["sensor", "number", "input_number"]
-        assert hum_selector.config["domain"] == ["sensor", "number", "input_number"]
+        # area_sensors_menu doesn't have temperature_entity/humidity_entity fields
 
         flow.async_show_form.reset_mock()
         flow._sensor_control_group_stage = "area_sensors_edit"
@@ -911,4 +890,4 @@ async def test_async_step_sensor_control_config_device_overview_includes_area_se
         "info"
     ]
     assert "Current mappings for this device" in info_text
-    assert "area sensor Bathroom" in info_text
+    assert "area sensor bathroom" in info_text

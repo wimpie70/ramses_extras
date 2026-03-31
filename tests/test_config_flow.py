@@ -782,13 +782,18 @@ class TestRamsesExtrasOptionsFlowHandler:
 
     @pytest.mark.asyncio
     async def test_card_helpers_unhappy_paths(self, hass, tmp_path):
+        # Test warning path when card source doesn't exist
         with (
             patch(
                 "custom_components.ramses_extras.extras_registry.extras_registry."
                 "get_card_config",
                 return_value={"location": "loc"},
             ),
-            patch("pathlib.Path.exists", return_value=False),
+            patch(
+                "custom_components.ramses_extras.config_flow.DEPLOYMENT_PATHS."
+                "get_source_feature_path",
+                return_value=tmp_path / "nonexistent",
+            ),
             patch("custom_components.ramses_extras.config_flow._LOGGER") as mock_logger,
         ):
             await _manage_cards_config_flow(hass, {"hvac_fan_card": True})
@@ -800,6 +805,20 @@ class TestRamsesExtrasOptionsFlowHandler:
         ) as mock_logger:
             await _remove_card_config_flow(hass, missing_path)
             assert mock_logger.debug.called
+
+        # Test error path in _remove_card_config_flow
+        existing_path = tmp_path / "existing"
+        existing_path.mkdir()
+        with (
+            patch("custom_components.ramses_extras.config_flow._LOGGER") as mock_logger,
+            patch.object(
+                hass,
+                "async_add_executor_job",
+                side_effect=Exception("Remove failed"),
+            ),
+        ):
+            await _remove_card_config_flow(hass, existing_path)
+            assert mock_logger.error.called
 
         src = tmp_path / "src"
         dst = tmp_path / "dst"
@@ -813,8 +832,9 @@ class TestRamsesExtrasOptionsFlowHandler:
             await _install_card_config_flow(hass, src, dst)
             assert mock_logger.error.called
 
-    def test_standalone_helpers(self):
-        """Test standalone helpers coverage."""
-        assert _get_feature_details_from_module("non_existent") == {}
-        details = _get_feature_details_from_module("sensor_control")
-        assert "HvacVentilator" in details["supported_device_types"]
+
+def test_standalone_helpers():
+    """Test standalone helpers coverage."""
+    assert _get_feature_details_from_module("non_existent") == {}
+    details = _get_feature_details_from_module("sensor_control")
+    assert "HvacVentilator" in details["supported_device_types"]

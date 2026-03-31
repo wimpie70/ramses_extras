@@ -34,7 +34,7 @@ export function createTopSection(data, t) {
     timerMinutes, airflowSvg, filterDaysRemaining,
     balanceTriggersHtml, co2ZonesHtml,
     indoorHumidityClass, co2LevelClass,
-    transportAvailable
+    transportAvailable, isCalibrating
   } = data;
 
   // Helper function to format humidity values
@@ -134,9 +134,9 @@ export function createTopSection(data, t) {
           <div class="r-xtrs-hvac-fan-stats-top">
             <div class="r-xtrs-hvac-fan-fanmode" id="fanMode">${fanMode}</div>
             <div
-              class="r-xtrs-hvac-fan-connection-status connected"
+              class="r-xtrs-hvac-fan-connection-status ${isCalibrating ? 'calibrating' : 'connected'}"
               id="fanControlMode"
-              title="Current backend control source"
+              title="${isCalibrating ? 'Valve calibration in progress' : 'Current backend control source'}"
             >
               <span class="r-xtrs-hvac-fan-connection-text">${fanControlModeLabel}</span>
             </div>

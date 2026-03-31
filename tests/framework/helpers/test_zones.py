@@ -91,10 +91,8 @@ class TestGetZonesForFan:
 
     def test_get_zones_for_fan_empty(self, registry, hass):
         """Test get_zones_for_fan returns empty when no zones."""
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = []
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": []}}
 
             result = registry.get_zones_for_fan("32:123456")
 
@@ -107,10 +105,8 @@ class TestGetZonesForFan:
             {"zone_id": "office", "label": "Office", "source_type": "custom_valve"},
         ]
 
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = zones
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": zones}}
 
             result = registry.get_zones_for_fan("32:123456")
 
@@ -122,15 +118,13 @@ class TestGetZonesForFan:
         """Test get_zones_for_fan caches results."""
         zones = [{"zone_id": "test", "label": "Test Zone"}]
 
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = zones
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": zones}}
 
             # First call should cache
             result1 = registry.get_zones_for_fan("32:123456")
             # Change the mock return value
-            mock_manager.get_fan_zones.return_value = []
+            mock_get_section.return_value = {"FANs": {"32:123456": []}}
             # Second call should use cached value
             result2 = registry.get_zones_for_fan("32:123456")
 
@@ -148,10 +142,8 @@ class TestGetZone:
             {"zone_id": "office", "label": "Office"},
         ]
 
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = zones
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": zones}}
 
             result = registry.get_zone("32:123456", "office")
 
@@ -163,10 +155,8 @@ class TestGetZone:
         """Test get_zone returns None when not found."""
         zones = [{"zone_id": "bathroom", "label": "Bathroom"}]
 
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = zones
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": zones}}
 
             result = registry.get_zone("32:123456", "office")
 
@@ -187,25 +177,22 @@ class TestListAllZones:
     def test_list_all_zones(self, registry, hass):
         """Test list_all_zones returns all zones grouped by FAN."""
         with (
-            patch.object(registry, "_get_config_manager") as mock_get_manager,
             patch(
                 "custom_components.ramses_extras.framework.helpers.config.model.get_fan_ids"
             ) as mock_fan_ids,
         ):
-            mock_manager = MagicMock()
-            mock_manager._config = {"features": {"zones": {"FANs": {}}}}
-            # Mock get_fan_zones to return different zones per FAN
-            mock_manager.get_fan_zones.side_effect = lambda fan_id: {
-                "32:111111": [{"zone_id": "bathroom", "label": "Bathroom"}],
-                "32:222222": [{"zone_id": "office", "label": "Office"}],
-            }.get(fan_id, [])
-            mock_get_manager.return_value = mock_manager
             mock_fan_ids.return_value = ["32:111111", "32:222222"]
 
-            result = registry.list_all_zones()
+            with patch.object(registry, "get_zones_for_fan") as mock_get_zones_for_fan:
+                mock_get_zones_for_fan.side_effect = lambda fan_id: {
+                    "32:111111": [{"zone_id": "bathroom", "label": "Bathroom"}],
+                    "32:222222": [{"zone_id": "office", "label": "Office"}],
+                }.get(fan_id, [])
 
-            assert "32:111111" in result
-            assert "32:222222" in result
+                result = registry.list_all_zones()
+
+                assert "32:111111" in result
+                assert "32:222222" in result
 
 
 class TestFindAreasForZone:
@@ -217,10 +204,8 @@ class TestFindAreasForZone:
             {"zone_id": "bathroom", "label": "Bathroom", "areas": ["area1", "area2"]},
         ]
 
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = zones
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": zones}}
 
             result = registry.find_areas_for_zone("32:123456", "bathroom")
 
@@ -230,10 +215,8 @@ class TestFindAreasForZone:
         """Test find_areas_for_zone returns empty when no areas defined."""
         zones = [{"zone_id": "bathroom", "label": "Bathroom"}]
 
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = zones
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": zones}}
 
             result = registry.find_areas_for_zone("32:123456", "bathroom")
 
@@ -257,10 +240,8 @@ class TestFindEntitiesForZone:
             },
         ]
 
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = zones
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": zones}}
 
             result = registry.find_entities_for_zone("32:123456", "bathroom")
 
@@ -278,10 +259,8 @@ class TestFindEntitiesForZone:
             },
         ]
 
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = zones
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": zones}}
 
             result = registry.find_entities_for_zone("32:123456", "office")
 
@@ -306,10 +285,8 @@ class TestGetControllableZones:
             },
         ]
 
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_zones.return_value = zones
-            mock_get_manager.return_value = mock_manager
+        with patch.object(registry, "_get_zones_section") as mock_get_section:
+            mock_get_section.return_value = {"FANs": {"32:123456": zones}}
 
             result = registry.get_controllable_zones("32:123456")
 

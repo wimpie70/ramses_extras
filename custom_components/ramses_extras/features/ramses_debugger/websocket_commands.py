@@ -23,6 +23,9 @@ from homeassistant.components import websocket_api
 from homeassistant.core import Event, HomeAssistant
 
 from custom_components.ramses_extras.const import DOMAIN
+from custom_components.ramses_extras.framework.helpers.config.export import (
+    export_config_to_yaml,
+)
 
 from .const import DOMAIN as RAMSES_DEBUGGER_DOMAIN
 from .debugger_cache import DebuggerCache, freeze_for_key
@@ -989,3 +992,356 @@ async def ws_cache_clear(
     cache.clear()
     result = _inject_version(hass, {"available": True, "cleared": True})
     connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/config/export",
+        vol.Optional("include_sensitive", default=False): bool,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_config_export(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    """Export the full structured canonical config as YAML.
+
+    Returns the effective persisted configuration with runtime-only
+    fields and sensitive values redacted by default.
+    """
+    domain_data = hass.data.get(DOMAIN)
+    if not isinstance(domain_data, dict):
+        connection.send_error(
+            msg["id"], "integration_not_loaded", "Ramses Extras not loaded"
+        )
+        return
+
+    entry = domain_data.get("config_entry")
+    if not entry:
+        connection.send_error(
+            msg["id"], "no_config_entry", "No configuration entry found"
+        )
+        return
+
+    options = getattr(entry, "options", {}) if entry else {}
+    if not options:
+        connection.send_result(
+            msg["id"],
+            _inject_version(
+                hass,
+                {
+                    "yaml": "",
+                    "empty": True,
+                },
+            ),
+        )
+        return
+
+    try:
+        # Export with redaction unless explicitly requested otherwise
+        include_sensitive = msg.get("include_sensitive", False)
+        if include_sensitive:
+            # Export without redacting sensitive values
+            from ...framework.helpers.config.migration import (
+                migrate_to_canonical_config,
+            )
+
+            yaml_content = export_config_to_yaml(
+                migrate_to_canonical_config(options),
+                sensitive_keys=set(),  # Don't redact sensitive keys
+                runtime_only_keys={  # Still redact runtime-only
+                    "binding_health_cache",
+                    "cache",
+                    "discovery_hints",
+                    "health_cache",
+                    "last_seen",
+                    "last_seen_at",
+                    "runtime_state",
+                    "suggestions",
+                    "transport_snapshot",
+                    "ui_state",
+                },
+            )
+        else:
+            yaml_content = export_config_to_yaml(options)
+
+        connection.send_result(
+            msg["id"],
+            _inject_version(
+                hass,
+                {
+                    "yaml": yaml_content,
+                    "empty": not yaml_content.strip(),
+                },
+            ),
+        )
+    except Exception as e:
+        _LOGGER.exception("Failed to export config")
+        connection.send_error(
+            msg["id"], "export_failed", f"Failed to export config: {e}"
+        )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/config/diagnostics",
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_config_diagnostics(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    """Return diagnostics comparing discovered vs explicit config.
+
+    Shows discovered devices from ramses_cc vs explicitly configured
+    devices in ramses_extras, highlighting mismatches.
+    """
+    from ...framework.helpers.config.migration import migrate_to_canonical_config
+    from ...framework.helpers.config.model import get_fan_ids, get_feature_section
+
+    # Feature IDs used locally
+    feature_remote_binding = "remote_binding"
+    feature_sensor_control = "sensor_control"
+    feature_zones = "zones"
+
+    domain_data = hass.data.get(DOMAIN)
+    if not isinstance(domain_data, dict):
+        connection.send_error(
+            msg["id"], "integration_not_loaded", "Ramses Extras not loaded"
+        )
+        return
+
+    # Get discovered devices
+    discovered_devices = domain_data.get("devices", [])
+    discovered_fan_ids: set[str] = set()
+    discovered_rem_ids: set[str] = set()
+
+    for device in discovered_devices:
+        if isinstance(device, dict):
+            device_id = device.get("device_id")
+            device_type = device.get("type", "").upper()
+        else:
+            device_id = getattr(device, "device_id", None)
+            device_type = getattr(device, "type", "").upper()
+
+        if device_id:
+            normalized_id = str(device_id).replace("_", ":")
+            if "FAN" in device_type or "VENTILATOR" in device_type:
+                discovered_fan_ids.add(normalized_id)
+            elif "REM" in device_type or "REMOTE" in device_type:
+                discovered_rem_ids.add(normalized_id)
+
+    # Get explicitly configured devices from config
+    entry = domain_data.get("config_entry")
+    configured_fan_ids: set[str] = set()
+    configured_rem_ids: set[str] = set()
+    configured_zone_fans: set[str] = set()
+
+    if entry:
+        raw_config: dict[str, Any] = {}
+        if getattr(entry, "data", None):
+            raw_config.update(dict(entry.data))
+        if getattr(entry, "options", None):
+            raw_config.update(dict(entry.options))
+
+        canonical_config = migrate_to_canonical_config(raw_config)
+
+        # Get sensor_control configured devices
+        sensor_section = get_feature_section(canonical_config, feature_sensor_control)
+        configured_fan_ids.update(get_fan_ids(sensor_section))
+
+        # Get remote_binding configured devices
+        binding_section = get_feature_section(canonical_config, feature_remote_binding)
+        configured_fan_ids.update(get_fan_ids(binding_section))
+        # Extract REM IDs from bindings
+        for fan_id in get_fan_ids(binding_section):
+            fan_section = binding_section.get("FANs", {}).get(fan_id, {})
+            rems = fan_section.get("REMs", [])
+            for rem in rems:
+                rem_id = rem.get("rem_id") or rem.get("remote_id")
+                if rem_id:
+                    configured_rem_ids.add(str(rem_id).replace("_", ":"))
+
+        # Get zones configured devices
+        zones_section = get_feature_section(canonical_config, feature_zones)
+        zone_fan_ids = get_fan_ids(zones_section)
+        configured_fan_ids.update(zone_fan_ids)
+        configured_zone_fans.update(zone_fan_ids)
+
+    # Calculate differences
+    discovered_not_configured_fans = discovered_fan_ids - configured_fan_ids
+    configured_not_discovered_fans = configured_fan_ids - discovered_fan_ids
+    discovered_not_configured_rems = discovered_rem_ids - configured_rem_ids
+    configured_not_discovered_rems = configured_rem_ids - discovered_rem_ids
+
+    connection.send_result(
+        msg["id"],
+        _inject_version(
+            hass,
+            {
+                "discovered": {
+                    "fans": sorted(discovered_fan_ids),
+                    "rems": sorted(discovered_rem_ids),
+                    "total": len(discovered_fan_ids) + len(discovered_rem_ids),
+                },
+                "configured": {
+                    "fans": sorted(configured_fan_ids),
+                    "rems": sorted(configured_rem_ids),
+                    "zone_fans": sorted(configured_zone_fans),
+                    "total": len(configured_fan_ids) + len(configured_rem_ids),
+                },
+                "mismatches": {
+                    "discovered_not_configured": {
+                        "fans": sorted(discovered_not_configured_fans),
+                        "rems": sorted(discovered_not_configured_rems),
+                        "description": "Discovered devices not in ramses_extras config",
+                    },
+                    "configured_not_discovered": {
+                        "fans": sorted(configured_not_discovered_fans),
+                        "rems": sorted(configured_not_discovered_rems),
+                        "description": (
+                            "Configured devices not found in ramses_cc discovery"
+                        ),
+                    },
+                },
+                "summary": {
+                    "all_fans_configured": len(discovered_not_configured_fans) == 0,
+                    "all_rems_configured": len(discovered_not_configured_rems) == 0,
+                    "orphan_config_count": len(configured_not_discovered_fans)
+                    + len(configured_not_discovered_rems),
+                },
+            },
+        ),
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/ramses_debugger/config/import",
+        vol.Required("yaml_content"): str,
+        vol.Optional("dry_run", default=True): bool,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_config_import(
+    hass: HomeAssistant,
+    connection: "WebSocket",
+    msg: dict[str, Any],
+) -> None:
+    """Import full ramses_extras configuration from YAML.
+
+    Validates the YAML and optionally applies the configuration.
+    By default runs in dry-run mode for safety.
+    """
+    from ...framework.helpers.config.import_full import (
+        parse_full_config_yaml,
+        validate_full_config_import,
+    )
+    from ...framework.helpers.config.migration import migrate_to_canonical_config
+
+    yaml_content = msg.get("yaml_content", "")
+    dry_run = msg.get("dry_run", True)
+
+    # Parse and validate
+    try:
+        imported_config = parse_full_config_yaml(yaml_content)
+    except ValueError as e:
+        connection.send_error(msg["id"], "invalid_yaml", str(e))
+        return
+
+    # Validate the import
+    validation_errors = validate_full_config_import(imported_config, hass)
+
+    domain_data = hass.data.get(DOMAIN)
+    if not isinstance(domain_data, dict):
+        connection.send_error(
+            msg["id"], "integration_not_loaded", "Ramses Extras not loaded"
+        )
+        return
+
+    entry = domain_data.get("config_entry")
+    if not entry:
+        connection.send_error(
+            msg["id"], "no_config_entry", "No configuration entry found"
+        )
+        return
+
+    # Get current config
+    raw_config: dict[str, Any] = {}
+    if getattr(entry, "data", None):
+        raw_config.update(dict(entry.data))
+    if getattr(entry, "options", None):
+        raw_config.update(dict(entry.options))
+
+    canonical_config = migrate_to_canonical_config(raw_config)
+
+    # Always replace entire config with imported
+    # Calculate what would change
+    changes_summary = _calculate_config_changes(canonical_config, imported_config)
+
+    if dry_run:
+        connection.send_result(
+            msg["id"],
+            _inject_version(
+                hass,
+                {
+                    "dry_run": True,
+                    "valid": len(validation_errors) == 0,
+                    "validation_errors": validation_errors,
+                    "changes": changes_summary,
+                    "config_preview": imported_config,
+                },
+            ),
+        )
+        return
+
+    # Apply the configuration
+    try:
+        # Update config entry options with imported config
+        hass.config_entries.async_update_entry(entry, options=imported_config)
+
+        connection.send_result(
+            msg["id"],
+            _inject_version(
+                hass,
+                {
+                    "dry_run": False,
+                    "applied": True,
+                    "valid": len(validation_errors) == 0,
+                    "validation_warnings": validation_errors,
+                    "changes": changes_summary,
+                },
+            ),
+        )
+    except Exception as e:
+        _LOGGER.exception("Failed to apply config import")
+        connection.send_error(
+            msg["id"], "apply_failed", f"Failed to apply configuration: {e}"
+        )
+
+
+def _calculate_config_changes(
+    old_config: dict[str, Any], new_config: dict[str, Any]
+) -> dict[str, Any]:
+    """Calculate summary of changes between old and new config."""
+    old_features = old_config.get("ramses_extras", {}).get("features", {})
+    new_features = new_config.get("ramses_extras", {}).get("features", {})
+
+    added_features = [f for f in new_features if f not in old_features]
+    removed_features = [f for f in old_features if f not in new_features]
+    modified_features = [
+        f
+        for f in new_features
+        if f in old_features and old_features[f] != new_features[f]
+    ]
+
+    return {
+        "added_features": added_features,
+        "removed_features": removed_features,
+        "modified_features": modified_features,
+        "total_features_after": len(new_features),
+    }

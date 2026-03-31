@@ -57,7 +57,11 @@ function calculateEfficiency(supplyTemp, exhaustTemp, outdoorTemp, indoorTemp) {
   return Math.max(0, Math.min(100, Math.round(efficiency * 10) / 10));
 }
 
-function formatFanControlMode(mode) {
+function formatFanControlMode(mode, isCalibrating) {
+  if (isCalibrating) {
+    return 'Calibrating...';
+  }
+
   const normalizedMode = typeof mode === 'string' ? mode.trim() : '';
 
   if (normalizedMode === 'manual_override') {
@@ -85,7 +89,8 @@ export function createTemplateData(rawData) {
     supplyTemp, exhaustTemp, exhaustFanSpeed, supplyFanSpeed, fanMode, fanControlMode,
     co2Level, supplyFlowRate, exhaustFlowRate,
     dehumMode, dehumActive, dehumEntitiesAvailable, balanceTrackingLabel, comfortTemp, timerMinutes = 0, efficiency = 75,
-    filterDaysRemaining = null, transportAvailable = true, extrasControlEnabled = true
+    filterDaysRemaining = null, transportAvailable = true, extrasControlEnabled = true,
+    isCalibrating = false
   } = rawData;
 
   // If transportAvailable is not provided, assume true (connected)
@@ -127,7 +132,7 @@ export function createTemplateData(rawData) {
     exhaustFanSpeed: exhaustFanSpeed || '?',
     supplyFanSpeed: supplyFanSpeed || '?',
     fanMode: fanMode || 'auto',
-    fanControlModeLabel: formatFanControlMode(fanControlMode),
+    fanControlModeLabel: formatFanControlMode(fanControlMode, isCalibrating),
     extrasControlEnabled,
     co2Level: co2Level || '?',
     supplyFlowRate: supplyFlowRate || '?',
@@ -149,6 +154,9 @@ export function createTemplateData(rawData) {
     filterDaysRemaining: filterDaysRemaining !== null ? filterDaysRemaining : '?',
 
     // Transport connection status
-    transportAvailable: transportState
+    transportAvailable: transportState,
+
+    // Calibration status for UI indicator
+    isCalibrating
   };
 }

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from ...const import DOMAIN
@@ -46,19 +47,30 @@ class ZoneRegistry:
         self._hass = hass
         self._cache: dict[str, list[dict[str, Any]]] = {}
 
-    def _get_config_manager(self) -> ExtrasConfigManager | None:
-        """Get the ExtrasConfigManager instance."""
+    def _get_config_entry(self) -> ConfigEntry | None:
         domain_data = self._hass.data.get(DOMAIN, {})
         config_entry = domain_data.get("config_entry")
+        if isinstance(config_entry, ConfigEntry):
+            return config_entry
+        return None
+
+    def _get_raw_config(self) -> dict[str, Any]:
+        config_entry = self._get_config_entry()
         if config_entry is None:
-            return None
+            return {}
 
+        raw_config: dict[str, Any] = {}
+        if config_entry.data:
+            raw_config.update(config_entry.data)
+        if config_entry.options:
+            raw_config.update(config_entry.options)
+        return raw_config
+
+    def _get_zones_section(self) -> dict[str, Any]:
         # Import here to avoid circular imports
-        from ...framework.helpers.config.core import ExtrasConfigManager
+        from ...framework.helpers.config.migration import get_migrated_feature_section
 
-        return ExtrasConfigManager(
-            self._hass, config_entry, "default", {"enabled": False}
-        )
+        return get_migrated_feature_section(self._get_raw_config(), "zones")
 
     def get_zones_for_fan(self, fan_id: str) -> list[dict[str, Any]]:
         """Get all zones for a FAN device.
@@ -75,12 +87,11 @@ class ZoneRegistry:
         if normalized_id in self._cache:
             return self._cache[normalized_id]
 
-        # Load from config
-        manager = self._get_config_manager()
-        if manager is None:
-            return []
+        # Import here to avoid circular imports
+        from ...framework.helpers.config.model import get_zones_for_fan
 
-        zones = manager.get_fan_zones(normalized_id)
+        section = self._get_zones_section()
+        zones = get_zones_for_fan(section, normalized_id)
         self._cache[normalized_id] = zones
         return zones
 
@@ -106,23 +117,15 @@ class ZoneRegistry:
         Returns:
             Dict mapping FAN device IDs to lists of zone dicts
         """
-        manager = self._get_config_manager()
-        if manager is None:
-            return {}
-
         # Import here to avoid circular imports
-        from ...framework.helpers.config.model import (
-            FEATURE_ZONES,
-            get_fan_ids,
-            get_feature_section,
-        )
+        from ...framework.helpers.config.model import get_fan_ids
 
-        section = get_feature_section(manager._config, FEATURE_ZONES)
+        section = self._get_zones_section()
         fan_ids = get_fan_ids(section)
 
         result: dict[str, list[dict[str, Any]]] = {}
         for fan_id in fan_ids:
-            zones = manager.get_fan_zones(fan_id)
+            zones = self.get_zones_for_fan(fan_id)
             if zones:
                 result[fan_id] = zones
 

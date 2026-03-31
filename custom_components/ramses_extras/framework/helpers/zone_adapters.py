@@ -416,7 +416,8 @@ class PairedValvesZoneAdapter(ZoneAdapterBase):
             if config.extra_config
             else None
         )
-        self._invert_logic: bool = True  # Shelly 2PM typically needs inversion
+        self._invert_logic: bool = False  # Set to True if your valves are
+        # wired opposite (0% = open, 100% = closed)
 
     def _check_availability(self) -> bool:
         """Check if both valve entities are available."""
@@ -616,12 +617,18 @@ class ZoneAdapterRegistry:
         self,
         fan_id: str,
         zone_id: str,
+        zone_type: str | None = None,
+        inlet_entity: str | None = None,
+        outlet_entity: str | None = None,
     ) -> ZoneAdapterBase | None:
         """Get or create an adapter for a zone.
 
         Args:
             fan_id: FAN device ID
             zone_id: Zone identifier
+            zone_type: Optional zone type override (e.g., "paired_valves")
+            inlet_entity: Optional inlet valve entity ID override
+            outlet_entity: Optional outlet valve entity ID override
 
         Returns:
             ZoneAdapterBase instance or None
@@ -637,18 +644,21 @@ class ZoneAdapterRegistry:
         if zone is None:
             return None
 
-        # Build adapter config
-        source_type = zone.get("source_type", "custom_valve")
+        # Build adapter config - use overrides if provided, fall back to zone config
+        source_type = zone_type or zone.get("source_type", "custom_valve")
         actuator = zone.get("actuator", {})
         capabilities = zone.get("capabilities", {})
 
         # For paired_valves, pass inlet/outlet entities as extra_config
         extra_config = zone.get("extra_config", {})
         if source_type == "paired_valves":
+            # Use overrides if provided, otherwise fall back to zone config
+            inlet_valve = inlet_entity or zone.get("inlet_valve_entity")
+            outlet_valve = outlet_entity or zone.get("outlet_valve_entity")
             extra_config = {
                 **extra_config,
-                "inlet_valve_entity": zone.get("inlet_valve_entity"),
-                "outlet_valve_entity": zone.get("outlet_valve_entity"),
+                "inlet_valve_entity": inlet_valve,
+                "outlet_valve_entity": outlet_valve,
             }
 
         config = ZoneAdapterConfig(

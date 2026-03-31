@@ -1,3 +1,9 @@
+"""Constants for the sensor_control feature.
+
+This module contains all constants and schemas for the sensor_control feature.
+Feature-specific validation logic is in sensor_control_yaml.py.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -35,6 +41,11 @@ INTERNAL_SENSOR_MAPPINGS = {
     },
 }
 
+# Configuration keys used in YAML and internal config
+SENSOR_CONTROL_SOURCES_KEY = "sources"
+SENSOR_CONTROL_AREA_SENSORS_KEY = "area_sensors"
+SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY = "abs_humidity_inputs"
+
 SENSOR_CONTROL_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {}
 SENSOR_CONTROL_SWITCH_CONFIGS: dict[str, dict[str, Any]] = {}
 SENSOR_CONTROL_NUMBER_CONFIGS: dict[str, dict[str, Any]] = {}
@@ -56,6 +67,8 @@ FEATURE_DEFINITION: dict[str, Any] = {
 
 
 def load_feature() -> None:
+    """Load the sensor_control feature and register its components."""
+    # Import here to avoid circular imports
     from custom_components.ramses_extras.extras_registry import extras_registry
 
     extras_registry.register_websocket_commands(
@@ -63,12 +76,22 @@ def load_feature() -> None:
     )
     extras_registry.register_feature(DOMAIN)
 
+    # Load YAML validator and import/export functions
+    from .sensor_control_yaml import load_validator as load_sensor_validator
+    from .zones_yaml import load_validator as load_zones_validator
+
+    load_sensor_validator()
+    load_zones_validator()
+
 
 __all__ = [
     "DOMAIN",
     "FEATURE_DEFINITION",
     "SUPPORTED_METRICS",
     "INTERNAL_SENSOR_MAPPINGS",
+    "SENSOR_CONTROL_SOURCES_KEY",
+    "SENSOR_CONTROL_AREA_SENSORS_KEY",
+    "SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY",
     "SENSOR_CONTROL_SENSOR_CONFIGS",
     "SENSOR_CONTROL_SWITCH_CONFIGS",
     "SENSOR_CONTROL_NUMBER_CONFIGS",

@@ -5,6 +5,7 @@ including utility commands that can be used by any feature.
 """
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -444,7 +445,7 @@ async def ws_get_bound_rem(
             "bound_rem": bound,
             "extras_binding": extras_binding,
             "extras_rem_id": extras_rem_id,
-            "source": "device" if bound else ("extras" if extras_rem_id else None),
+            "source": "extras" if extras_rem_id else ("device" if bound else None),
         },
     )
 
@@ -466,14 +467,16 @@ async def ws_get_fan_config_associations(
     """
     from ...framework.helpers.config.migration import migrate_to_canonical_config
     from ...framework.helpers.config.model import (
-        FEATURE_REMOTE_BINDING,
-        FEATURE_ZONES,
         get_feature_section,
         get_remote_binding_rem_ids,
         get_remote_binding_rems,
         get_zone_ids_for_fan,
         get_zones_for_fan,
     )
+
+    # Feature IDs used locally
+    feature_remote_binding = "remote_binding"
+    feature_zones = "zones"
 
     device_id = str(msg["device_id"])
 
@@ -502,9 +505,9 @@ async def ws_get_fan_config_associations(
 
         canonical_config = migrate_to_canonical_config(raw_config)
 
-        zones_section = get_feature_section(canonical_config, FEATURE_ZONES)
+        zones_section = get_feature_section(canonical_config, feature_zones)
         remote_binding_section = get_feature_section(
-            canonical_config, FEATURE_REMOTE_BINDING
+            canonical_config, feature_remote_binding
         )
 
         zones = get_zones_for_fan(zones_section, device_id)
@@ -982,6 +985,44 @@ async def ws_set_zone_demand(
     except Exception as err:
         _LOGGER.error("Failed to set zone demand: %s", err)
         connection.send_error(msg["id"], "set_zone_demand_failed", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/run_zone_actuation",
+        vol.Required("fan_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_run_zone_actuation(
+    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+) -> None:
+    """Trigger zone actuation cycle for a FAN.
+
+    This runs the demand-driven min/max actuation for all zones
+    associated with the specified FAN device.
+    """
+    from ...framework.helpers.zone_coordinator import get_zone_coordinator
+
+    try:
+        fan_id = msg["fan_id"]
+
+        coordinator = get_zone_coordinator(hass, fan_id)
+
+        # Run the actuation cycle
+        results = await coordinator.async_run_zone_actuation_cycle()
+
+        connection.send_result(
+            msg["id"],
+            {
+                "fan_id": fan_id,
+                "results": results,
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
+    except Exception as err:
+        _LOGGER.error("Failed to run zone actuation: %s", err)
+        connection.send_error(msg["id"], "run_zone_actuation_failed", str(err))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

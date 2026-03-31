@@ -19,9 +19,6 @@ from homeassistant.core import HomeAssistant
 from .export import build_exportable_config, export_config_to_yaml
 from .migration import migrate_to_canonical_config
 from .model import (
-    FEATURE_REMOTE_BINDING,
-    FEATURE_SENSOR_CONTROL,
-    FEATURE_ZONES,
     get_fan_ids,
     get_remote_binding_rem_ids,
     get_remote_binding_rems,
@@ -40,6 +37,11 @@ from .model import (
     set_feature_section as set_canonical_feature_section,
 )
 from .validation import ConfigValidator
+
+# Feature IDs used by this module
+FEATURE_SENSOR_CONTROL = "sensor_control"
+FEATURE_ZONES = "zones"
+FEATURE_REMOTE_BINDING = "remote_binding"
 
 _LOGGER = logging.getLogger(__name__)
 

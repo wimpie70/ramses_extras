@@ -198,12 +198,11 @@ class RemoteBindingRegistry:
 
         # Import here to avoid circular imports
         from ...framework.helpers.config.model import (
-            FEATURE_REMOTE_BINDING,
             get_fan_ids,
             get_feature_section,
         )
 
-        section = get_feature_section(manager._config, FEATURE_REMOTE_BINDING)
+        section = get_feature_section(manager._config, "remote_binding")
         fan_ids = get_fan_ids(section)
 
         result: dict[str, list[dict[str, Any]]] = {}
@@ -313,6 +312,10 @@ class RemoteBindingRegistry:
                 }
                 if "source" in binding:
                     rem_entry["source"] = binding["source"]
+                if "zone_id" in binding:
+                    rem_entry["zone_id"] = binding["zone_id"]
+                if "area_id" in binding:
+                    rem_entry["area_id"] = binding["area_id"]
                 fans_section[fan_id]["REMs"].append(rem_entry)
 
         # Use JSON as a simple YAML-compatible serialization

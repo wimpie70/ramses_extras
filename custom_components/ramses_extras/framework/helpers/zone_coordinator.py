@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -17,9 +18,10 @@ from homeassistant.core import HomeAssistant
 from ...const import DOMAIN
 from .fan_speed_arbiter import get_fan_speed_arbiter
 from .zone_adapters import ZoneAdapterRegistry, get_zone_adapter_registry
+from .zone_demand import DemandSource, ZoneDemandRegistry, get_zone_demand_registry
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    pass
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,9 +64,19 @@ class ZoneConfig:
     """Configuration for zone coordination."""
 
     zone_id: str
-    priority: int = _DEFAULT_ZONE_PRIORITY
+    priority: int = _DEFAULT_ZONE_PRIORITY  # For FAN-level demand arbitration
     min_position_for_demand: int = 10  # Position threshold to trigger fan demand
     demand_mapping: dict[int, str] | None = None  # Map position ranges to fan speeds
+    # Phase 5a: Actuator min/max positions for demand-driven actuation
+    min_position: int = 0  # Actuator position when no demand (e.g., 0% = closed)
+    max_position: int = 100  # Actuator position when demand (e.g., 100% = open)
+    is_controllable: bool = False  # Whether zone has controllable actuators
+    # Phase 5b: Priority for demand resolution when max_open_zones limits active zones
+    actuation_priority: int = 100  # Higher = more likely to be selected (default 100)
+    # Hardware actuator configuration
+    zone_type: str = "paired_valves"  # Type of zone adapter
+    inlet_valve_entity: str | None = None  # Inlet valve entity ID
+    outlet_valve_entity: str | None = None  # Outlet valve entity ID
 
 
 class ZoneCoordinator:
@@ -89,9 +101,14 @@ class ZoneCoordinator:
         self._hass = hass
         self._fan_id = fan_id
         self._adapter_registry = get_zone_adapter_registry(hass)
+        self._demand_registry = get_zone_demand_registry(hass)
         self._zone_configs: dict[str, ZoneConfig] = {}
         self._last_states: dict[str, ZoneState] = {}
         self._enabled = True
+        # Phase 5b: Max open zones cap for demand resolution
+        self._max_open_zones: int | None = None  # None = no limit
+        # Track last actuator commands for diagnostics
+        self._last_actuator_commands: dict[str, dict[str, Any]] = {}
 
     @property
     def fan_id(self) -> str:
@@ -127,6 +144,13 @@ class ZoneCoordinator:
         priority: int | None = None,
         min_position_for_demand: int | None = None,
         demand_mapping: dict[int, str] | None = None,
+        min_position: int | None = None,
+        max_position: int | None = None,
+        is_controllable: bool | None = None,
+        actuation_priority: int | None = None,
+        zone_type: str | None = None,
+        inlet_valve_entity: str | None = None,
+        outlet_valve_entity: str | None = None,
     ) -> None:
         """Configure zone coordination parameters.
 
@@ -136,6 +160,14 @@ class ZoneCoordinator:
             min_position_for_demand: Minimum position to trigger fan demand
             demand_mapping: Dict mapping position thresholds to fan speeds
                           e.g., {20: "fan_low", 50: "fan_medium", 80: "fan_high"}
+            min_position: Actuator position when zone has no demand (0-100)
+            max_position: Actuator position when zone has demand (0-100)
+            is_controllable: Whether this zone has controllable actuators
+            actuation_priority: Priority for demand resolution (higher = selected first
+                               when max_open_zones limits active zones)
+            zone_type: Type of zone adapter (e.g., "paired_valves")
+            inlet_valve_entity: Entity ID for inlet valve
+            outlet_valve_entity: Entity ID for outlet valve
         """
         existing = self._zone_configs.get(zone_id)
         self._zone_configs[zone_id] = ZoneConfig(
@@ -149,12 +181,49 @@ class ZoneCoordinator:
             demand_mapping=demand_mapping
             if demand_mapping is not None
             else (existing.demand_mapping if existing else None),
+            min_position=min_position
+            if min_position is not None
+            else (existing.min_position if existing else 0),
+            max_position=max_position
+            if max_position is not None
+            else (existing.max_position if existing else 100),
+            is_controllable=is_controllable
+            if is_controllable is not None
+            else (existing.is_controllable if existing else False),
+            actuation_priority=actuation_priority
+            if actuation_priority is not None
+            else (existing.actuation_priority if existing else 100),
+            zone_type=zone_type
+            if zone_type is not None
+            else (existing.zone_type if existing else "paired_valves"),
+            inlet_valve_entity=inlet_valve_entity
+            if inlet_valve_entity is not None
+            else (existing.inlet_valve_entity if existing else None),
+            outlet_valve_entity=outlet_valve_entity
+            if outlet_valve_entity is not None
+            else (existing.outlet_valve_entity if existing else None),
         )
         _LOGGER.debug(
-            "Configured zone %s:%s with priority %s",
+            "Configured zone %s:%s with priority %s, min=%s, max=%s, controllable=%s",
             self._fan_id,
             zone_id,
             self._zone_configs[zone_id].priority,
+            self._zone_configs[zone_id].min_position,
+            self._zone_configs[zone_id].max_position,
+            self._zone_configs[zone_id].is_controllable,
+        )
+
+    def set_max_open_zones(self, max_open_zones: int | None) -> None:
+        """Set maximum number of zones that can be open simultaneously.
+
+        Args:
+            max_open_zones: Maximum number of zones to open (None = no limit)
+        """
+        self._max_open_zones = max_open_zones
+        _LOGGER.debug(
+            "Set max_open_zones for %s to %s",
+            self._fan_id,
+            max_open_zones if max_open_zones is not None else "unlimited",
         )
 
     def _get_default_demand_mapping(self) -> dict[int, str]:
@@ -404,7 +473,7 @@ class ZoneCoordinator:
         """Return diagnostic information for this coordinator.
 
         Returns:
-            Dictionary with coordinator state
+            Dictionary with coordinator state including actuator commands
         """
         # Get arbiter state for this FAN
         arbiter = get_fan_speed_arbiter(self._hass)
@@ -417,10 +486,15 @@ class ZoneCoordinator:
         return {
             "fan_id": self._fan_id,
             "enabled": self._enabled,
+            "max_open_zones": self._max_open_zones,
             "configured_zones": {
                 zone_id: {
                     "priority": config.priority,
-                    "min_position": config.min_position_for_demand,
+                    "min_position_for_demand": config.min_position_for_demand,
+                    "min_position": config.min_position,
+                    "max_position": config.max_position,
+                    "is_controllable": config.is_controllable,
+                    "actuation_priority": config.actuation_priority,
                     "demand_mapping": config.demand_mapping,
                 }
                 for zone_id, config in self._zone_configs.items()
@@ -444,6 +518,8 @@ class ZoneCoordinator:
                 }
                 for d in zone_demands
             ],
+            "last_actuator_commands": self._last_actuator_commands,
+            "demand_registry": self._demand_registry.get_diagnostics(),
         }
 
     async def async_set_manual_zone_demand(
@@ -483,6 +559,197 @@ class ZoneCoordinator:
             True if demand was cleared
         """
         return await self._clear_zone_demand(zone_id)
+
+    async def async_run_zone_actuation_cycle(self) -> dict[str, Any]:
+        """Run one zone actuation cycle: check demands and drive actuators.
+
+        This is Phase 5a/5b: demand-driven min/max actuation with priority.
+        - If zone has demand (from humidity/CO2/etc): eligible for max_position
+        - With max_open_zones: highest priority zones selected for max_position
+        - Otherwise: drive to min_position
+
+        Returns:
+            Dict with results per zone {zone_id: {"target": pos, "actual": pos}}
+        """
+        if not self._enabled:
+            return {}
+
+        results: dict[str, Any] = {}
+
+        # Get all zone configs for this FAN
+        all_zone_ids = list(self._zone_configs.keys())
+        if not all_zone_ids:
+            _LOGGER.debug("No zones configured for FAN %s", self._fan_id)
+            return results
+
+        _LOGGER.debug(
+            "Running actuation cycle for FAN %s with %s zones",
+            self._fan_id,
+            len(all_zone_ids),
+        )
+
+        # Phase 5b: First pass - collect zones with demand and their priorities
+        zones_with_demand: list[tuple[str, int]] = []  # (zone_id, actuation_priority)
+
+        for zone_id in all_zone_ids:
+            # Get zone config
+            zone_config = self._zone_configs.get(zone_id)
+            if zone_config is None or not zone_config.is_controllable:
+                continue
+
+            # Check if zone has demand
+            if self._demand_registry.has_demand(self._fan_id, zone_id):
+                zones_with_demand.append((zone_id, zone_config.actuation_priority))
+                _LOGGER.debug(
+                    "Zone %s:%s has demand (priority=%s)",
+                    self._fan_id,
+                    zone_id,
+                    zone_config.actuation_priority,
+                )
+
+        # Phase 5b: Select zones to open based on priority if max_open_zones is set
+        selected_for_max: set[str] = set()
+        if zones_with_demand:
+            # Sort by actuation_priority descending (higher = more important)
+            zones_with_demand.sort(key=lambda x: x[1], reverse=True)
+
+            # If max_open_zones is set, limit selection
+            if self._max_open_zones is not None:
+                selected_count = min(len(zones_with_demand), self._max_open_zones)
+                selected_for_max = {
+                    zone_id for zone_id, _ in zones_with_demand[:selected_count]
+                }
+                _LOGGER.debug(
+                    "Phase 5b: Selected %s/%s zones for max_position (cap=%s)",
+                    selected_count,
+                    len(zones_with_demand),
+                    self._max_open_zones,
+                )
+            else:
+                # No limit - all demanding zones go to max
+                selected_for_max = {zone_id for zone_id, _ in zones_with_demand}
+
+        # Second pass - actuate each zone
+        for zone_id in all_zone_ids:
+            # Get zone config for safety limits
+            zone_config = self._zone_configs.get(zone_id)
+            if zone_config is None or not zone_config.is_controllable:
+                continue
+
+            # Get or create adapter for this zone
+            adapter = self._adapter_registry.get_or_create_adapter(
+                fan_id=self._fan_id,
+                zone_id=zone_id,
+                zone_type=zone_config.zone_type,
+                inlet_entity=zone_config.inlet_valve_entity,
+                outlet_entity=zone_config.outlet_valve_entity,
+            )
+
+            if adapter is None:
+                _LOGGER.warning(
+                    "Failed to get/create adapter for zone %s:%s", self._fan_id, zone_id
+                )
+                continue
+
+            # Check if zone is available
+            if not adapter.is_available:
+                _LOGGER.debug(
+                    "Zone %s:%s adapter not available, skipping", self._fan_id, zone_id
+                )
+                continue
+
+            # Determine target position based on demand and priority selection
+            is_selected = zone_id in selected_for_max
+            has_demand = self._demand_registry.has_demand(self._fan_id, zone_id)
+
+            if is_selected:
+                target_position = zone_config.max_position
+                reason = "Zone has demand (selected for max)"
+            elif has_demand:
+                target_position = zone_config.min_position
+                reason = "Zone has demand but not selected (priority/cap)"
+            else:
+                target_position = zone_config.min_position
+                reason = "Zone has no demand"
+
+            try:
+                # Get current position before commanding
+                position_data = await adapter.async_get_position()
+                current_position = position_data.position
+
+                # Only command if position differs significantly
+                if abs(current_position - target_position) >= 5:
+                    success = await adapter.async_set_position(target_position)
+
+                    # Track for diagnostics
+                    self._last_actuator_commands[zone_id] = {
+                        "timestamp": datetime.now(),
+                        "target_position": target_position,
+                        "previous_position": current_position,
+                        "has_demand": has_demand,
+                        "is_selected": is_selected,
+                        "reason": reason,
+                        "success": success,
+                    }
+
+                    results[zone_id] = {
+                        "target": target_position,
+                        "previous": current_position,
+                        "success": success,
+                        "has_demand": has_demand,
+                        "is_selected": is_selected,
+                    }
+
+                    _LOGGER.debug(
+                        "Zone %s:%s actuated to %s%% (demand=%s, selected=%s)",
+                        self._fan_id,
+                        zone_id,
+                        target_position,
+                        has_demand,
+                        is_selected,
+                    )
+                else:
+                    # Position already close enough
+                    results[zone_id] = {
+                        "target": target_position,
+                        "current": current_position,
+                        "success": True,
+                        "has_demand": has_demand,
+                        "is_selected": is_selected,
+                        "skipped": True,
+                    }
+
+            except Exception as e:
+                _LOGGER.warning(
+                    "Failed to actuate zone %s:%s: %s", self._fan_id, zone_id, e
+                )
+                results[zone_id] = {
+                    "error": str(e),
+                    "target": target_position,
+                    "has_demand": has_demand,
+                    "is_selected": is_selected,
+                }
+
+        return results
+
+    def has_zone_demand(self, zone_id: str) -> bool:
+        """Check if a zone has active demand from any source.
+
+        Args:
+            zone_id: Zone identifier
+
+        Returns:
+            True if zone has demand from humidity/CO2/manual sources
+        """
+        return self._demand_registry.has_demand(self._fan_id, zone_id)
+
+    def get_zone_demand_breakdown(self, zone_id: str) -> dict[str, bool]:
+        """Get demand breakdown by source for a zone.
+
+        Returns dict mapping source name to demand state.
+        """
+        breakdown = self._demand_registry.get_demand_breakdown(self._fan_id, zone_id)
+        return {source.name: state for source, state in breakdown.items()}
 
 
 class ZoneCoordinatorRegistry:

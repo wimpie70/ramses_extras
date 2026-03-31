@@ -18,7 +18,9 @@ This plan covers:
 - feeding shared HA/arbiter state from remote commands
 - exposing binding state to diagnostics and cards where useful
 
-This plan does not try to move the source of truth into `ramses_rf`. The binding is intentionally maintained in Extras for now.
+This plan does not try to provision bindings into devices or move the source of truth into `ramses_rf`.
+
+The association is intentionally maintained in Extras.
 
 ## Goals
 
@@ -102,15 +104,20 @@ Suggested storage location:
 - a structured `remote_binding` feature section in persisted config
 - mirrored into `hass.data[DOMAIN]` at runtime for fast lookup
 
+Future direction (deferred): the same REM entry may be extended to carry optional
+location metadata (`zone_id`, `area_id`) and, potentially, sensor references
+(temperature/humidity/CO2) for a single “control point” concept.
+
+We keep the feature id `remote_binding` for now to avoid unnecessary migrations.
+
 ### 2. Binding resolution order
 
 When Extras needs to determine whether a remote belongs to a FAN:
 
 1. explicit Extras binding
-2. live lookup via `_get_bound_rem_device()`
-3. no match -> ignore as unrelated traffic
+2. no match -> ignore as unrelated traffic
 
-This gives a stable user-configured path while still benefiting from device-reported information if present.
+Device-reported binding (when available) is treated as **informational/diagnostic** only.
 
 ### 3. Runtime service API
 
@@ -157,11 +164,11 @@ This plan depends on framework work described in `docs/CONFIGURATION_STRATEGY.md
 Required support includes:
 
 - shared structured config storage for feature-owned sections
-- nested validation for binding entries
+- nested validation for binding entries via `register_config_validator()`
 - cross-reference validation against known FAN and REM device references
-- uniqueness validation so one REM is not accidentally assigned as primary to multiple FAN devices
+- uniqueness validation (one REM not assigned to multiple FANs)
 - strict YAML export helpers for support and debugging
-- delayed validated import after migrations are proven
+- **validated import via framework validation registry**
 
 ### 5. Message attribution pipeline
 
@@ -215,7 +222,111 @@ Design rule:
 - [x] multiple remotes per FAN
 - [x] role support (`primary`, `secondary`, `boost_only`)
 - [x] optional learned binding suggestions from observed traffic
-- [ ] optional validated YAML import for advanced users after migrations are proven
+- [x] validated YAML import via framework validation registry (`register_config_validator()`)
+
+### Phase 4 - integration completion ✅ COMPLETE
+
+- [x] import validation registered in `features/sensor_control/remote_binding_yaml.py`
+- [x] export support via `export_config_to_yaml()`
+- [x] documentation with examples in `docs/REMOTE_BINDING_EXAMPLES.md`
+- [ ] final integration testing with live REM devices (deferred to hardware validation)
+
+#### Phase 4a - live REM integration test plan (detailed)
+
+This phase is intentionally focused on validating the end-to-end behavior with **real REM hardware**.
+
+**Live Test Results (March 30, 2026):**
+- **REM Device**: `37:168270` (physical REM actively sending commands)
+- **DIS Device**: `37:169161` (physical display unit)
+- **FAN Device**: `32:153289` (ventilation unit)
+- **Observed Traffic**: REM sending `22F1` fan mode commands (high/low) to FAN
+- **Status**: Real devices detected and traffic flowing correctly
+
+The primary design rule remains:
+
+- REM -> FAN control must work without Home Assistant
+- Extras acts as a **state synchronization layer** when HA is online
+
+**Live Testing Checklist:**
+
+- [x] Detect real REM devices on RF network (`37:168270`)
+- [x] Detect real DIS devices (`37:169161`)
+- [x] Verify `22F1` command traffic from REM to FAN
+- [ ] Configure binding for `37:168270` → `32:153289`
+- [ ] Verify binding matches traffic (not showing as unmatched)
+- [ ] Test binding suggestion from observed traffic
+- [ ] Verify arbiter updates when REM buttons pressed
+- [ ] Confirm state reconciliation after HA restart
+
+##### Test prerequisites
+
+- A known FAN device id (canonical `xx:xxxxxx` format)
+- At least one REM device to bind
+- Remote binding configured via the FAN-oriented config flow (or strict YAML import)
+- Logging enabled for troubleshooting
+
+##### What to validate (ordered)
+
+1. **Binding resolution order**
+   - Confirm explicit Extras binding is used when present.
+   - Confirm `_get_bound_rem_device()` is only used as fallback.
+   - Confirm unmatched REM traffic is correctly surfaced as diagnostics (but does not mutate persisted config).
+
+2. **Command attribution correctness**
+   - Press REM buttons for:
+     - `Auto`
+     - speed changes
+     - `Away`
+     - timer actions
+   - Confirm the observed command is attributed to the correct FAN.
+
+3. **Debounce / duplicate protection**
+   - Confirm repeated packets do not create repeated state transitions.
+   - Confirm `RQ` polling traffic is ignored.
+
+4. **Arbiter synchronization (no command echo loops)**
+   - Confirm a REM-originated action updates arbiter state.
+   - Confirm Extras does not "echo" the same command back to the FAN.
+
+5. **Conflict detection**
+   - Validate that one REM cannot be assigned to multiple FANs.
+   - Validate diagnostics/error handling when conflicts are present.
+
+6. **Offline/online behavior**
+   - With HA offline, confirm the physical REM still controls the FAN.
+   - After HA comes online, confirm arbiter state converges toward the real-world observed state.
+
+##### Observability checklist
+
+During tests, capture:
+
+- the effective binding map (per FAN)
+- last-seen timestamps
+- unmatched REM traffic counters
+- arbiter effective mode/speed and any manual override state
+
+##### Documentation updates (examples)
+
+Update documentation with:
+
+- a minimal example config snippet for one FAN / one REM
+- an example for multiple REMs with roles (`primary`, `secondary`, `boost_only`)
+- a short troubleshooting section:
+  - "REM presses not reflected in HA"
+  - "REM traffic unmatched"
+  - "binding conflict detected"
+
+## Status
+
+**Last Updated:** March 2026
+
+- **Implementation:** Phases 1-4 complete. Live hardware testing deferred.
+- **Schema definition:** ✅ Complete in `docs/FAN_CONFIGURATION_SCHEMA_DRAFT.md`
+- **Feature section:** ✅ Defined and persisted via `features.sensor_control.remote_binding`
+- **Config flow integration:** ✅ Available under FAN-oriented configuration
+- **YAML export:** ✅ Supported via `export_config_to_yaml()`
+- **YAML import validation:** ✅ Registered validator in `remote_binding_yaml.py`
+- **Documentation examples:** ✅ Complete in `docs/REMOTE_BINDING_EXAMPLES.md`
 
 ## Risks
 
@@ -244,5 +355,5 @@ Design rule:
 - Discovery from `ramses_cc` should be used as a hint source only, and not persisted unless explicitly accepted into config.
 - Discovery candidates are not the only valid option, because external/manual devices must also remain possible.
 - REM-aware naming such as `rem_id` is preferred over more generic field names where practical.
-- Export should be strict YAML.
-- Import should come later, after migrations are proven.
+- Export uses strict YAML via `export_config_to_yaml()`.
+- Import uses the framework validation registry (`register_config_validator()`) with per-feature validation.

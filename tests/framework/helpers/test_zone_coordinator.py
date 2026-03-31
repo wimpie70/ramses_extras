@@ -30,7 +30,18 @@ def hass():
 @pytest.fixture
 def mock_adapter_registry():
     """Mock zone adapter registry."""
-    return MagicMock()
+    registry = MagicMock()
+    mock_adapter = MagicMock()
+    mock_adapter.zone_id = "office"
+    mock_adapter.is_available = True
+    # Default position data that won't cause errors
+    position_data = MagicMock()
+    position_data.position = 50
+    position_data.is_available = True
+    mock_adapter.async_get_position = AsyncMock(return_value=position_data)
+    mock_adapter.async_set_position = AsyncMock(return_value=True)
+    registry.get_or_create_adapter = MagicMock(return_value=mock_adapter)
+    return registry
 
 
 @pytest.fixture
@@ -391,6 +402,435 @@ class TestZoneCoordinator:
         assert ZoneDemandSource.CO2.value == "co2"
         assert ZoneDemandSource.MANUAL.value == "manual"
         assert ZoneDemandSource.SCHEDULE.value == "schedule"
+
+    @pytest.mark.asyncio
+    async def test_async_run_zone_actuation_cycle_with_demand(
+        self, hass, mock_adapter_registry
+    ):
+        """Test actuation cycle drives to max when zone has demand."""
+        from custom_components.ramses_extras.framework.helpers.zone_demand import (
+            DemandSource,
+        )
+
+        mock_adapter = MagicMock()
+        mock_adapter.zone_id = "office"
+        mock_adapter.is_available = True
+        mock_position = MagicMock()
+        mock_position.position = 50
+        mock_position.is_available = True
+        mock_adapter.async_get_position = AsyncMock(return_value=mock_position)
+        mock_adapter.async_set_position = AsyncMock(return_value=True)
+
+        mock_adapter_registry.get_or_create_adapter = MagicMock(
+            return_value=mock_adapter
+        )
+
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=True)  # Has demand
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            coordinator.configure_zone(
+                "office",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+            )
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            assert "office" in results
+            assert results["office"]["success"] is True
+            assert results["office"]["target"] == 100
+            mock_adapter.async_set_position.assert_called_once_with(100)
+
+    @pytest.mark.asyncio
+    async def test_async_run_zone_actuation_cycle_no_demand(
+        self, hass, mock_adapter_registry
+    ):
+        """Test actuation cycle commands zones without demand to min position."""
+        mock_adapter = MagicMock()
+        mock_adapter.zone_id = "office"
+        mock_adapter.is_available = True
+        position_data = MagicMock()
+        position_data.position = 100
+        position_data.is_available = True
+        mock_adapter.async_get_position = AsyncMock(return_value=position_data)
+        mock_adapter.async_set_position = AsyncMock(return_value=True)
+
+        mock_adapter_registry.get_or_create_adapter = MagicMock(
+            return_value=mock_adapter
+        )
+
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=False)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            coordinator.configure_zone(
+                "office",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+            )
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            assert "office" in results
+            assert results["office"]["success"] is True
+            assert results["office"]["target"] == 0
+            mock_adapter.async_set_position.assert_called_once_with(0)
+
+    @pytest.mark.asyncio
+    async def test_async_run_zone_actuation_cycle_skips_when_close(
+        self, hass, mock_adapter_registry
+    ):
+        """Test actuation skips when position difference is small."""
+        mock_adapter = MagicMock()
+        mock_adapter.zone_id = "office"
+        mock_adapter.is_available = True
+        position_data = MagicMock()
+        position_data.position = 98  # Already very close to max (100)
+        position_data.is_available = True
+        mock_adapter.async_get_position = AsyncMock(return_value=position_data)
+        mock_adapter.async_set_position = AsyncMock(return_value=True)
+
+        mock_adapter_registry.get_or_create_adapter = MagicMock(
+            return_value=mock_adapter
+        )
+
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=True)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            coordinator.configure_zone(
+                "office",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+            )
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            # Zone should be in results but not moved (already close enough)
+            assert "office" in results
+            # Returns success, just no action
+            assert results["office"]["success"] is True
+            assert results["office"]["target"] == 100
+            # Should NOT call set_position since already within 5% of target
+            mock_adapter.async_set_position.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_run_zone_actuation_cycle_disabled(
+        self, hass, mock_adapter_registry
+    ):
+        """Test actuation cycle returns empty when disabled."""
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            coordinator.set_enabled(False)
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            assert results == {}
+
+    @pytest.mark.asyncio
+    async def test_async_run_zone_actuation_cycle_not_controllable(
+        self, hass, mock_adapter_registry
+    ):
+        """Test actuation skips non-controllable zones."""
+        mock_adapter = MagicMock()
+        mock_adapter.zone_id = "office"
+        mock_adapter.is_available = True
+
+        mock_adapter_registry.get_all_adapters_for_fan = MagicMock(
+            return_value=[mock_adapter]
+        )
+
+        mock_demand_registry = MagicMock()
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            coordinator.configure_zone(
+                "office",
+                min_position=0,
+                max_position=100,
+                is_controllable=False,  # Not controllable
+            )
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            assert "office" not in results
+
+    def test_has_zone_demand(self, hass, mock_adapter_registry):
+        """Test has_zone_demand delegates to registry."""
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=True)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            result = coordinator.has_zone_demand("office")
+
+            assert result is True
+            mock_demand_registry.has_demand.assert_called_once_with(
+                "18:000730", "office"
+            )
+
+    def test_get_zone_demand_breakdown(self, hass, mock_adapter_registry):
+        """Test get_zone_demand_breakdown returns source mapping."""
+        from custom_components.ramses_extras.framework.helpers.zone_demand import (
+            DemandSource,
+        )
+
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.get_demand_breakdown = MagicMock(
+            return_value={
+                DemandSource.HUMIDITY: True,
+                DemandSource.CO2: False,
+            }
+        )
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            breakdown = coordinator.get_zone_demand_breakdown("office")
+
+            assert breakdown["HUMIDITY"] is True
+            assert breakdown["CO2"] is False
+
+    def test_configure_zone_actuator_params(self, hass, mock_adapter_registry):
+        """Test configure_zone accepts actuator parameters."""
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+            coordinator.configure_zone(
+                "office",
+                priority=60,
+                min_position=10,
+                max_position=90,
+                is_controllable=True,
+            )
+
+            config = coordinator._zone_configs["office"]
+            assert config.min_position == 10
+            assert config.max_position == 90
+            assert config.is_controllable is True
+
+    @pytest.mark.asyncio
+    async def test_set_max_open_zones(self, hass, mock_adapter_registry):
+        """Test setting max_open_zones cap."""
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+
+            # Default should be None (no limit)
+            assert coordinator._max_open_zones is None
+
+            # Set a limit
+            coordinator.set_max_open_zones(2)
+            assert coordinator._max_open_zones == 2
+
+            # Clear the limit
+            coordinator.set_max_open_zones(None)
+            assert coordinator._max_open_zones is None
+
+    @pytest.mark.asyncio
+    async def test_priority_selection_with_max_open_zones(
+        self, hass, mock_adapter_registry
+    ):
+        """Test Phase 5b: priority-based selection when max_open_zones is set."""
+        # Create 3 zone adapters with different priorities
+        mock_adapters = []
+        for zone_id, priority in [
+            ("zone_high", 200),
+            ("zone_med", 100),
+            ("zone_low", 50),
+        ]:
+            adapter = MagicMock()
+            adapter.zone_id = zone_id
+            adapter.is_available = True
+            position_data = MagicMock()
+            position_data.position = 0
+            position_data.is_available = True
+            adapter.async_get_position = AsyncMock(return_value=position_data)
+            adapter.async_set_position = AsyncMock(return_value=True)
+            mock_adapters.append(adapter)
+
+        mock_adapter_registry.get_all_adapters_for_fan = MagicMock(
+            return_value=mock_adapters
+        )
+
+        # All 3 zones have demand
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=True)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+
+            # Configure zones with different priorities
+            coordinator.configure_zone(
+                "zone_high",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+                actuation_priority=200,
+            )
+            coordinator.configure_zone(
+                "zone_med",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+                actuation_priority=100,
+            )
+            coordinator.configure_zone(
+                "zone_low",
+                min_position=0,
+                max_position=100,
+                is_controllable=True,
+                actuation_priority=50,
+            )
+
+            # Set cap to 2 zones
+            coordinator.set_max_open_zones(2)
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            # High and med priority zones should be selected for max
+            assert results["zone_high"]["is_selected"] is True
+            assert results["zone_high"]["target"] == 100
+            assert results["zone_med"]["is_selected"] is True
+            assert results["zone_med"]["target"] == 100
+
+            # Low priority zone should NOT be selected, goes to min
+            assert results["zone_low"]["is_selected"] is False
+            assert results["zone_low"]["target"] == 0
+
+    @pytest.mark.asyncio
+    async def test_priority_selection_unlimited(self, hass, mock_adapter_registry):
+        """Test all demanding zones go to max when no max_open_zones limit."""
+        mock_adapters = []
+        for zone_id in ["zone1", "zone2", "zone3"]:
+            adapter = MagicMock()
+            adapter.zone_id = zone_id
+            adapter.is_available = True
+            position_data = MagicMock()
+            position_data.position = 0
+            position_data.is_available = True
+            adapter.async_get_position = AsyncMock(return_value=position_data)
+            adapter.async_set_position = AsyncMock(return_value=True)
+            mock_adapters.append(adapter)
+
+        mock_adapter_registry.get_all_adapters_for_fan = MagicMock(
+            return_value=mock_adapters
+        )
+
+        mock_demand_registry = MagicMock()
+        mock_demand_registry.has_demand = MagicMock(return_value=True)
+
+        with (
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_adapter_registry",
+                return_value=mock_adapter_registry,
+            ),
+            patch(
+                "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_demand_registry",
+                return_value=mock_demand_registry,
+            ),
+        ):
+            coordinator = ZoneCoordinator(hass, "18:000730")
+
+            for zone_id in ["zone1", "zone2", "zone3"]:
+                coordinator.configure_zone(
+                    zone_id,
+                    min_position=0,
+                    max_position=100,
+                    is_controllable=True,
+                )
+
+            # No limit set (default)
+            assert coordinator._max_open_zones is None
+
+            results = await coordinator.async_run_zone_actuation_cycle()
+
+            # All zones should be selected for max
+            for zone_id in ["zone1", "zone2", "zone3"]:
+                assert results[zone_id]["is_selected"] is True
+                assert results[zone_id]["target"] == 100
 
 
 class TestZoneCoordinatorRegistry:

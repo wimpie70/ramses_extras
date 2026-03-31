@@ -28,7 +28,8 @@
   "overrides": {
     "js-yaml": "^4.1.1",
     "@tootallnate/once": "^3.0.1",
-    "minimatch": "^3.1.5"
+    "minimatch": "^3.1.5",
+    "flatted": "^3.4.2"
   },
   "jest": {
     "testEnvironment": "jsdom",

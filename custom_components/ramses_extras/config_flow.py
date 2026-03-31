@@ -31,22 +31,22 @@ from .const import (
 from .extras_registry import extras_registry
 from .features.sensor_control.const import SUPPORTED_METRICS
 from .framework.helpers.config.export import export_config_to_yaml
+from .framework.helpers.config.import_full import (
+    parse_full_config_yaml,
+    validate_full_config_import_detailed,
+)
 from .framework.helpers.config.migration import get_migrated_feature_section
 from .framework.helpers.config.model import (
     CONFIG_DEVICES_KEY,
-    FEATURE_ZONES,
-    get_feature_section,
-    normalize_device_id,
     set_feature_section,
-)
-from .framework.helpers.config.zones_yaml import (
-    merge_zones_config,
-    parse_zones_yaml,
 )
 from .framework.helpers.config_flow import ConfigFlowHelper
 from .framework.helpers.device.filter import DeviceFilter
 from .framework.helpers.entity.simple_entity_manager import SimpleEntityManager
 from .framework.helpers.paths import DEPLOYMENT_PATHS
+
+# Feature IDs used locally
+FEATURE_ZONES = "zones"
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -666,39 +666,45 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
             if action == "import":
                 yaml_content = user_input.get("yaml_content", "")
-                overwrite = user_input.get("overwrite_existing", False)
 
                 if not yaml_content or not yaml_content.strip():
                     import_errors["yaml_content"] = "YAML content is required"
                 else:
                     try:
-                        parsed = parse_zones_yaml(yaml_content)
-                        imported_zones = parsed.get("zones", [])
+                        # Full config import - always replaces entire config
+                        imported_config = parse_full_config_yaml(yaml_content)
 
-                        if not imported_zones:
-                            import_errors["yaml_content"] = "No zones found in YAML"
+                        # Validate with detailed per-feature feedback
+                        validation_result = validate_full_config_import_detailed(
+                            imported_config, self.hass
+                        )
+
+                        if not validation_result["valid"]:
+                            # Build detailed error message
+                            error_parts: list[str] = []
+
+                            # Framework errors
+                            for err in validation_result.get("framework_errors", []):
+                                error_parts.append(f"[Framework] {err}")
+
+                            # Feature-specific errors
+                            for feature_id, errs in validation_result.get(
+                                "feature_errors", {}
+                            ).items():
+                                for err in errs[:3]:  # Max 3 per feature
+                                    error_parts.append(f"[{feature_id}] {err}")
+                                remaining = len(errs) - 3
+                                if remaining > 0:
+                                    error_parts.append(
+                                        f"[{feature_id}] ... and {remaining} more"
+                                    )
+
+                            import_errors["yaml_content"] = "; ".join(error_parts)
                         else:
-                            # Merge with existing zones
-                            options = dict(self._config_entry.options)
-
-                            zones_section = get_migrated_feature_section(
-                                options, FEATURE_ZONES
-                            )
-                            existing_zones = zones_section.get("zones", [])
-
-                            merged_zones = merge_zones_config(
-                                existing_zones,
-                                imported_zones,
-                                "",  # No specific FAN for general import
-                                overwrite_existing=overwrite,
-                            )
-
-                            zones_section["zones"] = merged_zones
-                            set_feature_section(options, FEATURE_ZONES, zones_section)
-
+                            # Replace entire config with imported
                             self.hass.config_entries.async_update_entry(
                                 self._config_entry,
-                                options=options,
+                                options=imported_config,
                             )
 
                             return await self.async_step_advanced_settings()
@@ -711,14 +717,11 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 vol.Required("yaml_content"): selector.TextSelector(
                     selector.TextSelectorConfig(multiline=True)
                 ),
-                vol.Required(
-                    "overwrite_existing", default=False
-                ): selector.BooleanSelector(),
                 vol.Required("action"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
                             selector.SelectOptionDict(
-                                value="import", label="Import zones"
+                                value="import", label="Import configuration"
                             ),
                             selector.SelectOptionDict(
                                 value="back", label="Cancel / Back"
@@ -732,10 +735,25 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
 
         info_text = (
             "📥 **Import Configuration from YAML**\n\n"
-            "Paste your YAML zone configuration below.\n\n"
-            "The import will validate the YAML structure "
-            "and merge zones with existing ones.\n"
-            "Enable 'Overwrite existing' to replace zones with the same zone_id."
+            "⚠️ **Warning**: This will REPLACE your entire ramses_extras "
+            "configuration.\n\n"
+            "Paste your complete ramses_extras YAML below. "
+            "Make sure to export your current config first as backup.\n\n"
+            "Example format:\n"
+            "```yaml\n"
+            "ramses_extras:\n"
+            "  schema_version: 1\n"
+            "  features:\n"
+            "    sensor_control:\n"
+            "      devices:\n"
+            '        "32:153289":\n'
+            "          sources: ...\n"
+            "    zones:\n"
+            "      FANs:\n"
+            '        "32:153289":\n'
+            "          - zone_id: bathroom\n"
+            "            type: orcon_native\n"
+            "```"
         )
 
         if import_errors:

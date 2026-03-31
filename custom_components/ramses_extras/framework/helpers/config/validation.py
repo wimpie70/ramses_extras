@@ -11,9 +11,6 @@ from typing import Any
 from .model import (
     CONFIG_FANS_KEY,
     CONFIG_REMS_KEY,
-    FEATURE_REMOTE_BINDING,
-    FEATURE_SENSOR_CONTROL,
-    FEATURE_ZONES,
     REMOTE_BINDING_REM_ID_KEY,
     SENSOR_CONTROL_AREA_SENSORS_KEY,
     ZONE_ID_KEY,
@@ -23,6 +20,11 @@ from .model import (
     get_zones_for_fan,
     normalize_device_id,
 )
+
+# Feature IDs used by this module
+FEATURE_SENSOR_CONTROL = "sensor_control"
+FEATURE_ZONES = "zones"
+FEATURE_REMOTE_BINDING = "remote_binding"
 
 _LOGGER = logging.getLogger(__name__)
 _DEVICE_ID_RE = re.compile(r"^\d{2}:\d{6}$")

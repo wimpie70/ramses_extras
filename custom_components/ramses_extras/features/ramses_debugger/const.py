@@ -21,6 +21,9 @@ RAMSES_DEBUGGER_WEBSOCKET_COMMANDS: dict[str, str] = {
     "messages_get_messages": "ramses_extras/ramses_debugger/messages/get_messages",
     "cache_get_stats": "ramses_extras/ramses_debugger/cache/get_stats",
     "cache_clear": "ramses_extras/ramses_debugger/cache/clear",
+    "config_export": "ramses_extras/ramses_debugger/config/export",
+    "config_diagnostics": "ramses_extras/ramses_debugger/config/diagnostics",
+    "config_import": "ramses_extras/ramses_debugger/config/import",
 }
 
 RAMSES_DEBUGGER_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {
@@ -90,9 +93,16 @@ def load_feature() -> None:
     )
 
     for card_config in RAMSES_DEBUGGER_CARD_CONFIGS:
-        extras_registry.register_card_config(FEATURE_ID, card_config)
+        extras_registry.register_card_config(
+            FEATURE_ID, {"card_id": card_config["card_id"]}
+        )
 
     extras_registry.register_feature(FEATURE_ID)
+
+    # Load YAML validator and import/export functions
+    from .ramses_debugger_yaml import load_validator
+
+    load_validator()
 
 
 __all__ = [

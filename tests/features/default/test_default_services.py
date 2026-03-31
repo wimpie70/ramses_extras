@@ -5,9 +5,14 @@ from homeassistant.core import HomeAssistant, ServiceCall
 
 from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.features.default.services import (
+    SVC_CALIBRATE_ALL_VALVES,
+    SVC_CLEAR_ZONE_DEMAND,
+    SVC_FORCE_ZONE_VENTILATION,
     SVC_GET_QUEUE_STATISTICS,
+    SVC_RUN_ZONE_ACTUATION,
     SVC_SEND_FAN_COMMAND,
     SVC_SET_FAN_PARAMETER,
+    SVC_SET_ZONE_DEMAND,
     SVC_UPDATE_FAN_PARAMS,
     async_setup_services,
 )
@@ -30,7 +35,8 @@ async def test_async_setup_services(hass):
 
     await async_setup_services(hass)
 
-    assert hass.services.async_register.call_count == 4
+    # Should have registered 9 services (4 original + 3 zone testing + 2 new)
+    assert hass.services.async_register.call_count == 9
     registered_services = [
         call.args[1] for call in hass.services.async_register.call_args_list
     ]
@@ -38,6 +44,8 @@ async def test_async_setup_services(hass):
     assert SVC_SET_FAN_PARAMETER in registered_services
     assert SVC_UPDATE_FAN_PARAMS in registered_services
     assert SVC_GET_QUEUE_STATISTICS in registered_services
+    assert SVC_CALIBRATE_ALL_VALVES in registered_services
+    assert SVC_FORCE_ZONE_VENTILATION in registered_services
 
 
 async def test_send_fan_command_service(hass):

@@ -192,7 +192,9 @@ Required support includes:
 - actuator safety validation for `min_position` and `max_position`
 - section-aware migrations as the zone schema evolves
 - strict YAML export helpers for support and debugging
-- delayed validated import after migrations are proven
+- **feature-level validated import via the framework validation registry**
+- `import_validation.py` with `register_config_validator()` for per-feature validation
+- `validate_full_config_import_detailed()` with per-feature error reporting
 
 ## Integration with fan control
 
@@ -261,12 +263,159 @@ Later:
 - [x] add optional validated YAML import for advanced users after migrations are proven
 - [x] add richer frontend editing if the structured model is stable enough
 
-### Phase 5 - advanced behavior
+### Phase 5 - advanced behavior 🔄 PENDING
 
-- learned airflow weighting
-- zone priorities
-- occupancy-aware logic
-- manual per-zone override handling
+- [ ] learned airflow weighting
+- [ ] zone priorities
+- [ ] occupancy-aware logic
+- [ ] manual per-zone override handling
+
+#### Phase 5a - demand-driven min/max actuation ✅ COMPLETE
+
+This slice is **testable with real hardware**, even when:
+
+- actual airflow per "% open" is not known/measurable yet
+- valves may only support open/close and/or coarse positioning
+
+The key behavior for this slice is:
+
+- determine which FAN zones have **active demand** (humidity / CO2 / future area sensors)
+- drive zone actuators to either:
+  - a configured `max_position` (open)
+  - or a configured `min_position` (safe minimum open)
+
+This gives an actionable end-to-end workflow for 4 physical valves without requiring a flow model.
+
+##### Goals
+
+- Provide a deterministic and safe zone-actuation policy that responds to demand sources.
+- Keep the **fan-speed arbiter** as the single authority for FAN-level speed; this slice only controls zone actuators.
+- Make behavior observable and debuggable by comparing:
+  - which zones were deemed "demanding"
+  - which zones were driven to min/max
+  - internal FAN sensors (e.g., flow/speed/pressure if available) before/after actuation
+
+##### Non-goals (deferred)
+
+- Estimating airflow contribution per zone position.
+- Continuous proportional control.
+- Occupancy-aware behavior.
+- Manual per-zone override UI.
+
+##### Proposed control rule (initial)
+
+For each FAN:
+
+1. Compute a per-zone boolean `has_demand`.
+2. If `has_demand` is true for a controllable zone, request actuator position `max_position`.
+3. Otherwise, request actuator position `min_position`.
+4. If a zone is not controllable, do not attempt actuation.
+5. If actuator availability is false, do not attempt actuation and surface a diagnostic.
+
+Notes:
+
+- This policy does not require weighting. It only requires a reliable `has_demand` signal.
+- When multiple zones have demand, multiple zones will be driven to `max_position`.
+
+##### Where demand comes from
+
+The initial implementation should treat demand as a union of known signals, per zone:
+
+- **Humidity demand**: zone contributes if it is the active humidity contributor for that FAN.
+- **CO2 demand**: zone contributes if it is the active CO2 contributor for that FAN.
+- **Future**: any additional area-sensor derived demand should expose the same `zone_id`.
+
+The precise wiring should prefer **existing feature outputs** over duplicating logic in zones:
+
+- zones consumes “zone_id is demanding” signals
+- the producing feature remains owner of its own thresholds and logic
+
+##### Data model additions (minimal)
+
+To support Phase 5a without introducing flow weighting, add optional config fields:
+
+- `zones.FANs[device_id][*].policy`
+  - `mode`: `demand_minmax` (default for controllable zones)
+  - `min_position`: already exists (safety)
+  - `max_position`: already exists (safety)
+
+No new persisted fields are required for demand itself (it is runtime-derived).
+
+##### Implementation steps (ordered)
+
+1. **Define a single runtime representation** for zone demand, keyed by `(fan_id, zone_id)`.
+   - Implemented in `framework/helpers/zone_demand.py`
+   - With comprehensive unit tests
+2. **Expose demand signals** from humidity/CO2 (and future sources) via `ZoneDemandRegistry`.
+   - Read-only runtime API, not persisted config
+3. **Extend zone coordinator** to compute:
+   - `has_demand` per zone via `_demand_registry.has_demand()`
+   - Target actuator position (`min_position` vs `max_position`)
+4. **Call the actuator adapter** with target position via `async_run_zone_actuation_cycle()`.
+   - Only commands if position differs by >= 5%
+   - Skips non-controllable zones
+5. **Add observability:**
+   - `has_zone_demand()`, `get_zone_demand_breakdown()` methods
+   - Diagnostics include demand registry state and actuator commands
+6. **Add tests:**
+   - 19 tests for `zone_demand.py` registry
+   - 7 tests for coordinator demand/actuation methods
+7. **Live hardware integration test** (4 valves):
+   - WebSocket command `ramses_extras/run_zone_actuation` ready
+
+##### Live hardware test checklist
+
+For each FAN:
+
+1. Confirm each zone’s actuator entities are available.
+2. Confirm each controllable zone has `min_position` and `max_position` set.
+3. Force a single-zone demand (e.g., raise humidity/CO2 in one zone).
+4. Observe:
+   - zone coordinator marks exactly that `zone_id` as demanding
+   - that zone drives to max, all other controllable zones drive to min
+   - FAN internal sensors respond plausibly (directional validation, not calibration)
+5. Repeat for each zone.
+
+#### Phase 5b - priorities ✅ COMPLETE
+
+Add per-zone `priority` (integer) to resolve cases where not all demanding zones should open to max.
+
+Initial policy option:
+
+- allow a per-FAN cap like `max_open_zones` (optional)
+- if more zones demand than the cap, open the highest priority ones
+
+**Implementation:** `actuation_priority` in `ZoneConfig`, `_max_open_zones` in `ZoneCoordinator`, priority sorting in `async_run_zone_actuation_cycle()`
+
+#### Phase 5c - learned weighting (future)
+
+Once real flow measurement is possible, introduce `weight` per zone (learned or configured) to support:
+
+- selecting the best subset of zones to open
+- distributing opening across zones
+- producing a stable FAN-level demand estimate
+
+**Preparation without hardware:** We can prepare a theoretical lookup table based on:
+- Pipe diameter (e.g., 150mm round)
+- Fan speed settings (low/medium/high with known flow rates)
+- Valve position vs. estimated flow curves
+
+This gives a starting weight model that can be refined once real flow sensors are available.
+
+## Status
+
+**Last Updated:** March 2026
+
+- **Implementation:** Phases 1-5b complete. Phase 5c pending (requires flow measurement hardware).
+- **Zone demand registry:** ✅ Implemented in `framework/helpers/zone_demand.py`
+- **Zone registry:** ✅ Implemented in `framework/helpers/zones.py`
+- **Hardware adapters:** ✅ Implemented in `framework/helpers/zone_adapters.py` (ORCON native, generic valve, Shelly 2PM Gen3)
+- **Zone coordinator:** ✅ Implemented in `framework/helpers/zone_coordinator.py` with demand-driven actuation and priority-based selection
+- **Safety limits:** ✅ `min_position`/`max_position` validated in config flow
+- **Phase 5b priorities:** ✅ `actuation_priority` and `max_open_zones` implemented with tests
+- **YAML export:** ✅ Supported via `export_config_to_yaml()`
+- **YAML import validation:** ✅ Registered validator in `features/sensor_control/zones_yaml.py`
+- **Integration:** Zones feed FAN-level demand to the arbiter (same boundary as humidity/CO2 control)
 
 ## Configuration UX proposal
 
@@ -319,5 +468,7 @@ For Shelly 2PM Gen3 specifically:
 - Discovery candidates are not the only valid option, because external/manual devices and entities must also be supported.
 - `zone_id` should be the shared source-of-truth link between zones and area-like sensor config.
 - Controllable zone valves should support `min_position` and `max_position` safety limits.
-- Export should be strict YAML.
-- Import should come later, after migrations are proven.
+- Export uses strict YAML via `export_config_to_yaml()`.
+- Import uses the **framework validation registry** with per-feature validators registered via `register_config_validator()`.
+- Import validates against schema, cross-references entities, checks constraints before saving.
+- Config flow shows per-feature validation errors: `[zones]`, `[remote_binding]`, `[sensor_control]`.

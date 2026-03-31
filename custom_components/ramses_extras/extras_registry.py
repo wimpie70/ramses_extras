@@ -18,7 +18,7 @@ class RamsesEntityRegistry:
         self._number_configs: dict[str, dict[str, Any]] = {}
         self._boolean_configs: dict[str, dict[str, Any]] = {}
         self._device_mappings: dict[str, dict[str, Any]] = {}
-        self._card_configs: dict[str, dict[str, Any]] = {}
+        self._card_configs: dict[str, dict[str, dict[str, Any]]] = {}
         self._websocket_commands: dict[str, dict[str, str]] = {}
         self._lock = threading.Lock()
         self._loaded_features: set[str] = set()
@@ -66,9 +66,24 @@ class RamsesEntityRegistry:
     def register_card_config(
         self, feature_name: str, card_config: dict[str, Any]
     ) -> None:
-        """Register card configuration for a feature."""
+        """Register card configuration for a feature.
+
+        Supports multiple cards per feature keyed by card_id.
+        """
         with self._lock:
-            self._card_configs[feature_name] = card_config
+            if feature_name not in self._card_configs:
+                self._card_configs[feature_name] = {}
+            card_id = card_config.get("card_id")
+            if not card_id:
+                _LOGGER.warning(
+                    "Card config for feature '%s' missing card_id, skipping",
+                    feature_name,
+                )
+                return
+            self._card_configs[feature_name][card_id] = card_config
+            _LOGGER.debug(
+                "Registered card '%s' for feature '%s'", card_id, feature_name
+            )
 
     def register_feature(self, feature_name: str) -> None:
         """Mark a feature as registered."""
@@ -156,9 +171,30 @@ class RamsesEntityRegistry:
                                 if entity not in existing_entities:
                                     existing_entities.append(entity)
 
+                # Handle card configs - support both single card_config
+                # and list of card_configs
                 card_config = feature_definition.get("card_config")
+                card_configs = feature_definition.get("card_configs", [])
+
+                # Normalize to a list
+                cards_to_register: list[dict[str, Any]] = []
                 if isinstance(card_config, dict):
-                    self._card_configs[feature_name] = card_config
+                    cards_to_register.append(card_config)
+                if isinstance(card_configs, list):
+                    cards_to_register.extend(card_configs)
+
+                # Register all cards by card_id
+                for card in cards_to_register:
+                    if isinstance(card, dict) and card.get("card_id"):
+                        if feature_name not in self._card_configs:
+                            self._card_configs[feature_name] = {}
+                        card_id = card["card_id"]
+                        self._card_configs[feature_name][card_id] = card
+                        _LOGGER.debug(
+                            "Loaded card '%s' for feature '%s' from FEATURE_DEFINITION",
+                            card_id,
+                            feature_name,
+                        )
 
                 websocket_commands = feature_definition.get(
                     "websocket_commands",
@@ -286,15 +322,46 @@ class RamsesEntityRegistry:
         with self._lock:
             return list(self._loaded_features)
 
-    def get_card_config(self, feature_name: str) -> dict[str, Any] | None:
-        """Get card configuration for a specific feature."""
-        with self._lock:
-            return self._card_configs.get(feature_name)
+    def get_card_config(
+        self, feature_name: str, card_id: str | None = None
+    ) -> dict[str, Any] | None:
+        """Get card configuration for a specific feature.
 
-    def get_all_card_configs(self) -> dict[str, dict[str, Any]]:
-        """Get all card configurations."""
+        Args:
+            feature_name: The feature ID
+            card_id: Optional specific card ID. If None, returns the first
+                    registered card for backward compatibility.
+
+        Returns:
+            Card config dict, or None if not found
+        """
         with self._lock:
-            return self._card_configs.copy()
+            feature_cards = self._card_configs.get(feature_name, {})
+            if not feature_cards:
+                return None
+            if card_id:
+                return feature_cards.get(card_id)
+            # Backward compatibility: return first card if no card_id specified
+            return next(iter(feature_cards.values()), None)
+
+    def get_card_configs(self, feature_name: str) -> dict[str, dict[str, Any]]:
+        """Get all card configurations for a specific feature.
+
+        Returns:
+            Dict mapping card_id -> card_config for the feature.
+            Empty dict if feature has no cards.
+        """
+        with self._lock:
+            return self._card_configs.get(feature_name, {}).copy()
+
+    def get_all_card_configs(self) -> dict[str, dict[str, dict[str, Any]]]:
+        """Get all card configurations.
+
+        Returns:
+            Dict mapping feature_name -> {card_id -> card_config}
+        """
+        with self._lock:
+            return {name: cards.copy() for name, cards in self._card_configs.items()}
 
     def get_websocket_commands_for_feature(self, feature_name: str) -> dict[str, str]:
         """Get WebSocket command metadata for a feature."""

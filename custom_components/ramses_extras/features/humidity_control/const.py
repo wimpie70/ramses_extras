@@ -238,6 +238,11 @@ def load_feature() -> None:
 
     extras_registry.register_feature("humidity_control")
 
+    # Load YAML validator and import/export functions
+    from .humidity_control_yaml import load_validator
+
+    load_validator()
+
 
 __all__ = [
     "FEATURE_ID",
