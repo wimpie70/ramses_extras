@@ -90,9 +90,15 @@ async def test_zones_add_transitions_to_edit(flow, helper):
 
     flow.hass.data["ramses_extras"]["config_entry"].options = {}
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(flow, {"action": "add"})
         assert flow._sensor_control_group_stage == "zones_edit"
@@ -118,9 +124,15 @@ async def test_zones_delete_calls_update(flow, helper):
         }
     }
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(
             flow, {"action": "delete", "zone_id": "bathroom"}
@@ -147,9 +159,15 @@ async def test_zones_confirm_save_calls_update(flow, helper):
         "ramses_extras": {"features": {"zones": {"FANs": {"32:123456": []}}}}
     }
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(flow, {"confirm": "save"})
 
@@ -170,9 +188,15 @@ async def test_zones_confirm_edit_returns_to_edit(flow, helper):
 
     flow._sensor_control_pending_zone = {"zone_id": "bathroom"}
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(flow, {"confirm": "edit"})
         assert flow._sensor_control_group_stage == "zones_edit"
@@ -187,9 +211,15 @@ async def test_zones_confirm_cancel_resets_state(flow, helper):
 
     flow._sensor_control_pending_zone = {"zone_id": "bathroom"}
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(flow, {"confirm": "cancel"})
         assert flow._sensor_control_pending_zone is None
@@ -203,9 +233,15 @@ async def test_zones_menu_back_returns_to_select_group(flow, helper):
     flow._sensor_control_selected_device = "32:123456"
     flow._sensor_control_group_stage = "zones_menu"
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(flow, {"action": "back"})
         assert flow._sensor_control_group_stage == "select_group"
@@ -218,6 +254,25 @@ async def test_zones_edit_submit_transitions_to_confirm(flow, helper):
     flow._sensor_control_selected_device = "32:123456"
     flow._sensor_control_group_stage = "zones_edit"
     flow._sensor_control_editing_zone_id = "bathroom"
+
+    flow.hass.data["ramses_extras"]["config_entry"].options = {}
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
+    ):
+        await async_step_sensor_control_config(
+            flow, {"zone_id": "bathroom", "type": "paired_valves"}
+        )
+        assert flow._sensor_control_group_stage == "zones_confirm"
+        assert flow._sensor_control_pending_zone is not None
+        assert flow._sensor_control_pending_zone["zone_id"] == "bathroom"
 
     flow.hass.data["ramses_extras"]["config_entry"].options = {
         "ramses_extras": {"features": {"zones": {"FANs": {"32:123456": []}}}}
@@ -240,3 +295,64 @@ async def test_zones_edit_submit_transitions_to_confirm(flow, helper):
         assert flow._sensor_control_group_stage == "zones_confirm"
         assert flow._sensor_control_pending_zone is not None
         assert flow._sensor_control_pending_zone["zone_id"] == "bathroom"
+
+
+async def test_zones_edit_stores_original_zone_id(flow, helper):
+    """Test that zones_edit stores original zone_id for rename detection."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "zones_edit"
+    flow._sensor_control_editing_zone_id = "bathroom"
+
+    flow.hass.data["ramses_extras"]["config_entry"].options = {
+        "ramses_extras": {
+            "features": {
+                "zones": {
+                    "FANs": {
+                        "32:123456": [
+                            {
+                                "zone_id": "bathroom",
+                                "type": "paired_valves",
+                                "enabled": True,
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
+    ):
+        await async_step_sensor_control_config(flow, None)
+
+        # Verify original zone_id was stored
+        assert flow._sensor_control_original_zone_id == "bathroom"
+
+
+async def test_zones_confirm_cancel_clears_original_zone_id(flow, helper):
+    """Test that cancel clears original zone_id tracking."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "zones_confirm"
+
+    flow._sensor_control_pending_zone = {"zone_id": "bathroom"}
+    flow._sensor_control_original_zone_id = "bathroom"
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+        return_value="FAN",
+    ):
+        await async_step_sensor_control_config(flow, {"confirm": "cancel"})
+
+        assert flow._sensor_control_original_zone_id is None

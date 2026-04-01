@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 import re
 from copy import deepcopy
-from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
@@ -13,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
 
 from ...const import AVAILABLE_FEATURES, DOMAIN
+from ...framework.helpers import async_get_feature_translations
 from ...framework.helpers.config.migration import get_migrated_feature_section
 from ...framework.helpers.config.model import (
     CONFIG_DEVICES_KEY,
@@ -41,45 +39,6 @@ from .zones_yaml import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-_FEATURE_DIR = Path(__file__).resolve().parent
-
-
-async def _async_load_sensor_control_info_suffix_translations(
-    hass: Any,
-) -> dict[str, str]:
-    language = getattr(getattr(hass, "config", None), "language", "en") or "en"
-    cache = hass.data.setdefault(DOMAIN, {}).setdefault("_sc_info_suffix", {})
-    cached = cache.get(language)
-    if isinstance(cached, dict):
-        return cached
-
-    translations_dir = _FEATURE_DIR / "translations"
-
-    def _load(lang: str) -> dict[str, str]:
-        path = translations_dir / f"{lang}.json"
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            return {}
-        except Exception:
-            return {}
-
-        info_suffix = raw.get("info_suffix") if isinstance(raw, dict) else None
-        if not isinstance(info_suffix, dict):
-            return {}
-        return {
-            str(k): str(v)
-            for k, v in info_suffix.items()
-            if isinstance(k, str) and isinstance(v, str)
-        }
-
-    loaded = await asyncio.to_thread(_load, language)
-    if not loaded and language != "en":
-        loaded = await asyncio.to_thread(_load, "en")
-
-    cache[language] = loaded
-    return loaded
 
 
 def _device_key(device_id: str) -> str:
@@ -175,10 +134,19 @@ def _persist_remote_binding_section(
     options = dict(options)
     options[FEATURE_REMOTE_BINDING] = canonical_section
     set_feature_section(options, FEATURE_REMOTE_BINDING, canonical_section)
+    # async_update_entry returns bool indicating success, not the entry
     flow.hass.config_entries.async_update_entry(  # noqa: SLF001
         flow._config_entry,  # noqa: SLF001
         options=options,
     )
+    # Refresh to get the updated entry with new options
+    refresh = getattr(flow, "_refresh_config_entry", None)
+    if callable(refresh):
+        hass = getattr(flow, "hass", None)
+        if hass is not None:
+            refresh(hass)
+        else:
+            refresh()
 
 
 def _persist_zones_section(
@@ -723,6 +691,22 @@ async def async_step_sensor_control_config(
         )
 
     if group_stage == "area_sensors_menu":
+        # Reload area sensors to ensure fresh data after edit
+        options = dict(flow._config_entry.options)  # noqa: SLF001
+        sensor_control_section = get_migrated_feature_section(options, feature_id)
+        devices_config = sensor_control_section.get(CONFIG_DEVICES_KEY)
+        if not isinstance(devices_config, dict):
+            devices_config = {}
+        norm_device_id = normalize_device_id(selected_device_id)
+        device_section = devices_config.get(norm_device_id) or devices_config.get(
+            selected_device_id
+        )
+        if not isinstance(device_section, dict):
+            device_section = {}
+        device_area_sensors = _validate_area_sensor_entries(
+            device_section.get(SENSOR_CONTROL_AREA_SENSORS_KEY)
+        )
+
         if user_input is not None:
             action = str(user_input.get("action") or "")
 
@@ -767,6 +751,13 @@ async def async_step_sensor_control_config(
                 flow._sensor_control_group_stage = "select_group"
                 return await async_step_sensor_control_config(flow, None)
 
+        # Load translations using shared helper
+        translations = await async_get_feature_translations(
+            flow.hass, "sensor_control", ("labels", "errors", "info_texts")
+        )
+        labels = translations.get("labels", {})
+        info_texts = translations.get("info_texts", {})
+
         # Build area sensor list for display
         area_sensor_descriptions = []
         area_sensor_select_options = []
@@ -784,20 +775,26 @@ async def async_step_sensor_control_config(
             area_sensor_select_options.append(
                 selector.SelectOptionDict(
                     value=source_id,
-                    label=f"Area sensor: {display_label}",
+                    label=labels.get(
+                        "area_sensor_prefix", "Area sensor: {label}"
+                    ).format(label=display_label),
                 )
             )
 
         # Add empty option if there are area sensors to select
         if area_sensor_select_options:
             area_sensor_select_options.insert(
-                0, selector.SelectOptionDict(value="", label="(select area sensor)")
+                0,
+                selector.SelectOptionDict(
+                    value="",
+                    label=labels.get("select_area_sensor", "(select area sensor)"),
+                ),
             )
 
         area_sensors_info = (
             "\n".join(area_sensor_descriptions)
             if area_sensor_descriptions
-            else "No area sensors configured."
+            else info_texts.get("no_area_sensors", "No area sensors configured.")
         )
 
         schema = vol.Schema(
@@ -806,15 +803,24 @@ async def async_step_sensor_control_config(
                     selector.SelectSelectorConfig(
                         options=[
                             selector.SelectOptionDict(
-                                value="add", label="Add area sensor"
+                                value="add",
+                                label=labels.get("add_area_sensor", "Add area sensor"),
                             ),
                             selector.SelectOptionDict(
-                                value="edit", label="Edit area sensor"
+                                value="edit",
+                                label=labels.get(
+                                    "edit_area_sensor", "Edit area sensor"
+                                ),
                             ),
                             selector.SelectOptionDict(
-                                value="delete", label="Delete area sensor"
+                                value="delete",
+                                label=labels.get(
+                                    "delete_area_sensor", "Delete area sensor"
+                                ),
                             ),
-                            selector.SelectOptionDict(value="back", label="Back"),
+                            selector.SelectOptionDict(
+                                value="back", label=labels.get("back", "Back")
+                            ),
                         ],
                         mode="list",
                     )
@@ -828,10 +834,13 @@ async def async_step_sensor_control_config(
             }
         )
 
+        title = info_texts.get("area_sensor_config_title", "Area Sensor Configuration")
+        config_fan = info_texts.get(
+            "configuring_for_fan", "Configuring for FAN: `{device_id}`"
+        ).format(device_id=selected_device_id)
+        existing = info_texts.get("existing_area_sensors", "Existing area sensors:")
         info_text = (
-            "🧭 **Area Sensor Configuration**\n\n"
-            f"Configuring area sensors for FAN: `{selected_device_id}`\n\n"
-            f"**Existing area sensors:**\n{area_sensors_info}"
+            f"🧭 **{title}**\n\n{config_fan}\n\n**{existing}**\n{area_sensors_info}"
         )
 
         return flow.async_show_form(
@@ -841,28 +850,51 @@ async def async_step_sensor_control_config(
         )
 
     if group_stage == "area_sensors_edit":
+        # Get the editing_source_id being edited (for finding the sensor)
+        editing_source_id: str | None = getattr(
+            flow, "_sensor_control_area_sensor_id", None
+        )
         selected_area_sensor = _get_area_sensor_by_id(
-            device_area_sensors,
-            getattr(flow, "_sensor_control_area_sensor_id", None),
+            device_area_sensors, editing_source_id
         )
-        info_suffix_translations = (
-            await _async_load_sensor_control_info_suffix_translations(flow.hass)
+        # Store original area_id for rename detection on save
+        if selected_area_sensor and selected_area_sensor.get("area_id"):
+            flow._sensor_control_original_area_id = str(
+                selected_area_sensor.get("area_id")
+            )
+        # Load translations using shared helper
+        translations = await async_get_feature_translations(
+            flow.hass, "sensor_control", ("info_suffix",)
         )
+        info_suffix = translations.get("info_suffix", {})
 
-        def _t_area(key: str, default: str) -> str:
-            val = info_suffix_translations.get(key)
-            return val if isinstance(val, str) and val else default
+        # Get translated text with fallback defaults
+        area_edit_text = info_suffix.get(
+            "area_sensors_edit",
+            "Define one local area sensor using temperature + humidity and/or "
+            "CO2 inputs. Humidity sensors drive spike detection. CO2 sensors "
+            "drive CO2 control. Both can share the same zone_id.",
+        )
+        area_entity_note = info_suffix.get(
+            "area_sensors_entity_note",
+            "Temperature and humidity entities should come from "
+            "the same device. Enable area_sensor_enabled "
+            "for humidity/temp, area_co2_enabled for CO2. "
+            "Multiple area sensors can share the same zone_id. "
+            "CO2 threshold: use entity for dynamic value (e.g., input_number), "
+            "or just set the number as static fallback.",
+        )
 
         if user_input is not None:
             area_id = str(user_input.get("area_id") or "").strip()
-            source_id = (
+            editing_source_id = (
                 str(selected_area_sensor.get("source_id"))
                 if selected_area_sensor and selected_area_sensor.get("source_id")
                 else _unique_area_sensor_id(area_id, device_area_sensors)
             )
 
             updated_area_sensor: dict[str, Any] = {
-                "source_id": source_id,
+                "source_id": editing_source_id,
                 "area_id": area_id,
                 "enabled": bool(user_input.get("area_sensor_enabled", True)),
                 "temperature_entity": str(user_input.get("temperature_entity") or ""),
@@ -891,7 +923,7 @@ async def async_step_sensor_control_config(
             replaced = False
             new_area_sensors: list[dict[str, Any]] = []
             for item in device_area_sensors:
-                if str(item.get("source_id") or "") == source_id:
+                if str(item.get("source_id") or "") == editing_source_id:
                     new_area_sensors.append(updated_area_sensor)
                     replaced = True
                 else:
@@ -905,12 +937,51 @@ async def async_step_sensor_control_config(
             device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = new_area_sensors
             devices_config[norm_device_id] = device_section
             sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
+
+            # Cascade area_id rename to REM bindings if changed
+            original_area_id: str | None = getattr(
+                flow, "_sensor_control_original_area_id", None
+            )
+            if original_area_id and area_id and original_area_id != area_id:
+                remote_binding_section = get_migrated_feature_section(
+                    options, FEATURE_REMOTE_BINDING
+                )
+                fan_rems = get_remote_binding_rems(
+                    remote_binding_section, selected_device_id
+                )
+                updated_zone_rems: list[dict[str, Any]] = []
+                rem_updated = False
+                for rem in fan_rems:
+                    rem_area_id = str(rem.get("area_id") or "")
+                    rem_id = str(rem.get("rem_id") or "")
+                    if rem_area_id == original_area_id:
+                        updated_rem = dict(rem)
+                        updated_rem["area_id"] = area_id
+                        updated_zone_rems.append(updated_rem)
+                        rem_updated = True
+                    else:
+                        updated_zone_rems.append(rem)
+                if rem_updated:
+                    from ...framework.helpers.config.model import set_fan_section
+
+                    set_fan_section(
+                        remote_binding_section,
+                        selected_device_id,
+                        {"REMs": updated_zone_rems},
+                    )
+                    options = dict(options)
+                    options[FEATURE_REMOTE_BINDING] = remote_binding_section
+                    _persist_remote_binding_section(
+                        flow, options, remote_binding_section
+                    )
+
             _persist_sensor_control_section(
                 flow,
                 options,
                 sensor_control_section,
             )
             flow._sensor_control_area_sensor_id = None
+            flow._sensor_control_original_area_id = None
             flow._sensor_control_group_stage = "area_sensors_menu"
             return await async_step_sensor_control_config(flow, None)
 
@@ -991,9 +1062,9 @@ async def async_step_sensor_control_config(
 
         schema = vol.Schema(
             {
-                vol.Required("area_id", default=area_id_default): vol.All(
-                    str, vol.Length(min=1)
-                ),
+                vol.Optional(
+                    "area_id", default=area_id_default
+                ): selector.TextSelector(),
                 vol.Required(
                     "area_sensor_enabled",
                     default=bool(
@@ -1062,26 +1133,8 @@ async def async_step_sensor_control_config(
         info_text = (
             "🧭 **FAN Configuration**\n\n"
             f"Configuring device: `{selected_device_id}`\n\n"
-            f"{
-                _t_area(
-                    'area_sensors_edit',
-                    'Define one local area sensor using temperature + humidity and/or '
-                    'CO2 inputs. Humidity sensors drive spike detection. CO2 sensors '
-                    'drive CO2 control. Both can share the same zone_id.',
-                )
-            } \
-            \n\n"
-            f"{
-                _t_area(
-                    'area_sensors_entity_note',
-                    'Temperature and humidity entities should come from '
-                    'the same device. Enable area_sensor_enabled '
-                    'for humidity/temp, area_co2_enabled for CO2. '
-                    'Multiple area sensors can share the same zone_id. '
-                    'CO2 threshold: use entity for dynamic value (e.g., input_number), '
-                    'or just set the number as static fallback.',
-                )
-            }"
+            f"{area_edit_text} \n\n"
+            f"{area_entity_note}"
         )
         return flow.async_show_form(
             step_id="feature_config",
@@ -1210,10 +1263,20 @@ async def async_step_sensor_control_config(
         zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
         fan_zones = get_zones_for_fan(zones_section, selected_device_id)
 
+        # Load translations using shared helper
+        translations = await async_get_feature_translations(
+            flow.hass, "sensor_control", ("labels", "errors")
+        )
+        labels = translations.get("labels", {})
+
         editing_zone_id = getattr(flow, "_sensor_control_editing_zone_id", None)
         existing_zone = None
         if editing_zone_id:
             existing_zone = _get_zone_by_id(fan_zones, editing_zone_id)
+
+        # Store original zone_id for rename detection on save
+        if existing_zone and existing_zone.get("zone_id"):
+            flow._sensor_control_original_zone_id = str(existing_zone.get("zone_id"))
 
         errors: dict[str, str] = {}
 
@@ -1244,11 +1307,15 @@ async def async_step_sensor_control_config(
 
             # Validate unique zone_id within this FAN
             if not zone_id:
-                errors["zone_id"] = "Zone ID is required"
+                errors["zone_id"] = translations.get("errors", {}).get(
+                    "zone_id_required", "Zone ID is required"
+                )
             elif existing_zone is None or existing_zone.get("zone_id") != zone_id:
                 # Check for duplicates
                 if _get_zone_by_id(fan_zones, zone_id):
-                    errors["zone_id"] = "Zone ID already exists for this FAN"
+                    errors["zone_id"] = translations.get("errors", {}).get(
+                        "zone_id_exists", "Zone ID already exists for this FAN"
+                    )
 
             if not errors:
                 # Build zone entry and store for confirmation step
@@ -1383,9 +1450,80 @@ async def async_step_sensor_control_config(
                 options[FEATURE_ZONES] = zones_section
                 _persist_zones_section(flow, options, zones_section)
 
-                # Clear pending zone
+                # Cascade zone_id rename to area_sensors and REMs if changed
+                new_zone_id = zone_entry.get("zone_id")
+                original_zone_id: str | None = getattr(
+                    flow, "_sensor_control_original_zone_id", None
+                )
+                if original_zone_id and new_zone_id and original_zone_id != new_zone_id:
+                    # Update area_sensors referencing this zone_id
+                    sensor_control_section = get_migrated_feature_section(
+                        options, FEATURE_SENSOR_CONTROL
+                    )
+                    devices_config = sensor_control_section.get(CONFIG_DEVICES_KEY)
+                    if isinstance(devices_config, dict):
+                        device_section = devices_config.get(
+                            selected_device_id
+                        ) or devices_config.get(normalize_device_id(selected_device_id))
+                        if isinstance(device_section, dict):
+                            area_sensors = _validate_area_sensor_entries(
+                                device_section.get(SENSOR_CONTROL_AREA_SENSORS_KEY)
+                            )
+                            updated_area_sensors: list[dict[str, Any]] = []
+                            area_updated = False
+                            for area_sensor in area_sensors:
+                                sensor_zone_id = str(area_sensor.get("zone_id") or "")
+                                if sensor_zone_id == original_zone_id:
+                                    updated_sensor = dict(area_sensor)
+                                    updated_sensor["zone_id"] = new_zone_id
+                                    updated_area_sensors.append(updated_sensor)
+                                    area_updated = True
+                                else:
+                                    updated_area_sensors.append(area_sensor)
+                            if area_updated:
+                                device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = (
+                                    updated_area_sensors
+                                )
+                                options = dict(options)
+                                options[FEATURE_SENSOR_CONTROL] = sensor_control_section
+                                _persist_sensor_control_section(
+                                    flow, options, sensor_control_section
+                                )
+
+                    # Update REMs referencing this zone_id
+                    remote_binding_section = get_migrated_feature_section(
+                        options, FEATURE_REMOTE_BINDING
+                    )
+                    fan_rems = get_remote_binding_rems(
+                        remote_binding_section, selected_device_id
+                    )
+                    updated_rems: list[dict[str, Any]] = []
+                    rem_updated = False
+                    for rem in fan_rems:
+                        rem_zone_id = str(rem.get("zone_id") or "")
+                        if rem_zone_id == original_zone_id:
+                            updated_rem = dict(rem)
+                            updated_rem["zone_id"] = new_zone_id
+                            updated_rems.append(updated_rem)
+                            rem_updated = True
+                        else:
+                            updated_rems.append(rem)
+                    if rem_updated:
+                        set_fan_section(
+                            remote_binding_section,
+                            selected_device_id,
+                            {"REMs": updated_rems},
+                        )
+                        options = dict(options)
+                        options[FEATURE_REMOTE_BINDING] = remote_binding_section
+                        _persist_remote_binding_section(
+                            flow, options, remote_binding_section
+                        )
+
+                # Clear pending zone and original zone_id tracking
                 flow._sensor_control_pending_zone = None
                 flow._sensor_control_pending_zone_editing_id = None
+                flow._sensor_control_original_zone_id = None
 
                 # Refresh config entry reference
                 flow.hass.data[DOMAIN]["config_entry"] = (
@@ -1406,6 +1544,7 @@ async def async_step_sensor_control_config(
                 # Cancel and go back to menu
                 flow._sensor_control_pending_zone = None
                 flow._sensor_control_pending_zone_editing_id = None
+                flow._sensor_control_original_zone_id = None
                 flow._sensor_control_group_stage = "zones_menu"
                 return await async_step_sensor_control_config(flow, None)
 
@@ -1499,6 +1638,12 @@ async def async_step_sensor_control_config(
         options = flow.hass.data[DOMAIN]["config_entry"].options
         zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
 
+        # Load translations using shared helper
+        translations = await async_get_feature_translations(
+            flow.hass, "sensor_control", ("labels", "errors")
+        )
+        labels = translations.get("labels", {})
+
         import_errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -1513,14 +1658,18 @@ async def async_step_sensor_control_config(
                 overwrite = user_input.get("overwrite_existing", False)
 
                 if not yaml_content or not yaml_content.strip():
-                    import_errors["yaml_content"] = "YAML content is required"
+                    import_errors["yaml_content"] = translations.get("errors", {}).get(
+                        "yaml_content_required", "YAML content is required"
+                    )
                 else:
                     try:
                         parsed = parse_zones_yaml(yaml_content)
                         imported_zones = parsed.get("zones", [])
 
                         if not imported_zones:
-                            import_errors["yaml_content"] = "No zones found in YAML"
+                            import_errors["yaml_content"] = translations.get(
+                                "errors", {}
+                            ).get("no_zones_in_yaml", "No zones found in YAML")
                         else:
                             # Merge with existing zones
                             existing_zones = _validate_zone_entries(
@@ -1596,7 +1745,9 @@ async def async_step_sensor_control_config(
         )
 
     if group_stage == "rems_menu":
-        options = flow.hass.data[DOMAIN]["config_entry"].options
+        # Reload REM data to ensure fresh data after cascade update
+        # Use flow._config_entry which gets refreshed at start of this function
+        options = dict(flow._config_entry.options)  # noqa: SLF001
         remote_binding_section = get_migrated_feature_section(
             options, FEATURE_REMOTE_BINDING
         )
@@ -2075,7 +2226,9 @@ async def _async_handle_rems_edit(
     user_input: dict[str, Any] | None,
 ) -> Any:
     """Handle the rems_edit group stage for editing a REM binding."""
-    options = flow.hass.data[DOMAIN]["config_entry"].options
+    # Reload REM data to ensure fresh data after cascade update
+    # Use flow._config_entry which gets refreshed at start of this function
+    options = dict(flow._config_entry.options)  # noqa: SLF001
     remote_binding_section = get_migrated_feature_section(
         options, FEATURE_REMOTE_BINDING
     )
@@ -2096,6 +2249,12 @@ async def _async_handle_rems_edit(
                 existing_rem = rem
                 break
 
+    # Load translations using shared helper
+    translations = await async_get_feature_translations(
+        flow.hass, "sensor_control", ("labels", "errors")
+    )
+    _labels = translations.get("labels", {})
+
     errors: dict[str, str] = {}
 
     if user_input is not None:
@@ -2105,7 +2264,9 @@ async def _async_handle_rems_edit(
         area_id = str(user_input.get("area_id") or "").strip()
 
         if not rem_id:
-            errors["rem_id"] = "REM ID is required"
+            errors["rem_id"] = translations.get("errors", {}).get(
+                "rem_id_required", "REM ID is required"
+            )
 
         if rem_id and (editing_rem_id is None or rem_id != editing_rem_id):
             for rem in fan_rems:
@@ -2114,7 +2275,9 @@ async def _async_handle_rems_edit(
                     isinstance(existing_id, str)
                     and normalize_device_id(existing_id) == rem_id
                 ):
-                    errors["rem_id"] = "REM ID already exists for this FAN"
+                    errors["rem_id"] = translations.get("errors", {}).get(
+                        "rem_id_exists", "REM ID already exists for this FAN"
+                    )
                     break
 
         if not errors:

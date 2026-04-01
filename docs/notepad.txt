@@ -18,8 +18,22 @@ low: 13 l/s (at 15%)
 medium: 41.63 l/s (at 50%)
 high: 83 l/s (at 100%)
 
+todo:
+- make humidity control settings persistent (after reloads)
+- yaml export still has 'role' in the config, remove it
 
-idea: device simulator: create a device that simulates a device with found real messages.
+- add a card to sensor_control: FAN Configuration
+This is different from the current hvac fan card settings. This new card will
+allow us to test the fan configuration for each zone, area, rems. Also include a
+section for the valve positions, calibration, etc like we have in the zone_testing_package.yaml.
+The purpose is to be able to test the fan configuration and valve positions and the automations (humidity, co2).
+So, it needs to collect the configured sensors and their values, and show them in the card, and make them
+editable (if they are helpers). Also indicate if REM's are pressed, etc.
+/home/willem/Pictures/Screenshots/Screenshot from 2026-04-01 11-41-03.png is an example of part of what i want.
+
+
+idea:
+- device simulator: create a device that simulates a device with found real messages.
 These messages can be retrieved from _rf docs and stored in a dbase, with options:
 - devices (brands, types)
 - messages (types, payloads)

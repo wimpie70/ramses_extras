@@ -5,13 +5,83 @@
     "co2": "CO2-sensor bron. Tip: gebruik de zoekfunctie van de entiteitkiezer en typ 'co2'.",
     "indoor_abs": "Invoer-sensoren voor absolute luchtvochtigheid binnen.",
     "outdoor_abs": "Invoer-sensoren voor absolute luchtvochtigheid buiten.",
-    "co2_device_preview": "CO2-apparaten zijn gedetecteerd, maar Sensor Control voor CO2 is nog niet geïmplementeerd. Dit onderdeel is voorbereid als preview voor toekomstig gebruik."
+    "co2_device_preview": "CO2-apparaten zijn gedetecteerd, maar Sensor Control voor CO2 is nog niet geïmplementeerd. Dit onderdeel is voorbereid als preview voor toekomstig gebruik.",
+    "area_sensors_edit": "Definieer één lokale gebiedssensor met temperatuur + vochtigheid en/of CO2 invoer. Vochtigheidssensoren activeren spike-detectie. CO2-sensoren activeren CO2-besturing. Beide kunnen dezelfde zone_id delen.",
+    "area_sensors_entity_note": "Temperatuur- en vochtigheidsentiteiten moeten van hetzelfde apparaat komen. Schakel area_sensor_enabled in voor vochtigheid/temp, area_co2_enabled voor CO2. Meerdere gebiedssensoren kunnen dezelfde zone_id delen. CO2 drempel: gebruik entiteit voor dynamische waarde (bijv. input_number), of stel gewoon het nummer in als statische fallback."
+  },
+  "labels": {
+    "add_area_sensor": "Gebiedssensor toevoegen",
+    "edit_area_sensor": "Gebiedssensor bewerken",
+    "delete_area_sensor": "Gebiedssensor verwijderen",
+    "add_zone": "Zone toevoegen",
+    "edit_zone": "Zone bewerken",
+    "delete_zone": "Zone verwijderen",
+    "save_zone": "Zone opslaan",
+    "edit_again": "Opnieuw bewerken",
+    "cancel": "Annuleren",
+    "back": "Terug",
+    "back_to_groups": "Terug naar groepen",
+    "back_to_zones_menu": "Terug naar zones menu",
+    "select_area_sensor": "(kies gebiedssensor)",
+    "no_zone": "(geen zone)",
+    "no_area": "(geen gebied)",
+    "zone_prefix": "Zone: {zone_id}",
+    "rem_prefix": "REM: {rem_id}",
+    "area_sensor_prefix": "Gebiedssensor: {label}",
+    "add_rem": "REM toevoegen",
+    "edit_rem": "REM bewerken",
+    "delete_rem": "REM verwijderen",
+    "internal_from_fan": "Intern (van FAN)",
+    "external_from_ha": "Extern (van HA entiteit)",
+    "derived_calculated": "Afgeleid (berekend)",
+    "none_disabled": "Geen (uitgeschakeld)",
+    "external_temp_only": "Alleen externe temperatuur",
+    "external_abs_humidity": "Externe absolute luchtvochtigheid",
+    "paired_valves": "Gekoppelde Kleppen (Inlaat+Uitlaat)",
+    "enabled": "ingeschakeld",
+    "disabled": "uitgeschakeld"
+  },
+  "errors": {
+    "zone_id_required": "Zone ID is verplicht",
+    "zone_id_exists": "Zone ID bestaat al voor deze FAN",
+    "rem_id_required": "REM ID is verplicht",
+    "rem_id_exists": "REM ID bestaat al voor deze FAN",
+    "yaml_content_required": "YAML inhoud is verplicht",
+    "no_zones_in_yaml": "Geen zones gevonden in YAML"
+  },
+  "info_texts": {
+    "no_area_sensors": "Geen gebiedssensoren geconfigureerd.",
+    "no_zones_configured": "Geen zones geconfigureerd.",
+    "no_rems_configured": "Geen REMs geconfigureerd.",
+    "area_sensor_config_title": "Gebiedssensor Configuratie",
+    "zone_config_title": "Zone Configuratie",
+    "rem_config_title": "REM Configuratie",
+    "internal_fan_sensors_title": "Interne FAN Sensoren",
+    "export_zones_title": "Zones Exporteren naar YAML",
+    "confirm_zone_title": "Zone Configuratie Bevestigen",
+    "configuring_for_fan": "Configureren voor FAN: `{device_id}`",
+    "existing_area_sensors": "Bestaande gebiedssensoren:",
+    "existing_zones": "Bestaande zones:",
+    "existing_rems": "Bestaande REMs:",
+    "zone_details": "Zone Details:",
+    "review_before_saving": "Controleer de zone details hierboven voordat je opslaat.",
+    "copy_yaml_save": "Kopieer de YAML hieronder om je zone configuratie op te slaan:",
+    "internal_sensors_description": "Configureer interne sensorbronnen voor apparaat: `{device_id}`\n\nDefinieer welke sensoren gebruikt moeten worden. In plaats van de standaard interne sensoren kun je andere (externe) sensoren van jouw keuze toewijzen.",
+    "edit_zone_title": "Zone Bewerken",
+    "add_zone_title": "Zone Toevoegen",
+    "zone_id_unique_note": "Zone ID moet uniek zijn binnen deze FAN.",
+    "select_zone_type": "Selecteer het zone type en configureer de juiste entiteiten.",
+    "add_rem_title": "REM Toevoegen",
+    "edit_rem_title": "REM Bewerken",
+    "rem_custom_note": "Opmerking: Bij selectie van een aangepast ID, zorg dat deze helper entiteit (input_select) de status weergeeft (idle, low, medium, high, auto, away, timer, etc.) en wordt ingesteld door een externe automatisering. Dit is nog niet functioneel.",
+    "rem_zone_area_note": "Gebruik zone_id / area_id optioneel om de locatie te bepalen.",
+    "rem_area_in_zone_note": "Opmerking: Bij gebruik van area_id, zorg dat het gebied daadwerkelijk binnen de geselecteerde zone_id valt."
   },
   "config": {
     "step": {
       "feature_sensor_control": {
-        "title": "Sensor Control Configuratie",
-        "description": "Configureer sensor bronselectie"
+        "title": "FAN Configuratie",
+        "description": "Configureer sensor bronselectie (binnen/buiten/CO2 + abs vochtigheid), zones, en remote binding"
       }
     }
   }

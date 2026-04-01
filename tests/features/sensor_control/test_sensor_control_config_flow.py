@@ -276,16 +276,22 @@ async def test_async_step_sensor_control_config_select_group_select(flow, helper
     flow._sensor_control_selected_device = "32:123456"
     flow._sensor_control_group_stage = "select_group"
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         # Pre-processing
         await async_step_sensor_control_config(flow, None)
         flow.async_show_form.assert_called_once()
 
         # Post-processing - Select group
-        user_input = {"group_action": "area_sensors"}
+        user_input = {"action": "area_sensors"}
         await async_step_sensor_control_config(flow, user_input)
         assert flow._sensor_control_group_stage == "area_sensors_menu"
 
@@ -305,7 +311,7 @@ async def test_async_step_sensor_control_config_select_group_shows_area_sensors(
     ):
         await async_step_sensor_control_config(flow, None)
 
-    config = flow.async_show_form.call_args.kwargs["data_schema"].schema["group_action"]
+    config = flow.async_show_form.call_args.kwargs["data_schema"].schema["action"]
     options = config.config["options"]
     assert any(option["value"] == "area_sensors" for option in options)
 
@@ -322,7 +328,7 @@ async def test_async_step_sensor_control_config_select_group_done(flow, helper):
         return_value="FAN",
     ):
         # Post-processing - Done
-        user_input = {"group_action": "done"}
+        user_input = {"action": "done"}
         await async_step_sensor_control_config(flow, user_input)
         assert flow._sensor_control_stage == "select_device"
         flow.async_step_main_menu.assert_called_once()
@@ -335,11 +341,17 @@ async def test_async_step_sensor_control_config_select_group_area_sensors(flow, 
     flow._sensor_control_selected_device = "32:123456"
     flow._sensor_control_group_stage = "select_group"
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
-        await async_step_sensor_control_config(flow, {"group_action": "area_sensors"})
+        await async_step_sensor_control_config(flow, {"action": "area_sensors"})
         assert flow._sensor_control_group_stage == "area_sensors_menu"
 
 
@@ -380,12 +392,18 @@ async def test_async_step_sensor_control_config_area_sensors_edit_selection(
     flow._sensor_control_selected_device = "32:123456"
     flow._sensor_control_group_stage = "area_sensors_menu"
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(
-            flow, {"area_sensor_action": "edit:bathroom"}
+            flow, {"action": "edit", "area_id": "bathroom"}
         )
 
     assert flow._sensor_control_group_stage == "area_sensors_edit"
@@ -399,11 +417,17 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
     flow._sensor_control_selected_device = "32:123456"
     flow._sensor_control_group_stage = "area_sensors_menu"
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
-        await async_step_sensor_control_config(flow, {"area_sensor_action": "add"})
+        await async_step_sensor_control_config(flow, {"action": "add"})
         assert flow._sensor_control_group_stage == "area_sensors_edit"
 
         user_input = {
@@ -477,11 +501,17 @@ async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
     flow._sensor_control_selected_device = "32:123456"
     flow._sensor_control_group_stage = "area_sensors_menu"
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
-        await async_step_sensor_control_config(flow, {"area_sensor_action": "add"})
+        await async_step_sensor_control_config(flow, {"action": "add"})
 
         await async_step_sensor_control_config(
             flow,
@@ -552,9 +582,15 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
         }
     }
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(
             flow,
@@ -627,9 +663,15 @@ async def test_async_step_sensor_control_config_area_sensors_edit_preserves_othe
         }
     }
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(
             flow,
@@ -677,13 +719,19 @@ async def test_async_step_sensor_control_config_area_sensors_delete(flow, helper
         }
     }
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(
             flow,
-            {"area_sensor_action": "delete:bathroom"},
+            {"action": "delete", "area_id": "bathroom"},
         )
 
         options = flow.hass.config_entries.async_update_entry.call_args.kwargs[
@@ -701,11 +749,17 @@ async def test_async_step_sensor_control_config_area_sensors_menu_back(flow, hel
     flow._sensor_control_selected_device = "32:123456"
     flow._sensor_control_group_stage = "area_sensors_menu"
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
-        await async_step_sensor_control_config(flow, {"area_sensor_action": "back"})
+        await async_step_sensor_control_config(flow, {"action": "back"})
 
     assert flow._sensor_control_group_stage == "select_group"
 
@@ -743,16 +797,22 @@ async def test_async_step_sensor_control_config_area_sensors_menu_shows_edit_opt
         }
     }
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         await async_step_sensor_control_config(flow, None)
 
     info_text = flow.async_show_form.call_args.kwargs["description_placeholders"][
         "info"
     ]
-    assert "Current area sensors:" in info_text
+    assert "Existing area sensors:" in info_text
     assert "area sensor bathroom" in info_text
 
 
@@ -764,9 +824,15 @@ async def test_async_step_sensor_control_config_selectors_allow_input_number(
     flow._sensor_control_stage = "configure_device"
     flow._sensor_control_selected_device = "32:123456"
 
-    with patch(
-        "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
-        return_value="FAN",
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
     ):
         flow._sensor_control_group_stage = "area_sensors_menu"
         await async_step_sensor_control_config(flow, None)
