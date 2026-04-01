@@ -15,10 +15,15 @@ class RamsesFanMap extends RamsesBaseCard {
     this._topology = null;
     this._remoteBindings = null;
     this._zoneCoordinatorState = null;
+    this._requiredEntitiesDynamic = {};
   }
 
   getFeatureName() {
     return 'sensor_control';
+  }
+
+  getRequiredEntities() {
+    return this._requiredEntitiesDynamic || {};
   }
 
   getCardSize() {
@@ -69,11 +74,49 @@ class RamsesFanMap extends RamsesBaseCard {
       this._error = null;
       this._topology = null;
       this._remoteBindings = null;
+      this._zoneCoordinatorState = null;
+      this._requiredEntitiesDynamic = {};
+      this.clearPreviousStates();
 
       if (this._hass && this._config?.device_id) {
         this._loadInitialState();
       }
     }
+  }
+
+  _buildRequiredEntitiesFromTopology(topology) {
+    const result = {};
+    const zones = this._asList(topology?.zones);
+
+    for (const zone of zones) {
+      const zoneId = String(zone?.zone_id || '').trim();
+      if (!zoneId) {
+        continue;
+      }
+
+      const sensors = this._asObject(zone?.sensors);
+      const actuator = this._asObject(zone?.actuator);
+
+      const temperature = sensors?.temperature_entity;
+      const humidity = sensors?.humidity_entity;
+      const co2 = sensors?.co2_entity;
+      const actuatorEntity = actuator?.entity_id;
+
+      if (typeof temperature === 'string' && temperature) {
+        result[`zone_${zoneId}_temperature`] = temperature;
+      }
+      if (typeof humidity === 'string' && humidity) {
+        result[`zone_${zoneId}_humidity`] = humidity;
+      }
+      if (typeof co2 === 'string' && co2) {
+        result[`zone_${zoneId}_co2`] = co2;
+      }
+      if (typeof actuatorEntity === 'string' && actuatorEntity) {
+        result[`zone_${zoneId}_actuator`] = actuatorEntity;
+      }
+    }
+
+    return result;
   }
 
   async _loadInitialState() {
@@ -114,6 +157,9 @@ class RamsesFanMap extends RamsesBaseCard {
       this._topology = topology;
       this._remoteBindings = remoteBindings;
       this._zoneCoordinatorState = zoneCoordinatorState;
+
+      this._requiredEntitiesDynamic = this._buildRequiredEntitiesFromTopology(topology);
+      this.clearPreviousStates();
     } catch (error) {
       this._error = error;
       logger.error('RamsesFanMap: Failed to load initial state', error);
@@ -148,6 +194,52 @@ class RamsesFanMap extends RamsesBaseCard {
     return {};
   }
 
+  _getEntitySummary(entityId) {
+    if (!entityId || typeof entityId !== 'string') {
+      return { text: '—', stateClass: 'muted', tooltip: '' };
+    }
+
+    const st = this._hass?.states?.[entityId];
+    if (!st) {
+      return { text: 'missing', stateClass: 'muted', tooltip: entityId };
+    }
+
+    const raw = st.state;
+    const unavailable = raw === 'unknown' || raw === 'unavailable';
+    if (unavailable) {
+      return { text: raw, stateClass: 'muted', tooltip: entityId };
+    }
+
+    const unit = st.attributes?.unit_of_measurement;
+    const valueText = unit ? `${raw} ${unit}` : String(raw);
+    const lastChanged = st.last_changed ? `last_changed: ${st.last_changed}` : '';
+
+    return {
+      text: valueText,
+      stateClass: 'ok',
+      tooltip: [entityId, lastChanged].filter((v) => v).join('\n'),
+    };
+  }
+
+  _renderEntityLine(label, entityId) {
+    if (!entityId || typeof entityId !== 'string') {
+      return '';
+    }
+    const summary = this._getEntitySummary(entityId);
+    const labelEsc = this._escapeHtml(label);
+    const entityEsc = this._escapeHtml(entityId);
+    const valueEsc = this._escapeHtml(summary.text);
+    const tooltipEsc = this._escapeHtml(summary.tooltip);
+
+    return `
+      <div class="sensor-line" title="${tooltipEsc}">
+        <span class="sensor-k">${labelEsc}</span>
+        <span class="sensor-v ${summary.stateClass}">${valueEsc}</span>
+        <span class="sensor-e"><code>${entityEsc}</code></span>
+      </div>
+    `;
+  }
+
   _renderTopology() {
     const zones = this._asList(this._topology?.zones);
     const remoteBindings = this._asList(this._topology?.remote_bindings);
@@ -175,25 +267,27 @@ class RamsesFanMap extends RamsesBaseCard {
                 const source = this._escapeHtml(zone?.source_type || '');
 
                 const sensors = this._asObject(zone?.sensors);
-                const temp = this._escapeHtml(sensors?.temperature_entity || '');
-                const hum = this._escapeHtml(sensors?.humidity_entity || '');
-                const co2 = this._escapeHtml(sensors?.co2_entity || '');
+                const tempEntity = sensors?.temperature_entity;
+                const humEntity = sensors?.humidity_entity;
+                const co2Entity = sensors?.co2_entity;
                 const sensorsText = [
-                  temp ? `T:${temp}` : '',
-                  hum ? `H:${hum}` : '',
-                  co2 ? `CO₂:${co2}` : '',
-                ].filter((v) => v).join('<br>');
+                  this._renderEntityLine('T', tempEntity),
+                  this._renderEntityLine('H', humEntity),
+                  this._renderEntityLine('CO₂', co2Entity),
+                ].filter((v) => v).join('');
 
                 const actuator = this._asObject(zone?.actuator);
                 const actuatorEntity = this._escapeHtml(actuator?.entity_id || '');
+                const actuatorState = actuator?.entity_id ? this._getEntitySummary(actuator?.entity_id) : null;
+                const actuatorStateText = actuatorState ? this._escapeHtml(actuatorState.text) : '';
 
                 return `
                   <tr>
                     <td><code>${zoneId}</code></td>
                     <td>${label}</td>
                     <td>${source}</td>
-                    <td class="small">${sensorsText || '—'}</td>
-                    <td class="small">${actuatorEntity || '—'}</td>
+                    <td>${sensorsText || '<span class="muted">—</span>'}</td>
+                    <td class="small">${actuatorEntity ? `${actuatorStateText ? `${actuatorStateText}<br>` : ''}<code>${actuatorEntity}</code>` : '—'}</td>
                   </tr>
                 `;
               }).join('')}
@@ -457,6 +551,37 @@ class RamsesFanMap extends RamsesBaseCard {
         .small {
           font-size: 11px;
           color: var(--secondary-text-color);
+        }
+
+        .muted {
+          color: var(--secondary-text-color);
+        }
+
+        .sensor-line {
+          display: grid;
+          grid-template-columns: 18px 90px 1fr;
+          gap: 8px;
+          align-items: baseline;
+          line-height: 1.3;
+        }
+
+        .sensor-k {
+          font-weight: 600;
+          color: var(--secondary-text-color);
+        }
+
+        .sensor-v.ok {
+          color: var(--primary-text-color);
+        }
+
+        .sensor-v.muted {
+          color: var(--secondary-text-color);
+        }
+
+        .sensor-e {
+          justify-self: start;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .details {
