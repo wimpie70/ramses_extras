@@ -2209,6 +2209,9 @@ async def _async_handle_rems_edit(
     info_text = (
         f"{'Edit' if existing_rem else 'Add'} REM\n\n"
         f"Configure a REM association for FAN: `{selected_device_id}`\n\n"
+        "Note: When selecting a custom ID, ensure this helper entity (input_select) "
+        "reflects its state (idle, low, medium, high, auto, away, timer, etc.) and "
+        "is set by an external automation. This is not yet functional.\n\n"
         "Use zone_id / area_id optionally to pinpoint location.\n\n"
         "Note: When using area_id, ensure the area is actually "
         "within the selected zone_id."
