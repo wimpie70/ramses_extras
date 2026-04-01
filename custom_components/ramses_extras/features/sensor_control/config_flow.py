@@ -579,7 +579,9 @@ async def async_step_sensor_control_config(
     if not isinstance(devices_config, dict):
         devices_config = {}
     norm_device_id = normalize_device_id(selected_device_id)
-    device_section = devices_config.get(norm_device_id)
+    device_section = devices_config.get(norm_device_id) or devices_config.get(
+        selected_device_id
+    )
     if not isinstance(device_section, dict):
         device_section = {}
 
@@ -604,7 +606,7 @@ async def async_step_sensor_control_config(
     # Handle group selection menu
     if group_stage == "select_group":
         if user_input is not None:
-            action = str(user_input.get("group_action") or "")
+            action = str(user_input.get("action") or "")
             if action == "done":
                 # All changes are already saved when groups are submitted.
                 # Return to the main options menu for the integration.
@@ -627,11 +629,11 @@ async def async_step_sensor_control_config(
 
         menu_schema = vol.Schema(
             {
-                vol.Required("group_action"): selector.SelectSelector(
+                vol.Required("action"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=group_options,
                         multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        mode="list",
                     )
                 )
             }
@@ -722,98 +724,120 @@ async def async_step_sensor_control_config(
 
     if group_stage == "area_sensors_menu":
         if user_input is not None:
-            action = str(user_input.get("area_sensor_action") or "")
-            if action == "back":
-                flow._sensor_control_group_stage = "select_group"
-                return await async_step_sensor_control_config(flow, None)
+            action = str(user_input.get("action") or "")
+
             if action == "add":
                 flow._sensor_control_area_sensor_id = None
                 flow._sensor_control_group_stage = "area_sensors_edit"
                 return await async_step_sensor_control_config(flow, None)
-            if action.startswith("edit:"):
-                flow._sensor_control_area_sensor_id = action.split(":", 1)[1]
-                flow._sensor_control_group_stage = "area_sensors_edit"
-                return await async_step_sensor_control_config(flow, None)
-            if action.startswith("delete:"):
-                delete_id = action.split(":", 1)[1]
-                device_area_sensors = [
-                    item
-                    for item in device_area_sensors
-                    if str(item.get("source_id") or "") != delete_id
-                ]
-                device_section = deepcopy(devices_config.get(norm_device_id) or {})
-                device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
-                device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = (
-                    device_abs_inputs
-                )
-                device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = device_area_sensors
-                devices_config[norm_device_id] = device_section
-                sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
-                _persist_sensor_control_section(
-                    flow,
-                    options,
-                    sensor_control_section,
-                )
+
+            if action == "edit":
+                selected_area_id: str | None = user_input.get("area_id")
+                if selected_area_id:
+                    flow._sensor_control_area_sensor_id = selected_area_id
+                    flow._sensor_control_group_stage = "area_sensors_edit"
+                    return await async_step_sensor_control_config(flow, None)
+
+            if action == "delete":
+                delete_area_id: str | None = user_input.get("area_id")
+                if delete_area_id:
+                    device_area_sensors = [
+                        item
+                        for item in device_area_sensors
+                        if str(item.get("source_id") or "") != delete_area_id
+                    ]
+                    device_section = deepcopy(devices_config.get(norm_device_id) or {})
+                    device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
+                    device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = (
+                        device_abs_inputs
+                    )
+                    device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = (
+                        device_area_sensors
+                    )
+                    devices_config[norm_device_id] = device_section
+                    sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
+                    _persist_sensor_control_section(
+                        flow,
+                        options,
+                        sensor_control_section,
+                    )
                 return await async_step_sensor_control_config(flow, None)
 
-        area_sensor_options = [
-            selector.SelectOptionDict(value="add", label="Add area sensor")
-        ]
+            if action == "back":
+                flow._sensor_control_group_stage = "select_group"
+                return await async_step_sensor_control_config(flow, None)
+
+        # Build area sensor list for display
+        area_sensor_descriptions = []
+        area_sensor_select_options = []
         for area_sensor in device_area_sensors:
             source_id = str(area_sensor.get("source_id") or "")
-            area_id = str(area_sensor.get("area_id") or source_id or "Unnamed")
-            if not source_id:
+            area_id = str(area_sensor.get("area_id") or "")
+            # Skip entries with neither source_id nor area_id
+            if not source_id and not area_id:
                 continue
-            area_sensor_options.append(
+            # Generate source_id from area_id if missing (legacy data support)
+            if not source_id and area_id:
+                source_id = _unique_area_sensor_id(area_id, device_area_sensors)
+            area_sensor_descriptions.append(_describe_area_sensor(area_sensor))
+            display_label = area_id if area_id else source_id
+            area_sensor_select_options.append(
                 selector.SelectOptionDict(
-                    value=f"edit:{source_id}",
-                    label=f"Edit: {area_id}",
+                    value=source_id,
+                    label=f"Area sensor: {display_label}",
                 )
             )
-            area_sensor_options.append(
-                selector.SelectOptionDict(
-                    value=f"delete:{source_id}",
-                    label=f"Delete: {area_id}",
-                )
+
+        # Add empty option if there are area sensors to select
+        if area_sensor_select_options:
+            area_sensor_select_options.insert(
+                0, selector.SelectOptionDict(value="", label="(select area sensor)")
             )
-        area_sensor_options.append(
-            selector.SelectOptionDict(value="back", label="Back to device groups")
+
+        area_sensors_info = (
+            "\n".join(area_sensor_descriptions)
+            if area_sensor_descriptions
+            else "No area sensors configured."
         )
 
-        menu_schema = vol.Schema(
+        schema = vol.Schema(
             {
-                vol.Required("area_sensor_action"): selector.SelectSelector(
+                vol.Required("action"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=area_sensor_options,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        options=[
+                            selector.SelectOptionDict(
+                                value="add", label="Add area sensor"
+                            ),
+                            selector.SelectOptionDict(
+                                value="edit", label="Edit area sensor"
+                            ),
+                            selector.SelectOptionDict(
+                                value="delete", label="Delete area sensor"
+                            ),
+                            selector.SelectOptionDict(value="back", label="Back"),
+                        ],
+                        mode="list",
                     )
-                )
+                ),
+                vol.Optional("area_id"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=area_sensor_select_options,
+                        mode="dropdown",
+                    )
+                ),
             }
         )
 
-        info_lines = [
-            "FAN Configuration",
-            "",
-            f"Configuring area sensors for device: `{selected_device_id}`",
-            "",
-            (
-                "Area sensors provide localized temperature + humidity inputs "
-                "for spike detection."
-            ),
-        ]
-        if device_area_sensors:
-            info_lines.extend(["", "Current area sensors:"])
-            info_lines.extend(
-                _describe_area_sensor(item) for item in device_area_sensors
-            )
-        else:
-            info_lines.extend(["", "No area sensors configured yet."])
+        info_text = (
+            "🧭 **Area Sensor Configuration**\n\n"
+            f"Configuring area sensors for FAN: `{selected_device_id}`\n\n"
+            f"**Existing area sensors:**\n{area_sensors_info}"
+        )
 
         return flow.async_show_form(
             step_id="feature_config",
-            data_schema=menu_schema,
-            description_placeholders={"info": "\n".join(info_lines)},
+            data_schema=schema,
+            description_placeholders={"info": info_text},
         )
 
     if group_stage == "area_sensors_edit":
@@ -924,13 +948,13 @@ async def async_step_sensor_control_config(
             selector.EntitySelectorConfig(domain=["sensor", "number", "input_number"])
         )
         temp_key = (
-            vol.Required("temperature_entity")
-            if temp_default is None
+            vol.Optional("temperature_entity")
+            if not temp_default
             else vol.Required("temperature_entity", default=temp_default)
         )
         humidity_key = (
-            vol.Required("humidity_entity")
-            if humidity_default is None
+            vol.Optional("humidity_entity")
+            if not humidity_default
             else vol.Required("humidity_entity", default=humidity_default)
         )
         co2_key = (

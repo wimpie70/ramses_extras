@@ -22,5 +22,6 @@
 
 # Python 3.13 compatibility constraints
 # Fixes aiodns/pycares compatibility issue in Python 3.13
-aiodns==3.5.0
-pycares==4.11.0
+# Note: aiodns version must match HA requirements (4.0.0 for HA 2026.3+)
+aiodns==4.0.0
+pycares==5.0.1
