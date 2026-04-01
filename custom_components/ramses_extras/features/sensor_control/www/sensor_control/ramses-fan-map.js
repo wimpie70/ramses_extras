@@ -3,6 +3,7 @@
 import * as logger from '../../helpers/logger.js';
 
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
+import { callService } from '../../helpers/card-services.js';
 
 import './ramses-fan-map-editor.js';
 
@@ -17,6 +18,8 @@ class RamsesFanMap extends RamsesBaseCard {
     this._zoneCoordinatorState = null;
     this._sensorControl = null;
     this._requiredEntitiesDynamic = {};
+    this._testBenchArmed = false;
+    this._testBenchLastAction = null;
   }
 
   getFeatureName() {
@@ -187,14 +190,19 @@ class RamsesFanMap extends RamsesBaseCard {
         `fan_map_zone_coordinator_${deviceId}`
       );
 
-      const sensorControl = await this._sendWebSocketCommand(
-        {
-          type: 'ramses_extras/get_entity_mappings',
-          feature_id: 'sensor_control',
-          device_id: deviceId,
-        },
-        `fan_map_sensor_control_${deviceId}`
-      );
+      let sensorControl = null;
+      try {
+        sensorControl = await this._sendWebSocketCommand(
+          {
+            type: 'ramses_extras/sensor_control/get_device_config',
+            device_id: deviceId,
+          },
+          `fan_map_sensor_control_${deviceId}`
+        );
+      } catch (error) {
+        logger.warn('RamsesFanMap: Failed to load sensor_control device config', error);
+        sensorControl = null;
+      }
 
       this._topology = topology;
       this._remoteBindings = remoteBindings;
@@ -572,6 +580,167 @@ class RamsesFanMap extends RamsesBaseCard {
     `;
   }
 
+  _renderTestBench() {
+    const zones = this._asList(this._topology?.zones);
+    const armed = this._testBenchArmed === true;
+    const last = this._testBenchLastAction
+      ? `<div class="small muted">last: ${this._escapeHtml(this._testBenchLastAction)}</div>`
+      : '';
+
+    const zonesHtml = zones.length
+      ? `
+        <details class="details">
+          <summary>Zone actions</summary>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Zone</th>
+                <th>Demand</th>
+                <th>Ventilation</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${zones.map((zone) => {
+                const zoneId = this._escapeHtml(zone?.zone_id || '');
+                return `
+                  <tr>
+                    <td><code>${zoneId}</code></td>
+                    <td>
+                      <button class="btn danger-btn" data-tb="set_zone_demand" data-zone-id="${zoneId}" data-has-demand="true" ${armed ? '' : 'disabled'}>On</button>
+                      <button class="btn danger-btn" data-tb="set_zone_demand" data-zone-id="${zoneId}" data-has-demand="false" ${armed ? '' : 'disabled'}>Off</button>
+                      <button class="btn danger-btn" data-tb="clear_zone_demand" data-zone-id="${zoneId}" ${armed ? '' : 'disabled'}>Clear</button>
+                    </td>
+                    <td>
+                      <button class="btn danger-btn" data-tb="force_zone_ventilation" data-zone-id="${zoneId}" data-state="on" ${armed ? '' : 'disabled'}>On</button>
+                      <button class="btn danger-btn" data-tb="force_zone_ventilation" data-zone-id="${zoneId}" data-state="off" ${armed ? '' : 'disabled'}>Off</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </details>
+      `
+      : '<div class="placeholder">No zones available</div>';
+
+    return `
+      <div class="kv">
+        <div class="kv-row">
+          <div class="kv-k">Arm test bench</div>
+          <div class="kv-v">
+            <label class="arm">
+              <input id="armTestBench" type="checkbox" ${armed ? 'checked' : ''} />
+              <span>Enable dangerous actions</span>
+            </label>
+            ${last}
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="tbRunActuation" class="btn danger-btn" ${armed ? '' : 'disabled'}>Run actuation cycle</button>
+        <button id="tbCalibrateValves" class="btn danger-btn" ${armed ? '' : 'disabled'}>Calibrate all valves</button>
+      </div>
+
+      ${zonesHtml}
+    `;
+  }
+
+  _attachTestBenchHandlers() {
+    const arm = this.shadowRoot?.getElementById('armTestBench');
+    if (arm) {
+      arm.onchange = (e) => {
+        const checked = Boolean(e?.target?.checked);
+        this._testBenchArmed = checked;
+        this.clearUpdateThrottle();
+        this._scheduleRender(true);
+      };
+    }
+
+    const deviceId = this._config?.device_id;
+    if (!deviceId) {
+      return;
+    }
+
+    const runActuation = this.shadowRoot?.getElementById('tbRunActuation');
+    if (runActuation) {
+      runActuation.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!this._testBenchArmed) {
+          return;
+        }
+        if (!window.confirm(`Run zone actuation cycle for ${deviceId}?`)) {
+          return;
+        }
+        this._testBenchLastAction = `run_zone_actuation @ ${new Date().toISOString()}`;
+        await this._withElementFeedback(runActuation, async () => {
+          await callService(this._hass, 'ramses_extras', 'run_zone_actuation', { device_id: deviceId });
+        });
+      };
+    }
+
+    const calibrate = this.shadowRoot?.getElementById('tbCalibrateValves');
+    if (calibrate) {
+      calibrate.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!this._testBenchArmed) {
+          return;
+        }
+        const msg = `Calibrate all valves for ${deviceId}?\n\nThis may take several minutes and will move valves.`;
+        if (!window.confirm(msg)) {
+          return;
+        }
+        this._testBenchLastAction = `calibrate_all_valves @ ${new Date().toISOString()}`;
+        await this._withElementFeedback(calibrate, async () => {
+          await callService(this._hass, 'ramses_extras', 'calibrate_all_valves', { device_id: deviceId });
+        }, 4000);
+      };
+    }
+
+    const zoneButtons = this.shadowRoot?.querySelectorAll('button[data-tb]');
+    zoneButtons?.forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!this._testBenchArmed) {
+          return;
+        }
+
+        const action = btn.getAttribute('data-tb');
+        const zoneId = btn.getAttribute('data-zone-id');
+        if (!action || !zoneId) {
+          return;
+        }
+
+        let service = null;
+        const data = { device_id: deviceId, zone_id: zoneId };
+
+        if (action === 'set_zone_demand') {
+          service = 'set_zone_demand';
+          data.has_demand = btn.getAttribute('data-has-demand') === 'true';
+        } else if (action === 'clear_zone_demand') {
+          service = 'clear_zone_demand';
+        } else if (action === 'force_zone_ventilation') {
+          service = 'force_zone_ventilation';
+          data.state = btn.getAttribute('data-state') || 'off';
+        } else {
+          return;
+        }
+
+        if (!window.confirm(`Run ${service} for ${deviceId} zone ${zoneId}?`)) {
+          return;
+        }
+
+        this._testBenchLastAction = `${service}(${zoneId}) @ ${new Date().toISOString()}`;
+        await this._withElementFeedback(btn, async () => {
+          await callService(this._hass, 'ramses_extras', service, data);
+        });
+      };
+    });
+  }
+
   _renderContent() {
     if (!this._domInitialized) {
       this._initializeDOM();
@@ -616,7 +785,7 @@ class RamsesFanMap extends RamsesBaseCard {
 
       <div class="section danger">
         <div class="section-header">Test bench</div>
-        <div class="placeholder">(coming next) guarded actions (actuation / demand / calibrate)</div>
+        ${this._renderTestBench()}
       </div>
     `;
 
@@ -624,6 +793,8 @@ class RamsesFanMap extends RamsesBaseCard {
     if (refreshButton) {
       refreshButton.onclick = () => this._loadInitialState();
     }
+
+    this._attachTestBenchHandlers();
   }
 
   _initializeDOM() {
@@ -811,6 +982,29 @@ class RamsesFanMap extends RamsesBaseCard {
 
         .danger .section-header {
           color: var(--error-color);
+        }
+
+        .danger-btn {
+          background: var(--error-color);
+        }
+
+        .arm {
+          display: inline-flex;
+          gap: 8px;
+          align-items: center;
+          font-size: 12px;
+        }
+
+        .btn.loading {
+          opacity: 0.7;
+        }
+
+        .btn.success {
+          outline: 2px solid rgba(0, 128, 0, 0.4);
+        }
+
+        .btn.error {
+          outline: 2px solid rgba(255, 0, 0, 0.4);
         }
 
         .json {

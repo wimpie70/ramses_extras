@@ -53,7 +53,9 @@ SENSOR_CONTROL_BOOLEAN_CONFIGS: dict[str, dict[str, Any]] = {}
 
 SENSOR_CONTROL_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {}
 
-SENSOR_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {}
+SENSOR_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {
+    "get_device_config": "ramses_extras/sensor_control/get_device_config",
+}
 
 SENSOR_CONTROL_CARD_CONFIGS: list[dict[str, Any]] = [
     {
