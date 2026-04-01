@@ -55,6 +55,19 @@ SENSOR_CONTROL_DEVICE_ENTITY_MAPPING: dict[str, dict[str, list[str]]] = {}
 
 SENSOR_CONTROL_WEBSOCKET_COMMANDS: dict[str, str] = {}
 
+SENSOR_CONTROL_CARD_CONFIGS: list[dict[str, Any]] = [
+    {
+        "card_id": "ramses-fan-map",
+        "card_name": "FAN Map",
+        "description": "Observability and test bench for FAN configuration",
+        "location": "sensor_control",
+        "preview": True,
+        "documentation_url": "",
+        "supported_device_types": ["HvacVentilator"],
+        "javascript_file": "ramses-fan-map.js",
+    },
+]
+
 FEATURE_DEFINITION: dict[str, Any] = {
     "feature_id": FEATURE_ID,
     "sensor_configs": SENSOR_CONTROL_SENSOR_CONFIGS,
@@ -63,6 +76,10 @@ FEATURE_DEFINITION: dict[str, Any] = {
     "boolean_configs": SENSOR_CONTROL_BOOLEAN_CONFIGS,
     "device_entity_mapping": SENSOR_CONTROL_DEVICE_ENTITY_MAPPING,
     "websocket_commands": SENSOR_CONTROL_WEBSOCKET_COMMANDS,
+    "card_config": (
+        SENSOR_CONTROL_CARD_CONFIGS[0] if SENSOR_CONTROL_CARD_CONFIGS else {}
+    ),
+    "card_configs": SENSOR_CONTROL_CARD_CONFIGS,
 }
 
 
@@ -74,6 +91,10 @@ def load_feature() -> None:
     extras_registry.register_websocket_commands(
         DOMAIN, SENSOR_CONTROL_WEBSOCKET_COMMANDS
     )
+
+    for card_config in SENSOR_CONTROL_CARD_CONFIGS:
+        extras_registry.register_card_config(DOMAIN, card_config)
+
     extras_registry.register_feature(DOMAIN)
 
     # Load YAML validator and import/export functions
@@ -98,5 +119,6 @@ __all__ = [
     "SENSOR_CONTROL_BOOLEAN_CONFIGS",
     "SENSOR_CONTROL_DEVICE_ENTITY_MAPPING",
     "SENSOR_CONTROL_WEBSOCKET_COMMANDS",
+    "SENSOR_CONTROL_CARD_CONFIGS",
     "load_feature",
 ]

@@ -14,7 +14,7 @@ This plan is explicitly scoped to:
 ## Non-goals
 
 - Editing `sensor_control` mappings/config from the card.
-- Implementing a full replacement of `docs/zone_testing_package.yaml` in the first iteration.
+- Implementing a full replacement of `docs/zone_testing_package.yaml` in the first iteration (this can be addressed later; see M6).
 - Large refactors of fan-control policy (arbiter/coordinator). This card should observe and exercise what exists.
 
 ## Canonical references
@@ -27,7 +27,7 @@ This plan is explicitly scoped to:
 ## Success criteria (Definition of Done)
 
 - Card is loadable in HA with no console errors.
-- Card can display, for a selected FAN:
+- Card can display, for a selected FAN (configured via card editor):
   - zones and areas topology
   - REM bindings + last activity (where available)
   - valve positions and calibration status (where available)
@@ -65,10 +65,11 @@ Add entries as you go:
 ### M1 - Card scaffolding and registration
 
 - [ ] Decide final card ID/name
-  - suggestion: `ramses_extras-fan-configuration-card`
+  - suggestion: `ramses-fan-map` (card `type: custom:ramses-fan-map`)
 - [ ] Add a new card definition under the `sensor_control` feature
 - [ ] Implement a Python feature/card manager similar to `features/hvac_fan_card/`
 - [ ] Add frontend JS bundle under a `www/` folder and ensure it is served/registered
+- [ ] Implement a card editor that selects the FAN via `device_id` (same pattern as `hvac-fan-card-editor`)
 - [ ] Render a minimal shell UI:
   - header + selected FAN
   - “Loading…” state
@@ -87,7 +88,7 @@ Add entries as you go:
   - zone positions
   - diagnostics
 - [ ] Define a card-level “data contract” (JSON shapes) for:
-  - FAN selector/options
+  - configured FAN (`device_id`) and device metadata for display
   - zones/areas
   - valves/positions
   - sensors list + readings
@@ -190,9 +191,9 @@ This milestone is intentionally optional and can be deferred.
 ### Likely files (frontend)
 
 - Create:
-  - `custom_components/ramses_extras/features/sensor_control/www/fan-configuration-card.js`
+  - `custom_components/ramses_extras/features/sensor_control/www/ramses-fan-map.js`
 - Potentially create:
-  - `custom_components/ramses_extras/features/sensor_control/www/fan-configuration-card-editor.js`
+  - `custom_components/ramses_extras/features/sensor_control/www/ramses-fan-map-editor.js`
 
 Frontend should follow existing patterns from:
 
@@ -219,7 +220,7 @@ If new websocket data is required (prefer not), expect to extend:
 ### UI structure (suggested)
 
 - **Header**
-  - FAN selector + refresh button
+  - FAN summary + refresh button
   - status badges (connected / last update)
 - **Topology**
   - Zones
@@ -265,4 +266,4 @@ Note: small/targeted runs may fail coverage, but full runs must pass.
   - current plan: **under `sensor_control`** as requested.
 - [ ] Data completeness: can the desired observability be composed from existing websocket commands?
 - [ ] REM activity: ensure we expose “last activity” in a stable, privacy-safe way.
-- [ ] Multi-FAN setups: confirm how FAN selection should work.
+- [ ] Multi-FAN setups: confirm expected UX (current assumption: one card instance per FAN, selected via the card editor).
