@@ -224,8 +224,8 @@ Remote binding associates physical REM (remote) devices with your FAN:
 ├─────────────────────────────────────────┤
 │                                         │
 │ Bound REMs:                             │
-│ • 37:169161 (primary, enabled)           │
-│ • 37:169162 (secondary, enabled)         │
+│ • 37:169161 (enabled)                   │
+│ • 37:169162 (enabled)                   │
 │                                         │
 │ [Add REM]  [Edit]  [Remove]  [Test]      │
 │                                         │
@@ -235,14 +235,6 @@ Remote binding associates physical REM (remote) devices with your FAN:
 └─────────────────────────────────────────┘
 ```
 
-### REM Roles
-
-| Role | Description | Permissions |
-|------|-------------|-------------|
-| `primary` | Main remote | Full control (Auto, speeds, Away, timers) |
-| `secondary` | Additional remote | Full control, lower priority |
-| `boost_only` | Limited remote | Only boost/override functions |
-
 ### Binding Configuration
 
 1. Select **Remote Binding** from the group menu
@@ -250,9 +242,8 @@ Remote binding associates physical REM (remote) devices with your FAN:
 3. Select REM device from:
    - Discovered REM devices (recommended)
    - Manual entry (advanced)
-4. Assign a role
-5. Enable the binding
-6. Save
+4. Enable the binding
+5. Save
 
 ### Validation
 

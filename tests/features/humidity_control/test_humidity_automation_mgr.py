@@ -1325,6 +1325,444 @@ class TestHumidityAutomationManager:
         assert new_entity_id.startswith("sensor.fan_")
         assert new_entity_id.endswith("_indoor_humidity")
 
+    async def test_evaluate_humidity_conditions_indoor_spike_detected(self):
+        """Indoor humidity spike should trigger spike_boost dehumidification."""
+        # Set up sensor control context with indoor humidity spike config
+        self.manager._latest_sensor_control_context["test"] = {
+            "sources": {
+                "indoor_humidity": {
+                    "spike_enabled": True,
+                    "spike_rise_percent": 10.0,
+                    "spike_window_minutes": 5,
+                }
+            }
+        }
+
+        # Set up indoor humidity history to simulate a spike
+        now = time.time()
+        self.manager._indoor_history["test"] = [
+            {"ts": now - 240, "abs": 10.0},  # Baseline 4 minutes ago
+            {"ts": now - 120, "abs": 10.2},  # 2 minutes ago
+        ]
+
+        with patch.object(
+            self.manager,
+            "_schedule_indoor_spike_recheck",
+        ) as mock_schedule:
+            decision = await self.manager._evaluate_humidity_conditions(
+                device_id="test",
+                indoor_rh=65.0,  # Above max_humidity
+                indoor_abs=11.5,  # 15% rise from baseline of 10.0
+                outdoor_abs=8.0,
+                min_humidity=40.0,
+                max_humidity=60.0,
+                offset=0.0,
+            )
+
+        assert decision["action"] == "dehumidify"
+        assert decision["control_mode"] == "spike_boost"
+        assert decision["active_trigger"]["source_id"] == "indoor_humidity"
+        assert decision["active_trigger"]["rise_percent"] > 10.0
+        assert decision["values"]["active_indoor_spike"] is True
+        mock_schedule.assert_called_once()
+
+    async def test_evaluate_humidity_conditions_indoor_spike_disabled(self):
+        """Indoor spike detection should be skipped when disabled."""
+        self.manager._latest_sensor_control_context["test"] = {
+            "sources": {
+                "indoor_humidity": {
+                    "spike_enabled": False,
+                    "spike_rise_percent": 10.0,
+                    "spike_window_minutes": 5,
+                }
+            }
+        }
+
+        now = time.time()
+        self.manager._indoor_history["test"] = [
+            {"ts": now - 240, "abs": 10.0},
+        ]
+
+        decision = await self.manager._evaluate_humidity_conditions(
+            device_id="test",
+            indoor_rh=65.0,
+            indoor_abs=11.5,  # Would be a spike if enabled
+            outdoor_abs=8.0,
+            min_humidity=40.0,
+            max_humidity=60.0,
+            offset=0.0,
+        )
+
+        # Should be normal dehumidify, not spike_boost
+        assert decision["action"] == "dehumidify"
+        assert decision["control_mode"] == "balance"
+        assert "active_indoor_spike" not in decision.get("values", {})
+
+    def test_detect_indoor_spike_with_valid_spike(self):
+        """Detect indoor spike when conditions are met."""
+        now = time.time()
+        self.manager._indoor_history["test"] = [
+            {"ts": now - 240, "abs": 10.0},
+            {"ts": now - 120, "abs": 10.1},
+        ]
+
+        spike_config = {
+            "enabled": True,
+            "spike_rise_percent": 10.0,
+            "spike_window_minutes": 5,
+        }
+
+        result = self.manager._detect_indoor_spike(
+            device_id="test",
+            indoor_abs=11.5,  # 15% rise
+            indoor_rh=65.0,
+            outdoor_abs=8.0,
+            offset=0.0,
+            max_humidity=60.0,
+            spike_config=spike_config,
+        )
+
+        assert result is not None
+        assert result["source_id"] == "indoor_humidity"
+        assert result["label"] == "Indoor Humidity"
+        assert result["baseline_abs"] == 10.0
+        assert result["current_abs"] == 11.5
+        assert result["rise_percent"] == 15.0
+        assert result["check_interval_minutes"] == 5
+
+    def test_detect_indoor_spike_disabled(self):
+        """No spike when detection is disabled."""
+        spike_config = {
+            "enabled": False,
+            "spike_rise_percent": 10.0,
+            "spike_window_minutes": 5,
+        }
+
+        result = self.manager._detect_indoor_spike(
+            device_id="test",
+            indoor_abs=15.0,
+            indoor_rh=80.0,
+            outdoor_abs=8.0,
+            offset=0.0,
+            max_humidity=60.0,
+            spike_config=spike_config,
+        )
+
+        assert result is None
+
+    def test_detect_indoor_spike_below_threshold(self):
+        """No spike when rise is below threshold."""
+        now = time.time()
+        self.manager._indoor_history["test"] = [
+            {"ts": now - 240, "abs": 10.0},
+        ]
+
+        spike_config = {
+            "enabled": True,
+            "spike_rise_percent": 20.0,  # High threshold
+            "spike_window_minutes": 5,
+        }
+
+        result = self.manager._detect_indoor_spike(
+            device_id="test",
+            indoor_abs=11.5,  # Only 15% rise
+            indoor_rh=65.0,
+            outdoor_abs=8.0,
+            offset=0.0,
+            max_humidity=60.0,
+            spike_config=spike_config,
+        )
+
+        assert result is None
+
+    def test_detect_indoor_spike_rh_too_low(self):
+        """No spike when RH is at or below max_humidity."""
+        now = time.time()
+        self.manager._indoor_history["test"] = [
+            {"ts": now - 240, "abs": 10.0},
+        ]
+
+        spike_config = {
+            "enabled": True,
+            "spike_rise_percent": 10.0,
+            "spike_window_minutes": 5,
+        }
+
+        # RH exactly at max_humidity - should not trigger
+        result = self.manager._detect_indoor_spike(
+            device_id="test",
+            indoor_abs=11.5,
+            indoor_rh=60.0,  # Equal to max_humidity
+            outdoor_abs=8.0,
+            offset=0.0,
+            max_humidity=60.0,
+            spike_config=spike_config,
+        )
+
+        assert result is None
+
+    def test_evaluate_active_indoor_spike_keeps_active(self):
+        """Active indoor spike should be retained when conditions persist."""
+        self.manager._active_indoor_spikes["test"] = {
+            "source_id": "indoor_humidity",
+            "label": "Indoor Humidity",
+            "baseline_abs": 10.0,
+            "current_abs": 11.5,
+            "current_rh": 65.0,
+            "rise_percent": 15.0,
+        }
+
+        result = self.manager._evaluate_active_indoor_spike(
+            device_id="test",
+            indoor_abs=11.2,  # Still high
+            indoor_rh=64.0,  # Still above max
+            outdoor_abs=8.0,
+            offset=0.0,
+            max_humidity=60.0,
+        )
+
+        assert result is not None
+        assert result["source_id"] == "indoor_humidity"
+        assert result["current_abs"] == 11.2  # Updated value
+        assert result["current_rh"] == 64.0  # Updated value
+
+    def test_evaluate_active_indoor_spike_clears_when_recovered(self):
+        """Active indoor spike should clear when conditions normalize."""
+        self.manager._active_indoor_spikes["test"] = {
+            "source_id": "indoor_humidity",
+            "label": "Indoor Humidity",
+            "baseline_abs": 10.0,
+            "current_abs": 11.5,
+            "current_rh": 65.0,
+            "rise_percent": 15.0,
+        }
+
+        # RH drops below threshold
+        result = self.manager._evaluate_active_indoor_spike(
+            device_id="test",
+            indoor_abs=10.5,
+            indoor_rh=55.0,  # Below max_humidity
+            outdoor_abs=8.0,
+            offset=0.0,
+            max_humidity=60.0,
+        )
+
+        assert result is None
+        assert "test" not in self.manager._active_indoor_spikes
+
+    def test_evaluate_active_indoor_spike_clears_when_no_spike(self):
+        """Evaluate should return None when no active spike exists."""
+        result = self.manager._evaluate_active_indoor_spike(
+            device_id="test",
+            indoor_abs=11.5,
+            indoor_rh=65.0,
+            outdoor_abs=8.0,
+            offset=0.0,
+            max_humidity=60.0,
+        )
+
+        assert result is None
+
+    def test_clear_active_indoor_spike(self):
+        """Test clearing active indoor spike and canceling recheck."""
+        mock_handle = MagicMock()
+        self.manager._active_indoor_spikes["test"] = {
+            "source_id": "indoor_humidity",
+            "rise_percent": 15.0,
+        }
+        self.manager._indoor_spike_check_handles["test"] = mock_handle
+
+        self.manager._clear_active_indoor_spike("test")
+
+        assert "test" not in self.manager._active_indoor_spikes
+        assert "test" not in self.manager._indoor_spike_check_handles
+        mock_handle.assert_called_once()
+
+    def test_schedule_indoor_spike_recheck(self):
+        """Test scheduling indoor spike recheck."""
+        old_handle = MagicMock()
+        self.manager._indoor_spike_check_handles["test"] = old_handle
+
+        new_handle = MagicMock()
+        with patch(
+            "custom_components.ramses_extras.features.humidity_control.automation.async_track_time_interval",
+            return_value=new_handle,
+        ) as mock_track:
+            self.manager._schedule_indoor_spike_recheck("test", 3)
+
+        old_handle.assert_called_once()  # Old handle should be cancelled
+        assert self.manager._indoor_spike_check_handles["test"] is new_handle
+        assert mock_track.call_args.args[2].total_seconds() == 180  # 3 minutes
+
+    async def test_async_recheck_indoor_spike(self):
+        """Test indoor spike recheck guards and execution."""
+        device_id = "test"
+
+        # When automation inactive
+        self.manager._automation_active = False
+        self.manager._get_device_entity_states = AsyncMock()
+        await self.manager._async_recheck_indoor_spike(device_id)
+        self.manager._get_device_entity_states.assert_not_called()
+
+        # When feature disabled
+        self.manager._automation_active = True
+        with patch.object(self.manager, "_is_feature_enabled", return_value=False):
+            await self.manager._async_recheck_indoor_spike(device_id)
+        self.manager._get_device_entity_states.assert_not_called()
+
+        # When entity states unavailable
+        with patch.object(self.manager, "_is_feature_enabled", return_value=True):
+            self.manager._get_device_entity_states = AsyncMock(
+                side_effect=ValueError("missing")
+            )
+            await self.manager._async_recheck_indoor_spike(device_id)
+            # Should log and return without error
+
+        # Successful recheck
+        with patch.object(self.manager, "_is_feature_enabled", return_value=True):
+            entity_states = {"dehumidify": True}
+            self.manager._get_device_entity_states = AsyncMock(
+                return_value=entity_states
+            )
+            self.manager._process_automation_logic = AsyncMock()
+            await self.manager._async_recheck_indoor_spike(device_id)
+
+        self.manager._process_automation_logic.assert_awaited_once_with(
+            device_id, entity_states
+        )
+
+    def test_build_indicator_attributes_with_indoor_spike(self):
+        """Indicator attributes should include indoor spike metadata."""
+        self.manager._active_indoor_spikes["32_123456"] = {
+            "source_id": "indoor_humidity",
+            "label": "Indoor Humidity",
+            "current_abs": 12.0,
+            "current_rh": 68.0,
+            "baseline_abs": 10.0,
+            "rise_percent": 20.0,
+            "check_interval_minutes": 5,
+        }
+
+        # Test with no decision but active indoor spike
+        attrs = self.manager._build_indicator_attributes(
+            "32_123456",
+            {"control_mode": "dehumidify", "active_trigger": None},
+        )
+
+        assert attrs["control_mode"] == "spike_boost"
+        assert attrs["active_trigger_source_id"] == "indoor_humidity"
+        assert attrs["active_trigger_label"] == "Indoor Humidity"
+        assert attrs["active_trigger_rise_percent"] == 20.0
+        assert attrs["next_check_interval_minutes"] == 5
+
+    async def test_indoor_spike_takes_priority_over_area_spike(self):
+        """Indoor spike should take priority when both are active."""
+        self.manager._latest_sensor_control_context["test"] = {
+            "sources": {
+                "indoor_humidity": {
+                    "spike_enabled": True,
+                    "spike_rise_percent": 10.0,
+                    "spike_window_minutes": 5,
+                }
+            },
+            "area_sensors": [
+                {
+                    "source_id": "bathroom",
+                    "label": "Bathroom",
+                    "temperature_entity": "sensor.bath_temp",
+                    "humidity_entity": "sensor.bath_humidity",
+                    "spike_rise_percent": 15.0,
+                    "spike_window_minutes": 3,
+                    "check_interval_minutes": 1,
+                    "enabled": True,
+                }
+            ],
+        }
+
+        temp_state = MagicMock(state="22.0")
+        humidity_state = MagicMock(state="70.0")  # High RH for area spike
+        self.hass.states.get.side_effect = lambda entity_id: {
+            "sensor.bath_temp": temp_state,
+            "sensor.bath_humidity": humidity_state,
+        }.get(entity_id)
+
+        now = time.time()
+        # Set up both indoor and area history for spikes
+        self.manager._indoor_history["test"] = [
+            {"ts": now - 240, "abs": 10.0},
+        ]
+        self.manager._area_history["test"] = {
+            "bathroom": [
+                {"ts": now - 120, "abs": 9.0},
+            ]
+        }
+
+        with patch.object(self.manager, "_schedule_indoor_spike_recheck"):
+            decision = await self.manager._evaluate_humidity_conditions(
+                device_id="test",
+                indoor_rh=65.0,
+                indoor_abs=11.5,  # 15% rise - indoor spike
+                outdoor_abs=8.0,
+                min_humidity=40.0,
+                max_humidity=60.0,
+                offset=0.0,
+            )
+
+        # Indoor spike should take priority
+        assert decision["action"] == "dehumidify"
+        assert decision["control_mode"] == "spike_boost"
+        assert decision["active_trigger"]["source_id"] == "indoor_humidity"
+        assert "active_indoor_spike" in decision["values"]
+
+    def test_set_fan_low_clears_indoor_spike(self):
+        """Setting fan low should clear indoor spike when not in spike mode."""
+        self.manager._active_indoor_spikes["test"] = {
+            "source_id": "indoor_humidity",
+            "rise_percent": 15.0,
+        }
+        mock_handle = MagicMock()
+        self.manager._indoor_spike_check_handles["test"] = mock_handle
+
+        # Mock the _clear_active_indoor_spike to track it was called
+        with patch.object(self.manager, "_clear_active_indoor_spike") as mock_clear:
+            decision = {"reasoning": ["Test"], "control_mode": "balance"}
+            # Run async method
+            import asyncio
+
+            asyncio.run(self.manager._set_fan_low_and_binary_off("test", decision))
+
+        mock_clear.assert_called_once_with("test")
+
+    def test_update_indoor_humidity_history(self):
+        """Test indoor humidity history tracking."""
+        # Add multiple readings
+        self.manager._update_indoor_humidity_history("test", 10.0, 5)
+        self.manager._update_indoor_humidity_history("test", 10.5, 5)
+        self.manager._update_indoor_humidity_history("test", 11.0, 5)
+
+        history = self.manager._indoor_history["test"]
+        assert len(history) == 3
+        assert history[0]["abs"] == 10.0
+        assert history[1]["abs"] == 10.5
+        assert history[2]["abs"] == 11.0
+
+    def test_update_indoor_humidity_history_trims_old_entries(self):
+        """Old history entries should be trimmed."""
+        now = time.time()
+
+        # Add old entries
+        self.manager._indoor_history["test"] = [
+            {"ts": now - 400, "abs": 9.0},  # Too old (> 5 min window + 60s buffer)
+            {"ts": now - 200, "abs": 9.5},  # Within window
+        ]
+
+        self.manager._update_indoor_humidity_history("test", 10.0, 5)
+
+        history = self.manager._indoor_history["test"]
+        # Old entry should be removed, new one added
+        assert len(history) == 2
+        assert all(entry["ts"] >= now - 360 for entry in history)
+
     @pytest.mark.asyncio
     async def test_automation_skips_when_device_offline(self):
         """Test that automation skips processing when device is offline."""

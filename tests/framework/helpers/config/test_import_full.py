@@ -165,7 +165,7 @@ ramses_extras:
         "32:153289":
           REMs:
             - rem_id: "37:169161"
-              role: primary
+              enabled: true
     sensor_control:
       devices:
         "32:153289":
@@ -247,27 +247,6 @@ ramses_extras:
 """
     with pytest.raises(ValueError, match="Schema validation failed"):
         parse_full_config_yaml(yaml_content)
-
-
-def test_schema_validation_remote_binding_roles() -> None:
-    """Test schema accepts all valid REM roles."""
-    for role in ["primary", "secondary", "boost_only"]:
-        config = {
-            "ramses_extras": {
-                "schema_version": 1,
-                "features": {
-                    FEATURE_REMOTE_BINDING: {
-                        "FANs": {
-                            "32:153289": {
-                                "REMs": [{"rem_id": "37:169161", "role": role}]
-                            }
-                        }
-                    }
-                },
-            }
-        }
-        result = RAMSES_EXTRAS_CONFIG_SCHEMA(config)
-        assert result is not None
 
 
 def test_schema_validation_invalid_schema_version() -> None:
@@ -404,9 +383,9 @@ ramses_extras:
         "32:153289":
           REMs:
             - rem_id: "37:169161"
-              role: primary
+              enabled: true
             - rem_id: "37:169162"
-              role: secondary
+              enabled: true
 """
     config = parse_full_config_yaml(yaml_content)
     errors = validate_full_config_import(config)
@@ -424,33 +403,14 @@ ramses_extras:
         "32:153289":
           REMs:
             - rem_id: "37:169161"
-              role: primary
         "32:153290":
           REMs:
             - rem_id: "37:169161"
-              role: primary
 """
     config = parse_full_config_yaml(yaml_content)
     errors = validate_full_config_import(config)
     assert len(errors) > 0
     assert any("REM '37:169161' assigned to multiple FANs" in e for e in errors)
-
-
-def test_validate_remote_binding_schema_catches_invalid_role() -> None:
-    """Test that schema validation catches invalid REM roles early."""
-    yaml_content = """
-ramses_extras:
-  schema_version: 1
-  features:
-    remote_binding:
-      FANs:
-        "32:153289":
-          REMs:
-            - rem_id: "37:169161"
-              role: invalid_role
-"""
-    with pytest.raises(ValueError, match="Schema validation"):
-        parse_full_config_yaml(yaml_content)
 
 
 def test_validate_remote_binding_schema_catches_missing_rem_id() -> None:
@@ -463,7 +423,8 @@ ramses_extras:
       FANs:
         "32:153289":
           REMs:
-            - role: primary
+            - enabled: true
+              # Missing rem_id which is required
 """
     with pytest.raises(ValueError, match="Schema validation"):
         parse_full_config_yaml(yaml_content)
@@ -613,8 +574,8 @@ ramses_extras:
       FANs:
         "32:153289":
           REMs:
-            - rem_id: "37:169161"
-              role: invalid_role
+            - enabled: true
+              # Missing rem_id which is required
 """
     # Note: Schema validation will fail, so we test at framework level
     with pytest.raises(ValueError, match="Schema validation"):
@@ -795,11 +756,9 @@ ramses_extras:
         "32:153289":
           REMs:
             - rem_id: "37:169161"
-              role: primary
               enabled: true
               source: manual_config
             - rem_id: "37:169162"
-              role: secondary
               enabled: false
     zones:
       FANs:

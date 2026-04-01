@@ -569,6 +569,16 @@ async def handle_internal_fan_sensors(
         updated_sources["indoor_humidity"] = _source_from_input(
             user_input, "indoor_humidity_kind", "indoor_humidity_entity", True
         )
+        # Indoor humidity spike detection settings
+        updated_sources["indoor_humidity"]["spike_enabled"] = bool(
+            user_input.get("indoor_humidity_spike_enabled", False)
+        )
+        updated_sources["indoor_humidity"]["spike_rise_percent"] = float(
+            user_input.get("indoor_humidity_spike_rise_percent") or 10.0
+        )
+        updated_sources["indoor_humidity"]["spike_window_minutes"] = int(
+            user_input.get("indoor_humidity_spike_window_minutes") or 5
+        )
 
         # Outdoor temperature
         updated_sources["outdoor_temperature"] = _source_from_input(
@@ -656,6 +666,9 @@ async def handle_internal_fan_sensors(
     # Get default values
     indoor_temp_cfg = device_sources.get("indoor_temperature", {})
     indoor_hum_cfg = device_sources.get("indoor_humidity", {})
+    indoor_hum_spike_enabled = bool(indoor_hum_cfg.get("spike_enabled", False))
+    indoor_hum_spike_rise = float(indoor_hum_cfg.get("spike_rise_percent", 10.0))
+    indoor_hum_spike_window = int(indoor_hum_cfg.get("spike_window_minutes", 5))
     outdoor_temp_cfg = device_sources.get("outdoor_temperature", {})
     outdoor_hum_cfg = device_sources.get("outdoor_humidity", {})
     co2_cfg = device_sources.get("co2", {})
@@ -724,6 +737,18 @@ async def handle_internal_fan_sensors(
             vol.Optional(
                 "indoor_humidity_entity", default=indoor_hum_cfg.get("entity_id")
             ): sensor_selector,
+            # Indoor humidity spike detection
+            vol.Required(
+                "indoor_humidity_spike_enabled", default=indoor_hum_spike_enabled
+            ): selector.BooleanSelector(),
+            vol.Required(
+                "indoor_humidity_spike_rise_percent",
+                default=indoor_hum_spike_rise,
+            ): vol.All(vol.Coerce(float), vol.Range(min=1, max=100)),
+            vol.Required(
+                "indoor_humidity_spike_window_minutes",
+                default=indoor_hum_spike_window,
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
             # Outdoor sensors
             vol.Required(
                 "outdoor_temperature_kind",

@@ -1,5 +1,5 @@
 # Requirements to test the source code
-# - last checked/updated: 2026-01-28 (c.f. HA 2026.1.0)
+# - last checked/updated: 2026-04-01 (c.f. HA 2026.3.0)
 #
 # Note: requires ramses_cc v0.52.1 (pre-release) or later
 
@@ -18,7 +18,7 @@
   pytest == 9.0.0
   pytest-asyncio == 1.3.0
   pytest-cov == 7.0.0
-  pytest_homeassistant_custom_component == 0.13.300
+  pytest_homeassistant_custom_component == 0.13.316
 
 # Python 3.13 compatibility constraints
 # Fixes aiodns/pycares compatibility issue in Python 3.13

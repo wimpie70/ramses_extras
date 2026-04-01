@@ -21,7 +21,6 @@ from .const import FEATURE_ID
 REM_ENTRY_SCHEMA = vol.Schema(
     {
         vol.Required("rem_id"): str,
-        vol.Required("role"): vol.In(["primary", "secondary", "boost_only"]),
         vol.Optional("enabled", default=True): bool,
         vol.Optional("source"): str,
         vol.Optional("zone_id"): str,
@@ -90,11 +89,6 @@ def remote_binding_validator(section: dict, hass: Any | None = None) -> list[str
             if rem_id in seen_rems:
                 errors.append(f"REM '{rem_id}' assigned to multiple FANs")
             seen_rems.add(rem_id)
-
-            role = rem.get("role")
-            valid_roles = ("primary", "secondary", "boost_only")
-            if role not in valid_roles:
-                errors.append(f"FAN '{fan_id}', REM '{rem_id}': invalid role '{role}'")
 
             zone_id = rem.get("zone_id")
             if zone_id is not None and (not isinstance(zone_id, str) or not zone_id):

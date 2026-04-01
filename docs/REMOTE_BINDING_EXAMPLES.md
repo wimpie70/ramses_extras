@@ -14,7 +14,7 @@ It is **not** a device/protocol pairing operation.
 Optionally, each REM entry can be annotated with:
 
 - `zone_id` (logical zone within a FAN system)
-- `area_id` (Home Assistant area identifier, as a more precise location hint)
+- `area_id` (Ramses Extras area identifier, as a more precise location hint)
 
 ## Configuration Methods
 
@@ -43,14 +43,13 @@ features:
       "32:153289":
         REMs:
           - rem_id: "37:169161"
-            role: primary
             enabled: true
             source: manual_config
             zone_id: bathroom
             area_id: bathroom
 ```
 
-## Example 2: Multiple REMs per FAN (Different Roles)
+## Example 2: Multiple REMs per FAN
 
 Useful when you have multiple remotes for the same ventilation unit.
 
@@ -62,28 +61,19 @@ features:
         REMs:
           # Main remote for daily use
           - rem_id: "37:169161"
-            role: primary
             enabled: true
             source: manual_config
 
           # Secondary remote (e.g., in different room)
           - rem_id: "37:169162"
-            role: secondary
             enabled: true
             source: manual_config
 
-          # Boost-only remote (e.g., bathroom boost button)
+          # Bathroom boost remote
           - rem_id: "37:169163"
-            role: boost_only
             enabled: true
             source: manual_config
 ```
-
-### Role Definitions
-
-- **primary**: Full control (Auto, speeds, Away, timers)
-- **secondary**: Full control but lower priority in arbitration
-- **boost_only**: Only boost/override functions (limited control)
 
 ## Example 3: One REM per Multiple FANs (Not Allowed)
 
@@ -97,11 +87,9 @@ features:
       "32:153289":
         REMs:
           - rem_id: "37:169161"  # Same REM
-            role: primary
       "32:153290":
         REMs:
           - rem_id: "37:169161"  # Same REM - CONFLICT!
-            role: primary
 ```
 
 **Error**: `"REM '37:169161' assigned to multiple FANs"`
@@ -117,7 +105,6 @@ features:
       "32:153289":
         REMs:
           - rem_id: "37:169161"
-            role: primary
             enabled: false  # Disabled but preserved
             source: manual_config
 ```
@@ -134,7 +121,6 @@ features:
       "32:153289":
         REMs:
           - rem_id: "37:169161"
-            role: primary
             enabled: true
             source: manual_config
 
@@ -142,11 +128,9 @@ features:
       "32:153290":
         REMs:
           - rem_id: "37:169162"
-            role: primary
             enabled: true
             source: manual_config
           - rem_id: "37:169163"
-            role: secondary
             enabled: true
             source: manual_config
 
@@ -154,7 +138,6 @@ features:
       "32:153291":
         REMs:
           - rem_id: "37:169164"
-            role: primary
             enabled: true
             source: manual_config
 ```
@@ -181,7 +164,6 @@ features:
       "32:153289":
         REMs:
           - rem_id: "37:169161"
-            role: primary
             enabled: true
 ```
 

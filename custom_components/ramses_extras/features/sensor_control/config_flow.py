@@ -1991,13 +1991,12 @@ async def _async_handle_rems_menu(
 
     for item in fan_rems:
         rem_id = str(item.get("rem_id", "Unknown"))
-        role = str(item.get("role", "primary"))
         enabled = bool(item.get("enabled", True))
         status = "✓" if enabled else "✗"
         menu_options.append(
             selector.SelectOptionDict(
                 value=f"edit:{rem_id}",
-                label=f"{status} {rem_id} ({role})",
+                label=f"{status} {rem_id}",
             )
         )
         menu_options.append(
@@ -2077,17 +2076,12 @@ async def _async_handle_rems_edit(
 
     if user_input is not None:
         rem_id = normalize_device_id(str(user_input.get("rem_id") or "").strip())
-        role = str(user_input.get("role") or "").strip()
         enabled = bool(user_input.get("enabled", True))
         zone_id = str(user_input.get("zone_id") or "").strip()
         area_id = str(user_input.get("area_id") or "").strip()
 
         if not rem_id:
             errors["rem_id"] = "REM ID is required"
-
-        valid_roles = ("primary", "secondary", "boost_only")
-        if role not in valid_roles:
-            errors["role"] = "Invalid role"
 
         if rem_id and (editing_rem_id is None or rem_id != editing_rem_id):
             for rem in fan_rems:
@@ -2102,7 +2096,6 @@ async def _async_handle_rems_edit(
         if not errors:
             updated_rem: dict[str, Any] = {
                 "rem_id": rem_id,
-                "role": role,
                 "enabled": enabled,
             }
             if zone_id:
@@ -2135,7 +2128,6 @@ async def _async_handle_rems_edit(
             return await async_step_sensor_control_config(flow, None)
 
     rem_id_default = str(existing_rem.get("rem_id") if existing_rem else "").strip()
-    role_default = str(existing_rem.get("role") if existing_rem else "primary")
     enabled_default = bool(existing_rem.get("enabled", True)) if existing_rem else True
     zone_default = str(existing_rem.get("zone_id") if existing_rem else "").strip()
     area_default = str(existing_rem.get("area_id") if existing_rem else "").strip()
@@ -2173,18 +2165,6 @@ async def _async_handle_rems_edit(
                     custom_value=True,
                 )
             ),
-            vol.Required("role", default=role_default): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[
-                        selector.SelectOptionDict(value="primary", label="Primary"),
-                        selector.SelectOptionDict(value="secondary", label="Secondary"),
-                        selector.SelectOptionDict(
-                            value="boost_only", label="Boost only"
-                        ),
-                    ],
-                    mode="dropdown",
-                )
-            ),
             vol.Required(
                 "enabled",
                 default=enabled_default,
@@ -2205,7 +2185,9 @@ async def _async_handle_rems_edit(
     info_text = (
         f"{'Edit' if existing_rem else 'Add'} REM\n\n"
         f"Configure a REM association for FAN: `{selected_device_id}`\n\n"
-        "Use zone_id / area_id optionally to pinpoint location."
+        "Use zone_id / area_id optionally to pinpoint location.\n\n"
+        "Note: When using area_id, ensure the area is actually "
+        "within the selected zone_id."
     )
 
     if errors:

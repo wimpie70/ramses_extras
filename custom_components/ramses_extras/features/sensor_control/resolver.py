@@ -179,6 +179,19 @@ class SensorControlResolver:
             result["mappings"][metric] = effective_entity_id
             result["sources"][metric] = effective_source
 
+        # Add indoor humidity spike detection settings if available
+        indoor_humidity_override = device_overrides.get("indoor_humidity", {})
+        if indoor_humidity_override:
+            result["sources"]["indoor_humidity"]["spike_enabled"] = bool(
+                indoor_humidity_override.get("spike_enabled", False)
+            )
+            result["sources"]["indoor_humidity"]["spike_rise_percent"] = float(
+                indoor_humidity_override.get("spike_rise_percent", 10.0)
+            )
+            result["sources"]["indoor_humidity"]["spike_window_minutes"] = int(
+                indoor_humidity_override.get("spike_window_minutes", 5)
+            )
+
         self._logger.debug(
             "Resolved sensor mappings for %s (%s): %s",
             device_id,
