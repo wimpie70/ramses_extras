@@ -20,11 +20,10 @@ class TestFanHandler:
         """Test get_group_options returns expected options."""
         options = fan.get_group_options("32:123456")
         values = [opt["value"] for opt in options]
-        assert "indoor_basic" in values
-        assert "outdoor_basic" in values
-        assert "co2" in values
-        assert "indoor_abs" in values
-        assert "outdoor_abs" in values
+        assert "internal_fan_sensors" in values
+        assert "area_sensors" in values
+        assert "zones" in values
+        assert "rems" in values
         assert "done" in values
 
     def test_source_from_input(self):

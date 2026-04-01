@@ -32,6 +32,15 @@ class SensorControlDeviceHandler(Protocol):
         translate: Callable[[str, str], str] | None = None,
     ) -> tuple[vol.Schema, str]: ...
 
+    async def handle_internal_fan_sensors(
+        self,
+        flow: Any,
+        selected_device_id: str,
+        device_sources: dict[str, Any],
+        device_abs_inputs: dict[str, Any],
+        user_input: dict[str, Any] | None,
+    ) -> Any: ...
+
 
 DEVICE_TYPE_HANDLERS: dict[str, SensorControlDeviceHandler] = {
     "FAN": fan,

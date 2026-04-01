@@ -418,7 +418,7 @@ It should be:
 
 - whether zones may inline sensor entities in addition to `area_sensor_ids`
 - how much of the current `sensor_control.area_sensors` model should be reused directly versus reshaped during migration
-- whether the UI label should remain `Sensor Control` for now or start moving toward `FAN Configuration`
+- ✅ **Decided:** The UI label has been updated to `FAN Configuration` (March 2026) while keeping `sensor_control` as the codebase anchor
 
 ## Status
 

@@ -6,7 +6,7 @@ authors = ["Willem (wimpie70)"]
 
 [tool.poetry.dependencies]
 python = ">=3.13.2,<4.0"
-homeassistant = ">=2025.12.2"
+homeassistant = ">=2026.3.0"
 
 [tool.poetry.group.dev.dependencies]
  pytest = "^9.0.0"

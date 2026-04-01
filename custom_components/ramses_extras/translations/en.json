@@ -47,7 +47,7 @@
           "feature_hvac_fan_card": "Feature: Hvac Fan Card",
           "feature_hello_world": "Feature: Hello World",
           "feature_co2_control": "Feature: CO2 Control",
-          "feature_sensor_control": "Feature: Sensor Control",
+          "feature_sensor_control": "Feature: FAN Configuration",
           "feature_ramses_debugger": "Feature: Ramses Debugger"
         }
       },
@@ -114,8 +114,8 @@
         "description": "Configure the template feature for demonstration purposes"
       },
       "feature_sensor_control": {
-        "title": "Sensor Control Configuration",
-        "description": "Configure sensor source selection (indoor/outdoor/CO2 + abs humidity)"
+        "title": "FAN Configuration",
+        "description": "Configure sensor source selection (indoor/outdoor/CO2 + abs humidity), zones, and remote binding"
       }
     }
   }

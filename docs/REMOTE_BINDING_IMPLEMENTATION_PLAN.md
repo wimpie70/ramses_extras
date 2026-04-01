@@ -28,7 +28,7 @@ The association is intentionally maintained in Extras.
 - Detect and attribute `Auto`, speed, `Away`, and timer button presses.
 - Keep HA state aligned with real-world remote actions.
 - Avoid duplicate command loops when a remote press is observed after HA already sent a command.
-- Allow future extension to multiple remotes, zone remotes, or richer role models.
+- Allow future extension to multiple remotes, zone remotes, or richer models.
 
 ## Non-goals for phase 1
 
@@ -74,7 +74,6 @@ features:
       32:153289:
         REMs:
           - rem_id: 37:169161
-            role: primary
             enabled: true
             source: manual_config
 ```
@@ -94,7 +93,6 @@ fan_remote_bindings:
   32:153289:
     remotes:
       - device_id: 37:169161
-        role: primary
         source: manual_config
         enabled: true
 ```
@@ -124,7 +122,7 @@ Device-reported binding (when available) is treated as **informational/diagnosti
 Add a small binding helper/service layer with operations like:
 
 - list bindings for a FAN
-- set/replace primary REM for a FAN
+- add/replace REM for a FAN
 - remove binding
 - validate whether a REM is already assigned elsewhere
 
@@ -146,12 +144,11 @@ Initial UX can be simple:
 
 - select FAN
 - select REM from known REM-capable devices
-- save one primary binding
+- save binding
 
 Future UX can support:
 
 - multiple remotes
-- remote roles
 - binding health indicators
 - observed last-seen timestamp
 - strict YAML export against the same feature section shape
@@ -220,7 +217,6 @@ Design rule:
 ### Phase 3 - richer remote model ✅ COMPLETE
 
 - [x] multiple remotes per FAN
-- [x] role support (`primary`, `secondary`, `boost_only`)
 - [x] optional learned binding suggestions from observed traffic
 - [x] validated YAML import via framework validation registry (`register_config_validator()`)
 
@@ -310,7 +306,7 @@ During tests, capture:
 Update documentation with:
 
 - a minimal example config snippet for one FAN / one REM
-- an example for multiple REMs with roles (`primary`, `secondary`, `boost_only`)
+- an example for multiple REMs
 - a short troubleshooting section:
   - "REM presses not reflected in HA"
   - "REM traffic unmatched"

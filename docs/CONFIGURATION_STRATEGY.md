@@ -145,7 +145,7 @@ That means there are two separate concerns:
 Near-term guidance:
 
 - keep `sensor_control` as the existing anchor in the codebase for FAN-related configuration flows
-- allow the UI/documentation name to evolve toward something like `FAN Configuration`
+- the UI/documentation name has been updated to `FAN Configuration` (completed March 2026)
 - avoid forcing remote binding and zones to become independent `AVAILABLE_FEATURES` entries unless the runtime architecture truly requires that later
 - prefer FAN/REM-aware naming in the model where it improves clarity, such as `rem_id` instead of a more generic `remote_id`
 
@@ -453,7 +453,7 @@ This should come after the model is stable, not before.
 
 - The first export format should be strict YAML generated from the structured model.
 - Import should come later, after migrations are proven.
-- Remote binding and zones should be edited under a FAN-oriented configuration area, likely by evolving the current `sensor_control` UX toward a broader `FAN Configuration` concept.
+- Remote binding and zones are edited under a FAN-oriented configuration area, by evolving the `sensor_control` UX to the broader `FAN Configuration` concept (completed March 2026).
 - During the transition, `sensor_control` should follow Option C: config flows persist canonical `ramses_extras.features.sensor_control` while mirroring legacy top-level `sensor_control` until legacy storage is retired.
 - Shared discovery results from `ramses_cc` should be treated as hints and not persisted unless explicitly accepted into config.
 - Security-sensitive values such as passwords must be excluded from export, along with other runtime-only/transient state.

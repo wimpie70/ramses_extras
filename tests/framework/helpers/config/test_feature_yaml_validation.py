@@ -1275,7 +1275,6 @@ class TestRemoteBindingYAML:
         # Valid REM entry
         rem_data = {
             "rem_id": "37:123456",
-            "role": "primary",
             "enabled": True,
             "source": "manual",
             "zone_id": "bathroom",
@@ -1285,7 +1284,6 @@ class TestRemoteBindingYAML:
         # Should not raise any exceptions
         validated = REM_ENTRY_SCHEMA(rem_data)
         assert validated["rem_id"] == "37:123456"
-        assert validated["role"] == "primary"
         assert validated["enabled"] is True
         assert validated["zone_id"] == "bathroom"
         assert validated["area_id"] == "bathroom"
@@ -1294,28 +1292,17 @@ class TestRemoteBindingYAML:
         """Test REM entry schema with minimal required fields."""
         rem_data = {
             "rem_id": "37:123456",
-            "role": "secondary",
         }
 
         validated = REM_ENTRY_SCHEMA(rem_data)
         assert validated["rem_id"] == "37:123456"
-        assert validated["role"] == "secondary"
         assert validated["enabled"] is True  # Default value
-
-    def test_rem_entry_schema_invalid_role(self):
-        """Test REM entry schema with invalid role."""
-        rem_data = {
-            "rem_id": "37:123456",
-            "role": "invalid_role",
-        }
-
-        with pytest.raises(vol.MultipleInvalid):
-            REM_ENTRY_SCHEMA(rem_data)
 
     def test_rem_entry_schema_missing_required(self):
         """Test REM entry schema missing required fields."""
         rem_data = {
             "enabled": True,
+            # Missing rem_id which is required
         }
 
         with pytest.raises(vol.MultipleInvalid):
@@ -1325,7 +1312,6 @@ class TestRemoteBindingYAML:
         """Test REM entry schema rejects extra fields."""
         rem_data = {
             "rem_id": "37:123456",
-            "role": "primary",
             "extra_field": "not_allowed",
         }
 
@@ -1338,11 +1324,9 @@ class TestRemoteBindingYAML:
             "REMs": [
                 {
                     "rem_id": "37:123456",
-                    "role": "primary",
                 },
                 {
                     "rem_id": "37:789012",
-                    "role": "secondary",
                 },
             ]
         }
@@ -1368,7 +1352,6 @@ class TestRemoteBindingYAML:
                     "REMs": [
                         {
                             "rem_id": "37:123456",
-                            "role": "primary",
                         }
                     ]
                 },
@@ -1376,7 +1359,6 @@ class TestRemoteBindingYAML:
                     "REMs": [
                         {
                             "rem_id": "37:789012",
-                            "role": "secondary",
                         }
                     ]
                 },
@@ -1395,7 +1377,6 @@ class TestRemoteBindingYAML:
                     "REMs": [
                         {
                             "rem_id": "37:123456",
-                            "role": "primary",
                         }
                     ]
                 }
@@ -1413,11 +1394,9 @@ class TestRemoteBindingYAML:
                     "REMs": [
                         {
                             "rem_id": "37:123456",
-                            "role": "primary",
                         },
                         {
                             "rem_id": "37:789012",
-                            "role": "secondary",
                         },
                     ]
                 },
@@ -1425,7 +1404,6 @@ class TestRemoteBindingYAML:
                     "REMs": [
                         {
                             "rem_id": "37:111111",
-                            "role": "boost_only",
                         }
                     ]
                 },
@@ -1443,7 +1421,6 @@ class TestRemoteBindingYAML:
                     "REMs": [
                         {
                             "rem_id": "37:123456",
-                            "role": "primary",
                         }
                     ]
                 },
@@ -1451,7 +1428,6 @@ class TestRemoteBindingYAML:
                     "REMs": [
                         {
                             "rem_id": "37:123456",  # Same REM ID
-                            "role": "secondary",
                         }
                     ]
                 },
@@ -1513,7 +1489,7 @@ class TestRemoteBindingYAML:
                 "32:123456": {
                     "REMs": [
                         {
-                            "role": "primary",
+                            "enabled": True,
                         }
                     ],
                 },
@@ -1524,25 +1500,6 @@ class TestRemoteBindingYAML:
         assert len(errors) == 1
         assert "FAN '32:123456': REM missing rem_id" in errors[0]
 
-    def test_remote_binding_validator_invalid_rem_role(self):
-        """Test remote binding validator with invalid REM role."""
-        section = {
-            "FANs": {
-                "32:123456": {
-                    "REMs": [
-                        {
-                            "rem_id": "37:123456",
-                            "role": "invalid_role",
-                        }
-                    ],
-                },
-            },
-        }
-
-        errors = remote_binding_validator(section)
-        assert len(errors) == 1
-        assert "invalid role 'invalid_role'" in errors[0]
-
     def test_export_remote_binding_to_yaml(self):
         """Test export remote binding to YAML."""
         bindings = {
@@ -1550,7 +1507,6 @@ class TestRemoteBindingYAML:
                 "REMs": [
                     {
                         "rem_id": "37:123456",
-                        "role": "primary",
                         "enabled": True,
                     }
                 ]
@@ -1559,7 +1515,6 @@ class TestRemoteBindingYAML:
                 "REMs": [
                     {
                         "rem_id": "37:789012",
-                        "role": "secondary",
                         "enabled": False,
                     }
                 ]
@@ -1572,7 +1527,6 @@ class TestRemoteBindingYAML:
         assert "FANs:" in yaml_str
         assert "32:123456:" in yaml_str
         assert "37:123456" in yaml_str
-        assert "role: primary" in yaml_str
 
     def test_parse_remote_binding_yaml_valid(self):
         """Test parse valid remote binding YAML."""
@@ -1582,10 +1536,9 @@ FANs:
   32:123456:
     REMs:
       - rem_id: 37:123456
-        role: primary
         enabled: true
       - rem_id: 37:789012
-        role: secondary
+        enabled: true
 """
 
         parsed = parse_remote_binding_yaml(yaml_content)
@@ -1603,9 +1556,8 @@ FANs:
   32:123456:
     REMs:
       - rem_id: 37:123456
-        role: primary
         enabled: true
-      - rem_id: 37:789012  # Missing role
+      - rem_id: 37:789012
     invalid_yaml: [unclosed
 """
 
@@ -1630,8 +1582,8 @@ version: 1
 FANs:
   32:123456:
     REMs:
-      - rem_id: 37:123456
-        role: invalid_role  # Invalid role
+      - enabled: true
+        # Missing rem_id which is now required
 """
 
         with pytest.raises(ValueError, match="Schema validation failed"):
@@ -1645,7 +1597,6 @@ FANs:
                     "REMs": [
                         {
                             "rem_id": "37:111111",
-                            "role": "primary",
                         }
                     ]
                 }
@@ -1658,7 +1609,6 @@ FANs:
                     "REMs": [
                         {
                             "rem_id": "37:222222",
-                            "role": "secondary",
                         }
                     ]
                 }
@@ -1679,7 +1629,6 @@ FANs:
                     "REMs": [
                         {
                             "rem_id": "37:111111",
-                            "role": "primary",
                         }
                     ]
                 }
@@ -1692,7 +1641,6 @@ FANs:
                     "REMs": [
                         {
                             "rem_id": "37:222222",
-                            "role": "secondary",
                         }
                     ]
                 }
@@ -1715,7 +1663,6 @@ FANs:
                     "REMs": [
                         {
                             "rem_id": "37:111111",
-                            "role": "primary",
                         }
                     ]
                 }
@@ -1728,7 +1675,6 @@ FANs:
                     "REMs": [
                         {
                             "rem_id": "37:222222",
-                            "role": "secondary",
                         }
                     ]
                 }
@@ -1753,7 +1699,6 @@ FANs:
                     "REMs": [
                         {
                             "rem_id": "37:123456",
-                            "role": "primary",
                         }
                     ]
                 }

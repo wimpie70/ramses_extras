@@ -15,17 +15,7 @@ def get_group_options(device_id: str) -> list[selector.SelectOptionDict]:
     """
     return [
         selector.SelectOptionDict(
-            value="indoor_basic", label="Indoor temperature & humidity"
-        ),
-        selector.SelectOptionDict(
-            value="outdoor_basic", label="Outdoor temperature & humidity"
-        ),
-        selector.SelectOptionDict(value="co2", label="CO2"),
-        selector.SelectOptionDict(
-            value="indoor_abs", label="Indoor absolute humidity inputs"
-        ),
-        selector.SelectOptionDict(
-            value="outdoor_abs", label="Outdoor absolute humidity inputs"
+            value="internal_fan_sensors", label="Internal fan sensors"
         ),
         selector.SelectOptionDict(value="area_sensors", label="Area sensors"),
         selector.SelectOptionDict(value="zones", label="Zones"),
@@ -545,3 +535,290 @@ def build_group_schema(
         raise ValueError(f"Unsupported group_stage for FAN handler: {group_stage}")
 
     return schema, info_suffix
+
+
+async def handle_internal_fan_sensors(
+    flow: Any,
+    selected_device_id: str,
+    device_sources: dict[str, Any],
+    device_abs_inputs: dict[str, Any],
+    user_input: dict[str, Any] | None,
+) -> Any:
+    """Handle internal fan sensors: temp/humidity/CO2/abs humidity config."""
+    import logging
+
+    _logger = logging.getLogger(__name__)
+    _logger.debug(
+        "handle_internal_fan_sensors called with user_input=%s", user_input is not None
+    )
+
+    import voluptuous as vol
+    from homeassistant.helpers import selector
+
+    if user_input is not None:
+        # Save all the sensor configurations
+        updated_sources = dict(device_sources)
+        updated_abs_inputs = dict(device_abs_inputs)
+
+        # Indoor temperature
+        updated_sources["indoor_temperature"] = _source_from_input(
+            user_input, "indoor_temperature_kind", "indoor_temperature_entity", False
+        )
+
+        # Indoor humidity
+        updated_sources["indoor_humidity"] = _source_from_input(
+            user_input, "indoor_humidity_kind", "indoor_humidity_entity", True
+        )
+        # Indoor humidity spike detection settings
+        updated_sources["indoor_humidity"]["spike_enabled"] = bool(
+            user_input.get("indoor_humidity_spike_enabled", False)
+        )
+        updated_sources["indoor_humidity"]["spike_rise_percent"] = float(
+            user_input.get("indoor_humidity_spike_rise_percent") or 10.0
+        )
+        updated_sources["indoor_humidity"]["spike_window_minutes"] = int(
+            user_input.get("indoor_humidity_spike_window_minutes") or 5
+        )
+
+        # Outdoor temperature
+        updated_sources["outdoor_temperature"] = _source_from_input(
+            user_input, "outdoor_temperature_kind", "outdoor_temperature_entity", True
+        )
+
+        # Outdoor humidity
+        updated_sources["outdoor_humidity"] = _source_from_input(
+            user_input, "outdoor_humidity_kind", "outdoor_humidity_entity", True
+        )
+
+        # CO2
+        updated_sources["co2"] = _source_from_input(
+            user_input, "co2_kind", "co2_entity", True
+        )
+
+        # Indoor absolute humidity
+        updated_abs_inputs["indoor_abs_humidity"] = {
+            "temperature": _source_from_input(
+                user_input,
+                "indoor_abs_humidity_temperature_kind",
+                "indoor_abs_humidity_temperature_entity",
+                False,
+            ),
+            "humidity": _source_from_input(
+                user_input,
+                "indoor_abs_humidity_humidity_kind",
+                "indoor_abs_humidity_humidity_entity",
+                True,
+            ),
+        }
+
+        # Outdoor absolute humidity
+        updated_abs_inputs["outdoor_abs_humidity"] = {
+            "temperature": _source_from_input(
+                user_input,
+                "outdoor_abs_humidity_temperature_kind",
+                "outdoor_abs_humidity_temperature_entity",
+                False,
+            ),
+            "humidity": _source_from_input(
+                user_input,
+                "outdoor_abs_humidity_humidity_kind",
+                "outdoor_abs_humidity_humidity_entity",
+                True,
+            ),
+        }
+
+        # Update the config
+        from ....framework.helpers.config.migration import (
+            get_migrated_feature_section,
+        )
+        from ....framework.helpers.config.model import (
+            SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
+            SENSOR_CONTROL_SOURCES_KEY,
+            set_feature_section,
+        )
+
+        options = dict(flow._config_entry.options)
+        sensor_control_section = get_migrated_feature_section(options, "sensor_control")
+        devices_config = sensor_control_section.get("devices", {})
+        norm_device_id = selected_device_id.replace(":", "_")
+        device_config = devices_config.get(norm_device_id, {})
+
+        device_config[SENSOR_CONTROL_SOURCES_KEY] = updated_sources
+        device_config[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = updated_abs_inputs
+        devices_config[norm_device_id] = device_config
+        sensor_control_section["devices"] = devices_config
+
+        # Use set_feature_section to update the config
+        set_feature_section(options, "sensor_control", sensor_control_section)
+        flow.hass.config_entries.async_update_entry(flow._config_entry, options=options)
+
+        # Return to group selection
+        flow._sensor_control_group_stage = "select_group"
+        from ..config_flow import async_step_sensor_control_config
+
+        return await async_step_sensor_control_config(flow, None)
+
+    # Build the form schema
+    sensor_selector = selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=["sensor", "number", "input_number"])
+    )
+
+    # Get default values
+    indoor_temp_cfg = device_sources.get("indoor_temperature", {})
+    indoor_hum_cfg = device_sources.get("indoor_humidity", {})
+    indoor_hum_spike_enabled = bool(indoor_hum_cfg.get("spike_enabled", False))
+    indoor_hum_spike_rise = float(indoor_hum_cfg.get("spike_rise_percent", 10.0))
+    indoor_hum_spike_window = int(indoor_hum_cfg.get("spike_window_minutes", 5))
+    outdoor_temp_cfg = device_sources.get("outdoor_temperature", {})
+    outdoor_hum_cfg = device_sources.get("outdoor_humidity", {})
+    co2_cfg = device_sources.get("co2", {})
+    indoor_abs_cfg = device_abs_inputs.get("indoor_abs_humidity", {})
+    outdoor_abs_cfg = device_abs_inputs.get("outdoor_abs_humidity", {})
+
+    # Temperature kind options
+    temp_kind_options = [
+        selector.SelectOptionDict(value="internal", label="Internal (from FAN)"),
+        selector.SelectOptionDict(value="external", label="External (from HA entity)"),
+        selector.SelectOptionDict(value="derived", label="Derived (calculated)"),
+    ]
+
+    # Humidity kind options
+    hum_kind_options = [
+        selector.SelectOptionDict(value="internal", label="Internal (from FAN)"),
+        selector.SelectOptionDict(value="external", label="External (from HA entity)"),
+        selector.SelectOptionDict(value="none", label="None (disabled)"),
+    ]
+
+    # CO2 kind options
+    co2_kind_options = [
+        selector.SelectOptionDict(value="internal", label="Internal (from FAN)"),
+        selector.SelectOptionDict(value="external", label="External (from HA entity)"),
+        selector.SelectOptionDict(value="none", label="None (disabled)"),
+    ]
+
+    # Absolute humidity temperature kind options
+    abs_temp_kind_options = [
+        selector.SelectOptionDict(value="internal", label="Internal (from FAN)"),
+        selector.SelectOptionDict(value="external", label="External (from HA entity)"),
+        selector.SelectOptionDict(
+            value="external_temp", label="External temperature only"
+        ),
+        selector.SelectOptionDict(
+            value="external_abs", label="External absolute humidity"
+        ),
+    ]
+
+    # Absolute humidity humidity kind options
+    abs_hum_kind_options = [
+        selector.SelectOptionDict(value="internal", label="Internal (from FAN)"),
+        selector.SelectOptionDict(value="external", label="External (from HA entity)"),
+        selector.SelectOptionDict(value="none", label="None (disabled)"),
+    ]
+
+    schema = vol.Schema(
+        {
+            # Indoor sensors
+            vol.Required(
+                "indoor_temperature_kind",
+                default=indoor_temp_cfg.get("kind", "internal"),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=temp_kind_options, mode="dropdown"
+                )
+            ),
+            vol.Optional("indoor_temperature_entity"): sensor_selector,
+            vol.Required(
+                "indoor_humidity_kind", default=indoor_hum_cfg.get("kind", "internal")
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=hum_kind_options, mode="dropdown")
+            ),
+            vol.Optional("indoor_humidity_entity"): sensor_selector,
+            # Indoor humidity spike detection
+            vol.Required(
+                "indoor_humidity_spike_enabled", default=indoor_hum_spike_enabled
+            ): selector.BooleanSelector(),
+            vol.Required(
+                "indoor_humidity_spike_rise_percent",
+                default=indoor_hum_spike_rise,
+            ): vol.All(vol.Coerce(float), vol.Range(min=1, max=100)),
+            vol.Required(
+                "indoor_humidity_spike_window_minutes",
+                default=indoor_hum_spike_window,
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+            # Outdoor sensors
+            vol.Required(
+                "outdoor_temperature_kind",
+                default=outdoor_temp_cfg.get("kind", "internal"),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=temp_kind_options, mode="dropdown"
+                )
+            ),
+            vol.Optional("outdoor_temperature_entity"): sensor_selector,
+            vol.Required(
+                "outdoor_humidity_kind", default=outdoor_hum_cfg.get("kind", "internal")
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=hum_kind_options, mode="dropdown")
+            ),
+            vol.Optional("outdoor_humidity_entity"): sensor_selector,
+            # CO2
+            vol.Required(
+                "co2_kind", default=co2_cfg.get("kind", "internal")
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=co2_kind_options, mode="dropdown")
+            ),
+            vol.Optional("co2_entity"): sensor_selector,
+            # Indoor absolute humidity
+            vol.Required(
+                "indoor_abs_humidity_temperature_kind",
+                default=indoor_abs_cfg.get("temperature", {}).get("kind", "internal"),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=abs_temp_kind_options, mode="dropdown"
+                )
+            ),
+            vol.Optional("indoor_abs_humidity_temperature_entity"): sensor_selector,
+            vol.Required(
+                "indoor_abs_humidity_humidity_kind",
+                default=indoor_abs_cfg.get("humidity", {}).get("kind", "internal"),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=abs_hum_kind_options, mode="dropdown"
+                )
+            ),
+            vol.Optional("indoor_abs_humidity_humidity_entity"): sensor_selector,
+            # Outdoor absolute humidity
+            vol.Required(
+                "outdoor_abs_humidity_temperature_kind",
+                default=outdoor_abs_cfg.get("temperature", {}).get("kind", "internal"),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=abs_temp_kind_options, mode="dropdown"
+                )
+            ),
+            vol.Optional("outdoor_abs_humidity_temperature_entity"): sensor_selector,
+            vol.Required(
+                "outdoor_abs_humidity_humidity_kind",
+                default=outdoor_abs_cfg.get("humidity", {}).get("kind", "internal"),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=abs_hum_kind_options, mode="dropdown"
+                )
+            ),
+            vol.Optional("outdoor_abs_humidity_humidity_entity"): sensor_selector,
+        }
+    )
+
+    info_text = (
+        "Internal Fan Sensors\n\n"
+        f"Configure internal sensor sources for device: `{selected_device_id}`\n\n"
+        "Define what sensors should be used. Instead of the standard internal sensors"
+        " you can map other (external) sensors of your choice."
+    )
+
+    _logger.debug("Returning form for internal_fan_sensors")
+    return flow.async_show_form(
+        step_id="feature_config",
+        data_schema=schema,
+        description_placeholders={"info": info_text},
+    )

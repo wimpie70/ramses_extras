@@ -7,6 +7,7 @@ all Ramses Extras features, including:
 - Device helpers: Device parsing, validation, entity mapping
 - Automation helpers: Automation patterns, lifecycle management
 - Common utilities: Logging, validation, exceptions
+- Translation helpers: Feature-specific translation loading
 """
 
 # Entity helpers
@@ -52,6 +53,12 @@ from .ramses_commands import (
     create_ramses_commands,
 )
 
+# Translation helpers
+from .translations import (
+    async_get_feature_title,
+    async_get_feature_translations,
+)
+
 __all__ = [
     # Entity helpers
     "EntityHelpers",
@@ -84,4 +91,7 @@ __all__ = [
     "create_validation_context",
     "validate_device_id",
     "async_validate_entity_states",
+    # Translation helpers
+    "async_get_feature_translations",
+    "async_get_feature_title",
 ]

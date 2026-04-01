@@ -90,6 +90,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._area_history: dict[str, dict[str, list[dict[str, float]]]] = {}
         self._active_area_spikes: dict[str, list[dict[str, Any]] | dict[str, Any]] = {}
         self._area_spike_check_handles: dict[str, Callable[[], None]] = {}
+        # Indoor humidity spike detection (mirrors area sensor spike tracking)
+        self._indoor_history: dict[str, list[dict[str, float]]] = {}
+        self._active_indoor_spikes: dict[str, dict[str, Any]] = {}
+        self._indoor_spike_check_handles: dict[str, Callable[[], None]] = {}
 
         # Performance tracking
         self._decision_count = 0
@@ -896,6 +900,21 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         area_sensor_states = self._get_area_sensor_states(device_id)
         self._update_area_sensor_history(device_id, area_sensor_states)
 
+        # Get indoor humidity spike configuration from sensor_control context
+        sensor_ctx = self._latest_sensor_control_context.get(device_id) or {}
+        sources = sensor_ctx.get("sources", {})
+        indoor_humidity_source = sources.get("indoor_humidity", {})
+        spike_config = {
+            "enabled": bool(indoor_humidity_source.get("spike_enabled", False)),
+            "spike_rise_percent": float(
+                indoor_humidity_source.get("spike_rise_percent", 10.0)
+            ),
+            "spike_window_minutes": int(
+                indoor_humidity_source.get("spike_window_minutes", 5)
+            ),
+        }
+
+        # Evaluate area spikes
         active_spikes = self._evaluate_active_area_spikes(
             device_id=device_id,
             outdoor_abs=outdoor_abs,
@@ -913,7 +932,57 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         )
         combined_spikes = self._merge_area_spikes(active_spikes, detected_spikes)
 
-        if combined_spikes:
+        # Evaluate indoor humidity spike
+        active_indoor_spike = self._evaluate_active_indoor_spike(
+            device_id=device_id,
+            indoor_abs=indoor_abs,
+            indoor_rh=indoor_rh,
+            outdoor_abs=outdoor_abs,
+            offset=offset,
+            max_humidity=max_humidity,
+        )
+        detected_indoor_spike = self._detect_indoor_spike(
+            device_id=device_id,
+            indoor_abs=indoor_abs,
+            indoor_rh=indoor_rh,
+            outdoor_abs=outdoor_abs,
+            offset=offset,
+            max_humidity=max_humidity,
+            spike_config=spike_config,
+        )
+
+        # Use either active or detected indoor spike
+        indoor_spike = active_indoor_spike or detected_indoor_spike
+
+        if indoor_spike:
+            self._active_indoor_spikes[device_id] = indoor_spike
+            self._schedule_indoor_spike_recheck(
+                device_id, int(indoor_spike.get("check_interval_minutes", 5))
+            )
+            decision = {
+                "action": "dehumidify",
+                "reasoning": [
+                    (
+                        "Indoor humidity spike detected: "
+                        f"{indoor_spike['rise_percent']:.1f}% rise above baseline "
+                        f"({indoor_spike['baseline_abs']:.2f} -> "
+                        f"{indoor_spike['current_abs']:.2f} g/m³)"
+                    )
+                ],
+                "values": {
+                    **decision["values"],
+                    "active_indoor_spike": True,
+                    "indoor_baseline_abs": indoor_spike["baseline_abs"],
+                    "indoor_rise_percent": indoor_spike["rise_percent"],
+                },
+                "confidence": 1.0,
+                "control_mode": "spike_boost",
+                "active_trigger": indoor_spike,
+                "active_triggers": [indoor_spike],
+            }
+            # Clear area spikes when indoor spike takes over
+            self._clear_active_area_spike(device_id)
+        elif combined_spikes:
             self._set_active_area_spikes(device_id, combined_spikes)
             self._schedule_area_spike_recheck(
                 device_id,
@@ -949,8 +1018,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 "active_trigger": primary_spike,
                 "active_triggers": combined_spikes,
             }
+            self._clear_active_indoor_spike(device_id)
         else:
             self._clear_active_area_spike(device_id)
+            self._clear_active_indoor_spike(device_id)
 
         # Record decision
         self._decision_count += 1
@@ -1147,6 +1218,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             self._dehumidify_active = False
             if decision.get("control_mode") != "spike_boost":
                 self._clear_active_area_spike(device_id)
+                self._clear_active_indoor_spike(device_id)
 
             reasoning = "; ".join(decision["reasoning"])
             _LOGGER.info(
@@ -1489,6 +1561,200 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             reverse=True,
         )
 
+    def _update_indoor_humidity_history(
+        self, device_id: str, indoor_abs: float, window_minutes: int
+    ) -> None:
+        """Update indoor humidity history for spike detection.
+
+        Args:
+            device_id: Device identifier
+            indoor_abs: Current indoor absolute humidity
+            window_minutes: Spike detection window in minutes
+        """
+        history = self._indoor_history.setdefault(device_id, [])
+        now = time.time()
+        max_window_seconds = max(window_minutes, 1) * 60
+        trim_before = now - max_window_seconds - 60
+
+        history.append({"ts": now, "abs": float(indoor_abs)})
+        self._indoor_history[device_id] = [
+            entry for entry in history if entry["ts"] >= trim_before
+        ]
+
+    def _detect_indoor_spike(
+        self,
+        device_id: str,
+        indoor_abs: float,
+        indoor_rh: float,
+        outdoor_abs: float,
+        offset: float,
+        max_humidity: float,
+        spike_config: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Detect indoor humidity spike.
+
+        Args:
+            device_id: Device identifier
+            indoor_abs: Current indoor absolute humidity
+            indoor_rh: Current indoor relative humidity
+            outdoor_abs: Outdoor absolute humidity
+            offset: Humidity offset adjustment
+            max_humidity: Maximum relative humidity threshold
+            spike_config: Spike detection configuration
+
+        Returns:
+            Spike info dict if spike detected, None otherwise
+        """
+        if not bool(spike_config.get("enabled", False)):
+            return None
+
+        window_minutes = int(spike_config.get("spike_window_minutes", 5))
+        threshold_percent = float(spike_config.get("spike_rise_percent", 10.0))
+
+        self._update_indoor_humidity_history(device_id, indoor_abs, window_minutes)
+
+        history = self._indoor_history.get(device_id, [])
+        if not history:
+            return None
+
+        window_start = time.time() - (window_minutes * 60)
+        window_values = [
+            entry["abs"] for entry in history if entry["ts"] >= window_start
+        ]
+        if not window_values:
+            return None
+
+        baseline_abs = min(window_values)
+        if baseline_abs <= 0:
+            return None
+
+        rise_percent = ((float(indoor_abs) - baseline_abs) / baseline_abs) * 100.0
+        if rise_percent < threshold_percent:
+            return None
+
+        if float(indoor_abs) <= max(indoor_abs, outdoor_abs + offset):
+            # Not above baseline comparison (indoor should exceed outdoor + offset)
+            pass
+
+        if indoor_rh <= max_humidity:
+            _LOGGER.debug(
+                "Ignoring indoor spike for %s: RH %.1f%% <= max %.1f%%",
+                device_id,
+                float(indoor_rh),
+                max_humidity,
+            )
+            return None
+
+        return {
+            "source_id": "indoor_humidity",
+            "label": "Indoor Humidity",
+            "baseline_abs": baseline_abs,
+            "current_abs": float(indoor_abs),
+            "current_rh": float(indoor_rh),
+            "rise_percent": rise_percent,
+            "spike_window_minutes": window_minutes,
+            "check_interval_minutes": 5,  # Fixed recheck interval for indoor
+            "triggered_at": time.time(),
+        }
+
+    def _evaluate_active_indoor_spike(
+        self,
+        device_id: str,
+        indoor_abs: float,
+        indoor_rh: float,
+        outdoor_abs: float,
+        offset: float,
+        max_humidity: float,
+    ) -> dict[str, Any] | None:
+        """Evaluate if an active indoor spike should be retained.
+
+        Args:
+            device_id: Device identifier
+            indoor_abs: Current indoor absolute humidity
+            indoor_rh: Current indoor relative humidity
+            outdoor_abs: Outdoor absolute humidity
+            offset: Humidity offset adjustment
+            max_humidity: Maximum relative humidity threshold
+
+        Returns:
+            Updated spike info if retained, None if cleared
+        """
+        active_spike = self._active_indoor_spikes.get(device_id)
+        if not active_spike:
+            return None
+
+        # Check if conditions still warrant spike mode
+        if indoor_abs <= outdoor_abs + offset:
+            _LOGGER.debug(
+                "Clearing indoor spike for %s: "
+                "indoor abs %.2f <= outdoor %.2f + offset",
+                device_id,
+                indoor_abs,
+                outdoor_abs,
+            )
+            self._active_indoor_spikes.pop(device_id, None)
+            return None
+
+        if indoor_rh <= max_humidity:
+            _LOGGER.debug(
+                "Clearing indoor spike for %s: RH %.1f%% <= max %.1f%%",
+                device_id,
+                float(indoor_rh),
+                max_humidity,
+            )
+            self._active_indoor_spikes.pop(device_id, None)
+            return None
+
+        # Update with current values
+        updated_spike = active_spike.copy()
+        updated_spike["current_abs"] = indoor_abs
+        updated_spike["current_rh"] = indoor_rh
+        return updated_spike
+
+    def _clear_active_indoor_spike(self, device_id: str) -> None:
+        """Clear active indoor spike and cancel recheck."""
+        self._active_indoor_spikes.pop(device_id, None)
+        handle = self._indoor_spike_check_handles.pop(device_id, None)
+        if handle:
+            handle()
+
+    def _schedule_indoor_spike_recheck(
+        self, device_id: str, interval_minutes: int
+    ) -> None:
+        """Schedule recheck for indoor spike.
+
+        Args:
+            device_id: Device identifier
+            interval_minutes: Recheck interval in minutes
+        """
+        self._clear_active_indoor_spike(device_id)
+        interval_minutes = max(1, interval_minutes)
+
+        def _schedule_recheck(_: datetime) -> None:
+            def _create_task() -> None:
+                self.hass.async_create_task(self._async_recheck_indoor_spike(device_id))
+
+            self.hass.loop.call_soon_threadsafe(_create_task)
+
+        self._indoor_spike_check_handles[device_id] = async_track_time_interval(
+            self.hass,
+            _schedule_recheck,
+            timedelta(minutes=interval_minutes),
+        )
+
+    async def _async_recheck_indoor_spike(self, device_id: str) -> None:
+        """Recheck indoor spike conditions."""
+        if not self._automation_active or not self._is_feature_enabled():
+            return
+
+        try:
+            entity_states = await self._get_device_entity_states(device_id)
+        except ValueError as err:
+            _LOGGER.debug("Skipping indoor spike recheck for %s: %s", device_id, err)
+            return
+
+        await self._process_automation_logic(device_id, entity_states)
+
     def _evaluate_active_area_spikes(
         self,
         device_id: str,
@@ -1659,6 +1925,20 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             attrs["next_check_interval_minutes"] = active_trigger.get(
                 "check_interval_minutes"
             )
+        elif self._active_indoor_spikes.get(device_id):
+            # Check for active indoor spike first
+            active_spike = self._active_indoor_spikes.get(device_id) or {}
+            attrs["control_mode"] = "spike_boost"
+            attrs["active_trigger_source_id"] = active_spike.get("source_id")
+            attrs["active_trigger_label"] = active_spike.get("label")
+            attrs["active_trigger_abs_humidity"] = active_spike.get("current_abs")
+            attrs["active_trigger_baseline_abs_humidity"] = active_spike.get(
+                "baseline_abs"
+            )
+            attrs["active_trigger_rise_percent"] = active_spike.get("rise_percent")
+            attrs["next_check_interval_minutes"] = active_spike.get(
+                "check_interval_minutes"
+            )
         elif self._get_active_area_spikes(device_id):
             active_spike = self._get_active_area_spikes(device_id)[0]
             attrs["control_mode"] = "spike_boost"
@@ -1674,7 +1954,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
 
         if not active_triggers:
-            active_triggers = self._get_active_area_spikes(device_id)
+            # Check for indoor spike first, then area spikes
+            indoor_spike = self._active_indoor_spikes.get(device_id)
+            if indoor_spike:
+                active_triggers = [indoor_spike]
+            else:
+                active_triggers = self._get_active_area_spikes(device_id)
 
         if active_triggers:
             attrs["active_trigger_source_ids"] = [

@@ -307,7 +307,6 @@ class RemoteBindingRegistry:
             for binding in bindings:
                 rem_entry: dict[str, Any] = {
                     "rem_id": binding.get("rem_id"),
-                    "role": binding.get("role", "primary"),
                     "enabled": binding.get("enabled", True),
                 }
                 if "source" in binding:
@@ -322,14 +321,11 @@ class RemoteBindingRegistry:
         # For true YAML, we'd use PyYAML, but this keeps dependencies minimal
         return json.dumps(export_data, indent=2, sort_keys=True)
 
-    def get_bindings_for_fan_by_role(
-        self, device_id: str, role: str | None = None
-    ) -> list[dict[str, Any]]:
-        """Get REM bindings for a FAN, optionally filtered by role.
+    def get_bindings_for_fan(self, device_id: str) -> list[dict[str, Any]]:
+        """Get all enabled REM bindings for a FAN.
 
         Args:
             device_id: FAN device ID
-            role: Optional role filter (primary, secondary, boost_only)
 
         Returns:
             List of binding dicts
@@ -344,16 +340,8 @@ class RemoteBindingRegistry:
         if not bindings:
             return []
 
-        # Filter by enabled and optional role
-        result = []
-        for binding in bindings:
-            if not binding.get("enabled", True):
-                continue
-            if role is not None and binding.get("role", "primary") != role:
-                continue
-            result.append(binding)
-
-        return result
+        # Filter to enabled bindings only
+        return [b for b in bindings if b.get("enabled", True)]
 
     def get_all_rem_ids_for_fan(self, device_id: str) -> list[str]:
         """Get all REM device IDs bound to a FAN.
@@ -364,7 +352,7 @@ class RemoteBindingRegistry:
         Returns:
             List of REM device IDs
         """
-        bindings = self.get_bindings_for_fan_by_role(device_id)
+        bindings = self.get_bindings_for_fan(device_id)
         return [str(b.get("rem_id")) for b in bindings if b.get("rem_id")]
 
     def _get_suggested_bindings(self) -> dict[str, list[dict[str, Any]]]:
@@ -408,7 +396,6 @@ class RemoteBindingRegistry:
                             "rem_id": rem_id,
                             "observed_count": data["count"],
                             "commands_observed": list(set(data["commands"]))[-5:],
-                            "suggested_role": "secondary",
                             "confidence": min(data["count"] / 10.0, 1.0),
                         }
                     )

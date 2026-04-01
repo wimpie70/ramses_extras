@@ -5,13 +5,83 @@
     "co2": "CO2 sensor source. Tip: use the entity picker search and type 'co2'.",
     "indoor_abs": "Indoor absolute humidity input sensors.",
     "outdoor_abs": "Outdoor absolute humidity input sensors.",
-    "co2_device_preview": "CO2 devices are detected, but sensor control for CO2 is not yet implemented. This section is prepared as a preview for future use."
+    "co2_device_preview": "CO2 devices are detected, but sensor control for CO2 is not yet implemented. This section is prepared as a preview for future use.",
+    "area_sensors_edit": "Define one local area sensor using temperature + humidity and/or CO2 inputs. Humidity sensors drive spike detection. CO2 sensors drive CO2 control. Both can share the same zone_id.",
+    "area_sensors_entity_note": "Temperature and humidity entities should come from the same device. Enable area_sensor_enabled for humidity/temp, area_co2_enabled for CO2. Multiple area sensors can share the same zone_id. CO2 threshold: use entity for dynamic value (e.g., input_number), or just set the number as static fallback."
+  },
+  "labels": {
+    "add_area_sensor": "Add area sensor",
+    "edit_area_sensor": "Edit area sensor",
+    "delete_area_sensor": "Delete area sensor",
+    "add_zone": "Add zone",
+    "edit_zone": "Edit zone",
+    "delete_zone": "Delete zone",
+    "save_zone": "Save zone",
+    "edit_again": "Edit again",
+    "cancel": "Cancel",
+    "back": "Back",
+    "back_to_groups": "Back to groups",
+    "back_to_zones_menu": "Back to zones menu",
+    "select_area_sensor": "(select area sensor)",
+    "no_zone": "(no zone)",
+    "no_area": "(no area)",
+    "zone_prefix": "Zone: {zone_id}",
+    "rem_prefix": "REM: {rem_id}",
+    "area_sensor_prefix": "Area sensor: {label}",
+    "add_rem": "Add REM",
+    "edit_rem": "Edit REM",
+    "delete_rem": "Delete REM",
+    "internal_from_fan": "Internal (from FAN)",
+    "external_from_ha": "External (from HA entity)",
+    "derived_calculated": "Derived (calculated)",
+    "none_disabled": "None (disabled)",
+    "external_temp_only": "External temperature only",
+    "external_abs_humidity": "External absolute humidity",
+    "paired_valves": "Paired Valves (Inlet+Outlet)",
+    "enabled": "enabled",
+    "disabled": "disabled"
+  },
+  "errors": {
+    "zone_id_required": "Zone ID is required",
+    "zone_id_exists": "Zone ID already exists for this FAN",
+    "rem_id_required": "REM ID is required",
+    "rem_id_exists": "REM ID already exists for this FAN",
+    "yaml_content_required": "YAML content is required",
+    "no_zones_in_yaml": "No zones found in YAML"
+  },
+  "info_texts": {
+    "no_area_sensors": "No area sensors configured.",
+    "no_zones_configured": "No zones configured.",
+    "no_rems_configured": "No REMs configured.",
+    "area_sensor_config_title": "Area Sensor Configuration",
+    "zone_config_title": "Zone Configuration",
+    "rem_config_title": "REM Configuration",
+    "internal_fan_sensors_title": "Internal Fan Sensors",
+    "export_zones_title": "Export Zones to YAML",
+    "confirm_zone_title": "Confirm Zone Configuration",
+    "configuring_for_fan": "Configuring for FAN: `{device_id}`",
+    "existing_area_sensors": "Existing area sensors:",
+    "existing_zones": "Existing zones:",
+    "existing_rems": "Existing REMs:",
+    "zone_details": "Zone Details:",
+    "review_before_saving": "Review the zone details above before saving.",
+    "copy_yaml_save": "Copy the YAML below to save your zone configuration:",
+    "internal_sensors_description": "Configure internal sensor sources for device: `{device_id}`\n\nDefine what sensors should be used. Instead of the standard internal sensors you can map other (external) sensors of your choice.",
+    "edit_zone_title": "Edit Zone",
+    "add_zone_title": "Add Zone",
+    "zone_id_unique_note": "Zone ID must be unique within this FAN.",
+    "select_zone_type": "Select the zone type and configure the appropriate entities.",
+    "add_rem_title": "Add REM",
+    "edit_rem_title": "Edit REM",
+    "rem_custom_note": "Note: When selecting a custom ID, ensure this helper entity (input_select) reflects its state (idle, low, medium, high, auto, away, timer, etc.) and is set by an external automation. This is not yet functional.",
+    "rem_zone_area_note": "Use zone_id / area_id optionally to pinpoint location.",
+    "rem_area_in_zone_note": "Note: When using area_id, ensure the area is actually within the selected zone_id."
   },
   "config": {
     "step": {
       "feature_sensor_control": {
-        "title": "Sensor Control Configuration",
-        "description": "Configure sensor source selection"
+        "title": "FAN Configuration",
+        "description": "Configure sensor source selection (indoor/outdoor/CO2 + abs humidity), zones, and remote binding"
       }
     }
   }

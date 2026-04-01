@@ -19,11 +19,10 @@ def test_get_group_options():
     options = get_group_options("01:123456")
     assert isinstance(options, list)
     values = [opt["value"] for opt in options]
-    assert "indoor_basic" in values
-    assert "outdoor_basic" in values
-    assert "co2" in values
-    assert "indoor_abs" in values
-    assert "outdoor_abs" in values
+    assert "internal_fan_sensors" in values
+    assert "area_sensors" in values
+    assert "zones" in values
+    assert "rems" in values
     assert "done" in values
 
 

@@ -37,7 +37,6 @@ class TestRemoteBindingRegistry:
         """Test get_binding_for_fan returns binding when available."""
         mock_binding = {
             "rem_id": "37:654321",
-            "role": "primary",
             "enabled": True,
             "source": "manual_config",
         }
@@ -75,8 +74,8 @@ class TestRemoteBindingRegistry:
     def test_get_binding_for_fan_disabled_binding(self, registry, hass):
         """Test get_binding_for_fan skips disabled bindings."""
         mock_bindings = [
-            {"rem_id": "37:111111", "role": "secondary", "enabled": False},
-            {"rem_id": "37:654321", "role": "primary", "enabled": True},
+            {"rem_id": "37:111111", "enabled": False},
+            {"rem_id": "37:654321", "enabled": True},
         ]
 
         with patch.object(registry, "_get_config_manager") as mock_get_manager:
@@ -120,8 +119,8 @@ class TestRemoteBindingRegistry:
     def test_list_bindings(self, registry, hass):
         """Test list_bindings returns all bindings."""
         mock_bindings = {
-            "32:123456": [{"rem_id": "37:654321", "role": "primary", "enabled": True}],
-            "32:789012": [{"rem_id": "37:987654", "role": "primary", "enabled": True}],
+            "32:123456": [{"rem_id": "37:654321", "enabled": True}],
+            "32:789012": [{"rem_id": "37:987654", "enabled": True}],
         }
 
         with patch.object(registry, "list_bindings") as mock_list:
@@ -363,8 +362,8 @@ class TestRemoteBindingDiagnostics:
     def test_detect_conflicts_no_conflict(self, registry, hass):
         """Test detect_conflicts returns empty when no conflicts."""
         all_bindings = {
-            "32:111111": [{"rem_id": "37:111111", "role": "primary", "enabled": True}],
-            "32:222222": [{"rem_id": "37:222222", "role": "primary", "enabled": True}],
+            "32:111111": [{"rem_id": "37:111111", "enabled": True}],
+            "32:222222": [{"rem_id": "37:222222", "enabled": True}],
         }
 
         with patch.object(registry, "list_bindings") as mock_list:
@@ -376,8 +375,8 @@ class TestRemoteBindingDiagnostics:
     def test_detect_conflicts_multi_fan(self, registry, hass):
         """Test detect_conflicts finds REM bound to multiple FANs."""
         all_bindings = {
-            "32:111111": [{"rem_id": "37:999999", "role": "primary", "enabled": True}],
-            "32:222222": [{"rem_id": "37:999999", "role": "primary", "enabled": True}],
+            "32:111111": [{"rem_id": "37:999999", "enabled": True}],
+            "32:222222": [{"rem_id": "37:999999", "enabled": True}],
         }
 
         with patch.object(registry, "list_bindings") as mock_list:
@@ -393,8 +392,8 @@ class TestRemoteBindingDiagnostics:
     def test_detect_conflicts_ignores_disabled(self, registry, hass):
         """Test detect_conflicts ignores disabled bindings."""
         all_bindings = {
-            "32:111111": [{"rem_id": "37:999999", "role": "primary", "enabled": True}],
-            "32:222222": [{"rem_id": "37:999999", "role": "primary", "enabled": False}],
+            "32:111111": [{"rem_id": "37:999999", "enabled": True}],
+            "32:222222": [{"rem_id": "37:999999", "enabled": False}],
         }
 
         with patch.object(registry, "list_bindings") as mock_list:
@@ -410,7 +409,6 @@ class TestRemoteBindingDiagnostics:
             "32:123456": [
                 {
                     "rem_id": "37:654321",
-                    "role": "primary",
                     "enabled": True,
                     "source": "manual_config",
                     "zone_id": "bathroom",
@@ -420,7 +418,6 @@ class TestRemoteBindingDiagnostics:
             "32:789012": [
                 {
                     "rem_id": "37:987654",
-                    "role": "secondary",
                     "enabled": True,
                 }
             ],
@@ -442,9 +439,9 @@ class TestRemoteBindingDiagnostics:
     def test_export_bindings_yaml_sorted(self, registry, hass):
         """Test export_bindings_yaml sorts FANs for consistency."""
         all_bindings = {
-            "32:333333": [{"rem_id": "37:333333", "role": "primary", "enabled": True}],
-            "32:111111": [{"rem_id": "37:111111", "role": "primary", "enabled": True}],
-            "32:222222": [{"rem_id": "37:222222", "role": "primary", "enabled": True}],
+            "32:333333": [{"rem_id": "37:333333", "enabled": True}],
+            "32:111111": [{"rem_id": "37:111111", "enabled": True}],
+            "32:222222": [{"rem_id": "37:222222", "enabled": True}],
         }
 
         with patch.object(registry, "list_bindings") as mock_list:
@@ -459,13 +456,13 @@ class TestRemoteBindingDiagnostics:
 
 
 class TestRemoteBindingRoles:
-    """Test RemoteBindingRegistry role support."""
+    """Test RemoteBindingRegistry role support (now simplified - all REMs equal)."""
 
-    def test_get_bindings_for_fan_by_role_primary(self, registry, hass):
-        """Test get_bindings_for_fan_by_role with primary filter."""
+    def test_get_bindings_for_fan_all(self, registry, hass):
+        """Test get_bindings_for_fan returns all enabled bindings."""
         bindings = [
-            {"rem_id": "37:111111", "role": "primary", "enabled": True},
-            {"rem_id": "37:222222", "role": "secondary", "enabled": True},
+            {"rem_id": "37:111111", "enabled": True},
+            {"rem_id": "37:222222", "enabled": True},
         ]
 
         with patch.object(registry, "_get_config_manager") as mock_get_manager:
@@ -473,17 +470,15 @@ class TestRemoteBindingRoles:
             mock_manager.get_fan_remote_bindings.return_value = bindings
             mock_get_manager.return_value = mock_manager
 
-            result = registry.get_bindings_for_fan_by_role("32:123456", role="primary")
+            result = registry.get_bindings_for_fan("32:123456")
 
-            assert len(result) == 1
-            assert result[0]["rem_id"] == "37:111111"
+            assert len(result) == 2
 
-    def test_get_bindings_for_fan_by_role_all(self, registry, hass):
-        """Test get_bindings_for_fan_by_role returns all enabled bindings."""
+    def test_get_bindings_for_fan_ignores_disabled(self, registry, hass):
+        """Test get_bindings_for_fan ignores disabled bindings."""
         bindings = [
-            {"rem_id": "37:111111", "role": "primary", "enabled": True},
-            {"rem_id": "37:222222", "role": "secondary", "enabled": True},
-            {"rem_id": "37:333333", "role": "boost_only", "enabled": True},
+            {"rem_id": "37:111111", "enabled": True},
+            {"rem_id": "37:222222", "enabled": False},
         ]
 
         with patch.object(registry, "_get_config_manager") as mock_get_manager:
@@ -491,23 +486,7 @@ class TestRemoteBindingRoles:
             mock_manager.get_fan_remote_bindings.return_value = bindings
             mock_get_manager.return_value = mock_manager
 
-            result = registry.get_bindings_for_fan_by_role("32:123456")
-
-            assert len(result) == 3
-
-    def test_get_bindings_for_fan_by_role_ignores_disabled(self, registry, hass):
-        """Test get_bindings_for_fan_by_role ignores disabled bindings."""
-        bindings = [
-            {"rem_id": "37:111111", "role": "primary", "enabled": True},
-            {"rem_id": "37:222222", "role": "secondary", "enabled": False},
-        ]
-
-        with patch.object(registry, "_get_config_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_manager.get_fan_remote_bindings.return_value = bindings
-            mock_get_manager.return_value = mock_manager
-
-            result = registry.get_bindings_for_fan_by_role("32:123456")
+            result = registry.get_bindings_for_fan("32:123456")
 
             assert len(result) == 1
             assert result[0]["rem_id"] == "37:111111"
@@ -515,8 +494,8 @@ class TestRemoteBindingRoles:
     def test_get_all_rem_ids_for_fan(self, registry, hass):
         """Test get_all_rem_ids_for_fan returns all REM IDs."""
         bindings = [
-            {"rem_id": "37:111111", "role": "primary", "enabled": True},
-            {"rem_id": "37:222222", "role": "secondary", "enabled": True},
+            {"rem_id": "37:111111", "enabled": True},
+            {"rem_id": "37:222222", "enabled": True},
         ]
 
         with patch.object(registry, "_get_config_manager") as mock_get_manager:
@@ -559,7 +538,7 @@ class TestBindingSuggestions:
         suggestion = result["suggestions_by_fan"]["32:123456"][0]
         assert suggestion["rem_id"] == "37:999999"
         assert suggestion["observed_count"] == 3
-        assert suggestion["suggested_role"] == "secondary"
+        # Note: suggested_role removed - all REMs are equal now
 
     def test_get_binding_suggestions_below_threshold(self, registry, hass):
         """Test get_binding_suggestions only suggests with 3+ observations."""
