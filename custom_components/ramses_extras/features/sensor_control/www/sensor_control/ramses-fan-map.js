@@ -15,6 +15,7 @@ class RamsesFanMap extends RamsesBaseCard {
     this._topology = null;
     this._remoteBindings = null;
     this._zoneCoordinatorState = null;
+    this._sensorControl = null;
     this._requiredEntitiesDynamic = {};
   }
 
@@ -75,6 +76,7 @@ class RamsesFanMap extends RamsesBaseCard {
       this._topology = null;
       this._remoteBindings = null;
       this._zoneCoordinatorState = null;
+      this._sensorControl = null;
       this._requiredEntitiesDynamic = {};
       this.clearPreviousStates();
 
@@ -102,6 +104,9 @@ class RamsesFanMap extends RamsesBaseCard {
       const co2 = sensors?.co2_entity;
       const actuatorEntity = actuator?.entity_id;
 
+      const inletValve = zone?.inlet_valve_entity;
+      const outletValve = zone?.outlet_valve_entity;
+
       if (typeof temperature === 'string' && temperature) {
         result[`zone_${zoneId}_temperature`] = temperature;
       }
@@ -113,6 +118,34 @@ class RamsesFanMap extends RamsesBaseCard {
       }
       if (typeof actuatorEntity === 'string' && actuatorEntity) {
         result[`zone_${zoneId}_actuator`] = actuatorEntity;
+      }
+
+      if (typeof inletValve === 'string' && inletValve) {
+        result[`zone_${zoneId}_inlet_valve`] = inletValve;
+      }
+      if (typeof outletValve === 'string' && outletValve) {
+        result[`zone_${zoneId}_outlet_valve`] = outletValve;
+      }
+    }
+
+    return result;
+  }
+
+  _buildRequiredEntitiesFromSensorControl(sensorControl) {
+    const result = {};
+    const sensors = this._asList(sensorControl?.area_sensors);
+
+    for (const s of sensors) {
+      const zoneId = String(s?.zone_id || '').trim();
+      const areaId = String(s?.area_id || '').trim();
+      const sourceId = String(s?.source_id || '').trim();
+      const keyBase = [zoneId, areaId, sourceId].filter((v) => v).join('_') || String(Math.random());
+
+      for (const k of ['temperature_entity', 'humidity_entity', 'co2_entity', 'co2_threshold_entity']) {
+        const entityId = s?.[k];
+        if (typeof entityId === 'string' && entityId) {
+          result[`area_sensor_${keyBase}_${k}`] = entityId;
+        }
       }
     }
 
@@ -154,11 +187,24 @@ class RamsesFanMap extends RamsesBaseCard {
         `fan_map_zone_coordinator_${deviceId}`
       );
 
+      const sensorControl = await this._sendWebSocketCommand(
+        {
+          type: 'ramses_extras/get_entity_mappings',
+          feature_id: 'sensor_control',
+          device_id: deviceId,
+        },
+        `fan_map_sensor_control_${deviceId}`
+      );
+
       this._topology = topology;
       this._remoteBindings = remoteBindings;
       this._zoneCoordinatorState = zoneCoordinatorState;
+      this._sensorControl = sensorControl;
 
-      this._requiredEntitiesDynamic = this._buildRequiredEntitiesFromTopology(topology);
+      this._requiredEntitiesDynamic = {
+        ...this._buildRequiredEntitiesFromTopology(topology),
+        ...this._buildRequiredEntitiesFromSensorControl(sensorControl),
+      };
       this.clearPreviousStates();
     } catch (error) {
       this._error = error;
@@ -221,6 +267,52 @@ class RamsesFanMap extends RamsesBaseCard {
     };
   }
 
+  _getCoverSummary(entityId) {
+    if (!entityId || typeof entityId !== 'string') {
+      return { text: '—', stateClass: 'muted', tooltip: '' };
+    }
+
+    const st = this._hass?.states?.[entityId];
+    if (!st) {
+      return { text: 'missing', stateClass: 'muted', tooltip: entityId };
+    }
+
+    const raw = st.state;
+    const unavailable = raw === 'unknown' || raw === 'unavailable';
+    if (unavailable) {
+      return { text: raw, stateClass: 'muted', tooltip: entityId };
+    }
+
+    const pos = st.attributes?.current_position;
+    const valueText = typeof pos === 'number' ? `${pos} %` : String(raw);
+    const lastChanged = st.last_changed ? `last_changed: ${st.last_changed}` : '';
+
+    return {
+      text: valueText,
+      stateClass: 'ok',
+      tooltip: [entityId, lastChanged].filter((v) => v).join('\n'),
+    };
+  }
+
+  _renderCoverLine(label, entityId) {
+    if (!entityId || typeof entityId !== 'string') {
+      return '';
+    }
+    const summary = this._getCoverSummary(entityId);
+    const labelEsc = this._escapeHtml(label);
+    const entityEsc = this._escapeHtml(entityId);
+    const valueEsc = this._escapeHtml(summary.text);
+    const tooltipEsc = this._escapeHtml(summary.tooltip);
+
+    return `
+      <div class="sensor-line" title="${tooltipEsc}">
+        <span class="sensor-k">${labelEsc}</span>
+        <span class="sensor-v ${summary.stateClass}">${valueEsc}</span>
+        <span class="sensor-e"><code>${entityEsc}</code></span>
+      </div>
+    `;
+  }
+
   _renderEntityLine(label, entityId) {
     if (!entityId || typeof entityId !== 'string') {
       return '';
@@ -240,6 +332,112 @@ class RamsesFanMap extends RamsesBaseCard {
     `;
   }
 
+  _renderAreaSensorsForZone(zone) {
+    const zoneId = String(zone?.zone_id || '').trim();
+    const areas = Array.isArray(zone?.areas) ? zone.areas : null;
+    const sensors = this._asList(this._sensorControl?.area_sensors);
+
+    const filtered = sensors.filter((s) => {
+      if (!s || typeof s !== 'object') {
+        return false;
+      }
+      if (areas && areas.length) {
+        return areas.includes(s.area_id);
+      }
+      return String(s.zone_id || '').trim() === zoneId;
+    });
+
+    if (!filtered.length) {
+      return '<span class="muted">—</span>';
+    }
+
+    const rows = filtered.map((s) => {
+      const areaId = this._escapeHtml(s?.area_id || '');
+      const sourceId = this._escapeHtml(s?.source_id || '');
+      const enabled = s?.enabled === false ? 'no' : 'yes';
+
+      const tempEntity = s?.temperature_entity;
+      const humEntity = s?.humidity_entity;
+      const co2Entity = s?.co2_entity;
+
+      const lines = [
+        this._renderEntityLine('T', tempEntity),
+        this._renderEntityLine('H', humEntity),
+        this._renderEntityLine('CO₂', co2Entity),
+      ].filter((v) => v).join('');
+
+      return `
+        <div class="area-sensor-block">
+          <div class="area-sensor-meta">
+            <span><b>${areaId || 'area'}</b></span>
+            <span class="muted">src: ${sourceId || '—'}</span>
+            <span class="muted">en: ${this._escapeHtml(enabled)}</span>
+          </div>
+          ${lines || '<span class="muted">—</span>'}
+        </div>
+      `;
+    }).join('');
+
+    return `<div class="area-sensors">${rows}</div>`;
+  }
+
+  _renderAreaSensorsAll() {
+    const sensors = this._asList(this._sensorControl?.area_sensors);
+    if (!sensors.length) {
+      return '<div class="placeholder">No area sensors configured</div>';
+    }
+
+    const sorted = [...sensors].sort((a, b) => {
+      const az = String(a?.zone_id || '');
+      const bz = String(b?.zone_id || '');
+      if (az !== bz) return az.localeCompare(bz);
+      const aa = String(a?.area_id || '');
+      const ba = String(b?.area_id || '');
+      if (aa !== ba) return aa.localeCompare(ba);
+      return String(a?.source_id || '').localeCompare(String(b?.source_id || ''));
+    });
+
+    return `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Zone</th>
+            <th>Area</th>
+            <th>Source</th>
+            <th>Enabled</th>
+            <th>Temperature</th>
+            <th>Humidity</th>
+            <th>CO₂</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sorted.map((s) => {
+            const zoneId = this._escapeHtml(s?.zone_id || '');
+            const areaId = this._escapeHtml(s?.area_id || '');
+            const sourceId = this._escapeHtml(s?.source_id || '');
+            const enabled = s?.enabled === false ? 'no' : 'yes';
+
+            const t = this._getEntitySummary(s?.temperature_entity)?.text;
+            const h = this._getEntitySummary(s?.humidity_entity)?.text;
+            const c = this._getEntitySummary(s?.co2_entity)?.text;
+
+            return `
+              <tr>
+                <td><code>${zoneId}</code></td>
+                <td>${areaId}</td>
+                <td>${sourceId}</td>
+                <td>${this._escapeHtml(enabled)}</td>
+                <td>${this._escapeHtml(t || '—')}</td>
+                <td>${this._escapeHtml(h || '—')}</td>
+                <td>${this._escapeHtml(c || '—')}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
   _renderTopology() {
     const zones = this._asList(this._topology?.zones);
     const remoteBindings = this._asList(this._topology?.remote_bindings);
@@ -254,40 +452,31 @@ class RamsesFanMap extends RamsesBaseCard {
             <thead>
               <tr>
                 <th>Zone</th>
-                <th>Label</th>
-                <th>Source</th>
-                <th>Sensors</th>
-                <th>Actuator</th>
+                <th>Type</th>
+                <th>Valves</th>
+                <th>Areas / Area sensors</th>
               </tr>
             </thead>
             <tbody>
               ${zones.map((zone) => {
                 const zoneId = this._escapeHtml(zone?.zone_id || '');
-                const label = this._escapeHtml(zone?.label || '');
-                const source = this._escapeHtml(zone?.source_type || '');
+                const type = this._escapeHtml(zone?.type || zone?.source_type || '');
+                const inlet = zone?.inlet_valve_entity;
+                const outlet = zone?.outlet_valve_entity;
 
-                const sensors = this._asObject(zone?.sensors);
-                const tempEntity = sensors?.temperature_entity;
-                const humEntity = sensors?.humidity_entity;
-                const co2Entity = sensors?.co2_entity;
-                const sensorsText = [
-                  this._renderEntityLine('T', tempEntity),
-                  this._renderEntityLine('H', humEntity),
-                  this._renderEntityLine('CO₂', co2Entity),
-                ].filter((v) => v).join('');
+                const valvesText = [
+                  this._renderCoverLine('in', inlet),
+                  this._renderCoverLine('out', outlet),
+                ].filter((v) => v).join('') || '<span class="muted">—</span>';
 
-                const actuator = this._asObject(zone?.actuator);
-                const actuatorEntity = this._escapeHtml(actuator?.entity_id || '');
-                const actuatorState = actuator?.entity_id ? this._getEntitySummary(actuator?.entity_id) : null;
-                const actuatorStateText = actuatorState ? this._escapeHtml(actuatorState.text) : '';
+                const areaSensorsText = this._renderAreaSensorsForZone(zone);
 
                 return `
                   <tr>
                     <td><code>${zoneId}</code></td>
-                    <td>${label}</td>
-                    <td>${source}</td>
-                    <td>${sensorsText || '<span class="muted">—</span>'}</td>
-                    <td class="small">${actuatorEntity ? `${actuatorStateText ? `${actuatorStateText}<br>` : ''}<code>${actuatorEntity}</code>` : '—'}</td>
+                    <td class="small">${type || '—'}</td>
+                    <td>${valvesText}</td>
+                    <td>${areaSensorsText}</td>
                   </tr>
                 `;
               }).join('')}
@@ -312,9 +501,14 @@ class RamsesFanMap extends RamsesBaseCard {
       <div class="kv">
         <div class="kv-row"><div class="kv-k">Configured REM(s)</div><div class="kv-v">${configuredRemsText}</div></div>
         <div class="kv-row"><div class="kv-k">Runtime bound REM</div><div class="kv-v">${runtimeRemText}</div></div>
+        <div class="kv-row"><div class="kv-k">Area sensors</div><div class="kv-v">${this._escapeHtml(String(this._asList(this._sensorControl?.area_sensors).length))}</div></div>
       </div>
       ${remDetails}
       ${zonesHtml}
+      <details class="details">
+        <summary>All area sensors</summary>
+        ${this._renderAreaSensorsAll()}
+      </details>
     `;
   }
 
@@ -582,6 +776,26 @@ class RamsesFanMap extends RamsesBaseCard {
           justify-self: start;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+
+        .area-sensors {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 10px;
+        }
+
+        .area-sensor-block {
+          border: 1px solid var(--divider-color);
+          border-radius: 6px;
+          padding: 8px;
+        }
+
+        .area-sensor-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          font-size: 12px;
+          margin-bottom: 6px;
         }
 
         .details {
