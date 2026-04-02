@@ -19,11 +19,8 @@ medium: 41.63 l/s (at 50%)
 high: 83 l/s (at 100%)
 
 todo:
-- make humidity control settings persistent (after reloads), i only see 2 settings, that are not the same as the entities involved:
-    humidity_control:
-      '32_153289':
-        absolute_humidity_offset: 0.2
-        relative_humidity_maximum: 66.0
+- edit zone_id -> refactor on area and REMs and config and yaml...
+- press REM button -> show which REM is pressed, and adapt valves
 
 - changing test bench yes -> auto let the valves stop at 14%, or 0%...is this a timed control by extras ? or is this a shelly problem ?
 
@@ -48,87 +45,3 @@ These messages can be retrieved from _rf docs and stored in a dbase, with option
 
 a test feature can then iterate over these msgs and send them to a selectable sim device
 to check responses and find problems. Also can test flooding, etc.
-
-ramses_extras:
-  schema_version: 1
-  features:
-    humidity_control:
-      '32_153289':
-        absolute_humidity_offset: 0.2
-        relative_humidity_maximum: 66.0
-    remote_binding:
-      FANs:
-        32:153289:
-          REMs:
-          - area_id: potstal
-            enabled: true
-            rem_id: 37:169161
-            zone_id: zone 1 + 2a
-          - area_id: potstal
-            enabled: true
-            rem_id: 29:176861
-            zone_id: zone 1 + 2a
-    sensor_control:
-      devices:
-        32:153289:
-          abs_humidity_inputs: {}
-          area_sensors:
-          - area_co2_enabled: true
-            area_id: potstal
-            co2_entity: sensor.37_126776_co2_level
-            co2_threshold: 800
-            co2_threshold_entity: ''
-            enabled: true
-            humidity_entity: input_number.humid_helper
-            spike_rise_percent: 5.0
-            spike_window_minutes: 3
-            temperature_entity: input_number.temp_helper
-            trigger_on_high_humidity: true
-            zone_id: zone 1 + 2a
-          - area_co2_enabled: true
-            area_id: eetkamer
-            co2_entity: input_number.co2_helper_2
-            co2_threshold: 800
-            co2_threshold_entity: ''
-            enabled: true
-            humidity_entity: input_number.humid_helper_2
-            spike_rise_percent: 10.0
-            spike_window_minutes: 3
-            temperature_entity: input_number.temp_helper_2
-            trigger_on_high_humidity: true
-            zone_id: zone 2 + 3
-          sources: {}
-    zones:
-      FANs:
-        32:153289:
-        - enabled: true
-          inlet_valve_entity: cover.klep_3_shelly2pmg3_48f6eea9fc80
-          max_position: 100
-          min_position: 10
-          outlet_valve_entity: cover.klep_4_shelly2pmg3_48f6eead064c
-          type: paired_valves
-          zone_id: zone 2 + 3
-        - enabled: true
-          inlet_valve_entity: cover.klep_1_shelly2pmg3_48f6eeabcf68
-          max_position: 100
-          min_position: 10
-          outlet_valve_entity: cover.klep_2_shelly2pmg3_48f6eeaa00f4
-          type: paired_valves
-          zone_id: zone 1 + 2a
-  framework:
-    debug_levels:
-      backend: debug
-      frontend: info
-  enabled_features:
-    co2_control: true
-    default: true
-    hello_world: false
-    humidity_control: true
-    hvac_fan_card: true
-    ramses_debugger: true
-    sensor_control: true
-  device_feature_matrix:
-    32:153289:
-      co2_control: true
-      default: true
-      humidity_control: true
