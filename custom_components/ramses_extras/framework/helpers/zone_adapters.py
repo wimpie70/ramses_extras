@@ -644,13 +644,46 @@ class ZoneAdapterRegistry:
         if zone is None:
             return None
 
+        actuator_raw = zone.get("actuator")
+        actuator = actuator_raw if isinstance(actuator_raw, dict) else {}
+        capabilities_raw = zone.get("capabilities")
+        capabilities = capabilities_raw if isinstance(capabilities_raw, dict) else {}
+
         # Build adapter config - use overrides if provided, fall back to zone config
-        source_type = zone_type or zone.get("source_type", "custom_valve")
-        actuator = zone.get("actuator", {})
-        capabilities = zone.get("capabilities", {})
+        source_type = (
+            zone_type or zone.get("type") or zone.get("source_type") or "custom_valve"
+        )
+        if not isinstance(source_type, str) or not source_type.strip():
+            source_type = "custom_valve"
+        source_type = source_type.strip()
+
+        entity_id: str | None = None
+        raw_entity_id = actuator.get("entity_id")
+        if isinstance(raw_entity_id, str) and raw_entity_id.strip():
+            entity_id = raw_entity_id.strip()
+
+        if entity_id is None and source_type in {"custom_valve", "shelly_2pm_gen3"}:
+            raw_position_entity = zone.get("position_entity")
+            if isinstance(raw_position_entity, str) and raw_position_entity.strip():
+                entity_id = raw_position_entity.strip()
+
+        min_position_raw = zone.get("min_position")
+        min_position = (
+            int(min_position_raw)
+            if isinstance(min_position_raw, int)
+            else int(capabilities.get("min_position", 0))
+        )
+
+        max_position_raw = zone.get("max_position")
+        max_position = (
+            int(max_position_raw)
+            if isinstance(max_position_raw, int)
+            else int(capabilities.get("max_position", 100))
+        )
 
         # For paired_valves, pass inlet/outlet entities as extra_config
-        extra_config = zone.get("extra_config", {})
+        extra_config_raw = zone.get("extra_config")
+        extra_config = extra_config_raw if isinstance(extra_config_raw, dict) else {}
         if source_type == "paired_valves":
             # Use overrides if provided, otherwise fall back to zone config
             inlet_valve = inlet_entity or zone.get("inlet_valve_entity")
@@ -661,13 +694,18 @@ class ZoneAdapterRegistry:
                 "outlet_valve_entity": outlet_valve,
             }
 
+        if source_type == "orcon_native":
+            native_zone_id = zone.get("native_zone_id")
+            if isinstance(native_zone_id, str) and native_zone_id.strip():
+                extra_config = {**extra_config, "zone_index": native_zone_id.strip()}
+
         config = ZoneAdapterConfig(
             zone_id=zone_id,
             fan_id=fan_id,
             source_type=source_type,
-            entity_id=actuator.get("entity_id"),
-            min_position=capabilities.get("min_position", 0),
-            max_position=capabilities.get("max_position", 100),
+            entity_id=entity_id,
+            min_position=min_position,
+            max_position=max_position,
             enabled=zone.get("enabled", True),
             extra_config=extra_config,
         )

@@ -21,6 +21,7 @@ class RamsesFanMap extends RamsesBaseCard {
     this._testBenchArmed = false;
     this._testBenchLastAction = null;
     this._unsubTestBenchEvents = null;
+    this._topologyRefreshInterval = null;
   }
 
   async _refreshCoordinatorState() {
@@ -81,6 +82,9 @@ class RamsesFanMap extends RamsesBaseCard {
     }).catch((err) => {
       logger.warn('RamsesFanMap: Failed to subscribe to test bench events', err);
     });
+
+    // Start polling topology for REM activity updates
+    this._startTopologyRefresh();
   }
 
   _onDisconnected() {
@@ -91,6 +95,43 @@ class RamsesFanMap extends RamsesBaseCard {
         logger.warn('RamsesFanMap: Failed to unsubscribe test bench events', err);
       }
       this._unsubTestBenchEvents = null;
+    }
+    this._stopTopologyRefresh();
+  }
+
+  _startTopologyRefresh() {
+    this._stopTopologyRefresh();
+    // Poll topology every 3 seconds to show REM activity updates
+    this._topologyRefreshInterval = window.setInterval(() => {
+      this._refreshTopologyOnly();
+    }, 3000);
+  }
+
+  _stopTopologyRefresh() {
+    if (this._topologyRefreshInterval) {
+      window.clearInterval(this._topologyRefreshInterval);
+      this._topologyRefreshInterval = null;
+    }
+  }
+
+  async _refreshTopologyOnly() {
+    const deviceId = this._config?.device_id;
+    if (!this._hass || !deviceId || this._loading) {
+      return;
+    }
+    try {
+      const topology = await this._sendWebSocketCommand(
+        {
+          type: 'ramses_extras/get_fan_config_associations',
+          device_id: deviceId,
+        },
+        `fan_map_topology_${deviceId}`
+      );
+      this._topology = topology;
+      this.clearUpdateThrottle();
+      this._scheduleRender(true);
+    } catch (_err) {
+      // Silent fail - topology is not critical
     }
   }
 
@@ -592,6 +633,9 @@ class RamsesFanMap extends RamsesBaseCard {
     const remoteBindings = this._asList(this._topology?.remote_bindings);
     const remoteBindingIds = this._asList(this._topology?.remote_binding_ids);
 
+    const remoteActivity = this._asObject(this._topology?.remote_activity);
+    const remoteActivityActive = this._topology?.remote_activity_active === true;
+
     const runtimeRemId = this._remoteBindings?.rem_id;
     const runtimeRemIdText = runtimeRemId ? this._escapeHtml(runtimeRemId) : '';
 
@@ -603,7 +647,7 @@ class RamsesFanMap extends RamsesBaseCard {
                 <th>Zone</th>
                 <th>Type</th>
                 <th>Valves</th>
-                <th>Areas / Area sensors</th>
+                <th>Areas / Area sensors / REMs</th>
               </tr>
             </thead>
             <tbody>
@@ -620,12 +664,37 @@ class RamsesFanMap extends RamsesBaseCard {
 
                 const areaSensorsText = this._renderAreaSensorsForZone(zone);
 
+                const rems = this._asList(zone?.rems);
+                const remsText = rems.length
+                  ? `
+                      <div class="rems">
+                        ${rems.map((rem) => {
+                          const remId = String(rem?.rem_id || '').trim();
+                          const enabled = rem?.enabled === false ? 'no' : 'yes';
+                          const isLast = remoteActivityActive
+                            && remId
+                            && remId === String(remoteActivity?.rem_id || '');
+                          const cmd = isLast ? String(remoteActivity?.command || '') : '';
+                          const pillClass = isLast ? 'pill pill-on' : 'pill pill-off';
+                          const pillText = isLast ? (cmd || 'last') : '';
+
+                          const label = remId ? this._escapeHtml(remId) : 'unknown';
+                          const cmdText = pillText ? ` <span class="${pillClass}">${this._escapeHtml(pillText)}</span>` : '';
+                          const enabledText = enabled === 'yes' ? '' : ' <span class="muted">(disabled)</span>';
+                          return `<div class="small"><code>${label}</code>${cmdText}${enabledText}</div>`;
+                        }).join('')}
+                      </div>
+                    `
+                  : '';
+
+                const combined = [areaSensorsText, remsText].filter((v) => v).join('');
+
                 return `
                   <tr>
                     <td><code>${zoneId}</code></td>
                     <td class="small">${type || '—'}</td>
                     <td>${valvesText}</td>
-                    <td>${areaSensorsText}</td>
+                    <td>${combined || '<span class="muted">—</span>'}</td>
                   </tr>
                 `;
               }).join('')}

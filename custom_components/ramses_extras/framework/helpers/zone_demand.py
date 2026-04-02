@@ -25,6 +25,7 @@ class DemandSource(Enum):
     HUMIDITY = auto()
     CO2 = auto()
     MANUAL = auto()
+    REM = auto()
     SCHEDULE = auto()
     OTHER = auto()
 
