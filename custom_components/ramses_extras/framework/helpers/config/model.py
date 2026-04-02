@@ -10,6 +10,28 @@ CONFIG_FEATURES_KEY = "features"
 CONFIG_FANS_KEY = "FANs"
 CONFIG_REMS_KEY = "REMs"
 CONFIG_DEVICES_KEY = "devices"
+CONFIG_ENABLED_FEATURES_KEY = "enabled_features"
+CONFIG_DEVICE_FEATURE_MATRIX_KEY = "device_feature_matrix"
+CONFIG_FRAMEWORK_KEY = "framework"
+CONFIG_RAMSES_DEBUGGER_KEY = "ramses_debugger"
+CONFIG_DEBUG_LEVELS_KEY = "debug_levels"
+
+DEBUG_LEVELS_FRAMEWORK_OPTION_MAP: dict[str, str] = {
+    "frontend_log_level": "frontend",
+    "log_level": "backend",
+}
+
+RAMSES_DEBUGGER_FRAMEWORK_OPTION_MAP: dict[str, str] = {
+    "ramses_debugger_log_path": "log_path",
+    "ramses_debugger_packet_log_path": "packet_log_path",
+    "ramses_debugger_cache_ttl_ms": "cache_ttl_ms",
+    "ramses_debugger_cache_max_entries": "cache_max_entries",
+    "ramses_debugger_max_flows": "max_flows",
+    "ramses_debugger_buffer_max_global": "buffer_max_global",
+    "ramses_debugger_buffer_max_per_flow": "buffer_max_per_flow",
+    "ramses_debugger_buffer_max_flows": "buffer_max_flows",
+    "ramses_debugger_default_poll_ms": "default_poll_ms",
+}
 SENSOR_CONTROL_SOURCES_KEY = "sources"
 SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY = "abs_humidity_inputs"
 SENSOR_CONTROL_AREA_SENSORS_KEY = "area_sensors"

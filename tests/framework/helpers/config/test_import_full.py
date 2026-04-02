@@ -452,7 +452,7 @@ ramses_extras:
             entity_id: sensor.humidity
       area_sensors:
         "32:153289":
-          - source_id: bathroom_sensor
+          - area_id: bathroom_sensor
             temperature_entity: sensor.bathroom_temp
             humidity_entity: sensor.bathroom_hum
 """
@@ -479,8 +479,8 @@ ramses_extras:
         parse_full_config_yaml(yaml_content)
 
 
-def test_validate_sensor_control_schema_catches_missing_source_id() -> None:
-    """Test that schema validation catches missing source_id early."""
+def test_validate_sensor_control_schema_accepts_missing_area_id_legacy() -> None:
+    """Test that schema validation accepts missing area_id through legacy schema."""
     yaml_content = """
 ramses_extras:
   schema_version: 1
@@ -490,8 +490,9 @@ ramses_extras:
         "32:153289":
           - temperature_entity: sensor.temp
 """
-    with pytest.raises(ValueError, match="Schema validation"):
-        parse_full_config_yaml(yaml_content)
+    # Should not raise - legacy schema allows missing area_id
+    config = parse_full_config_yaml(yaml_content)
+    assert config is not None
 
 
 # =============================================================================
@@ -743,8 +744,7 @@ ramses_extras:
                 entity_id: sensor.outdoor_hum
       area_sensors:
         "32:153289":
-          - source_id: bathroom
-            area_id: Bathroom
+          - area_id: bathroom
             zone_id: bathroom
             temperature_entity: sensor.bathroom_temp
             humidity_entity: sensor.bathroom_hum

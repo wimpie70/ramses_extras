@@ -45,37 +45,13 @@ def _device_key(device_id: str) -> str:
     return device_id.replace(":", "_")
 
 
-def _slugify_area_sensor_id(label: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", label.strip().lower())
-    slug = slug.strip("_")
-    return slug or "area_sensor"
-
-
-def _unique_area_sensor_id(
-    label: str, existing_area_sensors: list[dict[str, Any]]
-) -> str:
-    base = _slugify_area_sensor_id(label)
-    existing_ids = {
-        str(item.get("source_id"))
-        for item in existing_area_sensors
-        if isinstance(item, dict) and item.get("source_id")
-    }
-    if base not in existing_ids:
-        return base
-
-    suffix = 2
-    while f"{base}_{suffix}" in existing_ids:
-        suffix += 1
-    return f"{base}_{suffix}"
-
-
 def _get_area_sensor_by_id(
-    area_sensors: list[dict[str, Any]], source_id: str | None
+    area_sensors: list[dict[str, Any]], area_id: str | None
 ) -> dict[str, Any] | None:
-    if not source_id:
+    if not area_id:
         return None
     for item in area_sensors:
-        if isinstance(item, dict) and str(item.get("source_id") or "") == source_id:
+        if isinstance(item, dict) and str(item.get("area_id") or "") == area_id:
             return item
     return None
 
@@ -174,17 +150,15 @@ def _persist_zones_section(
 
 
 def _describe_area_sensor(area_sensor: dict[str, Any]) -> str:
-    area_id = str(
-        area_sensor.get("area_id") or area_sensor.get("source_id") or "Unnamed"
-    )
+    area_id = str(area_sensor.get("area_id") or "Unnamed")
     temp_entity = str(area_sensor.get("temperature_entity") or "missing")
     humidity_entity = str(area_sensor.get("humidity_entity") or "missing")
+    co2_entity = str(area_sensor.get("co2_entity") or "")
     spike_rise = area_sensor.get("spike_rise_percent")
     spike_window = area_sensor.get("spike_window_minutes")
     trigger_on_high_humidity = bool(area_sensor.get("trigger_on_high_humidity", False))
     enabled = bool(area_sensor.get("enabled", True))
     area_co2_enabled = bool(area_sensor.get("area_co2_enabled", False))
-    co2_entity = str(area_sensor.get("co2_entity") or "missing")
     co2_threshold_entity = str(area_sensor.get("co2_threshold_entity") or "").strip()
     co2_threshold = area_sensor.get("co2_threshold", 1000)
 
@@ -234,7 +208,17 @@ def _describe_remote_binding(rem: dict[str, Any]) -> str:
 def _validate_area_sensor_entries(area_sensors: Any) -> list[dict[str, Any]]:
     if not isinstance(area_sensors, list):
         return []
-    return [item for item in area_sensors if isinstance(item, dict)]
+    normalized: list[dict[str, Any]] = []
+    for item in area_sensors:
+        if not isinstance(item, dict):
+            continue
+        area_id = str(item.get("area_id") or "").strip()
+        if not area_id:
+            continue
+        cleaned = dict(item)
+        cleaned["area_id"] = area_id
+        normalized.append(cleaned)
+    return normalized
 
 
 def _unique_zone_id(label: str, existing_zones: list[dict[str, Any]]) -> str:
@@ -728,7 +712,7 @@ async def async_step_sensor_control_config(
                     device_area_sensors = [
                         item
                         for item in device_area_sensors
-                        if str(item.get("source_id") or "") != delete_area_id
+                        if str(item.get("area_id") or "") != delete_area_id
                     ]
                     device_section = deepcopy(devices_config.get(norm_device_id) or {})
                     device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
@@ -762,22 +746,16 @@ async def async_step_sensor_control_config(
         area_sensor_descriptions = []
         area_sensor_select_options = []
         for area_sensor in device_area_sensors:
-            source_id = str(area_sensor.get("source_id") or "")
             area_id = str(area_sensor.get("area_id") or "")
-            # Skip entries with neither source_id nor area_id
-            if not source_id and not area_id:
+            if not area_id:
                 continue
-            # Generate source_id from area_id if missing (legacy data support)
-            if not source_id and area_id:
-                source_id = _unique_area_sensor_id(area_id, device_area_sensors)
             area_sensor_descriptions.append(_describe_area_sensor(area_sensor))
-            display_label = area_id if area_id else source_id
             area_sensor_select_options.append(
                 selector.SelectOptionDict(
-                    value=source_id,
+                    value=area_id,
                     label=labels.get(
                         "area_sensor_prefix", "Area sensor: {label}"
-                    ).format(label=display_label),
+                    ).format(label=area_id),
                 )
             )
 
@@ -838,9 +816,12 @@ async def async_step_sensor_control_config(
         config_fan = info_texts.get(
             "configuring_for_fan", "Configuring for FAN: `{device_id}`"
         ).format(device_id=selected_device_id)
-        existing = info_texts.get("existing_area_sensors", "Existing area sensors:")
+        existing_label = info_texts.get(
+            "existing_area_sensors", "Existing area sensors:"
+        )
         info_text = (
-            f"🧭 **{title}**\n\n{config_fan}\n\n**{existing}**\n{area_sensors_info}"
+            f"🧭 **{title}**\n\n{config_fan}\n\n"
+            f"**{existing_label}**\n{area_sensors_info}"
         )
 
         return flow.async_show_form(
@@ -850,12 +831,12 @@ async def async_step_sensor_control_config(
         )
 
     if group_stage == "area_sensors_edit":
-        # Get the editing_source_id being edited (for finding the sensor)
-        editing_source_id: str | None = getattr(
+        # Get the area_id being edited (for finding the sensor)
+        editing_area_id: str | None = getattr(
             flow, "_sensor_control_area_sensor_id", None
         )
         selected_area_sensor = _get_area_sensor_by_id(
-            device_area_sensors, editing_source_id
+            device_area_sensors, editing_area_id
         )
         # Store original area_id for rename detection on save
         if selected_area_sensor and selected_area_sensor.get("area_id"):
@@ -884,106 +865,6 @@ async def async_step_sensor_control_config(
             "CO2 threshold: use entity for dynamic value (e.g., input_number), "
             "or just set the number as static fallback.",
         )
-
-        if user_input is not None:
-            area_id = str(user_input.get("area_id") or "").strip()
-            editing_source_id = (
-                str(selected_area_sensor.get("source_id"))
-                if selected_area_sensor and selected_area_sensor.get("source_id")
-                else _unique_area_sensor_id(area_id, device_area_sensors)
-            )
-
-            updated_area_sensor: dict[str, Any] = {
-                "source_id": editing_source_id,
-                "area_id": area_id,
-                "enabled": bool(user_input.get("area_sensor_enabled", True)),
-                "temperature_entity": str(user_input.get("temperature_entity") or ""),
-                "humidity_entity": str(user_input.get("humidity_entity") or ""),
-                "trigger_on_high_humidity": bool(
-                    user_input.get("trigger_on_high_humidity", False)
-                ),
-                "spike_rise_percent": float(user_input.get("spike_rise_percent") or 0),
-                "spike_window_minutes": int(
-                    user_input.get("spike_window_minutes") or 1
-                ),
-                "area_co2_enabled": bool(user_input.get("area_co2_enabled", False)),
-                "co2_entity": str(user_input.get("co2_entity") or ""),
-                "co2_threshold_entity": str(
-                    user_input.get("co2_threshold_entity") or ""
-                ).strip(),
-                "co2_threshold": int(user_input.get("co2_threshold") or 1000),
-            }
-            zone_id = str(user_input.get("zone_id") or "").strip()
-            if zone_id:
-                updated_area_sensor["zone_id"] = zone_id
-            area_id = str(user_input.get("area_id") or "").strip()
-            if area_id:
-                updated_area_sensor["area_id"] = area_id
-
-            replaced = False
-            new_area_sensors: list[dict[str, Any]] = []
-            for item in device_area_sensors:
-                if str(item.get("source_id") or "") == editing_source_id:
-                    new_area_sensors.append(updated_area_sensor)
-                    replaced = True
-                else:
-                    new_area_sensors.append(item)
-            if not replaced:
-                new_area_sensors.append(updated_area_sensor)
-
-            device_section = deepcopy(devices_config.get(norm_device_id) or {})
-            device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
-            device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = device_abs_inputs
-            device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = new_area_sensors
-            devices_config[norm_device_id] = device_section
-            sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
-
-            # Cascade area_id rename to REM bindings if changed
-            original_area_id: str | None = getattr(
-                flow, "_sensor_control_original_area_id", None
-            )
-            if original_area_id and area_id and original_area_id != area_id:
-                remote_binding_section = get_migrated_feature_section(
-                    options, FEATURE_REMOTE_BINDING
-                )
-                fan_rems = get_remote_binding_rems(
-                    remote_binding_section, selected_device_id
-                )
-                updated_zone_rems: list[dict[str, Any]] = []
-                rem_updated = False
-                for rem in fan_rems:
-                    rem_area_id = str(rem.get("area_id") or "")
-                    rem_id = str(rem.get("rem_id") or "")
-                    if rem_area_id == original_area_id:
-                        updated_rem = dict(rem)
-                        updated_rem["area_id"] = area_id
-                        updated_zone_rems.append(updated_rem)
-                        rem_updated = True
-                    else:
-                        updated_zone_rems.append(rem)
-                if rem_updated:
-                    from ...framework.helpers.config.model import set_fan_section
-
-                    set_fan_section(
-                        remote_binding_section,
-                        selected_device_id,
-                        {"REMs": updated_zone_rems},
-                    )
-                    options = dict(options)
-                    options[FEATURE_REMOTE_BINDING] = remote_binding_section
-                    _persist_remote_binding_section(
-                        flow, options, remote_binding_section
-                    )
-
-            _persist_sensor_control_section(
-                flow,
-                options,
-                sensor_control_section,
-            )
-            flow._sensor_control_area_sensor_id = None
-            flow._sensor_control_original_area_id = None
-            flow._sensor_control_group_stage = "area_sensors_menu"
-            return await async_step_sensor_control_config(flow, None)
 
         area_id_default = (
             str(selected_area_sensor.get("area_id"))
@@ -1015,6 +896,125 @@ async def async_step_sensor_control_config(
             if selected_area_sensor and selected_area_sensor.get("co2_threshold_entity")
             else None
         )
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            area_id = str(user_input.get("area_id") or "").strip()
+            if not area_id:
+                errors["area_id"] = "Area ID is required"
+            elif (
+                selected_area_sensor is None
+                or str(selected_area_sensor.get("area_id") or "") != area_id
+            ):
+                existing = next(
+                    (
+                        item
+                        for item in device_area_sensors
+                        if str(item.get("area_id") or "").strip().lower()
+                        == area_id.lower()
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    errors["area_id"] = "Area ID already exists for this FAN"
+
+            updated_area_sensor: dict[str, Any] = {
+                "area_id": area_id,
+                "enabled": bool(user_input.get("area_sensor_enabled", True)),
+                "temperature_entity": str(user_input.get("temperature_entity") or ""),
+                "humidity_entity": str(user_input.get("humidity_entity") or ""),
+                "trigger_on_high_humidity": bool(
+                    user_input.get("trigger_on_high_humidity", False)
+                ),
+                "spike_rise_percent": float(user_input.get("spike_rise_percent") or 0),
+                "spike_window_minutes": int(
+                    user_input.get("spike_window_minutes") or 1
+                ),
+                "area_co2_enabled": bool(user_input.get("area_co2_enabled", False)),
+                "co2_entity": str(user_input.get("co2_entity") or ""),
+                "co2_threshold_entity": str(
+                    user_input.get("co2_threshold_entity") or ""
+                ).strip(),
+                "co2_threshold": int(user_input.get("co2_threshold") or 1000),
+            }
+            zone_id = str(user_input.get("zone_id") or "").strip()
+            if zone_id:
+                updated_area_sensor["zone_id"] = zone_id
+
+            if errors:
+                area_id_default = area_id
+                zone_default = zone_id
+                temp_default = str(user_input.get("temperature_entity") or "") or None
+                humidity_default = str(user_input.get("humidity_entity") or "") or None
+                co2_default = str(user_input.get("co2_entity") or "") or None
+                co2_threshold_entity_default = (
+                    str(user_input.get("co2_threshold_entity") or "").strip() or None
+                )
+            else:
+                replaced = False
+                new_area_sensors: list[dict[str, Any]] = []
+                for item in device_area_sensors:
+                    if str(item.get("area_id") or "") == (editing_area_id or ""):
+                        new_area_sensors.append(updated_area_sensor)
+                        replaced = True
+                    else:
+                        new_area_sensors.append(item)
+                if not replaced:
+                    new_area_sensors.append(updated_area_sensor)
+
+                device_section = deepcopy(devices_config.get(norm_device_id) or {})
+                device_section[SENSOR_CONTROL_SOURCES_KEY] = device_sources
+                device_section[SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY] = (
+                    device_abs_inputs
+                )
+                device_section[SENSOR_CONTROL_AREA_SENSORS_KEY] = new_area_sensors
+                devices_config[norm_device_id] = device_section
+                sensor_control_section[CONFIG_DEVICES_KEY] = devices_config
+
+                # Cascade area_id rename to REM bindings if changed
+                original_area_id: str | None = getattr(
+                    flow, "_sensor_control_original_area_id", None
+                )
+                if original_area_id and area_id and original_area_id != area_id:
+                    remote_binding_section = get_migrated_feature_section(
+                        options, FEATURE_REMOTE_BINDING
+                    )
+                    fan_rems = get_remote_binding_rems(
+                        remote_binding_section, selected_device_id
+                    )
+                    updated_zone_rems: list[dict[str, Any]] = []
+                    rem_updated = False
+                    for rem in fan_rems:
+                        rem_area_id = str(rem.get("area_id") or "")
+                        if rem_area_id == original_area_id:
+                            updated_rem = dict(rem)
+                            updated_rem["area_id"] = area_id
+                            updated_zone_rems.append(updated_rem)
+                            rem_updated = True
+                        else:
+                            updated_zone_rems.append(rem)
+                    if rem_updated:
+                        set_fan_section(
+                            remote_binding_section,
+                            selected_device_id,
+                            {"REMs": updated_zone_rems},
+                        )
+                        options = dict(options)
+                        options[FEATURE_REMOTE_BINDING] = remote_binding_section
+                        _persist_remote_binding_section(
+                            flow, options, remote_binding_section
+                        )
+
+                _persist_sensor_control_section(
+                    flow,
+                    options,
+                    sensor_control_section,
+                )
+                flow._sensor_control_area_sensor_id = None
+                flow._sensor_control_original_area_id = None
+                flow._sensor_control_group_stage = "area_sensors_menu"
+                return await async_step_sensor_control_config(flow, None)
         area_sensor_selector = selector.EntitySelector(
             selector.EntitySelectorConfig(domain=["sensor", "number", "input_number"])
         )
@@ -1136,6 +1136,13 @@ async def async_step_sensor_control_config(
             f"{area_edit_text} \n\n"
             f"{area_entity_note}"
         )
+        if errors:
+            return flow.async_show_form(
+                step_id="feature_config",
+                data_schema=schema,
+                description_placeholders={"info": info_text},
+                errors=errors,
+            )
         return flow.async_show_form(
             step_id="feature_config",
             data_schema=schema,
@@ -1278,7 +1285,7 @@ async def async_step_sensor_control_config(
         if existing_zone and existing_zone.get("zone_id"):
             flow._sensor_control_original_zone_id = str(existing_zone.get("zone_id"))
 
-        errors: dict[str, str] = {}
+        zone_errors: dict[str, str] = {}
 
         # Set defaults for form fields
         zone_id_default = existing_zone.get("zone_id") if existing_zone else ""
@@ -1307,17 +1314,17 @@ async def async_step_sensor_control_config(
 
             # Validate unique zone_id within this FAN
             if not zone_id:
-                errors["zone_id"] = translations.get("errors", {}).get(
+                zone_errors["zone_id"] = translations.get("errors", {}).get(
                     "zone_id_required", "Zone ID is required"
                 )
             elif existing_zone is None or existing_zone.get("zone_id") != zone_id:
                 # Check for duplicates
                 if _get_zone_by_id(fan_zones, zone_id):
-                    errors["zone_id"] = translations.get("errors", {}).get(
+                    zone_errors["zone_id"] = translations.get("errors", {}).get(
                         "zone_id_exists", "Zone ID already exists for this FAN"
                     )
 
-            if not errors:
+            if not zone_errors:
                 # Build zone entry and store for confirmation step
                 zone_entry: dict[str, Any] = {
                     "zone_id": zone_id,
@@ -1396,11 +1403,11 @@ async def async_step_sensor_control_config(
             "Select the zone type and configure the appropriate entities."
         )
 
-        if errors:
+        if zone_errors:
             return flow.async_show_form(
                 step_id="feature_config",
                 data_schema=schema,
-                errors=errors,
+                errors=zone_errors,
                 description_placeholders={"info": info_text},
             )
 

@@ -793,8 +793,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             ]  # "on" or "off" (can also use "open" or "closed")
 
             # Normalize state
-            is_ventilation_on = state.lower() in ("on", "open", "true", "yes", "1")
-            target_position = 100 if is_ventilation_on else 0
+            state_norm = str(state).lower().strip()
+            is_ventilation_on = state_norm in ("on", "open", "true", "yes", "1")
 
             coordinator = get_zone_coordinator(hass, fan_id)
             zone_config = coordinator.get_zone_config(zone_id)
@@ -809,6 +809,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
             inlet_entity = zone_config.inlet_valve_entity
             outlet_entity = zone_config.outlet_valve_entity
+
+            if is_ventilation_on:
+                target_position = int(zone_config.max_position)
+            elif state_norm in ("min", "close", "closed", "off", "false", "no", "0"):
+                target_position = int(zone_config.min_position)
+            else:
+                target_position = int(zone_config.min_position)
 
             _LOGGER.info(
                 "Forcing zone %s:%s ventilation %s (position=%s)",

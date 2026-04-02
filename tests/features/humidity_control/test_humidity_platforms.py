@@ -41,6 +41,7 @@ class TestHumidityPlatforms:
         self.config_entry = MagicMock(spec=ConfigEntry)
         self.config_entry.options = {}
         self.config_entry.data = {}
+        self.config_entry.entry_id = "test_entry_id"
         self.device_id = "32_123456"
 
     async def test_humidity_switch(self):
@@ -165,6 +166,8 @@ class TestHumidityPlatforms:
                 self.device_id: {"relative_humidity_minimum": 47.5},
             }
         }
+        # Mock the config_entries.async_get_entry to return the same config entry
+        self.hass.config_entries.async_get_entry.return_value = self.config_entry
         config = {
             "name": "Min Humidity",
             "default_value": 45.0,

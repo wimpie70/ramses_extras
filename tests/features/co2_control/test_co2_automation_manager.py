@@ -119,7 +119,7 @@ class TestCO2AutomationManager:
             "mappings": {"co2": "sensor.32_123456_co2_level"},
             "area_sensors": [
                 {
-                    "source_id": "bathroom",
+                    "area_id": "bathroom",
                     "label": "Bathroom",
                     "area_co2_enabled": True,
                     "co2_entity": "sensor.bathroom_co2",

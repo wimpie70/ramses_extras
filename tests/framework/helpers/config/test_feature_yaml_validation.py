@@ -764,8 +764,7 @@ class TestSensorControlYAML:
     def test_area_sensor_schema_valid(self):
         """Test area sensor schema with valid data."""
         sensor_data = {
-            "source_id": "bathroom",
-            "area_id": "Bathroom",
+            "area_id": "bathroom",
             "zone_id": "bathroom",
             "enabled": True,
             "temperature_entity": "sensor.bathroom_temp",
@@ -775,17 +774,16 @@ class TestSensorControlYAML:
         }
 
         result = AREA_SENSOR_SCHEMA(sensor_data)
-        assert result["source_id"] == "bathroom"
-        assert result["area_id"] == "Bathroom"
+        assert result["area_id"] == "bathroom"
         assert result["zone_id"] == "bathroom"
         assert result["co2_threshold"] == 1000
 
     def test_area_sensor_schema_defaults(self):
         """Test area sensor schema with default values."""
-        sensor_data = {"source_id": "bathroom"}
+        sensor_data = {"area_id": "bathroom"}
 
         result = AREA_SENSOR_SCHEMA(sensor_data)
-        assert result["source_id"] == "bathroom"
+        assert result["area_id"] == "bathroom"
         assert result["enabled"] is True
         assert result["area_co2_enabled"] is False
 
@@ -835,7 +833,7 @@ class TestSensorControlYAML:
             },
             "area_sensors": [
                 {
-                    "source_id": "bathroom",
+                    "area_id": "bathroom",
                     "temperature_entity": "sensor.bathroom_temp",
                     "humidity_entity": "sensor.bathroom_humidity",
                 }

@@ -183,8 +183,7 @@ async def test_async_step_sensor_control_config_select_device_with_area_sensor_o
             "area_sensors": {
                 "32_123456": [
                     {
-                        "source_id": "bathroom",
-                        "label": "Bathroom",
+                        "area_id": "bathroom",
                         "temperature_entity": "sensor.bath_temp",
                         "humidity_entity": "sensor.bath_humidity",
                         "trigger_on_high_humidity": True,
@@ -234,8 +233,7 @@ async def test_async_step_sensor_control_config_select_device_with_canonical_roo
                             },
                             "area_sensors": [
                                 {
-                                    "source_id": "bathroom",
-                                    "label": "Bathroom",
+                                    "area_id": "bathroom",
                                     "temperature_entity": "sensor.bath_temp",
                                     "humidity_entity": "sensor.bath_humidity",
                                     "trigger_on_high_humidity": True,
@@ -450,7 +448,7 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         ]
         legacy, canonical = _get_persisted_sensor_control_sections(options)
         area_sensor = legacy["area_sensors"]["32_123456"][0]
-        assert area_sensor["source_id"] == "bathroom"
+        assert area_sensor["area_id"] == "Bathroom"
         assert area_sensor["co2_entity"] == "input_number.co2_helper"
         assert (
             area_sensor["co2_threshold_entity"] == "input_number.bathroom_co2_threshold"
@@ -461,7 +459,7 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
 
         flow._config_entry.options = options
         flow.hass.config_entries.async_update_entry.reset_mock()
-        flow._sensor_control_area_sensor_id = "bathroom"
+        flow._sensor_control_area_sensor_id = "Bathroom"
         flow._sensor_control_group_stage = "area_sensors_edit"
 
         edit_input = {
@@ -483,7 +481,6 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
             edited_options
         )
         edited_area_sensor = edited_legacy["area_sensors"]["32_123456"][0]
-        assert edited_area_sensor["source_id"] == "bathroom"
         assert edited_area_sensor["area_id"] == "Bathroom Shower"
         assert edited_area_sensor["enabled"] is False
         assert edited_area_sensor["zone_id"] == "zone_2"
@@ -516,7 +513,7 @@ async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
         await async_step_sensor_control_config(
             flow,
             {
-                "area_sensor_label": "Bathroom",
+                "area_id": "area_sensor",
                 "area_sensor_enabled": True,
                 "temperature_entity": "input_number.temp_helper",
                 "humidity_entity": "input_number.humid_helper",
@@ -533,7 +530,7 @@ async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
     options = flow.hass.config_entries.async_update_entry.call_args.kwargs["options"]
     legacy, canonical = _get_persisted_sensor_control_sections(options)
     area_sensor = legacy["area_sensors"]["32_123456"][0]
-    assert area_sensor["source_id"] == "area_sensor"
+    assert area_sensor["area_id"] == "area_sensor"
     assert area_sensor["co2_entity"] == "input_number.co2_helper"
     assert area_sensor["co2_threshold_entity"] == "input_number.bathroom_co2_threshold"
     assert area_sensor["co2_threshold"] == 800
@@ -552,8 +549,7 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
             "area_sensors": {
                 "32_123456": [
                     {
-                        "source_id": "bathroom",
-                        "label": "Bathroom",
+                        "area_id": "bathroom",
                         "temperature_entity": "input_number.temp_helper",
                         "humidity_entity": "input_number.humid_helper",
                         "area_co2_enabled": True,
@@ -565,8 +561,7 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
                         "spike_window_minutes": 3,
                     },
                     {
-                        "source_id": "kitchen",
-                        "label": "Kitchen",
+                        "area_id": "kitchen",
                         "temperature_entity": "sensor.kitchen_temp",
                         "humidity_entity": "sensor.kitchen_humidity",
                         "area_co2_enabled": True,
@@ -595,7 +590,7 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
         await async_step_sensor_control_config(
             flow,
             {
-                "area_sensor_label": "Bathroom Updated",
+                "area_id": "bathroom",
                 "area_sensor_enabled": True,
                 "temperature_entity": "input_number.temp_helper",
                 "humidity_entity": "input_number.humid_helper",
@@ -615,9 +610,9 @@ async def test_area_sensors_edit_preserves_other_area_co2_settings(flow, helper)
     legacy, canonical = _get_persisted_sensor_control_sections(
         flow.hass.config_entries.async_update_entry.call_args.kwargs["options"]
     )
-    assert updated[0]["source_id"] == "bathroom"
+    assert updated[0]["area_id"] == "bathroom"
     assert updated[0]["co2_threshold"] == 820
-    assert updated[1]["source_id"] == "kitchen"
+    assert updated[1]["area_id"] == "kitchen"
     assert updated[1]["co2_threshold"] == 950
     assert updated[1]["co2_entity"] == "sensor.kitchen_co2"
     assert updated[1]["co2_threshold_entity"] == "input_number.kitchen_co2_threshold"
@@ -639,8 +634,7 @@ async def test_async_step_sensor_control_config_area_sensors_edit_preserves_othe
             "area_sensors": {
                 "32_123456": [
                     {
-                        "source_id": "bathroom",
-                        "label": "Bathroom",
+                        "area_id": "bathroom",
                         "temperature_entity": "sensor.bath_temp",
                         "humidity_entity": "sensor.bath_humidity",
                         "trigger_on_high_humidity": True,
@@ -649,8 +643,7 @@ async def test_async_step_sensor_control_config_area_sensors_edit_preserves_othe
                         "enabled": True,
                     },
                     {
-                        "source_id": "kitchen",
-                        "label": "Kitchen",
+                        "area_id": "kitchen",
                         "temperature_entity": "sensor.kitchen_temp",
                         "humidity_entity": "sensor.kitchen_humidity",
                         "trigger_on_high_humidity": False,
@@ -691,7 +684,7 @@ async def test_async_step_sensor_control_config_area_sensors_edit_preserves_othe
     ]["area_sensors"]["32_123456"]
     assert len(updated) == 2
     assert updated[0]["area_id"] == "Bathroom Updated"
-    assert updated[1]["source_id"] == "kitchen"
+    assert updated[1]["area_id"] == "kitchen"
 
 
 async def test_async_step_sensor_control_config_area_sensors_delete(flow, helper):
@@ -777,13 +770,13 @@ async def test_async_step_sensor_control_config_area_sensors_menu_shows_edit_opt
             "area_sensors": {
                 "32_123456": [
                     {
-                        "source_id": "",
+                        "area_id": "",
                         "label": "Ignored",
                         "temperature_entity": "sensor.ignore_temp",
                         "humidity_entity": "sensor.ignore_humidity",
                     },
                     {
-                        "source_id": "bathroom",
+                        "area_id": "bathroom",
                         "label": "Bathroom",
                         "temperature_entity": "sensor.bath_temp",
                         "humidity_entity": "sensor.bath_humidity",
@@ -932,7 +925,7 @@ async def test_async_step_sensor_control_config_device_overview_includes_area_se
             "area_sensors": {
                 "32_123456": [
                     {
-                        "source_id": "bathroom",
+                        "area_id": "bathroom",
                         "label": "Bathroom",
                         "temperature_entity": "sensor.bath_temp",
                         "humidity_entity": "sensor.bath_humidity",

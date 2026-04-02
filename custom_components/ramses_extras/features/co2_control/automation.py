@@ -820,13 +820,13 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if not entity_id:
                 continue
 
-            source_id = str(area_sensor.get("source_id") or entity_id)
-            label = str(area_sensor.get("label") or source_id)
+            area_id = str(area_sensor.get("area_id") or entity_id).strip()
+            label = str(area_sensor.get("label") or area_id)
             threshold = self._resolve_area_threshold(area_sensor, threshold_default)
 
             source_result = self._evaluate_source_trigger(
                 source_states,
-                source_id,
+                area_id,
                 label,
                 entity_id,
                 threshold,

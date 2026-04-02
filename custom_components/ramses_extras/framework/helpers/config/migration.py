@@ -3,9 +3,19 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from ....const import AVAILABLE_FEATURES
 from .model import (
+    CONFIG_DEBUG_LEVELS_KEY,
+    CONFIG_DEVICE_FEATURE_MATRIX_KEY,
     CONFIG_DEVICES_KEY,
+    CONFIG_ENABLED_FEATURES_KEY,
     CONFIG_FANS_KEY,
+    CONFIG_FEATURES_KEY,
+    CONFIG_FRAMEWORK_KEY,
+    CONFIG_RAMSES_DEBUGGER_KEY,
+    CONFIG_ROOT_KEY,
+    DEBUG_LEVELS_FRAMEWORK_OPTION_MAP,
+    RAMSES_DEBUGGER_FRAMEWORK_OPTION_MAP,
     REMOTE_BINDING_BINDINGS_KEY,
     REMOTE_BINDING_REM_ID_KEY,
     REMOTE_BINDING_REMOTE_ID_KEY,
@@ -22,11 +32,56 @@ FEATURE_ZONES = "zones"
 FEATURE_REMOTE_BINDING = "remote_binding"
 
 
+def _filter_enabled_features(raw: dict[str, Any]) -> dict[str, Any]:
+    return {k: deepcopy(v) for k, v in raw.items() if k in AVAILABLE_FEATURES}
+
+
 def migrate_to_canonical_config(raw_config: dict[str, Any]) -> dict[str, Any]:
     canonical = make_empty_config_model()
 
+    root = canonical.get(CONFIG_ROOT_KEY)
+    if isinstance(root, dict):
+        framework_section: dict[str, Any] = {}
+        debug_levels: dict[str, Any] = {}
+        for option_key, yaml_key in DEBUG_LEVELS_FRAMEWORK_OPTION_MAP.items():
+            value = raw_config.get(option_key)
+            if isinstance(value, str) and value.strip():
+                debug_levels[yaml_key] = value.strip()
+
+        if debug_levels:
+            framework_section[CONFIG_DEBUG_LEVELS_KEY] = debug_levels
+
+        debugger_options: dict[str, Any] = {}
+        for option_key, yaml_key in RAMSES_DEBUGGER_FRAMEWORK_OPTION_MAP.items():
+            value = raw_config.get(option_key)
+            if isinstance(value, str) and value.strip():
+                debugger_options[yaml_key] = value.strip()
+            elif isinstance(value, int):
+                debugger_options[yaml_key] = int(value)
+
+        if debugger_options:
+            framework_section[CONFIG_RAMSES_DEBUGGER_KEY] = debugger_options
+
+        if framework_section:
+            root[CONFIG_FRAMEWORK_KEY] = framework_section
+
+        enabled_features = raw_config.get(CONFIG_ENABLED_FEATURES_KEY)
+        if isinstance(enabled_features, dict):
+            root[CONFIG_ENABLED_FEATURES_KEY] = _filter_enabled_features(
+                enabled_features
+            )
+
+        device_feature_matrix = raw_config.get(CONFIG_DEVICE_FEATURE_MATRIX_KEY)
+        if isinstance(device_feature_matrix, dict):
+            root[CONFIG_DEVICE_FEATURE_MATRIX_KEY] = deepcopy(device_feature_matrix)
+
     for feature_id, section in raw_config.items():
         if feature_id == "ramses_extras":
+            continue
+        if feature_id in (
+            CONFIG_ENABLED_FEATURES_KEY,
+            CONFIG_DEVICE_FEATURE_MATRIX_KEY,
+        ):
             continue
         if not isinstance(section, dict):
             continue
@@ -36,13 +91,65 @@ def migrate_to_canonical_config(raw_config: dict[str, Any]) -> dict[str, Any]:
 
     root_section = raw_config.get("ramses_extras")
     if isinstance(root_section, dict):
+        if isinstance(root, dict):
+            framework = root_section.get(CONFIG_FRAMEWORK_KEY)
+            if isinstance(framework, dict):
+                root_framework = root.get(CONFIG_FRAMEWORK_KEY)
+                if not isinstance(root_framework, dict):
+                    root_framework = {}
+                    root[CONFIG_FRAMEWORK_KEY] = root_framework
+
+                for k, v in framework.items():
+                    if isinstance(k, str):
+                        root_framework[k] = deepcopy(v)
+
+            enabled_features = root_section.get(CONFIG_ENABLED_FEATURES_KEY)
+            if isinstance(enabled_features, dict):
+                root[CONFIG_ENABLED_FEATURES_KEY] = _filter_enabled_features(
+                    enabled_features
+                )
+
+            device_feature_matrix = root_section.get(CONFIG_DEVICE_FEATURE_MATRIX_KEY)
+            if isinstance(device_feature_matrix, dict):
+                root[CONFIG_DEVICE_FEATURE_MATRIX_KEY] = deepcopy(device_feature_matrix)
+
         features = root_section.get("features")
         if isinstance(features, dict):
             for feature_id, section in features.items():
+                if feature_id == CONFIG_FANS_KEY:
+                    continue
+                if isinstance(root, dict) and feature_id in (
+                    CONFIG_ENABLED_FEATURES_KEY,
+                    CONFIG_DEVICE_FEATURE_MATRIX_KEY,
+                ):
+                    if feature_id == CONFIG_ENABLED_FEATURES_KEY and isinstance(
+                        section, dict
+                    ):
+                        root[CONFIG_ENABLED_FEATURES_KEY] = deepcopy(section)
+                    if feature_id == CONFIG_DEVICE_FEATURE_MATRIX_KEY and isinstance(
+                        section, dict
+                    ):
+                        root[CONFIG_DEVICE_FEATURE_MATRIX_KEY] = deepcopy(section)
+                    continue
                 if not isinstance(section, dict):
                     continue
                 migrated_section = migrate_feature_section(feature_id, section)
-                set_feature_section(canonical, feature_id, migrated_section)
+                existing_section = get_feature_section(canonical, feature_id)
+                if feature_id == "humidity_control" and existing_section:
+                    merged_section = deepcopy(migrated_section)
+                    for device_key, device_section in existing_section.items():
+                        if isinstance(device_section, dict) and isinstance(
+                            merged_section.get(device_key), dict
+                        ):
+                            merged_device_section = deepcopy(merged_section[device_key])
+                            merged_device_section.update(deepcopy(device_section))
+                            merged_section[device_key] = merged_device_section
+                        else:
+                            merged_section[device_key] = deepcopy(device_section)
+
+                    set_feature_section(canonical, feature_id, merged_section)
+                else:
+                    set_feature_section(canonical, feature_id, migrated_section)
 
     return canonical
 

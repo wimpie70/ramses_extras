@@ -462,7 +462,7 @@ class TestZoneCoordinator:
         mock_adapter.zone_id = "office"
         mock_adapter.is_available = True
         position_data = MagicMock()
-        position_data.position = 100
+        position_data.position = 0  # Start at min, will move to max when no demand
         position_data.is_available = True
         mock_adapter.async_get_position = AsyncMock(return_value=position_data)
         mock_adapter.async_set_position = AsyncMock(return_value=True)
@@ -496,8 +496,8 @@ class TestZoneCoordinator:
 
             assert "office" in results
             assert results["office"]["success"] is True
-            assert results["office"]["target"] == 0
-            mock_adapter.async_set_position.assert_called_once_with(0)
+            assert results["office"]["target"] == 100
+            mock_adapter.async_set_position.assert_called_once_with(100)
 
     @pytest.mark.asyncio
     async def test_async_run_zone_actuation_cycle_skips_when_close(
@@ -508,7 +508,7 @@ class TestZoneCoordinator:
         mock_adapter.zone_id = "office"
         mock_adapter.is_available = True
         position_data = MagicMock()
-        position_data.position = 98  # Already very close to max (100)
+        position_data.position = 99  # Already very close to max (100), within deadband
         position_data.is_available = True
         mock_adapter.async_get_position = AsyncMock(return_value=position_data)
         mock_adapter.async_set_position = AsyncMock(return_value=True)
@@ -776,9 +776,9 @@ class TestZoneCoordinator:
             assert results["zone_med"]["is_selected"] is True
             assert results["zone_med"]["target"] == 100
 
-            # Low priority zone should NOT be selected, goes to min
+            # Low priority zone should NOT be selected, goes to balanced baseline
             assert results["zone_low"]["is_selected"] is False
-            assert results["zone_low"]["target"] == 0
+            assert results["zone_low"]["target"] == 40
 
     @pytest.mark.asyncio
     async def test_priority_selection_unlimited(self, hass, mock_adapter_registry):

@@ -26,9 +26,25 @@ from .const import (
 # Sensor Control YAML Schemas
 # These define the structure for sensor_control configuration in YAML
 
-AREA_SENSOR_SCHEMA = vol.Schema(
+_AREA_SENSOR_SCHEMA_V2 = vol.Schema(
     {
-        vol.Required("source_id"): str,
+        vol.Required("area_id"): str,
+        vol.Optional("zone_id"): str,
+        vol.Optional("enabled", default=True): bool,
+        vol.Optional("temperature_entity"): str,
+        vol.Optional("humidity_entity"): str,
+        vol.Optional("co2_entity"): str,
+        vol.Optional("co2_threshold"): vol.All(int, vol.Range(min=0)),
+        vol.Optional("area_co2_enabled", default=False): bool,
+        vol.Optional("spike_rise_percent"): vol.All(float, vol.Range(min=0)),
+        vol.Optional("spike_window_minutes"): vol.All(int, vol.Range(min=1)),
+        vol.Optional("trigger_on_high_humidity", default=False): bool,
+        vol.Optional("co2_threshold_entity"): str,
+    }
+)
+
+_AREA_SENSOR_SCHEMA_LEGACY = vol.Schema(
+    {
         vol.Optional("area_id"): str,
         vol.Optional("zone_id"): str,
         vol.Optional("enabled", default=True): bool,
@@ -43,6 +59,8 @@ AREA_SENSOR_SCHEMA = vol.Schema(
         vol.Optional("co2_threshold_entity"): str,
     }
 )
+
+AREA_SENSOR_SCHEMA = vol.Any(_AREA_SENSOR_SCHEMA_V2, _AREA_SENSOR_SCHEMA_LEGACY)
 
 ABS_HUMIDITY_INPUT_SCHEMA = vol.Schema(
     {
@@ -156,8 +174,35 @@ def parse_sensor_control_yaml(yaml_data: dict) -> dict[str, Any]:
         Canonical sensor_control configuration
     """
     # Validate against schema
-    result = SENSOR_CONTROL_CONFIG_SCHEMA(yaml_data)
-    return cast(dict[str, Any], result)
+    result = cast(dict[str, Any], SENSOR_CONTROL_CONFIG_SCHEMA(yaml_data))
+
+    for fan_key in ("FANs", "devices"):
+        fans = result.get(fan_key)
+        if not isinstance(fans, dict):
+            continue
+
+        for device_id, fan_cfg in list(fans.items()):
+            if not isinstance(fan_cfg, dict):
+                continue
+
+            area_sensors = fan_cfg.get(SENSOR_CONTROL_AREA_SENSORS_KEY)
+            if not isinstance(area_sensors, list):
+                continue
+
+            normalized: list[dict[str, Any]] = []
+            for item in area_sensors:
+                if not isinstance(item, dict):
+                    continue
+                area_id = str(item.get("area_id") or "").strip()
+                if not area_id:
+                    continue
+                cleaned = dict(item)
+                cleaned["area_id"] = area_id
+                normalized.append(cleaned)
+
+            fan_cfg[SENSOR_CONTROL_AREA_SENSORS_KEY] = normalized
+
+    return result
 
 
 def merge_sensor_control_config(existing: dict, imported: dict) -> dict[str, Any]:

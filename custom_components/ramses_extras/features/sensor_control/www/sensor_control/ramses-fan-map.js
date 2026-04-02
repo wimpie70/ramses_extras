@@ -20,6 +20,153 @@ class RamsesFanMap extends RamsesBaseCard {
     this._requiredEntitiesDynamic = {};
     this._testBenchArmed = false;
     this._testBenchLastAction = null;
+    this._unsubTestBenchEvents = null;
+  }
+
+  async _refreshCoordinatorState() {
+    const deviceId = this._config?.device_id;
+    if (!this._hass || !deviceId) {
+      return;
+    }
+
+    try {
+      const state = await this._sendWebSocketCommand(
+        {
+          type: 'ramses_extras/get_zone_coordinator_state',
+          fan_id: deviceId,
+        },
+        `fan_map_zone_coordinator_${deviceId}`
+      );
+      this._zoneCoordinatorState = state;
+    } catch (err) {
+      logger.warn('RamsesFanMap: Failed to refresh zone coordinator state', err);
+    }
+
+    this.clearUpdateThrottle();
+    this._scheduleRender(true);
+  }
+
+  _onConnected() {
+    const deviceIdRaw = String(this._config?.device_id || '').trim();
+    if (!this._hass || !deviceIdRaw) {
+      return;
+    }
+
+    const normalized = deviceIdRaw.replace(/_/g, ':');
+
+    if (this._unsubTestBenchEvents) {
+      return;
+    }
+
+    this._hass.connection.subscribeEvents((event) => {
+      const evt = event?.event_type;
+      const data = event?.data || {};
+
+      if (
+        evt !== 'ramses_extras_zone_demand_changed'
+        && evt !== 'ramses_extras_zone_actuation_completed'
+        && evt !== 'ramses_extras_zone_ventilation_forced'
+      ) {
+        return;
+      }
+
+      const fanId = String(data?.fan_id || '').replace(/_/g, ':');
+      if (!fanId || fanId !== normalized) {
+        return;
+      }
+
+      this._refreshCoordinatorState();
+    }).then((unsub) => {
+      this._unsubTestBenchEvents = unsub;
+    }).catch((err) => {
+      logger.warn('RamsesFanMap: Failed to subscribe to test bench events', err);
+    });
+  }
+
+  _onDisconnected() {
+    if (this._unsubTestBenchEvents) {
+      try {
+        this._unsubTestBenchEvents();
+      } catch (err) {
+        logger.warn('RamsesFanMap: Failed to unsubscribe test bench events', err);
+      }
+      this._unsubTestBenchEvents = null;
+    }
+  }
+
+  _captureOpenDetailsKeys() {
+    const openKeys = new Set();
+    const details = this.shadowRoot?.querySelectorAll('details[data-key][open]');
+    details?.forEach((el) => {
+      const key = el.getAttribute('data-key');
+      if (key) {
+        openKeys.add(key);
+      }
+    });
+    return openKeys;
+  }
+
+  _restoreOpenDetailsKeys(openKeys) {
+    if (!openKeys || !openKeys.size) {
+      return;
+    }
+
+    const details = this.shadowRoot?.querySelectorAll('details[data-key]');
+    details?.forEach((el) => {
+      const key = el.getAttribute('data-key');
+      if (key && openKeys.has(key)) {
+        el.open = true;
+      }
+    });
+  }
+
+  _getFanIdCandidates() {
+    const raw = String(this._config?.device_id || '').trim();
+    if (!raw) {
+      return [];
+    }
+    const colon = raw.replace(/_/g, ':');
+    return raw === colon ? [raw] : [raw, colon];
+  }
+
+  _getZoneDemandDiagnostics(zoneIdRaw) {
+    const zoneId = String(zoneIdRaw || '').trim();
+    if (!zoneId) {
+      return null;
+    }
+
+    const diag = this._zoneCoordinatorState?.diagnostics;
+    const registry = diag?.demand_registry;
+    const demands = registry?.demands;
+    if (!demands || typeof demands !== 'object') {
+      return null;
+    }
+
+    const fanIds = this._getFanIdCandidates();
+    for (const fanId of fanIds) {
+      const key = `${fanId}:${zoneId}`;
+      const entry = demands[key];
+      if (entry) {
+        const sources = Object.entries(entry)
+          .filter(([, v]) => v && typeof v === 'object')
+          .map(([k, v]) => ({
+            source: k,
+            has_demand: Boolean(v?.has_demand),
+          }));
+
+        const anyDemand = sources.some((s) => s.has_demand === true);
+        const manual = sources.find((s) => s.source === 'MANUAL');
+
+        return {
+          anyDemand,
+          manualPresent: Boolean(manual),
+          manualDemand: manual ? manual.has_demand : null,
+          sources,
+        };
+      }
+    }
+
+    return null;
   }
 
   getFeatureName() {
@@ -141,8 +288,7 @@ class RamsesFanMap extends RamsesBaseCard {
     for (const s of sensors) {
       const zoneId = String(s?.zone_id || '').trim();
       const areaId = String(s?.area_id || '').trim();
-      const sourceId = String(s?.source_id || '').trim();
-      const keyBase = [zoneId, areaId, sourceId].filter((v) => v).join('_') || String(Math.random());
+      const keyBase = [zoneId, areaId].filter((v) => v).join('_') || String(Math.random());
 
       for (const k of ['temperature_entity', 'humidity_entity', 'co2_entity', 'co2_threshold_entity']) {
         const entityId = s?.[k];
@@ -361,7 +507,6 @@ class RamsesFanMap extends RamsesBaseCard {
 
     const rows = filtered.map((s) => {
       const areaId = this._escapeHtml(s?.area_id || '');
-      const sourceId = this._escapeHtml(s?.source_id || '');
       const enabled = s?.enabled === false ? 'no' : 'yes';
 
       const tempEntity = s?.temperature_entity;
@@ -378,7 +523,6 @@ class RamsesFanMap extends RamsesBaseCard {
         <div class="area-sensor-block">
           <div class="area-sensor-meta">
             <span><b>${areaId || 'area'}</b></span>
-            <span class="muted">src: ${sourceId || '—'}</span>
             <span class="muted">en: ${this._escapeHtml(enabled)}</span>
           </div>
           ${lines || '<span class="muted">—</span>'}
@@ -402,7 +546,7 @@ class RamsesFanMap extends RamsesBaseCard {
       const aa = String(a?.area_id || '');
       const ba = String(b?.area_id || '');
       if (aa !== ba) return aa.localeCompare(ba);
-      return String(a?.source_id || '').localeCompare(String(b?.source_id || ''));
+      return 0;
     });
 
     return `
@@ -411,7 +555,6 @@ class RamsesFanMap extends RamsesBaseCard {
           <tr>
             <th>Zone</th>
             <th>Area</th>
-            <th>Source</th>
             <th>Enabled</th>
             <th>Temperature</th>
             <th>Humidity</th>
@@ -422,7 +565,6 @@ class RamsesFanMap extends RamsesBaseCard {
           ${sorted.map((s) => {
             const zoneId = this._escapeHtml(s?.zone_id || '');
             const areaId = this._escapeHtml(s?.area_id || '');
-            const sourceId = this._escapeHtml(s?.source_id || '');
             const enabled = s?.enabled === false ? 'no' : 'yes';
 
             const t = this._getEntitySummary(s?.temperature_entity)?.text;
@@ -433,7 +575,6 @@ class RamsesFanMap extends RamsesBaseCard {
               <tr>
                 <td><code>${zoneId}</code></td>
                 <td>${areaId}</td>
-                <td>${sourceId}</td>
                 <td>${this._escapeHtml(enabled)}</td>
                 <td>${this._escapeHtml(t || '—')}</td>
                 <td>${this._escapeHtml(h || '—')}</td>
@@ -498,7 +639,7 @@ class RamsesFanMap extends RamsesBaseCard {
       : '—';
 
     const remDetails = remoteBindings.length
-      ? `<details class="details"><summary>Configured REM entries</summary><pre class="json">${this._escapeHtml(JSON.stringify(remoteBindings, null, 2))}</pre></details>`
+      ? `<details class="details" data-key="configured_rems"><summary>Configured REM entries</summary><pre class="json">${this._escapeHtml(JSON.stringify(remoteBindings, null, 2))}</pre></details>`
       : '';
 
     const runtimeRemText = runtimeRemIdText
@@ -513,7 +654,7 @@ class RamsesFanMap extends RamsesBaseCard {
       </div>
       ${remDetails}
       ${zonesHtml}
-      <details class="details">
+      <details class="details" data-key="all_area_sensors">
         <summary>All area sensors</summary>
         ${this._renderAreaSensorsAll()}
       </details>
@@ -568,7 +709,7 @@ class RamsesFanMap extends RamsesBaseCard {
       : '<div class="placeholder">No zones to observe</div>';
 
     const rawStateDetails = this._zoneCoordinatorState
-      ? `<details class="details"><summary>Raw coordinator state</summary><pre class="json">${this._escapeHtml(JSON.stringify(this._zoneCoordinatorState, null, 2))}</pre></details>`
+      ? `<details class="details" data-key="raw_coordinator_state"><summary>Raw coordinator state</summary><pre class="json">${this._escapeHtml(JSON.stringify(this._zoneCoordinatorState, null, 2))}</pre></details>`
       : '';
 
     return `
@@ -589,37 +730,47 @@ class RamsesFanMap extends RamsesBaseCard {
 
     const zonesHtml = zones.length
       ? `
-        <details class="details">
-          <summary>Zone actions</summary>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Zone</th>
-                <th>Demand</th>
-                <th>Ventilation</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${zones.map((zone) => {
-                const zoneId = this._escapeHtml(zone?.zone_id || '');
-                return `
-                  <tr>
-                    <td><code>${zoneId}</code></td>
-                    <td>
-                      <button class="btn danger-btn" data-tb="set_zone_demand" data-zone-id="${zoneId}" data-has-demand="true" ${armed ? '' : 'disabled'}>On</button>
-                      <button class="btn danger-btn" data-tb="set_zone_demand" data-zone-id="${zoneId}" data-has-demand="false" ${armed ? '' : 'disabled'}>Off</button>
-                      <button class="btn danger-btn" data-tb="clear_zone_demand" data-zone-id="${zoneId}" ${armed ? '' : 'disabled'}>Clear</button>
-                    </td>
-                    <td>
-                      <button class="btn danger-btn" data-tb="force_zone_ventilation" data-zone-id="${zoneId}" data-state="on" ${armed ? '' : 'disabled'}>On</button>
-                      <button class="btn danger-btn" data-tb="force_zone_ventilation" data-zone-id="${zoneId}" data-state="off" ${armed ? '' : 'disabled'}>Off</button>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </details>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Zone</th>
+              <th>Status</th>
+              <th>(simulate) Demand</th>
+              <th>Valves manual</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${zones.map((zone) => {
+              const zoneId = this._escapeHtml(zone?.zone_id || '');
+              const demandDiag = this._getZoneDemandDiagnostics(zone?.zone_id);
+              const statusText = demandDiag
+                ? (demandDiag.anyDemand ? 'ON' : 'off')
+                : '—';
+              const statusClass = demandDiag
+                ? (demandDiag.anyDemand ? 'pill pill-on' : 'pill pill-off')
+                : 'pill pill-unknown';
+              const manualText = demandDiag?.manualPresent
+                ? ` <span class="small muted">(manual: ${demandDiag.manualDemand ? 'yes' : 'no'})</span>`
+                : '';
+              return `
+                <tr>
+                  <td><code>${zoneId}</code></td>
+                  <td><span class="${statusClass}">${statusText}</span>${manualText}</td>
+                  <td>
+                    <button class="btn danger-btn" data-tb="set_zone_demand" data-zone-id="${zoneId}" data-has-demand="true" ${armed ? '' : 'disabled'}>Yes</button>
+                    <button class="btn danger-btn" data-tb="set_zone_demand" data-zone-id="${zoneId}" data-has-demand="false" ${armed ? '' : 'disabled'}>No</button>
+                    <button class="btn danger-btn" data-tb="clear_zone_demand" data-zone-id="${zoneId}" ${armed ? '' : 'disabled'}>Auto</button>
+                  </td>
+                  <td>
+                    <button class="btn danger-btn" data-tb="force_zone_ventilation" data-zone-id="${zoneId}" data-state="open" ${armed ? '' : 'disabled'}>Open</button>
+                    <button class="btn danger-btn" data-tb="force_zone_ventilation" data-zone-id="${zoneId}" data-state="min" ${armed ? '' : 'disabled'}>Close</button>
+                    <div class="small muted">set valves manual</div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
       `
       : '<div class="placeholder">No zones available</div>';
 
@@ -638,7 +789,6 @@ class RamsesFanMap extends RamsesBaseCard {
       </div>
 
       <div class="actions">
-        <button id="tbRunActuation" class="btn danger-btn" ${armed ? '' : 'disabled'}>Run actuation cycle</button>
         <button id="tbCalibrateValves" class="btn danger-btn" ${armed ? '' : 'disabled'}>Calibrate all valves</button>
       </div>
 
@@ -657,27 +807,14 @@ class RamsesFanMap extends RamsesBaseCard {
       };
     }
 
-    const deviceId = this._config?.device_id;
-    if (!deviceId) {
+    const deviceIdRaw = this._config?.device_id;
+    if (!deviceIdRaw) {
       return;
     }
 
-    const runActuation = this.shadowRoot?.getElementById('tbRunActuation');
-    if (runActuation) {
-      runActuation.onclick = async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!this._testBenchArmed) {
-          return;
-        }
-        if (!window.confirm(`Run zone actuation cycle for ${deviceId}?`)) {
-          return;
-        }
-        this._testBenchLastAction = `run_zone_actuation @ ${new Date().toISOString()}`;
-        await this._withElementFeedback(runActuation, async () => {
-          await callService(this._hass, 'ramses_extras', 'run_zone_actuation', { device_id: deviceId });
-        });
-      };
+    const deviceId = String(deviceIdRaw).replace(/_/g, ':').trim();
+    if (!deviceId) {
+      return;
     }
 
     const calibrate = this.shadowRoot?.getElementById('tbCalibrateValves');
@@ -696,6 +833,8 @@ class RamsesFanMap extends RamsesBaseCard {
         await this._withElementFeedback(calibrate, async () => {
           await callService(this._hass, 'ramses_extras', 'calibrate_all_valves', { device_id: deviceId });
         }, 4000);
+
+        await this._refreshCoordinatorState();
       };
     }
 
@@ -736,12 +875,19 @@ class RamsesFanMap extends RamsesBaseCard {
         this._testBenchLastAction = `${service}(${zoneId}) @ ${new Date().toISOString()}`;
         await this._withElementFeedback(btn, async () => {
           await callService(this._hass, 'ramses_extras', service, data);
+          if (service === 'set_zone_demand' || service === 'clear_zone_demand') {
+            await callService(this._hass, 'ramses_extras', 'run_zone_actuation', { device_id: deviceId });
+          }
         });
+
+        await this._refreshCoordinatorState();
       };
     });
   }
 
   _renderContent() {
+    const openKeys = this._captureOpenDetailsKeys();
+
     if (!this._domInitialized) {
       this._initializeDOM();
       this._domInitialized = true;
@@ -775,7 +921,7 @@ class RamsesFanMap extends RamsesBaseCard {
       <div class="section">
         <div class="section-header">Topology</div>
         ${topologyHtml}
-        ${this._topology ? `<details class="details"><summary>Raw topology</summary><pre class="json">${this._escapeHtml(JSON.stringify(this._topology, null, 2))}</pre></details>` : ''}
+        ${this._topology ? `<details class="details" data-key="raw_topology"><summary>Raw topology</summary><pre class="json">${this._escapeHtml(JSON.stringify(this._topology, null, 2))}</pre></details>` : ''}
       </div>
 
       <div class="section">
@@ -795,6 +941,7 @@ class RamsesFanMap extends RamsesBaseCard {
     }
 
     this._attachTestBenchHandlers();
+    this._restoreOpenDetailsKeys(openKeys);
   }
 
   _initializeDOM() {
@@ -980,6 +1127,16 @@ class RamsesFanMap extends RamsesBaseCard {
           margin-bottom: 6px;
         }
 
+        details > summary.section-header {
+          font-size: 14px;
+          color: inherit;
+          margin-bottom: 8px;
+        }
+
+        .test-bench {
+          margin: 0;
+        }
+
         .danger .section-header {
           color: var(--error-color);
         }
@@ -1005,6 +1162,31 @@ class RamsesFanMap extends RamsesBaseCard {
 
         .btn.error {
           outline: 2px solid rgba(255, 0, 0, 0.4);
+        }
+
+        .pill {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 600;
+          border: 1px solid var(--divider-color);
+          line-height: 1.3;
+        }
+
+        .pill-on {
+          background: rgba(0, 128, 0, 0.15);
+          color: var(--primary-text-color);
+        }
+
+        .pill-off {
+          background: rgba(128, 128, 128, 0.10);
+          color: var(--secondary-text-color);
+        }
+
+        .pill-unknown {
+          background: rgba(128, 128, 128, 0.05);
+          color: var(--secondary-text-color);
         }
 
         .json {

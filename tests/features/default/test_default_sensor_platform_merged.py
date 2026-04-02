@@ -210,9 +210,9 @@ class TestDefaultHumiditySensor:
             {
                 **sensor_config,
                 "label": "Bathroom",
-                "source_id": "bathroom",
+                "area_id": "bathroom",
                 "area_sensor": {
-                    "source_id": "bathroom",
+                    "area_id": "bathroom",
                     "label": "Bathroom",
                     "temperature_entity": "sensor.bath_temp",
                     "humidity_entity": "sensor.bath_humidity",
@@ -226,7 +226,7 @@ class TestDefaultHumiditySensor:
 
         attrs = sensor.extra_state_attributes
         assert attrs["sensor_type"] == "area_absolute_humidity_bathroom"
-        assert attrs["source_id"] == "bathroom"
+        assert attrs["area_id"] == "bathroom"
         assert attrs["label"] == "Bathroom"
         assert attrs["temperature_entity"] == "sensor.bath_temp"
         assert attrs["humidity_entity"] == "sensor.bath_humidity"
@@ -979,7 +979,7 @@ class TestCreateDefaultSensor:
                 "area_sensors": {
                     "32_153289": [
                         {
-                            "source_id": "bathroom",
+                            "area_id": "bathroom",
                             "label": "Bathroom",
                             "temperature_entity": "sensor.bath_temp",
                             "humidity_entity": "sensor.bath_humidity",
@@ -1009,7 +1009,7 @@ class TestCreateDefaultSensor:
                             "32:153289": {
                                 "area_sensors": [
                                     {
-                                        "source_id": "bathroom",
+                                        "area_id": "bathroom",
                                         "label": "Bathroom",
                                         "temperature_entity": "sensor.bath_temp",
                                         "humidity_entity": "sensor.bath_humidity",

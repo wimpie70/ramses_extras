@@ -247,7 +247,7 @@ class TestSensorControlResolver:
                 "area_sensors": {
                     self.device_key: [
                         {
-                            "source_id": "bathroom",
+                            "area_id": "bathroom",
                             "label": "Bathroom",
                             "temperature_entity": "sensor.bath_temp",
                             "humidity_entity": "sensor.bath_humidity",
@@ -262,7 +262,7 @@ class TestSensorControlResolver:
                             "zone_id": "zone_1",
                         },
                         {
-                            "source_id": "broken",
+                            "area_id": "broken",
                             "label": "Broken",
                             "temperature_entity": "sensor.missing_temp",
                             "humidity_entity": "sensor.missing_humidity",
@@ -292,7 +292,7 @@ class TestSensorControlResolver:
         )
 
         assert len(result["area_sensors"]) == 2
-        assert result["area_sensors"][0]["source_id"] == "bathroom"
+        assert result["area_sensors"][0]["area_id"] == "bathroom"
         assert result["area_sensors"][0]["valid"] is True
         assert result["area_sensors"][0]["zone_id"] == "zone_1"
         assert result["area_sensors"][0]["area_co2_enabled"] is True
@@ -302,7 +302,7 @@ class TestSensorControlResolver:
             == "input_number.bathroom_threshold"
         )
         assert result["area_sensors"][0]["co2_threshold"] == 900
-        assert result["area_sensors"][1]["source_id"] == "broken"
+        assert result["area_sensors"][1]["area_id"] == "broken"
         assert result["area_sensors"][1]["valid"] is False
 
     def test_resolve_area_sensors_ignores_invalid_input(self):

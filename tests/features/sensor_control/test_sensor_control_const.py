@@ -109,7 +109,9 @@ class TestSensorControlConst:
         assert SENSOR_CONTROL_NUMBER_CONFIGS == {}
         assert SENSOR_CONTROL_BOOLEAN_CONFIGS == {}
         assert SENSOR_CONTROL_DEVICE_ENTITY_MAPPING == {}
-        assert SENSOR_CONTROL_WEBSOCKET_COMMANDS == {}
+        assert SENSOR_CONTROL_WEBSOCKET_COMMANDS == {
+            "get_device_config": "ramses_extras/sensor_control/get_device_config"
+        }
 
     def test_feature_definition_structure(self):
         """Test FEATURE_DEFINITION has all required keys."""
