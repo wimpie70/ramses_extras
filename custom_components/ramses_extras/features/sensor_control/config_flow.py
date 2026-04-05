@@ -131,17 +131,11 @@ def _persist_zones_section(
     zones_section: dict[str, Any],
 ) -> None:
     """Persist zones section to config options using canonical structure."""
-    # Create a writable copy of options to avoid mappingproxy error
+    canonical_section = deepcopy(zones_section)
+
     options = dict(options)
-
-    # Use set_fan_section to store zones in the canonical structure
-    # where get_zones_for_fan expects to find them
-
-    # Get the selected device ID from the flow
-    selected_device_id = getattr(flow, "_sensor_control_selected_device", None)
-    if selected_device_id:
-        # Store zones using the canonical structure in the options dict
-        set_fan_section(options, selected_device_id, zones_section.get("zones", []))
+    options[FEATURE_ZONES] = canonical_section
+    set_feature_section(options, FEATURE_ZONES, canonical_section)
 
     flow.hass.config_entries.async_update_entry(  # noqa: SLF001
         flow._config_entry,  # noqa: SLF001
@@ -1527,6 +1521,23 @@ async def async_step_sensor_control_config(
                             flow, options, remote_binding_section
                         )
 
+                from ...framework.helpers.remote_binding import (
+                    get_remote_binding_registry,
+                )
+                from ...framework.helpers.zones import get_zone_registry
+                from ...framework.setup.entry import configure_zones_from_yaml
+
+                try:
+                    get_zone_registry(flow.hass).invalidate_cache()
+                    get_remote_binding_registry(flow.hass).invalidate_cache()
+                    await configure_zones_from_yaml(flow.hass)
+                except Exception as err:
+                    _LOGGER.debug(
+                        "Failed to refresh zone configuration after save: %s",
+                        err,
+                        exc_info=True,
+                    )
+
                 # Clear pending zone and original zone_id tracking
                 flow._sensor_control_pending_zone = None
                 flow._sensor_control_pending_zone_editing_id = None
@@ -1679,10 +1690,11 @@ async def async_step_sensor_control_config(
                             ).get("no_zones_in_yaml", "No zones found in YAML")
                         else:
                             # Merge with existing zones
-                            existing_zones = _validate_zone_entries(
-                                zones_section.get("zones")
-                            )
                             normalized_fan_id = normalize_device_id(selected_device_id)
+
+                            existing_zones = get_zones_for_fan(
+                                zones_section, normalized_fan_id
+                            )
 
                             merged_zones = merge_zones_config(
                                 existing_zones,
@@ -1691,8 +1703,12 @@ async def async_step_sensor_control_config(
                                 overwrite_existing=overwrite,
                             )
 
-                            zones_section["zones"] = merged_zones
-                            # Create writable copy to avoid mappingproxy error
+                            set_fan_section(
+                                zones_section,
+                                normalized_fan_id,
+                                merged_zones,
+                            )
+
                             options = dict(options)
                             options[FEATURE_ZONES] = zones_section
                             _persist_zones_section(flow, options, zones_section)

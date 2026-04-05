@@ -48,7 +48,8 @@ ZONE_ENTRY_SCHEMA = vol.Schema(
 ZONES_CONFIG_SCHEMA = vol.Schema(
     {
         vol.Optional("version", default=1): int,
-        vol.Required("FANs"): {str: [ZONE_ENTRY_SCHEMA]},
+        vol.Optional("fan_id"): str,
+        vol.Required("zones"): [ZONE_ENTRY_SCHEMA],
     }
 )
 
@@ -57,7 +58,7 @@ def zones_validator(section: dict, hass: Any | None = None) -> list[str]:
     """Validate zones configuration section.
 
     Args:
-        section: The zones configuration section (with FANs dict structure)
+        section: The zones configuration section
         hass: Home Assistant instance (optional)
 
     Returns:
@@ -65,44 +66,36 @@ def zones_validator(section: dict, hass: Any | None = None) -> list[str]:
     """
     errors = []
 
-    # Handle FANs structure: FANs: {fan_id: [zone_entries]}
-    fans = section.get("FANs", {})
-    if not isinstance(fans, dict):
-        errors.append("FANs must be a dictionary")
+    zones = section.get("zones", [])
+    if not isinstance(zones, list):
+        errors.append("zones must be a list")
         return errors
 
-    for fan_id, zones in fans.items():
-        if not isinstance(zones, list):
-            errors.append(f"FAN '{fan_id}': zones must be a list")
+    for zone in zones:
+        if not isinstance(zone, dict):
+            errors.append("zone entry must be a dict")
             continue
 
-        for zone in zones:
-            if not isinstance(zone, dict):
-                errors.append(f"FAN '{fan_id}': zone entry must be a dict")
-                continue
+        zone_id = zone.get("zone_id")
+        if not zone_id:
+            errors.append("missing zone_id")
+            continue
 
-            zone_id = zone.get("zone_id")
-            if not zone_id:
-                errors.append(f"FAN '{fan_id}': missing zone_id")
-                continue
+        zone_type = zone.get("type")
+        if zone_type not in (
+            "orcon_native",
+            "custom_valve",
+            "shelly_2pm_gen3",
+            "paired_valves",
+        ):
+            errors.append(f"Zone '{zone_id}': invalid type '{zone_type}'")
 
-            zone_type = zone.get("type")
-            if zone_type not in (
-                "orcon_native",
-                "custom_valve",
-                "shelly_2pm_gen3",
-                "paired_valves",
-            ):
-                errors.append(f"Zone '{zone_id}': invalid type '{zone_type}'")
-
-            # Validate min/max position
-            min_pos = zone.get("min_position", 0)
-            max_pos = zone.get("max_position", 100)
-            if min_pos > max_pos:
-                errors.append(
-                    f"Zone '{zone_id}': min_position ({min_pos}) > "
-                    f"max_position ({max_pos})"
-                )
+        min_pos = zone.get("min_position", 0)
+        max_pos = zone.get("max_position", 100)
+        if min_pos > max_pos:
+            errors.append(
+                f"Zone '{zone_id}': min_position ({min_pos}) > max_position ({max_pos})"
+            )
 
     return errors
 
@@ -188,27 +181,17 @@ def merge_zones_config(
     """
     result = list(existing_zones)
 
-    # Build set of existing zone IDs for this FAN
-    existing_ids = {
-        z.get("zone_id")
-        for z in result
-        if z.get("fan_id") == fan_id and z.get("zone_id")
-    }
+    existing_ids = {z.get("zone_id") for z in result if z.get("zone_id")}
 
     for zone in imported_zones:
         zone = dict(zone)  # Copy to avoid modifying original
-        zone["fan_id"] = fan_id  # Ensure FAN ID is set correctly
 
         zone_id = zone.get("zone_id")
 
         if zone_id in existing_ids:
             if overwrite_existing:
                 # Remove existing zone with this ID
-                result = [
-                    z
-                    for z in result
-                    if not (z.get("fan_id") == fan_id and z.get("zone_id") == zone_id)
-                ]
+                result = [z for z in result if not (z.get("zone_id") == zone_id)]
                 result.append(zone)
             # else: skip duplicate
         else:
