@@ -468,6 +468,10 @@ class RamsesCommands:
 
             coordinator = await self._get_ramses_cc_coordinator()
             if not coordinator:
+                # RF disabled / integration not loaded: mark device offline immediately
+                get_transport_monitor().mark_device_offline_immediate(
+                    device_id_formatted
+                )
                 _LOGGER.error(
                     f"Failed to send Ramses command {cmd_def['code']}: "
                     "ramses_cc coordinator not found. "
@@ -476,6 +480,9 @@ class RamsesCommands:
                 return False
 
             if not coordinator.client:
+                get_transport_monitor().mark_device_offline_immediate(
+                    device_id_formatted
+                )
                 _LOGGER.error(
                     f"Failed to send Ramses command {cmd_def['code']}: "
                     "ramses_cc client is not initialized."
@@ -551,6 +558,7 @@ class RamsesCommands:
                     return True
                 # Re-raise non-timeout errors as they indicate real problems
                 # Examples: device not found, transport disconnected, etc.
+                transport_monitor.mark_device_offline_immediate(device_id_formatted)
                 raise
 
             # Notify transport monitor that we sent a command
