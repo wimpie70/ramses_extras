@@ -19,6 +19,7 @@ medium: 41.63 l/s (at 50%)
 high: 83 l/s (at 100%)
 
 todo:
+- fix online monitor (fan card), also when RF goes disabled (kimi K2.5 can't do this)
 - edit zone_id -> refactor on area and REMs and config and yaml...
 - press REM button -> show which REM is pressed, and adapt valves
 
@@ -42,6 +43,8 @@ These messages can be retrieved from _rf docs and stored in a dbase, with option
 - messages (types, payloads)
 - timing (when to send messages)
 - enabled (on/off) enable by default, disable when not needed
+
+discover devices (auto-discover devices from messages)
 
 a test feature can then iterate over these msgs and send them to a selectable sim device
 to check responses and find problems. Also can test flooding, etc.

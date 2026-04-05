@@ -64,13 +64,13 @@ Add entries as you go:
 
 ### M1 - Card scaffolding and registration
 
-- [ ] Decide final card ID/name
-  - suggestion: `ramses-fan-map` (card `type: custom:ramses-fan-map`)
-- [ ] Add a new card definition under the `sensor_control` feature
-- [ ] Implement a Python feature/card manager similar to `features/hvac_fan_card/`
-- [ ] Add frontend JS bundle under a `www/` folder and ensure it is served/registered
-- [ ] Implement a card editor that selects the FAN via `device_id` (same pattern as `hvac-fan-card-editor`)
-- [ ] Render a minimal shell UI:
+- [x] Decide final card ID/name
+  - `ramses-fan-map` (card `type: custom:ramses-fan-map`)
+- [x] Add a new card definition under the `sensor_control` feature
+- [x] Implement a Python feature/card manager similar to `features/hvac_fan_card/`
+- [x] Add frontend JS bundle under a `www/` folder and ensure it is served/registered
+- [x] Implement a card editor that selects the FAN via `device_id` (same pattern as `hvac-fan-card-editor`)
+- [x] Render a minimal shell UI:
   - header + selected FAN
   - “Loading…” state
   - “Error” state
@@ -79,7 +79,7 @@ Add entries as you go:
 
 ### M2 - Backend data sources and WebSocket contract (read-only)
 
-- [ ] Inventory existing websocket commands to reuse (expected in `features/default/websocket_commands.py`):
+- [x] Inventory existing websocket commands to reuse (expected in `features/default/websocket_commands.py`):
   - enabled features/cards
   - entity mappings
   - fan config associations
@@ -87,35 +87,35 @@ Add entries as you go:
   - zones
   - zone positions
   - diagnostics
-- [ ] Define a card-level “data contract” (JSON shapes) for:
+- [x] Define a card-level “data contract” (JSON shapes) for:
   - configured FAN (`device_id`) and device metadata for display
   - zones/areas
   - valves/positions
   - sensors list + readings
   - REM bindings + activity
-- [ ] Define “initial payload” fetch sequence
+- [~] Define “initial payload” fetch sequence
   - aim: minimal round-trips, avoid polling when push/events exist
-- [ ] Identify missing read-only data
+- [x] Identify missing read-only data
   - if missing data cannot be composed client-side:
-    - [ ] add **minimal** new websocket endpoint(s)
+    - [x] add **minimal** new websocket endpoint(s)
     - [ ] add tests for those endpoints
 
 **Done when**: card can fetch real data for at least one FAN and show it.
 
 ### M3 - UI: FAN overview + topology
 
-- [ ] FAN overview panel
+- [~] FAN overview panel
   - FAN id
   - coordinator/arbiter summary where available
-- [ ] Zones table
+- [x] Zones table
   - zone id
   - associated area(s)
   - associated valve(s)
   - current “demand” summary (read-only)
-- [ ] Areas table
+- [~] Areas table
   - area id
   - associated sensor entities (if available)
-- [ ] REM bindings table
+- [x] REM bindings table
   - rem id
   - bound fan id
   - last activity timestamp (if available)
@@ -125,15 +125,15 @@ Add entries as you go:
 
 ### M4 - UI: Observability (valves, sensors, diagnostics)
 
-- [ ] Valve positions panel
+- [~] Valve positions panel
   - per valve: current position, age, last update
   - calibration status (if available)
   - safety bounds (min/max) if present in model
-- [ ] Sensors panel
+- [x] Sensors panel
   - list of configured sensors (resolved) and current values
   - show “source” (mapping/entity) where available
   - stale indicator and basic validation
-- [ ] Diagnostics panel
+- [~] Diagnostics panel
   - zone demand breakdown (read-only)
   - any arbiter/coordinator diagnostics already exposed
 
@@ -149,17 +149,17 @@ All actions must be guarded:
 
 Actions (expected existing services):
 
-- [ ] “Run zone actuation cycle”
+- [x] “Run zone actuation cycle”
   - service: `ramses_extras.run_zone_actuation`
-- [ ] “Set/clear zone demand”
+- [x] “Set/clear zone demand”
   - service: `ramses_extras.set_zone_demand`
-- [ ] “Calibrate all valves”
+- [x] “Calibrate all valves”
   - service: `ramses_extras.calibrate_all_valves`
 
 Also:
 
-- [ ] Render results and errors inline per action
-- [ ] Don’t auto-run actions (no background automations in the card)
+- [x] Render results and errors inline per action
+- [x] Don’t auto-run actions (no background automations in the card)
 
 **Done when**: actions run, failures are visible, and UI prevents accidental use.
 
@@ -262,8 +262,8 @@ Note: small/targeted runs may fail coverage, but full runs must pass.
 
 ## Risks / open questions
 
-- [ ] Exact placement: should this be under `sensor_control` feature or a dedicated `fan_configuration` feature?
-  - current plan: **under `sensor_control`** as requested.
-- [ ] Data completeness: can the desired observability be composed from existing websocket commands?
-- [ ] REM activity: ensure we expose “last activity” in a stable, privacy-safe way.
+- [x] Exact placement: should this be under `sensor_control` feature or a dedicated `fan_configuration` feature?
+  - current implementation: **under `sensor_control`**.
+- [x] Data completeness: can the desired observability be composed from existing websocket commands?
+- [~] REM activity: ensure we expose “last activity” in a stable, privacy-safe way.
 - [ ] Multi-FAN setups: confirm expected UX (current assumption: one card instance per FAN, selected via the card editor).
