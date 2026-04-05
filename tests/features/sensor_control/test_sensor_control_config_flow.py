@@ -27,6 +27,7 @@ def flow():
     flow._get_device_label = MagicMock(side_effect=lambda x: f"Device {x}")
     flow.async_show_form = MagicMock()
     flow.async_step_main_menu = AsyncMock()
+    flow._refresh_config_entry = MagicMock()
     return flow
 
 

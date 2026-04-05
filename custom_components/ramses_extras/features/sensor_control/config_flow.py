@@ -99,6 +99,14 @@ def _persist_sensor_control_section(
         options=options,
     )
 
+    refresh = getattr(flow, "_refresh_config_entry", None)
+    if callable(refresh):
+        hass = getattr(flow, "hass", None)
+        if hass is not None:
+            refresh(hass)
+        else:
+            refresh()
+
 
 def _persist_remote_binding_section(
     flow: Any,
@@ -999,6 +1007,15 @@ async def async_step_sensor_control_config(
                         _persist_remote_binding_section(
                             flow, options, remote_binding_section
                         )
+
+                        try:
+                            from ...framework.helpers.remote_binding import (
+                                get_remote_binding_registry,
+                            )
+
+                            get_remote_binding_registry(flow.hass).invalidate_cache()
+                        except Exception:
+                            pass
 
                 _persist_sensor_control_section(
                     flow,
