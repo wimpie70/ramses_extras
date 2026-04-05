@@ -50,8 +50,10 @@ def _get_area_sensor_by_id(
 ) -> dict[str, Any] | None:
     if not area_id:
         return None
+    match_id = str(area_id).strip().lower()
     for item in area_sensors:
-        if isinstance(item, dict) and str(item.get("area_id") or "") == area_id:
+        item_id = str(item.get("area_id") or "").strip().lower()
+        if item_id and item_id == match_id:
             return item
     return None
 
@@ -913,7 +915,8 @@ async def async_step_sensor_control_config(
                     (
                         item
                         for item in device_area_sensors
-                        if str(item.get("area_id") or "").strip().lower()
+                        if isinstance(item, dict)
+                        and str(item.get("area_id") or "").strip().lower()
                         == area_id.lower()
                     ),
                     None,
@@ -956,8 +959,10 @@ async def async_step_sensor_control_config(
             else:
                 replaced = False
                 new_area_sensors: list[dict[str, Any]] = []
+                match_editing = str(editing_area_id or "").strip().lower()
                 for item in device_area_sensors:
-                    if str(item.get("area_id") or "") == (editing_area_id or ""):
+                    item_id = str(item.get("area_id") or "").strip().lower()
+                    if match_editing and item_id == match_editing:
                         new_area_sensors.append(updated_area_sensor)
                         replaced = True
                     else:
@@ -1073,7 +1078,7 @@ async def async_step_sensor_control_config(
 
         schema = vol.Schema(
             {
-                vol.Optional(
+                vol.Required(
                     "area_id", default=area_id_default
                 ): selector.TextSelector(),
                 vol.Required(
@@ -1202,8 +1207,6 @@ async def async_step_sensor_control_config(
                 delete_zone_id: str | None = user_input.get("zone_id")
                 if delete_zone_id:
                     # Use canonical structure for delete
-                    from ...framework.helpers.config.model import set_fan_section
-
                     existing_zones = get_zones_for_fan(
                         zones_section, selected_device_id
                     )
@@ -1459,8 +1462,6 @@ async def async_step_sensor_control_config(
                 new_zones.append(zone_entry)
 
                 # Store using set_fan_section
-                from ...framework.helpers.config.model import set_fan_section
-
                 set_fan_section(zones_section, selected_device_id, new_zones)
 
                 # Update options with modified section before persisting

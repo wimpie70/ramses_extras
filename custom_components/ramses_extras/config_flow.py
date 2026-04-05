@@ -1173,12 +1173,15 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 f"using generic flow"
             )
         except Exception as e:
-            _LOGGER.warning(f"Error loading feature config flow for {feature_id}: {e}")
-            try:
-                _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
-            except Exception:
-                # In tests with mocked imports, traceback.format_exc() might fail
-                pass
+            _LOGGER.warning(
+                "Error loading feature config flow for %s: %s",
+                feature_id,
+                e,
+                exc_info=True,
+            )
+
+            if feature_id == "sensor_control":
+                raise
 
         return await self.generic_step_feature_config(user_input)
 

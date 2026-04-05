@@ -492,6 +492,83 @@ async def test_async_step_sensor_control_config_area_sensors_add_and_edit(flow, 
         )
 
 
+async def test_area_sensors_edit_cascades_area_id_to_remote_binding(flow, helper):
+    """Renaming an area_id should update REM bindings referencing it."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "area_sensors_edit"
+    flow._sensor_control_area_sensor_id = "Bathroom"
+    flow._config_entry.options = {
+        "sensor_control": {
+            "area_sensors": {
+                "32_123456": [
+                    {
+                        "area_id": "Bathroom",
+                        "temperature_entity": "sensor.bath_temp",
+                        "humidity_entity": "sensor.bath_humidity",
+                        "trigger_on_high_humidity": True,
+                        "spike_rise_percent": 10.0,
+                        "spike_window_minutes": 3,
+                        "enabled": True,
+                        "area_co2_enabled": True,
+                        "co2_entity": "sensor.bath_co2",
+                        "co2_threshold": 800,
+                    }
+                ]
+            }
+        },
+        "remote_binding": {
+            "FANs": {
+                "32:123456": {
+                    "REMs": [
+                        {
+                            "rem_id": "12:111111",
+                            "role": "primary",
+                            "enabled": True,
+                            "area_id": "Bathroom",
+                        }
+                    ]
+                }
+            }
+        },
+    }
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_device_type",
+            return_value="FAN",
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            return_value={},
+        ),
+    ):
+        await async_step_sensor_control_config(
+            flow,
+            {
+                "area_id": "Dining",
+                "area_sensor_enabled": True,
+                "zone_id": "zone_2",
+                "temperature_entity": "sensor.dining_temp",
+                "humidity_entity": "sensor.dining_humidity",
+                "trigger_on_high_humidity": True,
+                "spike_rise_percent": 10.0,
+                "spike_window_minutes": 3,
+                "area_co2_enabled": True,
+                "co2_entity": "sensor.dining_co2",
+                "co2_threshold_entity": "",
+                "co2_threshold": 800,
+            },
+        )
+
+    saved_options = flow.hass.config_entries.async_update_entry.call_args.kwargs[
+        "options"
+    ]
+    saved_remote_binding = saved_options["remote_binding"]["FANs"]["32:123456"]
+    assert saved_remote_binding["REMs"][0]["area_id"] == "Dining"
+
+
 async def test_area_sensors_save_co2_threshold_entity_per_area(flow, helper):
     """Area sensor should persist co2_threshold_entity and static fallback."""
     flow._get_config_flow_helper.return_value = helper
