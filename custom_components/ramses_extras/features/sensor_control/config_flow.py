@@ -52,9 +52,10 @@ def _get_area_sensor_by_id(
         return None
     match_id = str(area_id).strip().lower()
     for item in area_sensors:
-        item_id = str(item.get("area_id") or "").strip().lower()
-        if item_id and item_id == match_id:
-            return item
+        if isinstance(item, dict):
+            item_id = str(item.get("area_id") or "").strip().lower()
+            if item_id and item_id == match_id:
+                return item
     return None
 
 

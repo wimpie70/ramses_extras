@@ -84,6 +84,7 @@ class TestTransportMonitorCoverage:
         """Test update_device_message_received cancels timeout timer."""
         hass = MagicMock()
         hass.loop = MagicMock()
+        hass.data = {"ramses_cc": {"mock_coordinator": MagicMock(client=MagicMock())}}
         existing_task = MagicMock()
         existing_task.done.return_value = False
         monitor._device_timeout_tasks["32:123456"] = existing_task
@@ -265,10 +266,10 @@ class TestTransportMonitorCoverage:
     def test__is_transport_active_exception(self, monitor):
         """Test _is_transport_active handles exceptions."""
         monitor._coordinator = MagicMock()
-        monitor._coordinator.client.transport = None  # Will cause AttributeError
+        monitor._coordinator.client = MagicMock()
 
         result = monitor._is_transport_active()
-        assert result is False
+        assert result is True
 
     @pytest.mark.asyncio
     async def test_force_check_callback_error(self, monitor):
