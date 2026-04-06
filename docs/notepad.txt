@@ -19,11 +19,27 @@ medium: 41.63 l/s (at 50%)
 high: 83 l/s (at 100%)
 
 todo:
-- fix online monitor (fan card), also when RF goes disabled (kimi K2.5 can't do this)
-- edit zone_id -> refactor on area and REMs and config and yaml...
-- press REM button -> show which REM is pressed, and adapt valves
+- add sphinx style comments to all files
 
-- changing test bench yes -> auto let the valves stop at 14%, or 0%...is this a timed control by extras ? or is this a shelly problem ?
+- add a test on the RF config if we have
+  - a bound REM,
+  - Enable Message Events with regex: 31DA|10D0
+  - Enable Send Packet Service
+if not, propose to correct it (and remember) We can place this in the advanced or enable step
+
+- press REM button -> show which REM is pressed, and adapt valves
+We now see the pill on observer, and also the change on resolved command, the valves on the other zone to 40%,
+and also on the zone REM a high pill, but that last one stays, and after 1 press
+(and back to auto after some time) it stays on high (on the zone area pill) and I can't it trigger again.
+mypy:
+- hook id: mypy
+- exit code: 1
+
+  custom_components/ramses_extras/framework/helpers/zone_demand.py:89: error: "object" has no attribute "cancel"  [attr-defined]
+  custom_components/ramses_extras/features/humidity_control/automation.py:830: error: Item "None" of "Any | None" has no attribute "__iter__" (not iterable)  [union-attr]
+  Found 2 errors in 2 files (checked 317 source files)
+
+
 
 currently:
 - add a card to sensor_control: FAN Configuration

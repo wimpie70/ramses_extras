@@ -152,9 +152,16 @@ class RemoteBindingRegistry:
         # Import here to avoid circular imports
         from ...framework.helpers.config.core import ExtrasConfigManager
 
-        return ExtrasConfigManager(
+        manager = ExtrasConfigManager(
             self._hass, config_entry, "default", {"enabled": False}
         )
+
+        manager._config = manager._default_config.copy()
+        if config_entry.data:
+            manager._config.update(config_entry.data)
+        if config_entry.options:
+            manager._config.update(config_entry.options)
+        return manager
 
     def get_binding_for_fan(self, device_id: str) -> dict[str, Any] | None:
         """Get the primary REM binding for a FAN device.

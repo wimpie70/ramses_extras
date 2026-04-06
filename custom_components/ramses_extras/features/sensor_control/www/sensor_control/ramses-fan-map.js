@@ -193,21 +193,92 @@ class RamsesFanMap extends RamsesBaseCard {
           .map(([k, v]) => ({
             source: k,
             has_demand: Boolean(v?.has_demand),
+            timestamp: v?.timestamp,
+            metadata: v?.metadata,
           }));
 
         const anyDemand = sources.some((s) => s.has_demand === true);
         const manual = sources.find((s) => s.source === 'MANUAL');
+        const activeSources = sources.filter((s) => s.has_demand === true);
 
         return {
           anyDemand,
           manualPresent: Boolean(manual),
           manualDemand: manual ? manual.has_demand : null,
+          activeSources,
           sources,
         };
       }
     }
 
     return null;
+  }
+
+  _isRecentIsoTimestamp(ts, windowSeconds = 10) {
+    if (!ts || typeof ts !== 'string') {
+      return false;
+    }
+    const ms = Date.parse(ts);
+    if (!Number.isFinite(ms)) {
+      return false;
+    }
+    const ageMs = Date.now() - ms;
+    return ageMs >= 0 && ageMs <= (windowSeconds * 1000);
+  }
+
+  _formatFanCommandLabel(cmdRaw) {
+    const cmd = String(cmdRaw || '').trim();
+    if (!cmd) {
+      return '';
+    }
+
+    const lookup = {
+      fan_low: 'low',
+      fan_medium: 'medium',
+      fan_high: 'high',
+      fan_auto: 'auto',
+      fan_away: 'away',
+      fan_timer_15min: 'timer 15m',
+      fan_timer_30min: 'timer 30m',
+      fan_timer_60min: 'timer 60m',
+    };
+
+    return lookup[cmd] || cmd;
+  }
+
+  _renderDemandPills(zoneIdRaw) {
+    const diag = this._getZoneDemandDiagnostics(zoneIdRaw);
+    if (!diag?.activeSources?.length) {
+      return '<span class="muted">—</span>';
+    }
+
+    return diag.activeSources.map((s) => {
+      const src = String(s?.source || '').trim();
+      const md = (s?.metadata && typeof s.metadata === 'object') ? s.metadata : {};
+
+      let label = src;
+      if (src === 'REM') {
+        const remId = md?.rem_id ? String(md.rem_id) : '';
+        const cmd = this._formatFanCommandLabel(md?.command);
+        label = [src, remId || null, cmd || null].filter((v) => v).join(': ');
+      } else if (src === 'CO2') {
+        const l = md?.label ? String(md.label) : '';
+        const v = md?.value != null ? String(md.value) : '';
+        const thr = md?.threshold != null ? String(md.threshold) : '';
+        const tail = thr ? `${v} / ${thr}` : v;
+        label = [src, l || null, tail || null].filter((v) => v).join(': ');
+      } else if (src === 'HUMIDITY') {
+        const l = md?.label ? String(md.label) : '';
+        const rh = md?.current_rh != null ? `${Number(md.current_rh).toFixed(0)}%` : '';
+        const rise = md?.rise_percent != null ? `${Number(md.rise_percent).toFixed(0)}%` : '';
+        const tail = [rh, rise].filter((v) => v).join(' ');
+        label = [src, l || null, tail || null].filter((v) => v).join(': ');
+      }
+
+      const tooltip = this._escapeHtml(JSON.stringify(md || {}, null, 2));
+      const text = this._escapeHtml(label);
+      return `<span class="pill pill-on" title="${tooltip}">${text}</span>`;
+    }).join(' ');
   }
 
   getFeatureName() {
@@ -254,6 +325,16 @@ class RamsesFanMap extends RamsesBaseCard {
       name: 'FAN Map',
       description: 'Observability and test bench for FAN configuration (zones/areas/REMs/valves/sensors)',
       preview: true,
+    };
+  }
+
+  static getStubConfig() {
+    return {
+      type: `custom:${this.getTagName()}`,
+      layout_options: {
+        grid_columns: 200,
+        rows: 1,
+      },
     };
   }
 
@@ -634,7 +715,13 @@ class RamsesFanMap extends RamsesBaseCard {
     const remoteBindingIds = this._asList(this._topology?.remote_binding_ids);
 
     const remoteActivity = this._asObject(this._topology?.remote_activity);
-    const remoteActivityActive = this._topology?.remote_activity_active === true;
+    const remoteActivityRecent = this._isRecentIsoTimestamp(remoteActivity?.timestamp, 10);
+
+    const resolvedCommandLabel = this._formatFanCommandLabel(this._topology?.resolved_command);
+    const winningDemand = this._asObject(this._topology?.winning_demand);
+    const winningDemandText = winningDemand?.feature_id
+      ? `${String(winningDemand.feature_id)}:${String(winningDemand.source_id || '')}`
+      : '';
 
     const runtimeRemId = this._remoteBindings?.rem_id;
     const runtimeRemIdText = runtimeRemId ? this._escapeHtml(runtimeRemId) : '';
@@ -671,12 +758,10 @@ class RamsesFanMap extends RamsesBaseCard {
                         ${rems.map((rem) => {
                           const remId = String(rem?.rem_id || '').trim();
                           const enabled = rem?.enabled === false ? 'no' : 'yes';
-                          const isLast = remoteActivityActive
-                            && remId
-                            && remId === String(remoteActivity?.rem_id || '');
-                          const cmd = isLast ? String(remoteActivity?.command || '') : '';
-                          const pillClass = isLast ? 'pill pill-on' : 'pill pill-off';
-                          const pillText = isLast ? (cmd || 'last') : '';
+                          const isLast = remId && remId === String(remoteActivity?.rem_id || '');
+                          const cmd = isLast ? this._formatFanCommandLabel(remoteActivity?.command) : '';
+                          const pillClass = (isLast && remoteActivityRecent) ? 'pill pill-on' : 'pill pill-off';
+                          const pillText = (isLast && remoteActivityRecent) ? (cmd || 'last') : '';
 
                           const label = remId ? this._escapeHtml(remId) : 'unknown';
                           const cmdText = pillText ? ` <span class="${pillClass}">${this._escapeHtml(pillText)}</span>` : '';
@@ -715,10 +800,20 @@ class RamsesFanMap extends RamsesBaseCard {
       ? `<code>${runtimeRemIdText}</code>`
       : '—';
 
+    const resolvedText = resolvedCommandLabel
+      ? `<span class="pill pill-on">${this._escapeHtml(resolvedCommandLabel)}</span>`
+      : '—';
+
+    const winningText = winningDemandText
+      ? `<span class="small"><code>${this._escapeHtml(winningDemandText)}</code></span>`
+      : '—';
+
     return `
       <div class="kv">
         <div class="kv-row"><div class="kv-k">Configured REM(s)</div><div class="kv-v">${configuredRemsText}</div></div>
         <div class="kv-row"><div class="kv-k">Runtime bound REM</div><div class="kv-v">${runtimeRemText}</div></div>
+        <div class="kv-row"><div class="kv-k">Resolved command</div><div class="kv-v">${resolvedText}</div></div>
+        <div class="kv-row"><div class="kv-k">Winning demand</div><div class="kv-v">${winningText}</div></div>
         <div class="kv-row"><div class="kv-k">Area sensors</div><div class="kv-v">${this._escapeHtml(String(this._asList(this._sensorControl?.area_sensors).length))}</div></div>
       </div>
       ${remDetails}
@@ -749,6 +844,7 @@ class RamsesFanMap extends RamsesBaseCard {
               <th>Available</th>
               <th>Source</th>
               <th>Reason</th>
+              <th>Demand</th>
             </tr>
           </thead>
           <tbody>
@@ -761,6 +857,7 @@ class RamsesFanMap extends RamsesBaseCard {
               const reason = state?.reason;
               const positionText = (typeof position === 'number') ? String(position) : '—';
               const availableText = (typeof available === 'boolean') ? (available ? 'yes' : 'no') : '—';
+              const demandHtml = this._renderDemandPills(zoneId);
 
               return `
                 <tr>
@@ -769,6 +866,7 @@ class RamsesFanMap extends RamsesBaseCard {
                   <td>${this._escapeHtml(availableText)}</td>
                   <td class="small">${this._escapeHtml(source || '—')}</td>
                   <td class="small">${this._escapeHtml(reason || '—')}</td>
+                  <td class="small">${demandHtml}</td>
                 </tr>
               `;
             }).join('')}

@@ -37,6 +37,11 @@ from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import 
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
     RamsesCommands,
 )
+from custom_components.ramses_extras.framework.helpers.zone_demand import (
+    DemandSource,
+    get_zone_demand_registry,
+)
+from custom_components.ramses_extras.framework.helpers.zones import get_zone_registry
 
 from .config import HumidityConfig
 from .const import FEATURE_DEFINITION
@@ -76,6 +81,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self.config_entry = config_entry
         self.config = HumidityConfig(hass, config_entry)
         self.services = HumidityServices(hass, config_entry)
+
+        self._zone_demand_registry = get_zone_demand_registry(hass)
+        self._humidity_demand_zones: dict[str, set[str]] = {}
 
         # Initialize Ramses commands for direct device control
         self.ramses_commands = RamsesCommands(hass)
@@ -635,24 +643,23 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     async def _on_homeassistant_started(self, event: Event | None) -> None:
         await super()._on_homeassistant_started(event)
         if not self._automation_active or not self._is_feature_enabled():
+            for active_device_id in list(self._humidity_demand_zones):
+                self._sync_zone_demands(active_device_id, None)
             return
         await self._reconcile_startup_states()
 
     async def stop(self) -> None:
-        """Stop the humidity control automation.
-
-        Shuts down automation and cleans up resources.
-        """
         _LOGGER.info("Stopping humidity control automation")
 
         self._automation_active = False
         for device_id in list(self._active_area_spikes):
             self._clear_active_area_spike(device_id)
 
-        # Clear fan speed demands for all devices
+        for device_id in list(self._humidity_demand_zones):
+            self._sync_zone_demands(device_id, None)
+
         devices_with_demands = self.fan_speed_arbiter.get_all_devices_with_demands()
         for device_id in devices_with_demands:
-            # Check if this device has humidity control demands
             demands = self.fan_speed_arbiter.get_active_demands(device_id)
             humidity_demands = [d for d in demands if d.feature_id == self.feature_id]
             if humidity_demands:
@@ -685,9 +692,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             self.is_device_transport_available(device_id),
         )
         if not self._automation_active or not self._is_feature_enabled():
+            self._sync_zone_demands(device_id, None)
             return
 
         if self.fan_speed_arbiter.is_manual_override_active(device_id):
+            self._sync_zone_demands(device_id, None)
             _LOGGER.debug(
                 "Manual override active - skipping humidity control logic for %s",
                 device_id,
@@ -695,6 +704,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return
 
         if not self.fan_speed_arbiter.is_extras_control_enabled(device_id):
+            self._sync_zone_demands(device_id, None)
             _LOGGER.debug(
                 "Extras control disabled - skipping humidity control logic for %s",
                 device_id,
@@ -703,6 +713,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         # Check transport availability before processing
         if not self.is_device_transport_available(device_id):
+            self._sync_zone_demands(device_id, None)
             _LOGGER.debug(
                 "Transport unavailable - skipping humidity control logic for %s",
                 device_id,
@@ -733,6 +744,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 # This ensures fan returns to AUTO even if dehum wasn't active
                 await self._stop_dehumidification_without_switch_change(device_id)
                 self._clear_active_area_spike(device_id)
+                self._sync_zone_demands(device_id, None)
                 # Just update binary sensor to reflect inactive state
                 await self._set_indicator_off(device_id)
                 return
@@ -759,6 +771,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 offset,
             )
 
+            self._sync_zone_demands(device_id, decision)
+
             # Apply decision
             if decision["action"] == "dehumidify":
                 # Activate dehumidification: set fan HIGH, binary sensor ON
@@ -771,6 +785,83 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         except Exception as e:
             _LOGGER.error("Automation logic error: %s", e)
+
+    def _sync_zone_demands(
+        self, device_id: str, decision: dict[str, Any] | None
+    ) -> None:
+        new_zones: set[str] = set()
+        triggers: Any = None
+        if isinstance(decision, dict):
+            triggers = decision.get("active_triggers")
+
+        triggers_list: list[dict[str, Any]] = []
+        if isinstance(triggers, list):
+            zone_ids_from_triggers: set[str] = set()
+            for item in triggers:
+                if not isinstance(item, dict):
+                    continue
+                triggers_list.append(item)
+                zone_id = str(item.get("zone_id") or "").strip()
+                if zone_id:
+                    zone_ids_from_triggers.add(zone_id)
+
+            if zone_ids_from_triggers:
+                new_zones = zone_ids_from_triggers
+            elif triggers:
+                zone_registry = get_zone_registry(self.hass)
+                all_zones = zone_registry.get_zones_for_fan(device_id)
+                for zone in all_zones:
+                    zid = str(zone.get("zone_id") or "").strip()
+                    if zid:
+                        new_zones.add(zid)
+
+        prev_zones = self._humidity_demand_zones.get(device_id, set())
+        for zone_id in sorted(prev_zones - new_zones):
+            self._zone_demand_registry.clear_demand(
+                device_id, zone_id, DemandSource.HUMIDITY
+            )
+
+        if not new_zones:
+            self._humidity_demand_zones.pop(device_id, None)
+            return
+
+        metadata_base: dict[str, Any] = {}
+        if isinstance(decision, dict):
+            metadata_base["control_mode"] = decision.get("control_mode")
+            metadata_base["action"] = decision.get("action")
+
+        for item in triggers_list:
+            metadata = {
+                **metadata_base,
+                "area_id": item.get("area_id"),
+                "label": item.get("label"),
+                "rise_percent": item.get("rise_percent"),
+                "current_rh": item.get("current_rh"),
+                "current_abs": item.get("current_abs"),
+                "baseline_abs": item.get("baseline_abs"),
+            }
+
+            zone_id = str(item.get("zone_id") or "").strip()
+            if zone_id:
+                self._zone_demand_registry.set_demand(
+                    device_id,
+                    zone_id,
+                    DemandSource.HUMIDITY,
+                    True,
+                    metadata=metadata,
+                )
+                continue
+
+            for zid in sorted(new_zones):
+                self._zone_demand_registry.set_demand(
+                    device_id,
+                    zid,
+                    DemandSource.HUMIDITY,
+                    True,
+                    metadata=metadata,
+                )
+
+        self._humidity_demand_zones[device_id] = new_zones
 
     async def _reconcile_startup_states(self) -> None:
         device_ids: set[str] = set()

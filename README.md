@@ -10,6 +10,17 @@
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
 [![Home Assistant >=2026.1.0](https://img.shields.io/badge/home%20assistant-%3E%3D2026.1.0-green.svg)](https://home-assistant.io)
 
+## ⚠️ **Disclaimer**
+
+**Use of Ramses Extras is at your own risk.** This integration modifies ventilation system behavior and interacts with hardware devices. While extensively tested, users should:
+
+- Understand their ventilation system before enabling automation
+- Monitor system behavior after installation
+- Have a basic understanding of Home Assistant configuration
+- Keep device firmware updated
+
+The authors are not responsible for any damage to equipment, property, or health effects resulting from the use of this software.
+
 **Ramses Extras** is a Home Assistant integration that extends the Ramses RF ([ramses_cc](https://github.com/ramses-rf/ramses_cc)) integration with additional features, entities, automation, and UI components. Built on a modular framework for easy extension and maintenance.
 
 ## 🎯 **What is Ramses Extras?**
@@ -43,7 +54,8 @@ note: the following are tested with an Orcon WTW
 - **Hello World** - template feature, example to develop new features
 - **HVAC Fan Card** – advanced Lovelace card for FAN monitoring and control
 - **Humidity Control** – advanced humidity-based automation and entities
-- **Sensor Control** – central sensor mapping for Humidity Control + HVAC Fan Card
+- **CO2 Control** – CO2-based ventilation automation with high priority
+- **FAN Configuration (Sensor Control)** – central sensor mapping for Humidity Control + CO2 Control + HVAC Fan Card
 - **Ramses Debugger** – advanced debugging tools for Ramses RF protocol analysis
 - **Default feature** - Common/reusable websockets, entities, etc to be used by other features
 
@@ -81,7 +93,20 @@ temperature, humidity, and CO₂ sources.
 - **Bilingual Support**: English and Dutch translations
 - **Full Test Coverage**: Comprehensive test suite with validation
 
-### **✅ Sensor Control**
+### **✅ CO2 Control**
+
+**CO2-based ventilation automation with high priority:**
+
+- **High Priority Control**: Takes precedence over humidity control for air quality
+- **Zone-Based Monitoring**: CO2 sensors per zone for targeted ventilation
+- **Comprehensive Entities**:
+  - CO2 threshold sensors (min/max configuration)
+  - CO2 demand indicators and status entities
+  - Zone-specific CO2 monitoring
+- **Integration with Arbiter**: Publishes demand to shared fan-speed arbiter
+- **Flexible Sensor Sources**: Uses FAN Configuration mappings for CO2 inputs
+
+### **✅ FAN Configuration (Sensor Control)**
 
 **Central sensor source management and override system:**
 
@@ -91,8 +116,9 @@ temperature, humidity, and CO₂ sources.
 - **Source Types**: Internal (default), external entities, derived (absolute humidity), or disabled
 - **Visual Indicators**: HVAC fan card shows sensor source status with color-coded indicators
 - **WebSocket Integration**: Real-time sensor mapping updates via `ramses_extras/get_entity_mappings`
-- **Automation Integration**: Humidity control automatically uses effective sensor mappings
+- **Automation Integration**: Humidity Control and CO2 Control automatically use effective sensor mappings
 - **Per-Device Configuration**: Different sensor sources for each FAN/CO2 device
+- **FAN Map Card**: Visual observability and configuration card included in FAN Configuration for monitoring and testing zone configurations
 
 For **absolute humidity**, Sensor Control does not expose a direct entity itself.
 Instead it drives the default feature's resolver-aware sensors:
@@ -112,20 +138,22 @@ These sensors are calculated as follows:
 This makes the default absolute humidity sensors the **single source of truth**
 for:
 
-- the Humidity Control automation logic, and
+- the Humidity Control automation logic,
+- the CO2 Control automation logic, and
 - the HVAC Fan Card graphs and status.
 
-Sensor Control itself does not create new sensors. Instead, it rewires _which_
+FAN Configuration itself does not create new sensors. Instead, it rewires _which_
 entities other features use for each metric:
 
 - Humidity Control reads indoor/outdoor temperature and humidity via
-  `SensorControlResolver`, so changing mappings in the Sensor Control UI
+  `SensorControlResolver`, so changing mappings in the FAN Configuration UI
   immediately affects the automation inputs.
+- CO2 Control reads CO2 sensor mappings via the same resolver.
 - The HVAC Fan Card resolves entities through the same resolver and shows the
   effective source (internal vs external vs derived vs disabled) using
   color-coded indicators.
 
-The Sensor Control configuration flow provides:
+The FAN Configuration configuration flow provides:
 
 - A **global overview** page that summarizes only non-internal mappings per
   device, including absolute humidity inputs, so you can quickly see which
@@ -147,12 +175,16 @@ capabilities:
 - Another FAN may be missing one or more sensors, or its internal sensors may
   not represent the rooms you actually care about.
 
-With Sensor Control you can still give **both** FANs the same
+With FAN Configuration you can still give **both** FANs the same
 features/automations and UI:
 
 - The first FAN uses its internal sensors.
 - The second FAN can point individual metrics to external HA sensors located in
   better positions (or on other devices).
+
+CO2 Control uses these mappings to provide high-priority air quality control,
+taking precedence over humidity control when CO2 levels exceed configured
+thresholds.
 
 ### **✅ Ramses Debugger**
 
@@ -243,7 +275,8 @@ example:
 3. Search for **"Ramses Extras"**
 4. Select which features to enable:
    - ✅ **Humidity Control** (works together with the hvac Fan Card)
-   - ✅ **Sensor Control** (shared sensor mapping for Humidity Control + HVAC Fan Card)
+   - ✅ **CO2 Control** (high priority air quality control)
+   - ✅ **FAN Configuration (Sensor Control)** (shared sensor mapping for Humidity Control + CO2 Control + HVAC Fan Card)
    - ✅ **Ramses Debugger** (advanced debugging tools for protocol analysis)
    - 🟡 **HVAC Fan Card**
 

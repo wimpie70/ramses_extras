@@ -6,6 +6,7 @@ and other features (e.g. sending fan commands and managing 2411 parameters).
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import logging
 import time
@@ -69,21 +70,59 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             _LOGGER.info("Parser handling dict payload: %s", payload)
             # For 22F1/22F3, look for fan_mode or similar keys
             if normalized_code == "22F1":
-                fan_mode = payload.get("fan_mode") or payload.get("mode")
-                if fan_mode:
-                    mode_map = {
+                fan_mode = (
+                    payload.get("fan_mode")
+                    or payload.get("FAN_MODE")
+                    or payload.get("mode")
+                    or payload.get("MODE")
+                )
+                mode_idx = payload.get("_mode_idx") or payload.get("_MODE_IDX")
+                if fan_mode is not None:
+                    fan_mode_s = str(fan_mode).strip().lower()
+                    mode_by_name = {
+                        "low": "fan_low",
+                        "medium": "fan_medium",
+                        "mid": "fan_medium",
+                        "high": "fan_high",
+                        "auto": "fan_auto",
+                        "away": "fan_away",
+                    }
+                    result = mode_by_name.get(fan_mode_s)
+                    if result:
+                        _LOGGER.info("Parser found command from fan_mode: %s", result)
+                        return result
+
+                    mode_by_idx = {
                         "01": "fan_low",
                         "02": "fan_medium",
                         "03": "fan_high",
                         "04": "fan_auto",
                         "00": "fan_away",
                     }
-                    result = mode_map.get(str(fan_mode))
+                    result = mode_by_idx.get(str(fan_mode).strip())
                     if result:
                         _LOGGER.info("Parser found command from fan_mode: %s", result)
                         return result
+
+                if mode_idx is not None:
+                    mode_by_idx = {
+                        "01": "fan_low",
+                        "02": "fan_medium",
+                        "03": "fan_high",
+                        "04": "fan_auto",
+                        "00": "fan_away",
+                    }
+                    result = mode_by_idx.get(str(mode_idx).strip())
+                    if result:
+                        _LOGGER.info("Parser found command from _mode_idx: %s", result)
+                        return result
                 # Also check for speed-related keys
-                speed = payload.get("speed") or payload.get("fan_speed")
+                speed = (
+                    payload.get("speed")
+                    or payload.get("SPEED")
+                    or payload.get("fan_speed")
+                    or payload.get("FAN_SPEED")
+                )
                 if speed:
                     speed_map = {
                         "low": "fan_low",
@@ -106,6 +145,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         normalized_payload = payload.strip().upper()
         _LOGGER.info("Parser string payload: '%s'", normalized_payload)
+
+        if normalized_payload.startswith("{") and normalized_payload.endswith("}"):
+            try:
+                parsed = ast.literal_eval(payload)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, dict):
+                return _observed_command_from_packet(code, parsed)
 
         if normalized_code == "22F1":
             # Payload format: 00 0X YY where X=speed (1-4), YY varies (04 or 07 seen)
@@ -424,7 +471,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 src,
                 dst,
                 str(code) if code is not None else None,
-                str(payload) if payload is not None else None,
+                payload,
                 str(verb) if verb is not None else None,
             )
         )
