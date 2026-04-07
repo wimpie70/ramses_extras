@@ -31,12 +31,9 @@ RAMSES_DEBUGGER_CONFIG_SCHEMA = vol.Schema(
 def ramses_debugger_validator(section: dict, hass: Any | None = None) -> list[str]:
     """Validate ramses_debugger configuration section.
 
-    Args:
-        section: The ramses_debugger configuration section
-        hass: Home Assistant instance (optional)
-
-    Returns:
-        List of validation error messages
+    :param section: The ramses_debugger configuration section
+    :param hass: Home Assistant instance (optional)
+    :return: List of validation error messages
     """
     errors: list[str] = []
 
@@ -58,11 +55,8 @@ def ramses_debugger_validator(section: dict, hass: Any | None = None) -> list[st
 def export_ramses_debugger_to_yaml(config: dict) -> dict:
     """Export ramses_debugger configuration to YAML-compatible dict.
 
-    Args:
-        config: The ramses_debugger configuration section
-
-    Returns:
-        YAML-compatible dictionary
+    :param config: The ramses_debugger configuration section
+    :return: YAML-compatible dictionary
     """
     return {
         "enabled": config.get("enabled", False),
@@ -74,11 +68,8 @@ def export_ramses_debugger_to_yaml(config: dict) -> dict:
 def parse_ramses_debugger_yaml(yaml_data: dict) -> dict[str, Any]:
     """Parse ramses_debugger YAML data into canonical config format.
 
-    Args:
-        yaml_data: Raw YAML data for ramses_debugger section
-
-    Returns:
-        Canonical ramses_debugger configuration
+    :param yaml_data: Raw YAML data for ramses_debugger section
+    :return: Canonical ramses_debugger configuration
     """
     result = RAMSES_DEBUGGER_CONFIG_SCHEMA(yaml_data)
     return cast(dict[str, Any], result)
@@ -87,12 +78,9 @@ def parse_ramses_debugger_yaml(yaml_data: dict) -> dict[str, Any]:
 def merge_ramses_debugger_config(existing: dict, imported: dict) -> dict:
     """Merge imported ramses_debugger config with existing.
 
-    Args:
-        existing: Existing ramses_debugger configuration
-        imported: Imported ramses_debugger configuration
-
-    Returns:
-        Merged configuration
+    :param existing: Existing ramses_debugger configuration
+    :param imported: Imported ramses_debugger configuration
+    :return: Merged configuration
     """
     merged = dict(existing)
     merged.update(imported)

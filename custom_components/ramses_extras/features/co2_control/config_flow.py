@@ -17,12 +17,9 @@ _LOGGER = logging.getLogger(__name__)
 def get_co2_control_schema(hass: HomeAssistant, device_id: str) -> vol.Schema:
     """Get CO2 control configuration schema.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-
-    Returns:
-        Configuration schema
+    :param hass: Home Assistant instance
+    :param device_id: Device identifier
+    :return: Configuration schema
     """
     return vol.Schema(
         {
@@ -44,11 +41,8 @@ def get_co2_control_schema(hass: HomeAssistant, device_id: str) -> vol.Schema:
 def get_zone_config_schema(hass: HomeAssistant) -> vol.Schema:
     """Get zone configuration schema.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        Zone configuration schema
+    :param hass: Home Assistant instance
+    :return: Zone configuration schema
     """
     return vol.Schema(
         {
@@ -68,12 +62,9 @@ async def async_validate_co2_config(
 ) -> dict[str, str]:
     """Validate CO2 control configuration.
 
-    Args:
-        hass: Home Assistant instance
-        config: Configuration to validate
-
-    Returns:
-        Dictionary of validation errors (empty if valid)
+    :param hass: Home Assistant instance
+    :param config: Configuration to validate
+    :return: Dictionary of validation errors (empty if valid)
     """
     errors = {}
 

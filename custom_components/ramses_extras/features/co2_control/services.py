@@ -14,9 +14,8 @@ class CO2Services:
     def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
         """Initialize CO2 services.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
         """
         self.hass = hass
         self.config_entry = config_entry
@@ -52,8 +51,7 @@ class CO2Services:
     async def _handle_enable_co2_control(self, call: ServiceCall) -> None:
         """Handle enable CO2 control service call.
 
-        Args:
-            call: Service call data
+        :param call: Service call data
         """
         device_id = call.data.get("device_id")
         _LOGGER.info("Enable CO2 control called for device %s", device_id)
@@ -64,8 +62,7 @@ class CO2Services:
     async def _handle_disable_co2_control(self, call: ServiceCall) -> None:
         """Handle disable CO2 control service call.
 
-        Args:
-            call: Service call data
+        :param call: Service call data
         """
         device_id = call.data.get("device_id")
         _LOGGER.info("Disable CO2 control called for device %s", device_id)
@@ -75,8 +72,7 @@ class CO2Services:
     async def _handle_set_zone_threshold(self, call: ServiceCall) -> None:
         """Handle set zone threshold service call.
 
-        Args:
-            call: Service call data
+        :param call: Service call data
         """
         device_id = call.data.get("device_id")
         zone_id = call.data.get("zone_id")
@@ -94,8 +90,7 @@ class CO2Services:
     async def _handle_trigger_co2_boost(self, call: ServiceCall) -> None:
         """Handle trigger CO2 boost service call.
 
-        Args:
-            call: Service call data
+        :param call: Service call data
         """
         device_id = call.data.get("device_id")
         duration_minutes = call.data.get("duration_minutes", 30)

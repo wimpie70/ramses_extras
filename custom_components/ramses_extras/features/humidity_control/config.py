@@ -32,9 +32,8 @@ class HumidityConfig(ExtrasConfigManager):
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Initialize humidity configuration manager.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
         """
         # Use the feature-specific template for humidity control
         default_config = HUMIDITY_CONTROL_DEFAULTS
@@ -52,8 +51,7 @@ class HumidityConfig(ExtrasConfigManager):
     def validate_config(self) -> bool:
         """Validate humidity control configuration.
 
-        Returns:
-            True if configuration is valid
+        :return: True if configuration is valid
         """
         try:
             # Use framework validation patterns
@@ -86,8 +84,7 @@ class HumidityConfig(ExtrasConfigManager):
     def get_config_schema(self) -> dict[str, Any]:
         """Get humidity control configuration schema for UI.
 
-        Returns:
-            Configuration schema dictionary
+        :return: Configuration schema dictionary
         """
         return self.get_config_schema_dict()
 
@@ -146,8 +143,7 @@ class HumidityConfig(ExtrasConfigManager):
     def get_humidity_thresholds(self) -> dict[str, float]:
         """Get humidity threshold values.
 
-        Returns:
-            Dictionary of humidity threshold values
+        :return: Dictionary of humidity threshold values
         """
         return {
             "min_humidity": self.get("default_min_humidity", 40.0),
@@ -159,8 +155,7 @@ class HumidityConfig(ExtrasConfigManager):
     def get_safety_settings(self) -> dict[str, Any]:
         """Get safety-related settings.
 
-        Returns:
-            Dictionary of safety settings
+        :return: Dictionary of safety settings
         """
         return {
             "max_runtime_minutes": self.get("max_runtime_minutes", 120),
@@ -174,12 +169,9 @@ def create_humidity_config(
 ) -> HumidityConfig:
     """Create humidity configuration instance.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-
-    Returns:
-        HumidityConfig instance
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry
+    :return: HumidityConfig instance
     """
     return HumidityConfig(hass, config_entry)
 

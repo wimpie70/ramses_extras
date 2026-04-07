@@ -37,10 +37,9 @@ class CO2ZoneManager:
     ) -> None:
         """Initialize CO2 zone manager.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            config: Configuration dictionary
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param config: Configuration dictionary
         """
         self.hass = hass
         self.device_id = device_id
@@ -50,8 +49,7 @@ class CO2ZoneManager:
     def _load_zones_from_config(self, config: dict[str, Any]) -> None:
         """Load zones from configuration.
 
-        Args:
-            config: Configuration dictionary
+        :param config: Configuration dictionary
         """
         zones_config = config.get("zones", [])
         for zone_config in zones_config:
@@ -74,9 +72,8 @@ class CO2ZoneManager:
     async def update_zone_co2(self, zone_id: str, co2_value: int | None) -> None:
         """Update CO2 value for a zone.
 
-        Args:
-            zone_id: Zone identifier
-            co2_value: CO2 value in ppm (or None if unavailable)
+        :param zone_id: Zone identifier
+        :param co2_value: CO2 value in ppm (or None if unavailable)
         """
         if zone_id not in self.zones:
             _LOGGER.warning("Unknown zone %s for device %s", zone_id, self.device_id)
@@ -98,12 +95,9 @@ class CO2ZoneManager:
     ) -> list[str]:
         """Check which zones have exceeded thresholds.
 
-        Args:
-            activation_hysteresis: Hysteresis for activation (positive)
-            deactivation_hysteresis: Hysteresis for deactivation (negative)
-
-        Returns:
-            List of triggered zone IDs
+        :param activation_hysteresis: Hysteresis for activation (positive)
+        :param deactivation_hysteresis: Hysteresis for deactivation (negative)
+        :return: List of triggered zone IDs
         """
         triggered_zones = []
 
@@ -156,16 +150,14 @@ class CO2ZoneManager:
     async def get_active_zones(self) -> list[CO2Zone]:
         """Get list of zones with active CO2 triggers.
 
-        Returns:
-            List of active CO2Zone objects
+        :return: List of active CO2Zone objects
         """
         return [zone for zone in self.zones.values() if zone.is_triggered]
 
     async def get_worst_zone(self) -> CO2Zone | None:
         """Get the zone with the highest CO2 level.
 
-        Returns:
-            CO2Zone with highest CO2 or None if no zones have data
+        :return: CO2Zone with highest CO2 or None if no zones have data
         """
         zones_with_data = [
             zone for zone in self.zones.values() if zone.current_co2 is not None
@@ -181,12 +173,9 @@ class CO2ZoneManager:
     ) -> int:
         """Calculate fan speed based on worst zone.
 
-        Args:
-            base_speed: Base fan speed when no zones triggered
-            max_speed: Maximum fan speed
-
-        Returns:
-            Calculated fan speed
+        :param base_speed: Base fan speed when no zones triggered
+        :param max_speed: Maximum fan speed
+        :return: Calculated fan speed
         """
         active_zones = await self.get_active_zones()
 
@@ -223,9 +212,8 @@ class CO2ZoneManager:
     async def update_from_state(self, zone_id: str, state: State) -> None:
         """Update zone from Home Assistant state.
 
-        Args:
-            zone_id: Zone identifier
-            state: Home Assistant state object
+        :param zone_id: Zone identifier
+        :param state: Home Assistant state object
         """
         if state.state in ("unknown", "unavailable"):
             await self.update_zone_co2(zone_id, None)
@@ -241,8 +229,7 @@ class CO2ZoneManager:
     def get_zone_status(self) -> dict[str, Any]:
         """Get status of all zones.
 
-        Returns:
-            Dictionary with zone status information
+        :return: Dictionary with zone status information
         """
         return {
             "zones": [
@@ -270,8 +257,7 @@ class CO2ZoneManager:
     def add_zone(self, zone_config: dict[str, Any]) -> None:
         """Add a new zone.
 
-        Args:
-            zone_config: Zone configuration dictionary
+        :param zone_config: Zone configuration dictionary
         """
         zone = CO2Zone(
             zone_id=zone_config.get("zone_id", ""),
@@ -292,11 +278,8 @@ class CO2ZoneManager:
     def remove_zone(self, zone_id: str) -> bool:
         """Remove a zone.
 
-        Args:
-            zone_id: Zone identifier
-
-        Returns:
-            True if zone was removed, False if not found
+        :param zone_id: Zone identifier
+        :return: True if zone was removed, False if not found
         """
         if zone_id in self.zones:
             del self.zones[zone_id]
@@ -307,12 +290,9 @@ class CO2ZoneManager:
     def update_zone_config(self, zone_id: str, updates: dict[str, Any]) -> bool:
         """Update zone configuration.
 
-        Args:
-            zone_id: Zone identifier
-            updates: Configuration updates
-
-        Returns:
-            True if zone was updated, False if not found
+        :param zone_id: Zone identifier
+        :param updates: Configuration updates
+        :return: True if zone was updated, False if not found
         """
         if zone_id not in self.zones:
             return False

@@ -44,15 +44,13 @@ async def create_humidity_sensor(
     entity_configs: dict[str, Any],
     config_entry: ConfigEntry | None = None,
 ) -> list[ExtrasSensorEntity]:
-    """Create humidity sensor for a device.
+    """Initialize humidity sensor.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config_entry: Configuration entry
-
-    Returns:
-        List of sensor entities
+    :param hass: Home Assistant instance
+    :param device_id: Device identifier
+    :param sensor_type: Type of sensor
+    :param config_entry: Configuration entry
+    :return: List of sensor entities
     """
     sensor: list[ExtrasSensorEntity] = []
 

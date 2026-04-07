@@ -28,9 +28,8 @@ class HumidityServices:
     def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
         """Initialize humidity services.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
         """
         self.hass = hass
         self.config_entry = config_entry
@@ -54,11 +53,8 @@ class HumidityServices:
     async def async_activate_dehumidification(self, device_id: str) -> bool:
         """Activate dehumidification for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :return: True if successful
         """
         _LOGGER.info("Activating dehumidification for device %s", device_id)
 
@@ -84,11 +80,8 @@ class HumidityServices:
     async def async_deactivate_dehumidification(self, device_id: str) -> bool:
         """Deactivate dehumidification for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :return: True if successful
         """
         _LOGGER.info("Deactivating dehumidification for device %s", device_id)
 
@@ -114,12 +107,9 @@ class HumidityServices:
     async def async_set_fan_speed(self, device_id: str, speed: str) -> bool:
         """Set fan speed by sending Ramses RF command.
 
-        Args:
-            device_id: Device identifier
-            speed: Fan speed ("low", "high", "auto", etc.)
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :param speed: Fan speed ("low", "high", "auto", etc.)
+        :return: True if successful
         """
         _LOGGER.info("Setting fan speed to %s for device %s", speed, device_id)
 
@@ -160,12 +150,9 @@ class HumidityServices:
     async def async_set_min_humidity(self, device_id: str, value: float) -> bool:
         """Set minimum humidity threshold.
 
-        Args:
-            device_id: Device identifier
-            value: Minimum humidity value
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :param value: Minimum humidity value
+        :return: True if successful
         """
         _LOGGER.info("Setting min humidity for device %s: %s%%", device_id, value)
 
@@ -191,12 +178,9 @@ class HumidityServices:
     async def async_set_max_humidity(self, device_id: str, value: float) -> bool:
         """Set maximum humidity threshold.
 
-        Args:
-            device_id: Device identifier
-            value: Maximum humidity value
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :param value: Maximum humidity value
+        :return: True if successful
         """
         _LOGGER.info("Setting max humidity for device %s: %s%%", device_id, value)
 
@@ -222,12 +206,9 @@ class HumidityServices:
     async def async_set_offset(self, device_id: str, value: float) -> bool:
         """Set humidity offset adjustment.
 
-        Args:
-            device_id: Device identifier
-            value: Offset value
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :param value: Offset value
+        :return: True if successful
         """
         _LOGGER.info("Setting humidity offset for device %s: %s", device_id, value)
 
@@ -253,11 +234,8 @@ class HumidityServices:
     async def async_get_status(self, device_id: str) -> dict[str, Any]:
         """Get humidity control status for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Status dictionary
+        :param device_id: Device identifier
+        :return: Status dictionary
         """
         try:
             # Get all humidity-related entities
@@ -311,11 +289,8 @@ class HumidityServices:
     async def _find_dehumidify_entity(self, device_id: str) -> str | None:
         """Find dehumidify switch entity for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Entity ID or None if not found
+        :param device_id: Device identifier
+        :return: Entity ID or None if not found
         """
         device_id_underscore = device_id.replace(":", "_")
         # Use EntityHelpers for consistent entity name generation
@@ -327,11 +302,8 @@ class HumidityServices:
     async def _find_min_humidity_entity(self, device_id: str) -> str | None:
         """Find minimum humidity number entity for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Entity ID or None if not found
+        :param device_id: Device identifier
+        :return: Entity ID or None if not found
         """
         device_id_underscore = device_id.replace(":", "_")
         # Use EntityHelpers for consistent entity name generation
@@ -345,11 +317,8 @@ class HumidityServices:
     async def _find_max_humidity_entity(self, device_id: str) -> str | None:
         """Find maximum humidity number entity for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Entity ID or None if not found
+        :param device_id: Device identifier
+        :return: Entity ID or None if not found
         """
         device_id_underscore = device_id.replace(":", "_")
         # Use EntityHelpers for consistent entity name generation
@@ -363,11 +332,8 @@ class HumidityServices:
     async def _find_offset_entity(self, device_id: str) -> str | None:
         """Find humidity offset number entity for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Entity ID or None if not found
+        :param device_id: Device identifier
+        :return: Entity ID or None if not found
         """
         device_id_underscore = device_id.replace(":", "_")
         # Use EntityHelpers for consistent entity name generation
@@ -381,11 +347,8 @@ class HumidityServices:
     async def _find_entity_by_pattern(self, pattern: str) -> str | None:
         """Find entity by pattern.
 
-        Args:
-            pattern: Entity pattern to search for
-
-        Returns:
-            Entity ID or None if not found
+        :param pattern: Entity pattern to search for
+        :return: Entity ID or None if not found
         """
         # Get all states and find matching entity
         states = self.hass.states.async_all()
@@ -400,12 +363,9 @@ class HumidityServices:
     ) -> dict[str, Any] | None:
         """Get state for a specific entity type.
 
-        Args:
-            device_id: Device identifier
-            entity_type: Type of entity
-
-        Returns:
-            State dictionary or None if not found
+        :param device_id: Device identifier
+        :param entity_type: Type of entity
+        :return: State dictionary or None if not found
         """
         # Convert device_id to underscore format for entity lookup
         device_id_underscore = device_id.replace(":", "_")
@@ -480,8 +440,7 @@ class HumidityServices:
     def get_service_descriptions(self) -> dict[str, str]:
         """Get descriptions of available services.
 
-        Returns:
-            Dictionary mapping service names to descriptions
+        :return: Dictionary mapping service names to descriptions
         """
         return {
             "async_activate_dehumidification": "Activate dehumidification for a device",
@@ -510,12 +469,9 @@ def create_humidity_services(
 ) -> HumidityServices:
     """Create humidity services instance.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-
-    Returns:
-        HumidityServices instance
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry
+    :return: HumidityServices instance
     """
     return HumidityServices(hass, config_entry)
 

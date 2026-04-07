@@ -30,10 +30,9 @@ class CO2ControlSwitch(ExtrasSwitchEntity, RestoreEntity):
     ) -> None:
         """Initialize CO2 control switch.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            config: Entity configuration
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param config: Entity configuration
         """
         super().__init__(hass, device_id, "co2_control", config)
         self._attr_is_on = False

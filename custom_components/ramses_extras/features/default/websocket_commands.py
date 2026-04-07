@@ -1114,8 +1114,7 @@ async def ws_clear_zone_demand(
 def register_default_websocket_commands() -> dict[str, str]:
     """Register WebSocket commands for the default feature.
 
-    Returns:
-        Dictionary mapping command names to their WebSocket command types
+    :return: Dictionary mapping command names to their WebSocket command types
     """
     from .const import DEFAULT_WEBSOCKET_COMMANDS
 

@@ -56,9 +56,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
     def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
         """Initialize CO2 automation manager.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
         """
         super().__init__(
             hass=hass,
@@ -99,8 +98,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
     def set_humidity_manager(self, humidity_manager: Any) -> None:
         """Set reference to humidity automation manager for priority coordination.
 
-        Args:
-            humidity_manager: HumidityAutomationManager instance
+        :param humidity_manager: HumidityAutomationManager instance
         """
         self.humidity_manager = humidity_manager
         _LOGGER.debug("Humidity manager reference set for priority coordination")
@@ -268,10 +266,9 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         This method provides the async processing logic that derived classes
         can extend or override for feature-specific needs.
 
-        Args:
-            entity_id: Entity that changed state
-            old_state: Previous state (if any)
-            new_state: New state
+        :param entity_id: Entity that changed state
+        :param old_state: Previous state (if any)
+        :param new_state: New state
         """
         # Check if feature is still enabled first
         if not self._is_feature_enabled():
@@ -339,8 +336,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
     async def async_setup(self) -> bool:
         """Set up CO2 automation.
 
-        Returns:
-            True if setup successful
+        :return: True if setup successful
         """
         if not self._is_feature_enabled():
             _LOGGER.info("CO2 control feature is not enabled, skipping setup")
@@ -467,8 +463,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
     async def _handle_co2_sensor_change(self, event: Event) -> None:
         """Handle CO2 sensor state change.
 
-        Args:
-            event: State change event
+        :param event: State change event
         """
         entity_id = event.data.get("entity_id")
         new_state = event.data.get("new_state")
@@ -711,8 +706,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
     async def _evaluate_co2_control(self, device_id: str) -> None:
         """Evaluate CO2 control and adjust fan speed if needed.
 
-        Args:
-            device_id: Device identifier (may include device type suffix)
+        :param device_id: Device identifier (may include device type suffix)
         """
         # Normalize device_id by stripping device type suffix
         clean_device_id = device_id
@@ -1083,9 +1077,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Adjust fan speed based on CO2 levels.
 
-        Args:
-            device_id: Device identifier
-            zone_manager: Zone manager instance
+        :param device_id: Device identifier
+        :param zone_manager: Zone manager instance
         """
         # Calculate required fan speed
         base_speed = 2  # Base speed when CO2 triggered
@@ -1129,8 +1122,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
     async def _return_to_idle(self, device_id: str) -> None:
         """Return fan to idle speed.
 
-        Args:
-            device_id: Device identifier
+        :param device_id: Device identifier
         """
         idle_speed = 1
         if self._last_fan_speed != idle_speed:
@@ -1160,16 +1152,14 @@ class CO2AutomationManager(ExtrasBaseAutomation):
     def is_active(self) -> bool:
         """Check if CO2 control is currently active.
 
-        Returns:
-            True if CO2 control is active
+        :return: True if CO2 control is active
         """
         return self._co2_active
 
     def get_status(self) -> dict[str, Any]:
         """Get current CO2 control status.
 
-        Returns:
-            Status dictionary
+        :return: Status dictionary
         """
         return {
             "enabled": self.config.enabled,
@@ -1194,8 +1184,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
     async def async_unload(self) -> bool:
         """Unload CO2 automation.
 
-        Returns:
-            True if unload successful
+        :return: True if unload successful
         """
         # Remove state change listeners
         for listener in self._state_change_listeners:

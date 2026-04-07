@@ -48,14 +48,11 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _inject_version(hass: HomeAssistant, result: Any) -> Any:
-    """Inject backend version into WebSocket response for version mismatch detection.
+    """Register ramses_debugger WebSocket commands.
 
-    Args:
-        hass: Home Assistant instance
-        result: Result data to send
-
-    Returns:
-        Result with version injected if it's a dict
+    :param hass: Home Assistant instance
+    :param result: Result data to send
+    :return: Result with version injected if it's a dict
     """
     if isinstance(result, dict):
         version = hass.data.get(DOMAIN, {}).get("_integration_version", "0.0.0")

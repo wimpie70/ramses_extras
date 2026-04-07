@@ -29,12 +29,9 @@ DEFAULT_FEATURE_CONFIG_SCHEMA = vol.Schema(
 def default_validator(section: dict, hass: Any | None = None) -> list[str]:
     """Validate default feature configuration section.
 
-    Args:
-        section: The default feature configuration section
-        hass: Home Assistant instance (optional)
-
-    Returns:
-        List of validation error messages
+    :param section: The default configuration section
+    :param hass: Home Assistant instance (optional)
+    :return: List of validation error messages
     """
     errors: list[str] = []
 
@@ -52,13 +49,10 @@ def default_validator(section: dict, hass: Any | None = None) -> list[str]:
 
 
 def export_default_to_yaml(config: dict) -> dict:
-    """Export default feature configuration to YAML-compatible dict.
+    """Export default configuration to YAML-compatible dict.
 
-    Args:
-        config: The default feature configuration section
-
-    Returns:
-        YAML-compatible dictionary
+    :param config: The default configuration section
+    :return: YAML-compatible dictionary
     """
     return {
         "enabled": config.get("enabled", True),
@@ -67,13 +61,10 @@ def export_default_to_yaml(config: dict) -> dict:
 
 
 def parse_default_yaml(yaml_data: dict) -> dict[Any, Any]:
-    """Parse default feature YAML data into canonical config format.
+    """Parse default YAML data into canonical config format.
 
-    Args:
-        yaml_data: Raw YAML data for default feature section
-
-    Returns:
-        Canonical default feature configuration
+    :param yaml_data: Raw YAML data for default section
+    :return: Canonical default configuration
     """
     # Validate against schema
     result = DEFAULT_FEATURE_CONFIG_SCHEMA(yaml_data)
@@ -83,12 +74,9 @@ def parse_default_yaml(yaml_data: dict) -> dict[Any, Any]:
 def merge_default_config(existing: dict, imported: dict) -> dict:
     """Merge imported default config with existing.
 
-    Args:
-        existing: Existing default configuration
-        imported: Imported default configuration
-
-    Returns:
-        Merged configuration
+    :param existing: Existing default configuration
+    :param imported: Imported default configuration
+    :return: Merged configuration
     """
     merged = dict(existing)
     if "entities" in imported:

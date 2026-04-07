@@ -67,9 +67,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
         """Initialize humidity automation manager.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
         """
         super().__init__(
             hass=hass,
@@ -182,8 +181,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     def _generate_entity_patterns(self) -> list[str]:
         """Generate entity patterns for humidity control.
 
-        Returns:
-            List of entity patterns to listen for
+        :return: List of entity patterns to listen for
         """
         patterns = [
             # Default feature sensors (absolute humidity)
@@ -258,8 +256,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     async def _check_any_device_ready(self) -> bool:
         """Check if any device has all required humidity control entities ready.
 
-        Returns:
-            True if at least one device is ready
+        :return: True if at least one device is ready
         """
         # Check if feature is still enabled first
         if not self._is_feature_enabled():
@@ -356,11 +353,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     async def _validate_device_entities(self, device_id: str) -> bool:
         """Validate all required entities exist for a humidity control device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            True if all entities exist, False otherwise
+        :param device_id: Device identifier
+        :return: True if all entities exist, False otherwise
         """
         from custom_components.ramses_extras.framework.helpers.entity.core import (
             get_feature_entity_mappings,
@@ -423,14 +417,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     async def _get_device_entity_states(self, device_id: str) -> dict[str, Any]:
         """Get all entity states for a humidity control device.
 
-        Args:
-            device_id: Device identifier (e.g., "32_153289")
-
-        Returns:
-            Dictionary with entity state values (numeric or boolean)
-
-        Raises:
-            ValueError: If any entity is unavailable or has invalid values
+        :param device_id: Device identifier (e.g., "32_153289")
+        :return: Dictionary with entity state values (numeric or boolean)
+        :raises ValueError: If any entity is unavailable or has invalid values
         """
         states: dict[str, Any] = {}
 
@@ -592,8 +581,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     def _is_sensor_control_enabled(self) -> bool:
         """Check if sensor_control feature is enabled.
 
-        Returns:
-            True if sensor_control is enabled, False otherwise
+        :return: True if sensor_control is enabled, False otherwise
         """
         try:
             config_entry = self.hass.data.get(DOMAIN, {}).get("config_entry")
@@ -681,9 +669,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Process humidity control automation logic for a device.
 
-        Args:
-            device_id: Device identifier
-            entity_states: Validated entity state values (float or bool)
+        :param device_id: Device identifier
+        :param entity_states: Validated entity state values (float or bool)
         """
         _LOGGER.debug(
             "_process_automation_logic: active=%s, enabled=%s, transport=%s",
@@ -949,17 +936,14 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         This implements proper decision logic with relative humidity priority.
 
-        Args:
-            device_id: Device identifier
-            indoor_rh: Indoor relative humidity
-            indoor_abs: Indoor absolute humidity
-            outdoor_abs: Outdoor absolute humidity
-            min_humidity: Minimum relative humidity threshold
-            max_humidity: Maximum relative humidity threshold
-            offset: Humidity offset adjustment
-
-        Returns:
-            Decision dictionary with action and reasoning
+        :param device_id: Device identifier
+        :param indoor_rh: Indoor relative humidity
+        :param indoor_abs: Indoor absolute humidity
+        :param outdoor_abs: Outdoor absolute humidity
+        :param min_humidity: Minimum relative humidity threshold
+        :param max_humidity: Maximum relative humidity threshold
+        :param offset: Humidity offset adjustment
+        :return: Decision dictionary with action and reasoning
         """
         humidity_diff = outdoor_abs - indoor_abs
         adjusted_diff = humidity_diff + offset
@@ -1194,10 +1178,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         This method provides the async processing logic that derived classes
         can extend or override for feature-specific needs.
 
-        Args:
-            entity_id: Entity that changed state
-            old_state: Previous state (if any)
-            new_state: New state
+        :param entity_id: Entity that changed state
+        :param old_state: Previous state (if any)
+        :param new_state: New state
         """
         # State change handling - logging removed to reduce log volume
 
@@ -1261,9 +1244,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Activate dehumidification for a device.
 
-        Args:
-            device_id: Device identifier
-            decision: Decision information
+        :param device_id: Device identifier
+        :param decision: Decision information
         """
         if self._dehumidify_active:
             return  # Already active
@@ -1319,9 +1301,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Deactivate dehumidification for a device.
 
-        Args:
-            device_id: Device identifier
-            decision: Decision information
+        :param device_id: Device identifier
+        :param decision: Decision information
         """
         if not self._dehumidify_active:
             return  # Already inactive
@@ -1351,9 +1332,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Set fan to low speed and turn off binary sensor (don't touch switch).
 
-        Args:
-            device_id: Device identifier
-            decision: Decision information
+        :param device_id: Device identifier
+        :param decision: Decision information
         """
         try:
             success = await self.fan_speed_arbiter.async_set_demand(
@@ -1390,8 +1370,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Stop dehumidification without changing switch state.
 
-        Args:
-            device_id: Device identifier
+        :param device_id: Device identifier
         """
         _LOGGER.info(
             "Stopping dehumidification for %s (switch OFF) - clearing fan demand",
@@ -1428,9 +1407,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Update automation status entity.
 
-        Args:
-            device_id: Device identifier
-            decision: Decision information
+        :param device_id: Device identifier
+        :param decision: Decision information
         """
         # Update binary sensor directly via stored entity reference
         try:
@@ -1820,10 +1798,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Update indoor humidity history for spike detection.
 
-        Args:
-            device_id: Device identifier
-            indoor_abs: Current indoor absolute humidity
-            window_minutes: Spike detection window in minutes
+        :param device_id: Device identifier
+        :param indoor_abs: Current indoor absolute humidity
+        :param window_minutes: Spike detection window in minutes
         """
         history = self._indoor_history.setdefault(device_id, [])
         now = time.time()
@@ -1847,17 +1824,14 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> dict[str, Any] | None:
         """Detect indoor humidity spike.
 
-        Args:
-            device_id: Device identifier
-            indoor_abs: Current indoor absolute humidity
-            indoor_rh: Current indoor relative humidity
-            outdoor_abs: Outdoor absolute humidity
-            offset: Humidity offset adjustment
-            max_humidity: Maximum relative humidity threshold
-            spike_config: Spike detection configuration
-
-        Returns:
-            Spike info dict if spike detected, None otherwise
+        :param device_id: Device identifier
+        :param indoor_abs: Current indoor absolute humidity
+        :param indoor_rh: Current indoor relative humidity
+        :param outdoor_abs: Outdoor absolute humidity
+        :param offset: Humidity offset adjustment
+        :param max_humidity: Maximum relative humidity threshold
+        :param spike_config: Spike detection configuration
+        :return: Spike info dict if spike detected, None otherwise
         """
         if not bool(spike_config.get("enabled", False)):
             return None
@@ -1922,16 +1896,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> dict[str, Any] | None:
         """Evaluate if an active indoor spike should be retained.
 
-        Args:
-            device_id: Device identifier
-            indoor_abs: Current indoor absolute humidity
-            indoor_rh: Current indoor relative humidity
-            outdoor_abs: Outdoor absolute humidity
-            offset: Humidity offset adjustment
-            max_humidity: Maximum relative humidity threshold
-
-        Returns:
-            Updated spike info if retained, None if cleared
+        :param device_id: Device identifier
+        :param indoor_abs: Current indoor absolute humidity
+        :param indoor_rh: Current indoor relative humidity
+        :param outdoor_abs: Outdoor absolute humidity
+        :param offset: Humidity offset adjustment
+        :param max_humidity: Maximum relative humidity threshold
+        :return: Updated spike info if retained, None if cleared
         """
         active_spike = self._active_indoor_spikes.get(device_id)
         if not active_spike:
@@ -1977,9 +1948,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> None:
         """Schedule recheck for indoor spike.
 
-        Args:
-            device_id: Device identifier
-            interval_minutes: Recheck interval in minutes
+        :param device_id: Device identifier
+        :param interval_minutes: Recheck interval in minutes
         """
         self._clear_active_indoor_spike(device_id)
         interval_minutes = max(1, interval_minutes)
@@ -2142,12 +2112,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     async def async_set_min_humidity(self, device_id: str, value: float) -> bool:
         """Set minimum humidity threshold.
 
-        Args:
-            device_id: Device identifier
-            value: Minimum humidity value
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :param value: Minimum humidity value
+        :return: True if successful
         """
         try:
             return bool(await self.services.async_set_min_humidity(device_id, value))
@@ -2158,12 +2125,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     async def async_set_max_humidity(self, device_id: str, value: float) -> bool:
         """Set maximum humidity threshold.
 
-        Args:
-            device_id: Device identifier
-            value: Maximum humidity value
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :param value: Maximum humidity value
+        :return: True if successful
         """
         try:
             return bool(await self.services.async_set_max_humidity(device_id, value))
@@ -2174,12 +2138,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     async def async_set_offset(self, device_id: str, value: float) -> bool:
         """Set humidity offset adjustment.
 
-        Args:
-            device_id: Device identifier
-            value: Offset value
-
-        Returns:
-            True if successful
+        :param device_id: Device identifier
+        :param value: Offset value
+        :return: True if successful
         """
         try:
             return bool(await self.services.async_set_offset(device_id, value))
@@ -2190,35 +2151,29 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     def is_automation_active(self) -> bool:
         """Check if automation is currently active.
 
-        Returns:
-            True if automation is active
+        :return: True if automation is active
         """
         return self._automation_active
 
     def is_dehumidifying(self) -> bool:
         """Check if dehumidification is currently active.
 
-        Returns:
-            True if dehumidifying
+        :return: True if dehumidifying
         """
         return self._dehumidify_active
 
     def get_decision_history(self, limit: int = 10) -> list[dict[str, Any]]:
         """Get recent decision history.
 
-        Args:
-            limit: Maximum number of decisions to return
-
-        Returns:
-            List of recent decisions
+        :param limit: Maximum number of decisions to return
+        :return: List of recent decisions
         """
         return self._decision_history[-limit:] if self._decision_history else []
 
     def get_automation_statistics(self) -> dict[str, Any]:
         """Get automation performance statistics.
 
-        Returns:
-            Statistics dictionary
+        :return: Statistics dictionary
         """
         return {
             "decisions_made": self._decision_count,
@@ -2233,8 +2188,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     def set_co2_manager(self, co2_manager: Any) -> None:
         """Set reference to CO2 automation manager for priority coordination.
 
-        Args:
-            co2_manager: CO2AutomationManager instance
+        :param co2_manager: CO2AutomationManager instance
         """
         self.co2_manager = co2_manager
         _LOGGER.debug("CO2 manager reference set for priority coordination")
@@ -2253,8 +2207,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     def check_priority(self) -> bool:
         """Check if humidity control has priority to operate.
 
-        Returns:
-            True if humidity control can operate, False if paused for CO2
+        :return: True if humidity control can operate, False if paused for CO2
         """
         return True
 
@@ -2265,12 +2218,9 @@ def create_humidity_control_automation(
 ) -> HumidityAutomationManager:
     """Create humidity control automation instance.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-
-    Returns:
-        HumidityAutomationManager instance
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry
+    :return: HumidityAutomationManager instance
     """
     return HumidityAutomationManager(hass, config_entry)
 

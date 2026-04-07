@@ -16,10 +16,9 @@ class CO2Config:
     def __init__(self, hass: HomeAssistant, device_id: str, config: dict[str, Any]):
         """Initialize CO2 configuration.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            config: Configuration dictionary
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param config: Configuration dictionary
         """
         self.hass = hass
         self.device_id = device_id
@@ -28,11 +27,8 @@ class CO2Config:
     def _merge_with_defaults(self, config: dict[str, Any]) -> dict[str, Any]:
         """Merge user config with defaults.
 
-        Args:
-            config: User configuration
-
-        Returns:
-            Merged configuration dictionary
+        :param config: User configuration
+        :return: Merged configuration dictionary
         """
         merged = CO2_CONTROL_DEFAULTS.copy()
         if config:
@@ -88,11 +84,8 @@ class CO2Config:
     def get_zone_config(self, zone_id: str) -> dict[str, Any] | None:
         """Get configuration for a specific zone.
 
-        Args:
-            zone_id: Zone identifier
-
-        Returns:
-            Zone configuration or None if not found
+        :param zone_id: Zone identifier
+        :return: Zone configuration or None if not found
         """
         for zone in self.zones:
             if zone.get("zone_id") == zone_id:
@@ -102,8 +95,7 @@ class CO2Config:
     def update_config(self, updates: dict[str, Any]) -> None:
         """Update configuration.
 
-        Args:
-            updates: Configuration updates
+        :param updates: Configuration updates
         """
         self._config.update(updates)
         _LOGGER.debug("Updated CO2 config for device %s: %s", self.device_id, updates)
@@ -115,8 +107,7 @@ class CO2Config:
     def validate(self) -> tuple[bool, list[str]]:
         """Validate configuration.
 
-        Returns:
-            Tuple of (is_valid, error_messages)
+        :return: Tuple of (is_valid, error_messages)
         """
         errors = []
 
@@ -152,8 +143,7 @@ class CO2Config:
     def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary.
 
-        Returns:
-            Configuration dictionary
+        :return: Configuration dictionary
         """
         return self._config.copy()
 

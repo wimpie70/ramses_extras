@@ -45,8 +45,7 @@ class CO2ControlBinarySensor(ExtrasBinarySensorEntity):
     def set_state(self, is_active: bool, attrs: dict[str, Any] | None = None) -> None:
         """Set the active state.
 
-        Args:
-            is_active: Whether CO2 control is active
+        :param is_active: Whether CO2 control is active
         """
         new_attrs = attrs or {}
         if self._attr_is_on == is_active and self._automation_attrs == new_attrs:

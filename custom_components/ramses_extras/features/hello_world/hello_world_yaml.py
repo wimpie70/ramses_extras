@@ -28,12 +28,9 @@ HELLO_WORLD_CONFIG_SCHEMA = vol.Schema(
 def hello_world_validator(section: dict, hass: Any | None = None) -> list[str]:
     """Validate hello_world configuration section.
 
-    Args:
-        section: The hello_world configuration section
-        hass: Home Assistant instance (optional)
-
-    Returns:
-        List of validation error messages
+    :param section: The hello_world configuration section
+    :param hass: Home Assistant instance (optional)
+    :return: List of validation error messages
     """
     errors: list[str] = []
 
@@ -52,11 +49,8 @@ def hello_world_validator(section: dict, hass: Any | None = None) -> list[str]:
 def export_hello_world_to_yaml(config: dict) -> dict:
     """Export hello_world configuration to YAML-compatible dict.
 
-    Args:
-        config: The hello_world configuration section
-
-    Returns:
-        YAML-compatible dictionary
+    :param config: The hello_world configuration section
+    :return: YAML-compatible dictionary
     """
     return {
         "enabled": config.get("enabled", False),
@@ -67,11 +61,8 @@ def export_hello_world_to_yaml(config: dict) -> dict:
 def parse_hello_world_yaml(yaml_data: dict) -> dict[Any, Any]:
     """Parse hello_world YAML data into canonical config format.
 
-    Args:
-        yaml_data: Raw YAML data for hello_world section
-
-    Returns:
-        Canonical hello_world configuration
+    :param yaml_data: Raw YAML data for hello_world section
+    :return: Canonical hello_world configuration
     """
     result = HELLO_WORLD_CONFIG_SCHEMA(yaml_data)
     return cast(dict[Any, Any], result)
@@ -80,12 +71,9 @@ def parse_hello_world_yaml(yaml_data: dict) -> dict[Any, Any]:
 def merge_hello_world_config(existing: dict, imported: dict) -> dict:
     """Merge imported hello_world config with existing.
 
-    Args:
-        existing: Existing hello_world configuration
-        imported: Imported hello_world configuration
-
-    Returns:
-        Merged configuration
+    :param existing: Existing hello_world configuration
+    :param imported: Imported hello_world configuration
+    :return: Merged configuration
     """
     merged = dict(existing)
     merged.update(imported)

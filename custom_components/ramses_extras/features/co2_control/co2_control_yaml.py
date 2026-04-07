@@ -69,12 +69,9 @@ CO2_CONTROL_CONFIG_SCHEMA = vol.Schema(
 def co2_control_validator(section: dict, hass: Any | None = None) -> list[str]:
     """Validate co2_control configuration section.
 
-    Args:
-        section: The co2_control configuration section
-        hass: Home Assistant instance (optional)
-
-    Returns:
-        List of validation error messages
+    :param section: The co2_control configuration section
+    :param hass: Home Assistant instance (optional)
+    :return: List of validation error messages
     """
     errors: list[str] = []
 
@@ -122,11 +119,8 @@ def co2_control_validator(section: dict, hass: Any | None = None) -> list[str]:
 def export_co2_control_to_yaml(config: dict) -> dict:
     """Export co2_control configuration to YAML-compatible dict.
 
-    Args:
-        config: The co2_control configuration section
-
-    Returns:
-        YAML-compatible dictionary
+    :param config: The co2_control configuration section
+    :return: YAML-compatible dictionary
     """
     return config
 
@@ -134,10 +128,8 @@ def export_co2_control_to_yaml(config: dict) -> dict:
 def parse_co2_control_yaml(yaml_data: dict) -> dict[str, Any]:
     """Parse co2_control YAML data into canonical config format.
 
-    Args:
-        yaml_data: Raw YAML data for co2_control section
-    Returns:
-        Canonical co2_control configuration
+    :param yaml_data: Raw YAML data for co2_control section
+    :return: Canonical co2_control configuration
     """
     # Validate against schema
     result = CO2_CONTROL_CONFIG_SCHEMA(yaml_data)
@@ -147,11 +139,9 @@ def parse_co2_control_yaml(yaml_data: dict) -> dict[str, Any]:
 def merge_co2_control_config(existing: dict, imported: dict) -> dict[str, Any]:
     """Merge imported co2_control config with existing.
 
-    Args:
-        existing: Existing co2_control configuration
-        imported: Imported co2_control configuration
-    Returns:
-        Merged configuration
+    :param existing: Existing co2_control configuration
+    :param imported: Imported co2_control configuration
+    :return: Merged configuration
     """
     merged = dict(existing)
     if "FANs" in imported:

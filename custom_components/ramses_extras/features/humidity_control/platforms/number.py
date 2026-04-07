@@ -79,13 +79,10 @@ async def create_humidity_number(
 ) -> list[ExtrasNumberEntity]:
     """Create humidity control number for a device.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config_entry: Configuration entry
-
-    Returns:
-        List of number entities
+    :param hass: Home Assistant instance
+    :param device_id: Device identifier
+    :param config_entry: Configuration entry
+    :return: List of number entities
     """
     # Import entity configurations from registry
     from ..const import HUMIDITY_NUMBER_CONFIGS
@@ -122,12 +119,11 @@ class HumidityControlNumber(ExtrasNumberEntity):
     ) -> None:
         """Initialize humidity control number.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            number_type: Type of number entity
-            config: Number configuration
-            config_entry: Configuration entry for saving values
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param number_type: Type of number entity
+        :param config: Number configuration
+        :param config_entry: Configuration entry for saving values
         """
         # Initialize base entity
         super().__init__(hass, device_id, number_type, config, config_entry)
@@ -140,11 +136,8 @@ class HumidityControlNumber(ExtrasNumberEntity):
     def _load_value_from_config(self, default_value: float) -> float:
         """Load the number value from config entry.
 
-        Args:
-            default_value: Default value if not found in config
-
-        Returns:
-            The stored value or default
+        :param default_value: Default value if not found in config
+        :return: The stored value or default
         """
         config_entry = self.config_entry
         if config_entry is None:

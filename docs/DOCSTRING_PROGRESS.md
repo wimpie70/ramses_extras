@@ -1,66 +1,85 @@
 # Sphinx-Style Docstrings Implementation Progress
 
 ## Overview
-This document tracks the progress of adding Sphinx-style docstrings to all Python files in the ramses_extras project.
+This document tracks the progress of converting Google-style Sphinx docstrings (`Args:`, `Returns:`, `Raises:`) to the Sphinx `:param`, `:return:`, `:raises:` style across the ramses_extras project.
 
 ## Summary
-The ramses_extras codebase already has **extensive Sphinx-style docstrings** throughout. The following updates were made:
+All Google-style docstrings in the ramses_extras codebase have been converted to Sphinx `:param` style.
 
-## Files Updated in This Session
+## Files Converted in This Session
 
-### HIGH Priority - ✅ COMPLETED
-1. **fan_speed_arbiter.py** - Enhanced with comprehensive docstrings
-   - Module docstring with usage examples
-   - Class docstrings with :ivar for dataclass attributes
-   - All methods updated with :param, :return, :raises
+### Framework Helper Files - ✅ COMPLETED
+- `framework/helpers/websocket_base.py`
+- `framework/helpers/zones.py`
+- `framework/helpers/config/validation.py`
+- `framework/helpers/commands/registry.py`
+- `framework/helpers/device/filter.py`
+- `framework/helpers/paths.py`
+- `framework/helpers/platform.py`
+- `framework/helpers/entity/device_feature_matrix.py`
+- `framework/helpers/translations.py`
+- `framework/helpers/config_flow.py`
+- `framework/helpers/common/validation.py`
+- `framework/helpers/card_registry.py`
+- `framework/helpers/transport_monitor.py`
+- `framework/helpers/config/import_validation.py`
+- `framework/helpers/brand_customization/models.py`
+- `framework/helpers/common/utils.py`
+- `framework/helpers/config/model.py`
+- `framework/helpers/device/core.py`
+- `framework/helpers/config/import_full.py`
 
-2. **services.py (features/default)** - Enhanced with comprehensive docstrings
-   - Module docstring listing all exposed services
-   - Service handlers with proper parameter documentation
-   - Core helper functions documented
-
-### MEDIUM/Low Priority - Already Well Documented
-The following files already have good Sphinx-style docstrings:
-- ✅ **remote_binding.py** - Complete Sphinx-style docstrings
-- ✅ **zone_demand.py** - Complete Sphinx-style docstrings
-- ✅ **transport_monitor.py** - Complete Sphinx-style docstrings
-- ✅ **zone_coordinator.py** - Complete Sphinx-style docstrings
-- ✅ **zone_adapters.py** - Complete Sphinx-style docstrings
-- ✅ **ramses_commands.py** - Complete Sphinx-style docstrings
-- ✅ **humidity_control/automation.py** - Complete docstrings
-- ✅ **co2_control/automation.py** - Complete docstrings
-- ✅ Most feature files and platform files
+### Feature Files - ✅ COMPLETED
+- `features/humidity_control/automation.py`
+- `features/humidity_control/__init__.py`
+- `features/humidity_control/services.py`
+- `features/humidity_control/entities.py`
+- `features/humidity_control/config.py`
+- `features/humidity_control/platforms/number.py`
+- `features/humidity_control/platforms/binary_sensor.py`
+- `features/humidity_control/platforms/switch.py`
+- `features/humidity_control/platforms/sensor.py`
+- `features/co2_control/config.py`
+- `features/co2_control/services.py`
+- `features/co2_control/zone_manager.py`
+- `features/co2_control/entities.py`
+- `features/co2_control/platforms/switch.py`
+- `features/co2_control/platforms/binary_sensor.py`
+- `features/co2_control/platforms/sensor.py`
+- `features/co2_control/config_flow.py`
+- `features/co2_control/websocket_commands.py`
+- `features/co2_control/__init__.py`
+- `features/co2_control/automation.py`
+- `features/co2_control/co2_control_yaml.py`
+- `features/sensor_control/zones_yaml.py`
+- `features/sensor_control/remote_binding_yaml.py`
+- `features/sensor_control/sensor_control_yaml.py`
+- `features/sensor_control/resolver.py`
+- `features/default/default_yaml.py`
+- `features/default/websocket_commands.py`
+- `features/hello_world/hello_world_yaml.py`
+- `features/hvac_fan_card/__init__.py`
+- `features/hvac_fan_card/hvac_fan_card_yaml.py`
+- `features/ramses_debugger/ramses_debugger_yaml.py`
+- `features/ramses_debugger/websocket_commands.py`
 
 ## Documentation Format Used
-The codebase uses **Google-style** Sphinx docstrings:
+
+The codebase now uses **Sphinx-style** docstrings with `:param`, `:return:`, and `:raises:`:
 
 ```python
 """Brief description.
 
 Detailed description.
 
-Args:
-    param_name: Description
-
-Returns:
-    Description of return value
-
-Raises:
-    ExceptionType: Description
-"""
-```
-
-For dataclasses, the format is:
-```python
-"""Class description.
-
-Attributes:
-    attr_name: Description
+:param param_name: Description
+:return: Description of return value
+:raises ExceptionType: Description
 """
 ```
 
 ## Verification
-All tests pass - no regressions introduced by documentation updates.
+All import tests pass - no regressions introduced by docstring conversions.
 
 ## Status: ✅ COMPLETE
-The ramses_extras codebase has comprehensive Sphinx-style documentation throughout.
+All Google-style docstrings have been converted to Sphinx `:param` style throughout the ramses_extras codebase.

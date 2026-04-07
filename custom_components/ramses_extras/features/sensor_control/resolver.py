@@ -68,8 +68,7 @@ class SensorControlResolver:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the sensor control resolver.
 
-        Args:
-            hass: Home Assistant instance
+        :param hass: Home Assistant instance
         """
         self.hass = hass
         self._logger = _LOGGER
@@ -79,12 +78,9 @@ class SensorControlResolver:
     ) -> dict[str, Any]:
         """Resolve entity mappings for a device applying sensor control overrides.
 
-        Args:
-            device_id: Device ID (e.g., "01:145:08")
-            device_type: Device type (e.g., "FAN", "CO2")
-
-        Returns:
-            Dictionary containing:
+        :param device_id: Device ID (e.g., "01:145:08")
+        :param device_type: Device type (e.g., "FAN", "CO2")
+        :return: Dictionary containing:
             - mappings: Effective entity IDs for each metric
             - sources: Source metadata for each metric
             - raw_internal: Raw internal mappings (optional)
@@ -261,8 +257,8 @@ class SensorControlResolver:
     ) -> dict[str, Any] | None:
         """Get sensor control configuration from config entry options.
 
-        Returns:
-            Sensor control configuration dictionary or None if not configured
+        :param device_id: Device ID (canonical or legacy format)
+        :return: Sensor control configuration dictionary or None if not configured
         """
         try:
             entries: list[Any] = []
@@ -381,12 +377,9 @@ class SensorControlResolver:
     ) -> dict[str, str | None]:
         """Get the internal (default) sensor mappings for a device.
 
-        Args:
-            device_id: Device ID
-            device_type: Device type (FAN, CO2)
-
-        Returns:
-            Dictionary mapping metric to internal entity ID
+        :param device_id: Device ID
+        :param device_type: Device type (FAN, CO2)
+        :return: Dictionary mapping metric to internal entity ID
         """
         internal_mappings = INTERNAL_SENSOR_MAPPINGS.get(device_type, {})
         device_id_underscore = device_id.replace(":", "_").lower()
@@ -438,14 +431,11 @@ class SensorControlResolver:
     ) -> tuple[str | None, dict[str, Any]]:
         """Apply sensor source override with fail-closed behavior.
 
-        Args:
-            metric: Metric name
-            internal_entity_id: Internal entity ID for the metric
-            override_kind: Override kind (internal, external_entity, derived, none)
-            override_entity_id: Override entity ID (for external_entity)
-
-        Returns:
-            Tuple of (effective_entity_id, source_metadata)
+        :param metric: Metric name
+        :param internal_entity_id: Internal entity ID for the metric
+        :param override_kind: Override kind (internal, external_entity, derived, none)
+        :param override_entity_id: Override entity ID (for external_entity)
+        :return: Tuple of (effective_entity_id, source_metadata)
         """
         source_metadata = {
             "kind": override_kind,
@@ -490,11 +480,8 @@ class SensorControlResolver:
     def _entity_exists(self, entity_id: str) -> bool:
         """Check if an entity exists in Home Assistant.
 
-        Args:
-            entity_id: Entity ID to check
-
-        Returns:
-            True if entity exists, False otherwise
+        :param entity_id: Entity ID to check
+        :return: True if entity exists, False otherwise
         """
         if not entity_id:
             return False
@@ -506,15 +493,13 @@ class SensorControlResolver:
     def get_supported_metrics(self) -> list[str]:
         """Get list of supported metrics.
 
-        Returns:
-            List of supported metric names
+        :return: List of supported metric names
         """
         return list(SUPPORTED_METRICS)
 
     def get_supported_device_types(self) -> list[str]:
         """Get list of supported device types.
 
-        Returns:
-            List of supported device type names
+        :return: List of supported device type names
         """
         return list(INTERNAL_SENSOR_MAPPINGS.keys())

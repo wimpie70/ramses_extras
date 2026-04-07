@@ -119,12 +119,9 @@ SENSOR_CONTROL_CONFIG_SCHEMA = vol.Schema(
 def sensor_control_validator(section: dict, hass: Any | None = None) -> list[str]:
     """Validate sensor_control configuration section.
 
-    Args:
-        section: The sensor_control configuration section
-        hass: Home Assistant instance (optional)
-
-    Returns:
-        List of validation error messages
+    :param section: The sensor_control configuration section
+    :param hass: Home Assistant instance (optional)
+    :return: List of validation error messages
     """
     errors: list[str] = []
 
@@ -156,11 +153,8 @@ def sensor_control_validator(section: dict, hass: Any | None = None) -> list[str
 def export_sensor_control_to_yaml(config: dict) -> dict:
     """Export sensor_control configuration to YAML-compatible dict.
 
-    Args:
-        config: The sensor_control configuration section
-
-    Returns:
-        YAML-compatible dictionary
+    :param config: The sensor_control configuration section
+    :return: YAML-compatible dictionary
     """
     return config
 
@@ -168,10 +162,8 @@ def export_sensor_control_to_yaml(config: dict) -> dict:
 def parse_sensor_control_yaml(yaml_data: dict) -> dict[str, Any]:
     """Parse sensor_control YAML data into canonical config format.
 
-    Args:
-        yaml_data: Raw YAML data for sensor_control section
-    Returns:
-        Canonical sensor_control configuration
+    :param yaml_data: Raw YAML data for sensor_control section
+    :return: Canonical sensor_control configuration
     """
     # Validate against schema
     result = cast(dict[str, Any], SENSOR_CONTROL_CONFIG_SCHEMA(yaml_data))
@@ -208,11 +200,9 @@ def parse_sensor_control_yaml(yaml_data: dict) -> dict[str, Any]:
 def merge_sensor_control_config(existing: dict, imported: dict) -> dict[str, Any]:
     """Merge imported sensor_control config with existing.
 
-    Args:
-        existing: Existing sensor_control configuration
-        imported: Imported sensor_control configuration
-    Returns:
-        Merged configuration
+    :param existing: Existing sensor_control configuration
+    :param imported: Imported sensor_control configuration
+    :return: Merged configuration
     """
     merged = dict(existing)
     if "FANs" in imported:
