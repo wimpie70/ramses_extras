@@ -26,9 +26,8 @@ class BaseWebSocketCommand:
     def __init__(self, hass: Any, feature_name: str) -> None:
         """Initialize base WebSocket command handler.
 
-        Args:
-            hass: Home Assistant instance
-            feature_name: Name of the feature this command belongs to
+        :param hass: Home Assistant instance
+        :param feature_name: Name of the feature this command belongs to
         """
         self.hass = hass
         self.feature_name = feature_name
@@ -37,19 +36,17 @@ class BaseWebSocketCommand:
     async def execute(self, connection: "WebSocket", msg: dict[str, Any]) -> None:
         """Execute the WebSocket command.
 
-        Args:
-            connection: WebSocket connection
-            msg: WebSocket message data
+        :param connection: WebSocket connection
+        :param msg: WebSocket message data
         """
         raise NotImplementedError("Subclasses must implement execute()")
 
     def _send_success(self, connection: "WebSocket", msg_id: Any, result: Any) -> None:
         """Send successful response with backend version injected.
 
-        Args:
-            connection: WebSocket connection
-            msg_id: Message ID for correlation
-            result: Result data to send
+        :param connection: WebSocket connection
+        :param msg_id: Message ID for correlation
+        :param result: Result data to send
         """
         # Inject backend version for frontend version mismatch detection
         if isinstance(result, dict):
@@ -66,20 +63,18 @@ class BaseWebSocketCommand:
     ) -> None:
         """Send error response.
 
-        Args:
-            connection: WebSocket connection
-            msg_id: Message ID for correlation
-            error_code: Error code
-            error_message: Error message
+        :param connection: WebSocket connection
+        :param msg_id: Message ID for correlation
+        :param error_code: Error code
+        :param error_message: Error message
         """
         connection.send_error(msg_id, error_code, error_message)
 
     def _log_command(self, command: str, device_id: str | None = None) -> None:
         """Log command execution.
 
-        Args:
-            command: Command name
-            device_id: Device ID if applicable
+        :param command: Command name
+        :param device_id: Device ID if applicable
         """
         if device_id:
             self._logger.debug("Executing %s for device %s", command, device_id)
@@ -91,10 +86,9 @@ class BaseWebSocketCommand:
     ) -> None:
         """Log command error.
 
-        Args:
-            command: Command name
-            error: Exception that occurred
-            device_id: Device ID if applicable
+        :param command: Command name
+        :param error: Exception that occurred
+        :param device_id: Device ID if applicable
         """
         if device_id:
             self._logger.error(
@@ -116,9 +110,8 @@ class DeviceWebSocketCommand(BaseWebSocketCommand):
     def __init__(self, hass: Any, feature_name: str) -> None:
         """Initialize device WebSocket command handler.
 
-        Args:
-            hass: Home Assistant instance
-            feature_name: Name of the feature this command belongs to
+        :param hass: Home Assistant instance
+        :param feature_name: Name of the feature this command belongs to
         """
         super().__init__(hass, feature_name)
         self._ramses_data = hass.data.get("ramses_cc", {})
@@ -141,10 +134,9 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
     ) -> None:
         """Initialize with feature identifier (feature_id or const module path).
 
-        Args:
-            hass: Home Assistant instance
-            feature_identifier: Either feature_id (e.g., "hello_world")
-                               or const module path (e.g., "hello_world.const")
+        :param hass: Home Assistant instance
+        :param feature_identifier: Either feature_id (e.g., "hello_world")
+                                  or const module path (e.g., "hello_world.const")
         """
         super().__init__(hass, feature_identifier)
         self.feature_identifier = feature_identifier
@@ -153,9 +145,8 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
     async def execute(self, connection: "WebSocket", msg: dict[str, Any]) -> None:
         """Execute the get_entity_mappings command.
 
-        Args:
-            connection: WebSocket connection
-            msg: WebSocket message data containing feature identifier
+        :param connection: WebSocket connection
+        :param msg: WebSocket message data containing feature identifier
         """
         self._log_command("get_entity_mappings")
 
@@ -247,12 +238,9 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
     ) -> dict[str, str]:
         """Parse entity templates by replacing {device_id} with actual device_id.
 
-        Args:
-            entity_mappings: Dictionary of entity mappings with templates
-            device_id: Actual device ID to use for template replacement
-
-        Returns:
-            Dictionary of parsed entity mappings with actual entity IDs
+        :param entity_mappings: Dictionary of entity mappings with templates
+        :param device_id: Actual device ID to use for template replacement
+        :return: Dictionary of parsed entity mappings with actual entity IDs
         """
         from custom_components.ramses_extras.framework.helpers.entity.core import (
             parse_entity_mapping_templates_for_device,
@@ -277,8 +265,7 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
     async def _get_entity_mappings_from_feature(self) -> dict[str, str]:
         """Get entity mappings from the feature's configuration.
 
-        Returns:
-            Dictionary of state_name to entity template mappings
+        :return: Dictionary of state_name to entity template mappings
         """
         try:
             from custom_components.ramses_extras.framework.helpers.entity.core import (
@@ -342,9 +329,8 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
     def __init__(self, hass: Any, feature_identifier: str) -> None:
         """Initialize with feature identifier.
 
-        Args:
-            hass: Home Assistant instance
-            feature_identifier: Either feature_id or const module path
+        :param hass: Home Assistant instance
+        :param feature_identifier: Either feature_id or const module path
         """
         super().__init__(hass, feature_identifier)
         self.feature_identifier = feature_identifier
@@ -352,9 +338,8 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
     async def execute(self, connection: "WebSocket", msg: dict[str, Any]) -> None:
         """Execute the get_all_feature_entities command.
 
-        Args:
-            connection: WebSocket connection
-            msg: WebSocket message data containing feature_id and device_id
+        :param connection: WebSocket connection
+        :param msg: WebSocket message data containing feature_id and device_id
         """
         self._log_command("get_all_feature_entities")
 
@@ -407,8 +392,7 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
     async def _get_all_entities_from_feature(self) -> dict[str, Any]:
         """Get all entity configurations from the feature.
 
-        Returns:
-            Dictionary containing all entity configurations by platform
+        :return: Dictionary containing all entity configurations by platform
         """
         try:
             # Determine how to import the feature module
@@ -468,12 +452,9 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
     ) -> dict[str, Any]:
         """Parse all entity templates by replacing {device_id} with actual device_id.
 
-        Args:
-            all_entities: Dictionary of all entity configurations by platform
-            device_id: Actual device ID to use for template replacement
-
-        Returns:
-            Dictionary of parsed entity configurations with actual entity IDs
+        :param all_entities: Dictionary of all entity configurations by platform
+        :param device_id: Actual device ID to use for template replacement
+        :return: Dictionary of parsed entity configurations with actual entity IDs
         """
         parsed_entities: dict[str, dict[str, Any]] = {
             "switch": {},

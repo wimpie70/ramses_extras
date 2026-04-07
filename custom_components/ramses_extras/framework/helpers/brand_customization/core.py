@@ -27,9 +27,8 @@ class ExtrasBrandCustomizer:
     def __init__(self, hass: HomeAssistant, brand_name: str) -> None:
         """Initialize brand customizer.
 
-        Args:
-            hass: Home Assistant instance
-            brand_name: Brand identifier (e.g., "orcon", "zehnder")
+        :param hass: Home Assistant instance
+        :param brand_name: Brand identifier (e.g., "orcon", "zehnder")
         """
         self.hass: HomeAssistant = hass
         self.brand_name: str = brand_name
@@ -46,12 +45,9 @@ class ExtrasBrandCustomizer:
         Subclasses should override this method to call the specific
         customization methods as needed.
 
-        Args:
-            device: Device object with model property
-            event_data: Event data to modify
-
-        Returns:
-            Modified event data dictionary
+        :param device: Device object with model property
+        :param event_data: Event data to modify
+        :return: Modified event data dictionary
         """
         _LOGGER.debug(
             f"Applying {self.brand_name} customizations for device {device.id}"
@@ -81,11 +77,8 @@ class ExtrasBrandCustomizer:
     def _extract_model_info(self, model: str) -> dict[str, Any] | None:
         """Extract configuration from device model string.
 
-        Args:
-            model: Device model string
-
-        Returns:
-            Model configuration dictionary or None
+        :param model: Device model string
+        :return: Model configuration dictionary or None
         """
         if not model:
             return None
@@ -97,10 +90,9 @@ class ExtrasBrandCustomizer:
     ) -> None:
         """Add brand-specific entities to the event data.
 
-        Args:
-            device: Device object
-            event_data: Event data to modify
-            model_info: Model configuration information
+        :param device: Device object
+        :param event_data: Event data to modify
+        :param model_info: Model configuration information
         """
         device_id = device.id
         entities = event_data["entity_ids"]
@@ -133,10 +125,9 @@ class ExtrasBrandCustomizer:
     ) -> None:
         """Configure brand-specific behavior settings.
 
-        Args:
-            device: Device object
-            event_data: Event data to modify
-            model_info: Model configuration information
+        :param device: Device object
+        :param event_data: Event data to modify
+        :param model_info: Model configuration information
         """
         # Set brand-specific behavior configuration
         behavior_config = self._get_brand_behavior_config(model_info)
@@ -155,9 +146,8 @@ class ExtrasBrandCustomizer:
     ) -> None:
         """Set brand-specific default values.
 
-        Args:
-            event_data: Event data to modify
-            model_info: Model configuration information
+        :param event_data: Event data to modify
+        :param model_info: Model configuration information
         """
         # Set brand-specific defaults
         defaults = self._get_brand_defaults(model_info)
@@ -172,11 +162,8 @@ class ExtrasBrandCustomizer:
     def _get_brand_behavior_config(self, model_info: dict[str, Any]) -> dict[str, Any]:
         """Get brand-specific behavior configuration.
 
-        Args:
-            model_info: Model configuration information
-
-        Returns:
-            Behavior configuration dictionary
+        :param model_info: Model configuration information
+        :return: Behavior configuration dictionary
         """
         # Default configuration - should be overridden by subclasses
         return {
@@ -192,12 +179,9 @@ class ExtrasBrandCustomizer:
     ) -> dict[str, dict[str, Any]]:
         """Get mode-specific configurations.
 
-        Args:
-            model_info: Model configuration information
-            max_speed: Maximum fan speed
-
-        Returns:
-            Mode configurations dictionary
+        :param model_info: Model configuration information
+        :param max_speed: Maximum fan speed
+        :return: Mode configurations dictionary
         """
         # Default mode configurations - should be overridden by subclasses
         supported_modes = model_info.get("supported_modes", ["auto", "boost"])
@@ -215,11 +199,8 @@ class ExtrasBrandCustomizer:
     def _get_brand_defaults(self, model_info: dict[str, Any]) -> dict[str, Any]:
         """Get brand-specific default values.
 
-        Args:
-            model_info: Model configuration information
-
-        Returns:
-            Default values dictionary
+        :param model_info: Model configuration information
+        :return: Default values dictionary
         """
         # Default values - should be overridden by subclasses
         humidity_range = model_info.get("humidity_range", (35, 75))
@@ -238,12 +219,9 @@ class ExtrasBrandCustomizer:
     ) -> dict[str, bool]:
         """Get brand-specific entity enablement configuration.
 
-        Args:
-            device_id: Device identifier
-            model_info: Model configuration information
-
-        Returns:
-            Entity enablement dictionary
+        :param device_id: Device identifier
+        :param model_info: Model configuration information
+        :return: Entity enablement dictionary
         """
         # Default entity enablement - should be overridden by subclasses
         return {
@@ -262,8 +240,7 @@ class BrandCustomizerManager:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize brand customizer manager.
 
-        Args:
-            hass: Home Assistant instance
+        :param hass: Home Assistant instance
         """
         self.hass = hass
         self.customizers: dict[str, ExtrasBrandCustomizer] = {}
@@ -271,8 +248,7 @@ class BrandCustomizerManager:
     def register_customizer(self, customizer: ExtrasBrandCustomizer) -> None:
         """Register a brand customizer.
 
-        Args:
-            customizer: Brand customizer to register
+        :param customizer: Brand customizer to register
         """
         self.customizers[customizer.brand_name] = customizer
         _LOGGER.info(f"Registered {customizer.brand_name} brand customizer")
@@ -282,12 +258,9 @@ class BrandCustomizerManager:
     ) -> dict[str, Any]:
         """Apply appropriate brand customizations to device.
 
-        Args:
-            device: Device object
-            event_data: Event data to modify
-
-        Returns:
-            Modified event data dictionary
+        :param device: Device object
+        :param event_data: Event data to modify
+        :return: Modified event data dictionary
         """
         # Detect brand from device
         brand_name = detect_brand_from_device(device)
@@ -307,18 +280,14 @@ class BrandCustomizerManager:
     def get_customizer(self, brand_name: str) -> ExtrasBrandCustomizer | None:
         """Get brand customizer by name.
 
-        Args:
-            brand_name: Brand identifier
-
-        Returns:
-            Brand customizer or None if not found
+        :param brand_name: Brand identifier
+        :return: Brand customizer or None if not found
         """
         return self.customizers.get(brand_name)
 
     def get_registered_brands(self) -> list[str]:
         """Get list of registered brand names.
 
-        Returns:
-            List of registered brand names
+        :return: List of registered brand names
         """
         return list(self.customizers.keys())

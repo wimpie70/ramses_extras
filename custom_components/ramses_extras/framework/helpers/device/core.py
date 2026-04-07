@@ -19,11 +19,8 @@ _LOGGER = logging.getLogger(__name__)
 def extract_device_id_as_string(device_id: str | Any) -> str:
     """Extract device ID from device object or string with robust error handling.
 
-    Args:
-        device_id: Device object or device ID string
-
-    Returns:
-        Device ID as string
+    :param device_id: Device object or device ID string
+    :return: Device ID as string
     """
     # Handle device ID strings directly
     if isinstance(device_id, str):
@@ -44,12 +41,9 @@ def extract_device_id_as_string(device_id: str | Any) -> str:
 def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
     """Find a Ramses device by ID.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: The Ramses device ID (e.g., "32:153289")
-
-    Returns:
-        The Ramses device object or None if not found
+    :param hass: Home Assistant instance
+    :param device_id: The Ramses device ID (e.g., "32:153289")
+    :return: The Ramses device object or None if not found
     """
     # Get the broker directly from hass.data
     if "ramses_cc" not in hass.data:
@@ -80,11 +74,8 @@ def find_ramses_device(hass: HomeAssistant, device_id: str) -> Any | None:
 def get_device_type(device: Any) -> str:
     """Get device type name safely.
 
-    Args:
-        device: The Ramses device object
-
-    Returns:
-        Device type name (e.g., "HvacVentilator")
+    :param device: The Ramses device object
+    :return: Device type name (e.g., "HvacVentilator")
     """
     if device is None:
         return "None"
@@ -103,13 +94,10 @@ def validate_device_for_service(
 ) -> bool:
     """Validate that a device exists and supports a specific service.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: The Ramses device ID
-        service_name: Name of the service to validate
-
-    Returns:
-        True if device exists and supports the service, False otherwise
+    :param hass: Home Assistant instance
+    :param device_id: The Ramses device ID
+    :param service_name: Name of the service to validate
+    :return: True if device exists and supports the service, False otherwise
     """
     device = find_ramses_device(hass, device_id)
     if not device:
@@ -134,11 +122,8 @@ def validate_device_for_service(
 def get_all_device_ids(hass: HomeAssistant) -> list[str]:
     """Get all Ramses device IDs.
 
-    Args:
-        hass: HomeAssistant instance
-
-    Returns:
-        List of all device IDs found in Ramses CC
+    :param hass: HomeAssistant instance
+    :return: List of all device IDs found in Ramses CC
     """
     # Get the broker directly from hass.data
     if "ramses_cc" not in hass.data:
@@ -185,11 +170,8 @@ def get_all_device_ids(hass: HomeAssistant) -> list[str]:
 def ensure_ramses_cc_loaded(hass: HomeAssistant) -> None:
     """Ensure Ramses CC integration is loaded.
 
-    Args:
-        hass: Home Assistant instance
-
-    Raises:
-        HomeAssistantError: If Ramses CC is not loaded
+    :param hass: Home Assistant instance
+    :raises HomeAssistantError: If Ramses CC is not loaded
     """
     if "ramses_cc" not in hass.config.components:
         raise HomeAssistantError(
@@ -209,11 +191,8 @@ def ensure_ramses_cc_loaded(hass: HomeAssistant) -> None:
 def get_device_supported_entities(device_type: str) -> list[str]:
     """Get the list of entities supported by a device type.
 
-    Args:
-        device_type: The device type (e.g., "HvacVentilator")
-
-    Returns:
-        List of supported entity names
+    :param device_type: The device type (e.g., "HvacVentilator")
+    :return: List of supported entity names
     """
     # from ... import get_device_mapping  # Removed to avoid circular dependency
     # return []  # Simplified to avoid circular import
@@ -234,28 +213,22 @@ def get_device_supported_entities(device_type: str) -> list[str]:
 def validate_device_entity_support(device_type: str, entity_name: str) -> bool:
     """Validate if a device type supports a specific entity.
 
-    Args:
-        device_type: The device type
-        entity_name: The entity name to check
-
-    Returns:
-        True if device type supports the entity, False otherwise
+    :param device_type: The device type
+    :param entity_name: The entity name to check
+    :return: True if device type supports the entity, False otherwise
     """
     supported_entities = get_device_supported_entities(device_type)
     return entity_name in supported_entities
 
 
 async def _get_broker_for_entry(hass: HomeAssistant) -> Any | None:
-    """Get the ramses_cc broker instance for device communication.
+    """Get the Ramses CC broker instance.
 
     This function implements multiple fallback methods to access the broker,
     following the same pattern used in the main integration setup.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        The ramses_cc broker instance or None if not found
+    :param hass: Home Assistant instance
+    :return: The ramses_cc broker instance or None if not found
     """
     # Check if ramses_cc is loaded
     ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")

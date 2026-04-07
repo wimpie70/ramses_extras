@@ -74,8 +74,7 @@ class DeviceFeatureMatrix:
     ) -> None:
         """Restore device/feature matrix from saved state.
 
-        Args:
-            state: Matrix state to restore
+        :param state: Matrix state to restore
         """
         self.matrix = state.copy()
 

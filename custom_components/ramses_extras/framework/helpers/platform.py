@@ -31,11 +31,8 @@ _LOGGER = logging.getLogger(__name__)
 def _get_devices_ready_for_entities(hass: "HomeAssistant") -> list[str]:
     """Get devices that are ready for entity creation.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        List of device IDs ready for entities
+    :param hass: Home Assistant instance
+    :return: List of device IDs ready for entities
     """
     return cast(list[str], hass.data.get("ramses_extras", {}).get("devices", []))
 
@@ -68,16 +65,15 @@ class PlatformSetup:
         all platform files, providing a reusable foundation for new features.
         It creates entities using the provided factory and adds them to Home Assistant.
 
-        Args:
-            platform: Platform type (sensor, switch, binary_sensor, number)
-            hass: Home Assistant instance
-            config_entry: Configuration entry
-            async_add_entities: Add entities callback
-            entity_configs: Dictionary of entity configurations
-            entity_factory: Factory function to create entities
-            store_entities_for_automation: Whether to store entities in hass.data
-                for automation access (default: False)
-            feature_id: Feature identifier for device filtering (optional)
+        :param platform: Platform type (sensor, switch, binary_sensor, number)
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
+        :param async_add_entities: Add entities callback
+        :param entity_configs: Dictionary of entity configurations
+        :param entity_factory: Factory function to create entities
+        :param store_entities_for_automation: Whether to store entities in hass.data
+            for automation access (default: False)
+        :param feature_id: Feature identifier for device filtering (optional)
         """
         _LOGGER.debug("Setting up %s platform with generic setup", platform)
 
@@ -146,9 +142,8 @@ class PlatformSetup:
         This method stores created entities in the hass.data structure so that
         automation code can access them directly by entity_id.
 
-        Args:
-            hass: Home Assistant instance
-            entities: List of entities to store
+        :param hass: Home Assistant instance
+        :param entities: List of entities to store
         """
         if "ramses_extras" not in hass.data:
             hass.data["ramses_extras"] = {}
@@ -173,13 +168,10 @@ class PlatformSetup:
     ) -> list[str]:
         """Get devices filtered by feature enablement.
 
-        Args:
-            hass: Home Assistant instance
-            feature_id: Feature identifier for filtering
-            config_entry: Configuration entry for matrix state
-
-        Returns:
-            List of device IDs enabled for the specified feature
+        :param hass: Home Assistant instance
+        :param feature_id: Feature identifier for filtering
+        :param config_entry: Configuration entry for matrix state
+        :return: List of device IDs enabled for the specified feature
         """
         # Get all devices
         raw_devices = (

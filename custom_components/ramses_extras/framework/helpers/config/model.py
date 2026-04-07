@@ -324,15 +324,12 @@ def find_entities_for_zone(
 
 
 def get_fan_max_open_zones(section: dict[str, Any], device_id: str) -> int | None:
-    """Get max_open_zones setting for a FAN.
+    """
+    Get the maximum number of zones that can be open simultaneously for a fan.
 
-    Args:
-        section: Zones feature section
-        device_id: FAN device ID
-
-    Returns:
-        Maximum number of zones that can be open simultaneously,
-        or None if no limit is set
+    :param section: The section to get the maximum number of zones from
+    :param device_id: The ID of the fan
+    :return: The maximum number of zones, or None if no limit is set
     """
     fan_section = get_fan_section(section, device_id)
     if not isinstance(fan_section, dict):

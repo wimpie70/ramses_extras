@@ -15,12 +15,9 @@ class DeviceFilter:
     ) -> list[Any]:
         """Filter devices by allowed slugs.
 
-        Args:
-            feature_config: Feature configuration with allowed_device_slugs
-            devices: List of device objects to filter
-
-        Returns:
-            List of devices that match the feature's requirements
+        :param feature_config: Feature configuration with allowed_device_slugs
+        :param devices: List of device objects to filter
+        :return: List of devices that match the feature's requirements
         """
         allowed_slugs = feature_config.get("allowed_device_slugs", ["*"])
 
@@ -60,11 +57,8 @@ class DeviceFilter:
     def _get_device_slugs(device: Any) -> list[str]:
         """Extract slugs from device object.
 
-        Args:
-            device: Device object or device ID string
-
-        Returns:
-            List of device slugs
+        :param device: Device object or device ID string
+        :return: List of device slugs
         """
         # Plain string: this is typically a bare device_id from the
         # entity registry fallback. We treat the string as the only
@@ -140,12 +134,9 @@ class DeviceFilter:
     ) -> bool:
         """Check if a single device is allowed for a feature.
 
-        Args:
-            device: Device object or ID
-            feature_config: Feature configuration
-
-        Returns:
-            True if device is allowed, False otherwise
+        :param device: Device object or ID
+        :param feature_config: Feature configuration
+        :return: True if device is allowed, False otherwise
         """
         allowed_slugs = feature_config.get("allowed_device_slugs", ["*"])
         if "*" in allowed_slugs:
@@ -158,11 +149,8 @@ class DeviceFilter:
     def get_supported_device_types(feature_config: dict[str, Any]) -> list[str]:
         """Get supported device types for a feature.
 
-        Args:
-            feature_config: Feature configuration
-
-        Returns:
-            List of supported device types/slugs
+        :param feature_config: Feature configuration
+        :return: List of supported device types/slugs
         """
         slugs = feature_config.get("allowed_device_slugs", ["*"])
         return slugs if isinstance(slugs, list) else [slugs]

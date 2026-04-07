@@ -29,9 +29,8 @@ def register_config_validator(
 ) -> None:
     """Register a validator function for a feature's config section.
 
-    Args:
-        feature_id: Feature identifier (e.g., 'zones', 'sensor_control')
-        validator: Function taking (section, hass) and returning errors
+    :param feature_id: Feature identifier (e.g., 'zones', 'sensor_control')
+    :param validator: Function taking (section, hass) and returning errors
 
     Example:
         def validate_zones(section: dict, hass: HomeAssistant | None) -> list[str]:
@@ -49,9 +48,8 @@ def register_config_validator(
 def register_config_schema(feature_id: str, schema: Any) -> None:
     """Register a voluptuous schema for a feature's config section.
 
-    Args:
-        feature_id: Feature identifier (e.g., 'zones', 'sensor_control')
-        schema: Voluptuous schema for validating the feature's config
+    :param feature_id: Feature identifier (e.g., 'zones', 'sensor_control')
+    :param schema: Voluptuous schema for validating the feature's config
 
     Example:
         import voluptuous as vol
@@ -93,12 +91,9 @@ def validate_import_config(
 ) -> dict[str, Any]:
     """Validate full config import using registered feature validators.
 
-    Args:
-        config: The configuration to validate
-        hass: Optional Home Assistant instance for entity/device validation
-
-    Returns:
-        Validation result dictionary:
+    :param config: The configuration to validate
+    :param hass: Optional Home Assistant instance for entity/device validation
+    :return: Validation result dictionary:
         {
             "valid": bool,
             "framework_errors": list[str],
@@ -167,11 +162,8 @@ def validate_import_config(
 def format_validation_errors(result: dict[str, Any]) -> list[str]:
     """Format validation result into a flat list of error strings.
 
-    Args:
-        result: Validation result from validate_import_config()
-
-    Returns:
-        List of formatted error strings
+    :param result: Validation result from validate_import_config()
+    :return: List of formatted error strings
     """
     errors: list[str] = []
 

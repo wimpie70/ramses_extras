@@ -28,12 +28,9 @@ class DefaultModelConfig:
     def get_fallback_config(cls, model: str, brand_name: str) -> dict[str, Any]:
         """Get fallback configuration for unknown models.
 
-        Args:
-            model: Device model string
-            brand_name: Brand identifier
-
-        Returns:
-            Model configuration dictionary
+        :param model: Device model string
+        :param brand_name: Brand identifier
+        :return: Model configuration dictionary
         """
         config = cls.GENERIC_CONFIG.copy()
         config.update(
@@ -66,11 +63,8 @@ class BrandPatterns:
     def get_brand_patterns(cls, brand_name: str) -> list[str]:
         """Get detection patterns for a specific brand.
 
-        Args:
-            brand_name: Brand identifier
-
-        Returns:
-            List of patterns to match
+        :param brand_name: Brand identifier
+        :return: List of patterns to match
         """
         return cls.BRAND_PATTERNS.get(brand_name, [])
 
@@ -78,9 +72,8 @@ class BrandPatterns:
     def add_brand_pattern(cls, brand_name: str, pattern: str) -> None:
         """Add a new detection pattern for a brand.
 
-        Args:
-            brand_name: Brand identifier
-            pattern: Pattern to add
+        :param brand_name: Brand identifier
+        :param pattern: Pattern to add
         """
         if brand_name not in cls.BRAND_PATTERNS:
             cls.BRAND_PATTERNS[brand_name] = []
@@ -92,8 +85,7 @@ class BrandPatterns:
     def get_all_brands(cls) -> list[str]:
         """Get list of all supported brands.
 
-        Returns:
-            List of supported brand names
+        :return: List of supported brand names
         """
         return list(cls.BRAND_PATTERNS.keys())
 
@@ -101,11 +93,8 @@ class BrandPatterns:
 def detect_brand_from_device(device: Any) -> str | None:
     """Detect device brand from device object.
 
-    Args:
-        device: Device object with model property
-
-    Returns:
-        Brand identifier or None if not detected
+    :param device: Device object with model property
+    :return: Brand identifier or None if not detected
     """
     model = getattr(device, "model", None)
     if not model:
@@ -121,11 +110,8 @@ def detect_brand_from_model(model: str) -> str | None:
     This function extracts the common brand detection logic from
     existing customizers and provides a centralized implementation.
 
-    Args:
-        model: Device model string
-
-    Returns:
-        Brand identifier or None if not detected
+    :param model: Device model string
+    :return: Brand identifier or None if not detected
     """
     if not model:
         _LOGGER.debug("Model string is empty")
@@ -158,11 +144,8 @@ def detect_brand_from_model(model: str) -> str | None:
 def detect_brand_with_fallback(model: str) -> str:
     """Detect device brand with fallback to generic.
 
-    Args:
-        model: Device model string
-
-    Returns:
-        Brand identifier (generic if not detected)
+    :param model: Device model string
+    :return: Brand identifier (generic if not detected)
     """
     brand = detect_brand_from_model(model)
     return brand if brand is not None else "generic"
@@ -171,11 +154,8 @@ def detect_brand_with_fallback(model: str) -> str:
 def is_device_brand_supported(brand_name: str) -> bool:
     """Check if a brand is supported by the framework.
 
-    Args:
-        brand_name: Brand identifier
-
-    Returns:
-        True if brand is supported, False otherwise
+    :param brand_name: Brand identifier
+    :return: True if brand is supported, False otherwise
     """
     return brand_name in BrandPatterns.BRAND_PATTERNS
 
@@ -183,12 +163,9 @@ def is_device_brand_supported(brand_name: str) -> bool:
 def get_brand_detection_confidence(model: str, brand_name: str) -> float:
     """Get confidence score for brand detection.
 
-    Args:
-        model: Device model string
-        brand_name: Brand identifier to check
-
-    Returns:
-        Confidence score between 0.0 and 1.0
+    :param model: Device model string
+    :param brand_name: Brand identifier to check
+    :return: Confidence score between 0.0 and 1.0
     """
     if not model or not brand_name:
         return 0.0
@@ -212,11 +189,8 @@ def get_brand_detection_confidence(model: str, brand_name: str) -> float:
 def get_best_brand_match(model: str) -> tuple[str, float]:
     """Get the best brand match for a model string.
 
-    Args:
-        model: Device model string
-
-    Returns:
-        Tuple of (brand_name, confidence_score)
+    :param model: Device model string
+    :return: Tuple of (brand_name, confidence_score)
     """
     if not model:
         return "generic", 0.0
@@ -252,11 +226,8 @@ def get_best_brand_match(model: str) -> tuple[str, float]:
 def is_orcon_device(device: Any) -> bool:
     """Check if device is an Orcon brand device.
 
-    Args:
-        device: Device object
-
-    Returns:
-        True if device is Orcon brand, False otherwise
+    :param device: Device object
+    :return: True if device is Orcon brand, False otherwise
     """
     return detect_brand_from_device(device) == "orcon"
 
@@ -264,11 +235,8 @@ def is_orcon_device(device: Any) -> bool:
 def is_zehnder_device(device: Any) -> bool:
     """Check if device is a Zehnder brand device.
 
-    Args:
-        device: Device object
-
-    Returns:
-        True if device is Zehnder brand, False otherwise
+    :param device: Device object
+    :return: True if device is Zehnder brand, False otherwise
     """
     return detect_brand_from_device(device) == "zehnder"
 
@@ -276,11 +244,8 @@ def is_zehnder_device(device: Any) -> bool:
 def is_generic_device(device: Any) -> bool:
     """Check if device is a generic/unknown brand device.
 
-    Args:
-        device: Device object
-
-    Returns:
-        True if device is generic/unknown brand, False otherwise
+    :param device: Device object
+    :return: True if device is generic/unknown brand, False otherwise
     """
     brand = detect_brand_from_device(device)
     return brand is None or brand == "generic"
@@ -289,12 +254,9 @@ def is_generic_device(device: Any) -> bool:
 def detect_and_register_model(model: str, brand_name: str) -> dict[str, Any]:
     """Detect and register a model configuration.
 
-    Args:
-        model: Device model string
-        brand_name: Brand identifier
-
-    Returns:
-        Model configuration dictionary
+    :param model: Device model string
+    :param brand_name: Brand identifier
+    :return: Model configuration dictionary
     """
     # This could be extended to automatically register new models
     # For now, just return the default configuration

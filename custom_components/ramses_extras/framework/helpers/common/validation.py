@@ -25,11 +25,8 @@ class RamsesValidator:
     def validate_device_id(device_id: str) -> bool:
         """Validate device ID format.
 
-        Args:
-            device_id: Device identifier to validate
-
-        Returns:
-            True if valid format, False otherwise
+        :param device_id: Device identifier to validate
+        :return: True if valid format, False otherwise
         """
         # Accept formats like "32:153289", "32_153289", or just "32"
         patterns = [
@@ -44,11 +41,8 @@ class RamsesValidator:
     def validate_entity_id(entity_id: str) -> bool:
         """Validate entity ID format.
 
-        Args:
-            entity_id: Entity identifier to validate
-
-        Returns:
-            True if valid format, False otherwise
+        :param entity_id: Entity identifier to validate
+        :return: True if valid format, False otherwise
         """
         # Basic entity ID format: domain.entity_name_device_id
         pattern = r"^[a-z_]+\.[a-z_]+(_\d+(_\d+)?)?$"
@@ -58,11 +52,8 @@ class RamsesValidator:
     def validate_feature_id(feature_id: str) -> bool:
         """Validate feature ID format.
 
-        Args:
-            feature_id: Feature identifier to validate
-
-        Returns:
-            True if valid format, False otherwise
+        :param feature_id: Feature identifier to validate
+        :return: True if valid format, False otherwise
         """
         # Feature ID should be alphanumeric with underscores
         pattern = r"^[a-z_][a-z0-9_]*$"
@@ -76,16 +67,11 @@ class RamsesValidator:
     ) -> float:
         """Validate and convert a value to numeric.
 
-        Args:
-            value: Value to validate
-            min_val: Minimum allowed value
-            max_val: Maximum allowed value
-
-        Returns:
-            Numeric value
-
-        Raises:
-            ValidationError: If value is invalid or out of range
+        :param value: Value to validate
+        :param min_val: Minimum allowed value
+        :param max_val: Maximum allowed value
+        :return: Numeric value
+        :raises ValidationError: If value is invalid or out of range
         """
         try:
             num_value = float(value)
@@ -108,16 +94,11 @@ class RamsesValidator:
     ) -> dict[str, Any]:
         """Validate that entities exist and have expected states.
 
-        Args:
-            hass: Home Assistant instance
-            entity_ids: List of entity IDs to validate
-            required_states: Dict mapping entity_id to required state value
-
-        Returns:
-            Dictionary with entity states
-
-        Raises:
-            ValidationError: If validation fails
+        :param hass: Home Assistant instance
+        :param entity_ids: List of entity IDs to validate
+        :param required_states: Dict mapping entity_id to required state value
+        :return: Dictionary with entity states
+        :raises ValidationError: If validation fails
         """
         states = {}
         missing_entities = []
@@ -168,12 +149,9 @@ class RamsesValidator:
     def validate_device_type(device_type: str, supported_types: list[str]) -> bool:
         """Validate that a device type is supported.
 
-        Args:
-            device_type: Device type to validate
-            supported_types: List of supported device types
-
-        Returns:
-            True if device type is supported
+        :param device_type: Device type to validate
+        :param supported_types: List of supported device types
+        :return: True if device type is supported
         """
         return device_type in supported_types
 
@@ -181,14 +159,9 @@ class RamsesValidator:
     def validate_humidity_value(humidity: str | int | float) -> float:
         """Validate humidity percentage.
 
-        Args:
-            humidity: Humidity value to validate
-
-        Returns:
-            Validated humidity value
-
-        Raises:
-            ValidationError: If humidity is invalid
+        :param humidity: Humidity value to validate
+        :return: Validated humidity value
+        :raises ValidationError: If humidity is invalid
         """
         return RamsesValidator.validate_numeric_value(humidity, 0.0, 100.0)
 
@@ -196,14 +169,9 @@ class RamsesValidator:
     def validate_temperature_value(temp: str | int | float) -> float:
         """Validate temperature value.
 
-        Args:
-            temp: Temperature value to validate
-
-        Returns:
-            Validated temperature value
-
-        Raises:
-            ValidationError: If temperature is invalid
+        :param temp: Temperature value to validate
+        :return: Validated temperature value
+        :raises ValidationError: If temperature is invalid
         """
         return RamsesValidator.validate_numeric_value(temp, -50.0, 100.0)
 
@@ -211,15 +179,10 @@ class RamsesValidator:
     def validate_entity_template(template: str, device_id: str) -> str:
         """Validate and expand an entity template.
 
-        Args:
-            template: Entity template with {device_id} placeholder
-            device_id: Device ID to substitute
-
-        Returns:
-            Expanded entity ID
-
-        Raises:
-            ValidationError: If template is invalid
+        :param template: Entity template with {device_id} placeholder
+        :param device_id: Device ID to substitute
+        :return: Expanded entity ID
+        :raises ValidationError: If template is invalid
         """
         if "{device_id}" not in template:
             raise ValidationError(
@@ -235,14 +198,9 @@ class RamsesValidator:
     def validate_entity_mappings(mappings: dict[str, str]) -> bool:
         """Validate entity mappings configuration.
 
-        Args:
-            mappings: Entity mappings to validate
-
-        Returns:
-            True if mappings are valid
-
-        Raises:
-            ValidationError: If mappings are invalid
+        :param mappings: Entity mappings to validate
+        :return: True if mappings are valid
+        :raises ValidationError: If mappings are invalid
         """
         for state_name, entity_template in mappings.items():
             # Check state name format
@@ -282,8 +240,7 @@ def validate_device_id(func: Callable) -> Callable:
 def async_validate_entity_states(required_entity_ids: list[str]) -> Callable:
     """Decorator to validate entity states in async functions.
 
-    Args:
-        required_entity_ids: List of entity IDs that must exist and be available
+    :param required_entity_ids: List of entity IDs that must exist and be available
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -304,8 +261,7 @@ class ValidationContext:
     def __init__(self, validation_name: str):
         """Initialize validation context.
 
-        Args:
-            validation_name: Name of the validation operation
+        :param validation_name: Name of the validation operation
         """
         self.validation_name = validation_name
         self.errors: list[str] = []
@@ -328,8 +284,7 @@ class ValidationContext:
     def validate_all(self) -> bool:
         """Validate all collected errors.
 
-        Returns:
-            True if no errors, False otherwise
+        :return: True if no errors, False otherwise
         """
         if self.errors:
             _LOGGER.error(
@@ -343,11 +298,8 @@ class ValidationContext:
 def create_validation_context(validation_name: str) -> ValidationContext:
     """Create a validation context manager.
 
-    Args:
-        validation_name: Name of the validation operation
-
-    Returns:
-        ValidationContext instance
+    :param validation_name: Name of the validation operation
+    :return: ValidationContext instance
     """
     return ValidationContext(validation_name)
 

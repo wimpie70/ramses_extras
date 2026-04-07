@@ -41,12 +41,9 @@ class StandardEntityTemplates:
     def get_standard_entities(cls, brand_name: str, device_id: str) -> list[str]:
         """Get standard entities for a brand and device.
 
-        Args:
-            brand_name: Brand identifier
-            device_id: Device identifier
-
-        Returns:
-            List of standard entity IDs
+        :param brand_name: Brand identifier
+        :param device_id: Device identifier
+        :return: List of standard entity IDs
         """
         entities = []
         for entity_type, templates in cls.STANDARD_ENTITY_TEMPLATES.items():
@@ -92,13 +89,10 @@ class SpecialEntityTemplates:
     ) -> list[str]:
         """Get special entities based on device capabilities.
 
-        Args:
-            capabilities: List of device capabilities
-            brand_name: Brand identifier
-            device_id: Device identifier
-
-        Returns:
-            List of special entity IDs
+        :param capabilities: List of device capabilities
+        :param brand_name: Brand identifier
+        :param device_id: Device identifier
+        :return: List of special entity IDs
         """
         entities = []
         for capability in capabilities:
@@ -128,12 +122,9 @@ class HighEndEntityTemplates:
     def get_high_end_entities(cls, brand_name: str, device_id: str) -> list[str]:
         """Get high-end entities for a brand and device.
 
-        Args:
-            brand_name: Brand identifier
-            device_id: Device identifier
-
-        Returns:
-            List of high-end entity IDs
+        :param brand_name: Brand identifier
+        :param device_id: Device identifier
+        :return: List of high-end entity IDs
         """
         return [
             entity_id.format(brand=brand_name, device_id=device_id)
@@ -151,8 +142,7 @@ class EntityGenerationManager:
     def __init__(self, brand_name: str) -> None:
         """Initialize entity generation manager.
 
-        Args:
-            brand_name: Brand identifier
+        :param brand_name: Brand identifier
         """
         self.brand_name = brand_name
         self.standard_templates = StandardEntityTemplates()
@@ -164,12 +154,9 @@ class EntityGenerationManager:
     ) -> list[str]:
         """Generate standard entities for a device.
 
-        Args:
-            device_id: Device identifier
-            model_info: Model configuration information
-
-        Returns:
-            List of standard entity IDs
+        :param device_id: Device identifier
+        :param model_info: Model configuration information
+        :return: List of standard entity IDs
         """
         entities = self.standard_templates.get_standard_entities(
             self.brand_name, device_id
@@ -186,12 +173,9 @@ class EntityGenerationManager:
     ) -> list[str]:
         """Generate special entities based on device capabilities.
 
-        Args:
-            device_id: Device identifier
-            model_info: Model configuration information
-
-        Returns:
-            List of special entity IDs
+        :param device_id: Device identifier
+        :param model_info: Model configuration information
+        :return: List of special entity IDs
         """
         special_entities = model_info.get("special_entities", [])
         entities = self.special_templates.get_special_entities(
@@ -209,12 +193,9 @@ class EntityGenerationManager:
     ) -> list[str]:
         """Generate high-end entities for premium models.
 
-        Args:
-            device_id: Device identifier
-            model_info: Model configuration information
-
-        Returns:
-            List of high-end entity IDs
+        :param device_id: Device identifier
+        :param model_info: Model configuration information
+        :return: List of high-end entity IDs
         """
         # Check if this is a high-end model
         model_key = model_info.get("model_key")
@@ -237,12 +218,9 @@ class EntityGenerationManager:
     ) -> list[str]:
         """Generate all entities for a device (standard + special + high-end).
 
-        Args:
-            device_id: Device identifier
-            model_info: Model configuration information
-
-        Returns:
-            List of all entity IDs
+        :param device_id: Device identifier
+        :param model_info: Model configuration information
+        :return: List of all entity IDs
         """
         all_entities = []
 
@@ -266,12 +244,9 @@ class EntityGenerationManager:
     ) -> dict[str, bool]:
         """Get entity enablement configuration for a device.
 
-        Args:
-            device_id: Device identifier
-            model_info: Model configuration information
-
-        Returns:
-            Dictionary mapping entity IDs to enablement status
+        :param device_id: Device identifier
+        :param model_info: Model configuration information
+        :return: Dictionary mapping entity IDs to enablement status
         """
         entity_enablement = {}
         model_key = model_info.get("model_key") or ""
@@ -304,13 +279,10 @@ class EntityGenerationManager:
     ) -> dict[str, bool]:
         """Get enablement configuration for special entities.
 
-        Args:
-            model_key: Model key
-            device_id: Device identifier
-            model_info: Model configuration information
-
-        Returns:
-            Dictionary mapping special entity IDs to enablement status
+        :param model_key: Model key
+        :param device_id: Device identifier
+        :param model_info: Model configuration information
+        :return: Dictionary mapping special entity IDs to enablement status
         """
         enablement = {}
 
@@ -344,12 +316,9 @@ def generate_entity_templates_for_feature(
 ) -> dict[str, list[str]]:
     """Generate entity templates for a specific feature and brand.
 
-    Args:
-        feature_name: Feature identifier
-        brand_name: Brand identifier
-
-    Returns:
-        Dictionary mapping entity types to template lists
+    :param feature_name: Feature identifier
+    :param brand_name: Brand identifier
+    :return: Dictionary mapping entity types to template lists
     """
     # This could be extended to support feature-specific entity templates
     # For now, return standard templates
@@ -368,11 +337,8 @@ def generate_entity_templates_for_feature(
 def validate_entity_ids(entity_ids: list[str]) -> bool:
     """Validate a list of entity IDs.
 
-    Args:
-        entity_ids: List of entity IDs to validate
-
-    Returns:
-        True if all entity IDs are valid, False otherwise
+    :param entity_ids: List of entity IDs to validate
+    :return: True if all entity IDs are valid, False otherwise
     """
     for entity_id in entity_ids:
         if not isinstance(entity_id, str) or not entity_id:
@@ -390,11 +356,8 @@ def validate_entity_ids(entity_ids: list[str]) -> bool:
 def optimize_entity_generation(entity_ids: list[str]) -> list[str]:
     """Optimize entity generation by removing duplicates and validating.
 
-    Args:
-        entity_ids: List of entity IDs to optimize
-
-    Returns:
-        Optimized list of entity IDs
+    :param entity_ids: List of entity IDs to optimize
+    :return: Optimized list of entity IDs
     """
     # Remove duplicates while preserving order
     unique_entities = []
@@ -417,11 +380,8 @@ def optimize_entity_generation(entity_ids: list[str]) -> list[str]:
 def get_entity_count_metrics(entity_ids: list[str]) -> dict[str, int]:
     """Get metrics about entity counts by type.
 
-    Args:
-        entity_ids: List of entity IDs
-
-    Returns:
-        Dictionary mapping entity types to counts
+    :param entity_ids: List of entity IDs
+    :return: Dictionary mapping entity types to counts
     """
     metrics: dict[str, int] = {}
     for entity_id in entity_ids:
@@ -438,12 +398,9 @@ def get_entity_count_metrics(entity_ids: list[str]) -> dict[str, int]:
 def create_humidity_entities(brand_name: str, device_id: str) -> list[str]:
     """Create standard humidity control entities.
 
-    Args:
-        brand_name: Brand identifier
-        device_id: Device identifier
-
-    Returns:
-        List of humidity control entity IDs
+    :param brand_name: Brand identifier
+    :param device_id: Device identifier
+    :return: List of humidity control entity IDs
     """
     entities = [
         f"sensor.{brand_name}_humidity_efficiency_{device_id}",

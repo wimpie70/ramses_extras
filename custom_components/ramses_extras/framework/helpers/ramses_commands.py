@@ -73,14 +73,11 @@ class DeviceCommandManager:
     ) -> CommandResult:
         """Send command to device with queuing and rate limiting.
 
-        Args:
-            device_id: Target device identifier
-            command_def: Command definition with code, verb, payload
-            priority: Command priority ("high", "normal", "low")
-            timeout: Command timeout in seconds
-
-        Returns:
-            CommandResult with execution status
+        :param device_id: Target device identifier
+        :param command_def: Command definition with code, verb, payload
+        :param priority: Command priority ("high", "normal", "low")
+        :param timeout: Command timeout in seconds
+        :return: CommandResult with execution status
         """
         # Update command statistics
         self._command_stats["total_commands"] += 1
@@ -199,8 +196,7 @@ class DeviceCommandManager:
     def get_queue_statistics(self) -> dict[str, Any]:
         """Get comprehensive queue statistics for monitoring.
 
-        Returns:
-            Dictionary containing queue statistics and metrics
+        :return: Dictionary containing queue statistics and metrics
         """
         total_commands = self._command_stats["total_commands"]
         success_rate = (
@@ -243,8 +239,7 @@ class RamsesCommands:
     def __init__(self, hass: Any) -> None:
         """Initialize Ramses commands manager.
 
-        Args:
-            hass: Home Assistant instance
+        :param hass: Home Assistant instance
         """
         self.hass = hass
         self._command_registry = get_command_registry()
@@ -257,13 +252,10 @@ class RamsesCommands:
     async def send_fan_command(self, device_id: str, command: str) -> CommandResult:
         """Send a fan command to a Ramses RF device.
 
-        Args:
-            device_id: Device identifier (e.g., "32_153289")
-            command: Command name from HvacVentilator standard commands
-                    Use prefixed names like "fan_high", "fan_low", "fan_auto", etc.
-
-        Returns:
-            CommandResult with execution status and error details
+        :param device_id: Device identifier (e.g., "32_153289")
+        :param command: Command name from HvacVentilator standard commands
+                       Use prefixed names like "fan_high", "fan_low", "fan_auto", etc.
+        :return: CommandResult with execution status and error details
         """
         # Get command from registry (HvacVentilator standard commands)
         cmd_def = self._command_registry.get_command(command)
@@ -289,15 +281,12 @@ class RamsesCommands:
     ) -> CommandResult:
         """Send a command to a device using the command registry.
 
-        Args:
-            device_id: Target device identifier
-            command_name: Name of registered command
-            queue: Whether to queue command if rate limited
-            priority: Command priority ("high", "normal", "low")
-            timeout: Command timeout in seconds
-
-        Returns:
-            CommandResult with execution status
+        :param device_id: Target device identifier
+        :param command_name: Name of registered command
+        :param queue: Whether to queue command if rate limited
+        :param priority: Command priority ("high", "normal", "low")
+        :param timeout: Command timeout in seconds
+        :return: CommandResult with execution status
         """
         # Get command definition from registry
         cmd_def = self._command_registry.get_command(command_name)
@@ -321,12 +310,9 @@ class RamsesCommands:
         This bypasses HA service validation warnings about referenced devices.
         Uses task tracking to prevent concurrent calls that cause protocol timeouts.
 
-        Args:
-            device_id: Target device ID
-            from_id: Optional source device ID
-
-        Returns:
-            CommandResult with execution status
+        :param device_id: Target device ID
+        :param from_id: Optional source device ID
+        :return: CommandResult with execution status
         """
         # Convert device_id format if needed (32_153289 -> 32:153289)
         device_id_formatted = device_id.replace("_", ":")
@@ -394,14 +380,11 @@ class RamsesCommands:
 
         This bypasses HA service validation warnings about referenced devices.
 
-        Args:
-            device_id: Target device ID
-            param_id: Parameter ID (2-digit hex)
-            value: Value to set
-            from_id: Optional source device ID
-
-        Returns:
-            CommandResult with execution status
+        :param device_id: Target device ID
+        :param param_id: Parameter ID (2-digit hex)
+        :param value: Value to set
+        :param from_id: Optional source device ID
+        :return: CommandResult with execution status
         """
         try:
             # Convert device_id format if needed (32_153289 -> 32:153289)
@@ -441,12 +424,9 @@ class RamsesCommands:
         This bypasses the service layer to avoid requiring the send_packet
         advanced feature to be enabled in ramses_cc.
 
-        Args:
-            device_id: Target device ID
-            cmd_def: Command definition with code, verb, payload
-
-        Returns:
-            True if packet sent successfully
+        :param device_id: Target device ID
+        :param cmd_def: Command definition with code, verb, payload
+        :return: True if packet sent successfully
         """
         try:
             device_id_formatted = device_id.replace("_", ":")
@@ -581,11 +561,10 @@ class RamsesCommands:
         - Device availability analysis
         - Troubleshooting communication issues
 
-        Returns:
-            Dictionary mapping device_id to failed command info containing:
-            - command: Full command definition (code, verb, payload, description)
-            - timestamp: When the timeout occurred (Unix timestamp)
-            - error: Full error message from ramses_rf
+        :return: Dictionary mapping device_id to failed command info containing:
+                 - command: Full command definition (code, verb, payload, description)
+                 - timestamp: When the timeout occurred (Unix timestamp)
+                 - error: Full error message from ramses_rf
 
         Note: Automatically cleans up failures older than 5 minutes
         to prevent memory growth.
@@ -616,9 +595,8 @@ class RamsesCommands:
         - Device comes back online
         - Manual intervention to fix communication issues
 
-        Args:
-            device_id: Specific device ID to clear (format: 32_153289 or 32:153289)
-                     If None, clears all failed commands for all devices
+        :param device_id: Specific device ID to clear (format: 32_153289 or 32:153289)
+                          If None, clears all failed commands for all devices
         """
         if not hasattr(self, "_failed_commands"):
             return
@@ -634,8 +612,7 @@ class RamsesCommands:
     async def _get_ramses_cc_coordinator(self) -> "RamsesCoordinator | None":
         """Get the ramses_cc coordinator instance.
 
-        Returns:
-            RamsesCoordinator instance or None if not found
+        :return: RamsesCoordinator instance or None if not found
         """
         try:
             ramses_cc_data = self.hass.data.get("ramses_cc", {})
@@ -653,11 +630,8 @@ class RamsesCommands:
     async def _get_bound_rem_device(self, device_id: str) -> str | None:
         """Get the bound REM device ID for a FAN device.
 
-        Args:
-            device_id: Device identifier (e.g., "32:153289")
-
-        Returns:
-            Bound REM device ID or None if not found
+        :param device_id: Device identifier (e.g., "32:153289")
+        :return: Bound REM device ID or None if not found
         """
         try:
             # Get the coordinator to access device information
@@ -677,8 +651,7 @@ class RamsesCommands:
     def get_available_commands(self) -> dict[str, dict[str, str]]:
         """Get all available commands from the registry.
 
-        Returns:
-            Dictionary of command definitions with metadata
+        :return: Dictionary of command definitions with metadata
         """
         commands = self._command_registry.get_registered_commands()
         # Type assertion to ensure correct return type
@@ -687,11 +660,8 @@ class RamsesCommands:
     def get_command_description(self, command: str) -> str:
         """Get description for a command.
 
-        Args:
-            command: Command name
-
-        Returns:
-            Command description or empty string if not found
+        :param command: Command name
+        :return: Command description or empty string if not found
         """
         cmd_def = self._command_registry.get_command(command)
         return str(cmd_def.get("description", "")) if cmd_def else ""
@@ -699,8 +669,7 @@ class RamsesCommands:
     def get_queue_statistics(self) -> dict[str, Any]:
         """Get comprehensive queue statistics for monitoring.
 
-        Returns:
-            Dictionary containing queue statistics and metrics
+        :return: Dictionary containing queue statistics and metrics
         """
         return self._device_manager.get_queue_statistics()
 
@@ -709,11 +678,8 @@ class RamsesCommands:
 def create_ramses_commands(hass: Any) -> RamsesCommands:
     """Create Ramses commands instance.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        RamsesCommands instance
+    :param hass: Home Assistant instance
+    :return: RamsesCommands instance
     """
     return RamsesCommands(hass)
 

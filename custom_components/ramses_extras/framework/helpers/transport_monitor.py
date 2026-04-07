@@ -56,11 +56,10 @@ class TransportMonitor:
     ) -> None:
         """Register a callback for transport state changes.
 
-        Args:
-            name: Unique identifier for the callback
-            callback: Function to call when transport state changes
+        :param name: Unique identifier for the callback
+        :param callback: Function to call when transport state changes
                      (receives boolean: True=available, False=unavailable)
-            device_id: Optional target device ID for per-device liveness tracking
+        :param device_id: Optional target device ID for per-device liveness tracking
         """
         normalized_device_id = device_id.replace("_", ":") if device_id else None
         self._callbacks[name] = (normalized_device_id, callback)
@@ -73,8 +72,7 @@ class TransportMonitor:
     def unregister_callback(self, name: str) -> None:
         """Unregister a transport state callback.
 
-        Args:
-            name: Identifier of the callback to remove
+        :param name: Identifier of the callback to remove
         """
         self._callbacks.pop(name, None)
         _LOGGER.debug("Unregistered transport state callback: %s", name)
@@ -254,9 +252,8 @@ class TransportMonitor:
     ) -> None:
         """Start monitoring the transport state.
 
-        Args:
-            coordinator: RamsesCC coordinator instance
-            hass: Home Assistant instance for event listening
+        :param coordinator: RamsesCC coordinator instance
+        :param hass: Home Assistant instance for event listening
         """
         async with self._lock:
             if self._monitor_task and not self._monitor_task.done():
@@ -344,8 +341,7 @@ class TransportMonitor:
     def _handle_ramses_cc_message(self, event: Event) -> None:
         """Handle ramses_cc_message events to track device replies.
 
-        Args:
-            event: Home Assistant event containing ramses_cc_message data
+        :param event: Home Assistant event containing ramses_cc_message data
         """
         try:
             self._refresh_coordinator()
@@ -443,8 +439,7 @@ _transport_monitor: TransportMonitor | None = None
 def get_transport_monitor() -> TransportMonitor:
     """Get the global transport monitor instance.
 
-    Returns:
-        TransportMonitor instance
+    :return: TransportMonitor instance
     """
     global _transport_monitor
     if _transport_monitor is None:

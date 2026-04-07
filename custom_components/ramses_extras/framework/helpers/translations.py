@@ -21,15 +21,12 @@ def _get_feature_translations_sync(
 ) -> dict[str, dict[str, str]]:
     """Synchronous helper to load translations for a feature.
 
-    Args:
-        feature_id: The feature identifier (e.g., "sensor_control")
-        language: Language code (e.g., "en", "nl")
-        sections: Tuple of translation sections to load
-                  (e.g., ("labels", "errors", "info_texts"))
-
-    Returns:
-        Dictionary with section names as keys and translation dicts as values.
-        Returns empty dict if file not found or invalid.
+    :param feature_id: The feature identifier (e.g., "sensor_control")
+    :param language: Language code (e.g., "en", "nl")
+    :param sections: Tuple of translation sections to load
+                      (e.g., ("labels", "errors", "info_texts"))
+    :return: Dictionary with section names as keys and translation dicts as values.
+             Returns empty dict if file not found or invalid.
     """
     base_path = Path(__file__).parent.parent / "features" / feature_id / "translations"
     translations_path = base_path / f"{language}.json"
@@ -67,16 +64,13 @@ async def async_get_feature_translations(
 ) -> dict[str, dict[str, str]]:
     """Load translations for a feature with caching.
 
-    Args:
-        hass: Home Assistant instance
-        feature_id: The feature identifier (e.g., "sensor_control")
-        sections: Tuple of translation sections to load
-                  (default: ("info_suffix",))
-                  Common sections: "labels", "errors", "info_texts", "info_suffix"
-
-    Returns:
-        Dictionary with section names as keys and translation dicts as values.
-        Falls back to English if the requested language is not available.
+    :param hass: Home Assistant instance
+    :param feature_id: The feature identifier (e.g., "sensor_control")
+    :param sections: Tuple of translation sections to load
+                      (default: ("info_suffix",))
+                      Common sections: "labels", "errors", "info_texts", "info_suffix"
+    :return: Dictionary with section names as keys and translation dicts as values.
+             Falls back to English if the requested language is not available.
     """
     from ...const import DOMAIN
 
@@ -113,13 +107,10 @@ async def async_get_feature_title(
 ) -> str:
     """Get feature title from feature-specific translations.
 
-    Args:
-        hass: Home Assistant instance
-        feature_id: The feature identifier (e.g., "sensor_control")
-        default_title: Fallback title if translation not found
-
-    Returns:
-        Translated feature title or default_title if not found.
+    :param hass: Home Assistant instance
+    :param feature_id: The feature identifier (e.g., "sensor_control")
+    :param default_title: Fallback title if translation not found
+    :return: Translated feature title or default_title if not found.
     """
     translations = await async_get_feature_translations(hass, feature_id, ("config",))
     config_section = translations.get("config", {})
