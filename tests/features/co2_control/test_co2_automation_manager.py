@@ -81,6 +81,7 @@ class TestCO2AutomationManager:
             "Bathroom",
             "sensor.bath_co2",
             threshold=1000,
+            zone_id="zone_bathroom",
         )
         assert result is not None
         assert source_states["bathroom"] is True
@@ -92,6 +93,7 @@ class TestCO2AutomationManager:
             "Bathroom",
             "sensor.bath_co2",
             threshold=1000,
+            zone_id="zone_bathroom",
         )
         assert result is not None
         assert source_states["bathroom"] is True
@@ -103,6 +105,7 @@ class TestCO2AutomationManager:
             "Bathroom",
             "sensor.bath_co2",
             threshold=1000,
+            zone_id="zone_bathroom",
         )
         assert result is None
         assert source_states["bathroom"] is False
