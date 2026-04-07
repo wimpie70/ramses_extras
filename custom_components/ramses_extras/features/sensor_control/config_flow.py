@@ -286,6 +286,19 @@ def _describe_zone(zone: dict[str, Any]) -> str:
         if close_entity:
             details.append(f"close: {close_entity}")
 
+    # Add extra_config summary
+    extra_config = zone.get("extra_config")
+    if isinstance(extra_config, dict) and extra_config:
+        extra_parts: list[str] = []
+        if "home_mode" in extra_config:
+            extra_parts.append(f"home={extra_config['home_mode']}")
+        if "home_position" in extra_config:
+            extra_parts.append(f"pos={extra_config['home_position']}")
+        if "invert_logic" in extra_config:
+            extra_parts.append(f"invert={extra_config['invert_logic']}")
+        if extra_parts:
+            details.append(f"extra: {', '.join(extra_parts)}")
+
     details.append("enabled" if enabled else "disabled")
 
     return f"- zone {zone_id}: " + "; ".join(details)
@@ -1309,6 +1322,16 @@ async def async_step_sensor_control_config(
         )
         enabled_default = existing_zone.get("enabled", True) if existing_zone else True
 
+        # Extra config defaults
+        extra_config = existing_zone.get("extra_config", {}) if existing_zone else {}
+        home_mode_default = extra_config.get("home_mode", "always")
+        home_position_default = extra_config.get("home_position", 0)
+        home_tolerance_default = extra_config.get("home_tolerance", 2)
+        home_timeout_s_default = extra_config.get("home_timeout_s", 90)
+        home_poll_s_default = extra_config.get("home_poll_s", 0.5)
+        home_interval_s_default = extra_config.get("home_interval_s", 0)
+        invert_logic_default = extra_config.get("invert_logic", False)
+
         if user_input is not None:
             zone_id = str(user_input.get("zone_id") or "").strip()
             zone_type = str(user_input.get("type") or "custom_valve")
@@ -1360,6 +1383,33 @@ async def async_step_sensor_control_config(
                     zone_entry["min_position"] = int(min_position)
                     zone_entry["max_position"] = int(max_position)
 
+                # Build extra_config from user input
+                extra_config_entry: dict[str, Any] = {}
+                home_mode = user_input.get("home_mode")
+                if home_mode and home_mode != "always":
+                    extra_config_entry["home_mode"] = home_mode
+                home_position = user_input.get("home_position")
+                if home_position is not None and int(home_position) != 0:
+                    extra_config_entry["home_position"] = int(home_position)
+                home_tolerance = user_input.get("home_tolerance")
+                if home_tolerance is not None and int(home_tolerance) != 2:
+                    extra_config_entry["home_tolerance"] = int(home_tolerance)
+                home_timeout_s = user_input.get("home_timeout_s")
+                if home_timeout_s is not None and float(home_timeout_s) != 90:
+                    extra_config_entry["home_timeout_s"] = float(home_timeout_s)
+                home_poll_s = user_input.get("home_poll_s")
+                if home_poll_s is not None and float(home_poll_s) != 0.5:
+                    extra_config_entry["home_poll_s"] = float(home_poll_s)
+                home_interval_s = user_input.get("home_interval_s")
+                if home_interval_s is not None and float(home_interval_s) != 0:
+                    extra_config_entry["home_interval_s"] = float(home_interval_s)
+                invert_logic = user_input.get("invert_logic")
+                if invert_logic:
+                    extra_config_entry["invert_logic"] = bool(invert_logic)
+
+                if extra_config_entry:
+                    zone_entry["extra_config"] = extra_config_entry
+
                 # Store pending zone for confirmation step
                 flow._sensor_control_pending_zone = zone_entry
                 flow._sensor_control_pending_zone_editing_id = editing_zone_id
@@ -1409,6 +1459,49 @@ async def async_step_sensor_control_config(
                 selector.NumberSelectorConfig(min=0, max=100, step=1)
             )
         )
+
+        # Extra config fields for valve homing and behavior
+        schema_fields[vol.Optional("home_mode", default=home_mode_default)] = (
+            selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="always", label="Always"),
+                        selector.SelectOptionDict(value="on_demand", label="On Demand"),
+                        selector.SelectOptionDict(value="never", label="Never"),
+                    ],
+                    mode="dropdown",
+                )
+            )
+        )
+        schema_fields[vol.Optional("home_position", default=home_position_default)] = (
+            selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=100, step=1)
+            )
+        )
+        schema_fields[
+            vol.Optional("home_tolerance", default=home_tolerance_default)
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=100, step=1)
+        )
+        schema_fields[
+            vol.Optional("home_timeout_s", default=home_timeout_s_default)
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=300, step=1)
+        )
+        schema_fields[vol.Optional("home_poll_s", default=home_poll_s_default)] = (
+            selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0.1, max=5, step=0.1)
+            )
+        )
+        schema_fields[
+            vol.Optional("home_interval_s", default=home_interval_s_default)
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=60, step=1)
+        )
+        schema_fields[vol.Optional("invert_logic", default=invert_logic_default)] = (
+            selector.BooleanSelector()
+        )
+
         schema = vol.Schema(schema_fields)
 
         info_text = (
@@ -1587,8 +1680,18 @@ async def async_step_sensor_control_config(
 
         # Build confirmation display
         zone_info_lines = ["**Zone Details:**"]
+        extra_config = zone_entry.get("extra_config", {})
+
         for key, value in zone_entry.items():
-            zone_info_lines.append(f"- {key}: `{value}`")
+            if key == "extra_config":
+                # Handle extra_config specially for better display
+                if isinstance(value, dict) and value:
+                    zone_info_lines.append("- **extra_config:**")
+                    for ec_key, ec_value in value.items():
+                        zone_info_lines.append(f"  - {ec_key}: `{ec_value}`")
+            else:
+                zone_info_lines.append(f"- {key}: `{value}`")
+
         zone_info = "\n".join(zone_info_lines)
 
         schema = vol.Schema(

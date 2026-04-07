@@ -41,6 +41,25 @@ ZONE_ENTRY_SCHEMA = vol.Schema(
         vol.Optional("max_position", default=100): vol.All(
             int, vol.Range(min=0, max=100)
         ),
+        # extra_config for valve homing and behavior
+        vol.Optional("extra_config"): vol.Schema(
+            {
+                vol.Optional("home_mode"): vol.In(["always", "on_demand", "never"]),
+                vol.Optional("home_position"): vol.All(int, vol.Range(min=0, max=100)),
+                vol.Optional("home_tolerance"): vol.All(int, vol.Range(min=0, max=100)),
+                vol.Optional("home_timeout_s"): vol.All(
+                    vol.Coerce(float), vol.Range(min=0)
+                ),
+                vol.Optional("home_poll_s"): vol.All(
+                    vol.Coerce(float), vol.Range(min=0.1)
+                ),
+                vol.Optional("home_interval_s"): vol.All(
+                    vol.Coerce(float), vol.Range(min=0)
+                ),
+                vol.Optional("invert_logic"): bool,
+            },
+            extra=vol.ALLOW_EXTRA,
+        ),
     },
     extra=vol.PREVENT_EXTRA,
 )
