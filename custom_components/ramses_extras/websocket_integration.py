@@ -25,8 +25,7 @@ def _import_websocket_module(feature_name: str) -> Any:
 
     Importing executes the `@websocket_api.websocket_command` decorators.
 
-    Raises:
-        ImportError: If import fails.
+    :raises ImportError: If import fails.
     """
 
     websocket_module_path = (
@@ -36,13 +35,14 @@ def _import_websocket_module(feature_name: str) -> Any:
 
 
 def _register_commands_from_module(hass: HomeAssistant, module: Any) -> int:
-    """Register all websocket commands found in a module.
+    """Register all WebSocket commands for a specific feature.
 
     Home Assistant's `@websocket_api.websocket_command` decorator only tags
     a handler. Registration happens via `websocket_api.async_register_command`.
 
-    Returns:
-        Number of commands registered.
+    :param hass: Home Assistant instance
+    :param module: Module containing WebSocket commands
+    :return: Number of commands registered.
     """
 
     registered = 0
@@ -68,8 +68,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register all WebSocket commands for Ramses Extras.
 
-    Args:
-        hass: Home Assistant instance
+    :param hass: Home Assistant instance
     """
     _LOGGER.info("Registering Ramses Extras WebSocket commands")
 
@@ -135,8 +134,8 @@ async def async_register_websocket_commands(hass: HomeAssistant) -> None:
 def get_websocket_commands_info(hass: HomeAssistant) -> dict[str, Any]:
     """Get information about registered WebSocket commands.
 
-    Returns:
-        Dictionary containing WebSocket commands information
+    :param hass: Home Assistant instance
+    :return: Dictionary containing WebSocket commands information
     """
     all_commands = extras_registry.get_all_websocket_commands()
 
@@ -183,11 +182,8 @@ def get_websocket_commands_info(hass: HomeAssistant) -> dict[str, Any]:
 async def async_setup_websocket_integration(hass: HomeAssistant) -> bool:
     """Set up WebSocket integration for Ramses Extras.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        True if setup successful, False otherwise
+    :param hass: Home Assistant instance
+    :return: True if setup successful, False otherwise
     """
     try:
         # Register WebSocket commands
@@ -221,8 +217,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 async def async_cleanup_websocket_integration(hass: HomeAssistant) -> None:
     """Clean up WebSocket integration.
 
-    Args:
-        hass: Home Assistant instance
+    :param hass: Home Assistant instance
     """
     try:
         # Clean up integration state
@@ -238,11 +233,8 @@ async def async_cleanup_websocket_integration(hass: HomeAssistant) -> None:
 def is_websocket_enabled(hass: HomeAssistant) -> bool:
     """Check if WebSocket integration is enabled.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        True if WebSocket integration is enabled
+    :param hass: Home Assistant instance
+    :return: True if WebSocket integration is enabled
     """
     websocket_data = hass.data.get(DOMAIN, {}).get("websocket_integration", {})
     return bool(websocket_data.get("registered", False))
@@ -253,12 +245,9 @@ def get_enabled_websocket_commands(
 ) -> dict[str, str]:
     """Get WebSocket commands enabled for a specific feature.
 
-    Args:
-        hass: Home Assistant instance
-        feature_name: Name of the feature
-
-    Returns:
-        Dictionary of enabled command names to command types
+    :param hass: Home Assistant instance
+    :param feature_name: Name of the feature
+    :return: Dictionary of enabled command names to command types
     """
     if not is_websocket_enabled(hass):
         return {}

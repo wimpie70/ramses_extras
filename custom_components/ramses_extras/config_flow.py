@@ -57,11 +57,8 @@ _LOGGER = logging.getLogger(__name__)
 def _get_feature_details_from_module(feature_key: str) -> dict[str, Any]:
     """Get feature details from AVAILABLE_FEATURES.
 
-    Args:
-        feature_key: Feature identifier
-
-    Returns:
-        Dictionary with feature details or empty dict if not found
+    :param feature_key: Feature identifier
+    :return: Dictionary with feature details or empty dict if not found
     """
     feature_config = AVAILABLE_FEATURES.get(feature_key, {})
     if not feature_config:

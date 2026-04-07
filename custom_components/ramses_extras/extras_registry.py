@@ -327,13 +327,10 @@ class RamsesEntityRegistry:
     ) -> dict[str, Any] | None:
         """Get card configuration for a specific feature.
 
-        Args:
-            feature_name: The feature ID
-            card_id: Optional specific card ID. If None, returns the first
+        :param feature_name: The feature ID
+        :param card_id: Optional specific card ID. If None, returns the first
                     registered card for backward compatibility.
-
-        Returns:
-            Card config dict, or None if not found
+        :return: Card config dict, or None if not found
         """
         with self._lock:
             feature_cards = self._card_configs.get(feature_name, {})
@@ -347,9 +344,8 @@ class RamsesEntityRegistry:
     def get_card_configs(self, feature_name: str) -> dict[str, dict[str, Any]]:
         """Get all card configurations for a specific feature.
 
-        Returns:
-            Dict mapping card_id -> card_config for the feature.
-            Empty dict if feature has no cards.
+        :return: Dict mapping card_id -> card_config for the feature.
+                 Empty dict if feature has no cards.
         """
         with self._lock:
             return self._card_configs.get(feature_name, {}).copy()
@@ -357,8 +353,7 @@ class RamsesEntityRegistry:
     def get_all_card_configs(self) -> dict[str, dict[str, dict[str, Any]]]:
         """Get all card configurations.
 
-        Returns:
-            Dict mapping feature_name -> {card_id -> card_config}
+        :return: Dict mapping feature_name -> {card_id -> card_config}
         """
         with self._lock:
             return {name: cards.copy() for name, cards in self._card_configs.items()}
