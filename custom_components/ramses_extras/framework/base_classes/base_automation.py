@@ -62,11 +62,10 @@ class ExtrasBaseAutomation(ABC):
     ) -> None:
         """Initialize the base automation.
 
-        Args:
-            hass: Home Assistant instance
-            feature_id: Feature identifier (e.g., "humidity_control")
-            binary_sensor: Optional binary sensor to update for automation status
-            debounce_seconds: Debounce duration in seconds (default: 45)
+        :param hass: Home Assistant instance
+        :param feature_id: Feature identifier (e.g., "humidity_control")
+        :param binary_sensor: Optional binary sensor to update for automation status
+        :param debounce_seconds: Debounce duration in seconds (default: 45)
         """
         self.hass = hass
         self.feature_id = feature_id
@@ -213,8 +212,7 @@ class ExtrasBaseAutomation(ABC):
     def entity_patterns(self) -> list[str]:
         """Get entity patterns for this automation feature.
 
-        Returns:
-            List of entity patterns to listen for
+        :return: List of entity patterns to listen for
         """
         if self._entity_patterns is None:
             self._entity_patterns = self._generate_entity_patterns()
@@ -231,8 +229,7 @@ class ExtrasBaseAutomation(ABC):
         This method provides sensible defaults that derived classes can use.
         It is not abstract and provides a base implementation.
 
-        Returns:
-            List of entity patterns
+        :return: List of entity patterns
         """
         patterns = []
 
@@ -253,8 +250,7 @@ class ExtrasBaseAutomation(ABC):
         This method delegates to the default implementation. Derived classes
         can override this method to provide custom patterns.
 
-        Returns:
-            List of entity patterns
+        :return: List of entity patterns
         """
         return self._generate_entity_patterns_default()
 
@@ -351,10 +347,9 @@ class ExtrasBaseAutomation(ABC):
         This method provides the common state change handling logic that
         all automations can use, with debouncing and validation.
 
-        Args:
-            entity_id: Entity that changed state
-            old_state: Previous state (if any)
-            new_state: New state
+        :param entity_id: Entity that changed state
+        :param old_state: Previous state (if any)
+        :param new_state: New state
         """
         if entity_id is None:
             return
@@ -378,10 +373,9 @@ class ExtrasBaseAutomation(ABC):
         This method provides the async processing logic that derived classes
         can extend or override for feature-specific needs.
 
-        Args:
-            entity_id: Entity that changed state
-            old_state: Previous state (if any)
-            new_state: New state
+        :param entity_id: Entity that changed state
+        :param old_state: Previous state (if any)
+        :param new_state: New state
         """
         if not new_state:
             _LOGGER.debug(f"No new state for {entity_id}, skipping")
@@ -509,11 +503,8 @@ class ExtrasBaseAutomation(ABC):
     def _entity_matches_patterns(self, entity_id: str) -> bool:
         """Check if an entity ID matches any of the automation patterns.
 
-        Args:
-            entity_id: Entity identifier to check
-
-        Returns:
-            True if entity matches any pattern
+        :param entity_id: Entity identifier to check
+        :return: True if entity matches any pattern
         """
         for pattern in self.entity_patterns:
             if pattern.endswith("*"):
@@ -531,11 +522,8 @@ class ExtrasBaseAutomation(ABC):
         This method provides a generic validation framework that derived
         classes can extend with feature-specific validation logic.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            True if all entities exist, False otherwise
+        :param device_id: Device identifier
+        :return: True if all entities exist, False otherwise
         """
         required_entity_ids = await get_required_entity_ids_for_feature_device(
             self.feature_id,
@@ -565,12 +553,9 @@ class ExtrasBaseAutomation(ABC):
     def _extract_device_id(self, entity_id: str) -> str | None:
         """Extract device_id from entity name using EntityHelpers.
 
-        Args:
-            entity_id: Entity identifier
-
-        Returns:
-            Device identifier in underscore format (e.g., "32_153289")
-            or None if extraction fails
+        :param entity_id: Entity identifier
+        :return: Device identifier in underscore format (e.g., "32_153289")
+                 or None if extraction fails
         """
         from custom_components.ramses_extras.framework.helpers.entity.core import (
             EntityHelpers,
@@ -591,14 +576,9 @@ class ExtrasBaseAutomation(ABC):
     async def _get_device_entity_states(self, device_id: str) -> dict[str, Any]:
         """Get all entity states for a device with validation.
 
-        Args:
-            device_id: Device identifier (e.g., "32_153289")
-
-        Returns:
-            Dictionary with entity state values (numeric or boolean)
-
-        Raises:
-            ValueError: If any entity is unavailable or has invalid values
+        :param device_id: Device identifier (e.g., "32_153289")
+        :return: Dictionary with entity state values (numeric or boolean)
+        :raises ValueError: If any entity is unavailable or has invalid values
         """
         from custom_components.ramses_extras.framework.helpers.entity.core import (
             get_feature_entity_mappings,
@@ -632,11 +612,8 @@ class ExtrasBaseAutomation(ABC):
     def _extract_entity_type_from_id(self, entity_id: str) -> str:
         """Extract entity type from entity ID.
 
-        Args:
-            entity_id: Entity identifier (e.g., "switch.dehumidify_32_153289")
-
-        Returns:
-            Entity type ("sensor", "switch", "number", "binary_sensor")
+        :param entity_id: Entity identifier (e.g., "switch.dehumidify_32_153289")
+        :return: Entity type ("sensor", "switch", "number", "binary_sensor")
         """
         if "." in entity_id:
             return entity_id.split(".")[0]
@@ -645,13 +622,10 @@ class ExtrasBaseAutomation(ABC):
     def _convert_entity_state(self, entity_type: str, state_value: str) -> float | bool:
         """Convert entity state value based on entity type.
 
-        Args:
-            entity_type: Type of entity
-            state_value: Raw state value from Home Assistant
-
-        Returns:
-            Converted value (float for sensor/number,
-            bool for switch/binary_sensor)
+        :param entity_type: Type of entity
+        :param state_value: Raw state value from Home Assistant
+        :return: Converted value (float for sensor/number,
+                 bool for switch/binary_sensor)
         """
         # Handle boolean entities (switch and binary sensor)
         if entity_type in ["switch", "binary_sensor"]:
@@ -684,19 +658,10 @@ class ExtrasBaseAutomation(ABC):
         turn_on/turn_off services like switches, so they must be updated via
         their entity object.
 
-        Args:
-            entity_id: Binary sensor entity ID
-             (e.g., "binary_sensor.hello_world_status_37_168270")
-            is_on: Desired state (True for ON, False for OFF)
-
-        Returns:
-            True if state was updated successfully, False otherwise
-
-        Example:
-            await self.set_binary_sensor_state(
-                "binary_sensor.hello_world_status_37_168270",
-                True
-            )
+        :param entity_id: Binary sensor entity ID
+         (e.g., "binary_sensor.hello_world_status_37_168270")
+        :param is_on: Desired state (True for ON, False for OFF)
+        :return: True if state was updated successfully, False otherwise
         """
         try:
             # Get the binary sensor entity from hass.data where it was stored
@@ -729,11 +694,8 @@ class ExtrasBaseAutomation(ABC):
         This helper method toggles the binary sensor state by first reading
         the current state and then setting the opposite state.
 
-        Args:
-            entity_id: Binary sensor entity ID
-
-        Returns:
-            True if state was toggled successfully, False otherwise
+        :param entity_id: Binary sensor entity ID
+        :return: True if state was toggled successfully, False otherwise
         """
         try:
             # Get current state
@@ -779,8 +741,7 @@ class ExtrasBaseAutomation(ABC):
     def _on_transport_state_changed(self, available: bool) -> None:
         """Handle transport state changes.
 
-        Args:
-            available: True if transport is available, False otherwise
+        :param available: True if transport is available, False otherwise
         """
         if available != self._transport_available:
             self._transport_available = available
@@ -799,8 +760,7 @@ class ExtrasBaseAutomation(ABC):
     def is_transport_available(self) -> bool:
         """Check if transport is currently available.
 
-        Returns:
-            True if transport is available, False otherwise
+        :return: True if transport is available, False otherwise
         """
         return self._transport_available
 
@@ -821,9 +781,8 @@ class ExtrasBaseAutomation(ABC):
         This method must be implemented by derived classes to provide
         feature-specific automation logic.
 
-        Args:
-            device_id: Device identifier
-            entity_states: Validated entity state values (float or bool)
+        :param device_id: Device identifier
+        :param entity_states: Validated entity state values (float or bool)
         """
         _LOGGER.debug("Abstract method _process_automation_logic called")
         # pass

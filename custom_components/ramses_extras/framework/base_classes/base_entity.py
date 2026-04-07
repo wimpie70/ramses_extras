@@ -30,12 +30,11 @@ class ExtrasBaseEntity:
     ) -> None:
         """Initialize base entity.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            entity_type: Optional entity type (for compatibility with legacy platforms)
-            config: Optional entity configuration (for compatibility
-             with legacy platforms)
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param entity_type: Optional entity type
+        (for compatibility with legacy platforms)
+        :param config: Entity configuration
         """
         self.hass = hass
         self.device_id = device_id

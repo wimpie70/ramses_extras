@@ -72,8 +72,7 @@ class OrconDeviceCustomizer:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the Orcon device customizer.
 
-        Args:
-            hass: Home Assistant instance
+        :param hass: Home Assistant instance
         """
         self.hass: HomeAssistant = hass
         self.detected_devices: dict[str, Any] = {}
@@ -83,12 +82,9 @@ class OrconDeviceCustomizer:
     ) -> dict[str, Any]:
         """Apply Orcon-specific customizations to device.
 
-        Args:
-            device: Device object with model property
-            event_data: Event data to modify
-
-        Returns:
-            Modified event data dictionary
+        :param device: Device object with model property
+        :param event_data: Event data to modify
+        :return: Modified event data dictionary
         """
         model_info = self._extract_orcon_model_info(device.model)
 
@@ -113,11 +109,8 @@ class OrconDeviceCustomizer:
     def _extract_orcon_model_info(self, model: str) -> dict[str, Any] | None:
         """Extract configuration from Orcon model string.
 
-        Args:
-            model: Device model string
-
-        Returns:
-            Model configuration dictionary or None
+        :param model: Device model string
+        :return: Model configuration dictionary or None
         """
         if not model:
             return None
@@ -145,10 +138,9 @@ class OrconDeviceCustomizer:
     ) -> None:
         """Add Orcon-specific entities to the event data.
 
-        Args:
-            device: Device object
-            event_data: Event data to modify
-            model_info: Model configuration information
+        :param device: Device object
+        :param event_data: Event data to modify
+        :param model_info: Model configuration information
         """
         device_id = device.id
         entities = event_data["entity_ids"]
@@ -194,10 +186,9 @@ class OrconDeviceCustomizer:
     ) -> None:
         """Configure Orcon-specific behavior settings.
 
-        Args:
-            device: Device object
-            event_data: Event data to modify
-            model_info: Model configuration information
+        :param device: Device object
+        :param event_data: Event data to modify
+        :param model_info: Model configuration information
         """
         event_data["orcon_config"] = {
             "auto_mode_hysteresis": 5,  # % humidity difference
@@ -238,9 +229,8 @@ class OrconDeviceCustomizer:
     ) -> None:
         """Set Orcon-specific default values.
 
-        Args:
-            event_data: Event data to modify
-            model_info: Model configuration information
+        :param event_data: Event data to modify
+        :param model_info: Model configuration information
         """
         humidity_range = model_info["humidity_range"]
         target_humidity = (humidity_range[0] + humidity_range[1]) // 2
@@ -275,8 +265,7 @@ class ZehnderDeviceCustomizer:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the Zehnder device customizer.
 
-        Args:
-            hass: Home Assistant instance
+        :param hass: Home Assistant instance
         """
         self.hass: HomeAssistant = hass
         self.detected_devices: dict[str, Any] = {}
@@ -286,12 +275,9 @@ class ZehnderDeviceCustomizer:
     ) -> dict[str, Any]:
         """Apply Zehnder-specific customizations to device.
 
-        Args:
-            device: Device object with model property
-            event_data: Event data to modify
-
-        Returns:
-            Modified event data dictionary
+        :param device: Device object with model property
+        :param event_data: Event data to modify
+        :return: Modified event data dictionary
         """
         model_info = self._extract_zehnder_model_info(device.model)
 
@@ -316,11 +302,8 @@ class ZehnderDeviceCustomizer:
     def _extract_zehnder_model_info(self, model: str) -> dict[str, Any] | None:
         """Extract configuration from Zehnder model string.
 
-        Args:
-            model: Device model string
-
-        Returns:
-            Model configuration dictionary or None
+        :param model: Device model string
+        :return: Model configuration dictionary or None
         """
         if not model:
             return None
@@ -348,10 +331,9 @@ class ZehnderDeviceCustomizer:
     ) -> None:
         """Add Zehnder-specific entities to the event data.
 
-        Args:
-            device: Device object
-            event_data: Event data to modify
-            model_info: Model configuration information
+        :param device: Device object
+        :param event_data: Event data to modify
+        :param model_info: Model configuration information
         """
         device_id = device.id
         entities = event_data["entity_ids"]
@@ -399,10 +381,9 @@ class ZehnderDeviceCustomizer:
     ) -> None:
         """Configure Zehnder-specific behavior settings.
 
-        Args:
-            device: Device object
-            event_data: Event data to modify
-            model_info: Model configuration information
+        :param device: Device object
+        :param event_data: Event data to modify
+        :param model_info: Model configuration information
         """
         event_data["zehnder_config"] = {
             "auto_mode_hysteresis": 3,  # % humidity difference
@@ -444,9 +425,8 @@ class ZehnderDeviceCustomizer:
     ) -> None:
         """Set Zehnder-specific default values.
 
-        Args:
-            event_data: Event data to modify
-            model_info: Model configuration information
+        :param event_data: Event data to modify
+        :param model_info: Model configuration information
         """
         humidity_range = model_info["humidity_range"]
         target_humidity = (humidity_range[0] + humidity_range[1]) // 2
@@ -475,11 +455,8 @@ class ZehnderDeviceCustomizer:
 def is_orcon_device(device: Any) -> bool:
     """Check if device is an Orcon brand device.
 
-    Args:
-        device: Device object
-
-    Returns:
-        True if device is Orcon brand, False otherwise
+    :param device: Device object
+    :return: True if device is Orcon brand, False otherwise
     """
     model = getattr(device, "model", None)
     if not model:
@@ -493,11 +470,8 @@ def is_orcon_device(device: Any) -> bool:
 def is_zehnder_device(device: Any) -> bool:
     """Check if device is a Zehnder brand device.
 
-    Args:
-        device: Device object
-
-    Returns:
-        True if device is Zehnder brand, False otherwise
+    :param device: Device object
+    :return: True if device is Zehnder brand, False otherwise
     """
     model = getattr(device, "model", None)
     if not model:
@@ -517,9 +491,8 @@ class EnhancedHumidityControl:
     def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
         """Initialize enhanced humidity control feature.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
         """
         self.hass = hass
         self.config_entry = config_entry
@@ -540,8 +513,7 @@ class EnhancedHumidityControl:
     async def async_setup(self) -> bool:
         """Set up the enhanced humidity control feature.
 
-        Returns:
-            True if setup successful, False otherwise
+        :return: True if setup successful, False otherwise
         """
         try:
             # Setup event listeners for device discovery
@@ -571,8 +543,7 @@ class EnhancedHumidityControl:
     async def _on_device_ready_for_entities(self, event_data: dict[str, Any]) -> None:
         """Handle device ready for entities event.
 
-        Args:
-            event_data: Event data containing device information and entity IDs
+        :param event_data: Event data containing device information and entity IDs
         """
         device = event_data["device_object"]
         device_id = event_data["device_id"]
@@ -602,8 +573,7 @@ class EnhancedHumidityControl:
     async def _handle_orcon_device(self, event_data: dict[str, Any]) -> None:
         """Apply Orcon-specific humidity control customizations.
 
-        Args:
-            event_data: Event data for Orcon device
+        :param event_data: Event data for Orcon device
         """
         device = event_data["device_object"]
         orcon_customizer = cast(OrconDeviceCustomizer, self._brand_customizers["orcon"])
@@ -622,8 +592,7 @@ class EnhancedHumidityControl:
     async def _handle_zehnder_device(self, event_data: dict[str, Any]) -> None:
         """Apply Zehnder-specific humidity control customizations.
 
-        Args:
-            event_data: Event data for Zehnder device
+        :param event_data: Event data for Zehnder device
         """
         device = event_data["device_object"]
         zehnder_customizer = cast(
@@ -644,8 +613,7 @@ class EnhancedHumidityControl:
     async def _handle_generic_device(self, event_data: dict[str, Any]) -> None:
         """Apply generic humidity control customizations.
 
-        Args:
-            event_data: Event data for generic device
+        :param event_data: Event data for generic device
         """
         device = event_data["device_object"]
 
@@ -659,9 +627,8 @@ class EnhancedHumidityControl:
     ) -> None:
         """Apply humidity-specific customizations based on brand.
 
-        Args:
-            event_data: Event data to modify
-            brand: Brand identifier (orcon, zehnder, generic)
+        :param event_data: Event data to modify
+        :param brand: Brand identifier (orcon, zehnder, generic)
         """
         device = event_data["device_object"]
         device_id = device.id
@@ -733,13 +700,10 @@ class EnhancedHumidityControl:
     ) -> bool:
         """Determine if entity should be created based on modifications.
 
-        Args:
-            device_id: Device identifier
-            entity_id: Entity identifier
-            default_enabled: Default enabled state
-
-        Returns:
-            True if entity should be created, False otherwise
+        :param device_id: Device identifier
+        :param entity_id: Entity identifier
+        :param default_enabled: Default enabled state
+        :return: True if entity should be created, False otherwise
         """
         # Check if user has set explicit preferences
         device_modifications = self._entity_modifications.get(device_id, {})
@@ -756,11 +720,8 @@ class EnhancedHumidityControl:
     def get_brand_info(self, device_id: str) -> dict[str, Any]:
         """Get brand information for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Brand information dictionary
+        :param device_id: Device identifier
+        :return: Brand information dictionary
         """
         modifications = self._entity_modifications.get(device_id, {})
         brand_info: dict[str, Any] = modifications.get("humidity_config", {})
@@ -769,11 +730,8 @@ class EnhancedHumidityControl:
     def get_entity_customizations(self, device_id: str) -> dict[str, Any]:
         """Get entity customizations for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Entity customizations dictionary
+        :param device_id: Device identifier
+        :return: Entity customizations dictionary
         """
         entity_customizations: dict[str, Any] = self._entity_modifications.get(
             device_id, {}
@@ -786,13 +744,10 @@ async def create_humidity_control_feature(
 ) -> dict[str, Any]:
     """Factory function to create humidity control feature.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-
-    Returns:
-        Humidity control feature instance with automation,
-        entities, services, config, platforms, and enhanced functionality
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry
+    :param skip_automation_setup: Skip automation setup flag
+    :return: Feature instance dictionary
     """
     # Create the core enhanced humidity control feature
     enhanced_feature = EnhancedHumidityControl(hass, config_entry)

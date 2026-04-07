@@ -65,11 +65,10 @@ class ExtrasConfigManager:
     ) -> None:
         """Initialize the configuration manager.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
-            feature_id: Feature identifier (e.g., "humidity_control")
-            default_config: Default configuration dictionary
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
+        :param feature_id: Feature identifier (e.g., "humidity_control")
+        :param default_config: Default configuration dictionary
         """
         self.hass = hass
         self.config_entry = config_entry
@@ -119,8 +118,7 @@ class ExtrasConfigManager:
         This would update the config entry with current settings.
         For now, it just validates the configuration.
 
-        Returns:
-            True if successful
+        :return: True if successful
         """
         try:
             # Validate configuration
@@ -142,8 +140,7 @@ class ExtrasConfigManager:
         Features should override this method to provide feature-specific validation.
         The base implementation provides general validation patterns.
 
-        Returns:
-            True if configuration is valid
+        :return: True if configuration is valid
         """
         try:
             # Check for basic boolean values if they exist
@@ -185,21 +182,17 @@ class ExtrasConfigManager:
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value.
 
-        Args:
-            key: Configuration key
-            default: Default value if key not found
-
-        Returns:
-            Configuration value
+        :param key: Configuration key
+        :param default: Default value if key not found
+        :return: Configuration value
         """
         return self._config.get(key, default)
 
     def set(self, key: str, value: Any) -> None:
         """Set configuration value.
 
-        Args:
-            key: Configuration key
-            value: Value to set
+        :param key: Configuration key
+        :param value: Value to set
         """
         self._config[key] = value
         _LOGGER.debug(f"{self.feature_id} configuration updated: {key} = {value}")
@@ -207,8 +200,7 @@ class ExtrasConfigManager:
     def get_all(self) -> dict[str, Any]:
         """Get all configuration values.
 
-        Returns:
-            Complete configuration dictionary
+        :return: Complete configuration dictionary
         """
         return self._config.copy()
 
@@ -302,11 +294,8 @@ class ExtrasConfigManager:
 
         Uses the shared zones helper for normalized FAN→zone lookup.
 
-        Args:
-            device_id: FAN device ID (canonical or legacy format)
-
-        Returns:
-            List of zone configuration dictionaries
+        :param device_id: FAN device ID (canonical or legacy format)
+        :return: List of zone configuration dictionaries
         """
         section = self.get_feature_section(FEATURE_ZONES, canonical=True)
         return get_zones_for_fan(section, device_id)
@@ -316,11 +305,8 @@ class ExtrasConfigManager:
 
         Uses the shared zones helper for normalized zone ID extraction.
 
-        Args:
-            device_id: FAN device ID (canonical or legacy format)
-
-        Returns:
-            List of unique zone IDs
+        :param device_id: FAN device ID (canonical or legacy format)
+        :return: List of unique zone IDs
         """
         section = self.get_feature_section(FEATURE_ZONES, canonical=True)
         return get_zone_ids_for_fan(section, device_id)
@@ -330,11 +316,8 @@ class ExtrasConfigManager:
 
         Uses the shared remote_binding helper for normalized FAN→REM lookup.
 
-        Args:
-            device_id: FAN device ID (canonical or legacy format)
-
-        Returns:
-            List of REM binding dictionaries with normalized rem_id
+        :param device_id: FAN device ID (canonical or legacy format)
+        :return: List of REM binding dictionaries with normalized rem_id
         """
         section = self.get_feature_section(FEATURE_REMOTE_BINDING, canonical=True)
         return get_remote_binding_rems(section, device_id)
@@ -344,11 +327,8 @@ class ExtrasConfigManager:
 
         Uses the shared remote_binding helper for normalized REM ID extraction.
 
-        Args:
-            device_id: FAN device ID (canonical or legacy format)
-
-        Returns:
-            List of unique REM IDs
+        :param device_id: FAN device ID (canonical or legacy format)
+        :return: List of unique REM IDs
         """
         section = self.get_feature_section(FEATURE_REMOTE_BINDING, canonical=True)
         return get_remote_binding_rem_ids(section, device_id)
@@ -356,8 +336,7 @@ class ExtrasConfigManager:
     def update(self, updates: Any) -> None:
         """Update multiple configuration values.
 
-        Args:
-            updates: Dictionary of updates
+        :param updates: Dictionary of updates
         """
         if not isinstance(updates, dict):
             _LOGGER.warning(
@@ -374,16 +353,14 @@ class ExtrasConfigManager:
     def is_enabled(self) -> bool:
         """Check if feature is enabled.
 
-        Returns:
-            True if enabled
+        :return: True if enabled
         """
         return bool(self.get("enabled", False))
 
     def is_automation_enabled(self) -> bool:
         """Check if automation is enabled.
 
-        Returns:
-            True if automation is enabled
+        :return: True if automation is enabled
         """
         return self.is_enabled() and self.get("automation_enabled", False)
 
@@ -413,21 +390,17 @@ class ExtrasConfigManager:
         Features should override this method to provide feature-specific schemas.
         The base implementation provides a generic schema.
 
-        Returns:
-            Configuration schema dictionary
+        :return: Configuration schema dictionary
         """
         return self.get_config_schema_dict()
 
     def get_numeric_validation(self, key: str, min_val: float, max_val: float) -> bool:
         """Validate a numeric configuration value is within range.
 
-        Args:
-            key: Configuration key
-            min_val: Minimum allowed value
-            max_val: Maximum allowed value
-
-        Returns:
-            True if valid
+        :param key: Configuration key
+        :param min_val: Minimum allowed value
+        :param max_val: Maximum allowed value
+        :return: True if valid
         """
         value = self._config.get(key)
         if not isinstance(value, (int, float)):
@@ -448,11 +421,8 @@ class ExtrasConfigManager:
     def get_boolean_validation(self, key: str) -> bool:
         """Validate a boolean configuration value.
 
-        Args:
-            key: Configuration key
-
-        Returns:
-            True if valid
+        :param key: Configuration key
+        :return: True if valid
         """
         value = self._config.get(key)
         if not isinstance(value, bool):
@@ -472,14 +442,11 @@ class ExtrasConfigManager:
     ) -> bool:
         """Validate a string configuration value.
 
-        Args:
-            key: Configuration key
-            choices: Optional list of valid choices
-            min_length: Minimum allowed length (default 0)
-            max_length: Maximum allowed length (default None for no limit)
-
-        Returns:
-            True if valid
+        :param key: Configuration key
+        :param choices: Optional list of valid choices
+        :param min_length: Minimum allowed length (default 0)
+        :param max_length: Maximum allowed length (default None for no limit)
+        :return: True if valid
         """
         value = self._config.get(key)
         if not isinstance(value, str):
@@ -521,14 +488,11 @@ def create_config_manager(
 ) -> ExtrasConfigManager:
     """Create a configuration manager instance.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-        feature_id: Feature identifier
-        default_config: Default configuration
-
-    Returns:
-        ExtrasConfigManager instance
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry
+    :param feature_id: Feature identifier
+    :param default_config: Default configuration
+    :return: ExtrasConfigManager instance
     """
     return ExtrasConfigManager(hass, config_entry, feature_id, default_config)
 

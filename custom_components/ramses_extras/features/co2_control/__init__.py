@@ -48,10 +48,9 @@ class CO2ControlFeature:
     def __init__(self, hass: HomeAssistant, device_id: str, config: dict[str, Any]):
         """Initialize CO2 control feature.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            config: Feature configuration
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param config: Feature configuration
         """
         self.hass = hass
         self.device_id = device_id
@@ -63,8 +62,7 @@ class CO2ControlFeature:
     async def async_setup(self) -> bool:
         """Set up the CO2 control feature.
 
-        Returns:
-            True if setup successful
+        :return: True if setup successful
         """
         _LOGGER.debug("Setting up CO2 control feature for device %s", self.device_id)
 
@@ -83,8 +81,7 @@ class CO2ControlFeature:
     async def async_unload(self) -> bool:
         """Unload the CO2 control feature.
 
-        Returns:
-            True if unload successful
+        :return: True if unload successful
         """
         _LOGGER.debug("Unloading CO2 control feature for device %s", self.device_id)
         return True
@@ -95,13 +92,10 @@ async def async_create_co2_control_feature(
 ) -> CO2ControlFeature:
     """Create and set up CO2 control feature.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config: Feature configuration
-
-    Returns:
-        CO2ControlFeature instance
+    :param hass: Home Assistant instance
+    :param device_id: Device identifier
+    :param config: Feature configuration
+    :return: CO2ControlFeature instance
     """
     feature = CO2ControlFeature(hass, device_id, config)
     await feature.async_setup()

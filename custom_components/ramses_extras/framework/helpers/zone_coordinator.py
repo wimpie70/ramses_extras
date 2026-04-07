@@ -97,9 +97,8 @@ class ZoneCoordinator:
     ) -> None:
         """Initialize the zone coordinator.
 
-        Args:
-            hass: Home Assistant instance
-            fan_id: FAN device ID this coordinator manages
+        :param hass: Home Assistant instance
+        :param fan_id: FAN device ID this coordinator manages
         """
         self._hass = hass
         self._fan_id = fan_id
@@ -157,20 +156,19 @@ class ZoneCoordinator:
     ) -> None:
         """Configure zone coordination parameters.
 
-        Args:
-            zone_id: Zone identifier
-            priority: Priority for this zone's demands (higher wins)
-            min_position_for_demand: Minimum position to trigger fan demand
-            demand_mapping: Dict mapping position thresholds to fan speeds
-                          e.g., {20: "fan_low", 50: "fan_medium", 80: "fan_high"}
-            min_position: Actuator position when zone has no demand (0-100)
-            max_position: Actuator position when zone has demand (0-100)
-            is_controllable: Whether this zone has controllable actuators
-            actuation_priority: Priority for demand resolution (higher = selected first
-                               when max_open_zones limits active zones)
-            zone_type: Type of zone adapter (e.g., "paired_valves")
-            inlet_valve_entity: Entity ID for inlet valve
-            outlet_valve_entity: Entity ID for outlet valve
+        :param zone_id: Zone identifier
+        :param priority: Priority for this zone's demands (higher wins)
+        :param min_position_for_demand: Minimum position to trigger fan demand
+        :param demand_mapping: Dict mapping position thresholds to fan speeds
+                               e.g., {20: "fan_low", 50: "fan_medium", 80: "fan_high"}
+        :param min_position: Actuator position when zone has no demand (0-100)
+        :param max_position: Actuator position when zone has demand (0-100)
+        :param is_controllable: Whether this zone has controllable actuators
+        :param actuation_priority: Priority for demand resolution
+            (higher = selected first when max_open_zones limits active zones)
+        :param zone_type: Type of zone adapter (e.g., "paired_valves")
+        :param inlet_valve_entity: Entity ID for inlet valve
+        :param outlet_valve_entity: Entity ID for outlet valve
         """
         existing = self._zone_configs.get(zone_id)
         self._zone_configs[zone_id] = ZoneConfig(
@@ -219,8 +217,7 @@ class ZoneCoordinator:
     def set_max_open_zones(self, max_open_zones: int | None) -> None:
         """Set maximum number of zones that can be open simultaneously.
 
-        Args:
-            max_open_zones: Maximum number of zones to open (None = no limit)
+        :param max_open_zones: Maximum number of zones to open (None = no limit)
         """
         self._max_open_zones = max_open_zones
         _LOGGER.debug(
@@ -232,8 +229,7 @@ class ZoneCoordinator:
     def _get_default_demand_mapping(self) -> dict[int, str]:
         """Get default position to fan speed mapping.
 
-        Returns:
-            Dict mapping position thresholds to fan speeds
+        :return: Dict mapping position thresholds to fan speeds
         """
         return {
             0: "fan_auto",  # Zone closed - let FAN decide
@@ -247,12 +243,9 @@ class ZoneCoordinator:
     ) -> str:
         """Convert zone position to fan speed demand.
 
-        Args:
-            position: Zone position (0-100)
-            mapping: Optional custom position to speed mapping
-
-        Returns:
-            Fan speed command name
+        :param position: Zone position (0-100)
+        :param mapping: Optional custom position to speed mapping
+        :return: Fan speed command name
         """
         effective_mapping = mapping or self._get_default_demand_mapping()
 
@@ -269,11 +262,8 @@ class ZoneCoordinator:
     async def async_update_zone_state(self, zone_id: str) -> ZoneState | None:
         """Update and return the current state for a zone.
 
-        Args:
-            zone_id: Zone identifier
-
-        Returns:
-            ZoneState or None if zone not available
+        :param zone_id: Zone identifier
+        :return: ZoneState or None if zone not available
         """
         from datetime import datetime
 
@@ -308,8 +298,7 @@ class ZoneCoordinator:
     async def async_evaluate_and_apply(self) -> bool:
         """Evaluate all zones and apply demands to arbiter.
 
-        Returns:
-            True if any demands were applied
+        :return: True if any demands were applied
         """
         if not self._enabled:
             return False
@@ -366,15 +355,12 @@ class ZoneCoordinator:
     ) -> bool:
         """Apply a zone demand to the fan speed arbiter.
 
-        Args:
-            zone_id: Zone identifier
-            fan_speed: Requested fan speed
-            priority: Demand priority
-            reason: Human-readable reason
-            source: Source of demand
-
-        Returns:
-            True if demand was applied
+        :param zone_id: Zone identifier
+        :param fan_speed: Requested fan speed
+        :param priority: Demand priority
+        :param reason: Human-readable reason
+        :param source: Source of demand
+        :return: True if demand was applied
         """
         arbiter = get_fan_speed_arbiter(self._hass)
 
@@ -410,11 +396,8 @@ class ZoneCoordinator:
     async def _clear_zone_demand(self, zone_id: str) -> bool:
         """Clear a zone's demand from the arbiter.
 
-        Args:
-            zone_id: Zone identifier
-
-        Returns:
-            True if demand was cleared
+        :param zone_id: Zone identifier
+        :return: True if demand was cleared
         """
         arbiter = get_fan_speed_arbiter(self._hass)
 
@@ -456,27 +439,22 @@ class ZoneCoordinator:
     def get_zone_states(self) -> dict[str, ZoneState]:
         """Get current states for all monitored zones.
 
-        Returns:
-            Dict mapping zone_id to ZoneState
+        :return: Dict mapping zone_id to ZoneState
         """
         return dict(self._last_states)
 
     def get_zone_config(self, zone_id: str) -> ZoneConfig | None:
         """Get configuration for a zone.
 
-        Args:
-            zone_id: Zone identifier
-
-        Returns:
-            ZoneConfig or None if not configured
+        :param zone_id: Zone identifier
+        :return: ZoneConfig or None if not configured
         """
         return self._zone_configs.get(zone_id)
 
     def get_diagnostics(self) -> dict[str, Any]:
         """Return diagnostic information for this coordinator.
 
-        Returns:
-            Dictionary with coordinator state including actuator commands
+        :return: Dictionary with coordinator state including actuator commands
         """
         # Get arbiter state for this FAN
         arbiter = get_fan_speed_arbiter(self._hass)
@@ -533,13 +511,10 @@ class ZoneCoordinator:
     ) -> bool:
         """Set a manual demand for a zone (e.g., from UI or automation).
 
-        Args:
-            zone_id: Zone identifier
-            fan_speed: Requested fan speed
-            reason: Human-readable reason
-
-        Returns:
-            True if demand was applied
+        :param zone_id: Zone identifier
+        :param fan_speed: Requested fan speed
+        :param reason: Human-readable reason
+        :return: True if demand was applied
         """
         zone_config = self._zone_configs.get(zone_id)
         priority = zone_config.priority if zone_config else _DEFAULT_ZONE_PRIORITY
@@ -555,11 +530,8 @@ class ZoneCoordinator:
     async def async_clear_manual_zone_demand(self, zone_id: str) -> bool:
         """Clear manual demand for a zone.
 
-        Args:
-            zone_id: Zone identifier
-
-        Returns:
-            True if demand was cleared
+        :param zone_id: Zone identifier
+        :return: True if demand was cleared
         """
         return await self._clear_zone_demand(zone_id)
 
@@ -571,8 +543,7 @@ class ZoneCoordinator:
         - With max_open_zones: highest priority zones selected for max_position
         - Otherwise: drive to min_position
 
-        Returns:
-            Dict with results per zone {zone_id: {"target": pos, "actual": pos}}
+        :return: Dict with results per zone {zone_id: {"target": pos, "actual": pos}}
         """
         if not self._enabled:
             return {}
@@ -746,11 +717,8 @@ class ZoneCoordinator:
     def has_zone_demand(self, zone_id: str) -> bool:
         """Check if a zone has active demand from any source.
 
-        Args:
-            zone_id: Zone identifier
-
-        Returns:
-            True if zone has demand from humidity/CO2/manual sources
+        :param zone_id: Zone identifier
+        :return: True if zone has demand from humidity/CO2/manual sources
         """
         return self._demand_registry.has_demand(self._fan_id, zone_id)
 
@@ -767,18 +735,18 @@ class ZoneCoordinatorRegistry:
     """Registry for zone coordinators per FAN."""
 
     def __init__(self, hass: HomeAssistant) -> None:
-        """Initialize the coordinator registry."""
+        """Initialize the coordinator registry.
+
+        :param hass: Home Assistant instance
+        """
         self._hass = hass
         self._coordinators: dict[str, ZoneCoordinator] = {}
 
     def get_or_create_coordinator(self, fan_id: str) -> ZoneCoordinator:
         """Get or create a coordinator for a FAN.
 
-        Args:
-            fan_id: FAN device ID
-
-        Returns:
-            ZoneCoordinator instance
+        :param fan_id: FAN device ID
+        :return: ZoneCoordinator instance
         """
         normalized_id = fan_id.replace("_", ":").strip()
 
@@ -793,11 +761,8 @@ class ZoneCoordinatorRegistry:
     def get_coordinator(self, fan_id: str) -> ZoneCoordinator | None:
         """Get existing coordinator for a FAN.
 
-        Args:
-            fan_id: FAN device ID
-
-        Returns:
-            ZoneCoordinator or None if not found
+        :param fan_id: FAN device ID
+        :return: ZoneCoordinator or None if not found
         """
         normalized_id = fan_id.replace("_", ":").strip()
         return self._coordinators.get(normalized_id)
@@ -805,8 +770,7 @@ class ZoneCoordinatorRegistry:
     def remove_coordinator(self, fan_id: str) -> None:
         """Remove a coordinator from the registry.
 
-        Args:
-            fan_id: FAN device ID
+        :param fan_id: FAN device ID
         """
         normalized_id = fan_id.replace("_", ":").strip()
         coordinator = self._coordinators.pop(normalized_id, None)
@@ -817,8 +781,7 @@ class ZoneCoordinatorRegistry:
     def get_all_coordinators(self) -> list[ZoneCoordinator]:
         """Get all registered coordinators.
 
-        Returns:
-            List of ZoneCoordinator instances
+        :return: List of ZoneCoordinator instances
         """
         return list(self._coordinators.values())
 
@@ -831,8 +794,7 @@ class ZoneCoordinatorRegistry:
     def get_diagnostics(self) -> dict[str, Any]:
         """Return diagnostic information for all coordinators.
 
-        Returns:
-            Dictionary with registry state
+        :return: Dictionary with registry state
         """
         return {
             "coordinator_count": len(self._coordinators),
@@ -850,11 +812,8 @@ _zone_coordinator_registry: ZoneCoordinatorRegistry | None = None
 def get_zone_coordinator_registry(hass: HomeAssistant) -> ZoneCoordinatorRegistry:
     """Get or create the zone coordinator registry.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        ZoneCoordinatorRegistry instance
+    :param hass: Home Assistant instance
+    :return: ZoneCoordinatorRegistry instance
     """
     global _zone_coordinator_registry
 
@@ -868,12 +827,9 @@ def get_zone_coordinator_registry(hass: HomeAssistant) -> ZoneCoordinatorRegistr
 def get_zone_coordinator(hass: HomeAssistant, fan_id: str) -> ZoneCoordinator:
     """Get or create a zone coordinator for a FAN.
 
-    Args:
-        hass: Home Assistant instance
-        fan_id: FAN device ID
-
-    Returns:
-        ZoneCoordinator instance
+    :param hass: Home Assistant instance
+    :param fan_id: FAN device ID
+    :return: ZoneCoordinator instance
     """
     registry = get_zone_coordinator_registry(hass)
     return registry.get_or_create_coordinator(fan_id)
@@ -882,8 +838,7 @@ def get_zone_coordinator(hass: HomeAssistant, fan_id: str) -> ZoneCoordinator:
 def async_setup_zone_coordinators(hass: HomeAssistant) -> None:
     """Set up zone coordinator infrastructure.
 
-    Args:
-        hass: Home Assistant instance
+    :param hass: Home Assistant instance
     """
     get_zone_coordinator_registry(hass)
     _LOGGER.info("Zone coordinator infrastructure initialized")

@@ -31,8 +31,7 @@ class RemoteBindingRegistry:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the binding registry.
 
-        Args:
-            hass: Home Assistant instance
+        :param hass: Home Assistant instance
         """
         self._hass = hass
         self._cache: dict[str, dict[str, Any]] = {}
@@ -49,11 +48,10 @@ class RemoteBindingRegistry:
     ) -> None:
         """Record remote button press activity.
 
-        Args:
-            rem_id: REM device ID
-            fan_id: Target FAN device ID if known
-            command: Command that was sent
-            matched: Whether the REM was matched to a FAN
+        :param rem_id: REM device ID
+        :param fan_id: Target FAN device ID if known
+        :param command: Command that was sent
+        :param matched: Whether the REM was matched to a FAN
         """
         normalized_rem = rem_id.replace("_", ":").strip()
         now = datetime.now()
@@ -89,16 +87,18 @@ class RemoteBindingRegistry:
     def get_last_seen(self, rem_id: str) -> datetime | None:
         """Get last seen timestamp for a REM.
 
-        Args:
-            rem_id: REM device ID
-
-        Returns:
-            Last seen datetime or None if never seen
+        :param rem_id: REM device ID
+        :return: Last seen datetime or None if never seen
         """
         normalized_rem = rem_id.replace("_", ":").strip()
         return self._last_seen.get(normalized_rem)
 
     def get_last_activity_for_fan(self, fan_id: str) -> dict[str, Any] | None:
+        """Get the most recent remote activity for a specific FAN device.
+
+        :param fan_id: FAN device ID
+        :return: Activity dict with rem_id, command, timestamp, or None if no activity
+        """
         normalized_fan = fan_id.replace("_", ":").strip()
         if not normalized_fan:
             return None
@@ -108,11 +108,8 @@ class RemoteBindingRegistry:
     def get_unmatched_traffic(self, limit: int = 50) -> list[dict[str, Any]]:
         """Get recent unmatched remote traffic.
 
-        Args:
-            limit: Maximum number of entries to return
-
-        Returns:
-            List of unmatched traffic entries
+        :param limit: Maximum number of entries to return
+        :return: List of unmatched traffic entries
         """
         return self._unmatched_traffic[-limit:]
 
@@ -124,8 +121,7 @@ class RemoteBindingRegistry:
     def get_diagnostics(self) -> dict[str, Any]:
         """Get diagnostic information about bindings.
 
-        Returns:
-            Dictionary with binding diagnostics
+        :return: Dictionary with binding diagnostics
         """
         all_bindings = self.list_bindings()
         total_bindings = sum(len(b) for b in all_bindings.values())
@@ -141,8 +137,7 @@ class RemoteBindingRegistry:
     def _get_config_manager(self) -> ExtrasConfigManager | None:
         """Get the default feature's config manager.
 
-        Returns:
-            Config manager or None if not available
+        :return: Config manager or None if not available
         """
         domain_data = self._hass.data.get(DOMAIN, {})
         config_entry = domain_data.get("config_entry")
@@ -166,11 +161,8 @@ class RemoteBindingRegistry:
     def get_binding_for_fan(self, device_id: str) -> dict[str, Any] | None:
         """Get the primary REM binding for a FAN device.
 
-        Args:
-            device_id: FAN device ID (canonical or legacy format)
-
-        Returns:
-            Binding dict with rem_id, role, enabled, source or None
+        :param device_id: FAN device ID (canonical or legacy format)
+        :return: Binding dict with rem_id, role, enabled, source or None
         """
         # Normalize device ID for consistent lookup
         normalized_id = device_id.replace("_", ":").strip()
@@ -200,11 +192,8 @@ class RemoteBindingRegistry:
     def get_rem_id_for_fan(self, device_id: str) -> str | None:
         """Get the REM device ID bound to a FAN.
 
-        Args:
-            device_id: FAN device ID
-
-        Returns:
-            REM device ID or None if no binding
+        :param device_id: FAN device ID
+        :return: REM device ID or None if no binding
         """
         binding = self.get_binding_for_fan(device_id)
         if binding is None:
@@ -214,8 +203,7 @@ class RemoteBindingRegistry:
     def list_bindings(self) -> dict[str, list[dict[str, Any]]]:
         """List all FAN→REM bindings.
 
-        Returns:
-            Dict mapping FAN device IDs to lists of binding dicts
+        :return: Dict mapping FAN device IDs to lists of binding dicts
         """
         manager = self._get_config_manager()
         if manager is None:
@@ -241,11 +229,8 @@ class RemoteBindingRegistry:
     def is_rem_bound(self, rem_id: str) -> bool:
         """Check if a REM is bound to any FAN.
 
-        Args:
-            rem_id: REM device ID
-
-        Returns:
-            True if the REM is bound to at least one FAN
+        :param rem_id: REM device ID
+        :return: True if the REM is bound to at least one FAN
         """
         normalized_rem = rem_id.replace("_", ":").strip()
 
@@ -261,11 +246,8 @@ class RemoteBindingRegistry:
     def find_fan_for_rem(self, rem_id: str) -> str | None:
         """Find the FAN device that a REM is bound to.
 
-        Args:
-            rem_id: REM device ID
-
-        Returns:
-            FAN device ID or None if not bound
+        :param rem_id: REM device ID
+        :return: FAN device ID or None if not bound
         """
         normalized_rem = rem_id.replace("_", ":").strip()
 
@@ -281,8 +263,7 @@ class RemoteBindingRegistry:
     def detect_conflicts(self) -> list[dict[str, Any]]:
         """Detect binding conflicts where one REM is bound to multiple FANs.
 
-        Returns:
-            List of conflict dictionaries with rem_id and list of bound FANs
+        :return: List of conflict dictionaries with rem_id and list of bound FANs
         """
         conflicts: list[dict[str, Any]] = []
         all_bindings = self.list_bindings()
@@ -316,8 +297,7 @@ class RemoteBindingRegistry:
     def export_bindings_yaml(self) -> str:
         """Export all bindings as strict YAML for support/debugging.
 
-        Returns:
-            YAML string representing the remote_binding feature section
+        :return: YAML string representing the remote_binding feature section
         """
         import json
 
@@ -349,11 +329,8 @@ class RemoteBindingRegistry:
     def get_bindings_for_fan(self, device_id: str) -> list[dict[str, Any]]:
         """Get all enabled REM bindings for a FAN.
 
-        Args:
-            device_id: FAN device ID
-
-        Returns:
-            List of binding dicts
+        :param device_id: FAN device ID
+        :return: List of binding dicts
         """
         normalized_id = device_id.replace("_", ":").strip()
 
@@ -371,11 +348,8 @@ class RemoteBindingRegistry:
     def get_all_rem_ids_for_fan(self, device_id: str) -> list[str]:
         """Get all REM device IDs bound to a FAN.
 
-        Args:
-            device_id: FAN device ID
-
-        Returns:
-            List of REM device IDs
+        :param device_id: FAN device ID
+        :return: List of REM device IDs
         """
         bindings = self.get_bindings_for_fan(device_id)
         return [str(b.get("rem_id")) for b in bindings if b.get("rem_id")]
@@ -383,8 +357,7 @@ class RemoteBindingRegistry:
     def _get_suggested_bindings(self) -> dict[str, list[dict[str, Any]]]:
         """Analyze unmatched traffic to suggest potential bindings.
 
-        Returns:
-            Dict mapping FAN IDs to lists of suggested REM bindings
+        :return: Dict mapping FAN IDs to lists of suggested REM bindings
         """
         suggestions: dict[str, list[dict[str, Any]]] = {}
 
@@ -430,11 +403,8 @@ class RemoteBindingRegistry:
     def get_binding_suggestions(self, fan_id: str | None = None) -> dict[str, Any]:
         """Get binding suggestions from observed traffic.
 
-        Args:
-            fan_id: Optional FAN to filter suggestions for
-
-        Returns:
-            Dict with suggested bindings and analysis info
+        :param fan_id: Optional FAN to filter suggestions for
+        :return: Dict with suggested bindings and analysis info
         """
         all_suggestions = self._get_suggested_bindings()
 
@@ -462,11 +432,8 @@ class RemoteBindingRegistry:
 def get_remote_binding_registry(hass: HomeAssistant) -> RemoteBindingRegistry:
     """Get or create the remote binding registry.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        RemoteBindingRegistry instance
+    :param hass: Home Assistant instance
+    :return: RemoteBindingRegistry instance
     """
     domain_data = hass.data.setdefault(DOMAIN, {})
 
@@ -480,8 +447,7 @@ def get_remote_binding_registry(hass: HomeAssistant) -> RemoteBindingRegistry:
 def async_setup_remote_binding(hass: HomeAssistant) -> None:
     """Set up remote binding infrastructure.
 
-    Args:
-        hass: Home Assistant instance
+    :param hass: Home Assistant instance
     """
     get_remote_binding_registry(hass)
     _LOGGER.info("Remote binding registry initialized")

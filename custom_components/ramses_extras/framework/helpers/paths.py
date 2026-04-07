@@ -22,25 +22,19 @@ class PathConstants:
 
     @staticmethod
     def get_helper_path(helper_file_name: str) -> str:
-        """Get the full path for a helper file.
+        """Get the path to a specific storage file.
 
-        Args:
-            helper_file_name: Name of the helper file (e.g., 'card-commands.js')
-
-        Returns:
-            Full path to the helper file
+        :param helper_file_name: Name of the file
+        :return: Full path to the file
         """
         return f"{PathConstants.HELPERS_BASE}/{helper_file_name}"
 
     @staticmethod
     def get_feature_base_path(feature_name: str) -> str:
-        """Get the base path for a feature.
+        """Get the storage path for Ramses Extras data.
 
-        Args:
-            feature_name: Name of the feature (e.g., 'hvac_fan_card')
-
-        Returns:
-            Base path for the feature
+        :param feature_name: Name of the feature
+        :return: Path to storage directory
         """
         return f"{PathConstants.FEATURES_BASE}/{feature_name}"
 
@@ -48,26 +42,20 @@ class PathConstants:
     def get_feature_path(feature_name: str, asset_path: str = "") -> str:
         """Get the full path for a feature-specific asset.
 
-        Args:
-            feature_name: Name of the feature
-            asset_path: Relative path within the feature's www folder
-
-        Returns:
-            Full path to the feature asset
+        :param feature_name: Name of the feature
+        :param asset_path: Relative path within the feature's www folder
+        :return: Full path to the feature asset
         """
         base_path = PathConstants.get_feature_base_path(feature_name)
         return f"{base_path}/{asset_path}" if asset_path else base_path
 
     @staticmethod
     def get_feature_card_path(feature_name: str, card_file_name: str) -> str:
-        """Get the full path for a feature card file.
+        """Get the full path to a feature card file.
 
-        Args:
-            feature_name: Name of the feature
-            card_file_name: Name of the card file (e.g., 'hvac-fan-card.js')
-
-        Returns:
-            Full path to the feature card
+        :param feature_name: Name of the feature
+        :param card_file_name: Name of the card file
+        :return: Full path to the feature card
         """
         # Remove feature_name directory from card_file_name if present
         # to avoid double directory structure
@@ -77,14 +65,11 @@ class PathConstants:
 
     @staticmethod
     def get_feature_template_path(feature_name: str, template_path: str) -> str:
-        """Get the full path for a feature template.
+        """Get the full path to a feature template.
 
-        Args:
-            feature_name: Name of the feature
-            template_path: Relative path within templates folder
-
-        Returns:
-            Full path to the feature template
+        :param feature_name: Name of the feature
+        :param template_path: Relative path within templates folder
+        :return: Full path to the feature template
         """
         return PathConstants.get_feature_path(
             feature_name, f"templates/{template_path}"
@@ -92,14 +77,11 @@ class PathConstants:
 
     @staticmethod
     def get_feature_translation_path(feature_name: str, locale: str) -> str:
-        """Get the full path for feature translations.
+        """Get the full path to feature translations.
 
-        Args:
-            feature_name: Name of the feature
-            locale: Language locale (e.g., 'en', 'nl')
-
-        Returns:
-            Full path to the translation file
+        :param feature_name: Name of the feature
+        :param locale: Language locale
+        :return: Full path to the translation file
         """
         return PathConstants.get_feature_path(
             feature_name, f"translations/{locale}.json"
@@ -127,12 +109,9 @@ class DeploymentPaths:
         Version parameter is kept for backward compatibility but no longer used
         for path generation. All files are deployed to a stable location.
 
-        Args:
-            hass_config_dir: Home Assistant config directory (can be string or Path)
-            version: Integration version string (kept for compatibility, not used)
-
-        Returns:
-            Destination root path (stable, non-versioned).
+        :param hass_config_dir: Home Assistant config directory
+        :param version: Integration version string
+        :return: Destination root path
         """
 
         if isinstance(hass_config_dir, str):
@@ -144,12 +123,9 @@ class DeploymentPaths:
     def get_source_feature_path(integration_dir: Path, feature_name: str) -> Path:
         """Get the source path for feature files in the integration directory.
 
-        Args:
-            integration_dir: Path to the integration directory
-            feature_name: Name of the feature
-
-        Returns:
-            Source path for feature files
+        :param integration_dir: Path to the integration directory
+        :param feature_name: Name of the feature
+        :return: Source path for feature files
         """
         return integration_dir / "features" / feature_name / "www" / feature_name
 
@@ -161,12 +137,10 @@ class DeploymentPaths:
     ) -> Path:
         """Get the destination path for feature deployment.
 
-        Args:
-            hass_config_dir: Home Assistant config directory (can be string or Path)
-            feature_name: Name of the feature
-
-        Returns:
-            Destination path for feature deployment
+        :param hass_config_dir: Home Assistant config directory
+        :param feature_name: Name of the feature
+        :param version: Integration version string
+        :return: Destination path for feature deployment
         """
 
         if version is None:
@@ -184,11 +158,9 @@ class DeploymentPaths:
     ) -> Path:
         """Get the destination path for helper files deployment.
 
-        Args:
-            hass_config_dir: Home Assistant config directory (can be string or Path)
-
-        Returns:
-            Destination path for helper files
+        :param hass_config_dir: Home Assistant config directory
+        :param version: Integration version string
+        :return: Destination path for helper files
         """
 
         if version is None:
@@ -203,11 +175,8 @@ class DeploymentPaths:
 def validate_path(path: str) -> bool:
     """Validate that a path is properly formatted.
 
-    Args:
-        path: Path to validate
-
-    Returns:
-        True if path is valid
+    :param path: Path to validate
+    :return: True if path is valid
     """
     return isinstance(path, str) and len(path) > 0 and path.startswith("/")
 

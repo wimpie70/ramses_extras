@@ -22,9 +22,8 @@ class HumidityEntities:
     def __init__(self, hass: HomeAssistant, config_entry: Any) -> None:
         """Initialize humidity entities manager.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
+        :param hass: Home Assistant instance
+        :param config_entry: Configuration entry
         """
         self.hass = hass
         self.config_entry = config_entry
@@ -38,8 +37,7 @@ class HumidityEntities:
     def _get_entity_configs(self) -> dict[str, dict[str, Any]]:
         """Get configuration for all humidity control entities.
 
-        Returns:
-            Dictionary mapping entity types to configurations
+        :return: Dictionary mapping entity types to configurations
         """
         return {
             "sensor": {
@@ -113,11 +111,8 @@ class HumidityEntities:
     async def async_setup_entities(self, device_id: str) -> dict[str, list[str]]:
         """Set up all humidity control entities for a device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Dictionary mapping entity types to created entity IDs
+        :param device_id: Device identifier
+        :return: Dictionary mapping entity types to created entity IDs
         """
         _LOGGER.info("Setting up humidity entities for device %s", device_id)
 
@@ -177,12 +172,9 @@ class HumidityEntities:
     ) -> str | None:
         """Create a sensor entity.
 
-        Args:
-            device_id: Device identifier
-            sensor_type: Type of sensor
-
-        Returns:
-            Entity ID or None if creation failed
+        :param device_id: Device identifier
+        :param sensor_type: Type of sensor
+        :return: Entity ID or None if creation failed
         """
         try:
             config = self._entity_configs["sensor"][sensor_type]
@@ -211,12 +203,9 @@ class HumidityEntities:
     ) -> str | None:
         """Create a switch entity.
 
-        Args:
-            device_id: Device identifier
-            switch_type: Type of switch
-
-        Returns:
-            Entity ID or None if creation failed
+        :param device_id: Device identifier
+        :param switch_type: Type of switch
+        :return: Entity ID or None if creation failed
         """
         try:
             config = self._entity_configs["switch"][switch_type]
@@ -242,12 +231,9 @@ class HumidityEntities:
     ) -> str | None:
         """Create a number entity.
 
-        Args:
-            device_id: Device identifier
-            number_type: Type of number entity
-
-        Returns:
-            Entity ID or None if creation failed
+        :param device_id: Device identifier
+        :param number_type: Type of number entity
+        :return: Entity ID or None if creation failed
         """
         try:
             config = self._entity_configs["number"][number_type]
@@ -273,12 +259,9 @@ class HumidityEntities:
     ) -> str | None:
         """Create a binary sensor entity.
 
-        Args:
-            device_id: Device identifier
-            binary_type: Type of binary sensor
-
-        Returns:
-            Entity ID or None if creation failed
+        :param device_id: Device identifier
+        :param binary_type: Type of binary sensor
+        :return: Entity ID or None if creation failed
         """
         try:
             config = self._entity_configs["binary_sensor"][binary_type]
@@ -302,8 +285,7 @@ class HumidityEntities:
     async def async_remove_entities(self, device_id: str) -> None:
         """Remove all humidity entities for a device.
 
-        Args:
-            device_id: Device identifier
+        :param device_id: Device identifier
         """
         _LOGGER.info("Removing humidity entities for device %s", device_id)
 
@@ -330,23 +312,17 @@ class HumidityEntities:
     ) -> dict[str, Any] | None:
         """Get configuration for a specific entity type.
 
-        Args:
-            entity_type: Type of entity (sensor, switch, number, binary_sensor)
-            entity_subtype: Subtype of entity
-
-        Returns:
-            Entity configuration or None if not found
+        :param entity_type: Type of entity (sensor, switch, number, binary_sensor)
+        :param entity_subtype: Subtype of entity
+        :return: Entity configuration or None if not found
         """
         return self._entity_configs.get(entity_type, {}).get(entity_subtype)
 
     def get_device_entities(self, device_id: str) -> dict[str, list[str]]:
         """Get all entities for a specific device.
 
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Dictionary mapping entity types to entity IDs
+        :param device_id: Device identifier
+        :return: Dictionary mapping entity types to entity IDs
         """
         device_entities: dict[str, list[str]] = {
             "sensor": [],
@@ -366,16 +342,14 @@ class HumidityEntities:
     def get_all_entities(self) -> dict[str, dict[str, Any]]:
         """Get all managed entities.
 
-        Returns:
-            Dictionary mapping entity IDs to entity information
+        :return: Dictionary mapping entity IDs to entity information
         """
         return self._entities.copy()
 
     def get_entity_statistics(self) -> dict[str, int]:
         """Get entity statistics.
 
-        Returns:
-            Dictionary with entity counts by type
+        :return: Dictionary with entity counts by type
         """
         stats = {
             "sensor": 0,
@@ -400,12 +374,9 @@ def create_humidity_entities(
 ) -> HumidityEntities:
     """Create humidity entities instance.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-
-    Returns:
-        HumidityEntities instance
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry
+    :return: HumidityEntities instance
     """
     return HumidityEntities(hass, config_entry)
 

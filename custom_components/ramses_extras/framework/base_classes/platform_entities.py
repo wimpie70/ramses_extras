@@ -48,12 +48,11 @@ class ExtrasPlatformEntity(ExtrasBaseEntity, Entity):
     ) -> None:
         """Initialize platform entity.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            entity_type: Type of entity (e.g., "switch", "number")
-            config: Entity configuration dictionary
-            platform_type: Platform type for entity ID generation
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param entity_type: Type of entity (e.g., "switch", "number")
+        :param config: Entity configuration dictionary
+        :param platform_type: Platform type (e.g., "switch", "number", "sensor")
         """
         # Initialize base entity
         ExtrasBaseEntity.__init__(self, hass, device_id, entity_type, config)
@@ -150,11 +149,10 @@ class ExtrasSwitchEntity(ExtrasPlatformEntity, SwitchEntity):
     ) -> None:
         """Initialize switch entity.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            switch_type: Type of switch entity
-            config: Switch configuration
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param switch_type: Type of switch entity
+        :param config: Entity configuration
         """
         super().__init__(hass, device_id, switch_type, config, "switch")
 
@@ -196,12 +194,11 @@ class ExtrasNumberEntity(ExtrasPlatformEntity, NumberEntity):
     ) -> None:
         """Initialize number entity.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            number_type: Type of number entity
-            config: Number configuration
-            config_entry: Configuration entry for saving values
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param number_type: Type of number entity
+        :param config: Entity configuration
+        :param config_entry: Configuration entry
         """
         super().__init__(hass, device_id, number_type, config, "number")
 
@@ -243,8 +240,7 @@ class ExtrasNumberEntity(ExtrasPlatformEntity, NumberEntity):
     async def _save_value_to_config(self, value: float) -> None:
         """Save number value to config entry.
 
-        Args:
-            value: Value to save
+        :param value: Value to save
         """
         if not self.config_entry:
             return
@@ -290,11 +286,10 @@ class ExtrasBinarySensorEntity(ExtrasPlatformEntity, BinarySensorEntity):
     ) -> None:
         """Initialize binary sensor entity.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            binary_type: Type of binary sensor
-            config: Binary sensor configuration
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param binary_type: Type of binary sensor
+        :param config: Entity configuration
         """
         super().__init__(hass, device_id, binary_type, config, "binary_sensor")
 
@@ -349,11 +344,10 @@ class ExtrasSensorEntity(ExtrasPlatformEntity, SensorEntity):
     ) -> None:
         """Initialize sensor entity.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            sensor_type: Type of sensor entity
-            config: Sensor configuration
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param sensor_type: Type of sensor entity
+        :param config: Entity configuration
         """
         super().__init__(hass, device_id, sensor_type, config, "sensor")
 
@@ -396,19 +390,18 @@ async def generic_platform_setup(
     ],
     platform_type: str,
 ) -> None:
-    """Generic platform setup function for all features.
+    """Set up platform entities for a feature.
 
     This function extracts the common setup pattern used across all platform files,
     reducing code duplication and ensuring consistency.
 
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-        async_add_entities: Add entities callback
-        feature_id: Feature identifier for logging
-        platform_configs: Dictionary of platform configurations
-        entity_factory: Factory function to create entities
-        platform_type: Type of platform (e.g., "switch", "number")
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry
+    :param async_add_entities: Add entities callback
+    :param feature_id: Feature identifier for logging
+    :param platform_configs: Dictionary of platform configurations
+    :param entity_factory: Factory function to create entities
+    :param platform_type: Type of platform (e.g., "switch", "number")
     """
     _LOGGER.info("Setting up %s %s platform", feature_id, platform_type)
 
@@ -453,12 +446,9 @@ async def generic_platform_setup(
 def filter_devices_by_config(devices: list[str], config: dict[str, Any]) -> list[str]:
     """Filter devices based on configuration supported device types.
 
-    Args:
-        devices: List of device IDs
-        config: Configuration dictionary with supported_device_types
-
-    Returns:
-        Filtered list of device IDs
+    :param devices: List of device IDs
+    :param config: Configuration dictionary with supported_device_types
+    :return: Filtered list of device IDs
     """
     supported_types = config.get("supported_device_types", [])
     if not supported_types:

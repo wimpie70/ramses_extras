@@ -64,14 +64,9 @@ def _build_features_schema() -> vol.Schema:
 def parse_full_config_yaml(yaml_content: str) -> dict[str, Any]:
     """Parse and validate full ramses_extras YAML configuration.
 
-    Args:
-        yaml_content: YAML string containing full ramses_extras configuration
-
-    Returns:
-        Validated configuration dictionary
-
-    Raises:
-        ValueError: If YAML is invalid or doesn't match schema
+    :param yaml_content: YAML string containing full ramses_extras configuration
+    :return: Validated configuration dictionary
+    :raises ValueError: If YAML is invalid or doesn't match schema
     """
     try:
         parsed = yaml.safe_load(yaml_content)
@@ -113,12 +108,9 @@ def validate_full_config_import(
 ) -> list[str]:
     """Validate a full configuration import using registered validators.
 
-    Args:
-        config: Configuration dictionary to validate
-        hass: Optional Home Assistant instance for entity/device validation
-
-    Returns:
-        List of validation warnings/errors (empty if valid)
+    :param config: Configuration dictionary to validate
+    :param hass: Optional Home Assistant instance for entity/device validation
+    :return: List of validation warnings/errors (empty if valid)
     """
     from .import_validation import format_validation_errors
 
@@ -132,12 +124,9 @@ def validate_full_config_import_detailed(
 ) -> dict[str, Any]:
     """Validate a full configuration import with detailed results.
 
-    Args:
-        config: Configuration dictionary to validate
-        hass: Optional Home Assistant instance for entity/device validation
-
-    Returns:
-        Detailed validation result with per-feature breakdown:
+    :param config: Configuration dictionary to validate
+    :param hass: Optional Home Assistant instance for entity/device validation
+    :return: Detailed validation result with per-feature breakdown:
         {
             "valid": bool,
             "framework_errors": list[str],

@@ -46,12 +46,9 @@ REMOTE_BINDING_CONFIG_SCHEMA = vol.Schema(
 def remote_binding_validator(section: dict, hass: Any | None = None) -> list[str]:
     """Validate remote_binding configuration section.
 
-    Args:
-        section: The remote_binding configuration section
-        hass: Home Assistant instance (optional)
-
-    Returns:
-        List of validation error messages
+    :param section: The remote_binding configuration section
+    :param hass: Home Assistant instance (optional)
+    :return: List of validation error messages
     """
     errors: list[str] = []
 
@@ -110,11 +107,8 @@ def export_remote_binding_to_yaml(
 ) -> str:
     """Export remote binding configuration to YAML format.
 
-    Args:
-        bindings: Dictionary of FAN ID to REM configurations
-
-    Returns:
-        YAML string representation of remote binding config
+    :param bindings: Dictionary of FAN ID to REM configurations
+    :return: YAML string representation of remote binding config
     """
     export_data = {
         "version": 1,
@@ -134,14 +128,9 @@ def export_remote_binding_to_yaml(
 def parse_remote_binding_yaml(yaml_content: str) -> dict[str, Any]:
     """Parse and validate remote binding YAML content.
 
-    Args:
-        yaml_content: YAML string containing remote binding configuration
-
-    Returns:
-        Validated remote binding configuration dictionary
-
-    Raises:
-        ValueError: If YAML is invalid or doesn't match schema
+    :param yaml_content: YAML string containing remote binding configuration
+    :return: Validated remote binding configuration dictionary
+    :raises ValueError: If YAML is invalid or doesn't match schema
     """
     try:
         parsed = yaml.safe_load(yaml_content)
@@ -168,13 +157,10 @@ def merge_remote_binding_config(
 ) -> dict[str, Any]:
     """Merge imported remote binding config with existing.
 
-    Args:
-        existing: Existing remote binding configuration
-        imported: Imported remote binding configuration
-        overwrite_existing: If True, replace existing FAN configs
-
-    Returns:
-        Merged remote binding configuration
+    :param existing: Existing remote binding configuration
+    :param imported: Imported remote binding configuration
+    :param overwrite_existing: If True, replace existing FAN configs
+    :return: Merged remote binding configuration
     """
     result = dict(existing)
 

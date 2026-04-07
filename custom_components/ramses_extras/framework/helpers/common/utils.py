@@ -11,12 +11,9 @@ def calculate_absolute_humidity(
 ) -> float | None:
     """Calculate absolute humidity from temperature and relative humidity.
 
-    Args:
-        temperature: Temperature in degrees Celsius
-        relative_humidity: Relative humidity as percentage (0-100)
-
-    Returns:
-        Absolute humidity in g/m³ or None if calculation fails
+    :param temperature: Temperature in degrees Celsius
+    :param relative_humidity: Relative humidity as percentage (0-100)
+    :return: Absolute humidity in g/m³ or None if calculation fails
     """
     try:
         # Convert temperature to Kelvin
@@ -73,11 +70,8 @@ def calculate_absolute_humidity(
 def _singularize_entity_type(entity_type: str) -> str:
     """Convert plural entity type to singular form.
 
-    Args:
-        entity_type: Plural entity type (e.g., "switch", "sensor", "number")
-
-    Returns:
-        Singular entity type (e.g., "switch", "sensor", "number")
+    :param entity_type: Plural entity type (e.g., "switches", "sensors", "numbers")
+    :return: Singular entity type (e.g., "switch", "sensor", "number")
     """
     # Handle common entity type plurals
     entity_type_mapping = {

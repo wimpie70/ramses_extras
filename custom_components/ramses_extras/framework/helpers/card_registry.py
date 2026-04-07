@@ -68,8 +68,7 @@ class CardRegistry:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the CardRegistry.
 
-        Args:
-            hass: Home Assistant instance
+        :param hass: Home Assistant instance
         """
         self._hass = hass
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
@@ -99,8 +98,7 @@ class CardRegistry:
         lovelace_resources storage system. Cards are registered unconditionally,
         ensuring they are available before Lovelace parses any dashboards.
 
-        Args:
-            cards: Iterable of LovelaceCard definitions to register
+        :param cards: Iterable of LovelaceCard definitions to register
 
         Note:
             This should be called once during integration startup, before any
@@ -241,11 +239,8 @@ class CardRegistry:
         Lovelace YAML configuration. The custom: prefix is added here
         because it's only needed in YAML, not internally.
 
-        Args:
-            card_type: Card type identifier (e.g., "hello-world")
-
-        Returns:
-            Type string for YAML (e.g., "custom:hello-world")
+        :param card_type: Card type identifier (e.g., "hello-world")
+        :return: Type string for YAML (e.g., "custom:hello-world")
 
         Example:
             CardRegistry.lovelace_type("hello-world")  # returns "custom:hello-world"
@@ -261,14 +256,11 @@ class CardRegistry:
         This method provides the correct format for window.customCards
         registration. The type should NOT include the custom: prefix.
 
-        Args:
-            card_type: Card type identifier (e.g., "hello-world")
-            name: Human readable card name
-            description: Card description
-            preview: Whether card should show preview in editor
-
-        Returns:
-            Dictionary for window.customCards.push()
+        :param card_type: Card type identifier (e.g., "hello-world")
+        :param name: Human readable card name
+        :param description: Card description
+        :param preview: Whether card should show preview in editor
+        :return: Dictionary for window.customCards.push()
         """
         return {
             "type": card_type,  # No custom: prefix for internal registration

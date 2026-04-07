@@ -46,8 +46,7 @@ class CO2ControlSensor(ExtrasSensorEntity):
     def set_zone_status(self, status: str, attrs: dict[str, Any] | None = None) -> None:
         """Set zone status.
 
-        Args:
-            status: Status string
+        :param status: Status string
         """
         new_attrs = attrs or {}
         if self._zone_status == status and self._automation_attrs == new_attrs:

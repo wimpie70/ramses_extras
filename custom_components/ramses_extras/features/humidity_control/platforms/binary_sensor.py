@@ -90,13 +90,10 @@ async def create_humidity_control_binary_sensor(
 ) -> list[ExtrasBinarySensorEntity]:
     """Create humidity control binary sensor for a device.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config_entry: Configuration entry
-
-    Returns:
-        List of binary sensor entities
+    :param hass: Home Assistant instance
+    :param device_id: Device identifier
+    :param config_entry: Configuration entry
+    :return: List of binary sensor entities
     """
     # Import entity configurations from registry
     from ..const import HUMIDITY_BOOLEAN_CONFIGS
@@ -132,11 +129,10 @@ class HumidityControlBinarySensor(ExtrasBinarySensorEntity):
     ) -> None:
         """Initialize humidity control binary sensor.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-            binary_type: Type of binary sensor
-            config: Binary sensor configuration
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :param binary_type: Type of binary sensor
+        :param config: Binary sensor configuration
         """
         # Initialize base entity
         super().__init__(hass, device_id, binary_type, config)

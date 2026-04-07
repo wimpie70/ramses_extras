@@ -23,8 +23,7 @@ class ModelConfigManager:
     def __init__(self, brand_name: str) -> None:
         """Initialize model configuration manager.
 
-        Args:
-            brand_name: Brand identifier
+        :param brand_name: Brand identifier
         """
         self.brand_name = brand_name
         self.model_configs: dict[str, dict[str, Any]] = {}
@@ -113,11 +112,8 @@ class ModelConfigManager:
     def get_model_config(self, model: str) -> dict[str, Any] | None:
         """Get configuration for a specific model.
 
-        Args:
-            model: Device model string
-
-        Returns:
-            Model configuration dictionary or None if not found
+        :param model: Device model string
+        :return: Model configuration dictionary or None if not found
         """
         if not model:
             _LOGGER.debug("Model string is empty")
@@ -142,13 +138,10 @@ class ModelConfigManager:
     ) -> dict[str, Any]:
         """Create a complete model configuration.
 
-        Args:
-            model: Original model string
-            model_key: Matched model key
-            config: Base configuration
-
-        Returns:
-            Complete model configuration
+        :param model: Original model string
+        :param model_key: Matched model key
+        :param config: Base configuration
+        :return: Complete model configuration
         """
         result = config.copy()
         result.update(
@@ -165,11 +158,8 @@ class ModelConfigManager:
     def _create_fallback_config(self, model: str) -> dict[str, Any]:
         """Create fallback configuration for unknown models.
 
-        Args:
-            model: Unknown model string
-
-        Returns:
-            Fallback configuration
+        :param model: Unknown model string
+        :return: Fallback configuration
         """
         _LOGGER.warning(f"Unknown {self.brand_name} model variant: {model}")
 
@@ -183,9 +173,8 @@ class ModelConfigManager:
     def register_model_config(self, model_key: str, config: dict[str, Any]) -> None:
         """Register a new model configuration.
 
-        Args:
-            model_key: Model key to register
-            config: Model configuration
+        :param model_key: Model key to register
+        :param config: Model configuration
         """
         self.model_configs[model_key] = config
         _LOGGER.debug(f"Registered config for {self.brand_name} model: {model_key}")
@@ -193,30 +182,23 @@ class ModelConfigManager:
     def get_all_model_keys(self) -> list[str]:
         """Get list of all registered model keys.
 
-        Returns:
-            List of model keys
+        :return: List of model keys
         """
         return list(self.model_configs.keys())
 
     def has_model_config(self, model: str) -> bool:
         """Check if a model configuration exists.
 
-        Args:
-            model: Device model string
-
-        Returns:
-            True if configuration exists, False otherwise
+        :param model: Device model string
+        :return: True if configuration exists, False otherwise
         """
         return self.get_model_config(model) is not None
 
     def get_model_capabilities(self, model: str) -> dict[str, Any]:
         """Get capabilities for a model.
 
-        Args:
-            model: Device model string
-
-        Returns:
-            Model capabilities dictionary
+        :param model: Device model string
+        :return: Model capabilities dictionary
         """
         config = self.get_model_config(model)
         if not config:
@@ -233,12 +215,9 @@ class ModelConfigManager:
     def compare_models(self, model1: str, model2: str) -> dict[str, Any]:
         """Compare two models and return differences.
 
-        Args:
-            model1: First model string
-            model2: Second model string
-
-        Returns:
-            Comparison results dictionary
+        :param model1: First model string
+        :param model2: Second model string
+        :return: Comparison results dictionary
         """
         config1 = self.get_model_config(model1) or {}
         config2 = self.get_model_config(model2) or {}
@@ -288,12 +267,9 @@ def auto_detect_and_register_model(
 ) -> dict[str, Any]:
     """Automatically detect and register a model configuration.
 
-    Args:
-        model: Device model string
-        brand_name: Optional brand identifier (auto-detected if not provided)
-
-    Returns:
-        Model configuration dictionary
+    :param model: Device model string
+    :param brand_name: Optional brand identifier (auto-detected if not provided)
+    :return: Model configuration dictionary
     """
     # Auto-detect brand if not provided
     if brand_name is None:
@@ -316,12 +292,9 @@ def auto_detect_and_register_model(
 def get_model_template(model_key: str, brand_name: str) -> dict[str, Any]:
     """Get a template configuration for a model key.
 
-    Args:
-        model_key: Model key
-        brand_name: Brand identifier
-
-    Returns:
-        Template configuration dictionary
+    :param model_key: Model key
+    :param brand_name: Brand identifier
+    :return: Template configuration dictionary
     """
     manager = ModelConfigManager(brand_name)
     return manager.model_configs.get(
@@ -332,11 +305,8 @@ def get_model_template(model_key: str, brand_name: str) -> dict[str, Any]:
 def validate_model_config(config: dict[str, Any]) -> bool:
     """Validate a model configuration.
 
-    Args:
-        config: Model configuration to validate
-
-    Returns:
-        True if valid, False otherwise
+    :param config: Model configuration to validate
+    :return: True if valid, False otherwise
     """
     required_fields = ["model_key", "model_string"]
 

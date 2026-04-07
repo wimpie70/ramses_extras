@@ -57,12 +57,9 @@ ZONES_CONFIG_SCHEMA = vol.Schema(
 def zones_validator(section: dict, hass: Any | None = None) -> list[str]:
     """Validate zones configuration section.
 
-    Args:
-        section: The zones configuration section
-        hass: Home Assistant instance (optional)
-
-    Returns:
-        List of validation error messages
+    :param section: The zones configuration section
+    :param hass: Home Assistant instance (optional)
+    :return: List of validation error messages
     """
     errors = []
 
@@ -106,12 +103,9 @@ def export_zones_to_yaml(
 ) -> str:
     """Export zones configuration to YAML format.
 
-    Args:
-        zones: List of zone configuration dictionaries
-        fan_id: Optional FAN ID to include in metadata
-
-    Returns:
-        YAML string representation of zones config
+    :param zones: List of zone configuration dictionaries
+    :param fan_id: Optional FAN ID to include in metadata
+    :return: YAML string representation of zones config
     """
     export_data: dict[str, Any] = {
         "version": 1,
@@ -134,14 +128,9 @@ def export_zones_to_yaml(
 def parse_zones_yaml(yaml_content: str) -> dict[str, Any]:
     """Parse and validate zones YAML content.
 
-    Args:
-        yaml_content: YAML string containing zones configuration
-
-    Returns:
-        Validated zones configuration dictionary
-
-    Raises:
-        ValueError: If YAML is invalid or doesn't match schema
+    :param yaml_content: YAML string containing zones configuration
+    :return: Validated zones configuration dictionary
+    :raises ValueError: If YAML is invalid or doesn't match schema
     """
     try:
         parsed = yaml.safe_load(yaml_content)
@@ -169,15 +158,12 @@ def merge_zones_config(
 ) -> list[dict[str, Any]]:
     """Merge imported zones with existing configuration.
 
-    Args:
-        existing_zones: Current zones configuration list
-        imported_zones: New zones to import
-        fan_id: FAN ID to associate with imported zones
-        overwrite_existing: If True, replace zones with same zone_id;
+    :param existing_zones: Current zones configuration list
+    :param imported_zones: New zones to import
+    :param fan_id: FAN ID to associate with imported zones
+    :param overwrite_existing: If True, replace zones with same zone_id;
                            if False, skip duplicates
-
-    Returns:
-        Merged zones configuration list
+    :return: Merged zones configuration list
     """
     result = list(existing_zones)
 
@@ -207,12 +193,9 @@ def validate_zone_references(
 ) -> list[str]:
     """Validate that zone entity references exist in Home Assistant.
 
-    Args:
-        zones: List of zone configurations to validate
-        hass: Optional Home Assistant instance for entity lookup
-
-    Returns:
-        List of validation error messages (empty if all valid)
+    :param zones: List of zone configurations to validate
+    :param hass: Optional Home Assistant instance for entity lookup
+    :return: List of validation error messages (empty if all valid)
     """
     errors: list[str] = []
 

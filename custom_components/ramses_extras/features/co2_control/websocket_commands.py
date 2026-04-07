@@ -17,8 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register CO2 control WebSocket commands.
 
-    Args:
-        hass: Home Assistant instance
+    :param hass: Home Assistant instance
     """
     websocket_api.async_register_command(hass, handle_get_co2_status)
     websocket_api.async_register_command(hass, handle_get_zone_details)
@@ -42,10 +41,9 @@ def handle_get_co2_status(
 ) -> None:
     """Handle get CO2 status WebSocket command.
 
-    Args:
-        hass: Home Assistant instance
-        connection: WebSocket connection
-        msg: Message data
+    :param hass: Home Assistant instance
+    :param connection: WebSocket connection
+    :param msg: Message data
     """
     try:
         # Get CO2 automation manager from hass.data
@@ -80,10 +78,9 @@ def handle_get_zone_details(
 ) -> None:
     """Handle get zone details WebSocket command.
 
-    Args:
-        hass: Home Assistant instance
-        connection: WebSocket connection
-        msg: Message data
+    :param hass: Home Assistant instance
+    :param connection: WebSocket connection
+    :param msg: Message data
     """
     device_id = msg.get("device_id")
     zone_id = msg.get("zone_id")
@@ -144,10 +141,9 @@ def handle_update_zone_config(
 ) -> None:
     """Handle update zone config WebSocket command.
 
-    Args:
-        hass: Home Assistant instance
-        connection: WebSocket connection
-        msg: Message data
+    :param hass: Home Assistant instance
+    :param connection: WebSocket connection
+    :param msg: Message data
     """
     device_id = msg.get("device_id")
     zone_id = msg.get("zone_id")
@@ -195,10 +191,9 @@ def handle_get_co2_history(
 ) -> None:
     """Handle get CO2 history WebSocket command.
 
-    Args:
-        hass: Home Assistant instance
-        connection: WebSocket connection
-        msg: Message data
+    :param hass: Home Assistant instance
+    :param connection: WebSocket connection
+    :param msg: Message data
     """
     device_id = msg.get("device_id")
     hours = msg.get("hours", 24)

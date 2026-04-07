@@ -30,12 +30,9 @@ HVAC_FAN_CARD_CONFIG_SCHEMA = vol.Schema(
 def hvac_fan_card_validator(section: dict, hass: Any | None = None) -> list[str]:
     """Validate hvac_fan_card configuration section.
 
-    Args:
-        section: The hvac_fan_card configuration section
-        hass: Home Assistant instance (optional)
-
-    Returns:
-        List of validation error messages
+    :param section: The hvac_fan_card configuration section
+    :param hass: Home Assistant instance (optional)
+    :return: List of validation error messages
     """
     errors: list[str] = []
 
@@ -54,11 +51,8 @@ def hvac_fan_card_validator(section: dict, hass: Any | None = None) -> list[str]
 def export_hvac_fan_card_to_yaml(config: dict) -> dict[str, Any]:
     """Export hvac_fan_card configuration to YAML-compatible dict.
 
-    Args:
-        config: The hvac_fan_card configuration section
-
-    Returns:
-        YAML-compatible dictionary
+    :param config: The hvac_fan_card configuration section
+    :return: YAML-compatible dictionary
     """
     return {
         "enabled": config.get("enabled", False),
@@ -70,11 +64,8 @@ def export_hvac_fan_card_to_yaml(config: dict) -> dict[str, Any]:
 def parse_hvac_fan_card_yaml(yaml_data: dict) -> dict[str, Any]:
     """Parse hvac_fan_card YAML data into canonical config format.
 
-    Args:
-        yaml_data: Raw YAML data for hvac_fan_card section
-
-    Returns:
-        Canonical hvac_fan_card configuration
+    :param yaml_data: Raw YAML data for hvac_fan_card section
+    :return: Canonical hvac_fan_card configuration
     """
     result = HVAC_FAN_CARD_CONFIG_SCHEMA(yaml_data)
     return cast(dict[str, Any], result)
@@ -83,12 +74,9 @@ def parse_hvac_fan_card_yaml(yaml_data: dict) -> dict[str, Any]:
 def merge_hvac_fan_card_config(existing: dict, imported: dict) -> dict[str, Any]:
     """Merge imported hvac_fan_card config with existing.
 
-    Args:
-        existing: Existing hvac_fan_card configuration
-        imported: Imported hvac_fan_card configuration
-
-    Returns:
-        Merged configuration
+    :param existing: Existing hvac_fan_card configuration
+    :param imported: Imported hvac_fan_card configuration
+    :return: Merged configuration
     """
     merged = dict(existing)
     if "card_config" in imported:

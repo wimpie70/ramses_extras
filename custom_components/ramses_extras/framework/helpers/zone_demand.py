@@ -126,12 +126,11 @@ class ZoneDemandRegistry:
     ) -> None:
         """Set demand state for a zone from a specific source.
 
-        Args:
-            fan_id: FAN device ID
-            zone_id: Zone identifier
-            source: Source of the demand signal
-            has_demand: True if this source demands ventilation
-            metadata: Optional context (thresholds, values, etc.)
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
+        :param source: Source of the demand signal
+        :param has_demand: True if this source demands ventilation
+        :param metadata: Optional context (thresholds, values, etc.)
         """
         key = (fan_id, zone_id)
         if key not in self._demands:
@@ -181,10 +180,9 @@ class ZoneDemandRegistry:
     ) -> None:
         """Clear demand for a zone.
 
-        Args:
-            fan_id: FAN device ID
-            zone_id: Zone identifier
-            source: Specific source to clear, or None for all sources
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
+        :param source: Specific source to clear, or None for all sources
         """
         key = (fan_id, zone_id)
         if key not in self._demands:
@@ -251,7 +249,7 @@ class ZoneDemandRegistry:
     ) -> dict[str, dict[DemandSource, bool]]:
         """Get all zone demands for a FAN.
 
-        Returns: { zone_id: { source: has_demand } }
+        :return: Dict mapping zone_id to { source: has_demand }
         """
         result: dict[str, dict[DemandSource, bool]] = {}
         for (fan, zone), sources in self._demands.items():
@@ -300,11 +298,8 @@ class ZoneDemandRegistry:
 def get_zone_demand_registry(hass: HomeAssistant) -> ZoneDemandRegistry:
     """Get or create the zone demand registry.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        ZoneDemandRegistry instance
+    :param hass: Home Assistant instance
+    :return: ZoneDemandRegistry instance
     """
     from ...const import DOMAIN
 

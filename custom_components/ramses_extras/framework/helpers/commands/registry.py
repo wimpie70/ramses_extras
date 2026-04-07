@@ -31,9 +31,8 @@ class CommandRegistry:
     ) -> None:
         """Register feature commands with conflict detection.
 
-        Args:
-            feature_id: ID of the feature registering commands
-            commands: Dictionary of command definitions {command_name: command_def}
+        :param feature_id: ID of the feature registering commands
+        :param commands: Dictionary of command definitions {command_name: command_def}
 
         Command definition format:
         {
@@ -81,10 +80,9 @@ class CommandRegistry:
     ) -> None:
         """Register device-type specific commands.
 
-        Args:
-            device_type: Device type (e.g., "HvacVentilator")
-            category: Command category (e.g., "fan_speeds", "bypass")
-            commands: Dictionary of command definitions
+        :param device_type: Device type (e.g., "HvacVentilator")
+        :param category: Command category (e.g., "fan_speeds", "bypass")
+        :param commands: Dictionary of command definitions
         """
         if device_type not in self._device_commands:
             self._device_commands[device_type] = {}
@@ -106,11 +104,8 @@ class CommandRegistry:
     def get_command(self, command_name: str) -> dict[str, Any] | None:
         """Get command definition by name.
 
-        Args:
-            command_name: Name of the command
-
-        Returns:
-            Command definition dictionary or None if not found
+        :param command_name: Name of the command
+        :return: Command definition dictionary or None if not found
         """
         command_info = self._commands.get(command_name)
         return command_info["definition"] if command_info else None
@@ -120,23 +115,17 @@ class CommandRegistry:
     ) -> dict[str, dict[str, Any]]:
         """Get commands for a specific device type and category.
 
-        Args:
-            device_type: Device type (e.g., "HvacVentilator")
-            category: Command category (e.g., "fan_speeds")
-
-        Returns:
-            Dictionary of command definitions for the category
+        :param device_type: Device type (e.g., "HvacVentilator")
+        :param category: Command category (e.g., "fan_speeds")
+        :return: Dictionary of command definitions for the category
         """
         return self._device_commands.get(device_type, {}).get(category, {})
 
     def list_commands_by_feature(self, feature_id: str) -> list[str]:
         """List all command names registered by a specific feature.
 
-        Args:
-            feature_id: Feature identifier
-
-        Returns:
-            List of command names registered by the feature
+        :param feature_id: Feature identifier
+        :return: List of command names registered by the feature
         """
         return [
             cmd_name
@@ -147,27 +136,22 @@ class CommandRegistry:
     def get_registered_commands(self) -> dict[str, dict[str, Any]]:
         """Get all registered commands with metadata.
 
-        Returns:
-            Dictionary of all registered commands with their metadata
+        :return: Dictionary of all registered commands with their metadata
         """
         return self._commands.copy()
 
     def get_device_types(self) -> list[str]:
         """Get list of all registered device types.
 
-        Returns:
-            List of device type names
+        :return: List of device type names
         """
         return list(self._device_commands.keys())
 
     def clear_feature_commands(self, feature_id: str) -> int:
         """Remove all commands registered by a specific feature.
 
-        Args:
-            feature_id: Feature identifier
-
-        Returns:
-            Number of commands removed
+        :param feature_id: Feature identifier
+        :return: Number of commands removed
         """
         commands_to_remove = [
             cmd_name

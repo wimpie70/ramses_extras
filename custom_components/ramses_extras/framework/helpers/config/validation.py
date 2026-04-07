@@ -40,8 +40,7 @@ class ConfigValidator:
     def __init__(self, feature_id: str) -> None:
         """Initialize the configuration validator.
 
-        Args:
-            feature_id: Feature identifier for logging
+        :param feature_id: Feature identifier for logging
         """
         self.feature_id = feature_id
 
@@ -55,15 +54,12 @@ class ConfigValidator:
     ) -> tuple[bool, str | None]:
         """Validate a numeric configuration value is within range.
 
-        Args:
-            config: Configuration dictionary
-            key: Configuration key
-            min_val: Minimum allowed value
-            max_val: Maximum allowed value
-            required: Whether the key is required
-
-        Returns:
-            Tuple of (is_valid, error_message)
+        :param config: Configuration dictionary
+        :param key: Configuration key
+        :param min_val: Minimum allowed value
+        :param max_val: Maximum allowed value
+        :param required: Whether the key is required
+        :return: Tuple of (is_valid, error_message)
         """
         if key not in config:
             if required:
@@ -89,13 +85,10 @@ class ConfigValidator:
     ) -> tuple[bool, str | None]:
         """Validate a boolean configuration value.
 
-        Args:
-            config: Configuration dictionary
-            key: Configuration key
-            required: Whether the key is required
-
-        Returns:
-            Tuple of (is_valid, error_message)
+        :param config: Configuration dictionary
+        :param key: Configuration key
+        :param required: Whether the key is required
+        :return: Tuple of (is_valid, error_message)
         """
         if key not in config:
             if required:
@@ -119,16 +112,13 @@ class ConfigValidator:
     ) -> tuple[bool, str | None]:
         """Validate a string configuration value.
 
-        Args:
-            config: Configuration dictionary
-            key: Configuration key
-            choices: Optional list of valid choices
-            required: Whether the key is required
-            min_length: Minimum string length
-            max_length: Maximum string length
-
-        Returns:
-            Tuple of (is_valid, error_message)
+        :param config: Configuration dictionary
+        :param key: Configuration key
+        :param choices: Optional list of valid choices
+        :param required: Whether the key is required
+        :param min_length: Minimum string length
+        :param max_length: Maximum string length
+        :return: Tuple of (is_valid, error_message)
         """
         if key not in config:
             if required:
@@ -162,17 +152,14 @@ class ConfigValidator:
     ) -> tuple[bool, str | None]:
         """Validate a list configuration value.
 
-        Args:
-            config: Configuration dictionary
-            key: Configuration key
-            item_type: Expected type of list items
-            choices: Optional list of valid choices for items
-            required: Whether the key is required
-            min_items: Minimum number of items
-            max_items: Maximum number of items
-
-        Returns:
-            Tuple of (is_valid, error_message)
+        :param config: Configuration dictionary
+        :param key: Configuration key
+        :param item_type: Expected type of list items
+        :param choices: Optional list of valid choices for items
+        :param required: Whether the key is required
+        :param min_items: Minimum number of items
+        :param max_items: Maximum number of items
+        :return: Tuple of (is_valid, error_message)
         """
         if key not in config:
             if required:
@@ -211,14 +198,11 @@ class ConfigValidator:
     ) -> tuple[bool, str | None]:
         """Validate that a dependency relationship is satisfied.
 
-        Args:
-            config: Configuration dictionary
-            dependent_key: Key that depends on another key
-            dependency_key: Key that is depended upon
-            dependency_value: Value that the dependency key must have
-
-        Returns:
-            Tuple of (is_valid, error_message)
+        :param config: Configuration dictionary
+        :param dependent_key: Key that depends on another key
+        :param dependency_key: Key that is depended upon
+        :param dependency_value: Value that the dependency key must have
+        :return: Tuple of (is_valid, error_message)
         """
         if dependent_key not in config:
             return True, None  # No dependency to check
@@ -241,14 +225,11 @@ class ConfigValidator:
     ) -> tuple[bool, str | None]:
         """Validate that one numeric value is less than another.
 
-        Args:
-            config: Configuration dictionary
-            min_key: Key for minimum value
-            max_key: Key for maximum value
-            allow_equal: Whether to allow equal values
-
-        Returns:
-            Tuple of (is_valid, error_message)
+        :param config: Configuration dictionary
+        :param min_key: Key for minimum value
+        :param max_key: Key for maximum value
+        :param allow_equal: Whether to allow equal values
+        :return: Tuple of (is_valid, error_message)
         """
         if min_key not in config or max_key not in config:
             return True, None  # No range to validate
@@ -277,12 +258,9 @@ class ConfigValidator:
     ) -> tuple[bool, list[str]]:
         """Validate configuration against multiple rules.
 
-        Args:
-            config: Configuration dictionary
-            validation_rules: Dictionary of validation rules
-
-        Returns:
-            Tuple of (is_valid, list_of_error_messages)
+        :param config: Configuration dictionary
+        :param validation_rules: Dictionary of validation rules
+        :return: Tuple of (is_valid, list_of_error_messages)
         """
         errors = []
 

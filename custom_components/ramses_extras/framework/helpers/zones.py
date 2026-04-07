@@ -41,8 +41,7 @@ class ZoneRegistry:
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the zone registry.
 
-        Args:
-            hass: Home Assistant instance
+        :param hass: Home Assistant instance
         """
         self._hass = hass
         self._cache: dict[str, list[dict[str, Any]]] = {}
@@ -75,11 +74,8 @@ class ZoneRegistry:
     def get_zones_for_fan(self, fan_id: str) -> list[dict[str, Any]]:
         """Get all zones for a FAN device.
 
-        Args:
-            fan_id: FAN device ID (canonical or legacy format)
-
-        Returns:
-            List of zone dicts
+        :param fan_id: FAN device ID (canonical or legacy format)
+        :return: List of zone dicts
         """
         normalized_id = fan_id.replace("_", ":").strip()
 
@@ -98,12 +94,9 @@ class ZoneRegistry:
     def get_zone(self, fan_id: str, zone_id: str) -> dict[str, Any] | None:
         """Get a specific zone by FAN and zone_id.
 
-        Args:
-            fan_id: FAN device ID
-            zone_id: Zone identifier
-
-        Returns:
-            Zone dict or None if not found
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
+        :return: Zone dict or None if not found
         """
         zones = self.get_zones_for_fan(fan_id)
         for zone in zones:
@@ -114,8 +107,7 @@ class ZoneRegistry:
     def list_all_zones(self) -> dict[str, list[dict[str, Any]]]:
         """List all zones grouped by FAN.
 
-        Returns:
-            Dict mapping FAN device IDs to lists of zone dicts
+        :return: Dict mapping FAN device IDs to lists of zone dicts
         """
         # Import here to avoid circular imports
         from ...framework.helpers.config.model import get_fan_ids
@@ -134,12 +126,9 @@ class ZoneRegistry:
     def find_areas_for_zone(self, fan_id: str, zone_id: str) -> list[str]:
         """Find area-like sensor configurations linked to a zone.
 
-        Args:
-            fan_id: FAN device ID
-            zone_id: Zone identifier
-
-        Returns:
-            List of area identifiers
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
+        :return: List of area identifiers
         """
         zone = self.get_zone(fan_id, zone_id)
         if zone is None:
@@ -154,12 +143,9 @@ class ZoneRegistry:
     def find_entities_for_zone(self, fan_id: str, zone_id: str) -> dict[str, str]:
         """Find HA entities linked to a zone.
 
-        Args:
-            fan_id: FAN device ID
-            zone_id: Zone identifier
-
-        Returns:
-            Dict mapping entity types to entity IDs
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
+        :return: Dict mapping entity types to entity IDs
         """
         zone = self.get_zone(fan_id, zone_id)
         if zone is None:
@@ -184,11 +170,8 @@ class ZoneRegistry:
     def get_controllable_zones(self, fan_id: str) -> list[dict[str, Any]]:
         """Get zones that support actuation for a FAN.
 
-        Args:
-            fan_id: FAN device ID
-
-        Returns:
-            List of controllable zone dicts
+        :param fan_id: FAN device ID
+        :return: List of controllable zone dicts
         """
         zones = self.get_zones_for_fan(fan_id)
         return [
@@ -198,8 +181,7 @@ class ZoneRegistry:
     def export_zones_yaml(self) -> str:
         """Export all zones as strict YAML for support/debugging.
 
-        Returns:
-            YAML string representing the zones feature section
+        :return: YAML string representing the zones feature section
         """
         import json
 
@@ -241,11 +223,8 @@ class ZoneRegistry:
 def get_zone_registry(hass: HomeAssistant) -> ZoneRegistry:
     """Get or create the zone registry.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        ZoneRegistry instance
+    :param hass: Home Assistant instance
+    :return: ZoneRegistry instance
     """
     domain_data = hass.data.setdefault(DOMAIN, {})
 
@@ -259,8 +238,7 @@ def get_zone_registry(hass: HomeAssistant) -> ZoneRegistry:
 def async_setup_zones(hass: HomeAssistant) -> None:
     """Set up zone infrastructure.
 
-    Args:
-        hass: Home Assistant instance
+    :param hass: Home Assistant instance
     """
     get_zone_registry(hass)
     _LOGGER.info("Zone registry initialized")

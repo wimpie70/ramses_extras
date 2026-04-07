@@ -26,9 +26,8 @@ class ConfigFlowHelper:
     def __init__(self, hass: Any, config_entry: ConfigEntry) -> None:
         """Initialize the config flow helper.
 
-        Args:
-            hass: Home Assistant instance
-            config_entry: Current config entry
+        :param hass: Home Assistant instance
+        :param config_entry: Current config entry
         """
         self.hass = hass
         self.config_entry = config_entry
@@ -60,12 +59,9 @@ class ConfigFlowHelper:
     ) -> vol.Schema:
         """Generate configuration schema for a specific feature.
 
-        Args:
-            feature_id: Feature identifier
-            devices: List of available devices
-
-        Returns:
-            Voluptuous schema for feature configuration
+        :param feature_id: Feature identifier
+        :param devices: List of available devices
+        :return: Voluptuous schema for feature configuration
         """
         feature_config = AVAILABLE_FEATURES.get(feature_id, {})
         feature_name = feature_config.get("name", feature_id)  # noqa: F841
@@ -108,11 +104,8 @@ class ConfigFlowHelper:
     def _extract_device_id(self, device: Any) -> str | None:
         """Extract device ID from device object.
 
-        Args:
-            device: Device object
-
-        Returns:
-            Device ID as string or None
+        :param device: Device object
+        :return: Device ID as string or None
         """
         if isinstance(device, str):
             return device
@@ -131,11 +124,8 @@ class ConfigFlowHelper:
     def _get_device_label(self, device: Any) -> str:
         """Get display label for a device.
 
-        Args:
-            device: Device object
-
-        Returns:
-            Display label for the device
+        :param device: Device object
+        :return: Display label for the device
         """
         if isinstance(device, str):
             return device
@@ -152,11 +142,8 @@ class ConfigFlowHelper:
     def get_feature_info(self, feature_id: str) -> dict[str, Any]:
         """Get information about a specific feature.
 
-        Args:
-            feature_id: Feature identifier
-
-        Returns:
-            Dictionary with feature information
+        :param feature_id: Feature identifier
+        :return: Dictionary with feature information
         """
         feature_config = AVAILABLE_FEATURES.get(feature_id, {})
         return {
@@ -169,11 +156,8 @@ class ConfigFlowHelper:
     def get_enabled_devices_for_feature(self, feature_id: str) -> list[str]:
         """Get devices currently enabled for a specific feature.
 
-        Args:
-            feature_id: Feature identifier
-
-        Returns:
-            List of device IDs enabled for this feature
+        :param feature_id: Feature identifier
+        :return: List of device IDs enabled for this feature
         """
         return self.device_feature_matrix.get_enabled_devices_for_feature(feature_id)
 
@@ -182,9 +166,8 @@ class ConfigFlowHelper:
     ) -> None:
         """Set devices enabled for a specific feature.
 
-        Args:
-            feature_id: Feature identifier
-            device_ids: List of device IDs to enable
+        :param feature_id: Feature identifier
+        :param device_ids: List of device IDs to enable
         """
         # Clear existing devices for this feature
         for device_id in self.device_feature_matrix.get_enabled_devices_for_feature(
@@ -200,12 +183,9 @@ class ConfigFlowHelper:
     def is_device_enabled_for_feature(self, device_id: str, feature_id: str) -> bool:
         """Check if a device is enabled for a specific feature.
 
-        Args:
-            device_id: Device identifier
-            feature_id: Feature identifier
-
-        Returns:
-            True if device is enabled for feature, False otherwise
+        :param device_id: Device identifier
+        :param feature_id: Feature identifier
+        :return: True if device is enabled for feature, False otherwise
         """
         return self.device_feature_matrix.is_device_enabled_for_feature(
             device_id, feature_id
@@ -214,8 +194,7 @@ class ConfigFlowHelper:
     def get_all_feature_device_combinations(self) -> list[tuple[str, str]]:
         """Get all enabled feature/device combinations.
 
-        Returns:
-            List of (feature_id, device_id) tuples
+        :return: List of (feature_id, device_id) tuples
         """
         return self.device_feature_matrix.get_all_enabled_combinations()
 
@@ -224,12 +203,9 @@ class ConfigFlowHelper:
     ) -> list[Any]:
         """Get devices that are compatible with a feature for selection UI.
 
-        Args:
-            feature_config: Feature configuration
-            all_devices: All available devices
-
-        Returns:
-            List of devices compatible with the feature
+        :param feature_config: Feature configuration
+        :param all_devices: All available devices
+        :return: List of devices compatible with the feature
         """
         return self.device_filter.filter_devices_for_feature(
             feature_config, all_devices
@@ -240,11 +216,8 @@ class ConfigFlowHelper:
     ) -> vol.Schema:
         """Generate schema for main feature selection.
 
-        Args:
-            current_features: Currently enabled features
-
-        Returns:
-            Voluptuous schema for feature selection
+        :param current_features: Currently enabled features
+        :return: Voluptuous schema for feature selection
         """
         # Get current selected features for the selector default
         valid_feature_ids = {
@@ -293,8 +266,7 @@ class ConfigFlowHelper:
     def build_feature_info_text(self) -> str:
         """Build detailed feature information text for UI.
 
-        Returns:
-            Formatted text with feature information
+        :return: Formatted text with feature information
         """
         feature_summaries = []
         for feature_key, feature_config in AVAILABLE_FEATURES.items():
@@ -332,24 +304,21 @@ class ConfigFlowHelper:
     def get_feature_device_matrix_state(self) -> dict[str, dict[str, bool]]:
         """Get the current device/feature matrix state.
 
-        Returns:
-            Dictionary representing the current matrix state
+        :return: Dictionary representing the current matrix state
         """
         return self.device_feature_matrix.get_matrix_state()
 
     def restore_matrix_state(self, state: dict[str, dict[str, bool]]) -> None:
         """Restore device/feature matrix from saved state.
 
-        Args:
-            state: Matrix state to restore
+        :param state: Matrix state to restore
         """
         self.device_feature_matrix.matrix = state.copy()
 
     def get_feature_device_summary(self) -> str:
         """Get summary of feature/device enablement.
 
-        Returns:
-            Formatted summary text
+        :return: Formatted summary text
         """
         combinations = self.get_all_feature_device_combinations()
         if not combinations:
@@ -376,8 +345,7 @@ class ConfigFlowHelper:
         """Discover feature-specific config flow implementations
          (only for features that need them).
 
-        Returns:
-            Dictionary mapping feature_id to config flow class
+        :return: Dictionary mapping feature_id to config flow class
         """
         feature_config_flows = {}
 

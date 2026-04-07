@@ -81,15 +81,12 @@ async def async_setup_entry(
 async def create_humidity_switch(
     hass: "HomeAssistant", device_id: str, config_entry: ConfigEntry | None = None
 ) -> list[ExtrasSwitchEntity]:
-    """Create humidity switch for a device.
+    """Initialize humidity switch.
 
-    Args:
-        hass: Home Assistant instance
-        device_id: Device identifier
-        config_entry: Configuration entry
-
-    Returns:
-        List of switch entities
+    :param hass: Home Assistant instance
+    :param device_id: Device identifier
+    :param config_entry: Configuration entry
+    :return: List of switch entities
     """
     # Import entity configurations from registry
     from custom_components.ramses_extras.extras_registry import extras_registry

@@ -49,11 +49,8 @@ _FORMAT_CACHE: dict[str, str] = {}
 async def _get_required_entities_from_feature(feature_id: str) -> dict[str, list[str]]:
     """Get required entities from the feature's own const.py module.
 
-    Args:
-        feature_id: Feature identifier
-
-    Returns:
-        Dictionary mapping entity types to entity names
+    :param feature_id: Feature identifier
+    :return: Dictionary mapping entity types to entity names
     """
     try:
         # Run the blocking import operation in a thread pool
@@ -209,11 +206,8 @@ def _get_required_entity_ids_for_feature_device_sync(
 def get_required_entities_from_feature_sync(feature_id: str) -> dict[str, list[str]]:
     """Synchronous wrapper for _get_required_entities_from_feature.
 
-    Args:
-        feature_id: Feature identifier
-
-    Returns:
-        Dictionary mapping entity types to entity names
+    :param feature_id: Feature identifier
+    :return: Dictionary mapping entity types to entity names
     """
     try:
         return _import_required_entities_sync(feature_id)
@@ -224,11 +218,8 @@ def get_required_entities_from_feature_sync(feature_id: str) -> dict[str, list[s
 def _import_required_entities_sync(feature_id: str) -> dict[str, list[str]]:
     """Synchronous import of required entities (blocking operation).
 
-    Args:
-        feature_id: Feature identifier
-
-    Returns:
-        Dictionary mapping entity types to entity names
+    :param feature_id: Feature identifier
+    :return: Dictionary mapping entity types to entity names
     """
     # Import the feature's const module
     feature_module_path = f"custom_components.ramses_extras.features.{feature_id}.const"
@@ -325,11 +316,8 @@ class EntityHelpers:
     def _extract_device_id(entity_name: str) -> tuple[str | None, int]:
         """Extract device ID and return (device_id, position).
 
-        Args:
-            entity_name: Entity name that may contain a device ID
-
-        Returns:
-            Tuple of (device_id, position) or (None, -1) if not found
+        :param entity_name: Entity name that may contain a device ID
+        :return: Tuple of (device_id, position) or (None, -1) if not found
         """
         # Match device ID patterns: 12_345678 or 12:345678
         pattern = r"(\d+[:_]\d+)"
@@ -439,12 +427,15 @@ class EntityHelpers:
     def validate_entity_name(entity_id: str) -> dict[str, Any]:
         """Comprehensive entity name validation with detailed feedback.
 
-        Returns:
-            dict with validation results including:
-            - is_valid: Overall validation status
-            - format_confidence: Confidence in format detection
-            - issues: List of specific issues found
-            - suggestions: List of suggested fixes
+        :param entity_id: Entity identifier
+        :return: dict with validation results including:
+                 - is_valid: Overall validation status
+                 - format_confidence: Confidence in format detection
+                 - issues: List of specific issues found
+                 - suggestions: List of suggested fixes
+                 - detected_format: Detected format
+                 - entity_type: Entity type
+                 - device_id: Device ID
         """
         result: dict[str, Any] = {
             "is_valid": False,
@@ -520,7 +511,11 @@ class EntityHelpers:
 
     @staticmethod
     def parse_entity_id_with_validation(entity_id: str) -> tuple[str, str, str]:
-        """Parse entity ID with comprehensive validation and error handling."""
+        """Parse entity ID with comprehensive validation and error handling.
+
+        :param entity_id: Entity identifier
+        :return: tuple of entity_type, parsed_name, device_id
+        """
         try:
             result = EntityHelpers.detect_and_parse(entity_id)
             if not result:
@@ -542,7 +537,13 @@ class EntityHelpers:
     def generate_entity_name_with_validation(
         entity_type: str, template: str, **kwargs: Any
     ) -> str:
-        """Generate entity name with comprehensive validation and error handling."""
+        """Generate entity name with comprehensive validation and error handling.
+
+        :param entity_type: Entity type
+        :param template: Template string with optional {device_id} placeholder
+        :param **kwargs: Additional template variables
+        :return: Generated entity ID
+        """
         try:
             result = EntityHelpers.generate_entity_name_from_template(
                 entity_type, template, validate_format=True, **kwargs
@@ -562,13 +563,8 @@ class EntityHelpers:
     def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
         """Parse entity ID with automatic format detection.
 
-        Args:
-            entity_id: Entity identifier
-                    (e.g., "sensor.indoor_absolute_humidity_32_153289"
-                      or "number.32_153289_param_7c00")
-
-        Returns:
-            Tuple of (entity_type, entity_name, device_id) or None if parsing fails
+        :param entity_id: Entity identifier
+        :return: tuple of entity_type, entity_name, device_id or None if parsing fails
         """
         # Use enhanced detection
         result = EntityHelpers.detect_and_parse(entity_id)
@@ -582,12 +578,9 @@ class EntityHelpers:
     ) -> list[str]:
         """Filter entity IDs that match given patterns.
 
-        Args:
-            entities: List of entity states or IDs
-            patterns: List of patterns to match against
-
-        Returns:
-            List of matching entity IDs
+        :param entities: List of entity states or IDs
+        :param patterns: List of patterns to match against
+        :return: List of matching entity IDs
         """
         if not patterns:
             return []
@@ -612,11 +605,8 @@ class EntityHelpers:
     async def generate_entity_patterns_for_feature(feature_id: str) -> list[str]:
         """Generate entity patterns for a specific feature.
 
-        Args:
-            feature_id: Feature identifier
-
-        Returns:
-            List of entity patterns
+        :param feature_id: Feature identifier
+        :return: List of entity patterns
         """
         patterns = []
         required_entities = await _get_required_entities_from_feature(feature_id)
@@ -632,12 +622,9 @@ class EntityHelpers:
     def get_entities_for_device(hass: HomeAssistant, device_id: str) -> list[str]:
         """Get all entities for a specific device.
 
-        Args:
-            hass: Home Assistant instance
-            device_id: Device identifier
-
-        Returns:
-            List of entity IDs for the device
+        :param hass: Home Assistant instance
+        :param device_id: Device identifier
+        :return: List of entity IDs for the device
         """
         entity_ids = []
         all_states = hass.states.async_all()
@@ -657,12 +644,9 @@ class EntityHelpers:
     def cleanup_orphaned_entities(hass: HomeAssistant, device_ids: list[str]) -> int:
         """Clean up orphaned entities for given device IDs.
 
-        Args:
-            hass: Home Assistant instance
-            device_ids: List of device IDs to check
-
-        Returns:
-            Number of orphaned entities cleaned up
+        :param hass: Home Assistant instance
+        :param device_ids: List of device IDs to check
+        :return: Number of orphaned entities cleaned up
         """
         # This is a placeholder implementation
         # In a real implementation, this would check for entities
@@ -674,11 +658,8 @@ class EntityHelpers:
     def get_entity_device_id(entity_id: str) -> str | None:
         """Extract device ID from entity ID.
 
-        Args:
-            entity_id: Entity identifier
-
-        Returns:
-            Device ID or None if extraction fails
+        :param entity_id: Entity identifier
+        :return: Device ID or None if extraction fails
         """
         parsed = EntityHelpers.parse_entity_id(entity_id)
         return parsed[2] if parsed else None
@@ -689,17 +670,12 @@ class EntityHelpers:
     ) -> str:
         """Generate entity name from template with device ID substitution.
 
-        Args:
-            entity_type: Entity type (sensor, switch, etc.)
-            template: Template string with optional {device_id} placeholder
-            device_id: Device ID to substitute (optional if template doesn't need it)
-            **kwargs: Additional template variables
-
-        Returns:
-            Generated entity ID
-
-        Raises:
-            ValueError: If template is invalid or required placeholders are missing
+        :param entity_type: Entity type
+        :param template: Template string with optional {device_id} placeholder
+        :param device_id: Device ID to substitute (optional if template doesn't need it)
+        :param **kwargs: Additional template variables
+        :return: Generated entity ID
+        :raises ValueError: If template is invalid or required placeholders are missing
         """
         if not template or template.strip() == "":
             raise ValueError("Template must be a non-empty string")
@@ -752,16 +728,13 @@ class EntityHelpers:
 
     @staticmethod
     def get_all_required_entity_ids_for_device(device_id: str) -> list[str]:
-        """Get all required entity IDs for a device based on its capabilities.
+        """Get all required entity IDs for a device across all features.
 
         This method uses the registry system to get all possible entities
         for a device, regardless of which features are enabled.
 
-        Args:
-            device_id: Device identifier in underscore format (e.g., "32_153289")
-
-        Returns:
-            List of all required entity IDs for this device
+        :param device_id: Device identifier in underscore format (e.g., "32_153289")
+        :return: List of all required entity IDs for this device
         """
         entity_ids: list[str] = []
 
@@ -800,12 +773,9 @@ async def get_feature_entity_mappings(
 ) -> dict[str, str]:
     """Get entity mappings for a feature and device.
 
-    Args:
-        feature_id: Feature identifier
-        device_id: Device identifier (can contain colons like "32:153289")
-
-    Returns:
-        Dictionary mapping state names to entity IDs
+    :param feature_id: Feature identifier
+    :param device_id: Device identifier (can contain colons like "32:153289")
+    :return: Dictionary mapping state names to entity IDs
     """
     mappings = await _get_entity_mappings_from_feature(feature_id, device_id)
     if hass is not None:
