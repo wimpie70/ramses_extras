@@ -17,7 +17,10 @@ import yaml
 
 from .import_validation import validate_import_config
 from .model import (
+    CONFIG_DEVICE_FEATURE_MATRIX_KEY,
+    CONFIG_ENABLED_FEATURES_KEY,
     CONFIG_FEATURES_KEY,
+    CONFIG_FRAMEWORK_KEY,
     CONFIG_ROOT_KEY,
     CONFIG_SCHEMA_VERSION_KEY,
 )
@@ -51,7 +54,7 @@ def _build_features_schema() -> vol.Schema:
     for feature_id, schema in get_registered_schemas().items():
         feature_schemas[vol.Optional(feature_id)] = schema
 
-    return vol.Schema(feature_schemas, extra=vol.PREVENT_EXTRA)
+    return vol.Schema(feature_schemas, extra=vol.ALLOW_EXTRA)
 
 
 # Feature validators are registered dynamically by features
@@ -86,6 +89,9 @@ def parse_full_config_yaml(yaml_content: str) -> dict[str, Any]:
                 vol.Optional(CONFIG_SCHEMA_VERSION_KEY, default=1): vol.All(
                     int, vol.Range(min=1, max=1)
                 ),
+                vol.Optional(CONFIG_ENABLED_FEATURES_KEY): dict,
+                vol.Optional(CONFIG_DEVICE_FEATURE_MATRIX_KEY): dict,
+                vol.Optional(CONFIG_FRAMEWORK_KEY): dict,
                 vol.Optional(CONFIG_FEATURES_KEY): features_schema,
             }
         },

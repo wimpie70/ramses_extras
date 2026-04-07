@@ -88,6 +88,10 @@ const CARD_MODULES = [
     modulePath: '../features/hvac_fan_card/hvac-fan-card.js',
   },
   {
+    tag: 'ramses-fan-map',
+    modulePath: '../features/sensor_control/ramses-fan-map.js',
+  },
+  {
     tag: 'hello-world',
     modulePath: '../features/hello_world/hello-world.js',
   },

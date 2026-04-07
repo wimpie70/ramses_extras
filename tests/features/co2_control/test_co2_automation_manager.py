@@ -81,6 +81,7 @@ class TestCO2AutomationManager:
             "Bathroom",
             "sensor.bath_co2",
             threshold=1000,
+            zone_id="zone_bathroom",
         )
         assert result is not None
         assert source_states["bathroom"] is True
@@ -92,6 +93,7 @@ class TestCO2AutomationManager:
             "Bathroom",
             "sensor.bath_co2",
             threshold=1000,
+            zone_id="zone_bathroom",
         )
         assert result is not None
         assert source_states["bathroom"] is True
@@ -103,6 +105,7 @@ class TestCO2AutomationManager:
             "Bathroom",
             "sensor.bath_co2",
             threshold=1000,
+            zone_id="zone_bathroom",
         )
         assert result is None
         assert source_states["bathroom"] is False
@@ -119,7 +122,7 @@ class TestCO2AutomationManager:
             "mappings": {"co2": "sensor.32_123456_co2_level"},
             "area_sensors": [
                 {
-                    "source_id": "bathroom",
+                    "area_id": "bathroom",
                     "label": "Bathroom",
                     "area_co2_enabled": True,
                     "co2_entity": "sensor.bathroom_co2",

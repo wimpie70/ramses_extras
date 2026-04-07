@@ -616,9 +616,13 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 return await self.async_step_advanced_settings()
 
         # Build comprehensive YAML export of configuration
-        options = dict(self._config_entry.options)
+        raw_config: dict[str, Any] = {}
+        if getattr(self._config_entry, "data", None):
+            raw_config.update(dict(self._config_entry.data))
+        if getattr(self._config_entry, "options", None):
+            raw_config.update(dict(self._config_entry.options))
 
-        yaml_content = export_config_to_yaml(options)
+        yaml_content = export_config_to_yaml(raw_config)
 
         schema = vol.Schema(
             {
@@ -702,9 +706,72 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                             import_errors["yaml_content"] = "; ".join(error_parts)
                         else:
                             # Replace entire config with imported
+                            from .framework.helpers.config.model import (
+                                CONFIG_DEVICE_FEATURE_MATRIX_KEY,
+                                CONFIG_ENABLED_FEATURES_KEY,
+                                CONFIG_ROOT_KEY,
+                            )
+
+                            imported_root = imported_config.get(CONFIG_ROOT_KEY)
+                            imported_root = (
+                                imported_root if isinstance(imported_root, dict) else {}
+                            )
+
+                            new_data = dict(self._config_entry.data)
+                            if CONFIG_ENABLED_FEATURES_KEY in imported_root:
+                                enabled = imported_root.get(CONFIG_ENABLED_FEATURES_KEY)
+                                new_data[CONFIG_ENABLED_FEATURES_KEY] = (
+                                    dict(enabled) if isinstance(enabled, dict) else {}
+                                )
+                            else:
+                                # Don't implicitly disable all features if the YAML
+                                # omitted enabled_features (common when editing YAML).
+                                # Keep existing enabled_features, but if it's missing,
+                                # infer enablement from imported feature sections.
+                                existing_enabled = new_data.get(
+                                    CONFIG_ENABLED_FEATURES_KEY
+                                )
+                                if not isinstance(existing_enabled, dict):
+                                    existing_enabled = {}
+
+                                imported_features = imported_root.get("features")
+                                inferred_enabled = dict(existing_enabled)
+                                if isinstance(imported_features, dict):
+                                    for (
+                                        feature_id,
+                                        section,
+                                    ) in imported_features.items():
+                                        if feature_id == "FANs":
+                                            continue
+                                        if isinstance(section, dict):
+                                            inferred_enabled.setdefault(
+                                                feature_id, True
+                                            )
+
+                                inferred_enabled.setdefault("default", True)
+                                if inferred_enabled:
+                                    new_data[CONFIG_ENABLED_FEATURES_KEY] = (
+                                        inferred_enabled
+                                    )
+
+                            if CONFIG_DEVICE_FEATURE_MATRIX_KEY in imported_root:
+                                matrix = imported_root.get(
+                                    CONFIG_DEVICE_FEATURE_MATRIX_KEY
+                                )
+                                new_data[CONFIG_DEVICE_FEATURE_MATRIX_KEY] = (
+                                    dict(matrix) if isinstance(matrix, dict) else {}
+                                )
+                            else:
+                                # Preserve existing device_feature_matrix if omitted
+                                # (don't clear silently).
+                                pass
+
                             self.hass.config_entries.async_update_entry(
                                 self._config_entry,
-                                options=imported_config,
+                                data=new_data,
+                                options=self._merge_imported_yaml_options(
+                                    imported_config
+                                ),
                             )
 
                             return await self.async_step_advanced_settings()
@@ -776,6 +843,41 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         """Handle ramses_debugger feature configuration."""
         self._selected_feature = "ramses_debugger"
         return await self.async_step_feature_config(user_input)
+
+    def _merge_imported_yaml_options(
+        self, imported_config: dict[str, Any]
+    ) -> dict[str, Any]:
+        from .framework.helpers.config.model import (
+            CONFIG_DEBUG_LEVELS_KEY,
+            CONFIG_FRAMEWORK_KEY,
+            CONFIG_ROOT_KEY,
+        )
+
+        new_options = dict(self._config_entry.options)
+        new_options.update(imported_config)
+
+        root = imported_config.get(CONFIG_ROOT_KEY)
+        if not isinstance(root, dict):
+            return new_options
+
+        framework = root.get(CONFIG_FRAMEWORK_KEY)
+        if not isinstance(framework, dict):
+            return new_options
+
+        debug_levels = framework.get(CONFIG_DEBUG_LEVELS_KEY)
+        if not isinstance(debug_levels, dict):
+            return new_options
+
+        frontend = debug_levels.get("frontend")
+        if isinstance(frontend, str) and frontend.strip():
+            new_options["frontend_log_level"] = frontend.strip()
+            new_options["debug_mode"] = frontend.strip() == "debug"
+
+        backend = debug_levels.get("backend")
+        if isinstance(backend, str) and backend.strip():
+            new_options["log_level"] = backend.strip()
+
+        return new_options
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
@@ -1071,12 +1173,15 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 f"using generic flow"
             )
         except Exception as e:
-            _LOGGER.warning(f"Error loading feature config flow for {feature_id}: {e}")
-            try:
-                _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
-            except Exception:
-                # In tests with mocked imports, traceback.format_exc() might fail
-                pass
+            _LOGGER.warning(
+                "Error loading feature config flow for %s: %s",
+                feature_id,
+                e,
+                exc_info=True,
+            )
+
+            if feature_id == "sensor_control":
+                raise
 
         return await self.generic_step_feature_config(user_input)
 

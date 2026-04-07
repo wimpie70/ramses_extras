@@ -372,7 +372,7 @@ class TestHumidityAutomationManager:
         self.manager._latest_sensor_control_context["test"] = {
             "area_sensors": [
                 {
-                    "source_id": "bathroom",
+                    "area_id": "bathroom",
                     "label": "Bathroom",
                     "temperature_entity": "sensor.bath_temp",
                     "humidity_entity": "sensor.bath_humidity",
@@ -414,19 +414,19 @@ class TestHumidityAutomationManager:
 
         assert decision["action"] == "dehumidify"
         assert decision["control_mode"] == "spike_boost"
-        assert decision["active_trigger"]["source_id"] == "bathroom"
+        assert decision["active_trigger"]["area_id"] == "bathroom"
         mock_schedule.assert_called_once_with("test", 1)
 
     async def test_evaluate_active_area_spike_clears_when_recovered(self):
         """Active spike should stop once the area humidity recovers."""
         self.manager._active_area_spikes["test"] = {
-            "source_id": "bathroom",
+            "area_id": "bathroom",
             "label": "Bathroom",
             "baseline_abs": 10.0,
             "check_interval_minutes": 1,
         }
         area_sensor_states = [
-            {"source_id": "bathroom", "current_abs": 9.5, "current_rh": 60.0}
+            {"area_id": "bathroom", "current_abs": 9.5, "current_rh": 60.0}
         ]
 
         decision = self.manager._evaluate_active_area_spike(
@@ -442,13 +442,13 @@ class TestHumidityAutomationManager:
     async def test_evaluate_active_area_spike_keeps_boost_active(self):
         """Active spike should stay active while still above target."""
         self.manager._active_area_spikes["test"] = {
-            "source_id": "bathroom",
+            "area_id": "bathroom",
             "label": "Bathroom",
             "baseline_abs": 10.0,
             "check_interval_minutes": 1,
         }
         area_sensor_states = [
-            {"source_id": "bathroom", "current_abs": 12.0, "current_rh": 75.0}
+            {"area_id": "bathroom", "current_abs": 12.0, "current_rh": 75.0}
         ]
 
         decision = self.manager._evaluate_active_area_spike(
@@ -468,7 +468,7 @@ class TestHumidityAutomationManager:
         decision = {
             "control_mode": "spike_boost",
             "active_trigger": {
-                "source_id": "bathroom",
+                "area_id": "bathroom",
                 "label": "Bathroom",
                 "current_abs": 12.0,
                 "current_rh": 68.0,
@@ -478,7 +478,7 @@ class TestHumidityAutomationManager:
             },
             "active_triggers": [
                 {
-                    "source_id": "bathroom",
+                    "area_id": "bathroom",
                     "label": "Bathroom",
                     "current_abs": 12.0,
                     "current_rh": 68.0,
@@ -487,7 +487,7 @@ class TestHumidityAutomationManager:
                     "check_interval_minutes": 1,
                 },
                 {
-                    "source_id": "ensuite",
+                    "area_id": "ensuite",
                     "label": "Ensuite",
                     "current_abs": 11.8,
                     "current_rh": 64.0,
@@ -501,7 +501,7 @@ class TestHumidityAutomationManager:
         attrs = self.manager._build_indicator_attributes("32_123456", decision)
 
         assert attrs["control_mode"] == "spike_boost"
-        assert attrs["active_trigger_source_id"] == "bathroom"
+        assert attrs["active_trigger_area_id"] == "bathroom"
         assert attrs["active_trigger_label"] == "Bathroom"
         assert attrs["active_trigger_rise_percent"] == 20.0
         assert attrs["active_trigger_labels"] == [
@@ -515,7 +515,7 @@ class TestHumidityAutomationManager:
         """Active spike cache should populate indicator metadata when needed."""
         self.manager._active_area_spikes["32_123456"] = [
             {
-                "source_id": "bathroom",
+                "area_id": "bathroom",
                 "label": "Bathroom",
                 "current_abs": 12.0,
                 "current_rh": 68.0,
@@ -524,7 +524,7 @@ class TestHumidityAutomationManager:
                 "check_interval_minutes": 1,
             },
             {
-                "source_id": "ensuite",
+                "area_id": "ensuite",
                 "label": "Ensuite",
                 "current_abs": 11.8,
                 "current_rh": 64.0,
@@ -540,7 +540,7 @@ class TestHumidityAutomationManager:
         )
 
         assert attrs["control_mode"] == "spike_boost"
-        assert attrs["active_trigger_source_id"] == "bathroom"
+        assert attrs["active_trigger_area_id"] == "bathroom"
         assert attrs["active_trigger_labels_text"] == ("Bathroom (68%), Ensuite (64%)")
         assert attrs["next_check_interval_minutes"] == 1
 
@@ -557,32 +557,13 @@ class TestHumidityAutomationManager:
         }
 
         area_sensor_states = [
-            {"source_id": "", "enabled": True, "current_abs": 12.0},
-            {"source_id": "disabled", "enabled": False, "current_abs": 12.0},
-            {"source_id": "missing_abs", "enabled": True, "current_abs": None},
+            {"area_id": "", "enabled": True, "current_abs": 12.0},
+            {"area_id": "disabled", "enabled": False, "current_abs": 12.0},
+            {"area_id": "missing_abs", "enabled": True, "current_abs": None},
             {
-                "source_id": "zero",
+                "area_id": "zero",
                 "enabled": True,
                 "current_abs": 12.0,
-                "spike_window_minutes": 3,
-                "spike_rise_percent": 10.0,
-                "check_interval_minutes": 1,
-            },
-            {
-                "source_id": "lowrise",
-                "enabled": True,
-                "current_abs": 10.5,
-                "spike_window_minutes": 3,
-                "spike_rise_percent": 10.0,
-                "check_interval_minutes": 1,
-            },
-            {
-                "source_id": "outdoorbad",
-                "enabled": True,
-                "current_abs": 9.2,
-                "spike_window_minutes": 3,
-                "spike_rise_percent": 1.0,
-                "check_interval_minutes": 1,
             },
         ]
 
@@ -611,14 +592,14 @@ class TestHumidityAutomationManager:
                 offset=0.0,
                 area_sensor_states=[
                     {
-                        "source_id": "nohistory",
+                        "area_id": "nohistory",
                         "enabled": True,
                         "current_abs": 12.0,
                         "spike_window_minutes": 3,
                         "spike_rise_percent": 10.0,
                     },
                     {
-                        "source_id": "expired",
+                        "area_id": "expired",
                         "enabled": True,
                         "current_abs": 12.0,
                         "spike_window_minutes": 1,
@@ -719,7 +700,7 @@ class TestHumidityAutomationManager:
         )
 
         self.manager._active_area_spikes["test"] = {
-            "source_id": "bathroom",
+            "area_id": "bathroom",
             "label": "Bathroom",
             "baseline_abs": 10.0,
             "check_interval_minutes": 1,
@@ -742,7 +723,7 @@ class TestHumidityAutomationManager:
                 offset=1.0,
                 area_sensor_states=[
                     {
-                        "source_id": "bathroom",
+                        "area_id": "bathroom",
                         "current_abs": 10.5,
                         "current_rh": 70.0,
                     }
@@ -1023,7 +1004,7 @@ class TestHumidityAutomationManager:
                     "abs_humidity_inputs": {
                         "indoor_abs_humidity": {"kind": "area_sensor"}
                     },
-                    "area_sensors": [{"source_id": "bathroom", "label": "Bathroom"}],
+                    "area_sensors": [{"area_id": "bathroom", "label": "Bathroom"}],
                 }
             ),
         ):
@@ -1037,9 +1018,7 @@ class TestHumidityAutomationManager:
             == "sensor.indoor_absolute_humidity_32_123456"
         )
         assert result["mappings"]["indoor_humidity"] == "sensor.bathroom_humidity"
-        assert result["area_sensors"] == [
-            {"source_id": "bathroom", "label": "Bathroom"}
-        ]
+        assert result["area_sensors"] == [{"area_id": "bathroom", "label": "Bathroom"}]
 
     def test_is_sensor_control_enabled(self):
         """Test sensor control enabled check."""
@@ -1361,7 +1340,7 @@ class TestHumidityAutomationManager:
 
         assert decision["action"] == "dehumidify"
         assert decision["control_mode"] == "spike_boost"
-        assert decision["active_trigger"]["source_id"] == "indoor_humidity"
+        assert decision["active_trigger"]["area_id"] == "indoor_humidity"
         assert decision["active_trigger"]["rise_percent"] > 10.0
         assert decision["values"]["active_indoor_spike"] is True
         mock_schedule.assert_called_once()
@@ -1423,7 +1402,7 @@ class TestHumidityAutomationManager:
         )
 
         assert result is not None
-        assert result["source_id"] == "indoor_humidity"
+        assert result["area_id"] == "indoor_humidity"
         assert result["label"] == "Indoor Humidity"
         assert result["baseline_abs"] == 10.0
         assert result["current_abs"] == 11.5
@@ -1504,7 +1483,7 @@ class TestHumidityAutomationManager:
     def test_evaluate_active_indoor_spike_keeps_active(self):
         """Active indoor spike should be retained when conditions persist."""
         self.manager._active_indoor_spikes["test"] = {
-            "source_id": "indoor_humidity",
+            "area_id": "indoor_humidity",
             "label": "Indoor Humidity",
             "baseline_abs": 10.0,
             "current_abs": 11.5,
@@ -1522,14 +1501,14 @@ class TestHumidityAutomationManager:
         )
 
         assert result is not None
-        assert result["source_id"] == "indoor_humidity"
+        assert result["area_id"] == "indoor_humidity"
         assert result["current_abs"] == 11.2  # Updated value
         assert result["current_rh"] == 64.0  # Updated value
 
     def test_evaluate_active_indoor_spike_clears_when_recovered(self):
         """Active indoor spike should clear when conditions normalize."""
         self.manager._active_indoor_spikes["test"] = {
-            "source_id": "indoor_humidity",
+            "area_id": "indoor_humidity",
             "label": "Indoor Humidity",
             "baseline_abs": 10.0,
             "current_abs": 11.5,
@@ -1567,7 +1546,7 @@ class TestHumidityAutomationManager:
         """Test clearing active indoor spike and canceling recheck."""
         mock_handle = MagicMock()
         self.manager._active_indoor_spikes["test"] = {
-            "source_id": "indoor_humidity",
+            "area_id": "indoor_humidity",
             "rise_percent": 15.0,
         }
         self.manager._indoor_spike_check_handles["test"] = mock_handle
@@ -1634,7 +1613,7 @@ class TestHumidityAutomationManager:
     def test_build_indicator_attributes_with_indoor_spike(self):
         """Indicator attributes should include indoor spike metadata."""
         self.manager._active_indoor_spikes["32_123456"] = {
-            "source_id": "indoor_humidity",
+            "area_id": "indoor_humidity",
             "label": "Indoor Humidity",
             "current_abs": 12.0,
             "current_rh": 68.0,
@@ -1650,7 +1629,7 @@ class TestHumidityAutomationManager:
         )
 
         assert attrs["control_mode"] == "spike_boost"
-        assert attrs["active_trigger_source_id"] == "indoor_humidity"
+        assert attrs["active_trigger_area_id"] == "indoor_humidity"
         assert attrs["active_trigger_label"] == "Indoor Humidity"
         assert attrs["active_trigger_rise_percent"] == 20.0
         assert attrs["next_check_interval_minutes"] == 5
@@ -1667,7 +1646,7 @@ class TestHumidityAutomationManager:
             },
             "area_sensors": [
                 {
-                    "source_id": "bathroom",
+                    "area_id": "bathroom",
                     "label": "Bathroom",
                     "temperature_entity": "sensor.bath_temp",
                     "humidity_entity": "sensor.bath_humidity",
@@ -1711,13 +1690,13 @@ class TestHumidityAutomationManager:
         # Indoor spike should take priority
         assert decision["action"] == "dehumidify"
         assert decision["control_mode"] == "spike_boost"
-        assert decision["active_trigger"]["source_id"] == "indoor_humidity"
+        assert decision["active_trigger"]["area_id"] == "indoor_humidity"
         assert "active_indoor_spike" in decision["values"]
 
     def test_set_fan_low_clears_indoor_spike(self):
         """Setting fan low should clear indoor spike when not in spike mode."""
         self.manager._active_indoor_spikes["test"] = {
-            "source_id": "indoor_humidity",
+            "area_id": "indoor_humidity",
             "rise_percent": 15.0,
         }
         mock_handle = MagicMock()

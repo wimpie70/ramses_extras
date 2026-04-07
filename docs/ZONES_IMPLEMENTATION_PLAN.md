@@ -239,7 +239,7 @@ Later:
 - [x] support static config for ORCON and custom zones using that section
 - [x] add config flow support for editing that section inside the FAN-oriented configuration UX
 - [x] expose zone metadata to cards/diagnostics
-- [ ] no automatic actuation required yet
+- [x] no automatic actuation required yet
 - [x] keep `zone_id` as the shared link to area-like sensor config
 
 ### Phase 2 - actuator adapters ✅ COMPLETE
@@ -266,7 +266,7 @@ Later:
 ### Phase 5 - advanced behavior 🔄 PENDING
 
 - [ ] learned airflow weighting
-- [ ] zone priorities
+- [x] zone priorities
 - [ ] occupancy-aware logic
 - [ ] manual per-zone override handling
 

@@ -168,101 +168,23 @@ Suggested workflow per step:
 
 ## Ramses debugger issues
 
-### FIXED: Cards losing focus/content on re-render
-- **Root cause**: Cards were overriding `render()` and calling `super.render()`, which triggered full DOM replacement via `innerHTML` in `_renderContent()`, destroying scroll positions before restoration could happen
-- **Solution**:
-  - Removed `render()` overrides from all debugger cards (Log Explorer, Packet Log Explorer, Traffic Analyser)
-  - Wrapped `_renderContent()` to call `_preserveUIState()` before and `_restoreUIState()` after the actual rendering logic (now in `_renderContentImpl()`)
-  - This ensures state preservation happens at the right time in the render cycle
-- **Cards updated**:
-  - `ramses-log-explorer.js`: Preserves scroll for `tailPre` and `resultPre`
-  - `ramses-packet-log-explorer.js`: Preserves scroll for `fileSelect`, `loadMode`, `limitFilter`
-  - `ramses-traffic-analyser.js`: Preserves scroll for table wrapper and handles dialog state
+### Resolved
 
-### FIXED: WebSocket connection loss and no reconnection
-- **Root cause**: When WebSocket connection was lost and restored, cards didn't re-fetch their data because `_onConnected()` was only called during initial DOM connection, not on reconnection
-- **Solution**:
-  - Modified `ramses-base-card.js` `set hass()` method to call `_onConnected()` when connection is restored
-  - Added reconnection logic in both the 'ready' event handler and timeout fallback path
-  - Cards now automatically re-fetch data when WebSocket connection is restored
-- **Affected cards**: All debugger cards (Log Explorer, Packet Log Explorer, Traffic Analyser) now properly reconnect and refresh data
-But we still have problems that after some time HA is no longer responding. I have upgraded HA and disabled _extras. I no longer saw this disconnect so far, but i then went to a dashboard with still a card installed and get:message: "Unknown command.", original: {…} }
-logger.js:56:35
-Sending
-Object { type: "ramses_extras/default/get_cards_enabled" }
-connection-mixin.ts:184:21
-Error
-Object { code: "unknown_command", message: "Unknown command." }
-connection-mixin.ts:194:32
-Sending
-Object { type: "ramses_extras/default/get_cards_enabled" }
-connection-mixin.ts:184:21
-Error
-Object { code: "unknown_command", message: "Unknown command." }
-connection-mixin.ts:194:32
-Sending
-Object { type: "ramses_extras/default/get_cards_enabled" }
-connection-mixin.ts:184:21
-Error
-Object { code: "unknown_command", message: "Unknown command." }
-connection-mixin.ts:194:32
-Sending
-Object { type: "ramses_extras/default/get_cards_enabled" }
-connection-mixin.ts:184:21
-Error
-Object { code: "unknown_command", message: "Unknown command." }
-connection-mixin.ts:194:32
-Sending
-Object { type: "ramses_extras/default/get_cards_enabled" }
-connection-mixin.ts:184:21
-Error
-Object { code: "unknown_command", message: "Unknown command." }
-connection-mixin.ts:194:32
-Sending
-Object { type: "ramses_extras/default/get_cards_enabled" }
-connection-mixin.ts:184:21
+- **Cards losing focus/content on re-render**
+  - removed debugger-card `render()` overrides and preserved state around `_renderContent()`.
+- **WebSocket connection loss and no reconnection**
+  - reconnection triggers `_onConnected()` so cards re-fetch data after WS comes back.
+- **`unknown_command` spam when Extras is disabled/unloaded**
+  - mitigated in `framework/www/ramses-base-card.js` via hard retry limit + exponential backoff.
 
-We should prevent this for happening too often (may cause problems)
-Also I suspect we have created some kind of loop causing HA to freeze.
+### Open / follow-up
 
---- update: I did install the latest version of HA and the problem with HA becoming unavailable seems gone.
-
-
-Log Explorer
-- move zoom button from search header to search result blocks.
-- when hitting zoom button, open dialog, with possibility to load more of the logs (arrow up -> add 50 msgs extra before search result, arrow down -> add 50 msgs extra after search result (like we do with the other log +50 lines up/down, but now we add extra lines (enlarge the block))) Now we don't see enough eg. on a long traceback
-
-Upgrade to new _extras:
-Cards cannot find the correct version. (www deployed to new version folder, but still looking for the old one)
-
-Still problem with scroll position/focus
-Here's what I found:
-Yes, focus loss and scrolling "jumps" during card re-renders are known issues in Home Assistant, often stemming from how the underlying
-LitElement framework and dashboard layout engine handle updates.
-1. Focus Loss on Re-render
-Focus loss typically occurs if the entire card or a specific input field is completely replaced in the DOM rather than being patched.
-
-    Sub-component Re-creation: If your code re-creates a sub-component inside a render() function rather than updating its properties, the element unmounts and remounts. This causes the browser to lose the focused state as the original element no longer exists.
-    Editor Glitches: Some custom cards, like the HACS Expander Card, have reported "redraw loops" in the editor UI that can flush your changes every few seconds if you aren't using the YAML mode.
-
-1. Scrolling "Jumping" and Resetting
-Scrolling issues are frequently reported, particularly when cards change size or visibility dynamically.
-
-    Layout Reflows: When a card re-renders and momentarily has a different height (e.g., while waiting for data), the browser may correct the scroll position to the "intermediate" height, causing the page to "jump".
-    Conditional Card Flashing: Using Conditional Cards can sometimes cause the entire dashboard to reload or "flash" when an entity appears or disappears, which disrupts the scroll position and state of other elements like camera streams.
-    Nested Card Issues: Specific combinations, such as nesting the Windrose Card inside a Bubble Card pop-up, have been known to cause "endless scrolling" or scrollbars that jump to the bottom of the page when an action is performed.
-
-1. Touch & Mobile Glitches
-On mobile devices, scrolling can be particularly finicky due to touch interactions.
-
-    Accidental Triggers: Users often report accidentally triggering switches or buttons while trying to scroll.
-    Scroll Invisibility: In some recent updates (like 2024.7 beta), certain CSS mods for scrolling and max-height ceased to function, leading to cards that would no longer scroll as expected.
-
-Best Practices to Prevent These Issues:
-
-    Use display: none instead of if/else: If you are building a card, use CSS to hide elements instead of removing them from the DOM to keep their state and position "warmed up".
-    Stabilize Container Height: Set a min-height on your card or its containers to prevent the layout from collapsing and jumping during data updates.
-    Leverage Card-Mod: If you encounter scroll-blocking, the community often uses the Lovelace Card-Mod to explicitly force overflow: scroll or other layout fixes.
+- **HA becomes unresponsive after some time (suspected loop)**
+  - needs a reproducible scenario and logs.
+- **Upgrade/version-mismatch cases**
+  - cards may fail to find the correct JS version after updating.
+- **Residual scroll/focus glitches**
+  - verify if any card still re-renders in a way that defeats `_preserveUIState()`/`_restoreUIState()`.
 
 ## Acceptance criteria
 - With ramses_cc message events enabled, Traffic Analyser shows live counts changing
@@ -270,6 +192,6 @@ Best Practices to Prevent These Issues:
 - Log Explorer output is easy to copy/paste (plain + markdown)
 - Zoom dialogs work for both cards
 - Reset clears Traffic Analyser stats immediately
- - Traffic Analyser shows codes and verbs counters per flow
- - Traffic Analyser can open Log Explorer via action button
- - Message listing (when implemented) allows drilling down to raw + parsed message details
+- Traffic Analyser shows codes and verbs counters per flow
+- Traffic Analyser can open Log Explorer via action button
+- Message listing (when implemented) allows drilling down to raw + parsed message details

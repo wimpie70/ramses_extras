@@ -1,0 +1,160 @@
+/* global customElements */
+/* global setTimeout */
+/* global CustomEvent */
+/* global HTMLElement */
+
+import * as logger from '../../helpers/logger.js';
+
+import {
+  getAvailableDevices,
+  normalizeDeviceDescriptor,
+  filterDevicesBySlugs,
+} from '../../helpers/card-services.js';
+
+class RamsesFanMapEditor extends HTMLElement {
+  constructor() {
+    super();
+    this._config = {};
+    this._hass = null;
+    this._initialized = false;
+    this._devicesFetched = false;
+  }
+
+  connectedCallback() {
+    this._initialized = true;
+    if (this._config && this._hass) {
+      this._updateContent();
+    }
+  }
+
+  setConfig(config) {
+    this._config = config ? JSON.parse(JSON.stringify(config)) : {};
+    this._updateContent();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._config && this._initialized) {
+      this._updateContent();
+    }
+  }
+
+  _updateContent() {
+    if (!this._hass || !this._config) {
+      this.innerHTML = '<div>Loading configuration...</div>';
+      return;
+    }
+
+    if (!this._devicesFetched) {
+      this._devicesFetched = true;
+      this._loadDevices();
+    } else {
+      this._loadDevices(true);
+    }
+  }
+
+  async _loadDevices(fromCache = false) {
+    try {
+      if (!fromCache) {
+        this.innerHTML = '<div>Loading FAN Map configuration...</div>';
+      }
+
+      const devices = await getAvailableDevices(this._hass);
+      const filtered = filterDevicesBySlugs(devices, ['FAN']);
+      const normalized = filtered.map((device) => normalizeDeviceDescriptor(device));
+
+      this._renderEditor(normalized);
+    } catch (error) {
+      logger.error('RamsesFanMapEditor: Failed to load devices', error);
+      this._renderEditor([]);
+    }
+  }
+
+  _renderEditor(devices) {
+    const deviceOptions = devices.length
+      ? devices
+        .map((device) => {
+          const selectedAttr = this._config.device_id === device.id ? 'selected' : '';
+          return `<option value="${device.id}" ${selectedAttr}>${device.label}</option>`;
+        })
+        .join('')
+      : '<option disabled>No compatible devices found</option>';
+
+    this.innerHTML = `
+      <div class="card-config">
+        <div class="form-group">
+          <label for="device_id">FAN Device ID *</label>
+          <select id="device_id" class="config-input" required>
+            <option value="">Select a Ramses RF FAN...</option>
+            ${deviceOptions}
+          </select>
+          <small class="form-help">Select the Ramses RF FAN device ID</small>
+        </div>
+      </div>
+
+      <style>
+        .card-config {
+          padding: 16px;
+          background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+          border-radius: 8px;
+        }
+
+        .form-group {
+          margin-bottom: 16px;
+        }
+
+        label {
+          display: block;
+          margin-bottom: 8px;
+          font-weight: 500;
+          color: var(--primary-text-color);
+        }
+
+        .config-input {
+          width: 100%;
+          padding: 8px 12px;
+          border: 1px solid var(--divider-color);
+          border-radius: 4px;
+          color: var(--primary-text-color);
+          font-size: 14px;
+          box-sizing: border-box;
+        }
+
+        .config-input option {
+          color: inherit;
+        }
+
+        .form-help {
+          display: block;
+          margin-top: 4px;
+          font-size: 12px;
+          color: var(--secondary-text-color);
+        }
+      </style>
+    `;
+
+    setTimeout(() => {
+      const deviceIdSelect = this.querySelector('#device_id');
+
+      if (deviceIdSelect) {
+        deviceIdSelect.addEventListener('change', (e) => {
+          this._config.device_id = e.target.value;
+          this._dispatchConfigChange();
+        });
+      }
+    }, 0);
+  }
+
+  _dispatchConfigChange() {
+    const event = new CustomEvent('config-changed', {
+      detail: { config: this._config }
+    });
+    this.dispatchEvent(event);
+  }
+}
+
+if (!customElements.get('ramses-fan-map-editor')) {
+  customElements.define('ramses-fan-map-editor', RamsesFanMapEditor);
+}
+
+window.RamsesFanMapEditor = RamsesFanMapEditor;

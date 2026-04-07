@@ -207,16 +207,12 @@ def check_priority():
 
 ## Remaining Work
 
-### Phase 7: HVAC Fan Card UI (Not Yet Implemented)
-**Required for full feature:**
-- [ ] Add CO2 sensor display panel to left side of card
-- [ ] Add horizontal divider below filter info
-- [ ] Add 4th button (CO2 Control) to top button row
-- [ ] Update button grid from 3 to 4 columns
-- [ ] Implement active zone highlighting
-- [ ] Add real-time CO2 value updates
-- [ ] Create CO2 message handlers
-- [ ] Update card styles for new layout
+### Phase 7: HVAC Fan Card UI (Implemented)
+**Implemented in codebase:**
+- [x] CO2 sensor display integrated into the HVAC fan card
+- [x] CO2 control button added to the controls section
+- [x] Unified TOP-RIGHT panel rendering Balance + CO2 status and area sensor summaries
+- [x] Trigger highlighting (internal trigger flag surfaced via CSS class)
 
 **Files to modify:**
 - `features/hvac_fan_card/www/hvac_fan_card/hvac-fan-card.js`
@@ -224,23 +220,20 @@ def check_priority():
 - `features/hvac_fan_card/www/hvac_fan_card/templates/top-section.js`
 - `features/hvac_fan_card/www/hvac_fan_card/message-handlers.js`
 
-### Phase 8: Config Flow Integration (Not Yet Implemented)
-**Required for user configuration:**
-- [ ] Add CO2 setup step to config flow
-- [ ] Implement zone configuration UI
-- [ ] Add sensor entity selection
-- [ ] Implement threshold configuration
-- [ ] Add validation logic
+### Phase 8: Config Flow Integration (Implemented)
+**Implemented in codebase:**
+- [x] CO2 feature config step is wired into the integration config flow
+- [x] Feature-owned config-flow helper schemas and validation exist
 
 **Files to modify:**
 - `config_flow.py` - Add CO2 config steps
 
-### Phase 9: Testing (Not Yet Implemented)
-- [ ] Unit tests for CO2 automation
-- [ ] Integration tests for priority coordination
-- [ ] Zone manager tests
-- [ ] Config validation tests
-- [ ] WebSocket command tests
+### Phase 9: Testing (Implemented)
+- [x] Unit tests for CO2 automation
+- [x] Tests for priority coordination with humidity control
+- [x] Zone manager tests
+- [x] Config validation tests
+- [x] WebSocket command tests
 
 ### Phase 10: Wiki Documentation (Not Yet Implemented)
 - [ ] Create CO2 Control wiki page
@@ -283,11 +276,9 @@ test_co2_and_humidity_priority_handoff()
 
 ## Known Limitations
 
-1. **Config Flow Not Implemented**: Users cannot configure via UI yet
-2. **UI Not Updated**: HVAC Fan Card doesn't show CO2 sensors yet
-3. **No Valve Control**: Zone-specific valves not yet implemented
-4. **History Placeholder**: CO2 history WebSocket command not functional
-5. **No Tests**: Test suite not yet created
+1. **No Valve Control**: CO2 does not directly actuate per-zone valves (zones feature owns valve actuation)
+2. **History Placeholder**: CO2 history WebSocket command may be limited depending on configured storage/logging
+3. **User acceptance testing**: Always validate on a live system with real CO2 sensors and a FAN device
 
 ---
 
@@ -359,9 +350,9 @@ test_co2_and_humidity_priority_handoff()
 - [x] Feature registered and loadable
 
 ### ⏳ Pending
-- [ ] UI integration in HVAC Fan Card
-- [ ] Config flow implementation
-- [ ] Test suite created
+- [x] UI integration in HVAC Fan Card
+- [x] Config flow implementation
+- [x] Test suite created
 - [ ] Wiki documentation updated
 - [ ] User acceptance testing
 

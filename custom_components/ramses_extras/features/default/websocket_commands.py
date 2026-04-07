@@ -517,14 +517,65 @@ async def ws_get_fan_config_associations(
             remote_binding_section, device_id
         )
 
+        rems_by_zone: dict[str, list[dict[str, Any]]] = {}
+        for rem in remote_bindings:
+            zone_id = str(rem.get("zone_id") or "").strip()
+            if not zone_id:
+                continue
+            rems_by_zone.setdefault(zone_id, []).append(dict(rem))
+
+        projected_zones: list[dict[str, Any]] = []
+        for zone in zones:
+            zone_id = str(zone.get("zone_id") or "").strip()
+            zone_copy = dict(zone)
+            if zone_id:
+                zone_copy["rems"] = [
+                    dict(item) for item in rems_by_zone.get(zone_id, [])
+                ]
+            projected_zones.append(zone_copy)
+
+        from ...framework.helpers.fan_speed_arbiter import get_fan_speed_arbiter
+        from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+        arbiter = get_fan_speed_arbiter(hass)
+        resolved = arbiter.resolve(device_id)
+        winning = resolved.winning_demand
+
+        registry = get_remote_binding_registry(hass)
+        remote_activity = registry.get_last_activity_for_fan(device_id)
+        remote_activity_active = False
+        if remote_activity and winning is not None:
+            remote_activity_active = (
+                winning.feature_id == "manual_override"
+                and winning.metadata.get("origin") == "remote"
+                and winning.source_id == remote_activity.get("rem_id")
+                and winning.requested_speed == remote_activity.get("command")
+            )
+
         connection.send_result(
             msg["id"],
             {
                 "device_id": device_id,
-                "zones": zones,
+                "zones": projected_zones,
                 "zone_ids": zone_ids,
                 "remote_bindings": remote_bindings,
                 "remote_binding_ids": remote_binding_ids,
+                "remote_activity": remote_activity,
+                "remote_activity_active": remote_activity_active,
+                "resolved_command": resolved.command_name,
+                "winning_demand": (
+                    {
+                        "feature_id": winning.feature_id,
+                        "source_id": winning.source_id,
+                        "requested_speed": winning.requested_speed,
+                        "priority": winning.priority,
+                        "reason": winning.reason,
+                        "metadata": winning.metadata,
+                        "updated_at": winning.updated_at.isoformat(),
+                    }
+                    if winning is not None
+                    else None
+                ),
                 "source": "config",
             },
         )

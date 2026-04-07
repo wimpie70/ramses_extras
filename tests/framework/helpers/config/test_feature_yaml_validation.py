@@ -764,8 +764,7 @@ class TestSensorControlYAML:
     def test_area_sensor_schema_valid(self):
         """Test area sensor schema with valid data."""
         sensor_data = {
-            "source_id": "bathroom",
-            "area_id": "Bathroom",
+            "area_id": "bathroom",
             "zone_id": "bathroom",
             "enabled": True,
             "temperature_entity": "sensor.bathroom_temp",
@@ -775,17 +774,16 @@ class TestSensorControlYAML:
         }
 
         result = AREA_SENSOR_SCHEMA(sensor_data)
-        assert result["source_id"] == "bathroom"
-        assert result["area_id"] == "Bathroom"
+        assert result["area_id"] == "bathroom"
         assert result["zone_id"] == "bathroom"
         assert result["co2_threshold"] == 1000
 
     def test_area_sensor_schema_defaults(self):
         """Test area sensor schema with default values."""
-        sensor_data = {"source_id": "bathroom"}
+        sensor_data = {"area_id": "bathroom"}
 
         result = AREA_SENSOR_SCHEMA(sensor_data)
-        assert result["source_id"] == "bathroom"
+        assert result["area_id"] == "bathroom"
         assert result["enabled"] is True
         assert result["area_co2_enabled"] is False
 
@@ -835,7 +833,7 @@ class TestSensorControlYAML:
             },
             "area_sensors": [
                 {
-                    "source_id": "bathroom",
+                    "area_id": "bathroom",
                     "temperature_entity": "sensor.bathroom_temp",
                     "humidity_entity": "sensor.bathroom_humidity",
                 }
@@ -1018,31 +1016,29 @@ class TestZonesYAML:
         """Test zones config schema with valid data."""
         config = {
             "version": 1,
-            "FANs": {
-                "32:153289": [
-                    {
-                        "zone_id": "bathroom",
-                        "type": "custom_valve",
-                    }
-                ]
-            },
+            "fan_id": "32:153289",
+            "zones": [
+                {
+                    "zone_id": "bathroom",
+                    "type": "custom_valve",
+                }
+            ],
         }
 
         result = ZONES_CONFIG_SCHEMA(config)
         assert result["version"] == 1
-        assert len(result["FANs"]["32:153289"]) == 1
+        assert result["fan_id"] == "32:153289"
+        assert len(result["zones"]) == 1
 
     def test_zones_config_schema_defaults(self):
         """Test zones config schema with default values."""
         config = {
-            "FANs": {
-                "32:153289": [
-                    {
-                        "zone_id": "bathroom",
-                        "type": "custom_valve",
-                    }
-                ]
-            }
+            "zones": [
+                {
+                    "zone_id": "bathroom",
+                    "type": "custom_valve",
+                }
+            ]
         }
 
         result = ZONES_CONFIG_SCHEMA(config)
@@ -1051,32 +1047,22 @@ class TestZonesYAML:
     def test_zones_validator_valid(self):
         """Test zones validator with valid configuration."""
         section = {
-            "FANs": {
-                "32:153289": [
-                    {
-                        "zone_id": "bathroom",
-                        "type": "custom_valve",
-                        "min_position": 15,
-                        "max_position": 90,
-                    }
-                ]
-            }
+            "zones": [
+                {
+                    "zone_id": "bathroom",
+                    "type": "custom_valve",
+                    "min_position": 15,
+                    "max_position": 90,
+                }
+            ]
         }
 
         errors = zones_validator(section)
         assert errors == []
 
-    def test_zones_validator_invalid_fans_structure(self):
-        """Test zones validator with invalid FANs structure."""
-        section = {"FANs": "not_a_dict"}
-
-        errors = zones_validator(section)
-        assert len(errors) == 1
-        assert "FANs must be a dictionary" in errors[0]
-
     def test_zones_validator_invalid_zones_list(self):
         """Test zones validator with invalid zones list."""
-        section = {"FANs": {"32:153289": "not_a_list"}}
+        section = {"zones": "not_a_list"}
 
         errors = zones_validator(section)
         assert len(errors) == 1
@@ -1085,11 +1071,7 @@ class TestZonesYAML:
     def test_zones_validator_missing_zone_id(self):
         """Test zones validator with missing zone_id."""
         section = {
-            "FANs": {
-                "32:153289": [
-                    {"type": "custom_valve"}  # Missing zone_id
-                ]
-            }
+            "zones": [{"type": "custom_valve"}]  # Missing zone_id
         }
 
         errors = zones_validator(section)
@@ -1098,16 +1080,7 @@ class TestZonesYAML:
 
     def test_zones_validator_invalid_zone_type(self):
         """Test zones validator with invalid zone type."""
-        section = {
-            "FANs": {
-                "32:153289": [
-                    {
-                        "zone_id": "test",
-                        "type": "invalid_type",
-                    }
-                ]
-            }
-        }
+        section = {"zones": [{"zone_id": "test", "type": "invalid_type"}]}
 
         errors = zones_validator(section)
         assert len(errors) == 1
@@ -1116,16 +1089,14 @@ class TestZonesYAML:
     def test_zones_validator_invalid_position_range(self):
         """Test zones validator with invalid position range."""
         section = {
-            "FANs": {
-                "32:153289": [
-                    {
-                        "zone_id": "test",
-                        "type": "custom_valve",
-                        "min_position": 90,
-                        "max_position": 15,
-                    }
-                ]
-            }
+            "zones": [
+                {
+                    "zone_id": "test",
+                    "type": "custom_valve",
+                    "min_position": 90,
+                    "max_position": 15,
+                }
+            ]
         }
 
         errors = zones_validator(section)
@@ -1152,17 +1123,18 @@ class TestZonesYAML:
         """Test zones YAML parsing with valid content."""
         yaml_content = """
 version: 1
-FANs:
-  32:153289:
-    - zone_id: bathroom
-      type: custom_valve
-      min_position: 15
-      max_position: 90
+fan_id: 32:153289
+zones:
+  - zone_id: bathroom
+    type: custom_valve
+    min_position: 15
+    max_position: 90
 """
 
         result = parse_zones_yaml(yaml_content)
         assert result["version"] == 1
-        assert len(result["FANs"]["32:153289"]) == 1
+        assert result["fan_id"] == "32:153289"
+        assert len(result["zones"]) == 1
 
     def test_parse_zones_yaml_invalid_syntax(self):
         """Test zones YAML parsing with invalid syntax."""
@@ -1175,10 +1147,10 @@ FANs:
         """Test zones YAML parsing with invalid schema."""
         yaml_content = """
 version: 1
-FANs:
-  32:153289:
-    - zone_id: test
-      type: invalid_type
+fan_id: 32:153289
+zones:
+  - zone_id: test
+    type: invalid_type
 """
 
         with pytest.raises(ValueError, match="Schema validation failed"):
@@ -1186,23 +1158,15 @@ FANs:
 
     def test_merge_zones_config(self):
         """Test zones config merging."""
-        existing_zones = [
-            {"zone_id": "bathroom", "type": "custom_valve", "fan_id": "32:153289"}
-        ]
+        existing_zones = [{"zone_id": "bathroom", "type": "custom_valve"}]
         imported_zones = [{"zone_id": "office", "type": "shelly_2pm_gen3"}]
 
         result = merge_zones_config(existing_zones, imported_zones, "32:153289")
         assert len(result) == 2
 
-        # Check that new zone has fan_id set
-        office_zone = next(z for z in result if z["zone_id"] == "office")
-        assert office_zone["fan_id"] == "32:153289"
-
     def test_merge_zones_config_overwrite(self):
         """Test zones config merging with overwrite."""
-        existing_zones = [
-            {"zone_id": "bathroom", "type": "custom_valve", "fan_id": "32:153289"}
-        ]
+        existing_zones = [{"zone_id": "bathroom", "type": "custom_valve"}]
         imported_zones = [{"zone_id": "bathroom", "type": "shelly_2pm_gen3"}]
 
         # Without overwrite

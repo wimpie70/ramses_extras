@@ -247,8 +247,11 @@ class ConfigFlowHelper:
             Voluptuous schema for feature selection
         """
         # Get current selected features for the selector default
+        valid_feature_ids = {
+            feature_id for feature_id in AVAILABLE_FEATURES if feature_id != "default"
+        }
         current_selected = [
-            k for k, v in current_features.items() if v and k != "default"
+            k for k, v in current_features.items() if v and k in valid_feature_ids
         ]
 
         # Build options for multi-select

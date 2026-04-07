@@ -1,11 +1,26 @@
 from __future__ import annotations
 
+import importlib.util
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_ENABLED_FEATURES, DOMAIN, FEATURE_ID_DEFAULT
+
+
+def _is_feature_importable(feature_name: str) -> bool:
+    try:
+        spec = importlib.util.find_spec(
+            f"custom_components.ramses_extras.features.{feature_name}.const"
+        )
+    except ModuleNotFoundError:
+        return False
+    return spec is not None
+
+
+def _filter_importable_features(feature_names: list[str]) -> list[str]:
+    return [name for name in feature_names if _is_feature_importable(name)]
 
 
 def _get_enabled_features_raw(
@@ -66,7 +81,7 @@ def get_enabled_feature_names(
     if include_default and FEATURE_ID_DEFAULT not in enabled_feature_names:
         enabled_feature_names.append(FEATURE_ID_DEFAULT)
 
-    return enabled_feature_names
+    return _filter_importable_features(enabled_feature_names)
 
 
 def get_enabled_features_dict(
@@ -99,4 +114,8 @@ def get_enabled_features_dict(
     if include_default:
         enabled_features.setdefault(FEATURE_ID_DEFAULT, True)
 
-    return enabled_features
+    return {
+        name: enabled
+        for name, enabled in enabled_features.items()
+        if enabled is False or _is_feature_importable(name)
+    }

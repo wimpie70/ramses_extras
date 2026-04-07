@@ -34,6 +34,9 @@ _HUMIDITY_ZONE_PRIORITY = 70
 _CO2_ZONE_PRIORITY = 60
 _MANUAL_ZONE_PRIORITY = 100
 
+_BALANCED_POSITION_DEFAULT = 40
+_ACTUATION_DEADBAND = 2
+
 
 class ZoneDemandSource(Enum):
     """Source of zone demand."""
@@ -607,6 +610,8 @@ class ZoneCoordinator:
                     zone_config.actuation_priority,
                 )
 
+        any_zone_has_demand = bool(zones_with_demand)
+
         # Phase 5b: Select zones to open based on priority if max_open_zones is set
         selected_for_max: set[str] = set()
         if zones_with_demand:
@@ -662,15 +667,21 @@ class ZoneCoordinator:
             is_selected = zone_id in selected_for_max
             has_demand = self._demand_registry.has_demand(self._fan_id, zone_id)
 
-            if is_selected:
+            if not any_zone_has_demand:
+                target_position = zone_config.max_position
+                reason = "No zone demand (open all)"
+            elif is_selected:
                 target_position = zone_config.max_position
                 reason = "Zone has demand (selected for max)"
-            elif has_demand:
-                target_position = zone_config.min_position
-                reason = "Zone has demand but not selected (priority/cap)"
             else:
-                target_position = zone_config.min_position
-                reason = "Zone has no demand"
+                target_position = max(
+                    zone_config.min_position,
+                    min(zone_config.max_position, _BALANCED_POSITION_DEFAULT),
+                )
+                if has_demand:
+                    reason = "Zone has demand but not selected (balanced baseline)"
+                else:
+                    reason = "Zone has no demand (balanced baseline)"
 
             try:
                 # Get current position before commanding
@@ -678,7 +689,7 @@ class ZoneCoordinator:
                 current_position = position_data.position
 
                 # Only command if position differs significantly
-                if abs(current_position - target_position) >= 5:
+                if abs(current_position - target_position) >= _ACTUATION_DEADBAND:
                     success = await adapter.async_set_position(target_position)
 
                     # Track for diagnostics

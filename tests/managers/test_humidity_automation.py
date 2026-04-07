@@ -23,6 +23,7 @@ class TestHumidityAutomationEntityNaming:
         mock_hass = Mock()
         mock_states = Mock()
         mock_hass.states = mock_states
+        mock_hass.data = {}  # Make hass.data behave like a dict
 
         # Mock states that exist
         # NEW FORMAT: {prefix}.{device_id}_{entity_name}
@@ -99,6 +100,9 @@ class TestHumidityAutomationEntityNaming:
     def test_humidity_decision_logic(self):
         """Test the humidity decision logic implementation with
         relative humidity priority."""
+        # Mock HomeAssistant
+        mock_hass = Mock()
+        mock_hass.data = {}  # Make hass.data behave like a dict
         # Test cases from the new decision flow with proper relative humidity logic
         test_cases = [
             {
@@ -197,7 +201,7 @@ class TestHumidityAutomationEntityNaming:
         ]
 
         # Create a manager instance for testing the actual logic
-        manager = HumidityAutomationManager(Mock(), Mock())
+        manager = HumidityAutomationManager(mock_hass, Mock())
         manager._automation_active = True
 
         for test_case in test_cases:

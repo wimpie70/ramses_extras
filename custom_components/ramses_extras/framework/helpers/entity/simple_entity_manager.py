@@ -42,8 +42,7 @@ class SimpleEntityManager:
     ) -> None:
         """Initialize SimpleEntityManager.
 
-        Args:
-            hass: Home Assistant instance
+        :param hass: Home Assistant instance
         """
         self.hass = hass
         self.device_feature_matrix: DeviceFeatureMatrix = DeviceFeatureMatrix()
@@ -72,12 +71,9 @@ class SimpleEntityManager:
     ) -> list[str]:
         """Create entities directly for feature/device combinations.
 
-        Args:
-            feature_id: Feature identifier
-            device_ids: List of device IDs to create entities for
-
-        Returns:
-            List of created entity IDs
+        :param feature_id: Feature identifier
+        :param device_ids: List of device IDs to create entities for
+        :return: List of created entity IDs
         """
         created_entities = []
 
@@ -96,12 +92,9 @@ class SimpleEntityManager:
     ) -> list[str]:
         """Remove entities directly for feature/device combinations.
 
-        Args:
-            feature_id: Feature identifier
-            device_ids: List of device IDs to remove entities for
-
-        Returns:
-            List of removed entity IDs
+        :param feature_id: Feature identifier
+        :param device_ids: List of device IDs to remove entities for
+        :return: List of removed entity IDs
         """
         removed_entities = []
 
@@ -122,12 +115,9 @@ class SimpleEntityManager:
     ) -> tuple[list[str], list[str]]:
         """Calculate entity changes between two matrix states.
 
-        Args:
-            old_matrix_state: Previous matrix state
-            new_matrix_state: New matrix state
-
-        Returns:
-            Tuple of (entities_to_create, entities_to_remove)
+        :param old_matrix_state: Previous matrix state
+        :param new_matrix_state: New matrix state
+        :return: Tuple of (entities_to_create, entities_to_remove)
         """
         # Create temporary entity managers for old and new states
         old_entity_manager = SimpleEntityManager(self.hass)
@@ -209,8 +199,7 @@ class SimpleEntityManager:
     async def _get_current_entities(self) -> list[str]:
         """Get all entity IDs that currently exist in Home Assistant.
 
-        Returns:
-            List of existing entity IDs
+        :return: List of existing entity IDs
         """
         try:
             entity_registry_instance = entity_registry.async_get(self.hass)
@@ -231,8 +220,7 @@ class SimpleEntityManager:
     async def _calculate_required_entities(self) -> list[str]:
         """Calculate which entities should exist based on current matrix state.
 
-        Returns:
-            List of entity IDs that should exist
+        :return: List of entity IDs that should exist
         """
         required_entities = []
 
@@ -288,8 +276,7 @@ class SimpleEntityManager:
     async def get_entities_to_create(self) -> list[str]:
         """Get entities that should be created based on current matrix state.
 
-        Returns:
-            List of entity IDs that should be created
+        :return: List of entity IDs that should be created
         """
         # Use the synchronous version for test compatibility
         combinations = self.device_feature_matrix.get_all_enabled_combinations()
@@ -307,8 +294,7 @@ class SimpleEntityManager:
     def get_entities_to_remove(self) -> list[str]:
         """Get entities that should be removed based on current matrix state.
 
-        Returns:
-            List of entity IDs that should be removed
+        :return: List of entity IDs that should be removed
         """
         # For now, return empty list since we don't track existing entities
         # in this simple implementation
@@ -319,28 +305,27 @@ class SimpleEntityManager:
     ) -> list[str]:
         """Generate entity IDs for a specific feature/device combination.
 
-        Args:
-            feature_id: Feature identifier
-            device_id: Device identifier
-
-        Returns:
-            List of entity IDs for this combination
+        :param feature_id: Feature identifier
+        :param device_id: Device identifier
+        :return: List of entity IDs for this combination
         """
         from .core import get_required_entity_ids_for_feature_device
 
-        return await get_required_entity_ids_for_feature_device(feature_id, device_id)
+        entity_ids_raw = await get_required_entity_ids_for_feature_device(
+            feature_id, device_id
+        )
+        return [
+            str(e) for e in (entity_ids_raw if isinstance(entity_ids_raw, list) else [])
+        ]
 
     async def _create_feature_entities(
         self, feature_id: str, device_id: str
     ) -> list[str]:
         """Create entities for a specific feature/device combination.
 
-        Args:
-            feature_id: Feature identifier
-            device_id: Device identifier
-
-        Returns:
-            List of created entity IDs
+        :param feature_id: Feature identifier
+        :param device_id: Device identifier
+        :return: List of created entity IDs
         """
         # Generate entity IDs for this combination
         entity_ids = await self._generate_entity_ids_for_combination(
@@ -368,11 +353,8 @@ class SimpleEntityManager:
 
         We should only remove entities that belong to ramses_extras.
 
-        Args:
-            entity_id: Entity ID to check
-
-        Returns:
-            True if entity is managed by ramses_extras, False otherwise
+        :param entity_id: Entity ID to check
+        :return: True if entity is managed by ramses_extras, False otherwise
         """
         try:
             entity_registry_instance = entity_registry.async_get(self.hass)
@@ -397,12 +379,9 @@ class SimpleEntityManager:
     ) -> list[str]:
         """Remove entities for a specific feature/device combination.
 
-        Args:
-            feature_id: Feature identifier
-            device_id: Device identifier
-
-        Returns:
-            List of removed entity IDs
+        :param feature_id: Feature identifier
+        :param device_id: Device identifier
+        :return: List of removed entity IDs
         """
         removed_entities = []
 
@@ -424,8 +403,7 @@ class SimpleEntityManager:
     async def _create_entity_directly(self, entity_id: str) -> None:
         """Create a single entity directly.
 
-        Args:
-            entity_id: Entity ID to create
+        :param entity_id: Entity ID to create
         """
         try:
             entity_registry_instance = entity_registry.async_get(self.hass)
@@ -464,8 +442,7 @@ class SimpleEntityManager:
     async def create_entity(self, entity_id: str) -> None:
         """Create a single entity directly.
 
-        Args:
-            entity_id: Entity ID to create
+        :param entity_id: Entity ID to create
         """
         try:
             await self._create_entity_directly(entity_id)
@@ -477,8 +454,7 @@ class SimpleEntityManager:
     async def remove_entity(self, entity_id: str) -> None:
         """Remove a single entity directly.
 
-        Args:
-            entity_id: Entity ID to remove
+        :param entity_id: Entity ID to remove
         """
         try:
             await self._remove_entity_directly(entity_id)
@@ -490,8 +466,7 @@ class SimpleEntityManager:
     async def _remove_entity_directly(self, entity_id: str) -> None:
         """Remove a single entity directly.
 
-        Args:
-            entity_id: Entity ID to remove
+        :param entity_id: Entity ID to remove
         """
         try:
             entity_registry_instance = entity_registry.async_get(self.hass)
@@ -510,8 +485,7 @@ class SimpleEntityManager:
     async def _cleanup_extra_entities(self, entity_ids: list[str]) -> None:
         """Clean up extra entities that shouldn't exist.
 
-        Args:
-            entity_ids: List of entity IDs to remove
+        :param entity_ids: List of entity IDs to remove
         """
         for entity_id in entity_ids:
             try:
@@ -522,8 +496,7 @@ class SimpleEntityManager:
     async def _create_missing_entities(self, entity_ids: list[str]) -> None:
         """Create missing entities that should exist.
 
-        Args:
-            entity_ids: List of entity IDs to create
+        :param entity_ids: List of entity IDs to create
         """
         for entity_id in entity_ids:
             try:
@@ -535,20 +508,16 @@ class SimpleEntityManager:
     def enable_feature_for_device(self, device_id: str, feature_id: str) -> None:
         """Enable a feature for a specific device.
 
-        Args:
-            device_id: Device identifier
-            feature_id: Feature identifier
+        :param device_id: Device identifier
+        :param feature_id: Feature identifier
         """
         self.device_feature_matrix.enable_feature_for_device(device_id, feature_id)
 
     def get_enabled_devices_for_feature(self, feature_id: str) -> list[str]:
         """Get devices that have a specific feature enabled.
 
-        Args:
-            feature_id: Feature identifier
-
-        Returns:
-            List of device IDs with the feature enabled
+        :param feature_id: Feature identifier
+        :return: List of device IDs with the feature enabled
         """
         return list(
             self.device_feature_matrix.get_enabled_devices_for_feature(feature_id)
@@ -557,12 +526,9 @@ class SimpleEntityManager:
     def is_device_enabled_for_feature(self, device_id: str, feature_id: str) -> bool:
         """Check if a device has a specific feature enabled.
 
-        Args:
-            device_id: Device identifier
-            feature_id: Feature identifier
-
-        Returns:
-            True if device has feature enabled, False otherwise
+        :param device_id: Device identifier
+        :param feature_id: Feature identifier
+        :return: True if device has feature enabled, False otherwise
         """
         return bool(
             self.device_feature_matrix.is_device_enabled_for_feature(
@@ -574,26 +540,26 @@ class SimpleEntityManager:
     def get_all_enabled_combinations(self) -> list[tuple[str, str]]:
         """Get all enabled feature/device combinations.
 
-        Returns:
-            List of (device_id, feature_id) tuples
+        :return: List of (device_id, feature_id) tuples
         """
         return list(self.device_feature_matrix.get_all_enabled_combinations())
 
     def get_device_feature_matrix_state(self) -> dict[str, dict[str, bool]]:
         """Get the current device/feature matrix state.
 
-        Returns:
-            Dictionary representing the current matrix state
+        :return: Dictionary representing the current matrix state
         """
         return dict(self.device_feature_matrix.get_matrix_state())
 
     def restore_device_feature_matrix_state(
         self, state: dict[str, dict[str, bool]]
     ) -> None:
+        self.device_feature_matrix.restore_device_feature_matrix_state(state)
+
+    def restore_device_feature_matrix(self, state: dict[str, dict[str, bool]]) -> None:
         """Restore device/feature matrix from saved state.
 
-        Args:
-            state: Matrix state to restore
+        :param state: Matrix state to restore
         """
         self.device_feature_matrix.restore_matrix_state(state)
 

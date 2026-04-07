@@ -206,25 +206,25 @@ async def create_default_sensor(
             )
 
     for area_sensor in _get_area_sensors_config(hass, device_id_str, config_entry):
-        source_id = str(area_sensor.get("source_id") or "").strip()
-        if not source_id:
+        area_id = str(area_sensor.get("area_id") or "").strip()
+        if not area_id:
             continue
 
-        label = str(area_sensor.get("label") or source_id).strip()
+        label = str(area_sensor.get("label") or area_id).strip()
         area_config = {
             "name_template": "{label} Absolute Humidity {device_id}",
             "unit": "g/m³",
             "icon": "mdi:water-percent",
             "device_class": None,
             "label": label,
-            "source_id": source_id,
+            "area_id": area_id,
             "area_sensor": area_sensor,
         }
         sensor_list.append(
             DefaultHumiditySensor(
                 hass,
                 device_id_str,
-                f"area_absolute_humidity_{source_id}",
+                f"area_absolute_humidity_{area_id}",
                 area_config,
             )
         )
@@ -417,9 +417,11 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         name_template = config.get(
             "name_template", f"{sensor_type} {device_id_underscore}"
         )
+        area_id = str(config.get("area_id") or "")
         self._attr_name = name_template.format(
             device_id=device_id_underscore,
-            source_id=str(config.get("source_id") or ""),
+            # source_id=area_id,
+            area_id=area_id,
             label=str(config.get("label") or ""),
         )
 
@@ -972,7 +974,7 @@ class DefaultHumiditySensor(SensorEntity, ExtrasBaseEntity):
         base_attrs = super().extra_state_attributes or {}
         attrs = {**base_attrs, "sensor_type": self._sensor_type}
         if self._area_sensor:
-            attrs["source_id"] = self._area_sensor.get("source_id")
+            attrs["area_id"] = self._area_sensor.get("area_id")
             attrs["label"] = self._area_sensor.get("label")
             attrs["temperature_entity"] = self._area_sensor.get("temperature_entity")
             attrs["humidity_entity"] = self._area_sensor.get("humidity_entity")

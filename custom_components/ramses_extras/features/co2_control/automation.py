@@ -30,6 +30,10 @@ from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import 
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
     RamsesCommands,
 )
+from custom_components.ramses_extras.framework.helpers.zone_demand import (
+    DemandSource,
+    get_zone_demand_registry,
+)
 
 from .config import CO2Config
 from .const import FEATURE_DEFINITION
@@ -79,6 +83,9 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self._latest_sensor_control_context: dict[str, dict[str, Any] | None] = {}
         self._source_trigger_states: dict[str, dict[str, bool]] = {}
         self._trigger_meta: dict[str, dict[str, Any]] = {}
+
+        self._zone_demand_registry = get_zone_demand_registry(hass)
+        self._co2_demand_zones: dict[str, set[str]] = {}
 
         # Reference to humidity automation for priority coordination
         self.humidity_manager = None
@@ -143,6 +150,9 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             listener()
         self._state_change_listeners.clear()
         self._source_listener_entities.clear()
+
+        for device_id in list(self._co2_demand_zones):
+            self._sync_zone_demands(device_id, [])
 
         # Clear fan speed demands for all devices
         devices_with_demands = self.fan_speed_arbiter.get_all_devices_with_demands()
@@ -747,6 +757,9 @@ class CO2AutomationManager(ExtrasBaseAutomation):
 
         was_active = self._co2_active
         self._co2_active = bool(triggered_zones or triggered_sources)
+
+        self._sync_zone_demands(clean_device_id, triggered_sources)
+
         await self._update_automation_status(
             clean_device_id,
             triggered_zones,
@@ -787,6 +800,8 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         self._co2_active = False
         self._source_trigger_states[device_id] = {}
 
+        self._sync_zone_demands(device_id, [])
+
         sensor_ctx = self._latest_sensor_control_context.get(device_id)
         await self._update_automation_status(device_id, [], [], sensor_ctx)
 
@@ -820,16 +835,18 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             if not entity_id:
                 continue
 
-            source_id = str(area_sensor.get("source_id") or entity_id)
-            label = str(area_sensor.get("label") or source_id)
+            area_id = str(area_sensor.get("area_id") or entity_id).strip()
+            label = str(area_sensor.get("label") or area_id)
+            zone_id = str(area_sensor.get("zone_id") or "").strip() or None
             threshold = self._resolve_area_threshold(area_sensor, threshold_default)
 
             source_result = self._evaluate_source_trigger(
                 source_states,
-                source_id,
+                area_id,
                 label,
                 entity_id,
                 threshold,
+                zone_id,
             )
             if source_result is not None:
                 triggered.append(source_result)
@@ -847,6 +864,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             "Device CO2",
             internal_entity,
             threshold_default,
+            None,
         )
         if internal_result is not None:
             triggered.append(internal_result)
@@ -880,6 +898,7 @@ class CO2AutomationManager(ExtrasBaseAutomation):
         label: str,
         entity_id: str,
         threshold: int,
+        zone_id: str | None,
     ) -> dict[str, Any] | None:
         """Evaluate and update hysteresis trigger state for one source."""
         state = self.hass.states.get(entity_id)
@@ -913,7 +932,49 @@ class CO2AutomationManager(ExtrasBaseAutomation):
             "entity_id": entity_id,
             "value": round(co2_value, 1),
             "threshold": threshold,
+            "zone_id": zone_id,
         }
+
+    def _sync_zone_demands(
+        self, device_id: str, triggered_sources: list[dict[str, Any]]
+    ) -> None:
+        new_zones: set[str] = {
+            str(item.get("zone_id")).strip()
+            for item in triggered_sources
+            if str(item.get("zone_id") or "").strip()
+        }
+        prev_zones = self._co2_demand_zones.get(device_id, set())
+
+        for zone_id in sorted(prev_zones - new_zones):
+            self._zone_demand_registry.clear_demand(
+                device_id, zone_id, DemandSource.CO2
+            )
+
+        for item in triggered_sources:
+            zone_id_raw = str(item.get("zone_id") or "").strip()
+            if not zone_id_raw:
+                continue
+
+            metadata: dict[str, Any] = {
+                "source_id": item.get("source_id"),
+                "label": item.get("label"),
+                "entity_id": item.get("entity_id"),
+                "value": item.get("value"),
+                "threshold": item.get("threshold"),
+            }
+
+            self._zone_demand_registry.set_demand(
+                device_id,
+                zone_id_raw,
+                DemandSource.CO2,
+                True,
+                metadata=metadata,
+            )
+
+        if new_zones:
+            self._co2_demand_zones[device_id] = new_zones
+        else:
+            self._co2_demand_zones.pop(device_id, None)
 
     def _get_threshold_value(self, device_id: str) -> int:
         """Resolve threshold from number entity when available."""

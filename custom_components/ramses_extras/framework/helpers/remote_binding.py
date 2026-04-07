@@ -37,6 +37,7 @@ class RemoteBindingRegistry:
         self._hass = hass
         self._cache: dict[str, dict[str, Any]] = {}
         self._last_seen: dict[str, datetime] = {}
+        self._last_activity_by_fan: dict[str, dict[str, Any]] = {}
         self._unmatched_traffic: list[dict[str, Any]] = []
 
     def record_remote_activity(
@@ -75,6 +76,16 @@ class RemoteBindingRegistry:
                 self._unmatched_traffic = self._unmatched_traffic[-100:]
             _LOGGER.debug("Unmatched remote traffic from %s", normalized_rem)
 
+        if matched and fan_id and command:
+            normalized_fan = fan_id.replace("_", ":").strip()
+            if normalized_fan:
+                self._last_activity_by_fan[normalized_fan] = {
+                    "rem_id": normalized_rem,
+                    "fan_id": normalized_fan,
+                    "command": command,
+                    "timestamp": now.isoformat(),
+                }
+
     def get_last_seen(self, rem_id: str) -> datetime | None:
         """Get last seen timestamp for a REM.
 
@@ -86,6 +97,13 @@ class RemoteBindingRegistry:
         """
         normalized_rem = rem_id.replace("_", ":").strip()
         return self._last_seen.get(normalized_rem)
+
+    def get_last_activity_for_fan(self, fan_id: str) -> dict[str, Any] | None:
+        normalized_fan = fan_id.replace("_", ":").strip()
+        if not normalized_fan:
+            return None
+        activity = self._last_activity_by_fan.get(normalized_fan)
+        return dict(activity) if isinstance(activity, dict) else None
 
     def get_unmatched_traffic(self, limit: int = 50) -> list[dict[str, Any]]:
         """Get recent unmatched remote traffic.
@@ -134,9 +152,16 @@ class RemoteBindingRegistry:
         # Import here to avoid circular imports
         from ...framework.helpers.config.core import ExtrasConfigManager
 
-        return ExtrasConfigManager(
+        manager = ExtrasConfigManager(
             self._hass, config_entry, "default", {"enabled": False}
         )
+
+        manager._config = manager._default_config.copy()
+        if config_entry.data:
+            manager._config.update(config_entry.data)
+        if config_entry.options:
+            manager._config.update(config_entry.options)
+        return manager
 
     def get_binding_for_fan(self, device_id: str) -> dict[str, Any] | None:
         """Get the primary REM binding for a FAN device.

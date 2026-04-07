@@ -19,9 +19,29 @@ medium: 41.63 l/s (at 50%)
 high: 83 l/s (at 100%)
 
 todo:
-- make humidity control settings persistent (after reloads)
-- yaml export still has 'role' in the config, remove it
+- add sphinx style comments to all files
 
+- add a test on the RF config if we have
+  - a bound REM,
+  - Enable Message Events with regex: 31DA|10D0
+  - Enable Send Packet Service
+if not, propose to correct it (and remember) We can place this in the advanced or enable step
+
+- press REM button -> show which REM is pressed, and adapt valves
+We now see the pill on observer, and also the change on resolved command, the valves on the other zone to 40%,
+and also on the zone REM a high pill, but that last one stays, and after 1 press
+(and back to auto after some time) it stays on high (on the zone area pill) and I can't it trigger again.
+mypy:
+- hook id: mypy
+- exit code: 1
+
+  custom_components/ramses_extras/framework/helpers/zone_demand.py:89: error: "object" has no attribute "cancel"  [attr-defined]
+  custom_components/ramses_extras/features/humidity_control/automation.py:830: error: Item "None" of "Any | None" has no attribute "__iter__" (not iterable)  [union-attr]
+  Found 2 errors in 2 files (checked 317 source files)
+
+
+
+currently:
 - add a card to sensor_control: FAN Configuration
 This is different from the current hvac fan card settings. This new card will
 allow us to test the fan configuration for each zone, area, rems. Also include a
@@ -39,6 +59,8 @@ These messages can be retrieved from _rf docs and stored in a dbase, with option
 - messages (types, payloads)
 - timing (when to send messages)
 - enabled (on/off) enable by default, disable when not needed
+
+discover devices (auto-discover devices from messages)
 
 a test feature can then iterate over these msgs and send them to a selectable sim device
 to check responses and find problems. Also can test flooding, etc.

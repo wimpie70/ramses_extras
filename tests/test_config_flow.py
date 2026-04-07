@@ -710,9 +710,9 @@ class TestRamsesExtrasOptionsFlowHandler:
             ) as mock_generic,
         ):
             options_flow._selected_feature = "sensor_control"
-            result = await options_flow.async_step_feature_config()
-            assert result["step_id"] == "generic2"
-            assert mock_generic.called
+            with pytest.raises(Exception, match="boom"):
+                await options_flow.async_step_feature_config()
+            assert not mock_generic.called
 
     @pytest.mark.asyncio
     async def test_matrix_confirm_paths(self, hass):

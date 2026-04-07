@@ -37,6 +37,7 @@ class TransportMonitor:
         self._monitor_task: asyncio.Task | None = None
         self._callbacks: dict[str, tuple[str | None, Callable[[bool], None]]] = {}
         self._coordinator: RamsesCoordinator | None = None
+        self._client: Any | None = None
         self._lock = asyncio.Lock()
         self._last_command_sent_times: dict[str, float] = {}  # When we sent a command
         self._last_device_reply_times: dict[str, float] = {}  # When device replied
@@ -108,6 +109,45 @@ class TransportMonitor:
             normalized_device_id,
         )
 
+    def _refresh_coordinator(self) -> None:
+        if not self._hass:
+            return
+
+        ramses_cc_data = self._hass.data.get("ramses_cc", {})
+        for coordinator_instance in ramses_cc_data.values():
+            if not hasattr(coordinator_instance, "client"):
+                continue
+            client = getattr(coordinator_instance, "client", None)
+            if client is None:
+                continue
+
+            self._coordinator = coordinator_instance
+            self._ensure_msg_handler(client)
+            return
+
+        self._coordinator = None
+        self._ensure_msg_handler(None)
+
+    def _ensure_msg_handler(self, client: Any | None) -> None:
+        if client is self._client:
+            return
+
+        if self._msg_handler_unsub:
+            try:
+                self._msg_handler_unsub()
+            except Exception:
+                pass
+            self._msg_handler_unsub = None
+
+        self._client = client
+
+        add_msg_handler = getattr(client, "add_msg_handler", None) if client else None
+        if callable(add_msg_handler):
+            self._msg_handler_unsub = add_msg_handler(self._handle_msg)
+            _LOGGER.debug(
+                "Transport monitor listening via ramses_cc client message handler"
+            )
+
     async def _device_timeout_handler(self, device_id: str) -> None:
         """Handle device timeout after 61s with no reply."""
         try:
@@ -128,6 +168,30 @@ class TransportMonitor:
                 device_id,
             )
             await self._notify_device_state_changed(device_id, False)
+
+    def mark_device_offline_immediate(self, device_id: str) -> None:
+        normalized_device_id = device_id.replace("_", ":")
+
+        old_state = self._device_states.get(normalized_device_id, True)
+        if not old_state:
+            return
+
+        self._device_states[normalized_device_id] = False
+
+        existing_task = self._device_timeout_tasks.pop(normalized_device_id, None)
+        if existing_task and not existing_task.done():
+            existing_task.cancel()
+
+        _LOGGER.warning(
+            "Device %s marked offline immediately - command send failed",
+            normalized_device_id,
+        )
+
+        if self._hass:
+            self._hass.loop.call_soon_threadsafe(
+                self._hass.async_create_task,
+                self._notify_device_state_changed(normalized_device_id, False),
+            )
 
     async def _mark_device_online(self, device_id: str) -> None:
         """Mark a device as online and notify callbacks."""
@@ -158,6 +222,12 @@ class TransportMonitor:
         This marks the device online and cancels any pending timeout.
         """
         normalized_device_id = device_id.replace("_", ":")
+
+        self._refresh_coordinator()
+
+        if not self._is_transport_active():
+            return
+
         self._last_device_reply_times[normalized_device_id] = time.time()
 
         # Cancel timeout task since we got a reply
@@ -197,13 +267,7 @@ class TransportMonitor:
             self._hass = hass
 
             client = getattr(self._coordinator, "client", None)
-            add_msg_handler = getattr(client, "add_msg_handler", None)
-
-            if callable(add_msg_handler) and self._msg_handler_unsub is None:
-                self._msg_handler_unsub = add_msg_handler(self._handle_msg)
-                _LOGGER.debug(
-                    "Transport monitor listening via ramses_cc client message handler"
-                )
+            self._ensure_msg_handler(client)
 
             if self._hass and not self._event_unsub:
                 self._event_unsub = self._hass.bus.async_listen(
@@ -247,6 +311,7 @@ class TransportMonitor:
             try:
                 await asyncio.sleep(self._check_interval)
                 # Just update global transport state
+                self._refresh_coordinator()
                 transport_active = self._is_transport_active()
                 self._transport_available = transport_active
 
@@ -256,11 +321,25 @@ class TransportMonitor:
                         _LOGGER.info("Global transport active")
                     else:
                         _LOGGER.warning("Global transport inactive")
+                        await self._mark_all_tracked_devices_offline()
                     last_transport_state = transport_active
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 _LOGGER.error("Error in transport monitor loop: %s", e)
+
+    async def _mark_all_tracked_devices_offline(self) -> None:
+        tracked_device_ids = {
+            device_id
+            for device_id, _ in self._callbacks.values()
+            if device_id is not None
+        }
+
+        for device_id in tracked_device_ids:
+            existing_task = self._device_timeout_tasks.pop(device_id, None)
+            if existing_task and not existing_task.done():
+                existing_task.cancel()
+            await self._mark_device_offline(device_id)
 
     def _handle_ramses_cc_message(self, event: Event) -> None:
         """Handle ramses_cc_message events to track device replies.
@@ -269,6 +348,7 @@ class TransportMonitor:
             event: Home Assistant event containing ramses_cc_message data
         """
         try:
+            self._refresh_coordinator()
             data = event.data
             if not isinstance(data, dict):
                 return
@@ -278,9 +358,14 @@ class TransportMonitor:
 
             # Only process messages FROM devices we're monitoring, not TO them
             if isinstance(src, str) and ":" in src:
-                # Check if we have a timer running for this device
                 normalized_src = src.replace("_", ":")
-                if normalized_src in self._device_timeout_tasks:
+                tracked_device_ids = {
+                    device_id
+                    for device_id, _ in self._callbacks.values()
+                    if device_id is not None
+                }
+
+                if normalized_src in tracked_device_ids:
                     _LOGGER.debug("Message FROM %s (TO %s) - processing", src, dst)
                     self.update_device_message_received(src)
         except Exception as e:
@@ -289,26 +374,29 @@ class TransportMonitor:
     def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
         """Handle live ramses_cc client messages to track device replies."""
         try:
+            self._refresh_coordinator()
             src = getattr(getattr(msg, "src", None), "id", None)
             dst = getattr(getattr(msg, "dst", None), "id", None)
 
             if isinstance(src, str) and ":" in src:
                 normalized_src = src.replace("_", ":")
-                if normalized_src in self._device_timeout_tasks:
+                tracked_device_ids = {
+                    device_id
+                    for device_id, _ in self._callbacks.values()
+                    if device_id is not None
+                }
+
+                if normalized_src in tracked_device_ids:
                     _LOGGER.debug("Message FROM %s (TO %s) - processing", src, dst)
                     self.update_device_message_received(src)
         except Exception as e:
             _LOGGER.error("Error handling ramses_cc client message: %s", e)
 
     def _is_transport_active(self) -> bool:
-        if not self._coordinator or not self._coordinator.client:
+        if not self._coordinator or not getattr(self._coordinator, "client", None):
             return False
 
-        try:
-            transport = self._coordinator.client.transport
-            return hasattr(transport, "state") and transport.state.name != "Inactive"
-        except Exception:
-            return False
+        return True
 
     def is_device_available(self, device_id: str) -> bool:
         """Return whether a specific device is currently online.

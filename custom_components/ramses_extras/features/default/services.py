@@ -6,6 +6,7 @@ and other features (e.g. sending fan commands and managing 2411 parameters).
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import logging
 import time
@@ -46,43 +47,236 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         return normalized if normalized else None
 
     def _observed_command_from_packet(code: object, payload: object) -> str | None:
-        if not isinstance(code, str) or not isinstance(payload, str):
+        """Extract fan command from RAMSES packet.
+
+        Handles both raw hex payload strings and pre-parsed dict payloads.
+        """
+        _LOGGER.info(
+            "Packet parser: code=%s (type=%s), payload=%s (type=%s)",
+            code,
+            type(code).__name__,
+            payload,
+            type(payload).__name__,
+        )
+
+        if not isinstance(code, str):
+            _LOGGER.info("Parser rejected: code is not string")
             return None
 
         normalized_code = code.strip().upper()
+
+        # Handle dict payloads (from ramses_cc parsed messages)
+        if isinstance(payload, dict):
+            _LOGGER.info("Parser handling dict payload: %s", payload)
+            # For 22F1/22F3, look for fan_mode or similar keys
+            if normalized_code == "22F1":
+                fan_mode = (
+                    payload.get("fan_mode")
+                    or payload.get("FAN_MODE")
+                    or payload.get("mode")
+                    or payload.get("MODE")
+                )
+                mode_idx = payload.get("_mode_idx") or payload.get("_MODE_IDX")
+                if fan_mode is not None:
+                    fan_mode_s = str(fan_mode).strip().lower()
+                    mode_by_name = {
+                        "low": "fan_low",
+                        "medium": "fan_medium",
+                        "mid": "fan_medium",
+                        "high": "fan_high",
+                        "auto": "fan_auto",
+                        "away": "fan_away",
+                    }
+                    result = mode_by_name.get(fan_mode_s)
+                    if result:
+                        _LOGGER.info("Parser found command from fan_mode: %s", result)
+                        return result
+
+                    mode_by_idx = {
+                        "01": "fan_low",
+                        "02": "fan_medium",
+                        "03": "fan_high",
+                        "04": "fan_auto",
+                        "00": "fan_away",
+                    }
+                    result = mode_by_idx.get(str(fan_mode).strip())
+                    if result:
+                        _LOGGER.info("Parser found command from fan_mode: %s", result)
+                        return result
+
+                if mode_idx is not None:
+                    mode_by_idx = {
+                        "01": "fan_low",
+                        "02": "fan_medium",
+                        "03": "fan_high",
+                        "04": "fan_auto",
+                        "00": "fan_away",
+                    }
+                    result = mode_by_idx.get(str(mode_idx).strip())
+                    if result:
+                        _LOGGER.info("Parser found command from _mode_idx: %s", result)
+                        return result
+                # Also check for speed-related keys
+                speed = (
+                    payload.get("speed")
+                    or payload.get("SPEED")
+                    or payload.get("fan_speed")
+                    or payload.get("FAN_SPEED")
+                )
+                if speed:
+                    speed_map = {
+                        "low": "fan_low",
+                        "medium": "fan_medium",
+                        "high": "fan_high",
+                        "auto": "fan_auto",
+                        "away": "fan_away",
+                    }
+                    result = speed_map.get(str(speed).lower())
+                    if result:
+                        _LOGGER.info("Parser found command from speed: %s", result)
+                        return result
+            _LOGGER.info("Parser: no command found in dict payload")
+            return None
+
+        # Handle string payloads (raw hex)
+        if not isinstance(payload, str):
+            _LOGGER.info("Parser rejected: payload is not string or dict")
+            return None
+
         normalized_payload = payload.strip().upper()
+        _LOGGER.info("Parser string payload: '%s'", normalized_payload)
+
+        if normalized_payload.startswith("{") and normalized_payload.endswith("}"):
+            try:
+                parsed = ast.literal_eval(payload)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, dict):
+                return _observed_command_from_packet(code, parsed)
 
         if normalized_code == "22F1":
-            return {
+            # Payload format: 00 0X YY where X=speed (1-4), YY varies (04 or 07 seen)
+            if len(normalized_payload) >= 6:
+                speed_byte = normalized_payload[3:5]
+                _LOGGER.info("Parser extracted speed_byte: '%s'", speed_byte)
+                result = {
+                    "01": "fan_low",
+                    "02": "fan_medium",
+                    "03": "fan_high",
+                    "04": "fan_auto",
+                    "00": "fan_away",
+                }.get(speed_byte)
+                if result:
+                    _LOGGER.info("Parser found command from speed_byte: %s", result)
+                    return result
+                _LOGGER.info("Parser: speed_byte '%s' not in map", speed_byte)
+            else:
+                _LOGGER.info(
+                    "Parser: payload too short (%s < 6)", len(normalized_payload)
+                )
+            # Fallback to full payload match for backward compatibility
+            result = {
                 "000107": "fan_low",
                 "000207": "fan_medium",
                 "000307": "fan_high",
                 "000407": "fan_auto",
                 "000007": "fan_away",
+                "000104": "fan_low",
+                "000204": "fan_medium",
+                "000304": "fan_high",
+                "000404": "fan_auto",
+                "000004": "fan_away",
             }.get(normalized_payload)
+            if result:
+                _LOGGER.info("Parser found command from full match: %s", result)
+                return result
+            _LOGGER.info("Parser: no full payload match for '%s'", normalized_payload)
+            return None
 
         if normalized_code == "22F3":
-            return {
+            result = {
                 "00120F03040404": "fan_timer_15min",
                 "00121E03040404": "fan_timer_30min",
                 "00123C03040404": "fan_timer_60min",
             }.get(normalized_payload)
+            if result:
+                return result
 
+        _LOGGER.info("Parser: unhandled code %s", normalized_code)
         return None
 
     async def _async_apply_observed_remote_command(
-        device_id: str, command: str, source_id: str
+        device_id: str,
+        command: str,
+        source_id: str,
+        zone_id: str | None,
     ) -> None:
+        _LOGGER.info(
+            "REM command processing: device=%s command=%s rem=%s zone=%s",
+            device_id,
+            command,
+            source_id,
+            zone_id,
+        )
         arbiter = get_fan_speed_arbiter(hass)
+        demand_registry = get_zone_demand_registry(hass)
+
+        domain_data = hass.data.setdefault(DOMAIN, {})
+        release_handles: dict[str, asyncio.Handle] = domain_data.setdefault(
+            "_remote_override_release_handles", {}
+        )
+
+        def _cancel_remote_override_release() -> None:
+            handle = release_handles.pop(device_id, None)
+            if handle is not None and not handle.cancelled():
+                handle.cancel()
+
+        async def _async_release_remote_override() -> None:
+            _cancel_remote_override_release()
+            arbiter.clear_manual_override_state(device_id)
+            await arbiter.async_commit_state(device_id, apply=False)
+            _clear_rem_zone_demands()
+            coordinator = get_zone_coordinator(hass, device_id)
+            await coordinator.async_run_zone_actuation_cycle()
+            await _async_resume_feature_control(device_id)
+
+        def _schedule_remote_override_release(timeout_seconds: int = 60) -> None:
+            _cancel_remote_override_release()
+
+            def _callback() -> None:
+                hass.async_create_task(_async_release_remote_override())
+
+            release_handles[device_id] = hass.loop.call_later(
+                timeout_seconds,
+                _callback,
+            )
+
+        def _clear_rem_zone_demands() -> None:
+            for zid, sources in demand_registry.get_all_demands_for_fan(
+                device_id
+            ).items():
+                if DemandSource.REM in sources:
+                    demand_registry.clear_demand(device_id, zid, DemandSource.REM)
 
         if command == "fan_auto":
+            _cancel_remote_override_release()
             arbiter.set_extras_control_enabled(device_id, True)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id, apply=False)
+            _clear_rem_zone_demands()
+            coordinator = get_zone_coordinator(hass, device_id)
+            await coordinator.async_run_zone_actuation_cycle()
             await _async_resume_feature_control(device_id)
             return
 
         if command in {"fan_low", "fan_medium", "fan_high"}:
+            _LOGGER.info(
+                "Applying REM speed command: %s for %s (zone=%s)",
+                command,
+                device_id,
+                zone_id,
+            )
+            _schedule_remote_override_release(60)
             arbiter.set_extras_control_enabled(device_id, True)
             arbiter.set_manual_override_state(
                 device_id,
@@ -92,12 +286,86 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 metadata={"origin": "remote"},
             )
             await arbiter.async_commit_state(device_id, apply=False)
+
+            _clear_rem_zone_demands()
+            if zone_id:
+                _LOGGER.info(
+                    "Setting zone demand for REM: %s:%s = True", device_id, zone_id
+                )
+                demand_registry.set_demand(
+                    device_id,
+                    zone_id,
+                    DemandSource.REM,
+                    True,
+                    metadata={"rem_id": source_id, "command": command},
+                )
+                coordinator = get_zone_coordinator(hass, device_id)
+                from ...framework.helpers.zones import get_zone_registry
+
+                zone_registry = get_zone_registry(hass)
+                zone_cfg = zone_registry.get_zone(device_id, zone_id)
+                _LOGGER.info(
+                    "Zone config lookup: %s:%s -> %s", device_id, zone_id, zone_cfg
+                )
+                if isinstance(zone_cfg, dict):
+                    zone_type = str(
+                        zone_cfg.get("type") or zone_cfg.get("source_type") or ""
+                    ).strip()
+                    inlet_entity = zone_cfg.get("inlet_valve_entity")
+                    outlet_entity = zone_cfg.get("outlet_valve_entity")
+                    min_position = zone_cfg.get("min_position")
+                    max_position = zone_cfg.get("max_position")
+                    actuation_priority = zone_cfg.get("actuation_priority")
+
+                    _LOGGER.info(
+                        "Configuring zone %s: type=%s inlet=%s outlet=%s min=%s max=%s",
+                        zone_id,
+                        zone_type,
+                        inlet_entity,
+                        outlet_entity,
+                        min_position,
+                        max_position,
+                    )
+
+                    coordinator.configure_zone(
+                        zone_id=zone_id,
+                        zone_type=zone_type or None,
+                        inlet_valve_entity=str(inlet_entity).strip()
+                        if isinstance(inlet_entity, str) and inlet_entity.strip()
+                        else None,
+                        outlet_valve_entity=str(outlet_entity).strip()
+                        if isinstance(outlet_entity, str) and outlet_entity.strip()
+                        else None,
+                        min_position=int(min_position)
+                        if isinstance(min_position, int)
+                        else None,
+                        max_position=int(max_position)
+                        if isinstance(max_position, int)
+                        else None,
+                        is_controllable=True,
+                        actuation_priority=int(actuation_priority)
+                        if isinstance(actuation_priority, int)
+                        else None,
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Zone %s:%s not found in registry, using bare config",
+                        device_id,
+                        zone_id,
+                    )
+                    coordinator.configure_zone(zone_id)
+                _LOGGER.info("Running zone actuation cycle for %s", device_id)
+                await coordinator.async_run_zone_actuation_cycle()
+            else:
+                _LOGGER.warning("No zone_id bound for REM command on %s", device_id)
             return
 
         if command == "fan_away" or command.startswith("fan_timer_"):
+            _cancel_remote_override_release()
             arbiter.set_extras_control_enabled(device_id, False)
             arbiter.clear_manual_override_state(device_id)
             await arbiter.async_commit_state(device_id, apply=False)
+            _clear_rem_zone_demands()
 
     async def _async_handle_observed_remote_packet(
         src: object,
@@ -106,12 +374,27 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         payload: object,
         verb: object = None,
     ) -> None:
+        _LOGGER.info(
+            "REM packet received: src=%s dst=%s code=%s payload=%s verb=%s",
+            src,
+            dst,
+            code,
+            payload,
+            verb,
+        )
         if isinstance(verb, str) and verb.strip().upper() == "RQ":
+            _LOGGER.debug("Ignoring RQ (request) packet")
             return
 
         normalized_src = _normalize_id(src)
         normalized_dst = _normalize_id(dst)
         command = _observed_command_from_packet(code, payload)
+        _LOGGER.info(
+            "REM packet parsed: src=%s dst=%s command=%s",
+            normalized_src,
+            normalized_dst,
+            command,
+        )
         if not normalized_src or not normalized_dst or not command:
             return
 
@@ -134,6 +417,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if not is_matched:
             return
 
+        bound_zone_id: str | None = None
+        for binding in registry.get_bindings_for_fan(normalized_dst):
+            if (
+                str(binding.get("rem_id") or "").replace("_", ":").strip()
+                != normalized_src
+            ):
+                continue
+            zone_candidate = str(binding.get("zone_id") or "").strip()
+            if zone_candidate:
+                bound_zone_id = zone_candidate
+            break
+
         domain_data = hass.data.setdefault(DOMAIN, {})
         recent = domain_data.setdefault("_fan_remote_last_seen", {})
         key = (normalized_dst, command)
@@ -147,6 +442,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             normalized_dst,
             command,
             normalized_src,
+            bound_zone_id,
         )
 
     def _handle_remote_event(event: object) -> None:
@@ -175,7 +471,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 src,
                 dst,
                 str(code) if code is not None else None,
-                str(payload) if payload is not None else None,
+                payload,
                 str(verb) if verb is not None else None,
             )
         )
@@ -793,8 +1089,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             ]  # "on" or "off" (can also use "open" or "closed")
 
             # Normalize state
-            is_ventilation_on = state.lower() in ("on", "open", "true", "yes", "1")
-            target_position = 100 if is_ventilation_on else 0
+            state_norm = str(state).lower().strip()
+            is_ventilation_on = state_norm in ("on", "open", "true", "yes", "1")
 
             coordinator = get_zone_coordinator(hass, fan_id)
             zone_config = coordinator.get_zone_config(zone_id)
@@ -809,6 +1105,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
             inlet_entity = zone_config.inlet_valve_entity
             outlet_entity = zone_config.outlet_valve_entity
+
+            if is_ventilation_on:
+                target_position = int(zone_config.max_position)
+            elif state_norm in ("min", "close", "closed", "off", "false", "no", "0"):
+                target_position = int(zone_config.min_position)
+            else:
+                target_position = int(zone_config.min_position)
 
             _LOGGER.info(
                 "Forcing zone %s:%s ventilation %s (position=%s)",

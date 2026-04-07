@@ -210,8 +210,7 @@ class SensorControlResolver:
             if not isinstance(item, dict):
                 continue
 
-            source_id = str(item.get("source_id") or "").strip()
-            area_id = str(item.get("area_id") or source_id or "Unnamed").strip()
+            area_id = str(item.get("area_id") or "").strip()
             temperature_entity = str(item.get("temperature_entity") or "").strip()
             humidity_entity = str(item.get("humidity_entity") or "").strip()
             co2_entity = str(item.get("co2_entity") or "").strip()
@@ -230,10 +229,9 @@ class SensorControlResolver:
                 not co2_entity or self._entity_exists(co2_entity)
             )
             humidity_valid = (not area_enabled) or (temp_valid and humidity_valid)
-            valid = bool(source_id) and humidity_valid and co2_valid
+            valid = bool(area_id) and humidity_valid and co2_valid
 
             resolved_item: dict[str, Any] = {
-                "source_id": source_id,
                 "area_id": area_id,
                 "enabled": area_enabled,
                 "temperature_entity": temperature_entity or None,

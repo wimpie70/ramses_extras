@@ -37,6 +37,11 @@ from custom_components.ramses_extras.framework.helpers.fan_speed_arbiter import 
 from custom_components.ramses_extras.framework.helpers.ramses_commands import (
     RamsesCommands,
 )
+from custom_components.ramses_extras.framework.helpers.zone_demand import (
+    DemandSource,
+    get_zone_demand_registry,
+)
+from custom_components.ramses_extras.framework.helpers.zones import get_zone_registry
 
 from .config import HumidityConfig
 from .const import FEATURE_DEFINITION
@@ -77,6 +82,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self.config = HumidityConfig(hass, config_entry)
         self.services = HumidityServices(hass, config_entry)
 
+        self._zone_demand_registry = get_zone_demand_registry(hass)
+        self._humidity_demand_zones: dict[str, set[str]] = {}
+
         # Initialize Ramses commands for direct device control
         self.ramses_commands = RamsesCommands(hass)
         self.fan_speed_arbiter = get_fan_speed_arbiter(hass)
@@ -95,6 +103,9 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         self._active_indoor_spikes: dict[str, dict[str, Any]] = {}
         self._indoor_spike_check_handles: dict[str, Callable[[], None]] = {}
 
+        self._balance_switch_retry_handles: dict[str, asyncio.Handle] = {}
+        self._balance_switch_retry_attempts: dict[str, int] = {}
+
         # Performance tracking
         self._decision_count = 0
         self._active_cycles = 0
@@ -105,6 +116,51 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         _LOGGER.info("Enhanced Humidity Control automation initialized")
         _LOGGER.info("Feature enabled status: %s", self._is_feature_enabled())
+
+    def _cancel_balance_switch_retry(self, device_id: str) -> None:
+        handle = self._balance_switch_retry_handles.pop(device_id, None)
+        if handle is not None:
+            handle.cancel()
+        self._balance_switch_retry_attempts.pop(device_id, None)
+
+    def _schedule_balance_switch_retry(self, device_id: str) -> None:
+        attempts = int(self._balance_switch_retry_attempts.get(device_id, 0)) + 1
+        self._balance_switch_retry_attempts[device_id] = attempts
+
+        delay_seconds = min(2**attempts, 30)
+
+        existing = self._balance_switch_retry_handles.get(device_id)
+        if existing is not None and not existing.cancelled():
+            return
+
+        def _callback() -> None:
+            self._balance_switch_retry_handles.pop(device_id, None)
+            self.hass.async_create_task(self._async_retry_balance_switch(device_id))
+
+        self._balance_switch_retry_handles[device_id] = self.hass.loop.call_later(
+            delay_seconds,
+            _callback,
+        )
+
+    async def _async_retry_balance_switch(self, device_id: str) -> None:
+        try:
+            entity_states = await self._get_device_entity_states(device_id)
+        except ValueError as err:
+            msg = str(err)
+            if "state unavailable" in msg or "not found" in msg:
+                _LOGGER.debug(
+                    "Balance switch retry for %s deferred (entities not ready): %s",
+                    device_id,
+                    err,
+                )
+                self._schedule_balance_switch_retry(device_id)
+                return
+            _LOGGER.error("Balance switch retry failed for %s: %s", device_id, err)
+            self._cancel_balance_switch_retry(device_id)
+            return
+
+        self._cancel_balance_switch_retry(device_id)
+        await self._process_automation_logic(device_id, entity_states)
 
     def _is_feature_enabled(self) -> bool:
         """Check if humidity_control feature is enabled in config."""
@@ -587,24 +643,23 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     async def _on_homeassistant_started(self, event: Event | None) -> None:
         await super()._on_homeassistant_started(event)
         if not self._automation_active or not self._is_feature_enabled():
+            for active_device_id in list(self._humidity_demand_zones):
+                self._sync_zone_demands(active_device_id, None)
             return
         await self._reconcile_startup_states()
 
     async def stop(self) -> None:
-        """Stop the humidity control automation.
-
-        Shuts down automation and cleans up resources.
-        """
         _LOGGER.info("Stopping humidity control automation")
 
         self._automation_active = False
         for device_id in list(self._active_area_spikes):
             self._clear_active_area_spike(device_id)
 
-        # Clear fan speed demands for all devices
+        for device_id in list(self._humidity_demand_zones):
+            self._sync_zone_demands(device_id, None)
+
         devices_with_demands = self.fan_speed_arbiter.get_all_devices_with_demands()
         for device_id in devices_with_demands:
-            # Check if this device has humidity control demands
             demands = self.fan_speed_arbiter.get_active_demands(device_id)
             humidity_demands = [d for d in demands if d.feature_id == self.feature_id]
             if humidity_demands:
@@ -637,9 +692,11 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             self.is_device_transport_available(device_id),
         )
         if not self._automation_active or not self._is_feature_enabled():
+            self._sync_zone_demands(device_id, None)
             return
 
         if self.fan_speed_arbiter.is_manual_override_active(device_id):
+            self._sync_zone_demands(device_id, None)
             _LOGGER.debug(
                 "Manual override active - skipping humidity control logic for %s",
                 device_id,
@@ -647,6 +704,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return
 
         if not self.fan_speed_arbiter.is_extras_control_enabled(device_id):
+            self._sync_zone_demands(device_id, None)
             _LOGGER.debug(
                 "Extras control disabled - skipping humidity control logic for %s",
                 device_id,
@@ -655,6 +713,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         # Check transport availability before processing
         if not self.is_device_transport_available(device_id):
+            self._sync_zone_demands(device_id, None)
             _LOGGER.debug(
                 "Transport unavailable - skipping humidity control logic for %s",
                 device_id,
@@ -685,6 +744,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 # This ensures fan returns to AUTO even if dehum wasn't active
                 await self._stop_dehumidification_without_switch_change(device_id)
                 self._clear_active_area_spike(device_id)
+                self._sync_zone_demands(device_id, None)
                 # Just update binary sensor to reflect inactive state
                 await self._set_indicator_off(device_id)
                 return
@@ -711,6 +771,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 offset,
             )
 
+            self._sync_zone_demands(device_id, decision)
+
             # Apply decision
             if decision["action"] == "dehumidify":
                 # Activate dehumidification: set fan HIGH, binary sensor ON
@@ -723,6 +785,83 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
         except Exception as e:
             _LOGGER.error("Automation logic error: %s", e)
+
+    def _sync_zone_demands(
+        self, device_id: str, decision: dict[str, Any] | None
+    ) -> None:
+        new_zones: set[str] = set()
+        triggers: Any = None
+        if isinstance(decision, dict):
+            triggers = decision.get("active_triggers")
+
+        triggers_list: list[dict[str, Any]] = []
+        if isinstance(triggers, list):
+            zone_ids_from_triggers: set[str] = set()
+            for item in triggers:
+                if not isinstance(item, dict):
+                    continue
+                triggers_list.append(item)
+                zone_id = str(item.get("zone_id") or "").strip()
+                if zone_id:
+                    zone_ids_from_triggers.add(zone_id)
+
+            if zone_ids_from_triggers:
+                new_zones = zone_ids_from_triggers
+            elif triggers:
+                zone_registry = get_zone_registry(self.hass)
+                all_zones = zone_registry.get_zones_for_fan(device_id)
+                for zone in all_zones:
+                    zid = str(zone.get("zone_id") or "").strip()
+                    if zid:
+                        new_zones.add(zid)
+
+        prev_zones = self._humidity_demand_zones.get(device_id, set())
+        for zone_id in sorted(prev_zones - new_zones):
+            self._zone_demand_registry.clear_demand(
+                device_id, zone_id, DemandSource.HUMIDITY
+            )
+
+        if not new_zones:
+            self._humidity_demand_zones.pop(device_id, None)
+            return
+
+        metadata_base: dict[str, Any] = {}
+        if isinstance(decision, dict):
+            metadata_base["control_mode"] = decision.get("control_mode")
+            metadata_base["action"] = decision.get("action")
+
+        for item in triggers_list:
+            metadata = {
+                **metadata_base,
+                "area_id": item.get("area_id"),
+                "label": item.get("label"),
+                "rise_percent": item.get("rise_percent"),
+                "current_rh": item.get("current_rh"),
+                "current_abs": item.get("current_abs"),
+                "baseline_abs": item.get("baseline_abs"),
+            }
+
+            zone_id = str(item.get("zone_id") or "").strip()
+            if zone_id:
+                self._zone_demand_registry.set_demand(
+                    device_id,
+                    zone_id,
+                    DemandSource.HUMIDITY,
+                    True,
+                    metadata=metadata,
+                )
+                continue
+
+            for zid in sorted(new_zones):
+                self._zone_demand_registry.set_demand(
+                    device_id,
+                    zid,
+                    DemandSource.HUMIDITY,
+                    True,
+                    metadata=metadata,
+                )
+
+        self._humidity_demand_zones[device_id] = new_zones
 
     async def _reconcile_startup_states(self) -> None:
         device_ids: set[str] = set()
@@ -993,7 +1132,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             )
             primary_spike = combined_spikes[0]
             trigger_labels = [
-                str(item.get("label") or item.get("source_id"))
+                str(item.get("label") or item.get("area_id"))
                 for item in combined_spikes
             ]
             decision = {
@@ -1008,7 +1147,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 ],
                 "values": {
                     **decision["values"],
-                    "active_area_sensor": primary_spike["source_id"],
+                    "active_area_sensor": primary_spike.get("area_id"),
                     "active_area_abs": primary_spike["current_abs"],
                     "active_area_baseline_abs": primary_spike["baseline_abs"],
                     "active_area_rise_percent": primary_spike["rise_percent"],
@@ -1089,6 +1228,23 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                         entity_states.get("dehumidify"),
                     )
                     await self._process_automation_logic(device_id, entity_states)
+                    self._cancel_balance_switch_retry(device_id)
+                except ValueError as err:
+                    msg = str(err)
+                    if "state unavailable" in msg or "not found" in msg:
+                        _LOGGER.debug(
+                            "Balance switch change for %s deferred "
+                            "(entities not ready): %s",
+                            device_id,
+                            err,
+                        )
+                        self._schedule_balance_switch_retry(device_id)
+                    else:
+                        _LOGGER.error(
+                            "Error processing balance switch change for %s: %s",
+                            device_id,
+                            err,
+                        )
                 except Exception as e:
                     _LOGGER.error(
                         "Error processing balance switch change for %s: %s",
@@ -1306,6 +1462,100 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         except Exception as e:
             _LOGGER.error("Failed to update binary sensor for %s: %s", device_id, e)
 
+    def _build_indicator_attributes(
+        self, device_id: str, decision: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        attrs: dict[str, Any] = {}
+
+        if decision is not None:
+            action = decision.get("action")
+            if isinstance(action, str):
+                attrs["action"] = action
+
+            control_mode = decision.get("control_mode")
+            if isinstance(control_mode, str):
+                attrs["control_mode"] = control_mode
+
+            reason = decision.get("reason")
+            if isinstance(reason, str):
+                attrs["reason"] = reason
+
+            confidence = decision.get("confidence")
+            if isinstance(confidence, (int, float)):
+                attrs["confidence"] = float(confidence)
+
+            diff = decision.get("difference")
+            if isinstance(diff, (int, float)):
+                attrs["difference"] = float(diff)
+
+            # Add active trigger details if present
+            active_trigger = decision.get("active_trigger")
+            if isinstance(active_trigger, dict):
+                attrs["active_trigger_area_id"] = active_trigger.get("area_id")
+                attrs["active_trigger_label"] = active_trigger.get("label")
+                attrs["active_trigger_rise_percent"] = active_trigger.get(
+                    "rise_percent"
+                )
+
+            # Use active_triggers from decision if available
+            decision_triggers = decision.get("active_triggers")
+            if decision_triggers and isinstance(decision_triggers, list):
+                trigger_labels = [
+                    self._format_active_trigger_label(t) for t in decision_triggers
+                ]
+                attrs["active_triggers"] = ", ".join(trigger_labels)
+                attrs["active_trigger_labels"] = trigger_labels
+                attrs["active_trigger_labels_text"] = ", ".join(trigger_labels)
+                # Set next check interval from the first trigger
+                if decision_triggers:
+                    attrs["next_check_interval_minutes"] = decision_triggers[0].get(
+                        "check_interval_minutes", 1
+                    )
+
+        # If no decision triggers, check active area spikes
+        if not attrs.get("active_triggers"):
+            active_triggers = [
+                self._format_active_trigger_label(item)
+                for item in self._get_active_area_spikes(device_id)
+            ]
+            if active_triggers:
+                attrs["active_triggers"] = ", ".join(active_triggers)
+                attrs["active_trigger_labels"] = active_triggers
+                attrs["active_trigger_labels_text"] = ", ".join(active_triggers)
+                # Set next check interval from the first trigger
+                first_trigger = (
+                    self._get_active_area_spikes(device_id)[0]
+                    if self._get_active_area_spikes(device_id)
+                    else None
+                )
+                if first_trigger:
+                    attrs["next_check_interval_minutes"] = first_trigger.get(
+                        "check_interval_minutes", 1
+                    )
+                    # Set active_trigger details from the first area spike
+                    attrs["active_trigger_area_id"] = first_trigger.get("area_id")
+                    attrs["active_trigger_label"] = first_trigger.get("label")
+                    attrs["active_trigger_rise_percent"] = first_trigger.get(
+                        "rise_percent"
+                    )
+                # Override control_mode for active area spikes
+                attrs["control_mode"] = "spike_boost"
+
+        # Check for active indoor spike if no decision active_trigger
+        if not attrs.get("active_trigger_area_id"):
+            indoor_spike = self._active_indoor_spikes.get(device_id)
+            if indoor_spike:
+                attrs["active_trigger_area_id"] = indoor_spike.get("area_id")
+                attrs["active_trigger_label"] = indoor_spike.get("label")
+                attrs["active_trigger_rise_percent"] = indoor_spike.get("rise_percent")
+                attrs["next_check_interval_minutes"] = indoor_spike.get(
+                    "check_interval_minutes", 5
+                )
+                # Override control_mode for indoor spike
+                attrs["control_mode"] = "spike_boost"
+
+        return attrs
+
     def _get_area_sensor_states(self, device_id: str) -> list[dict[str, Any]]:
         sensor_ctx = self._latest_sensor_control_context.get(device_id) or {}
         area_sensors = sensor_ctx.get("area_sensors") or []
@@ -1388,13 +1638,13 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         trim_before = now - max_window_seconds - 60
 
         for item in area_sensor_states:
-            source_id = str(item.get("source_id") or "").strip()
+            area_id = str(item.get("area_id") or "").strip()
             current_abs = item.get("current_abs")
-            if not source_id or current_abs is None:
+            if not area_id or current_abs is None:
                 continue
-            source_history = device_history.setdefault(source_id, [])
+            source_history = device_history.setdefault(area_id, [])
             source_history.append({"ts": now, "abs": float(current_abs)})
-            device_history[source_id] = [
+            device_history[area_id] = [
                 entry for entry in source_history if entry["ts"] >= trim_before
             ]
 
@@ -1411,14 +1661,14 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         device_history = self._area_history.get(device_id, {})
 
         for item in area_sensor_states:
-            source_id = str(item.get("source_id") or "").strip()
-            if not source_id or not bool(item.get("enabled", True)):
+            area_id = str(item.get("area_id") or "").strip()
+            if not area_id or not bool(item.get("enabled", True)):
                 continue
 
             current_abs = item.get("current_abs")
             if current_abs is None:
                 continue
-            history = device_history.get(source_id, [])
+            history = device_history.get(area_id, [])
             if not history:
                 continue
 
@@ -1445,7 +1695,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 _LOGGER.debug(
                     "Ignoring area spike candidate for %s/%s: missing current RH",
                     device_id,
-                    source_id,
+                    area_id,
                 )
                 continue
             if float(current_rh) <= max_humidity:
@@ -1455,7 +1705,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                         "<= max %.1f%%"
                     ),
                     device_id,
-                    source_id,
+                    area_id,
                     float(current_rh),
                     max_humidity,
                 )
@@ -1463,8 +1713,8 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
 
             spikes.append(
                 {
-                    "source_id": source_id,
-                    "label": str(item.get("label") or source_id),
+                    "area_id": area_id,
+                    "label": str(item.get("label") or area_id),
                     "baseline_abs": baseline_abs,
                     "current_abs": float(current_abs),
                     "current_rh": float(current_rh),
@@ -1517,7 +1767,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         return []
 
     def _format_active_trigger_label(self, trigger: dict[str, Any]) -> str:
-        label = str(trigger.get("label") or trigger.get("source_id") or "Unknown")
+        label = str(trigger.get("label") or trigger.get("area_id") or "Unknown")
         current_rh = trigger.get("current_rh")
         if current_rh is None:
             return label
@@ -1535,6 +1785,10 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
         else:
             self._active_area_spikes.pop(device_id, None)
 
+    def _clear_active_area_spike(self, device_id: str) -> None:
+        self._active_area_spikes.pop(device_id, None)
+        self._cancel_area_spike_recheck(device_id)
+
     def _merge_area_spikes(
         self,
         active_spikes: list[dict[str, Any]],
@@ -1542,15 +1796,15 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
     ) -> list[dict[str, Any]]:
         merged: dict[str, dict[str, Any]] = {}
         for item in [*active_spikes, *detected_spikes]:
-            source_id = str(item.get("source_id") or "").strip()
-            if not source_id:
+            area_id = str(item.get("area_id") or "").strip()
+            if not area_id:
                 continue
-            existing = merged.get(source_id)
+            existing = merged.get(area_id)
             if existing is None or (
                 float(item.get("rise_percent") or 0.0)
                 >= float(existing.get("rise_percent") or 0.0)
             ):
-                merged[source_id] = item
+                merged[area_id] = item
 
         return sorted(
             merged.values(),
@@ -1646,7 +1900,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return None
 
         return {
-            "source_id": "indoor_humidity",
+            "area_id": "indoor_humidity",
             "label": "Indoor Humidity",
             "baseline_abs": baseline_abs,
             "current_abs": float(indoor_abs),
@@ -1769,12 +2023,12 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return retained
 
         for active_spike in active_spikes:
-            source_id = active_spike.get("source_id")
+            area_id = active_spike.get("area_id")
             matching_sensor = next(
                 (
                     item
                     for item in area_sensor_states
-                    if item.get("source_id") == source_id
+                    if (item.get("area_id")) == area_id
                 ),
                 None,
             )
@@ -1789,7 +2043,7 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
                 _LOGGER.debug(
                     "Clearing active area spike for %s/%s: RH %.1f%% <= max %.1f%%",
                     device_id,
-                    source_id,
+                    area_id,
                     float(current_rh),
                     max_humidity,
                 )
@@ -1829,14 +2083,14 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             "reasoning": [
                 "Active area spikes remain above recovery target: "
                 + ", ".join(
-                    str(item.get("label") or item.get("source_id")) for item in retained
+                    str(item.get("label") or item.get("area_id")) for item in retained
                 )
             ],
             "values": {
                 "indoor_abs": indoor_abs,
                 "outdoor_abs": outdoor_abs,
                 "offset": offset,
-                "active_area_sensor": primary_spike["source_id"],
+                "active_area_sensor": primary_spike.get("area_id"),
                 "active_area_abs": current_abs,
                 "active_area_baseline_abs": float(
                     primary_spike.get("baseline_abs") or 0.0
@@ -1883,102 +2137,6 @@ class HumidityAutomationManager(ExtrasBaseAutomation):
             return
 
         await self._process_automation_logic(device_id, entity_states)
-
-    def _clear_active_area_spike(self, device_id: str) -> None:
-        self._set_active_area_spikes(device_id, [])
-        self._cancel_area_spike_recheck(device_id)
-
-    def _build_indicator_attributes(
-        self, device_id: str, decision: dict[str, Any] | None
-    ) -> dict[str, Any]:
-        attrs: dict[str, Any] = {
-            "control_mode": "idle",
-            "active_trigger_source_id": None,
-            "active_trigger_label": None,
-            "active_trigger_source_ids": [],
-            "active_trigger_labels": [],
-            "active_trigger_labels_text": None,
-            "active_trigger_abs_humidity": None,
-            "active_trigger_baseline_abs_humidity": None,
-            "active_trigger_rise_percent": None,
-            "next_check_interval_minutes": None,
-        }
-        if not decision:
-            return attrs
-
-        attrs["control_mode"] = decision.get("control_mode", "idle")
-        active_trigger = decision.get("active_trigger")
-        active_triggers_raw = decision.get("active_triggers")
-        active_triggers = (
-            [item for item in active_triggers_raw if isinstance(item, dict)]
-            if isinstance(active_triggers_raw, list)
-            else []
-        )
-        if isinstance(active_trigger, dict):
-            attrs["active_trigger_source_id"] = active_trigger.get("source_id")
-            attrs["active_trigger_label"] = active_trigger.get("label")
-            attrs["active_trigger_abs_humidity"] = active_trigger.get("current_abs")
-            attrs["active_trigger_baseline_abs_humidity"] = active_trigger.get(
-                "baseline_abs"
-            )
-            attrs["active_trigger_rise_percent"] = active_trigger.get("rise_percent")
-            attrs["next_check_interval_minutes"] = active_trigger.get(
-                "check_interval_minutes"
-            )
-        elif self._active_indoor_spikes.get(device_id):
-            # Check for active indoor spike first
-            active_spike = self._active_indoor_spikes.get(device_id) or {}
-            attrs["control_mode"] = "spike_boost"
-            attrs["active_trigger_source_id"] = active_spike.get("source_id")
-            attrs["active_trigger_label"] = active_spike.get("label")
-            attrs["active_trigger_abs_humidity"] = active_spike.get("current_abs")
-            attrs["active_trigger_baseline_abs_humidity"] = active_spike.get(
-                "baseline_abs"
-            )
-            attrs["active_trigger_rise_percent"] = active_spike.get("rise_percent")
-            attrs["next_check_interval_minutes"] = active_spike.get(
-                "check_interval_minutes"
-            )
-        elif self._get_active_area_spikes(device_id):
-            active_spike = self._get_active_area_spikes(device_id)[0]
-            attrs["control_mode"] = "spike_boost"
-            attrs["active_trigger_source_id"] = active_spike.get("source_id")
-            attrs["active_trigger_label"] = active_spike.get("label")
-            attrs["active_trigger_abs_humidity"] = active_spike.get("current_abs")
-            attrs["active_trigger_baseline_abs_humidity"] = active_spike.get(
-                "baseline_abs"
-            )
-            attrs["active_trigger_rise_percent"] = active_spike.get("rise_percent")
-            attrs["next_check_interval_minutes"] = active_spike.get(
-                "check_interval_minutes"
-            )
-
-        if not active_triggers:
-            # Check for indoor spike first, then area spikes
-            indoor_spike = self._active_indoor_spikes.get(device_id)
-            if indoor_spike:
-                active_triggers = [indoor_spike]
-            else:
-                active_triggers = self._get_active_area_spikes(device_id)
-
-        if active_triggers:
-            attrs["active_trigger_source_ids"] = [
-                item.get("source_id")
-                for item in active_triggers
-                if item.get("source_id")
-            ]
-            attrs["active_trigger_labels"] = [
-                self._format_active_trigger_label(item)
-                for item in active_triggers
-                if item.get("label") or item.get("source_id")
-            ]
-            attrs["active_trigger_labels_text"] = ", ".join(
-                str(item) for item in attrs["active_trigger_labels"]
-            )
-            attrs["next_check_interval_minutes"] = min(
-                int(item.get("check_interval_minutes") or 1) for item in active_triggers
-            )
-        return attrs
 
     # Public API methods
     async def async_set_min_humidity(self, device_id: str, value: float) -> bool:

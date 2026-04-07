@@ -30,10 +30,10 @@ touch features/co2_control/platforms/{__init__.py,sensor.py,switch.py,number.py,
 
 **Key tasks:**
 
-- [ ] Define `FEATURE_DEFINITION` dict in `const.py`
-- [ ] Define switch/number/binary_sensor entity configs
-- [ ] Create zone data structures
-- [ ] Register feature in `const.py` AVAILABLE_FEATURES
+- [x] Define `FEATURE_DEFINITION` dict in `const.py`
+- [x] Define switch/number/binary_sensor entity configs
+- [x] Create zone data structures
+- [x] Register feature in `const.py` AVAILABLE_FEATURES
 
 ---
 
@@ -76,8 +76,8 @@ updated_area_sensor: dict[str, Any] = {
 - [x] Add `co2_entity` field to area sensor schema
 - [x] Add `co2_threshold` field to area sensor schema
 - [x] Update `_describe_area_sensor` to show CO2 info
-- [ ] Update resolver to handle area CO2 entities
-- [ ] Update CO2 automation to read area sensors
+- [x] Update resolver to handle area CO2 entities
+- [x] Update CO2 automation to read area sensors
 
 ---
 
@@ -134,11 +134,11 @@ class HumidityAutomationManager:
 
 **Key tasks:**
 
-- [ ] Implement CO2 threshold monitoring
-- [ ] Add zone-level trigger detection
-- [ ] Create priority coordination methods
-- [ ] Add control pause/resume logic
-- [ ] Test priority handoff
+- [x] Implement CO2 threshold monitoring
+- [x] Add zone-level trigger detection
+- [x] Create priority coordination methods
+- [x] Add control pause/resume logic
+- [x] Test priority handoff
 
 ---
 
@@ -163,11 +163,11 @@ class HumidityAutomationManager:
 
 **Key tasks:**
 
-- [ ] Implement switch entity for CO2 control toggle
-- [ ] Implement number entities for thresholds
-- [ ] Implement binary sensor for active state
-- [ ] Add entity registration in **init**.py
-- [ ] Test entity creation and state updates
+- [x] Implement switch entity for CO2 control toggle
+- [x] Implement number entities for thresholds
+- [x] Implement binary sensor for active state
+- [x] Add entity registration in **init**.py
+- [x] Test entity creation and state updates
 
 ---
 
@@ -211,11 +211,11 @@ class HumidityAutomationManager:
 
 **Key tasks:**
 
-- [ ] Create config flow step handlers
-- [ ] Add sensor entity selection UI
-- [ ] Implement zone configuration UI
-- [ ] Add validation logic
-- [ ] Test config persistence
+- [x] Create config flow step handlers
+- [x] Add sensor entity selection UI
+- [x] Implement zone configuration UI
+- [x] Add validation logic
+- [x] Test config persistence
 
 ---
 
@@ -271,9 +271,9 @@ if (item.co2Value !== null) {
 - [x] Update Balance triggers to show temp, humid, and CO2 per area
 - [x] Update CO2 zones to show area sensors with CO2 enabled
 - [x] Display unified status: Balance status, CO2 status, areas, zone status
-- [ ] Implement trigger highlighting for area sensors
-- [ ] Implement trigger highlighting for internal device sensors
-- [ ] Add real-time CO2 value updates
+- [x] Implement trigger highlighting for area sensors
+- [x] Implement trigger highlighting for internal device sensors
+- [x] Add real-time CO2 value updates
 
 ---
 
@@ -305,11 +305,11 @@ WS_UPDATE_ZONE_CONFIG = "ramses_extras/co2/update_zone"
 
 **Key tasks:**
 
-- [ ] Implement service handlers
-- [ ] Register services with HA
-- [ ] Implement WebSocket commands
-- [ ] Add real-time state updates
-- [ ] Test service calls from UI
+- [x] Implement service handlers
+- [x] Register services with HA
+- [x] Implement WebSocket commands
+- [x] Add real-time state updates
+- [x] Test service calls from UI
 
 ---
 
@@ -361,12 +361,12 @@ class CO2Zone:
 
 **Key tasks:**
 
-- [ ] Implement zone tracking logic
-- [ ] Add multi-sensor monitoring
-- [ ] Create trigger detection per zone
-- [ ] Add fan speed calculation based on zones
-- [ ] Prepare valve entity placeholders
-- [ ] Document valve integration points
+- [x] Implement zone tracking logic
+- [x] Add multi-sensor monitoring
+- [x] Create trigger detection per zone
+- [x] Add fan speed calculation based on zones
+- [x] Prepare valve entity placeholders
+- [x] Document valve integration points
 
 ---
 
@@ -381,12 +381,12 @@ class CO2Zone:
 
 **Test coverage:**
 
-- [ ] CO2 threshold detection
-- [ ] Priority coordination with humidity
-- [ ] Zone manager multi-sensor handling
-- [ ] Config flow validation
-- [ ] UI state updates
-- [ ] Service call handling
+- [x] CO2 threshold detection
+- [x] Priority coordination with humidity
+- [x] Zone manager multi-sensor handling
+- [x] Config flow validation
+- [x] UI state updates
+- [x] Service call handling
 
 **9.2 Documentation**
 
@@ -398,11 +398,11 @@ class CO2Zone:
 
 **Key tasks:**
 
-- [ ] Write unit tests for automation
-- [ ] Write integration tests
-- [ ] Test CO2 + humidity interaction
-- [ ] Write user guide
-- [ ] Document API and services
+- [x] Write unit tests for automation
+- [x] Write integration tests
+- [x] Test CO2 + humidity interaction
+- [x] Write user guide
+- [x] Document API and services
 - [ ] Update architecture docs
 
 **9.3 Wiki & README Updates**
@@ -448,37 +448,37 @@ class CO2Zone:
 
 ### Core System
 
-- [ ] Add `co2_control` to `AVAILABLE_FEATURES` in main `const.py`
-- [ ] Update `services.yaml` with CO2 services
-- [ ] Update main `config_flow.py` to include CO2 steps
-- [ ] Register CO2 WebSocket commands in `websocket_integration.py`
+- [x] Add `co2_control` to `AVAILABLE_FEATURES` in main `const.py`
+- [x] Update `services.yaml` with CO2 services
+- [x] Update main `config_flow.py` to include CO2 steps
+- [x] Register CO2 WebSocket commands in `websocket_integration.py`
 
 ### Sensor Control
 
-- [ ] Add CO2 metrics to `INTERNAL_SENSOR_MAPPINGS`
-- [ ] Update `SensorControlResolver` for CO2
-- [ ] Add CO2 to config flow sensor selection
+- [x] Add CO2 metrics to `INTERNAL_SENSOR_MAPPINGS`
+- [x] Update `SensorControlResolver` for CO2
+- [x] Add CO2 to config flow sensor selection
 
 ### Humidity Control
 
-- [ ] Add priority coordination methods
-- [ ] Add reference to CO2 manager
-- [ ] Implement pause/resume logic
-- [ ] Test priority handoff
+- [x] Add priority coordination methods
+- [x] Add reference to CO2 manager
+- [x] Implement pause/resume logic
+- [x] Test priority handoff
 
 ### HVAC Fan Card
 
-- [ ] Add CO2 sensor display panel
-- [ ] Add CO2 control button (4th button)
-- [ ] Implement CO2 message handlers
-- [ ] Add CO2 state change listeners
-- [ ] Update card styles for 4-column layout
+- [x] Add CO2 sensor display panel
+- [x] Add CO2 control button (4th button)
+- [x] Implement CO2 message handlers
+- [x] Add CO2 state change listeners
+- [x] Update card styles for 4-column layout
 
 ### Translations
 
-- [ ] Add English translations (`en.json`)
-- [ ] Add Dutch translations (`nl.json`)
-- [ ] Update card translations
+- [x] Add English translations (`en.json`)
+- [x] Add Dutch translations (`nl.json`)
+- [x] Update card translations
 
 ---
 

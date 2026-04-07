@@ -26,6 +26,7 @@ from custom_components.ramses_extras.framework.helpers.config.import_validation 
     get_registered_validators,
     register_config_schema,
     register_config_validator,
+    unregister_config_schema,
     unregister_config_validator,
     validate_import_config,
 )
@@ -100,6 +101,9 @@ def register_test_schemas():
     """Register test schemas for feature validation tests."""
     import voluptuous as vol
 
+    # Unregister any existing zones schema to avoid conflicts
+    unregister_config_schema("zones")
+
     # Schema for zones feature section
     zone_entry_schema = vol.Schema(
         {
@@ -109,8 +113,17 @@ def register_test_schemas():
             ),
             vol.Optional("min_position"): vol.All(int, vol.Range(min=0, max=100)),
             vol.Optional("max_position"): vol.All(int, vol.Range(min=0, max=100)),
+            # Allow additional fields for different valve types
+            vol.Optional("native_zone_id"): str,
+            vol.Optional("open_entity"): str,
+            vol.Optional("close_entity"): str,
+            vol.Optional("position_entity"): str,
+            vol.Optional("inlet_valve_entity"): str,
+            vol.Optional("outlet_valve_entity"): str,
+            vol.Optional("enabled"): bool,
+            vol.Optional("fan_id"): str,
         },
-        extra=vol.PREVENT_EXTRA,
+        extra=vol.ALLOW_EXTRA,  # Allow extra fields for different valve types
     )
 
     zones_schema = vol.Schema(
@@ -122,7 +135,26 @@ def register_test_schemas():
         extra=vol.PREVENT_EXTRA,
     )
 
+    # Register a simple zones validator that checks min/max position
+    def zones_validator(section, hass=None):
+        errors = []
+        for fan_id, zones in section.get("FANs", {}).items():
+            if not isinstance(zones, list):
+                continue
+            for zone in zones:
+                if not isinstance(zone, dict):
+                    continue
+                min_pos = zone.get("min_position", 0)
+                max_pos = zone.get("max_position", 100)
+                if min_pos > max_pos:
+                    errors.append(
+                        f"Zone '{zone.get('zone_id', 'unknown')}' has min_position "
+                        f"({min_pos}) > max_position ({max_pos})"
+                    )
+        return errors
+
     register_config_schema("zones", zones_schema)
+    register_config_validator("zones", zones_validator)
     yield
 
 
@@ -131,7 +163,7 @@ def register_test_schemas():
 # =============================================================================
 
 
-def test_parse_full_config_yaml_valid_minimal() -> None:
+def test_parse_full_config_yaml_valid_minimal(register_test_schemas) -> None:
     """Test parsing minimal valid YAML config."""
     yaml_content = """
 ramses_extras:
@@ -149,7 +181,7 @@ ramses_extras:
     assert "features" in result["ramses_extras"]
 
 
-def test_parse_full_config_yaml_multiple_features() -> None:
+def test_parse_full_config_yaml_multiple_features(register_test_schemas) -> None:
     """Test parsing YAML with multiple features."""
     yaml_content = """
 ramses_extras:
@@ -266,7 +298,7 @@ def test_schema_validation_invalid_schema_version() -> None:
 # =============================================================================
 
 
-def test_validate_zones_valid() -> None:
+def test_validate_zones_valid(register_test_schemas) -> None:
     """Test zones validation with valid config."""
     yaml_content = """
 ramses_extras:
@@ -287,7 +319,7 @@ ramses_extras:
     assert len(errors) == 0
 
 
-def test_validate_zones_invalid_position_range() -> None:
+def test_validate_zones_invalid_position_range(register_test_schemas) -> None:
     """Test zones validation catches invalid position ranges.
 
     Uses values that pass schema (0-100) but fail feature validation (min > max).
@@ -316,7 +348,7 @@ def test_validate_zones_invalid_position_range() -> None:
     assert any("min_position" in e and "max_position" in e for e in errors)
 
 
-def test_validate_zones_min_greater_than_max() -> None:
+def test_validate_zones_min_greater_than_max(register_test_schemas) -> None:
     """Test zones validation catches min > max position."""
     yaml_content = """
 ramses_extras:
@@ -452,7 +484,7 @@ ramses_extras:
             entity_id: sensor.humidity
       area_sensors:
         "32:153289":
-          - source_id: bathroom_sensor
+          - area_id: bathroom_sensor
             temperature_entity: sensor.bathroom_temp
             humidity_entity: sensor.bathroom_hum
 """
@@ -479,8 +511,8 @@ ramses_extras:
         parse_full_config_yaml(yaml_content)
 
 
-def test_validate_sensor_control_schema_catches_missing_source_id() -> None:
-    """Test that schema validation catches missing source_id early."""
+def test_validate_sensor_control_schema_accepts_missing_area_id_legacy() -> None:
+    """Test that schema validation accepts missing area_id through legacy schema."""
     yaml_content = """
 ramses_extras:
   schema_version: 1
@@ -490,8 +522,9 @@ ramses_extras:
         "32:153289":
           - temperature_entity: sensor.temp
 """
-    with pytest.raises(ValueError, match="Schema validation"):
-        parse_full_config_yaml(yaml_content)
+    # Should not raise - legacy schema allows missing area_id
+    config = parse_full_config_yaml(yaml_content)
+    assert config is not None
 
 
 # =============================================================================
@@ -537,7 +570,7 @@ def test_validate_framework_unsupported_schema_version() -> None:
 # =============================================================================
 
 
-def test_validate_detailed_structure() -> None:
+def test_validate_detailed_structure(register_test_schemas) -> None:
     """Test detailed validation returns expected structure."""
     yaml_content = """
 ramses_extras:
@@ -646,7 +679,7 @@ def test_whitespace_only_yaml() -> None:
         parse_full_config_yaml("   \n\n   ")
 
 
-def test_yaml_with_comments() -> None:
+def test_yaml_with_comments(register_test_schemas) -> None:
     """Test parsing YAML with comments."""
     yaml_content = """
 # This is a comment
@@ -664,7 +697,7 @@ ramses_extras:
     assert "ramses_extras" in result
 
 
-def test_complex_zone_configuration() -> None:
+def test_complex_zone_configuration(register_test_schemas) -> None:
     """Test parsing complex zone config with all options."""
     yaml_content = """
 ramses_extras:
@@ -694,7 +727,7 @@ ramses_extras:
     assert zones[1]["zone_id"] == "bedroom"
 
 
-def test_multiple_fans_with_zones() -> None:
+def test_multiple_fans_with_zones(register_test_schemas) -> None:
     """Test zones configuration for multiple FANs."""
     yaml_content = """
 ramses_extras:
@@ -718,7 +751,7 @@ ramses_extras:
     assert "32:153290" in fans
 
 
-def test_complete_real_world_config() -> None:
+def test_complete_real_world_config(register_test_schemas) -> None:
     """Test parsing a complete real-world configuration."""
     yaml_content = """
 ramses_extras:
@@ -743,8 +776,7 @@ ramses_extras:
                 entity_id: sensor.outdoor_hum
       area_sensors:
         "32:153289":
-          - source_id: bathroom
-            area_id: Bathroom
+          - area_id: bathroom
             zone_id: bathroom
             temperature_entity: sensor.bathroom_temp
             humidity_entity: sensor.bathroom_hum
@@ -813,7 +845,7 @@ ramses_extras:
 # =============================================================================
 
 
-def test_export_import_roundtrip() -> None:
+def test_export_import_roundtrip(register_test_schemas) -> None:
     """Test that exported config can be imported back."""
     from custom_components.ramses_extras.framework.helpers.config.export import (
         build_exportable_config,

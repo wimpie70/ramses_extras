@@ -140,21 +140,21 @@ async def test_async_setup_entry_with_missing_modules(hass):
 async def test_get_websocket_commands_info(hass):
     """Test get_websocket_commands_info returns correct structure."""
     hass.data[DOMAIN] = {
-        "enabled_features": {"feature1": True},
+        "enabled_features": {"default": True},
     }
 
     with patch.object(
         extras_registry,
         "get_all_websocket_commands",
-        return_value={"feature1": {"cmd1": "type1"}},
+        return_value={"default": {"cmd1": "type1"}},
     ):
         info = websocket_integration.get_websocket_commands_info(hass)
 
         assert info["total_features"] == 1
         assert info["total_commands"] == 1
-        assert "feature1" in info["commands_by_feature"]
+        assert "default" in info["commands_by_feature"]
         assert info["commands"][0]["name"] == "cmd1"
-        assert info["commands"][0]["feature"] == "feature1"
+        assert info["commands"][0]["feature"] == "default"
 
 
 @pytest.mark.asyncio
@@ -189,12 +189,12 @@ async def test_async_register_websocket_commands_no_commands(hass):
 @pytest.mark.asyncio
 async def test_async_register_websocket_commands_list_config(hass):
     """Test register commands when features are provided as a list."""
-    hass.data[DOMAIN] = {"enabled_features": ["f1"]}
+    hass.data[DOMAIN] = {"enabled_features": ["default"]}
     with (
         patch.object(
             extras_registry,
             "get_all_websocket_commands",
-            return_value={"f1": {"c1": "t1"}},
+            return_value={"default": {"c1": "t1"}},
         ),
         patch.object(websocket_integration, "_import_websocket_module") as mock_import,
         patch.object(
@@ -202,17 +202,17 @@ async def test_async_register_websocket_commands_list_config(hass):
         ),
     ):
         await websocket_integration.async_register_websocket_commands(hass)
-        mock_import.assert_called_with("f1")
+        mock_import.assert_called_with("default")
 
 
 @pytest.mark.asyncio
 async def test_get_websocket_commands_info_list_config(hass):
     """Test get_websocket_commands_info with list-based feature config."""
-    hass.data[DOMAIN] = {"enabled_features": ["f1"]}
+    hass.data[DOMAIN] = {"enabled_features": ["default"]}
     with patch.object(
         extras_registry,
         "get_all_websocket_commands",
-        return_value={"f1": {"c1": "t1"}},
+        return_value={"default": {"c1": "t1"}},
     ):
         info = websocket_integration.get_websocket_commands_info(hass)
         assert info["total_features"] == 1

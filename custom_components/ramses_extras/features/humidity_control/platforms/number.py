@@ -146,14 +146,44 @@ class HumidityControlNumber(ExtrasNumberEntity):
         Returns:
             The stored value or default
         """
-        if not self.config_entry:
+        config_entry = self.config_entry
+        if config_entry is None:
             return default_value
 
-        device_key = self._device_id.replace(":", "_")
-        humidity_config = self.config_entry.options.get("humidity_control", {}).get(
-            device_key, {}
+        latest = self.hass.config_entries.async_get_entry(config_entry.entry_id)
+        if latest is not None:
+            config_entry = latest
+
+        device_key = str(self.device_id).replace(":", "_")
+        legacy_store = config_entry.options.get("humidity_control", {})
+        legacy_device_config = (
+            legacy_store.get(device_key, {}) if isinstance(legacy_store, dict) else {}
         )
-        stored_value = float(humidity_config.get(self._entity_type, default_value))
+
+        canonical_store = config_entry.options.get("ramses_extras", {})
+        canonical_features = (
+            canonical_store.get("features", {})
+            if isinstance(canonical_store, dict)
+            else {}
+        )
+        canonical_humidity_control = (
+            canonical_features.get("humidity_control", {})
+            if isinstance(canonical_features, dict)
+            else {}
+        )
+        canonical_device_config = (
+            canonical_humidity_control.get(device_key, {})
+            if isinstance(canonical_humidity_control, dict)
+            else {}
+        )
+
+        stored_raw = None
+        if isinstance(legacy_device_config, dict):
+            stored_raw = legacy_device_config.get(self._entity_type)
+        if stored_raw is None and isinstance(canonical_device_config, dict):
+            stored_raw = canonical_device_config.get(self._entity_type)
+
+        stored_value = float(stored_raw) if stored_raw is not None else default_value
 
         # Update legacy 66% max humidity to 60% for existing installations
         if (
@@ -192,17 +222,54 @@ class HumidityControlNumber(ExtrasNumberEntity):
 
     async def _save_value_to_config(self, value: float) -> None:
         """Save number value to config entry with humidity_control feature key."""
-        if not self.config_entry:
+        config_entry = self.config_entry
+        if config_entry is None:
             return
 
-        device_key = self.device_id.replace(":", "_")
-        options = dict(self.config_entry.options)
-        if "humidity_control" not in options:
-            options["humidity_control"] = {}
-        if device_key not in options["humidity_control"]:
-            options["humidity_control"][device_key] = {}
-        options["humidity_control"][device_key][self._entity_type] = value
-        self.hass.config_entries.async_update_entry(self.config_entry, options=options)
+        latest = self.hass.config_entries.async_get_entry(config_entry.entry_id)
+        if latest is not None:
+            config_entry = latest
+
+        device_key = str(self.device_id).replace(":", "_")
+        options = dict(config_entry.options)
+
+        legacy_store = options.get("humidity_control")
+        legacy_store = legacy_store if isinstance(legacy_store, dict) else {}
+        legacy_store = dict(legacy_store)
+        legacy_device_config = legacy_store.get(device_key)
+        legacy_device_config = (
+            legacy_device_config if isinstance(legacy_device_config, dict) else {}
+        )
+        legacy_device_config = dict(legacy_device_config)
+        legacy_device_config[self._entity_type] = value
+        legacy_store[device_key] = legacy_device_config
+        options["humidity_control"] = legacy_store
+
+        root = options.get("ramses_extras")
+        root = root if isinstance(root, dict) else {}
+        root = dict(root)
+        features = root.get("features")
+        features = features if isinstance(features, dict) else {}
+        features = dict(features)
+        canonical_humidity_control = features.get("humidity_control")
+        canonical_humidity_control = (
+            canonical_humidity_control
+            if isinstance(canonical_humidity_control, dict)
+            else {}
+        )
+        canonical_humidity_control = dict(canonical_humidity_control)
+        canonical_device_config = canonical_humidity_control.get(device_key)
+        canonical_device_config = (
+            canonical_device_config if isinstance(canonical_device_config, dict) else {}
+        )
+        canonical_device_config = dict(canonical_device_config)
+        canonical_device_config[self._entity_type] = value
+        canonical_humidity_control[device_key] = canonical_device_config
+        features["humidity_control"] = canonical_humidity_control
+        root["features"] = features
+        options["ramses_extras"] = root
+
+        self.hass.config_entries.async_update_entry(config_entry, options=options)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
