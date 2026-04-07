@@ -25,4 +25,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: home-assistant/actions/hassfest@master
+      - name: Validate with hassfest
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: |
+            # Run hassfest via docker directly with retry
+            docker run --rm -v ${{ github.workspace }}:/github/workspace ghcr.io/home-assistant/hassfest
+        continue-on-error: false
