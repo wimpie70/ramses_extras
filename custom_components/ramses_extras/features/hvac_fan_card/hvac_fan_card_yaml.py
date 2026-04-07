@@ -82,6 +82,7 @@ def merge_hvac_fan_card_config(existing: dict, imported: dict) -> dict[str, Any]
     if "card_config" in imported:
         if "card_config" not in merged:
             merged["card_config"] = {}
+        merged["card_config"].update(imported["card_config"])
     # Update other fields
     for key in ["enabled", "fan_id"]:
         if key in imported:
