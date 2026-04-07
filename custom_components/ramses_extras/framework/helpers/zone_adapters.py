@@ -6,10 +6,12 @@ following the normalized zone contract defined in the zones feature section.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.core import HomeAssistant
 
@@ -61,14 +63,27 @@ class ZoneAdapterBase(ABC):
     ) -> None:
         """Initialize the zone adapter.
 
-        Args:
-            hass: Home Assistant instance
-            config: Adapter configuration
+        :param hass: Home Assistant instance
+        :param config: Adapter configuration
         """
         self._hass = hass
         self._config = config
         self._last_position: ZonePosition | None = None
         self._last_command_time: datetime | None = None
+
+    def _fan_home_lock(self) -> asyncio.Lock:
+        domain_data = self._hass.data.setdefault(DOMAIN, {})
+        locks_raw = domain_data.setdefault("_valve_home_locks", {})
+        if not isinstance(locks_raw, dict):
+            locks_raw = {}
+            domain_data["_valve_home_locks"] = locks_raw
+
+        locks = cast(dict[str, asyncio.Lock], locks_raw)
+        lock = locks.get(self.fan_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            locks[self.fan_id] = lock
+        return lock
 
     @property
     def zone_id(self) -> str:
@@ -100,11 +115,8 @@ class ZoneAdapterBase(ABC):
     def clamp_position(self, position: int) -> int:
         """Clamp position to safety limits.
 
-        Args:
-            position: Desired position (0-100)
-
-        Returns:
-            Position clamped to min/max safety limits
+        :param position: Desired position (0-100)
+        :return: Position clamped to min/max safety limits
         """
         return max(self.min_position, min(self.max_position, position))
 
@@ -112,34 +124,28 @@ class ZoneAdapterBase(ABC):
     async def async_get_position(self) -> ZonePosition:
         """Get current zone position.
 
-        Returns:
-            ZonePosition with current state
+        :return: ZonePosition with current state
         """
 
     @abstractmethod
     async def async_set_position(self, position: int) -> bool:
         """Set zone position.
 
-        Args:
-            position: Target position (0-100), will be clamped to safety limits
-
-        Returns:
-            True if command was sent successfully
+        :param position: Target position (0-100), will be clamped to safety limits
+        :return: True if command was sent successfully
         """
 
     @abstractmethod
     def _check_availability(self) -> bool:
         """Check if the actuator hardware is available.
 
-        Returns:
-            True if available for control
+        :return: True if available for control
         """
 
     def get_diagnostics(self) -> dict[str, Any]:
         """Return diagnostic information for this adapter.
 
-        Returns:
-            Dictionary with adapter state
+        :return: Dictionary with adapter state
         """
         return {
             "zone_id": self.zone_id,
@@ -264,12 +270,9 @@ class CustomValveZoneAdapter(ZoneAdapterBase):
     def _position_from_state(self, state: str, attributes: dict[str, Any]) -> int:
         """Extract position from entity state.
 
-        Args:
-            state: Entity state string
-            attributes: Entity attributes
-
-        Returns:
-            Position as percentage (0-100)
+        :param state: Entity state string
+        :param attributes: Entity attributes
+        :return: Position as percentage (0-100)
         """
         # Try current_position attribute first (standard for covers)
         if "current_position" in attributes:
@@ -416,8 +419,107 @@ class PairedValvesZoneAdapter(ZoneAdapterBase):
             if config.extra_config
             else None
         )
-        self._invert_logic: bool = False  # Set to True if your valves are
-        # wired opposite (0% = open, 100% = closed)
+        self._invert_logic: bool = (
+            bool(config.extra_config.get("invert_logic", False))
+            if config.extra_config
+            else False
+        )
+
+        self._home_mode: str = (
+            (
+                str(config.extra_config.get("home_mode", ""))
+                if config.extra_config
+                else ""
+            )
+            .strip()
+            .lower()
+        )
+        self._home_position: int = (
+            int(config.extra_config.get("home_position", 0))
+            if config.extra_config
+            else 0
+        )
+        self._home_interval_s: float = (
+            float(config.extra_config.get("home_interval_s", 0.0))
+            if config.extra_config
+            else 0.0
+        )
+        self._home_tolerance: int = (
+            int(config.extra_config.get("home_tolerance", 2))
+            if config.extra_config
+            else 2
+        )
+        self._home_timeout_s: float = (
+            float(config.extra_config.get("home_timeout_s", 60.0))
+            if config.extra_config
+            else 60.0
+        )
+        self._home_poll_s: float = (
+            float(config.extra_config.get("home_poll_s", 0.5))
+            if config.extra_config
+            else 0.5
+        )
+
+        self._has_homed: bool = False
+        self._last_home_monotonic: float | None = None
+
+    def _should_home_for_target(self, target_position: int) -> bool:
+        if not self._home_mode or target_position == self._home_position:
+            return False
+
+        if self._home_mode == "always":
+            return True
+
+        if self._home_mode == "once":
+            return not self._has_homed
+
+        if self._home_mode == "interval":
+            if self._home_interval_s <= 0:
+                return False
+            last = self._last_home_monotonic
+            if last is None:
+                return True
+            return (time.monotonic() - last) >= self._home_interval_s
+
+        return False
+
+    def _entity_matches_position(self, entity_id: str, target_pos: int) -> bool:
+        entity = self._hass.states.get(entity_id)
+        if entity is None:
+            return False
+
+        pos = self._position_from_state(entity.state, entity.attributes)
+        if self._invert_logic:
+            pos = 100 - pos
+
+        state_lower = str(entity.state).lower()
+        if target_pos <= 0:
+            if state_lower in {"closed", "off"}:
+                return True
+        if target_pos >= 100:
+            if state_lower in {"open", "on"}:
+                return True
+
+        return abs(int(pos) - int(target_pos)) <= int(self._home_tolerance)
+
+    async def _wait_until_home_reached(self, target_pos: int) -> bool:
+        deadline = time.monotonic() + max(1.0, float(self._home_timeout_s))
+        poll = max(0.1, float(self._home_poll_s))
+
+        inlet_entity = self._inlet_entity
+        outlet_entity = self._outlet_entity
+        if not inlet_entity or not outlet_entity:
+            return False
+
+        while time.monotonic() < deadline:
+            inlet_ok = self._entity_matches_position(inlet_entity, target_pos)
+            outlet_ok = self._entity_matches_position(outlet_entity, target_pos)
+            if inlet_ok and outlet_ok:
+                return True
+
+            await asyncio.sleep(poll)
+
+        return False
 
     def _check_availability(self) -> bool:
         """Check if both valve entities are available."""
@@ -440,12 +542,9 @@ class PairedValvesZoneAdapter(ZoneAdapterBase):
     def _position_from_state(self, state: str, attributes: dict[str, Any]) -> int:
         """Extract position from entity state.
 
-        Args:
-            state: Entity state string
-            attributes: Entity attributes
-
-        Returns:
-            Position as percentage (0-100)
+        :param state: Entity state string
+        :param attributes: Entity attributes
+        :return: Position as percentage (0-100)
         """
         # Try current_position attribute first (standard for covers)
         if "current_position" in attributes:
@@ -509,9 +608,51 @@ class PairedValvesZoneAdapter(ZoneAdapterBase):
         if not self._inlet_entity or not self._outlet_entity:
             return False
 
-        clamped = self.clamp_position(position)
+        target = self.clamp_position(position)
+        home_pos = max(0, min(100, int(self._home_position)))
+        should_home = self._should_home_for_target(target)
 
-        # Invert if configured
+        if should_home:
+
+            async def _async_service_set(pos: int) -> None:
+                pos_to_send = 100 - pos if self._invert_logic else pos
+                await self._hass.services.async_call(
+                    "cover",
+                    "set_cover_position",
+                    {"entity_id": self._inlet_entity, "position": pos_to_send},
+                    blocking=False,
+                )
+                await self._hass.services.async_call(
+                    "cover",
+                    "set_cover_position",
+                    {"entity_id": self._outlet_entity, "position": pos_to_send},
+                    blocking=False,
+                )
+
+            async with self._fan_home_lock():
+                already_at_home = self._entity_matches_position(
+                    self._inlet_entity, home_pos
+                ) and self._entity_matches_position(self._outlet_entity, home_pos)
+                if not already_at_home:
+                    await _async_service_set(home_pos)
+                    reached = await self._wait_until_home_reached(home_pos)
+                    if not reached:
+                        _LOGGER.warning(
+                            "Timeout waiting for paired valves to reach "
+                            "home position %s%% (inlet: %s, outlet: %s)",
+                            home_pos,
+                            self._inlet_entity,
+                            self._outlet_entity,
+                        )
+
+                self._has_homed = True
+                self._last_home_monotonic = time.monotonic()
+                await _async_service_set(target)
+
+            self._last_command_time = datetime.now()
+            return True
+
+        clamped = target
         if self._invert_logic:
             clamped = 100 - clamped
 
@@ -571,12 +712,9 @@ class ZoneAdapterFactory:
     ) -> ZoneAdapterBase | None:
         """Create a zone adapter for the given configuration.
 
-        Args:
-            hass: Home Assistant instance
-            config: Adapter configuration
-
-        Returns:
-            ZoneAdapterBase instance or None if source type is unknown
+        :param hass: Home Assistant instance
+        :param config: Adapter configuration
+        :return: ZoneAdapterBase instance or None if source type is unknown
         """
         adapter_class = cls._adapters.get(config.source_type)
         if adapter_class is None:
@@ -593,9 +731,8 @@ class ZoneAdapterFactory:
     ) -> None:
         """Register a custom adapter class.
 
-        Args:
-            source_type: Source type identifier
-            adapter_class: Adapter class to register
+        :param source_type: Source type identifier
+        :param adapter_class: Adapter class to register
         """
         cls._adapters[source_type] = adapter_class
         _LOGGER.debug("Registered zone adapter for source type: %s", source_type)
@@ -623,15 +760,12 @@ class ZoneAdapterRegistry:
     ) -> ZoneAdapterBase | None:
         """Get or create an adapter for a zone.
 
-        Args:
-            fan_id: FAN device ID
-            zone_id: Zone identifier
-            zone_type: Optional zone type override (e.g., "paired_valves")
-            inlet_entity: Optional inlet valve entity ID override
-            outlet_entity: Optional outlet valve entity ID override
-
-        Returns:
-            ZoneAdapterBase instance or None
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
+        :param zone_type: Optional zone type override (e.g., "paired_valves")
+        :param inlet_entity: Optional inlet valve entity ID override
+        :param outlet_entity: Optional outlet valve entity ID override
+        :return: ZoneAdapterBase instance or None
         """
         key = f"{fan_id}:{zone_id}"
 
@@ -686,13 +820,23 @@ class ZoneAdapterRegistry:
         extra_config = extra_config_raw if isinstance(extra_config_raw, dict) else {}
         if source_type == "paired_valves":
             # Use overrides if provided, otherwise fall back to zone config
-            inlet_valve = inlet_entity or zone.get("inlet_valve_entity")
-            outlet_valve = outlet_entity or zone.get("outlet_valve_entity")
-            extra_config = {
-                **extra_config,
-                "inlet_valve_entity": inlet_valve,
-                "outlet_valve_entity": outlet_valve,
-            }
+            inlet_valve = (
+                inlet_entity
+                or zone.get("inlet_valve_entity")
+                or extra_config.get("inlet_valve_entity")
+            )
+            outlet_valve = (
+                outlet_entity
+                or zone.get("outlet_valve_entity")
+                or extra_config.get("outlet_valve_entity")
+            )
+
+            merged = dict(extra_config)
+            if isinstance(inlet_valve, str) and inlet_valve.strip():
+                merged["inlet_valve_entity"] = inlet_valve.strip()
+            if isinstance(outlet_valve, str) and outlet_valve.strip():
+                merged["outlet_valve_entity"] = outlet_valve.strip()
+            extra_config = merged
 
         if source_type == "orcon_native":
             native_zone_id = zone.get("native_zone_id")
@@ -720,12 +864,9 @@ class ZoneAdapterRegistry:
     def get_adapter(self, fan_id: str, zone_id: str) -> ZoneAdapterBase | None:
         """Get an existing adapter for a zone.
 
-        Args:
-            fan_id: FAN device ID
-            zone_id: Zone identifier
-
-        Returns:
-            ZoneAdapterBase instance or None if not found
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
+        :return: ZoneAdapterBase instance or None if not found
         """
         key = f"{fan_id}:{zone_id}"
         return self._adapters.get(key)
@@ -733,9 +874,8 @@ class ZoneAdapterRegistry:
     def remove_adapter(self, fan_id: str, zone_id: str) -> None:
         """Remove an adapter from the registry.
 
-        Args:
-            fan_id: FAN device ID
-            zone_id: Zone identifier
+        :param fan_id: FAN device ID
+        :param zone_id: Zone identifier
         """
         key = f"{fan_id}:{zone_id}"
         self._adapters.pop(key, None)
@@ -743,11 +883,8 @@ class ZoneAdapterRegistry:
     def get_all_adapters_for_fan(self, fan_id: str) -> list[ZoneAdapterBase]:
         """Get all adapters for a FAN device.
 
-        Args:
-            fan_id: FAN device ID
-
-        Returns:
-            List of ZoneAdapterBase instances
+        :param fan_id: FAN device ID
+        :return: List of ZoneAdapterBase instances
         """
         prefix = f"{fan_id}:"
         return [
@@ -772,11 +909,8 @@ class ZoneAdapterRegistry:
 def get_zone_adapter_registry(hass: HomeAssistant) -> ZoneAdapterRegistry:
     """Get or create the zone adapter registry.
 
-    Args:
-        hass: Home Assistant instance
-
-    Returns:
-        ZoneAdapterRegistry instance
+    :param hass: Home Assistant instance
+    :return: ZoneAdapterRegistry instance
     """
     from ...const import DOMAIN
 
@@ -792,8 +926,7 @@ def get_zone_adapter_registry(hass: HomeAssistant) -> ZoneAdapterRegistry:
 def async_setup_zone_adapters(hass: HomeAssistant) -> None:
     """Set up zone adapter infrastructure.
 
-    Args:
-        hass: Home Assistant instance
+    :param hass: Home Assistant instance
     """
     get_zone_adapter_registry(hass)
     _LOGGER.info("Zone adapter registry initialized")
