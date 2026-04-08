@@ -227,7 +227,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
 
         def _get_rem_timeout_seconds() -> int:
-            """Get configured timeout for this REM binding (default 60s)."""
+            """Get timeout for REM binding (0=no timeout, default=60s)."""
             from ...framework.helpers.config.core import ExtrasConfigManager
             from ...framework.helpers.remote_binding import get_remote_binding_registry
 
@@ -244,7 +244,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 )
                 if binding_rem_id == normalized_source:
                     timeout = binding.get("manual_timeout")
-                    if isinstance(timeout, int) and timeout > 0:
+                    # 0 = no timeout (persist until other demand)
+                    if isinstance(timeout, int) and timeout >= 0:
                         return timeout
                     # Legacy: check for override_timeout
                     legacy_timeout = binding.get("override_timeout")
@@ -274,6 +275,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             else:
                 effective_timeout = _get_rem_timeout_seconds()
             _cancel_remote_override_release()
+
+            # 0 = no timeout (persist until other demand takes over)
+            if effective_timeout == 0:
+                return
 
             def _callback() -> None:
                 hass.async_create_task(_async_release_remote_override())

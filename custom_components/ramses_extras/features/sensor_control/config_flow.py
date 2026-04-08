@@ -208,7 +208,9 @@ def _describe_remote_binding(rem: dict[str, Any]) -> str:
         parts.append(f"zone_id: {zone_id}")
     if area_id:
         parts.append(f"area_id: {area_id}")
-    if manual_timeout != 60:
+    if manual_timeout == 0:
+        parts.append("no timeout")
+    elif manual_timeout != 60:
         parts.append(f"timeout: {manual_timeout}s")
     return "- " + "; ".join(parts)
 
@@ -2525,7 +2527,7 @@ async def _async_handle_rems_edit(
                 default=manual_timeout_default,
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
-                    min=1,
+                    min=0,
                     max=3600,
                     step=1,
                     unit_of_measurement="s",
@@ -2543,7 +2545,9 @@ async def _async_handle_rems_edit(
         "is set by an external automation. This is not yet functional.\n\n"
         "Use zone_id / area_id optionally to pinpoint location.\n\n"
         "Note: When using area_id, ensure the area is actually "
-        "within the selected zone_id."
+        "within the selected zone_id.\n\n"
+        "Manual timeout: 0 = no timeout (persist until other demand takes over), "
+        "60 = default 60 seconds."
     )
 
     if errors:
