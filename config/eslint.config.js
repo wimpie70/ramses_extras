@@ -62,6 +62,9 @@ export default [
         CustomEvent: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        fetch: 'readonly',
 
         // Home Assistant globals
         hass: 'readonly',

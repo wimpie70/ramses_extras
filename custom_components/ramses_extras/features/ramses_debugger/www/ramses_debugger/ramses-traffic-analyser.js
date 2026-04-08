@@ -1,6 +1,3 @@
-/* global setInterval */
-/* global clearInterval */
-
 /**
  * Ramses Traffic Analyser Card - Real-time and historical RAMSES RF message flow analyzer.
  *

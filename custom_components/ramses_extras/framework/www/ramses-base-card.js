@@ -1,8 +1,3 @@
-/* global customElements */
-/* global HTMLElement */
-/* global setTimeout */
-/* global clearTimeout */
-
 // Import framework utilities
 import * as logger from './logger.js';
 import { SimpleCardTranslator } from './card-translations.js';
