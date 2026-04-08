@@ -148,8 +148,45 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if not engine:
             return {"success": False, "error": "Engine not available"}
 
-        # TODO: Implement full scenario runners
-        return {"success": True, "message": "Scenario stub - needs implementation"}
+        scenario_type = call.data["scenario_type"]
+        params = call.data.get("params", {})
+
+        if scenario_type == SCENARIO_DEVICE_PLAYBACK:
+            # Playback device messages from packet log
+            log_file = params.get("log_file")
+            if not log_file:
+                return {"success": False, "error": "Missing log_file param"}
+            return await engine.async_run_device_playback(log_file, params)
+
+        if scenario_type == SCENARIO_DEVICE_SUITE:
+            # Run a suite of standard device tests
+            slugs = params.get("slugs", ["FAN", "REM", "CO2"])
+            duration = params.get("duration", 300)
+            return await engine.async_run_device_suite(slugs, duration)
+
+        if scenario_type == SCENARIO_DISCOVERY_TEST:
+            # Test device discovery by simulating new devices
+            return await engine.async_run_discovery_test(params)
+
+        if scenario_type == SCENARIO_TIMEOUT_TEST:
+            # Test timeout handling with slow responses
+            delay = params.get("delay", 10.0)
+            return await engine.async_run_timeout_test(delay)
+
+        if scenario_type == SCENARIO_FLOODING_TEST:
+            # Test flooding/burst message handling
+            count = params.get("count", 100)
+            interval = params.get("interval", 0.1)
+            return await engine.async_run_flooding_test(count, interval)
+
+        if scenario_type == SCENARIO_DEVICE_UNAVAILABILITY:
+            # Test device going offline
+            device_id = params.get("device_id")
+            if not device_id:
+                return {"success": False, "error": "Missing device_id param"}
+            return await engine.async_run_unavailability_test(device_id)
+
+        return {"success": False, "error": f"Unknown scenario type: {scenario_type}"}
 
     async def handle_stop_scenario(call: ServiceCall) -> dict[str, Any]:
         """Stop a scenario."""
@@ -208,8 +245,48 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def handle_import_user_config(call: ServiceCall) -> dict[str, Any]:
         """Import a user's ramses_cc config + packet log as a profile."""
-        # TODO: Implement config profile import
-        return {"success": False, "error": "Not implemented"}
+        from pathlib import Path
+
+        import yaml
+
+        source = call.data["source"]
+        name = call.data["name"]
+        attach_log = call.data.get("attach_log")
+
+        try:
+            # Load ramses_cc config
+            config_path = Path(source)
+            if not config_path.exists():
+                return {"success": False, "error": f"Config file not found: {source}"}
+
+            with open(config_path, encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+
+            # Create profile structure
+            profile = {
+                "name": name,
+                "source_config": str(config_path),
+                "imported_at": str(hass.loop.time()),
+                "config": config,
+                "attached_log": attach_log,
+            }
+
+            # Store profile in hass.data for later use
+            profiles = hass.data.get("ramses_extras", {}).setdefault(
+                "device_simulator_profiles", {}
+            )
+            profiles[name] = profile
+
+            LOGGER.info("Imported profile '%s' from %s", name, source)
+            return {
+                "success": True,
+                "profile_name": name,
+                "has_log": attach_log is not None,
+            }
+
+        except Exception as err:
+            LOGGER.error("Failed to import profile: %s", err)
+            return {"success": False, "error": str(err)}
 
     # Register services
     hass.services.async_register(

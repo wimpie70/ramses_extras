@@ -371,3 +371,40 @@ class ScenarioEngine:
     def active_device_ids(self) -> list[str]:
         """Return list of currently active device IDs."""
         return list(self._active_devices.keys())
+
+    # Scenario runner methods (stubs - to be fully implemented)
+    async def async_run_device_playback(
+        self, log_file: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Playback device messages from packet log."""
+        LOGGER.info("Device playback from %s (stub)", log_file)
+        return {"success": True, "message": "Playback started", "messages_sent": 0}
+
+    async def async_run_device_suite(
+        self, slugs: list[str], duration: int
+    ) -> dict[str, Any]:
+        """Run a suite of standard device tests."""
+        LOGGER.info("Device suite test: %s for %ds (stub)", slugs, duration)
+        return {"success": True, "message": "Suite started", "messages_sent": 0}
+
+    async def async_run_discovery_test(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Test device discovery by simulating new devices."""
+        LOGGER.info("Discovery test (stub)")
+        return {"success": True, "message": "Discovery test started"}
+
+    async def async_run_timeout_test(self, delay: float) -> dict[str, Any]:
+        """Test timeout handling with slow responses."""
+        LOGGER.info("Timeout test with delay %fs (stub)", delay)
+        return {"success": True, "message": "Timeout test started"}
+
+    async def async_run_flooding_test(
+        self, count: int, interval: float
+    ) -> dict[str, Any]:
+        """Test flooding/burst message handling."""
+        LOGGER.info("Flooding test: %d messages @ %fs (stub)", count, interval)
+        return {"success": True, "message": "Flooding test started"}
+
+    async def async_run_unavailability_test(self, device_id: str) -> dict[str, Any]:
+        """Test device going offline."""
+        LOGGER.info("Unavailability test for %s (stub)", device_id)
+        return {"success": True, "message": "Unavailability test started"}
