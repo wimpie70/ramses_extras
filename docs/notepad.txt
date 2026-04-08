@@ -25,7 +25,7 @@ todo:
   - a bound REM,
   - Enable Message Events with regex: 31DA|10D0
   - Enable Send Packet Service
-if not, propose to correct it (and remember) We can place this in the advanced or enable step
+if not, we should log errors
 
 - The fan position is off when closing to 40%. We first move it to home position (0), then to 40%
 

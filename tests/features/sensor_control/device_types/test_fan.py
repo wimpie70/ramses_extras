@@ -1,5 +1,7 @@
 """Tests for fan device type handler in sensor_control."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 import voluptuous as vol
 from homeassistant.helpers import selector
@@ -11,6 +13,7 @@ from custom_components.ramses_extras.features.sensor_control.device_types.fan im
     build_group_schema,
     get_group_options,
     handle_group_submission,
+    handle_internal_fan_sensors,
 )
 
 
@@ -249,3 +252,94 @@ def test_build_group_schema_invalid():
     """Test building schema for invalid group."""
     with pytest.raises(ValueError, match="Unsupported group_stage"):
         build_group_schema("invalid", {}, {}, [], [], selector.EntitySelector({}))
+
+
+@pytest.mark.asyncio
+async def test_handle_internal_fan_sensors_saves_config_and_returns_to_menu():
+    """Submitting data should persist options and return to select_group."""
+
+    flow = MagicMock()
+    flow._config_entry = MagicMock(options={"sensor_control": {}})
+    flow.hass = MagicMock()
+    flow.hass.config_entries.async_update_entry = MagicMock()
+
+    user_input = {
+        "indoor_temperature_kind": "external",
+        "indoor_temperature_entity": "sensor.indoor_temp",
+        "indoor_humidity_kind": "internal",
+        "indoor_humidity_entity": "sensor.indoor_hum",
+        "indoor_humidity_spike_enabled": True,
+        "indoor_humidity_spike_rise_percent": 12,
+        "indoor_humidity_spike_window_minutes": 4,
+        "outdoor_temperature_kind": "internal",
+        "outdoor_humidity_kind": "external",
+        "outdoor_humidity_entity": "sensor.out_hum",
+        "co2_kind": "none",
+        "indoor_abs_humidity_temperature_kind": "internal",
+        "indoor_abs_humidity_humidity_kind": "none",
+        "outdoor_abs_humidity_temperature_kind": "internal",
+        "outdoor_abs_humidity_humidity_kind": "none",
+    }
+
+    with (
+        patch(
+            "custom_components.ramses_extras.framework.helpers.config.migration.get_migrated_feature_section",
+            return_value={"devices": {}},
+        ) as mock_get_section,
+        patch(
+            "custom_components.ramses_extras.framework.helpers.config.model.set_feature_section"
+        ) as mock_set_section,
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_step_sensor_control_config",
+            AsyncMock(return_value={"type": "form"}),
+        ) as mock_async_step,
+    ):
+        result = await handle_internal_fan_sensors(
+            flow,
+            "32:123456",
+            {},
+            {},
+            user_input,
+        )
+
+    mock_get_section.assert_called_once()
+    mock_set_section.assert_called_once()
+    flow.hass.config_entries.async_update_entry.assert_called_once()
+    assert flow._sensor_control_group_stage == "select_group"
+    mock_async_step.assert_awaited_once()
+    assert result == mock_async_step.return_value
+
+
+@pytest.mark.asyncio
+async def test_handle_internal_fan_sensors_displays_form_when_no_input():
+    """When no user input is provided, the form should be shown."""
+
+    flow = MagicMock()
+    flow.async_show_form = MagicMock(return_value={"type": "form"})
+    flow._config_entry = MagicMock(options={})
+    flow.hass = MagicMock()
+
+    device_sources = {
+        "indoor_temperature": {"kind": "external", "entity_id": "sensor.temp"},
+        "indoor_humidity": {"kind": "internal", "spike_enabled": True},
+    }
+    device_abs_inputs = {
+        "indoor_abs_humidity": {
+            "temperature": {"kind": "internal"},
+            "humidity": {"kind": "external", "entity_id": "sensor.rh"},
+        }
+    }
+
+    result = await handle_internal_fan_sensors(
+        flow,
+        "32:123456",
+        device_sources,
+        device_abs_inputs,
+        None,
+    )
+
+    flow.async_show_form.assert_called_once()
+    call_kwargs = flow.async_show_form.call_args.kwargs
+    assert call_kwargs["step_id"] == "feature_config"
+    assert "data_schema" in call_kwargs
+    assert result == flow.async_show_form.return_value

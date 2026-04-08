@@ -6,10 +6,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import voluptuous as vol
 
+from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.features.sensor_control.config_flow import (
+    _async_handle_rems_edit,
+    _async_handle_rems_menu,
     _device_key,
+    _get_area_id_options,
+    _get_area_id_options_from_legacy,
     _get_device_type,
+    _get_rem_device_options,
     async_step_sensor_control_config,
+)
+from custom_components.ramses_extras.framework.helpers.config.validation import (
+    FEATURE_REMOTE_BINDING,
+    FEATURE_SENSOR_CONTROL,
+    FEATURE_ZONES,
 )
 
 
@@ -17,10 +28,11 @@ from custom_components.ramses_extras.features.sensor_control.config_flow import 
 def flow():
     """Mock the central options flow."""
     flow = MagicMock()
-    flow.hass = MagicMock()
     flow._config_entry = MagicMock()
     flow._config_entry.options = {"sensor_control": {}}
     flow._config_entry.data = {}
+    flow.hass = MagicMock()
+    flow.hass.data = {DOMAIN: {"config_entry": flow._config_entry}}
     flow._get_config_flow_helper = MagicMock()
     flow._get_all_devices = MagicMock(return_value=["32:123456"])
     flow._extract_device_id = MagicMock(side_effect=lambda x: x)
@@ -1028,3 +1040,540 @@ async def test_async_step_sensor_control_config_device_overview_includes_area_se
     ]
     assert "Current mappings for this device" in info_text
     assert "area sensor bathroom" in info_text
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage for zones_import, REM menus, and helper builders
+# ---------------------------------------------------------------------------
+
+
+def _prepare_zones_import(flow: MagicMock) -> None:
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_group_stage = "zones_import"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._config_entry.options = {FEATURE_ZONES: {}}
+    flow.hass.data[DOMAIN]["config_entry"] = flow._config_entry
+    flow.async_show_form.reset_mock()
+
+
+async def test_zones_import_back_action(flow):
+    _prepare_zones_import(flow)
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+        AsyncMock(return_value={"labels": {}, "errors": {}}),
+    ):
+        await async_step_sensor_control_config(flow, {"action": "back"})
+
+    assert flow._sensor_control_group_stage == "zones_menu"
+
+
+async def test_zones_import_empty_yaml(flow):
+    _prepare_zones_import(flow)
+    translations = {
+        "labels": {},
+        "errors": {"yaml_content_required": "YAML content is required"},
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+        AsyncMock(return_value=translations),
+    ):
+        await async_step_sensor_control_config(
+            flow,
+            {"action": "import", "yaml_content": "", "overwrite_existing": False},
+        )
+
+    errors = flow.async_show_form.call_args.kwargs["errors"]
+    assert errors["yaml_content"] == "YAML content is required"
+
+
+async def test_zones_import_without_zones(flow):
+    _prepare_zones_import(flow)
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            AsyncMock(
+                return_value={"labels": {}, "errors": {"no_zones_in_yaml": "No zones"}}
+            ),
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.parse_zones_yaml",
+            return_value={"zones": []},
+        ),
+    ):
+        await async_step_sensor_control_config(
+            flow,
+            {
+                "action": "import",
+                "yaml_content": "zones: []",
+                "overwrite_existing": False,
+            },
+        )
+
+    errors = flow.async_show_form.call_args.kwargs["errors"]
+    assert errors["yaml_content"] == "No zones"
+
+
+async def test_zones_import_parse_error(flow):
+    _prepare_zones_import(flow)
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            AsyncMock(return_value={"labels": {}, "errors": {}}),
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.parse_zones_yaml",
+            side_effect=ValueError("Invalid YAML"),
+        ),
+    ):
+        await async_step_sensor_control_config(
+            flow,
+            {
+                "action": "import",
+                "yaml_content": "invalid",
+                "overwrite_existing": False,
+            },
+        )
+
+    errors = flow.async_show_form.call_args.kwargs["errors"]
+    assert errors["yaml_content"] == "Invalid YAML"
+
+
+async def test_zones_import_success(flow):
+    _prepare_zones_import(flow)
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            AsyncMock(return_value={"labels": {}, "errors": {}}),
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.parse_zones_yaml",
+            return_value={"zones": [{"zone_id": "bath"}]},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_zones_for_fan",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.merge_zones_config",
+            return_value=[{"zone_id": "bath"}],
+        ) as mock_merge,
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.set_fan_section",
+        ) as mock_set,
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._persist_zones_section",
+        ) as mock_persist,
+    ):
+        await async_step_sensor_control_config(
+            flow,
+            {
+                "action": "import",
+                "yaml_content": "zones:\n  - zone_id: bath",
+                "overwrite_existing": True,
+            },
+        )
+
+    mock_merge.assert_called_once()
+    mock_set.assert_called_once()
+    mock_persist.assert_called_once()
+    assert flow._sensor_control_group_stage == "zones_menu"
+
+
+async def test_zones_import_form_display(flow):
+    _prepare_zones_import(flow)
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+        AsyncMock(return_value={"labels": {}, "errors": {}}),
+    ):
+        await async_step_sensor_control_config(flow, None)
+
+    flow.async_show_form.assert_called_once()
+
+
+def _prepare_rems_menu_flow(flow: MagicMock) -> None:
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_group_stage = "rems_menu"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_editing_rem_id = None
+    flow._config_entry.options = {FEATURE_REMOTE_BINDING: {}}
+    flow.hass.data[DOMAIN] = {"config_entry": flow._config_entry, "devices": []}
+
+
+async def test_rems_menu_form_display(flow):
+    _prepare_rems_menu_flow(flow)
+
+    fan_rems = [{"rem_id": "18:1", "enabled": True}]
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_migrated_feature_section",
+            return_value={},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_remote_binding_rems",
+            return_value=fan_rems,
+        ),
+    ):
+        result = await _async_handle_rems_menu(flow, MagicMock(), "32:123456", None)
+
+    assert result == flow.async_show_form.return_value
+
+
+async def test_rems_menu_add_edit_back_actions(flow):
+    _prepare_rems_menu_flow(flow)
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_migrated_feature_section",
+            return_value={},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_remote_binding_rems",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_step_sensor_control_config",
+            AsyncMock(return_value={"type": "form"}),
+        ) as mock_step,
+    ):
+        await _async_handle_rems_menu(flow, MagicMock(), "32:123456", {"action": "add"})
+        await _async_handle_rems_menu(
+            flow, MagicMock(), "32:123456", {"action": "back"}
+        )
+        await _async_handle_rems_menu(
+            flow,
+            MagicMock(),
+            "32:123456",
+            {"action": "edit:18:1"},
+        )
+
+    assert flow._sensor_control_group_stage == "rems_edit"
+    assert flow._sensor_control_editing_rem_id == "18:1"
+    assert mock_step.await_count == 3
+
+
+async def test_rems_menu_delete_action(flow):
+    _prepare_rems_menu_flow(flow)
+    fan_rems = [{"rem_id": "18:1"}, {"rem_id": "18:2"}]
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_migrated_feature_section",
+            return_value={"FANs": {"32:123456": {"REMs": fan_rems}}},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_remote_binding_rems",
+            return_value=fan_rems,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.set_fan_section",
+        ) as mock_set,
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._persist_remote_binding_section",
+        ) as mock_persist,
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_step_sensor_control_config",
+            AsyncMock(return_value={"type": "form"}),
+        ),
+    ):
+        await _async_handle_rems_menu(
+            flow, MagicMock(), "32:123456", {"action": "delete:18:1"}
+        )
+
+    mock_set.assert_called_once()
+    mock_persist.assert_called_once()
+
+
+def _prepare_rems_edit_flow(flow: MagicMock) -> None:
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_group_stage = "rems_edit"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_editing_rem_id = None
+    flow._config_entry.options = {
+        FEATURE_REMOTE_BINDING: {},
+        FEATURE_ZONES: {},
+    }
+    flow.hass.data[DOMAIN]["config_entry"] = flow._config_entry
+
+
+async def test_rems_edit_validation_errors(flow):
+    _prepare_rems_edit_flow(flow)
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_migrated_feature_section",
+            return_value={},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_remote_binding_rems",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            AsyncMock(
+                return_value={"labels": {}, "errors": {"rem_id_required": "Required"}}
+            ),
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_zones_for_fan",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_rem_device_options",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_area_id_options",
+            return_value=[],
+        ),
+    ):
+        await _async_handle_rems_edit(flow, MagicMock(), "32:123456", {"rem_id": ""})
+
+    errors = flow.async_show_form.call_args.kwargs["errors"]
+    assert errors["rem_id"] == "Required"
+
+
+async def test_rems_edit_duplicate(flow):
+    _prepare_rems_edit_flow(flow)
+    flow._sensor_control_editing_rem_id = None
+    fan_rems = [{"rem_id": "18:1"}]
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_migrated_feature_section",
+            return_value={},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_remote_binding_rems",
+            return_value=fan_rems,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            AsyncMock(
+                return_value={"labels": {}, "errors": {"rem_id_exists": "Exists"}}
+            ),
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_zones_for_fan",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_rem_device_options",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_area_id_options",
+            return_value=[],
+        ),
+    ):
+        await _async_handle_rems_edit(
+            flow,
+            MagicMock(),
+            "32:123456",
+            {"rem_id": "18:1", "enabled": True},
+        )
+
+    errors = flow.async_show_form.call_args.kwargs["errors"]
+    assert errors["rem_id"] == "Exists"
+
+
+async def test_rems_edit_success(flow):
+    _prepare_rems_edit_flow(flow)
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_migrated_feature_section",
+            return_value={},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_remote_binding_rems",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            AsyncMock(return_value={"labels": {}, "errors": {}}),
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.set_fan_section",
+        ) as mock_set,
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._persist_remote_binding_section",
+        ) as mock_persist,
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_zones_for_fan",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_rem_device_options",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_area_id_options",
+            return_value=[],
+        ),
+    ):
+        await _async_handle_rems_edit(
+            flow,
+            MagicMock(),
+            "32:123456",
+            {
+                "rem_id": "18:1",
+                "enabled": True,
+                "zone_id": "zone1",
+                "area_id": "bath",
+            },
+        )
+
+    mock_set.assert_called_once()
+    mock_persist.assert_called_once()
+    assert flow._sensor_control_group_stage == "rems_menu"
+
+
+async def test_rems_edit_success_existing(flow):
+    _prepare_rems_edit_flow(flow)
+    flow._sensor_control_editing_rem_id = "18:1"
+    fan_rems = [{"rem_id": "18:1", "enabled": False}]
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_migrated_feature_section",
+            return_value={},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_remote_binding_rems",
+            return_value=fan_rems,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            AsyncMock(return_value={"labels": {}, "errors": {}}),
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.set_fan_section",
+        ) as mock_set,
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._persist_remote_binding_section",
+        ) as mock_persist,
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_zones_for_fan",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_rem_device_options",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_area_id_options",
+            return_value=[],
+        ),
+    ):
+        await _async_handle_rems_edit(
+            flow,
+            MagicMock(),
+            "32:123456",
+            {
+                "rem_id": "18:1",
+                "enabled": False,
+                "zone_id": "zone2",
+                "area_id": "kitchen",
+            },
+        )
+
+    mock_set.assert_called_once()
+    mock_persist.assert_called_once()
+    assert flow._sensor_control_editing_rem_id is None
+
+
+async def test_rems_edit_form_display(flow):
+    _prepare_rems_edit_flow(flow)
+    flow._sensor_control_editing_rem_id = "18:1"
+    fan_rems = [{"rem_id": "18:1", "enabled": True}]
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_migrated_feature_section",
+            return_value={},
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_remote_binding_rems",
+            return_value=fan_rems,
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.async_get_feature_translations",
+            AsyncMock(return_value={"labels": {}, "errors": {}}),
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow.get_zones_for_fan",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_rem_device_options",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.ramses_extras.features.sensor_control.config_flow._get_area_id_options",
+            return_value=[],
+        ),
+    ):
+        result = await _async_handle_rems_edit(flow, MagicMock(), "32:123456", None)
+
+    assert result == flow.async_show_form.return_value
+
+
+def test_get_area_id_options_combines_sources():
+    options = {
+        FEATURE_SENSOR_CONTROL: {"area_sensors": {"32_123456": [{"area_id": "bath"}]}},
+        "ramses_extras": {
+            "features": {
+                "sensor_control": {
+                    "devices": {"32:123456": {"area_sensors": [{"area_id": "kitchen"}]}}
+                }
+            }
+        },
+    }
+
+    values = [opt["value"] for opt in _get_area_id_options(options, "32:123456")]
+    assert "bath" in values and "kitchen" in values
+
+
+def test_get_rem_device_options_includes_configured():
+    hass = MagicMock()
+
+    class Device:
+        id = "18:123456"
+        slugs = ["DIS"]
+
+    hass.data = {
+        DOMAIN: {
+            "devices": ["18:000002", "01:999999", Device()],
+            "config_entry": MagicMock(data={}, options={}),
+        }
+    }
+
+    values = [opt["value"] for opt in _get_rem_device_options(hass)]
+    assert "18:000002" in values
+    assert "01:999999" not in values
+
+
+def test_get_area_id_options_from_legacy_reads_rems():
+    options = {
+        "ramses_extras": {
+            "features": {
+                "sensor_control": {
+                    "devices": {"32:123456": {"area_sensors": [{"area_id": "bath"}]}}
+                }
+            }
+        },
+        FEATURE_REMOTE_BINDING: {
+            "FANs": {"32:123456": {"REMs": [{"rem_id": "18:1", "area_id": "hall"}]}}
+        },
+    }
+
+    values = [
+        opt["value"] for opt in _get_area_id_options_from_legacy(options, "32:123456")
+    ]
+    assert "bath" in values and "hall" in values

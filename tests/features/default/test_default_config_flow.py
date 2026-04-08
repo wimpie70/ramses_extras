@@ -1,6 +1,6 @@
 """Tests for default feature config flow."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import voluptuous as vol
@@ -8,6 +8,8 @@ import voluptuous as vol
 from custom_components.ramses_extras.features.default.config_flow import (
     async_step_default_config,
 )
+
+pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
@@ -76,3 +78,28 @@ async def test_async_step_default_config_restore_state(flow, helper):
         {"32:123456": {"default": True}}
     )
     assert flow._old_matrix_state == {"32:123456": {"default": True}}
+
+
+async def test_async_step_default_config_filters_invalid_device_ids(flow, helper):
+    """Devices without extractable IDs should be filtered out of options."""
+
+    flow._get_config_flow_helper.return_value = helper
+    flow._extract_device_id.side_effect = ["32:123456", None]
+
+    await async_step_default_config(flow, None)
+
+    schema = flow.async_show_form.call_args[1]["data_schema"]
+    select_selector = schema.schema[next(iter(schema.schema))]
+    options = select_selector.config["options"]
+    assert [opt["value"] for opt in options] == ["32:123456"]
+
+
+async def test_async_step_default_config_handles_empty_matrix_state(flow, helper):
+    """If helper returns no matrix state, flow should store an empty dict."""
+
+    flow._get_config_flow_helper.return_value = helper
+    helper.get_feature_device_matrix_state.return_value = None
+
+    await async_step_default_config(flow, {"enabled_devices": []})
+
+    assert flow._temp_matrix_state == {}
