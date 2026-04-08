@@ -141,5 +141,6 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "default_enabled": False,
         "allowed_device_slugs": ["*"],
         "has_device_config": False,
+        "platforms": ["sensor"],
     },
 }
