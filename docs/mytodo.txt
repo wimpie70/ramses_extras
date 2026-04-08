@@ -1,35 +1,12 @@
-- check if we need services.py, can't we use ramses_cc directly ?
+# Personal Notes / Ideas
 
-- hvac fan card editor: it never had a followup step for mapping entities (only device dropdown). good idea for future dev.
-
-- why external calculated abs humid entities:
-We may have a few temp/humid sensors for 1 fan. eg. a bathroom and a kitchen....I want to be able to create logic later that if 1 of them goes high we also should ventilate high (but then for eg 15 minutes) to get rid of the local moisture. But this would need extra logic and handshaking with automations that control the speed....
-Or, we would create some kind of OR logic for the different abs humid entities -> select the highest one as the one to work with and fall back to internal after 15 minutes...or always use the highest one....The same but upside-down goes for too dry air.
-
-
-logo: see https://github.com/home-assistant/brands/pull/5118
-https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_cc
-
-
-- on startup, we should get the persisted  state for humidity control. or maybe better: start by setting it to off, and sending the auto command. now we can restart with the fan on high or low without knowing or control
-
+## Future Ideas
+- hvac fan card editor: entity mapping followup step (currently only device dropdown)
 - multi-zone support in hvac card or separate feature
+- warning card: small card for filtering/recurring warnings with status display
+- hvac efficiency: create tracking entity with history (in default feature)
+- device simulator: simulate devices with real messages from database
 
-- warning card: is there a warning or error event on HA, so we could notify the cards ? This could be a 4th card, very small, but capable of filtering reoccurring warnings, warning source and show status.
-
-- dehumidify does not work on  62%>58, 5.77 > 2.9
-
-- extras: remove 'configure devices for features', 'available features configurations' section
-
-- testing env.
-    - replace pre-commit hook with prek, see ramses_cc
-    - deprecate: Starting in 2026.7, installation of pyserial-asyncio will be blocked in Home Assistant.
-
-- adv debug settings: check if we still have options/card and these are correct (not overriding)
-
-- hvac efficiency: create an entity for this so we can keep track/history (in default)
-
-debugger:
-- check what code can be reused, check for other optimizations
-
---------------------
+## References
+- logo: https://github.com/home-assistant/brands/pull/5118
+- https://github.com/home-assistant/brands/tree/master/custom_integrations/ramses_cc

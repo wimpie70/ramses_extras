@@ -1,55 +1,25 @@
-docs/FAN_CONFIGURATION_SCHEMA_DRAFT.md
-docs/REMOTE_BINDING_IMPLEMENTATION_PLAN.md
-docs/ZONES_IMPLEMENTATION_PLAN.md
-docs/CONFIGURATION_STRATEGY.md
+# Working Notes
 
-calibration start: disable automations when we set fan temp to LOW, and afterwards re-enable them
+## Archived Docs (for reference)
+- docs/FAN_CONFIGURATION_SCHEMA_DRAFT.md
+- docs/REMOTE_BINDING_IMPLEMENTATION_PLAN.md
+- docs/ZONES_IMPLEMENTATION_PLAN.md
+- docs/CONFIGURATION_STRATEGY.md
 
-zone ventilation:
-on demand, we want the other zones to keep the same ventilation
-as would be on low, but, we want extra ventilation on the demand zone.
-So, when we set a fan to eg. high, and open up the valves for zone 1 (with the demand),
-we want the other zones to close their valves to maintain the same ventilation as would be on low.
-Or at least about the same.
+## Ideas
 
-What kind of calculation or test do we need to do to determine the valve positions?
-We have round 150 mm pipes. The fan now gives:
-low: 13 l/s (at 15%)
-medium: 41.63 l/s (at 50%)
-high: 83 l/s (at 100%)
-
-todo:
-
-- add a test on the RF config if we have
-  - a bound REM,
-  - Enable Message Events with regex: 31DA|10D0
-  - Enable Send Packet Service
-if not, we should log errors
-
-- The fan position is off when closing to 40%. We first move it to home position (0), then to 40%
-
-
-
-currently:
-- add a card to sensor_control: FAN Configuration
-This is different from the current hvac fan card settings. This new card will
-allow us to test the fan configuration for each zone, area, rems. Also include a
-section for the valve positions, calibration, etc like we have in the zone_testing_package.yaml.
-The purpose is to be able to test the fan configuration and valve positions and the automations (humidity, co2).
-So, it needs to collect the configured sensors and their values, and show them in the card, and make them
-editable (if they are helpers). Also indicate if REM's are pressed, etc.
-/home/willem/Pictures/Screenshots/Screenshot from 2026-04-01 11-41-03.png is an example of part of what i want.
-
-
-idea:
-- device simulator: create a device that simulates a device with found real messages.
-These messages can be retrieved from _rf docs and stored in a dbase, with options:
+### Device Simulator
+Create a device simulator that uses real messages from database:
 - devices (brands, types)
 - messages (types, payloads)
 - timing (when to send messages)
-- enabled (on/off) enable by default, disable when not needed
+- enabled (on/off)
 
-discover devices (auto-discover devices from messages)
+Use for testing responses, finding problems, flooding tests.
 
-a test feature can then iterate over these msgs and send them to a selectable sim device
-to check responses and find problems. Also can test flooding, etc.
+### RF Config Validation
+Check on startup if ramses_cc has:
+- Bound REM configured
+- Enable Message Events with regex: 31DA|10D0
+- Enable Send Packet Service
+Log errors if not configured.
