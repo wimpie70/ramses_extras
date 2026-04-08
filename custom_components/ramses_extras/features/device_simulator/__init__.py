@@ -32,6 +32,7 @@ async def async_create_device_simulator_feature(
     from .device_db import DeviceDatabase
     from .scenario_engine import ScenarioEngine
     from .services import async_setup_services
+    from .websocket import async_register_websocket_commands
 
     hass.data.setdefault("ramses_extras", {})
     registry = hass.data["ramses_extras"]
@@ -53,6 +54,9 @@ async def async_create_device_simulator_feature(
 
     # Set up services
     await async_setup_services(hass)
+
+    # Register websocket commands
+    async_register_websocket_commands(hass)
 
     _LOGGER.debug("Device Simulator feature created")
 

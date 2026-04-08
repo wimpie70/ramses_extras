@@ -107,6 +107,7 @@ class ScenarioEngine:
         self._running_scenarios: dict[str, dict[str, Any]] = {}
         self._state = SCENARIO_STATE_IDLE
         self._messages_sent = 0
+        self._message_log: list[str] = []
 
         endpoint.set_inbound_handler(self._handle_inbound_frame)
 
