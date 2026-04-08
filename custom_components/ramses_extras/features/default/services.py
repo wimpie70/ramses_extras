@@ -226,6 +226,32 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "_remote_override_release_handles", {}
         )
 
+        def _get_rem_timeout_seconds() -> int:
+            """Get configured timeout for this REM binding (default 60s)."""
+            from ...framework.helpers.config.core import ExtrasConfigManager
+            from ...framework.helpers.remote_binding import get_remote_binding_registry
+
+            registry = get_remote_binding_registry(hass)
+            config_manager = registry._get_config_manager()
+            if config_manager is None:
+                return 60
+
+            bindings = config_manager.get_fan_remote_bindings(device_id)
+            normalized_source = source_id.replace("_", ":").strip()
+            for binding in bindings:
+                binding_rem_id = (
+                    str(binding.get("rem_id") or "").replace("_", ":").strip()
+                )
+                if binding_rem_id == normalized_source:
+                    timeout = binding.get("manual_timeout")
+                    if isinstance(timeout, int) and timeout > 0:
+                        return timeout
+                    # Legacy: check for override_timeout
+                    legacy_timeout = binding.get("override_timeout")
+                    if isinstance(legacy_timeout, int) and legacy_timeout > 0:
+                        return legacy_timeout
+            return 60
+
         def _cancel_remote_override_release() -> None:
             handle = release_handles.pop(device_id, None)
             if handle is not None and not handle.cancelled():
@@ -240,14 +266,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             await coordinator.async_run_zone_actuation_cycle()
             await _async_resume_feature_control(device_id)
 
-        def _schedule_remote_override_release(timeout_seconds: int = 60) -> None:
+        def _schedule_remote_override_release(
+            timeout_seconds: int | None = None,
+        ) -> None:
+            if timeout_seconds is not None:
+                effective_timeout = timeout_seconds
+            else:
+                effective_timeout = _get_rem_timeout_seconds()
             _cancel_remote_override_release()
 
             def _callback() -> None:
                 hass.async_create_task(_async_release_remote_override())
 
             release_handles[device_id] = hass.loop.call_later(
-                timeout_seconds,
+                effective_timeout,
                 _callback,
             )
 
@@ -270,13 +302,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             return
 
         if command in {"fan_low", "fan_medium", "fan_high"}:
+            timeout = _get_rem_timeout_seconds()
             _LOGGER.info(
-                "Applying REM speed command: %s for %s (zone=%s)",
+                "Applying REM speed command: %s for %s (zone=%s, timeout=%ss)",
                 command,
                 device_id,
                 zone_id,
+                timeout,
             )
-            _schedule_remote_override_release(60)
+            _schedule_remote_override_release()
             arbiter.set_extras_control_enabled(device_id, True)
             arbiter.set_manual_override_state(
                 device_id,

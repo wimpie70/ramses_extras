@@ -197,6 +197,7 @@ def _describe_remote_binding(rem: dict[str, Any]) -> str:
     enabled = bool(rem.get("enabled", True))
     zone_id = str(rem.get("zone_id") or "").strip()
     area_id = str(rem.get("area_id") or "").strip()
+    manual_timeout = int(rem.get("manual_timeout") or 60)
 
     parts = [
         f"rem_id: {rem_id}",
@@ -207,6 +208,8 @@ def _describe_remote_binding(rem: dict[str, Any]) -> str:
         parts.append(f"zone_id: {zone_id}")
     if area_id:
         parts.append(f"area_id: {area_id}")
+    if manual_timeout != 60:
+        parts.append(f"timeout: {manual_timeout}s")
     return "- " + "; ".join(parts)
 
 
@@ -2426,6 +2429,7 @@ async def _async_handle_rems_edit(
                     break
 
         if not errors:
+            manual_timeout = int(user_input.get("manual_timeout") or 60)
             updated_rem: dict[str, Any] = {
                 "rem_id": rem_id,
                 "enabled": enabled,
@@ -2434,6 +2438,8 @@ async def _async_handle_rems_edit(
                 updated_rem["zone_id"] = zone_id
             if area_id:
                 updated_rem["area_id"] = area_id
+            if manual_timeout != 60:
+                updated_rem["manual_timeout"] = manual_timeout
 
             new_rems: list[dict[str, Any]] = []
             for rem in fan_rems:
@@ -2463,6 +2469,9 @@ async def _async_handle_rems_edit(
     enabled_default = bool(existing_rem.get("enabled", True)) if existing_rem else True
     zone_default = str(existing_rem.get("zone_id") if existing_rem else "").strip()
     area_default = str(existing_rem.get("area_id") if existing_rem else "").strip()
+    manual_timeout_default = (
+        int(existing_rem.get("manual_timeout") or 60) if existing_rem else 60
+    )
 
     zones_section = get_migrated_feature_section(options, FEATURE_ZONES)
     fan_zones = get_zones_for_fan(zones_section, selected_device_id)
@@ -2509,6 +2518,18 @@ async def _async_handle_rems_edit(
                     options=area_id_options,
                     mode=selector.SelectSelectorMode.DROPDOWN,
                     custom_value=True,
+                )
+            ),
+            vol.Optional(
+                "manual_timeout",
+                default=manual_timeout_default,
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=3600,
+                    step=1,
+                    unit_of_measurement="s",
+                    mode=selector.NumberSelectorMode.BOX,
                 )
             ),
         }
