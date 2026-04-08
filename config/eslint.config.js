@@ -56,6 +56,12 @@ export default [
         window: 'readonly',
         console: 'readonly',
         document: 'readonly',
+        HTMLElement: 'readonly',
+        customElements: 'readonly',
+        navigator: 'readonly',
+        CustomEvent: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
 
         // Home Assistant globals
         hass: 'readonly',

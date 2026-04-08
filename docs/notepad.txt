@@ -6,16 +6,19 @@
 - docs/ZONES_IMPLEMENTATION_PLAN.md
 - docs/CONFIGURATION_STRATEGY.md
 
-## Ideas
+## Active Projects
 
 ### Device Simulator
-Create a device simulator that uses real messages from database:
-- devices (brands, types)
-- messages (types, payloads)
-- timing (when to send messages)
-- enabled (on/off)
+**Status**: Implementation plan complete, structure created
+**Location**: `features/device_simulator/IMPLEMENTATION_PLAN.md`
 
-Use for testing responses, finding problems, flooding tests.
+Core components:
+- Message database (parses `ramses_rf/tests/fixtures/regression_packets_sorted.txt`)
+- Virtual gateway (injects events into `ramses_cc_message` bus)
+- Scenario engine (device playback, flooding, timeout, conversation tests)
+- WebSocket API + UI cards (device-simulator, scenario-builder)
+
+**Next Steps**: After zone project completion
 
 ### RF Config Validation
 Check on startup if ramses_cc has:
@@ -23,3 +26,7 @@ Check on startup if ramses_cc has:
 - Enable Message Events with regex: 31DA|10D0
 - Enable Send Packet Service
 Log errors if not configured.
+
+
+### check framework for feature specific code that needs to be moved to it's features
+###
