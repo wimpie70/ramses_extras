@@ -990,6 +990,53 @@ This is exactly the kind of deterministic stimulus an automation test needs: a k
 
 ---
 
-_Status: Planning Phase — structure scaffolded, Phase 2 (DB enhancement) next_
+## Implementation Status
+
+**Last Updated:** 2026-04-08
+
+### Completed ✅
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| Feature structure | ✅ | `features/device_simulator/` with proper layout |
+| `const.py` | ✅ | MQTT topics, scenario types, verb constants |
+| `comm_endpoint.py` | ✅ | `MqttEndpoint` with HA MQTT integration |
+| `device_db.py` | ✅ | YAML loader, `DeviceDatabase` with query methods |
+| `scenario_engine.py` | ✅ | `ScenarioEngine` with emitters, responses, conversation playback |
+| `services.py` | ✅ | 7 HA services (inject, activate, silence, run_conversation, run_scenario, stop_scenario, import_config) |
+| `websocket.py` | ✅ | 8 WebSocket commands for real-time control |
+| `platforms/sensor.py` | ✅ | 3 sensors (status, messages_sent, active_devices) |
+| Device DB build script | ✅ | `scripts/build_device_db.py` mines ramses_rf sources |
+| Generated YAML files | ✅ | 21 device types in `device_db/heat/` and `device_db/hvac/` |
+| Conversation YAML | ✅ | `fan_rem.yaml` with RQ/RP exchanges |
+| MQTT dependency | ✅ | Added to `manifest.json` |
+| Message logging | ✅ | All sent packets logged for WebSocket retrieval |
+
+### In Progress 🔄
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Scenario runners | 🔄 | Stubs implemented: `async_run_device_playback`, `async_run_device_suite`, `async_run_discovery_test`, `async_run_timeout_test`, `async_run_flooding_test`, `async_run_unavailability_test` |
+| End-to-end testing | ⏳ | Requires HA with MQTT broker setup |
+
+### Pending ⏳
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Profile system | ⏳ | Import user ramses_cc config + packet log |
+| More conversations | ⏳ | CO2 sensor, REM temperature patterns |
+| UI panel | ⏳ | Custom card for device browser & scenario control |
+| Heartbeat scaling | ⏳ | Monkeypatch integration for timeout tests |
+
+### Architecture Decisions
+
+- **MQTT integration**: Uses HA's built-in MQTT via `homeassistant.components.mqtt` (no separate broker client)
+- **Device Database**: Layered YAML with baseline + variants + conversations, built offline from regression file
+- **Isolation**: Fixed gateway ID `18:001234` prevents collision with real hardware
+- **No ramses_rf modifications**: Simulator is completely external
+
+---
+
+_Status: Phase 1 Complete — Core infrastructure ready for testing_
 _Priority: After zone project completion_
 _Estimated Effort: 4-5 weeks for MVP (profiles add complexity)_

@@ -1,0 +1,190 @@
+# FAN + CO2 Sensor - Demand Controlled Ventilation (DCV) interaction
+# High CO2 triggers FAN speed increase, low CO2 allows speed reduction
+---
+peers:
+  - FAN
+  - CO2
+conversations:
+  - id: co2_high_dcv_boost
+    description: High CO2 triggers FAN boost, CO2 drops, FAN returns to normal
+    frames:
+      # Normal state - FAN at low speed, CO2 moderate
+      - t: 0.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00  # FAN speed 14%
+      - t: 5.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '03E8005A046404B0'  # CO2 1000ppm (moderate)
+
+      # CO2 rising - people entering room
+      - t: 60.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '05DC005A046404B0'  # CO2 1500ppm (elevated)
+      - t: 65.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '07D0005A046404B0'  # CO2 2000ppm (high - DCV trigger)
+
+      # FAN receives trigger and boosts speed
+      - t: 70.0
+        src: CO2
+        dst: FAN
+        code: '22F1'
+        verb: RQ
+        payload: '00'  # CO2 may trigger RQ to FAN
+      - t: 70.12
+        src: FAN
+        dst: CO2
+        code: '22F1'
+        verb: RP
+        payload: '00C0'  # FAN reports high speed (75%)
+
+      # FAN broadcasts updated speed
+      - t: 72.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF00C0EFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00  # Speed 75%
+
+      # CO2 starts dropping due to increased ventilation
+      - t: 120.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '05DC005A046404B0'  # CO2 back to 1500ppm
+      - t: 180.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '04B0005A046404B0'  # CO2 1200ppm (normalizing)
+
+      # FAN reduces speed as CO2 normalizes
+      - t: 240.0
+        src: CO2
+        dst: FAN
+        code: '22F1'
+        verb: RQ
+        payload: '00'
+      - t: 240.12
+        src: FAN
+        dst: CO2
+        code: '22F1'
+        verb: RP
+        payload: '0048'  # FAN back to moderate speed (28%)
+
+      # Final state - both normalized
+      - t: 242.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF0048EFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00  # Speed 28%
+      - t: 250.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '03E8005A046404B0'  # CO2 back to 1000ppm
+
+  - id: rapid_co2_spike
+    description: Sudden CO2 spike (cooking/event) triggers maximum boost
+    frames:
+      # Baseline normal
+      - t: 0.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF0048EFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00  # Speed 28%
+      - t: 0.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '04B0005A046404B0'  # CO2 1200ppm
+
+      # Sudden spike
+      - t: 10.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '09C4005A046404B0'  # CO2 2500ppm (very high)
+
+      # Immediate FAN response - max speed
+      - t: 12.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF00FFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00  # Speed 100%
+
+      # Another CO2 sample at max ventilation
+      - t: 30.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '06A4005A046404B0'  # CO2 1700ppm (dropping)
+
+      # CO2 normalizes, FAN ramps down gradually
+      - t: 60.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '04B0005A046404B0'  # CO2 1200ppm
+      - t: 62.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF00C0EFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00  # Speed 75%
+      - t: 90.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF0048EFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00  # Speed 28%
+
+  - id: co2_fan_info_exchange
+    description: Standard periodic info exchange between FAN and CO2
+    frames:
+      - t: 0.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+      - t: 0.5
+        src: CO2
+        dst: FAN
+        code: '31DA'
+        verb: RQ
+        payload: '00'
+      - t: 0.65
+        src: FAN
+        dst: CO2
+        code: '31DA'
+        verb: RP
+        payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+      - t: 1.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '03E8005A046404B0'

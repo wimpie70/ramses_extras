@@ -1,0 +1,103 @@
+# REM Temperature sensor patterns
+# REM broadcasts temperature readings periodically and responds to RQ
+---
+peers:
+  - REM
+conversations:
+  - id: rem_temp_periodic
+    description: REM broadcasts room temperature every ~60s
+    frames:
+      - t: 0.0
+        src: REM
+        dst: ALL
+        code: '31D9'
+        verb: I
+        payload: '04D207D0'  # Temp 19.38°C, setpoint 20.00°C
+      - t: 60.0
+        src: REM
+        dst: ALL
+        code: '31D9'
+        verb: I
+        payload: '04F007D0'  # Temp 20.00°C (rising)
+      - t: 120.0
+        src: REM
+        dst: ALL
+        code: '31D9'
+        verb: I
+        payload: '051E07D0'  # Temp 20.78°C (continuing to rise)
+
+  - id: rem_temp_with_humidity
+    description: REM broadcasts with humidity variant (if supported)
+    frames:
+      - t: 0.0
+        src: REM
+        dst: ALL
+        code: '31D9'
+        verb: I
+        payload: '04D207D0004B'  # Temp, setpoint, RH 37.5%
+      - t: 60.0
+        src: REM
+        dst: ALL
+        code: '31D9'
+        verb: I
+        payload: '04F007D00046'  # RH 43% (rising humidity)
+
+  - id: rem_temp_request
+    description: External controller requests REM temperature
+    frames:
+      - t: 0.0
+        src: CTL
+        dst: REM
+        code: '31D9'
+        verb: RQ
+        payload: '00'
+      - t: 0.08
+        src: REM
+        dst: CTL
+        code: '31D9'
+        verb: RP
+        payload: '04D207D0'  # Current temp and setpoint
+
+  - id: rem_setpoint_change
+    description: Setpoint change requested and confirmed
+    frames:
+      - t: 0.0
+        src: CTL
+        dst: REM
+        code: '31D9'
+        verb: W
+        payload: '07E0'  # New setpoint 20.50°C
+      - t: 0.15
+        src: REM
+        dst: CTL
+        code: '31D9'
+        verb: RP
+        payload: '04D207E0'  # Ack with new setpoint
+      - t: 5.0
+        src: REM
+        dst: ALL
+        code: '31D9'
+        verb: I
+        payload: '04E207E0'  # Temp rising toward new setpoint
+
+  - id: rem_temp_binding
+    description: REM binding process with zone controller
+    frames:
+      - t: 0.0
+        src: REM
+        dst: CTL
+        code: '1FC9'
+        verb: RQ
+        payload: '00'
+      - t: 0.1
+        src: CTL
+        dst: REM
+        code: '1FC9'
+        verb: RP
+        payload: '31D9'
+      - t: 1.0
+        src: REM
+        dst: ALL
+        code: '31D9'
+        verb: I
+        payload: '04D207D0'  # Now broadcasting to zone
