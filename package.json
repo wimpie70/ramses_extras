@@ -21,7 +21,8 @@
   },
   "overrides": {
     "js-yaml": "^4.1.1",
-    "@tootallnate/once": "^3.0.1"
+    "@tootallnate/once": "^3.0.1",
+    "picomatch": "2.3.2"
   },
   "jest": {
     "testEnvironment": "jsdom",

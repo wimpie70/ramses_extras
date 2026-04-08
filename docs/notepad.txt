@@ -19,7 +19,6 @@ medium: 41.63 l/s (at 50%)
 high: 83 l/s (at 100%)
 
 todo:
-- add sphinx style comments to all files
 
 - add a test on the RF config if we have
   - a bound REM,
