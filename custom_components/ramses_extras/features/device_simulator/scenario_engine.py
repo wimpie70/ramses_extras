@@ -222,6 +222,13 @@ class ScenarioEngine:
             try:
                 await self._endpoint.send_packet(packet)
                 messages_sent += 1
+                # Log the message
+                self._message_log.append(
+                    f"[{asyncio.get_event_loop().time():.3f}] {packet[:60]}..."
+                )
+                # Keep log size bounded
+                if len(self._message_log) > 1000:
+                    self._message_log = self._message_log[-500:]
             except Exception as err:
                 errors.append(str(err))
 
@@ -273,6 +280,13 @@ class ScenarioEngine:
                 try:
                     await self._endpoint.send_packet(packet)
                     self._messages_sent += 1
+                    # Log the message
+                    self._message_log.append(
+                        f"[{asyncio.get_event_loop().time():.3f}] {packet[:60]}..."
+                    )
+                    # Keep log size bounded
+                    if len(self._message_log) > 1000:
+                        self._message_log = self._message_log[-500:]
                 except Exception as err:
                     LOGGER.warning(
                         "Emitter send error for %s/%s: %s",
@@ -335,6 +349,13 @@ class ScenarioEngine:
         try:
             await self._endpoint.send_packet(packet)
             self._messages_sent += 1
+            # Log the message
+            self._message_log.append(
+                f"[{asyncio.get_event_loop().time():.3f}] {packet[:60]}..."
+            )
+            # Keep log size bounded
+            if len(self._message_log) > 1000:
+                self._message_log = self._message_log[-500:]
             LOGGER.debug("Responded %s RP/%s → %s", dst, code, src)
         except Exception as err:
             LOGGER.warning("Failed to send RP for %s/%s: %s", dst, code, err)
