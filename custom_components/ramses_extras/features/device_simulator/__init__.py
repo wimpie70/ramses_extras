@@ -18,7 +18,7 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 
 
-def create_device_simulator_feature(
+async def async_create_device_simulator_feature(
     hass: "HomeAssistant",
     config_entry: "ConfigEntry",
 ) -> dict[str, Any]:
@@ -31,15 +31,18 @@ def create_device_simulator_feature(
     from .comm_endpoint import MqttEndpoint
     from .device_db import DeviceDatabase
     from .scenario_engine import ScenarioEngine
+    from .services import async_setup_services
 
     hass.data.setdefault("ramses_extras", {})
     registry = hass.data["ramses_extras"]
 
     if "device_simulator_db" not in registry:
         registry["device_simulator_db"] = DeviceDatabase()
+        registry["device_simulator_db"].load_all()
 
     if "device_simulator_endpoint" not in registry:
         registry["device_simulator_endpoint"] = MqttEndpoint(hass)
+        await registry["device_simulator_endpoint"].async_connect()
 
     if "device_simulator_engine" not in registry:
         registry["device_simulator_engine"] = ScenarioEngine(
@@ -47,6 +50,9 @@ def create_device_simulator_feature(
             registry["device_simulator_endpoint"],
             registry["device_simulator_db"],
         )
+
+    # Set up services
+    await async_setup_services(hass)
 
     _LOGGER.debug("Device Simulator feature created")
 
@@ -58,4 +64,4 @@ def create_device_simulator_feature(
     }
 
 
-__all__ = ["create_device_simulator_feature"]
+__all__ = ["async_create_device_simulator_feature"]
