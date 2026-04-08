@@ -1,0 +1,43 @@
+# Auto-generated from ramses_rf sources
+# Device type: OTB (domain: heat)
+# Manual review recommended before committing
+---
+device_type: OTB
+domain: heat
+broadcast_safe: false
+autonomous:
+- code: 1FC9
+  verb: I
+  trigger: periodic
+  interval_seconds: 5.4
+  payloads: []
+- code: 10E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 61.7
+  payloads: []
+- code: 042F
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 1FD4
+  verb: I
+  trigger: periodic
+  interval_seconds: 110.0
+  payloads: []
+- code: 0009
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 3EF0
+  verb: I
+  trigger: periodic
+  interval_seconds: 200.7
+  payloads: []
+- code: '3150'
+  verb: I
+  trigger: periodic
+  interval_seconds: 124.1
+  payloads: []
