@@ -1,0 +1,69 @@
+# Auto-generated from ramses_rf sources
+# Device type: DIS (domain: hvac)
+# Manual review recommended before committing
+---
+device_type: DIS
+domain: hvac
+broadcast_safe: false
+autonomous:
+- code: 1FC9
+  verb: I
+  trigger: periodic
+  interval_seconds: 5.4
+  payloads: []
+- code: 10E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 61.7
+  payloads: []
+- code: 042F
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 22F3
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 22F1
+  verb: I
+  trigger: periodic
+  interval_seconds: 15.8
+  payloads: []
+- code: 1F70
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+responses:
+- code: 31DA
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: '2411'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: '0001'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: 313F
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: '1470'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: 22F7
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []

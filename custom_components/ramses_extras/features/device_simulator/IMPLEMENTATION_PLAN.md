@@ -1,0 +1,1042 @@
+# Device Simulator - Implementation Plan
+
+## Overview
+
+A developer tool that simulates RAMSES devices by sitting at the **communication endpoint** — the far end of the wire — using the existing transport layer (serial, MQTT) unchanged. Ramses RF/CC runs as normal, using its own config (known devices, schemas, etc.). The simulator is a separate process that reads and writes on the other side of the connection.
+
+## Design Principle
+
+**Keep ramses_rf/cc source unmodified. Simulate at the communication endpoint only.**
+
+- ramses_rf/cc run unmodified — source, config flow, known devices all unchanged
+- The full transport stack (serial, MQTT, zigbee) is exercised as-is
+- **No real RF is transmitted** — all communication is virtual (MQTT broker in container, socat pty pair). Nothing leaves the container.
+- Isolation is enforced at the transport level:
+  - **MQTT**: use a dedicated broker inside the container on a non-standard port; ramses_cc points to it, never to a real broker
+  - **Device IDs**: use IDs from the regression file as-is (they are real captures, isolated in the container). Avoid broadcast-style messages that could echo to real devices if the transport is ever misconfigured.
+  - **Broadcast safety**: the simulator must suppress or not emit true RF-broadcast frames (e.g. `18:------` as source) unless explicitly needed for a test — these are the most dangerous if isolation breaks
+
+---
+
+## Use Cases
+
+- Test how ramses_rf/cc handles specific device types (FAN, CO2, REM, etc.)
+- Simulate device discovery and brand/type detection as ramses_rf evolves
+- Test timeout handling — just don't respond to an RQ
+- Flooding tests: high-frequency `I` messages to check stability
+- Reproduce bugs from user-submitted packet logs
+- Develop/test new device support before hardware is available
+
+---
+
+## Data Sources
+
+### Source 1: `regression_packets_sorted.txt` — mining only, not runtime store
+
+- 32,326 real captured packets — used **once** to extract example payloads per device/code/verb
+- Too large and unstructured to use directly at runtime
+- Parsed offline → extracted payloads stored in the **Device Database** (below)
+- LLM can assist grouping/annotating if needed
+
+### Source 2: `ramses_tx/ramses.py` — authoritative code/verb schema
+
+- `_DEV_KLASSES_HEAT` and `_DEV_KLASSES_HVAC` define exactly which `{Code: {verb}}` combinations each device type (`DevType.*`) handles
+- Used to validate simulator device definitions and drive RQ→RP routing
+
+### Source 3: `ramses_tx/fingerprints.py` — hardware catalog
+
+- `__DEVICE_INFO_RAW`: ~70 real devices with `slug`, `dev_type`, `date`, `desc`, and inline code hints
+- Brands: Itho, Orcon, Vasco, Nuaire, Honeywell/Resideo, Jasper, ClimaRad
+- This is the brand/model/firmware data for fingerprint detection tests
+
+### Source 4: `ramses_tx/parsers.py` — payload format knowledge
+
+- Parser functions and validation regexes per `(code, verb)`
+- Used to generate valid synthetic payloads when no real example is available
+
+### Source 5: User-submitted packet logs
+
+- Additional `.log` / `.txt` files for reproducing specific user bugs
+- Imported into the Device Database as a named source
+
+---
+
+## Device Database
+
+The **Device Database** is the simulator's central structured store — a set of YAML files (one per device type or family) built offline from Sources 1–4. It replaces direct use of the huge regression file at runtime.
+
+### Structure
+
+```
+features/device_simulator/device_db/
+    heat/
+        CTL.yaml    # Layer 1+2: Evohome controller + variants (EvoTouch, Color, Mk1)
+        TRV.yaml    # Layer 1+2: HR91/HR92 radiator valve
+        OTB.yaml    # Layer 1+2: R8810A/R8820 OpenTherm bridge
+        ...
+    hvac/
+        FAN.yaml    # Layer 1+2: CVE-RF, VMD, VMC, PIV variants (Itho/Orcon/Nuaire/Vasco)
+        CO2.yaml    # Layer 1+2: VMS-12C39, VMS-17C01, etc.
+        REM.yaml    # Layer 1+2: VMN-15LF01, VMI-15MC01, etc.
+        HUM.yaml    # Layer 1+2: VMS-23HB33, VMS-17HB01
+        RFS.yaml    # Layer 1+2: CCU-12T20 spIDer gateway
+        ...
+    conversations/  # Layer 3: shared multi-device exchange blocks
+        fan+rem.yaml      # speed change, boost, etc.
+        fan+co2.yaml      # DCV reaction
+        fan+rfs.yaml      # RFS discovery sequence
+        co2+rfs.yaml
+        ctl+trv.yaml
+        ctl+otb.yaml
+        ...
+```
+
+### Design decision: relational vs. flat
+
+**Not a full relational DB** — that adds too much indirection for a simulator. But pure flat YAML per device type breaks down because:
+
+1. **Variant capability divergence**: a `FAN` CVE-RF only emits `31D9`; a VMD-15RMS86 emits `31D9 + 31DA + 12A0 + 042F`. These are not the same device and need different payloads.
+2. **Brand-specific code semantics**: `22F1` (fan speed) has **4 distinct payload schemes** — `itho`, `nuaire`, `vasco`, `orcon` — with different byte meanings. The parser in `parsers.py` already detects this from `payload[4:6]`. A simulator must know which scheme to use per variant.
+3. **Conversations are between variants, not types**: a `fan_rem_speed_change` conversation with an Itho FAN uses different `22F1` payloads than with an Orcon FAN.
+
+**Solution: 3-layer structure, all in YAML, no external DB**
+
+```
+Layer 1: device_type file (FAN.yaml)  — shared capability baseline, conversations
+Layer 2: variant block (inline)       — per-fingerprint overrides for payloads + codes
+Layer 3: conversations library        — shared across types, keyed by (peer_a, peer_b)
+```
+
+The variant block is _not_ a separate file — it lives inside `FAN.yaml`. A variant only declares what it does **differently** from the type baseline. Runtime lookup: load variant → merge with type baseline → done. No joins, no FK lookups.
+
+---
+
+### YAML schema — Layer 1+2: device type file
+
+```yaml
+# hvac/FAN.yaml
+device_type: FAN
+domain: hvac
+broadcast_safe: false
+
+# ── HARDWARE VARIANTS ────────────────────────────────────────────────────────
+# Each variant lists only what differs from the type baseline below.
+# If a variant has no overrides block, it uses the baseline exactly.
+variants:
+  - id: 'itho_cve_rf'
+    fingerprint: '0001001B221201FEFF'
+    desc: 'CVE-RF'
+    brand: 'Itho'
+    date: '2015-05-12'
+    scheme_22f1: itho # ← payload semantics for code 22F1
+    codes: [31D9, 31DA] # ← only these (subset of baseline)
+    # no overrides → uses baseline payloads for 31D9, 31DA
+
+  - id: 'orcon_vmd15rms86'
+    fingerprint: '0001C895050567FEFF'
+    desc: 'VMD-15RMS86'
+    brand: 'Orcon'
+    date: '2020-07-01'
+    scheme_22f1: orcon
+    codes: [31D9, 31DA, 12A0, 22F7, 2411, 042F] # superset
+    overrides:
+      autonomous:
+        - code: '31DA'
+          payloads:
+            - '007FFF007FFF00EF00FF007FFF007FFF7FFF' # Orcon-specific payload
+      responses:
+        - code: '12A0'
+          payloads:
+            - '007FFF007FFF'
+
+  - id: 'nuaire_piv'
+    fingerprint: '0001C90011006CFEFF'
+    desc: 'BRDG-02JAS01'
+    brand: 'Nuaire'
+    date: '2016-09-09'
+    scheme_22f1: nuaire
+    codes: [31D9, 31DA, 1F09]
+    # 1F09 is a PIV-specific code not in the FAN baseline
+
+# ── BASELINE (type default, used when variant has no override) ───────────────
+
+# 1. AUTONOMOUS — messages the device sends without being asked
+autonomous:
+  - code: '31D9'
+    verb: 'I'
+    trigger: periodic
+    interval_seconds: 60
+    payloads:
+      - '0070B000FF00FFFF00' # running 70%
+      - '0000B000FF00FFFF00' # off
+    notes: 'all FAN variants emit this'
+
+  - code: '31DA'
+    verb: 'I'
+    trigger: periodic
+    interval_seconds: 60
+    payloads:
+      - '007FFF007FFF00EFFF...'
+    notes: 'extended status; some variants only'
+
+  - code: '042F'
+    verb: 'I'
+    trigger: periodic
+    interval_seconds: 300
+    payloads:
+      - '000000000000000000000000'
+    notes: 'operating counters; VMD variants only'
+
+# 2. RESPONSES — 1:1 reaction to incoming RQ or W
+responses:
+  - code: '31DA'
+    rq_verb: 'RQ'
+    rp_verb: 'RP'
+    delay_ms: 120
+    payloads:
+      - '007FFF007FFF00EFFF...'
+
+  - code: '10E0'
+    rq_verb: 'RQ'
+    rp_verb: 'RP'
+    delay_ms: 150
+    payloads: [] # filled per-variant from fingerprint at build time
+
+  - code: '12A0'
+    rq_verb: 'RQ'
+    rp_verb: 'RP'
+    delay_ms: 80
+    payloads:
+      - '007FFF007FFF'
+    notes: 'variants with supply air temp sensor only'
+
+# 3. CONVERSATIONS — see conversations library (Layer 3)
+conversations:
+  - ref: 'fan+rem/speed_change'
+  - ref: 'fan+co2/dcv_reaction'
+  - ref: 'fan+rfs/discovery'
+```
+
+---
+
+### YAML schema — Layer 3: conversations library
+
+Conversations live in a **separate shared file** because the same exchange (e.g. RFS discovery) applies to multiple device types (FAN, CO2, REM all get queried by RFS at startup). Storing it once avoids duplication and drift.
+
+```yaml
+# conversations/fan+rem.yaml
+peers: [FAN, REM]
+
+conversations:
+  - id: "speed_change"
+    description: "REM sends W/22F1 to change fan speed; FAN acks and broadcasts new state"
+    scheme: itho                # which 22F1 payload scheme this block uses
+    frames:
+      - t: 0.000  src: REM  dst: FAN  code: "22F1"  verb: "W"   payload: "000407"
+      - t: 0.120  src: FAN  dst: REM  code: "22F1"  verb: "RP"  payload: "000407"
+      - t: 0.180  src: FAN  dst: ALL  code: "31D9"  verb: "I"   payload: "0040B000"
+
+  - id: "speed_change_orcon"
+    description: "Same exchange but Orcon scheme payload"
+    scheme: orcon
+    frames:
+      - t: 0.000  src: REM  dst: FAN  code: "22F1"  verb: "W"   payload: "000B07"
+      - t: 0.120  src: FAN  dst: REM  code: "22F1"  verb: "RP"  payload: "000B07"
+      - t: 0.180  src: FAN  dst: ALL  code: "31D9"  verb: "I"   payload: "0040B000"
+```
+
+```yaml
+# conversations/fan+co2.yaml
+peers: [FAN, CO2]
+
+conversations:
+  - id: "dcv_reaction"
+    description: "CO2 sends 1298; FAN reacts (demand-controlled ventilation)"
+    frames:
+      - t: 0.000   src: CO2  dst: ALL  code: "1298"  verb: "I"  payload: "0006D6"
+      - t: 2.100   src: FAN  dst: ALL  code: "31D9"  verb: "I"  payload: "0070B000"
+      - t: 62.000  src: CO2  dst: ALL  code: "1298"  verb: "I"  payload: "000520"
+      - t: 64.200  src: FAN  dst: ALL  code: "31D9"  verb: "I"  payload: "0030B000"
+```
+
+```yaml
+# conversations/fan+rfs.yaml   (also used by CO2+rfs, REM+rfs, etc.)
+peers: [FAN, RFS]
+
+conversations:
+  - id: "discovery"
+    description: "RFS queries FAN on startup via 10E0 + 31DA"
+    frames:
+      - t: 0.000  src: RFS  dst: FAN  code: "10E0"  verb: "RQ"  payload: "00"
+      - t: 0.180  src: FAN  dst: RFS  code: "10E0"  verb: "RP"  payload: "0001001B221201FEFF"
+      - t: 0.300  src: RFS  dst: FAN  code: "31DA"  verb: "RQ"  payload: "00"
+      - t: 0.420  src: FAN  dst: RFS  code: "31DA"  verb: "RP"  payload: "007FFF..."
+```
+
+**Resulting file structure**:
+
+```
+device_db/
+  heat/
+    CTL.yaml
+    TRV.yaml
+    OTB.yaml
+  hvac/
+    FAN.yaml
+    CO2.yaml
+    REM.yaml
+    HUM.yaml
+    RFS.yaml
+  conversations/
+    fan+rem.yaml
+    fan+co2.yaml
+    fan+rfs.yaml
+    co2+rfs.yaml
+    rem+rfs.yaml
+    ctl+trv.yaml
+    ctl+otb.yaml
+    ...
+```
+
+**Runtime lookup** for a scenario activating variant `itho_cve_rf`:
+
+1. Load `FAN.yaml` baseline
+2. Find variant `itho_cve_rf`, merge overrides into baseline
+3. Filter `autonomous` + `responses` to variant's `codes` list
+4. Load referenced conversations from `conversations/`, filter by `scheme: itho`
+5. Ready
+
+**Scheme handling**: `scheme_22f1` on a variant tells the simulator and the conversation loader which conversation blocks and payload examples are valid for that variant. A scenario that mixes an Itho FAN with an Orcon REM would be flagged as a scheme mismatch.
+
+### Building the database
+
+1. **Scaffold** (`scripts/build_device_db.py`):
+   - Iterate `_DEV_KLASSES_HEAT/HVAC` + `fingerprints.py` → generate device type YAML stubs with all variants, `codes` lists, `scheme_22f1` where applicable
+   - Generate empty conversation stubs for each known device pair
+2. **Mine regression file**:
+   - Extract `autonomous` payloads and compute median intervals per `(fingerprint, code, verb)`
+   - Group by device-ID pairs + time proximity → populate conversation `frames` blocks with real relative timestamps
+3. **Annotate** (LLM pass):
+   - Classify scheme per conversation block
+   - Fill missing payloads from `parsers.py` regex templates
+   - Add `notes`, flag `broadcast_safe` per variant
+4. **Human review**: verify scheme assignments and conversation frame ordering
+
+---
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                  Standalone HA Container                   │
+│                                                            │
+│   ramses_cc   ──►   ramses_rf   ──►   Transport           │
+│   (config,           (protocol,       (serial /           │
+│    entities)          engine)          MQTT /             │
+│                                        zigbee)            │
+└───────────────────────────────────────────┬───────────────┘
+                                            │
+                              virtual wire (socat / MQTT broker)
+                                            │
+┌───────────────────────────────────────────▼───────────────┐
+│                  Device Simulator                          │
+│                                                            │
+│   ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
+│   │  Comm        │  │  Scenario    │  │  Message      │  │
+│   │  Endpoint    │  │  Engine      │  │  Database     │  │
+│   │  (serial/    │  │  (RQ→RP,     │  │  (regression  │  │
+│   │   MQTT)      │  │   periodic I,│  │   packets)    │  │
+│   │              │  │   flooding)  │  │               │  │
+│   └──────────────┘  └──────────────┘  └───────────────┘  │
+└────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Communication Modes
+
+### Mode A: Virtual Serial (socat)
+
+`socat` creates a linked pseudo-terminal pair. ramses_rf uses `/dev/pts/0`, the simulator uses `/dev/pts/1`. Already documented in `ramses_tx/transport/port.py`:
+
+```
+socat -dd pty,raw,echo=0 pty,raw,echo=0
+```
+
+- Simulator reads raw lines from its pty, writes raw lines back
+- Wire format: plain ASCII packet strings + `\r\n`
+- Works for evofw3-style communication
+
+### Mode B: MQTT (preferred for standalone container)
+
+ramses_rf connects to an MQTT broker with `MqttTransport`. The simulator is a **second MQTT client** connecting to the same broker.
+
+From `MqttTransport` code:
+
+- ramses_rf **subscribes** to `ramses_gateway/{gwy_id}/rx` for inbound packets
+- ramses_rf **publishes** to `ramses_gateway/{gwy_id}/tx` for outbound commands
+
+So the simulator:
+
+- **Publishes** to `ramses_gateway/{gwy_id}/rx` to inject device messages
+- **Subscribes** to `ramses_gateway/{gwy_id}/tx` to see outbound RQ commands and respond
+
+No changes needed anywhere in ramses_rf or ramses_cc.
+
+### Mode C: ser2net (network serial)
+
+ramses_rf uses `rfc2217://localhost:5001`, simulator connects to the same port as a ser2net server. More complex, Mode A/B preferred.
+
+---
+
+## Core Components
+
+### 1. Device Database Loader (`device_db.py`) — replaces `message_db.py`
+
+**Responsibility**: Load the structured YAML device database at runtime; provide fast lookup for the response engine and periodic emitter
+
+The database YAML files (under `device_db/heat/` and `device_db/hvac/`) are built offline (see Data Sources above) and version-controlled. At runtime this module just loads and indexes them.
+
+**Key methods**:
+
+- `load_all()` — load all YAML files from `device_db/`
+- `get_device_type(slug)` → `DeviceTypeEntry` with full comm definition
+- `find_response(slug, code)` → `(payload, delay_ms)` for an incoming RQ
+- `get_periodic(slug)` → list of `(code, payload, interval_secs)` for emitter
+- `get_fingerprint_payload(fingerprint)` → `10E0` payload for discovery test
+- `import_user_log(path, name)` — parse user packet log, merge into runtime DB
+
+**Offline build script** (`scripts/build_device_db.py`):
+
+- Reads `ramses.py` (`_DEV_KLASSES_HEAT/HVAC`) + `fingerprints.py` → scaffolds YAML stubs
+- Mines `regression_packets_sorted.txt` → fills `example_payload` + `interval_seconds`
+- Flags `broadcast_safe` for each device type
+
+---
+
+### 2. Comm Endpoint (`comm_endpoint.py`) — NEW
+
+**Responsibility**: Handle the actual bytes in/out over serial or MQTT
+
+```python
+class SimulatorCommEndpoint(ABC):
+    async def send_packet(self, frame: str) -> None: ...   # send to ramses_rf
+    async def receive_packet(self) -> str: ...             # read from ramses_rf
+
+class SerialEndpoint(SimulatorCommEndpoint):
+    # Reads/writes /dev/pts/N via asyncio serial
+
+class MqttEndpoint(SimulatorCommEndpoint):
+    # Publishes to /rx topic, subscribes to /tx topic
+```
+
+---
+
+### 3. Response Engine (`response_engine.py`) — NEW
+
+**Responsibility**: Handle incoming RQ frames and generate RP responses
+
+```
+ramses_rf sends:  RQ --- 18:xxxxxx 37:123456 31DA ...
+endpoint reads it off /tx
+engine finds:     RP payload in message DB for device 37:123456, code 31DA
+engine waits:     configurable delay (50-200ms realistic, 0 for fast tests)
+endpoint writes:  RP  37:123456 18:xxxxxx 31DA ... to /rx
+```
+
+Drop-response mode: just don't reply → ramses_rf times out naturally.
+
+---
+
+### 4. Periodic Emitter (`periodic_emitter.py`) — NEW
+
+**Responsibility**: Emit unsolicited `I` messages on a timer per virtual device
+
+- Background task per simulated device
+- Emits periodic status messages at original recorded intervals (or scaled by speed factor)
+- Uses `comm_endpoint.send_packet()` to write to /rx
+- Per-device enable/disable
+- Starts when a scenario activates a device
+
+---
+
+### 5. Scenario Engine (`scenario_engine.py`) ✅ structure exists
+
+**Scenarios** (same types as before, but now driven by the comm endpoint):
+
+| Scenario            | What it does                                                   |
+| ------------------- | -------------------------------------------------------------- |
+| **device_playback** | Replay one device's messages in order at original timing       |
+| **device_suite**    | Activate multiple devices by type/brand simultaneously         |
+| **discovery_test**  | Emit `10E0` announcements; verify ramses_rf detects brand/type |
+| **timeout_test**    | Activate device but drop responses to specific RQ codes        |
+| **flooding_test**   | Emit `I` messages at high rate (N msgs/sec for T seconds)      |
+
+---
+
+### 6. System Configuration Profiles (`config_profiles.py`) — NEW
+
+**Responsibility**: Store, load, and inject complete ramses_cc system configurations
+
+A **profile** bundles:
+
+- A ramses_cc config fragment (known_devices, schema, zone layout, orphans)
+- A set of message IDs from the database (the devices that go with this config)
+- Metadata (name, system type, description, source user)
+
+```python
+@dataclass
+class SystemConfigProfile:
+    id: str                          # e.g., "heat_evohome_3zone"
+    name: str                        # Human-readable
+    description: str
+    system_type: str                 # "heat", "hvac", "mixed"
+    ramses_cc_config: dict           # known_devices, schema, etc.
+    device_ids: list[str]            # Devices active in this profile
+    message_filter: dict             # Which messages from DB to use
+    tags: list[str]                  # e.g., ["evohome", "3zone", "CO2"]
+    source: str | None               # e.g., "user report #42"
+```
+
+**Built-in profiles** (seeded from regression data):
+| Profile | Devices | Purpose |
+|---|---|---|
+| `heat_evohome_basic` | CTL + 3 zones + DHW | Basic heating test |
+| `hvac_fan_co2` | FAN + CO2 + REM | HVAC ventilation test |
+| `mixed_full` | CTL + zones + FAN + CO2 | Full mixed system |
+| `heat_timeout_reproduction` | CTL + zones, one zone drops | Reproduce unavailable bug |
+| `hvac_device_loss` | FAN stops emitting mid-run | Reproduce HVAC device loss |
+
+**Key methods**:
+
+- `load_profile(profile_id)` → activates config + message set in simulator
+- `save_profile(name, ramses_cc_config, device_ids)` → store new profile
+- `export_profile(profile_id)` → YAML/JSON for sharing
+- `import_profile(yaml_str)` → import from user report
+
+**Config injection**: When a profile is loaded, the simulator:
+
+1. Writes the profile's `ramses_cc_config` fragment to the container's HA config
+2. Triggers a ramses_cc reload (via HA restart or config reload service)
+3. Starts emitting the profile's device messages via comm endpoint
+
+This means each profile gives ramses_cc a completely different view of the system —
+different `known_devices`, different schema, different zone layout — all without
+manually editing any files.
+
+---
+
+### 7. Bug Reproduction Toolkit
+
+**Device Unavailability** (the current known issue):
+
+From ramses_rf code: devices have a `heartbeat_timeout` (`device/base.py`, `heat.py`, `hvac.py`).
+If a device stops emitting `I` messages, ramses_rf marks it unavailable after the timeout.
+
+The simulator can reproduce this exactly:
+
+```yaml
+scenario: device_unavailability
+params:
+  profile: 'heat_evohome_basic'
+  run_normal_for: 120 # seconds of normal operation
+  then_silence_devices:
+    - '04:123456' # zone thermostat stops reporting
+    - '01:000730' # controller goes quiet
+  observe_for: 300 # watch what happens in HA
+  expected: 'device becomes unavailable after heartbeat_timeout'
+```
+
+**What to observe**:
+
+- HA entity state changes to `unavailable`
+- Timing: does it match `heartbeat_timeout` exactly?
+- Does it recover when messages resume?
+- Does ramses_cc handle re-appearance correctly?
+
+**User bug reproduction**:
+A user reports "my FAN disappears after 30 minutes". They provide:
+
+1. Their ramses_cc config (`known_devices`, schema)
+2. Their packet log (or a portion of it)
+
+The simulator can:
+
+1. Import their packet log into the message DB
+2. Create a profile from their config
+3. Run the scenario — normal operation then silence the FAN
+4. Confirm the bug is reproduced
+5. Test a fix without needing the user's hardware
+
+---
+
+### 8. UI (ramses_extras feature cards)
+
+The simulator runs as a ramses_extras feature in the **same HA container**. The Lovelace UI provides:
+
+- **Profile browser**: list profiles, load/switch, import/export
+- **Device browser**: type, brand, enabled/disabled toggle per device
+- **Scenario selector + controls**: play, pause, speed, step
+- **Real-time stats**: msgs/sec sent/received, RQ hits, drops, timeouts
+- **Event log**: timeline of scenario events, device state changes, unavailability events
+
+---
+
+## Implementation Phases
+
+### Phase 1: Core Infrastructure ✅ (structure created)
+
+- Message database scaffold with parser
+- Basic service + WebSocket API scaffolding
+
+### Phase 2: Device Database — Build + Loader
+
+**2a: Offline build script** (`scripts/build_device_db.py`):
+
+- [ ] Scaffold YAML stubs from `_DEV_KLASSES_HEAT/HVAC` + `fingerprints.py`
+- [ ] Mine `regression_packets_sorted.txt`: extract example payloads per `(slug, code, verb)`, compute `interval_seconds` for periodic `I` messages
+- [ ] Flag `broadcast_safe` per device type (suppress by default)
+- [ ] LLM-assisted annotation pass: fill gaps, validate RQ→RP pairing
+- [ ] Human review of generated YAML files
+
+**2b: Runtime loader** (`device_db.py`):
+
+- [ ] Load + index all YAML files from `device_db/`
+- [ ] Implement `find_response(slug, code)`, `get_periodic(slug)`, `get_fingerprint_payload(fingerprint)`
+- [ ] Implement `import_user_log(path, name)` for user-submitted logs
+
+**Done When**: `device_db.load_all()` returns correctly indexed device definitions; `find_response("FAN", "31DA")` returns a valid payload.
+
+---
+
+### Phase 3: Comm Endpoint (MQTT mode first)
+
+**Tasks**:
+
+- [ ] Implement `MqttEndpoint`: connects to broker, pub/sub on correct topics
+- [ ] Parse inbound `/tx` frames from ramses_rf (detect RQ → route to response engine)
+- [ ] Send outbound `/rx` frames to ramses_rf (responses + periodic I)
+- [ ] Implement `SerialEndpoint` for socat/pty use (secondary priority)
+
+**Done When**: Simulator connects to MQTT broker and raw packet exchange works.
+
+---
+
+### Phase 4: Response Engine
+
+**Tasks**:
+
+- [ ] Parse incoming RQ frame: extract `verb`, `src`, `dst`, `code`
+- [ ] Look up RP in message DB
+- [ ] Wait configurable delay, then send RP via comm endpoint
+- [ ] Drop-response mode per device/code (for timeout tests)
+
+**Done When**: ramses_rf sends an RQ, gets a real RP back, device entity appears in HA.
+
+---
+
+### Phase 5: Periodic Emitter
+
+**Tasks**:
+
+- [ ] Background task per active device
+- [ ] Emit periodic `I` messages at correct intervals (from DB timestamps)
+- [ ] Speed control (1x, 10x, instant)
+- [ ] Per-device enable/disable
+
+**Done When**: Virtual FAN emits periodic 31DA → ramses_rf creates FAN entity with attributes.
+
+---
+
+### Phase 6: System Configuration Profiles
+
+**Tasks**:
+
+- [ ] Implement `SystemConfigProfile` dataclass + `ConfigProfileStore`
+- [ ] Build profile loader: writes config fragment to HA config dir, triggers reload
+- [ ] Implement `apply_timeout_scale(scale)` — patches `ramses_rf.const` module constants
+- [ ] Expose `heartbeat_timeout_scale` (and `heartbeat_timeout_override_seconds`) in simulator config
+- [ ] Apply timeout scale at simulator feature load, before ramses_cc processes any messages
+- [ ] Create built-in profiles from regression data (heat, hvac, mixed)
+- [ ] Create `device_unavailability` profile (normal run → silence devices)
+- [ ] Create `hvac_device_loss` profile (FAN stops emitting mid-run)
+- [ ] `export_profile()` / `import_profile()` for user bug reports
+
+**Done When**: Can switch configs without touching files; unavailability triggers within seconds at scale=0.01.
+
+---
+
+### Phase 7: Scenario Engine — Wire to Comm Endpoint + Profiles
+
+**Tasks**:
+
+- [ ] Device Playback: sequential replay via comm endpoint
+- [ ] Device Suite: activate multiple periodic emitters
+- [ ] Discovery Test: emit `10E0` + initial `I` messages
+- [ ] Timeout Test: activate device with drop-response enabled
+- [ ] Flooding Test: high-rate `I` emission
+- [ ] **Device Unavailability**: run normal → silence → observe → resume
+- [ ] Integrate profile loading into scenario start
+
+---
+
+### Phase 8: UI Cards
+
+- [ ] Profile browser (list, load, import/export, import from ramses_cc config)
+- [ ] Device browser card (per-device enable/disable, per-code exclusion toggles)
+- [ ] Scenario selector + playback controls
+- [ ] Real-time stats + event log (unavailability events highlighted)
+- [ ] Conversation runner card (pick conversation, map device IDs, run)
+
+---
+
+### Phase 9: Advanced (Future)
+
+- [ ] Docker Compose setup (HA + MQTT broker + simulator)
+- [ ] CI integration: run scenarios as automated regression tests
+- [ ] ser2net/socat serial mode
+- [ ] Automated assertion: check HA entity state after conversation/scenario completes
+- [ ] Automation test runner: import user automations + run conversation → assert result
+
+---
+
+## Container Setup
+
+```yaml
+# docker-compose.yml
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ['1883:1883']
+
+  homeassistant:
+    image: homeassistant/home-assistant:stable
+    volumes:
+      - ./ha_config:/config
+      - /path/to/ramses_extras:/config/custom_components/ramses_extras
+    depends_on: [mosquitto]
+```
+
+ramses_cc configured normally with MQTT transport:
+
+```yaml
+# configuration.yaml
+ramses_cc:
+  serial_port: 'mqtt://localhost:1883/ramses_gateway/18:000730'
+  known_devices: ... # injected by active profile
+```
+
+Simulator connects to same broker — **no ramses_cc/rf source changes needed**.
+
+---
+
+## Heartbeat Timeout Injection
+
+The timeout constants in `ramses_rf/src/ramses_rf/const.py` are module-level `timedelta` values:
+
+```python
+HEARTBEAT_TIMEOUT_DEFAULT = td(hours=1)
+HEARTBEAT_TIMEOUT_OTB     = td(hours=24)
+HEARTBEAT_TIMEOUT_TRV     = td(hours=12)
+HEARTBEAT_TIMEOUT_REMOTE  = td(hours=24)
+HEARTBEAT_TIMEOUT_SENSOR  = td(hours=12)
+```
+
+Each device class's `heartbeat_timeout` property just returns one of these constants.
+`is_available` in `device/base.py` is simply:
+
+```python
+return (now - self._last_msg_dtm) <= self.heartbeat_timeout
+```
+
+**Strategy — patch the module constants at simulator startup** (no ramses_rf source changes):
+
+```python
+import ramses_rf.const as _rfc
+
+_TIMEOUT_SCALE: float = 1.0  # 1.0 = real-time, 0.01 = 100x faster
+
+def apply_timeout_scale(scale: float) -> None:
+    """Scale all heartbeat timeouts by factor (e.g. 0.01 = 100x faster)."""
+    _rfc.HEARTBEAT_TIMEOUT_DEFAULT = td(seconds=3600 * scale)
+    _rfc.HEARTBEAT_TIMEOUT_OTB     = td(seconds=86400 * scale)
+    _rfc.HEARTBEAT_TIMEOUT_TRV     = td(seconds=43200 * scale)
+    _rfc.HEARTBEAT_TIMEOUT_REMOTE  = td(seconds=86400 * scale)
+    _rfc.HEARTBEAT_TIMEOUT_SENSOR  = td(seconds=43200 * scale)
+```
+
+This works because the device `heartbeat_timeout` properties read from the module attribute at call time — not at import time — so patching the module constant is sufficient.
+
+**Configurable via simulator feature config**:
+
+```yaml
+device_simulator:
+  heartbeat_timeout_scale: 0.01 # 100x faster: 1h → 36s, 24h → ~14min
+```
+
+Or even a fixed override:
+
+```yaml
+device_simulator:
+  heartbeat_timeout_override_seconds: 30 # all devices use 30s regardless of type
+```
+
+**Scale reference table**:
+| Scale | Default (1h) | TRV (12h) | OTB/Remote (24h) |
+|---|---|---|---|
+| `1.0` (real-time) | 60 min | 12 h | 24 h |
+| `0.1` | 6 min | 72 min | 144 min |
+| `0.01` | 36 sec | 12 min | 24 min |
+| `0.001` | 3.6 sec | 36 sec | 144 sec |
+
+This is in `config_profiles.py` / simulator startup — applied once when the simulator feature loads, before ramses_cc starts processing any messages.
+
+---
+
+## Resolved Design Decisions
+
+1. **MQTT gateway ID**: Fixed fake `18:001234`. Isolated container, no conflict risk. Good to log this ID prominently for debugging user reports.
+2. **Device IDs**: Use real IDs from regression file as-is. Isolated container = no real-world interference. Keeping real IDs also helps when cross-referencing user-submitted logs.
+3. **Config reload on profile switch**: ramses_cc has its own cache-clear method — use that via `homeassistant.reload_config_entry` first. Full restart as fallback only.
+4. **Brand/type detection**: WIP in ramses_rf/cc — the big device architecture transition is in progress (devices get capabilities/features added at runtime). The simulator has high value here: it will let us exercise `10E0` fingerprint detection as it gets implemented, without needing physical hardware.
+
+---
+
+## Filtering and Exclusions
+
+The simulator must support excluding specific devices and/or communication blocks. This is needed for:
+
+- Isolating a bug to a specific device without the noise of others
+- Testing what happens when a device partially fails (e.g. responds to some codes but not others)
+- Debugging user reports where only certain devices are relevant
+
+### Device-level exclusion
+
+Per scenario or profile, any device can be suppressed:
+
+```yaml
+scenario:
+  active_devices:
+    - variant: orcon_vmd15rms86
+      device_id: '20:123456'
+      exclude_codes: ['042F'] # emit everything except 042F
+    - variant: itho_co2_vms12c39
+      device_id: '37:654321'
+      enabled: false # fully silent
+```
+
+### Communication-level exclusion
+
+Per device, individual `autonomous`, `responses`, or `conversations` entries can be suppressed:
+
+```yaml
+exclusions:
+  - device_id: '20:123456'
+    suppress:
+      - type: response
+        code: '31DA' # won't respond to RQ/31DA → timeout test
+      - type: autonomous
+        code: '042F' # stops emitting 042F mid-scenario
+      - type: conversation
+        id: 'fan+co2/dcv_reaction' # DCV reaction suppressed
+```
+
+This is also how the `device_unavailability` scenario works: it starts normal, then at `t=N` adds an exclusion for all `autonomous` entries of the target device — simulating it going silent.
+
+---
+
+## User Configuration Import
+
+To reproduce a user's exact environment, we need their full ramses_cc config — not just `known_devices` but also schema, orphans, advanced settings.
+
+### What to import
+
+ramses_cc stores its config in two places:
+
+- `configuration.yaml` / `config_entries` — `serial_port`, `schema`, `known_devices`, `orphan_ids`, `enforce_known_list`, etc.
+- Config entry options (set via config flow) — stored in HA's `.storage/core.config_entries`
+
+### Import approach
+
+```python
+def import_from_cc_config(config_path: str) -> SystemConfigProfile:
+    """Parse a ramses_cc configuration.yaml or config entry JSON.
+    Extracts: known_devices, schema, orphan_ids, enforce_known_list,
+    message_events, and any advanced options.
+    Returns a SystemConfigProfile ready to activate."""
+```
+
+The simulator provides a service call:
+
+```yaml
+service: device_simulator.import_user_config
+data:
+  source: '/config/configuration.yaml' # or a pasted YAML string
+  name: 'User report #42 - FAN disappears'
+  attach_log: '/tmp/user_packets.txt' # optional packet log to go with it
+```
+
+This creates a named profile combining their exact config + their packet log — immediately reproducible.
+
+### What gets extracted
+
+- `known_devices` dict → seeded into profile's `ramses_cc_config`
+- `schema` (system layout) → profile's zone/device topology
+- `orphan_ids`, `enforce_known_list` → simulator respects these when deciding which device IDs to emit
+- Advanced options (poll_interval, disable_discovery, etc.) → stored in profile metadata for reference
+
+---
+
+## HA Automation Testing
+
+Because the simulator runs **inside the same HA container**, user automations, scripts, and dashboard configs can be installed alongside it and tested against simulated device traffic.
+
+### How it works
+
+- User installs their `automations.yaml` / `scripts.yaml` in the container config
+- Simulator runs a scenario (e.g. FAN speed changes, CO2 spikes, zone temp drops)
+- HA processes the simulated device events exactly as it would real ones
+- Automations fire, scripts execute, entity states update — fully observable
+
+### Import a conversation for automation testing
+
+A user can import a specific conversation block as a standalone playback:
+
+```yaml
+service: device_simulator.run_conversation
+data:
+  conversation: 'fan+co2/dcv_reaction' # from conversations library
+  device_map:
+    FAN: '20:123456' # which device ID to use
+    CO2: '37:654321'
+  speed: 1.0 # real-time
+```
+
+This is exactly the kind of deterministic stimulus an automation test needs: a known sequence of events → verify the automation responded correctly.
+
+### What this enables
+
+- Test `if CO2 > 1000 ppm then set FAN to boost` automation without hardware
+- Test `notify when zone goes unavailable` alert automation
+- Reproduce a user's automation bug: "my FAN speed automation stopped working after update"
+- Future: assertion hooks — check HA state after conversation completes
+
+**Note**: this does NOT require any changes to HA's automation engine — it just injects the right simulated device traffic and lets HA do its thing.
+
+---
+
+## Success Criteria
+
+### Core
+
+- [ ] ramses_rf + MQTT transport connects to MQTT broker in container
+- [ ] Simulator connects to same broker as second MQTT client
+- [ ] Virtual FAN emits 31DA → FAN entity appears in HA with correct attributes
+- [ ] ramses_rf sends RQ 31DA → simulator responds with real RP payload
+
+### Bug Reproduction
+
+- [ ] Device stops emitting → HA entity goes `unavailable` at correct (scaled) timeout
+- [ ] Device resumes emitting → HA entity recovers correctly
+- [ ] `heartbeat_timeout_scale: 0.01` makes a 1h timeout fire in ~36 seconds
+- [ ] Can import a user packet log + config and reproduce their exact failure
+- [ ] `device_unavailability` scenario runs end-to-end with observable HA state changes
+
+### Configurations
+
+- [ ] Load `heat_evohome_basic` profile → heating entities appear in HA
+- [ ] Load `hvac_fan_co2` profile → HVAC entities appear, heating entities gone
+- [ ] Load `mixed_full` profile → both heating and HVAC entities present
+- [ ] Switch profiles without manual file editing
+
+### Stress
+
+- [ ] Flooding test: 100 msgs/sec, 60s, no HA instability
+- [ ] Discovery test: simulator emits `10E0` → ramses_rf detects device type
+
+---
+
+## Resources
+
+### Build-time (offline DB construction)
+
+- `ramses_rf/src/ramses_tx/ramses.py` — `_DEV_KLASSES_HEAT/HVAC`: authoritative `{slug: {Code: {verb}}}` schema
+- `ramses_rf/src/ramses_tx/fingerprints.py` — `__DEVICE_INFO_RAW`: ~70 hardware variants with brand/model/firmware
+- `ramses_rf/src/ramses_tx/parsers.py` — payload format/validation regexes per `(code, verb)`
+- `ramses_rf/tests/fixtures/regression_packets_sorted.txt` — 32,326 real packets; mined once for payloads + intervals
+
+### Runtime
+
+- `ramses_rf/src/ramses_tx/transport/mqtt.py` — MQTT topic format: `ramses_gateway/{id}/rx` (inbound), `/tx` (outbound)
+- `ramses_rf/src/ramses_tx/transport/port.py` — socat instructions for virtual serial pty pair
+- `ramses_rf/src/ramses_rf/device/base.py` — `heartbeat_timeout` + `is_available` logic
+- `ramses_rf/src/ramses_rf/device/heat.py` — `HEARTBEAT_TIMEOUT_OTB/TRV`
+- `ramses_rf/src/ramses_rf/device/hvac.py` — `HEARTBEAT_TIMEOUT_REMOTE/SENSOR`
+- `ramses_rf/src/ramses_rf/const.py` — module-level timeout constants (patch target)
+
+---
+
+## Notes
+
+- **MQTT is the preferred mode** — cleaner than virtual serial, easier to debug (MQTT Explorer shows all traffic)
+- The simulator is completely external to ramses_rf/cc — no patching, no monkey-patching
+- **Profile system** is what turns this from a toy into a serious test tool — being able to reproduce exact user configs is the key capability
+- **Config import** from a user's `configuration.yaml` + packet log → instant reproduction of their exact environment
+- **Heartbeat timeout** is the root of device unavailability reports — the simulator can reproduce it deterministically by stopping `I` messages at a precise time
+- **Exclusions** at device and code level are what make targeted bug reproduction possible — silence exactly the right thing
+- **Automation testing**: running inside the same HA container means user automations react to simulated events with zero extra setup
+- The standalone container approach means we can reset/rebuild freely — treat it as disposable infrastructure
+- The ramses_rf/cc device architecture transition (WIP) is exactly why this simulator has lasting value — new device capabilities can be tested here as they're added
+
+---
+
+## Implementation Status
+
+**Last Updated:** 2026-04-08
+
+### Completed ✅
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| Feature structure | ✅ | `features/device_simulator/` with proper layout |
+| `const.py` | ✅ | MQTT topics, scenario types, verb constants |
+| `comm_endpoint.py` | ✅ | `MqttEndpoint` with HA MQTT integration |
+| `device_db.py` | ✅ | YAML loader, `DeviceDatabase` with query methods |
+| `scenario_engine.py` | ✅ | `ScenarioEngine` with emitters, responses, conversation playback |
+| `services.py` | ✅ | 7 HA services (inject, activate, silence, run_conversation, run_scenario, stop_scenario, import_config) |
+| `websocket.py` | ✅ | 8 WebSocket commands for real-time control |
+| `platforms/sensor.py` | ✅ | 3 sensors (status, messages_sent, active_devices) |
+| Device DB build script | ✅ | `scripts/build_device_db.py` mines ramses_rf sources |
+| Generated YAML files | ✅ | 21 device types in `device_db/heat/` and `device_db/hvac/` |
+| Conversation YAML | ✅ | `fan_rem.yaml` with RQ/RP exchanges |
+| MQTT dependency | ✅ | Added to `manifest.json` |
+| Message logging | ✅ | All sent packets logged for WebSocket retrieval |
+
+### In Progress 🔄
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Scenario runners | 🔄 | Stubs implemented: `async_run_device_playback`, `async_run_device_suite`, `async_run_discovery_test`, `async_run_timeout_test`, `async_run_flooding_test`, `async_run_unavailability_test` |
+| End-to-end testing | ⏳ | Requires HA with MQTT broker setup |
+
+### Pending ⏳
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Profile system | ⏳ | Import user ramses_cc config + packet log |
+| More conversations | ⏳ | CO2 sensor, REM temperature patterns |
+| UI panel | ⏳ | Custom card for device browser & scenario control |
+| Heartbeat scaling | ⏳ | Monkeypatch integration for timeout tests |
+
+### Architecture Decisions
+
+- **MQTT integration**: Uses HA's built-in MQTT via `homeassistant.components.mqtt` (no separate broker client)
+- **Device Database**: Layered YAML with baseline + variants + conversations, built offline from regression file
+- **Isolation**: Fixed gateway ID `18:001234` prevents collision with real hardware
+- **No ramses_rf modifications**: Simulator is completely external
+
+---
+
+_Status: Phase 1 Complete — Core infrastructure ready for testing_
+_Priority: After zone project completion_
+_Estimated Effort: 4-5 weeks for MVP (profiles add complexity)_

@@ -9,11 +9,12 @@ HA_CONTAINER ?= homeassistant
 # Source directory
 SOURCE_DIR ?= .
 
-.PHONY: help install install-deps restart-ha clean status check-ha dev-install full-setup env env-test env-full lint type-check type-check-clean format fix-imports qa
+.PHONY: help install install-sim install-deps restart-ha clean status check-ha dev-install full-setup env env-test env-full lint type-check type-check-clean format fix-imports qa
 
 help:
 	@echo "Available targets:"
 	@echo "  install      - Install the ramses_extras integration to HA config"
+	@echo "  install-sim  - Install integration to simulator HA (ha-sim on port 8124)"
 	@echo "  install-deps - Install Python dependencies (if any)"
 	@echo "  restart-ha   - Restart Home Assistant container"
 	@echo "  clean        - Remove integration from HA config"
@@ -53,6 +54,21 @@ install:
 	@sudo rsync -av --exclude='__pycache__' $(SOURCE_DIR)/custom_components $(HA_CONFIG_DIR)/
 	@echo "✅ Integration installed successfully"
 	@echo "💡 Don't forget to restart Home Assistant to load the new integration"
+
+install-sim:
+	@echo "Installing ramses_extras integration to simulator HA..."
+	@if [ ! -d "/home/willem/docker_files/ha-sim/config" ]; then \
+		echo "Error: Simulator HA config directory not found!"; \
+		echo "Run: mkdir -p /home/willem/docker_files/ha-sim/config"; \
+		exit 1; \
+	fi
+	@# Remove existing integration (excluding __pycache__ to avoid permission issues)
+	@find /home/willem/docker_files/ha-sim/config/custom_components/ramses_extras -type f -name "*.py" -delete 2>/dev/null || true
+	@find /home/willem/docker_files/ha-sim/config/custom_components/ramses_extras -type d -empty -delete 2>/dev/null || true
+	@# Copy without __pycache__ directories
+	@sudo rsync -av --exclude='__pycache__' $(SOURCE_DIR)/custom_components /home/willem/docker_files/ha-sim/config/
+	@echo "✅ Integration installed to ha-sim successfully"
+	@echo "💡 Don't forget to restart ha-sim to load the integration"
 
 install-deps:
 	@echo "Checking for Python dependencies..."

@@ -1,0 +1,24 @@
+# Auto-generated from ramses_rf sources
+# Device type: JST (domain: heat)
+# Manual review recommended before committing
+---
+device_type: JST
+domain: heat
+broadcast_safe: false
+autonomous:
+- code: 10E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 61.7
+  payloads: []
+- code: 0008
+  verb: I
+  trigger: periodic
+  interval_seconds: 63.2
+  payloads: []
+responses:
+- code: 3EF1
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []

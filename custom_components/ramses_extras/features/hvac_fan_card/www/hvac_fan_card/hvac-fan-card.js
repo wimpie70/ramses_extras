@@ -1,8 +1,3 @@
-/* global customElements */
-/* global setTimeout */
-/* global clearTimeout */
-/* global clearInterval */
-
 import * as logger from '../../helpers/logger.js';
 
 // Import the base card class

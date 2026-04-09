@@ -1,0 +1,43 @@
+# Auto-generated from ramses_rf sources
+# Device type: PRG (domain: heat)
+# Manual review recommended before committing
+---
+device_type: PRG
+domain: heat
+broadcast_safe: false
+autonomous:
+- code: 3B00
+  verb: I
+  trigger: periodic
+  interval_seconds: 349.1
+  payloads: []
+- code: 1F09
+  verb: I
+  trigger: periodic
+  interval_seconds: 120.5
+  payloads: []
+- code: '1100'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 0009
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: '2309'
+  verb: I
+  trigger: periodic
+  interval_seconds: 150.1
+  payloads: []
+- code: 30C9
+  verb: I
+  trigger: periodic
+  interval_seconds: 218.0
+  payloads: []
+- code: '2249'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []

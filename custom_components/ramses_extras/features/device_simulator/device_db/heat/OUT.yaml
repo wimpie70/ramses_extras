@@ -1,0 +1,18 @@
+# Auto-generated from ramses_rf sources
+# Device type: OUT (domain: heat)
+# Manual review recommended before committing
+---
+device_type: OUT
+domain: heat
+broadcast_safe: false
+autonomous:
+- code: 1FC9
+  verb: I
+  trigger: periodic
+  interval_seconds: 5.4
+  payloads: []
+- code: '0002'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []

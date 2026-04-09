@@ -1,6 +1,3 @@
-/* global HTMLElement */
-/* global customElements */
-
 /**
  * Ramses Messages Viewer - Reusable message list component with filtering and sorting.
  *

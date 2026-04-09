@@ -1,8 +1,3 @@
-/* global customElements */
-/* global setTimeout */
-/* global CustomEvent */
-/* global HTMLElement */
-
 import * as logger from '../../helpers/logger.js';
 
 import {

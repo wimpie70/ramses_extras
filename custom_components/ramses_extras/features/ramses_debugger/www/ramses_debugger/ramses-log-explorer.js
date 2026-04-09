@@ -1,5 +1,3 @@
-/* global setTimeout */
-
 /**
  * Ramses Log Explorer Card - Home Assistant log file browser and search tool.
  *

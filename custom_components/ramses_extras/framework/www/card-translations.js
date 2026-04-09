@@ -1,6 +1,3 @@
-/* global navigator */
-/* global fetch */
-
 /**
  * Simple Localization Support
  * Embedded translation system to avoid module import issues

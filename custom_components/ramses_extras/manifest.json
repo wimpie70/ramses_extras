@@ -3,11 +3,11 @@
   "name": "Ramses Extras",
   "codeowners": ["@wimpie70"],
   "config_flow": true,
-  "dependencies": ["ramses_cc", "frontend", "http"],
+  "dependencies": ["ramses_cc", "mqtt", "frontend", "http"],
   "documentation": "https://github.com/wimpie70/ramses_extras",
   "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/wimpie70/ramses_extras/issues",
   "requirements": [],
-  "version": "0.19.0"
+  "version": "0.19.1"
 }
