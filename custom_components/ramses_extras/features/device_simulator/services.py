@@ -262,12 +262,29 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             with open(config_path, encoding="utf-8") as f:
                 config = yaml.safe_load(f)
 
+            # Normalise v1 vs v2 ramses_cc config entry format.
+            # v2 (>=0.56.3): known_list is top-level in options.
+            # v1 (<0.56.3):  known_list was nested under ramses_rf.
+            known_list: dict = (
+                config.get("known_list")
+                or config.get("ramses_rf", {}).get("known_list")
+                or {}
+            )
+            schema: dict = config.get("schema") or {}
+            enforce_known_list: bool = bool(
+                config.get("ramses_rf", {}).get("enforce_known_list", False)
+            )
+
             # Create profile structure
             profile = {
                 "name": name,
                 "source_config": str(config_path),
                 "imported_at": str(hass.loop.time()),
                 "config": config,
+                "known_list": known_list,
+                "schema": schema,
+                "enforce_known_list": enforce_known_list,
+                "config_version": 2 if "known_list" in config else 1,
                 "attached_log": attach_log,
             }
 
@@ -277,10 +294,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             )
             profiles[name] = profile
 
-            LOGGER.info("Imported profile '%s' from %s", name, source)
+            LOGGER.info(
+                "Imported profile '%s' from %s (config v%s, %d devices)",
+                name,
+                source,
+                profile["config_version"],
+                len(known_list),
+            )
             return {
                 "success": True,
                 "profile_name": name,
+                "config_version": profile["config_version"],
+                "known_devices": len(known_list),
                 "has_log": attach_log is not None,
             }
 

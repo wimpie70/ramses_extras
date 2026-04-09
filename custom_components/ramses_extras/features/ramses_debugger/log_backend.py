@@ -79,7 +79,8 @@ def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
             packet_log = getattr(cc_entry, "options", {}).get("packet_log")
             if not isinstance(packet_log, dict):
                 continue
-            raw = packet_log.get("file_name")
+            # v2 (>=0.56.3): key is "packet_log_path"; v1: key was "file_name"
+            raw = packet_log.get("packet_log_path") or packet_log.get("file_name")
             if isinstance(raw, str) and raw.strip():
                 return Path(raw.strip())
     except Exception:
