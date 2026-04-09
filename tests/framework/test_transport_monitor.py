@@ -192,7 +192,10 @@ class TestTransportMonitor:
 
         # Device should be marked offline
         assert monitor._device_states.get("32:153289") is False
-        callback.assert_called_once_with(False)
+        # Callback called twice: once with initial state (True),
+        # once with timeout (False)
+        assert callback.call_count == 2
+        callback.assert_called_with(False)
 
     @pytest.mark.asyncio
     async def test_update_device_message_received_cancels_timeout(self):

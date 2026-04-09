@@ -22,7 +22,7 @@ def test_imports() -> bool:
             ScenarioEngine,
         )
 
-        print(f"  ✓ const: MQTT_TOPIC_SIM = {const.MQTT_TOPIC_SIM}")
+        print(f"  ✓ const: MQTT_TOPIC_BASE = {const.MQTT_TOPIC_BASE}")
         print("  ✓ device_db: DeviceDatabase class available")
         print("  ✓ scenario_engine: ScenarioEngine, states defined")
         return True
