@@ -132,4 +132,15 @@ AVAILABLE_FEATURES: dict[str, dict[str, Any]] = {
         "allowed_device_slugs": ["*"],
         "has_device_config": False,
     },
+    "device_simulator": {
+        "name": "Device Simulator",
+        "description": "Simulate RAMSES devices at the MQTT/serial endpoint "
+        "for developer testing",
+        "feature_module": "features.device_simulator",
+        "handler": None,
+        "default_enabled": False,
+        "allowed_device_slugs": ["*"],
+        "has_device_config": False,
+        "platforms": ["sensor"],
+    },
 }

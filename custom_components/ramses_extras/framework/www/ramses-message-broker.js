@@ -1,5 +1,3 @@
-/* global setTimeout */
-
 // Ramses Message Broker - Global singleton for handling ramses_cc_message events
 // Provides real-time message routing for cards and features
 

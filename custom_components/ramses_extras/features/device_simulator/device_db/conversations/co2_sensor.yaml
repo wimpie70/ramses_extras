@@ -1,0 +1,75 @@
+# CO2 Sensor patterns - standalone and interaction with FAN
+# CO2 sensors send periodic I messages with CO2 and RH readings
+---
+peers:
+  - CO2
+conversations:
+  - id: co2_periodic_broadcast
+    description: CO2 sensor broadcasts CO2 level and RH every ~60s
+    frames:
+      - t: 0.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '6400CD03E803E8'  # CO2 100ppm, RH 50%, temp 20°C
+      - t: 60.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '06D400FA03E803E8'  # CO2 1748ppm (high), RH 50%, temp 20°C
+
+  - id: co2_rh_change
+    description: CO2 sensor reports changing RH and temperature
+    frames:
+      - t: 0.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '64004B03E8032C'  # CO2 100ppm, RH 37.5%, temp 15°C
+      - t: 30.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '64005A046404B0'  # CO2 100ppm, RH 45%, temp 25°C, setpoint 30°C
+
+  - id: co2_setpoint_request
+    description: External system requests CO2 setpoint
+    frames:
+      - t: 0.0
+        src: CTL
+        dst: CO2
+        code: '31E0'
+        verb: RQ
+        payload: '00'
+      - t: 0.08
+        src: CO2
+        dst: CTL
+        code: '31E0'
+        verb: RP
+        payload: '64004B03E8032C'  # Current values + setpoint
+
+  - id: co2_high_ventilation_trigger
+    description: CO2 exceeds threshold, triggers ventilation boost
+    frames:
+      - t: 0.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '07D0005A046404B0'  # CO2 2000ppm (high), RH 45%, temp 25°C
+      - t: 5.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00  # FAN running
+      - t: 10.0
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '05DC005A046404B0'  # CO2 1500ppm (dropping)

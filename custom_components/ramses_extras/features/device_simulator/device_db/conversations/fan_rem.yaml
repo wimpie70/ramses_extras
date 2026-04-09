@@ -1,0 +1,62 @@
+# Auto-generated conversation: FAN + REM interaction
+# FAN receives RQ for 22F1 from REM, responds with RP
+# Time values are relative seconds from conversation start
+---
+peers:
+  - FAN
+  - REM
+conversations:
+  - id: speed_change_rq_rp
+    description: REM requests fan speed, FAN responds with current speed setting
+    scheme: itho
+    frames:
+      - t: 0.0
+        src: REM
+        dst: FAN
+        code: '22F1'
+        verb: RQ
+        payload: '00'
+      - t: 0.12
+        src: FAN
+        dst: REM
+        code: '22F1'
+        verb: RP
+        payload: '0048'  # Speed 72 (boost-ish)
+
+  - id: fan_info_request
+    description: REM queries FAN extended info
+    frames:
+      - t: 0.0
+        src: REM
+        dst: FAN
+        code: '31DA'
+        verb: RQ
+        payload: '00'
+      - t: 0.15
+        src: FAN
+        dst: REM
+        code: '31DA'
+        verb: RP
+        payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+
+  - id: periodic_31da_exchange
+    description: FAN broadcasts 31DA, REM RQs for details
+    frames:
+      - t: 0.0
+        src: FAN
+        dst: ALL
+        code: '31DA'
+        verb: I
+        payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+      - t: 0.05
+        src: REM
+        dst: FAN
+        code: '31DA'
+        verb: RQ
+        payload: '00'
+      - t: 0.17
+        src: FAN
+        dst: REM
+        code: '31DA'
+        verb: RP
+        payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00

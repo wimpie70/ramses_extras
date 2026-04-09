@@ -6,6 +6,7 @@ automation, services, entities, and configuration.
 """
 
 # Import from the correct feature-centric structure
+from .device_simulator import async_create_device_simulator_feature
 from .hello_world import (
     create_hello_world_feature,
 )
@@ -36,5 +37,7 @@ __all__ = [
     # HVAC Fan Card Feature
     "HvacFanCardManager",
     "create_hvac_fan_card_feature",
+    # Device Simulator Feature
+    "async_create_device_simulator_feature",
     # Add more below for future features
 ]

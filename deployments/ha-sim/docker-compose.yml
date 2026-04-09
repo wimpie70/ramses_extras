@@ -1,0 +1,23 @@
+version: '3.8'
+
+# Simulator Home Assistant instance
+# Runs on port 8124 alongside production HA (port 8123)
+# Shares the same MQTT broker but uses separate topics (ramses/simulator/*)
+
+services:
+  homeassistant:
+    container_name: ha-sim
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - /home/willem/docker_files/ha-sim/config:/config
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=Europe/Amsterdam
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8124']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

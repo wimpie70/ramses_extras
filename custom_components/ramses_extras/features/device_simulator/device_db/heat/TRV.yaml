@@ -1,0 +1,95 @@
+# Auto-generated from ramses_rf sources
+# Device type: TRV (domain: heat)
+# Manual review recommended before committing
+---
+device_type: TRV
+domain: heat
+broadcast_safe: false
+autonomous:
+- code: 10E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 61.7
+  payloads:
+  - 000002FF050BFFFFFFFF0E0907E2070307E148523931205261646961746F72204374726C2E00
+  - 000002FF0412FFFFFFFF030807E10D0307DE48523932205261646961746F72204374726C2E00
+  - 000002FF0412FFFFFFFF1B0707E20D0307DE48523932205261646961746F72204374726C2E00
+  notes: Example payloads from regression file
+- code: 1FC9
+  verb: I
+  trigger: periodic
+  interval_seconds: 5.4
+  payloads:
+  - 0030C912E294
+  notes: Example payloads from regression file
+- code: '1060'
+  verb: I
+  trigger: periodic
+  interval_seconds: 13.5
+  payloads:
+  - '006401'
+  - '046401'
+  - 00FF01
+  notes: Example payloads from regression file
+- code: 12B0
+  verb: I
+  trigger: periodic
+  interval_seconds: 0.1
+  payloads:
+  - '040000'
+  - '000000'
+  - 00C800
+  notes: Example payloads from regression file
+- code: '2309'
+  verb: I
+  trigger: periodic
+  interval_seconds: 150.1
+  payloads:
+  - 0205DC
+  - 017EFF
+  - 0401F4
+  notes: Example payloads from regression file
+- code: 30C9
+  verb: I
+  trigger: periodic
+  interval_seconds: 218.0
+  payloads:
+  - 0007C3
+  - 0006B1
+  - 000849
+  notes: Example payloads from regression file
+- code: '3150'
+  verb: I
+  trigger: periodic
+  interval_seconds: 124.1
+  payloads:
+  - '0144'
+  - '0416'
+  - 012C
+  notes: Example payloads from regression file
+responses:
+- code: '0016'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: 1F09
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: '0004'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: 313F
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: '0100'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []

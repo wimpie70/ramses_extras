@@ -1,5 +1,3 @@
-/* global customElements */
-
 import * as logger from '../../helpers/logger.js';
 
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
@@ -130,7 +128,7 @@ class RamsesFanMap extends RamsesBaseCard {
       this._topology = topology;
       this.clearUpdateThrottle();
       this._scheduleRender(true);
-    } catch (_err) {
+    } catch {
       // Silent fail - topology is not critical
     }
   }

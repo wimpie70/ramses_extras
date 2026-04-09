@@ -1,0 +1,58 @@
+# Auto-generated from ramses_rf sources
+# Device type: HCW (domain: heat)
+# Manual review recommended before committing
+---
+device_type: HCW
+domain: heat
+broadcast_safe: false
+autonomous:
+- code: 1FC9
+  verb: I
+  trigger: periodic
+  interval_seconds: 5.4
+  payloads: []
+- code: '0002'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: '2389'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 1F09
+  verb: I
+  trigger: periodic
+  interval_seconds: 120.5
+  payloads: []
+- code: '1100'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 0009
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 0008
+  verb: I
+  trigger: periodic
+  interval_seconds: 63.2
+  payloads: []
+- code: '1060'
+  verb: I
+  trigger: periodic
+  interval_seconds: 13.5
+  payloads: []
+- code: '2309'
+  verb: I
+  trigger: periodic
+  interval_seconds: 150.1
+  payloads: []
+- code: 30C9
+  verb: I
+  trigger: periodic
+  interval_seconds: 218.0
+  payloads: []

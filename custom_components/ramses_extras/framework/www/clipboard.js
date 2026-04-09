@@ -1,5 +1,3 @@
-/* global navigator */
-
 /**
  * Clipboard utilities for Ramses Extras cards.
  *

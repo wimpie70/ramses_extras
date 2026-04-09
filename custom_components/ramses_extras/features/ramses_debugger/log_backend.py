@@ -58,12 +58,37 @@ def get_configured_log_path(hass: HomeAssistant) -> Path:
     return Path(hass.config.path("home-assistant.log"))
 
 
+def _resolve_packet_log_base_path(
+    packet_log_path: str | None,
+    packet_log_prefix: str | None,
+) -> Path | None:
+    """Construct the full base path for packet logs.
+
+    packet_log_path is a directory (e.g., /config/ramses_rf_logs/).
+    packet_log_prefix is the filename prefix (default: packet_log).
+    Returns full path to base log file (e.g.,
+    /config/ramses_rf_logs/packet_log.log).
+    """
+    if not isinstance(packet_log_path, str) or not packet_log_path.strip():
+        return None
+
+    path = Path(packet_log_path.strip())
+
+    # If path ends with .log, assume it's already a file path (legacy format)
+    if path.suffix == ".log":
+        return path
+
+    # Otherwise, it's a directory - construct full path with prefix
+    prefix = packet_log_prefix if isinstance(packet_log_prefix, str) else "packet_log"
+    return path / f"{prefix}.log"
+
+
 def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
-    """Return the configured ramses_cc packet log path.
+    """Return the configured ramses_cc packet log base file path.
 
     This is resolved from the Ramses Debugger options if set. Otherwise it is
-    derived from the active ``ramses_cc`` config entry (``packet_log.file_name``)
-    when available.
+    derived from the active ``ramses_cc`` config entry using packet_log.path
+    and packet_log.prefix to construct the full base file path.
     """
 
     entry = _get_config_entry(hass)
@@ -71,17 +96,32 @@ def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
 
     raw_override = options.get("ramses_debugger_packet_log_path")
     if isinstance(raw_override, str) and raw_override.strip():
-        return Path(raw_override.strip())
+        return _resolve_packet_log_base_path(raw_override, "packet_log")
 
     try:
         entries = hass.config_entries.async_entries("ramses_cc")
         for cc_entry in entries:
-            packet_log = getattr(cc_entry, "options", {}).get("packet_log")
-            if not isinstance(packet_log, dict):
-                continue
-            raw = packet_log.get("file_name")
-            if isinstance(raw, str) and raw.strip():
-                return Path(raw.strip())
+            cc_options = getattr(cc_entry, "options", {})
+
+            # v2 location: packet_log.packet_log_path + packet_log_prefix
+            packet_log = cc_options.get("packet_log")
+            if isinstance(packet_log, dict):
+                path = _resolve_packet_log_base_path(
+                    packet_log.get("packet_log_path") or packet_log.get("file_name"),
+                    packet_log.get("packet_log_prefix"),
+                )
+                if path:
+                    return path
+
+            # v1 fallback: ramses_rf.file_name (migration may not have copied it)
+            ramses_rf = cc_options.get("ramses_rf")
+            if isinstance(ramses_rf, dict):
+                path = _resolve_packet_log_base_path(
+                    ramses_rf.get("file_name"),
+                    "packet_log",
+                )
+                if path:
+                    return path
     except Exception:
         return None
 
