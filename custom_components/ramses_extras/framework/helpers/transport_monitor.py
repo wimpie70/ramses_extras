@@ -63,11 +63,24 @@ class TransportMonitor:
         """
         normalized_device_id = device_id.replace("_", ":") if device_id else None
         self._callbacks[name] = (normalized_device_id, callback)
-        _LOGGER.debug(
-            "Registered transport state callback: %s%s",
+        _LOGGER.info(
+            "Registered transport state callback: %s%s (total callbacks: %d)",
             name,
             f" for {normalized_device_id}" if normalized_device_id else "",
+            len(self._callbacks),
         )
+        # Trigger an immediate check to update the new callback with current state
+        if self._hass and normalized_device_id:
+            current_state = self._device_states.get(normalized_device_id, True)
+            _LOGGER.debug(
+                "Setting initial state for %s to %s",
+                normalized_device_id,
+                current_state,
+            )
+            try:
+                callback(current_state)
+            except Exception as e:
+                _LOGGER.error("Error in initial callback for %s: %s", name, e)
 
     def unregister_callback(self, name: str) -> None:
         """Unregister a transport state callback.
@@ -128,9 +141,11 @@ class TransportMonitor:
 
     def _ensure_msg_handler(self, client: Any | None) -> None:
         if client is self._client:
+            _LOGGER.debug("_ensure_msg_handler: client unchanged, skipping")
             return
 
         if self._msg_handler_unsub:
+            _LOGGER.debug("_ensure_msg_handler: removing old handler")
             try:
                 self._msg_handler_unsub()
             except Exception:
@@ -138,13 +153,19 @@ class TransportMonitor:
             self._msg_handler_unsub = None
 
         self._client = client
+        _LOGGER.debug("_ensure_msg_handler: client updated to %s", client)
 
         add_msg_handler = getattr(client, "add_msg_handler", None) if client else None
         if callable(add_msg_handler):
-            self._msg_handler_unsub = add_msg_handler(self._handle_msg)
-            _LOGGER.debug(
-                "Transport monitor listening via ramses_cc client message handler"
-            )
+            try:
+                self._msg_handler_unsub = add_msg_handler(self._handle_msg)
+                _LOGGER.info(
+                    "Transport monitor registered message handler with ramses_cc"
+                )
+            except Exception as e:
+                _LOGGER.error("Failed to register message handler: %s", e)
+        else:
+            _LOGGER.warning("Transport monitor: client has no add_msg_handler method")
 
     async def _device_timeout_handler(self, device_id: str) -> None:
         """Handle device timeout after 61s with no reply."""
@@ -264,16 +285,31 @@ class TransportMonitor:
             self._hass = hass
 
             client = getattr(self._coordinator, "client", None)
+            if client is None:
+                _LOGGER.warning(
+                    "Transport monitor: coordinator has no client, "
+                    "will retry via _refresh_coordinator"
+                )
             self._ensure_msg_handler(client)
 
+            # NOTE: ramses_cc_message event bus is deprecated in newer ramses_cc
+            # We rely on add_msg_handler callback instead
             if self._hass and not self._event_unsub:
-                self._event_unsub = self._hass.bus.async_listen(
-                    "ramses_cc_message",
-                    self._handle_ramses_cc_message,
-                )
-                _LOGGER.debug(
-                    "Transport monitor listening for ramses_cc_message events"
-                )
+                # Try to listen for legacy event (for backward compatibility)
+                try:
+                    self._event_unsub = self._hass.bus.async_listen(
+                        "ramses_cc_message",
+                        self._handle_ramses_cc_message,
+                    )
+                    _LOGGER.debug(
+                        "Transport monitor listening for ramses_cc_message "
+                        "events (legacy)"
+                    )
+                except Exception as e:
+                    _LOGGER.debug(
+                        "Transport monitor: could not listen for ramses_cc_message: %s",
+                        e,
+                    )
             self._monitor_task = asyncio.create_task(self._monitor_loop())
             _LOGGER.info("Started transport state monitoring")
 
@@ -373,6 +409,14 @@ class TransportMonitor:
             self._refresh_coordinator()
             src = getattr(getattr(msg, "src", None), "id", None)
             dst = getattr(getattr(msg, "dst", None), "id", None)
+            code = getattr(msg, "code", None)
+
+            _LOGGER.debug(
+                "Transport monitor received message: src=%s dst=%s code=%s",
+                src,
+                dst,
+                code,
+            )
 
             if isinstance(src, str) and ":" in src:
                 normalized_src = src.replace("_", ":")
@@ -385,6 +429,12 @@ class TransportMonitor:
                 if normalized_src in tracked_device_ids:
                     _LOGGER.debug("Message FROM %s (TO %s) - processing", src, dst)
                     self.update_device_message_received(src)
+                else:
+                    _LOGGER.debug(
+                        "Message FROM %s not in tracked devices: %s",
+                        normalized_src,
+                        tracked_device_ids,
+                    )
         except Exception as e:
             _LOGGER.error("Error handling ramses_cc client message: %s", e)
 

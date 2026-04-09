@@ -437,12 +437,18 @@ class RamsesCommands:
             )
 
             transport_monitor = get_transport_monitor()
-            if (
-                transport_monitor.is_monitoring
-                and not transport_monitor.is_device_available(device_id_formatted)
-            ):
+            is_monitoring = transport_monitor.is_monitoring
+            is_available = transport_monitor.is_device_available(device_id_formatted)
+            _LOGGER.debug(
+                "Transport check for %s: monitoring=%s, available=%s",
+                device_id_formatted,
+                is_monitoring,
+                is_available,
+            )
+            if is_monitoring and not is_available:
                 _LOGGER.warning(
-                    f"Skipping command {cmd_def['code']} - transport unavailable"
+                    f"Skipping command {cmd_def['code']} - transport unavailable "
+                    f"(device {device_id_formatted} marked offline)"
                 )
                 return False
 
