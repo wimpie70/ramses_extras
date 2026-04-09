@@ -350,6 +350,14 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             self._pending_data["enabled_features_new"] = staged_enabled_features
             self._feature_changes_detected = staged_enabled_features != current_features
 
+            # Check if device_simulator is being newly enabled
+            # - requires extra confirmation
+            old_enabled = bool(current_features.get("device_simulator", False))
+            new_enabled = bool(staged_enabled_features.get("device_simulator", False))
+            if new_enabled and not old_enabled:
+                # Device simulator is being newly enabled - show warning first
+                return await self.async_step_device_simulator_warning()
+
             return await self.async_step_confirm()
 
         # Build feature selection schema
@@ -362,6 +370,76 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
             step_id="features",
             data_schema=schema,
             description_placeholders={"info": info_text},
+        )
+
+    async def async_step_device_simulator_warning(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Show warning before enabling device simulator (advanced feature).
+
+        This step requires explicit user acknowledgment before enabling
+        the device simulator, as it is an advanced feature intended for
+        developers and testing purposes only.
+        """
+        if user_input is not None:
+            acknowledge = user_input.get("acknowledge", False)
+            action = user_input.get("action", "back")
+
+            if action == "back":
+                # User chose to go back - clear device_simulator from pending changes
+                if self._pending_data:
+                    staged = self._pending_data.get("enabled_features_new", {})
+                    staged["device_simulator"] = False
+                return await self.async_step_features()
+
+            if acknowledge:
+                # User acknowledged the warning - proceed to confirm step
+                return await self.async_step_confirm()
+
+            # Should not reach here, but default to back if no acknowledgment
+            return await self.async_step_features()
+
+        # Show warning form
+        schema = vol.Schema(
+            {
+                vol.Required("acknowledge", default=False): selector.BooleanSelector(
+                    selector.BooleanSelectorConfig()
+                ),
+                vol.Required("action", default="back"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value="back",
+                                label="Go back (do not enable)",
+                            ),
+                            selector.SelectOptionDict(
+                                value="proceed",
+                                label="I understand, enable Device Simulator",
+                            ),
+                        ],
+                        mode="list",
+                    )
+                ),
+            }
+        )
+
+        warning_text = (
+            "⚠️ **Warning: Advanced Feature**\n\n"
+            "The **Device Simulator** is an advanced feature designed for developers "
+            "and testing purposes. It simulates RAMSES devices at the MQTT/serial "
+            "endpoint and can interact with your actual RF network.\n\n"
+            "**Important considerations:**\n"
+            "• This feature is intended for development and debugging only\n"
+            "• Improper use may affect your RF network or connected devices\n"
+            "• Simulated devices may conflict with real devices if misconfigured\n"
+            "• Understanding of RAMSES protocol is required\n\n"
+            "Please confirm you understand these risks before enabling this feature."
+        )
+
+        return self.async_show_form(
+            step_id="device_simulator_warning",
+            data_schema=schema,
+            description_placeholders={"info": warning_text},
         )
 
     async def async_step_sensor_control_overview(

@@ -76,13 +76,21 @@ def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
     try:
         entries = hass.config_entries.async_entries("ramses_cc")
         for cc_entry in entries:
-            packet_log = getattr(cc_entry, "options", {}).get("packet_log")
-            if not isinstance(packet_log, dict):
-                continue
-            # v2 (>=0.56.3): key is "packet_log_path"; v1: key was "file_name"
-            raw = packet_log.get("packet_log_path") or packet_log.get("file_name")
-            if isinstance(raw, str) and raw.strip():
-                return Path(raw.strip())
+            cc_options = getattr(cc_entry, "options", {})
+
+            # v2 location: packet_log.packet_log_path
+            packet_log = cc_options.get("packet_log")
+            if isinstance(packet_log, dict):
+                raw = packet_log.get("packet_log_path") or packet_log.get("file_name")
+                if isinstance(raw, str) and raw.strip():
+                    return Path(raw.strip())
+
+            # v1 fallback: ramses_rf.file_name (migration may not have copied it)
+            ramses_rf = cc_options.get("ramses_rf")
+            if isinstance(ramses_rf, dict):
+                raw = ramses_rf.get("file_name")
+                if isinstance(raw, str) and raw.strip():
+                    return Path(raw.strip())
     except Exception:
         return None
 

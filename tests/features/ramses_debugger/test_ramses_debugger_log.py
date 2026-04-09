@@ -366,3 +366,67 @@ async def test_ws_log_search_truncated_by_max_chars(hass, tmp_path: Path) -> Non
     assert payload["truncated"] is True
     assert payload.get("truncated_by_max_chars") is True
     assert len(payload["plain"]) <= 50
+
+
+@pytest.mark.asyncio
+async def test_get_configured_packet_log_path_v1_fallback(hass, tmp_path: Path) -> None:
+    """Test that v1 ramses_rf.file_name is used as fallback when packet_log
+     is not configured.
+
+    This covers the migration scenario where ramses_cc v2 migration removes file_name
+    from packet_log but doesn't migrate it from ramses_rf.
+    """
+    from custom_components.ramses_extras.features.ramses_debugger.log_backend import (
+        get_configured_packet_log_path,
+    )
+
+    log_base = tmp_path / "ramses_rf_logs"
+    log_base.mkdir()
+    log_file = log_base / "packet_log.txt"
+    log_file.write_text("test log\n", encoding="utf-8")
+
+    # Mock ramses_cc config entry with v1 structure (file_name in ramses_rf)
+    fake_cc_entry = MagicMock()
+    fake_cc_entry.options = {
+        "ramses_rf": {"file_name": str(log_file)},
+        # No "packet_log" key - simulating incomplete migration
+    }
+
+    with patch.object(
+        hass.config_entries, "async_entries", return_value=[fake_cc_entry]
+    ):
+        result = get_configured_packet_log_path(hass)
+
+    assert result is not None
+    assert result == log_file
+
+
+@pytest.mark.asyncio
+async def test_get_configured_packet_log_path_v2_preferred_over_v1(
+    hass, tmp_path: Path
+) -> None:
+    """Test that v2 packet_log.packet_log_path takes precedence
+    over v1 ramses_rf.file_name."""
+    from custom_components.ramses_extras.features.ramses_debugger.log_backend import (
+        get_configured_packet_log_path,
+    )
+
+    v1_path = tmp_path / "v1_logs"
+    v1_path.mkdir()
+    v2_path = tmp_path / "v2_logs"
+    v2_path.mkdir()
+
+    # Mock ramses_cc config entry with both v1 and v2 structures
+    fake_cc_entry = MagicMock()
+    fake_cc_entry.options = {
+        "ramses_rf": {"file_name": str(v1_path / "old.log")},
+        "packet_log": {"packet_log_path": str(v2_path)},
+    }
+
+    with patch.object(
+        hass.config_entries, "async_entries", return_value=[fake_cc_entry]
+    ):
+        result = get_configured_packet_log_path(hass)
+
+    assert result is not None
+    assert result == v2_path

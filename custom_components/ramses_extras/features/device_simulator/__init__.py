@@ -68,4 +68,26 @@ async def async_create_device_simulator_feature(
     }
 
 
-__all__ = ["async_create_device_simulator_feature"]
+# Framework entry point: synchronous wrapper for async feature creation
+def load_feature(hass: "HomeAssistant", config_entry: "ConfigEntry") -> dict[str, Any]:
+    """Load the Device Simulator feature.
+
+    This is the synchronous entry point called by the framework.
+    It schedules the async creation via hass.async_create_task.
+
+    :param hass: Home Assistant instance
+    :param config_entry: Configuration entry for ramses_extras
+    :return: Feature descriptor with minimal info; actual setup is async
+    """
+    # Schedule async setup
+    hass.async_create_task(async_create_device_simulator_feature(hass, config_entry))
+
+    # Return a minimal descriptor; the async task will complete the setup
+    return {
+        "feature_name": "device_simulator",
+        "services_module": "services",
+        "websocket_commands_module": "websocket",
+    }
+
+
+__all__ = ["async_create_device_simulator_feature", "load_feature"]

@@ -20,8 +20,9 @@ from typing import TYPE_CHECKING, Any
 import voluptuous as vol
 from homeassistant.core import ServiceCall
 
+from custom_components.ramses_extras.const import DOMAIN as INTEGRATION_DOMAIN
+
 from .const import (
-    DOMAIN,
     LOGGER,
     SCENARIO_DEVICE_PLAYBACK,
     SCENARIO_DEVICE_SUITE,
@@ -36,13 +37,13 @@ from .scenario_engine import ActiveDevice, ScenarioEngine
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-SERVICE_INJECT_MESSAGE = "inject_message"
-SERVICE_RUN_SCENARIO = "run_scenario"
-SERVICE_STOP_SCENARIO = "stop_scenario"
-SERVICE_ACTIVATE_DEVICE = "activate_device"
-SERVICE_SILENCE_DEVICE = "silence_device"
-SERVICE_RUN_CONVERSATION = "run_conversation"
-SERVICE_IMPORT_USER_CONFIG = "import_user_config"
+SERVICE_INJECT_MESSAGE = "device_simulator_inject_message"
+SERVICE_RUN_SCENARIO = "device_simulator_run_scenario"
+SERVICE_STOP_SCENARIO = "device_simulator_stop_scenario"
+SERVICE_ACTIVATE_DEVICE = "device_simulator_activate_device"
+SERVICE_SILENCE_DEVICE = "device_simulator_silence_device"
+SERVICE_RUN_CONVERSATION = "device_simulator_run_conversation"
+SERVICE_IMPORT_USER_CONFIG = "device_simulator_import_user_config"
 
 SCHEMA_INJECT_MESSAGE = vol.Schema(
     {
@@ -313,45 +314,46 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             LOGGER.error("Failed to import profile: %s", err)
             return {"success": False, "error": str(err)}
 
-    # Register services
+    # Register services under ramses_extras domain (not device_simulator)
+    # to avoid "IntegrationNotFound: device_simulator" errors
     hass.services.async_register(
-        DOMAIN,
+        INTEGRATION_DOMAIN,
         SERVICE_INJECT_MESSAGE,
         handle_inject_message,
         schema=SCHEMA_INJECT_MESSAGE,
     )
     hass.services.async_register(
-        DOMAIN,
+        INTEGRATION_DOMAIN,
         SERVICE_RUN_SCENARIO,
         handle_run_scenario,
         schema=SCHEMA_RUN_SCENARIO,
     )
     hass.services.async_register(
-        DOMAIN,
+        INTEGRATION_DOMAIN,
         SERVICE_STOP_SCENARIO,
         handle_stop_scenario,
         schema=SCHEMA_STOP_SCENARIO,
     )
     hass.services.async_register(
-        DOMAIN,
+        INTEGRATION_DOMAIN,
         SERVICE_ACTIVATE_DEVICE,
         handle_activate_device,
         schema=SCHEMA_ACTIVATE_DEVICE,
     )
     hass.services.async_register(
-        DOMAIN,
+        INTEGRATION_DOMAIN,
         SERVICE_SILENCE_DEVICE,
         handle_silence_device,
         schema=SCHEMA_SILENCE_DEVICE,
     )
     hass.services.async_register(
-        DOMAIN,
+        INTEGRATION_DOMAIN,
         SERVICE_RUN_CONVERSATION,
         handle_run_conversation,
         schema=SCHEMA_RUN_CONVERSATION,
     )
     hass.services.async_register(
-        DOMAIN,
+        INTEGRATION_DOMAIN,
         SERVICE_IMPORT_USER_CONFIG,
         handle_import_user_config,
         schema=SCHEMA_IMPORT_USER_CONFIG,
@@ -371,4 +373,4 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_RUN_CONVERSATION,
         SERVICE_IMPORT_USER_CONFIG,
     ):
-        hass.services.async_remove(DOMAIN, service)
+        hass.services.async_remove(INTEGRATION_DOMAIN, service)
