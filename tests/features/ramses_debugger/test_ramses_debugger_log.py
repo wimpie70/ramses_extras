@@ -123,14 +123,15 @@ async def test_ws_log_list_tail_and_search(hass, tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_ws_packet_log_list_and_get_messages(hass, tmp_path: Path) -> None:
-    base = tmp_path / "ramses_log"
+    base = tmp_path / "packet_log.log"
     base.write_text(
         "2026-01-20T09:58:48.263427 I 32:153289 37:123456 --:------ 31DA 003 010203\n"
-        "2026-01-20T09:58:49.263427 RQ 32:153289 37:123456 --:------ 3150 000\n",
+        "2026-01-20T09:58:48.275061 I 32:153289 37:123456 --:------ 31DA 003 010204\n"
+        "2026-01-20T09:58:48.285690 I 32:153289 37:123456 --:------ 31DA 003 010205\n",
         encoding="utf-8",
     )
 
-    rotated = tmp_path / "ramses_log.1"
+    rotated = tmp_path / "packet_log.log.1"
     rotated.write_text(
         "2026-01-20T09:50:00.000000 I 01:111111 02:222222 --:------ 10E0 000\n",
         encoding="utf-8",
@@ -211,7 +212,7 @@ async def test_ws_packet_log_get_messages_rejects_unknown_file_id(
     hass,
     tmp_path: Path,
 ) -> None:
-    base = tmp_path / "ramses_log"
+    base = tmp_path / "packet_log.log"
     base.write_text("test\n", encoding="utf-8")
     _setup_config_entry(hass, packet_log_path=base)
 
@@ -234,7 +235,7 @@ async def test_ws_packet_log_get_messages_rejects_unknown_file_id(
 
 @pytest.mark.asyncio
 async def test_ws_packet_log_get_messages_decode(hass, tmp_path: Path) -> None:
-    base = tmp_path / "ramses_log"
+    base = tmp_path / "packet_log.log"
     base.write_text("test\n", encoding="utf-8")
     _setup_config_entry(hass, packet_log_path=base)
 
@@ -382,13 +383,14 @@ async def test_get_configured_packet_log_path_v1_fallback(hass, tmp_path: Path) 
 
     log_base = tmp_path / "ramses_rf_logs"
     log_base.mkdir()
-    log_file = log_base / "packet_log.txt"
-    log_file.write_text("test log\n", encoding="utf-8")
+    # v1 file_name can be a directory path - function constructs packet_log.log
+    expected_path = log_base / "packet_log.log"
+    expected_path.write_text("test log\n", encoding="utf-8")
 
-    # Mock ramses_cc config entry with v1 structure (file_name in ramses_rf)
+    # Mock ramses_cc config entry with v1 structure (file_name is directory)
     fake_cc_entry = MagicMock()
     fake_cc_entry.options = {
-        "ramses_rf": {"file_name": str(log_file)},
+        "ramses_rf": {"file_name": str(log_base)},
         # No "packet_log" key - simulating incomplete migration
     }
 
@@ -398,7 +400,7 @@ async def test_get_configured_packet_log_path_v1_fallback(hass, tmp_path: Path) 
         result = get_configured_packet_log_path(hass)
 
     assert result is not None
-    assert result == log_file
+    assert result == expected_path
 
 
 @pytest.mark.asyncio
@@ -415,6 +417,9 @@ async def test_get_configured_packet_log_path_v2_preferred_over_v1(
     v1_path.mkdir()
     v2_path = tmp_path / "v2_logs"
     v2_path.mkdir()
+    # v2 constructs packet_log.log from directory path
+    expected_v2_path = v2_path / "packet_log.log"
+    expected_v2_path.write_text("v2 log\n", encoding="utf-8")
 
     # Mock ramses_cc config entry with both v1 and v2 structures
     fake_cc_entry = MagicMock()
@@ -429,4 +434,4 @@ async def test_get_configured_packet_log_path_v2_preferred_over_v1(
         result = get_configured_packet_log_path(hass)
 
     assert result is not None
-    assert result == v2_path
+    assert result == expected_v2_path
