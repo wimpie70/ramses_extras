@@ -85,6 +85,20 @@ VERB_RQ = "RQ"
 VERB_RP = "RP"
 VERB_W = "W"
 
+# Card configurations for feature-centric card management
+DEVICE_SIMULATOR_CARD_CONFIGS: list[dict[str, Any]] = [
+    {
+        "card_id": "device-simulator-card",
+        "card_name": "Device Simulator",
+        "description": "Control and monitor the RAMSES device simulator",
+        "location": "device_simulator",
+        "preview": False,
+        "documentation_url": "https://github.com/wimpie70/ramses_extras/wiki/Device-Simulator",
+        "supported_device_types": [],
+        "javascript_file": "device-simulator-card.js",
+    },
+]
+
 # Feature definition for framework integration
 FEATURE_DEFINITION: dict[str, Any] = {
     "name": "Device Simulator",
@@ -95,6 +109,12 @@ FEATURE_DEFINITION: dict[str, Any] = {
     "has_switches": False,
     "services_module": "services",
     "websocket_commands_module": "websocket",
+    # Support both single card_config (backward compat)
+    # and card_configs list (multi-card)
+    "card_config": DEVICE_SIMULATOR_CARD_CONFIGS[0]
+    if DEVICE_SIMULATOR_CARD_CONFIGS
+    else {},
+    "card_configs": DEVICE_SIMULATOR_CARD_CONFIGS,
 }
 
 __all__ = [
@@ -103,6 +123,7 @@ __all__ = [
     "FEATURE_DEFINITION",
     "DEVICE_SIMULATOR_SENSOR_CONFIGS",
     "DEVICE_SIMULATOR_WEBSOCKET_COMMANDS",
+    "DEVICE_SIMULATOR_CARD_CONFIGS",
     "DEFAULT_GATEWAY_ID",
     "LOGGER",
 ]

@@ -107,6 +107,10 @@ const CARD_MODULES = [
     tag: 'ramses-packet-log-explorer',
     modulePath: '../features/ramses_debugger/ramses-packet-log-explorer.js',
   },
+  {
+    tag: 'device-simulator-card',
+    modulePath: '../features/device_simulator/device-simulator-card.js',
+  },
 ];
 
 const loaded = new Set();

@@ -173,6 +173,12 @@ async def create_device_simulator_feature(
         )
         await registry["device_simulator_endpoint"].async_connect()
 
+        # Send HGI initialization packet to help ramses_cc bind
+        await registry["device_simulator_endpoint"].send_packet(
+            "0005DC0101F40205DC"  # Proper HGI packet format
+        )
+        _LOGGER.info("Sent HGI initialization packet for ramses_cc binding")
+
     if "device_simulator_response_engine" not in registry:
         registry["device_simulator_response_engine"] = ResponseEngine(
             registry["device_simulator_db"],
@@ -227,6 +233,14 @@ def load_feature(hass: "HomeAssistant", config_entry: "ConfigEntry") -> dict[str
     :param config_entry: Configuration entry for ramses_extras
     :return: Feature descriptor with minimal info; actual setup is async
     """
+    from custom_components.ramses_extras.extras_registry import extras_registry
+
+    from .const import DEVICE_SIMULATOR_CARD_CONFIGS
+
+    # Register each card configuration for feature-centric card management
+    for card_config in DEVICE_SIMULATOR_CARD_CONFIGS:
+        extras_registry.register_card_config("device_simulator", card_config)
+
     # Schedule async setup and return immediately
     # The async task will handle the actual feature creation
     asyncio.create_task(create_device_simulator_feature(hass, config_entry))
