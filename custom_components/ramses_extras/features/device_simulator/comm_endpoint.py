@@ -170,9 +170,10 @@ class MqttEndpoint(SimulatorCommEndpoint):
             )
             LOGGER.debug("Simulator received from ramses_rf: %s", frame[:80])
             if self._inbound_handler:
-                self.hass.async_create_task(
+                self.hass.loop.call_soon_threadsafe(
+                    self.hass.async_create_task,
                     self._inbound_handler(frame),
-                    name="device_simulator_handle_inbound",
+                    "device_simulator_handle_inbound",
                 )
         except Exception as err:
             LOGGER.warning("Error handling inbound MQTT message: %s", err)
