@@ -165,7 +165,7 @@ async def create_device_simulator_feature(
 
     if "device_simulator_db" not in registry:
         registry["device_simulator_db"] = DeviceDatabase()
-        registry["device_simulator_db"].load_all()
+        await hass.async_add_executor_job(registry["device_simulator_db"].load_all)
 
     if "device_simulator_endpoint" not in registry:
         registry["device_simulator_endpoint"] = MqttEndpoint(
