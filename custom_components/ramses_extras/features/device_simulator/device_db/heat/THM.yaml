@@ -6,77 +6,82 @@ device_type: THM
 domain: heat
 broadcast_safe: false
 autonomous:
-- code: '0005'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
 - code: '2309'
   verb: I
   trigger: periodic
   interval_seconds: 150.1
-  payloads: []
-- code: 12C0
-  verb: I
-  trigger: periodic
-  interval_seconds: 1.0
-  payloads: []
-- code: 1FC9
-  verb: I
-  trigger: periodic
-  interval_seconds: 5.4
-  payloads: []
-- code: 0008
-  verb: I
-  trigger: periodic
-  interval_seconds: 63.2
-  payloads: []
-- code: 000C
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: 000A
-  verb: I
-  trigger: periodic
-  interval_seconds: 1.0
-  payloads: []
-- code: 01FF
-  verb: I
-  trigger: periodic
-  interval_seconds: 3.0
-  payloads: []
-- code: 3B00
-  verb: I
-  trigger: periodic
-  interval_seconds: 349.1
-  payloads: []
-- code: 10E0
-  verb: I
-  trigger: periodic
-  interval_seconds: 61.7
   payloads: []
 - code: '3110'
   verb: I
   trigger: periodic
   interval_seconds: 415.1
   payloads: []
+- code: 1FC9
+  verb: I
+  trigger: periodic
+  interval_seconds: 5.4
+  payloads: []
+- code: '3120'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 0008
+  verb: I
+  trigger: periodic
+  interval_seconds: 63.2
+  payloads: []
+- code: 1F09
+  verb: I
+  trigger: periodic
+  interval_seconds: 120.5
+  payloads: []
+- code: '1060'
+  verb: I
+  trigger: periodic
+  interval_seconds: 13.5
+  payloads: []
+- code: 0009
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 3B00
+  verb: I
+  trigger: periodic
+  interval_seconds: 349.1
+  payloads: []
+- code: '0005'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 10E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 61.7
+  payloads: []
+- code: 000A
+  verb: I
+  trigger: periodic
+  interval_seconds: 1.0
+  payloads: []
+- code: '1030'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
 - code: '1100'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
-- code: 30C9
+- code: 01FF
   verb: I
   trigger: periodic
-  interval_seconds: 218.0
+  interval_seconds: 3.0
   payloads: []
 - code: 000E
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: '3120'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
@@ -86,38 +91,38 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
-- code: 1F09
+- code: 30C9
   verb: I
   trigger: periodic
-  interval_seconds: 120.5
-  payloads: []
-- code: 0009
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: '1060'
-  verb: I
-  trigger: periodic
-  interval_seconds: 13.5
+  interval_seconds: 218.0
   payloads: []
 - code: 313F
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
-- code: '1030'
+- code: 000C
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
+- code: 12C0
+  verb: I
+  trigger: periodic
+  interval_seconds: 1.0
+  payloads: []
 responses:
+- code: '0016'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
 - code: 3EF1
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: '0016'
+- code: '1090'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
@@ -128,11 +133,6 @@ responses:
   delay_ms: 100
   payloads: []
 - code: 3EF0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: '1090'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100

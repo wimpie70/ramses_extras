@@ -22,11 +22,6 @@ autonomous:
   - 00180404007FFF01
   - 000C1400007FFF01
   notes: Example payloads from regression file
-- code: 2D49
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
 - code: 3EF0
   verb: I
   trigger: periodic
@@ -35,6 +30,11 @@ autonomous:
   - 0000FF
   notes: Example payloads from regression file
 - code: 11F0
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 2D49
   verb: I
   trigger: periodic
   interval_seconds: 60.0

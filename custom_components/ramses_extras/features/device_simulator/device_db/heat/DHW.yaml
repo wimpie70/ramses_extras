@@ -6,6 +6,11 @@ device_type: DHW
 domain: heat
 broadcast_safe: false
 autonomous:
+- code: '1260'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
 - code: '1060'
   verb: I
   trigger: periodic
@@ -16,18 +21,13 @@ autonomous:
   trigger: periodic
   interval_seconds: 5.4
   payloads: []
-- code: '1260'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
 responses:
-- code: 10A0
+- code: '0016'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: '0016'
+- code: 10A0
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100

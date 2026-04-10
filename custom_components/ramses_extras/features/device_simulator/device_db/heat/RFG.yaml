@@ -6,6 +6,31 @@ device_type: RFG
 domain: heat
 broadcast_safe: false
 autonomous:
+- code: '0004'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 31D9
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: '2309'
+  verb: I
+  trigger: periodic
+  interval_seconds: 150.1
+  payloads: []
+- code: '1290'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 1F09
+  verb: I
+  trigger: periodic
+  interval_seconds: 120.5
+  payloads: []
 - code: 10E0
   verb: I
   trigger: periodic
@@ -24,33 +49,8 @@ autonomous:
   - 21EF007FFF41EF7FFF7FFF7FFF7FFF0002EF18FFFF000000EF7FFF7FFF
   - 21EF00020136EF7FFF7FFF7FFF7FFF0002EF18FFFF000000EF7FFF7FFF
   notes: Example payloads from regression file
-- code: '1290'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: 1F09
-  verb: I
-  trigger: periodic
-  interval_seconds: 120.5
-  payloads: []
-- code: '0004'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: '2309'
-  verb: I
-  trigger: periodic
-  interval_seconds: 150.1
-  payloads: []
-- code: 31D9
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
 responses:
-- code: '0006'
+- code: 0418
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
@@ -60,22 +60,42 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: '0002'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
 - code: 1F41
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: '2349'
+- code: '0006'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: 0418
+- code: 10A0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: 000A
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: 313F
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: 000C
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: '1260'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: '3220'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
@@ -86,7 +106,7 @@ responses:
   delay_ms: 100
   payloads:
   - '00'
-- code: '3220'
+- code: '2349'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
@@ -96,27 +116,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: 000A
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
 - code: '0005'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: 000C
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: '0404'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: '1260'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
@@ -126,12 +126,12 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: 313F
+- code: '0404'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: 10A0
+- code: '0002'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100

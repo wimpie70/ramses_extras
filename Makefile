@@ -142,6 +142,12 @@ local-ci: env
 	@echo "Running local CI pipeline..."
 	@./scripts/local-ci.sh
 
+# Device Simulator build targets
+build-device-db: env
+	@echo "Building device database from ramses_rf regression packets..."
+	@bash -c "source ~/venvs/extras/bin/activate && python scripts/build_device_db.py"
+	@echo "✅ Device database build complete"
+
 test-frontend: env
 	@echo "Running frontend tests..."
 	@bash -c "source ~/venvs/extras/bin/activate && npm test --prefix config"

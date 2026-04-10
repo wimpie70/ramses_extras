@@ -6,15 +6,6 @@ device_type: REM
 domain: hvac
 broadcast_safe: false
 autonomous:
-- code: 10E0
-  verb: I
-  trigger: periodic
-  interval_seconds: 61.7
-  payloads:
-  - 000001C8380F0100F1FF1D0807E2030507E15438375246323032350000000000000000000000
-  - 000001C8380F0100F1FF0D0C07E2030507E15438375246323032350000000000000000000000
-  - 000001C8380F0100F1FF1B0507E3030507E15438375246323032350000000000000000000000
-  notes: Example payloads from regression file
 - code: 1FC9
   verb: I
   trigger: periodic
@@ -22,27 +13,6 @@ autonomous:
   payloads:
   - 0023098968530030C9896853000008896853001FC9896853
   - 072309896853
-  notes: Example payloads from regression file
-- code: 042F
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads:
-  - 00000000230023F5
-  - 00000000240024F5
-  - 00000000250025F5
-  notes: Example payloads from regression file
-- code: 22F3
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: '1060'
-  verb: I
-  trigger: periodic
-  interval_seconds: 13.5
-  payloads:
-  - 00FF01
   notes: Example payloads from regression file
 - code: 31E0
   verb: I
@@ -54,8 +24,43 @@ autonomous:
   trigger: periodic
   interval_seconds: 15.8
   payloads: []
+- code: '1060'
+  verb: I
+  trigger: periodic
+  interval_seconds: 13.5
+  payloads:
+  - 00FF01
+  notes: Example payloads from regression file
+- code: 22F3
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 042F
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads:
+  - 00000000230023F5
+  - 00000000240024F5
+  - 00000000250025F5
+  notes: Example payloads from regression file
+- code: 10E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 61.7
+  payloads:
+  - 000001C8380F0100F1FF1D0807E2030507E15438375246323032350000000000000000000000
+  - 000001C8380F0100F1FF0D0C07E2030507E15438375246323032350000000000000000000000
+  - 000001C8380F0100F1FF1B0507E3030507E15438375246323032350000000000000000000000
+  notes: Example payloads from regression file
 responses:
-- code: 31DA
+- code: 313F
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: '1470'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
@@ -65,17 +70,12 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
+- code: 31DA
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
 - code: '0001'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: 313F
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: '1470'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
