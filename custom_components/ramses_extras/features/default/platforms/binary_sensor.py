@@ -196,10 +196,16 @@ async def async_setup_entry(
         for device in devices_data:
             try:
                 device_id = extract_device_id_as_string(device)
+                _LOGGER.debug("Checking device %s for fan capability", device_id)
                 if await _device_has_fan(hass, device_id):
                     devices.append(device_id)
+                    _LOGGER.debug("Device %s has fan capability", device_id)
+                else:
+                    _LOGGER.debug("Device %s does not have fan capability", device_id)
             except Exception as err:
-                _LOGGER.debug("Error checking device %s for fan: %s", device, err)
+                _LOGGER.debug(
+                    "Error checking device %s for fan: %s", device, err, exc_info=True
+                )
                 continue
 
         if not devices:
@@ -229,9 +235,16 @@ async def _device_has_fan(hass: HomeAssistant, device_id: str) -> bool:
     try:
         normalized_device_id = extract_device_id_as_string(device_id).replace("_", ":")
         device = find_ramses_device(hass, normalized_device_id)
-        return get_device_type(device) == "HvacVentilator"
+        if device is None:
+            _LOGGER.debug("Device %s not found in registry", normalized_device_id)
+            return False
+        device_type = get_device_type(device)
+        _LOGGER.debug("Device %s has type: %s", normalized_device_id, device_type)
+        return device_type == "HvacVentilator"
     except Exception as err:
-        _LOGGER.debug("Error checking if device %s has fan: %s", device_id, err)
+        _LOGGER.debug(
+            "Error checking if device %s has fan: %s", device_id, err, exc_info=True
+        )
         return False
 
 
