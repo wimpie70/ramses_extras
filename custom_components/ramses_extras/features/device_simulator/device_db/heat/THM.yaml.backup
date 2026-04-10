@@ -1,3 +1,7 @@
+# Auto-generated from ramses_rf sources
+# Device type: THM (domain: heat)
+# Manual review recommended before committing
+---
 device_type: THM
 domain: heat
 broadcast_safe: false
@@ -108,24 +112,12 @@ autonomous:
   interval_seconds: 1.0
   payloads: []
 responses:
-- code: '0001'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 50
-  payloads:
-  - FA00
-  - '0204'
-  - F914
-  description: System identification
-- code: '0002'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 50
-  payloads:
-  - FA00
-  - '0204'
-  description: System identification (alternate)
 - code: '0016'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: 3EF1
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
@@ -141,11 +133,6 @@ responses:
   delay_ms: 100
   payloads: []
 - code: 3EF0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: 3EF1
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100

@@ -1,3 +1,7 @@
+# Auto-generated from ramses_rf sources
+# Device type: FAN (domain: hvac)
+# Manual review recommended before committing
+---
 device_type: FAN
 domain: hvac
 broadcast_safe: false
@@ -143,24 +147,3 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
-responses:
-- code: 22F1
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 200
-  payloads:
-  - '0001'
-  - '0002'
-  - '0003'
-  description: Fan speed control
-- code: 22F3
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 150
-  payloads:
-  - '00'
-  description: Fan mode control
-protocol_notes:
-- FAN devices support speed control via 22F1 with payload 01/02/03
-- FAN devices provide periodic status via 31DA (system status)
-- FAN devices respond to discovery with 10E0 capabilities

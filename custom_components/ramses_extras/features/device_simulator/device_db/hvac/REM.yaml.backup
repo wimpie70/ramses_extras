@@ -1,3 +1,7 @@
+# Auto-generated from ramses_rf sources
+# Device type: REM (domain: hvac)
+# Manual review recommended before committing
+---
 device_type: REM
 domain: hvac
 broadcast_safe: false
@@ -51,38 +55,12 @@ autonomous:
   - 000001C8380F0100F1FF1B0507E3030507E15438375246323032350000000000000000000000
   notes: Example payloads from regression file
 responses:
-- code: '0001'
+- code: 313F
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: 12A0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-  description: Remote status
-- code: 12C8
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 50
-  payloads:
-  - 00A740
-  - 007A40
-  - 009540
-  description: Remote sensor reading
-- code: 12D0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 150
-  payloads: []
-  description: Remote control
 - code: '1470'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: 22F7
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
@@ -92,12 +70,17 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: 313F
+- code: 31DA
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: 31DA
+- code: '0001'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: 22F7
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100

@@ -1,3 +1,7 @@
+# Auto-generated from ramses_rf sources
+# Device type: TRV (domain: heat)
+# Manual review recommended before committing
+---
 device_type: TRV
 domain: heat
 broadcast_safe: false
@@ -69,6 +73,11 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
+- code: 313F
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
 - code: '0016'
   rq_verb: RQ
   rp_verb: RP
@@ -84,38 +93,3 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: 22C9
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 150
-  payloads: []
-  description: Temperature control
-- code: 22D9
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '00'
-  description: Valve position
-- code: 313F
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: '3200'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 0
-  payloads: []
-  description: System heartbeat
-- code: 3EF0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 200
-  payloads:
-  - '00'
-  description: Calibration
-protocol_notes:
-- TRV devices control valve position via 22D9
-- TRV devices provide temperature readings via 1FC9
-- TRV devices support calibration via 3EF0

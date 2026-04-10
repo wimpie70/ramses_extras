@@ -1,3 +1,7 @@
+# Auto-generated from ramses_rf sources
+# Device type: CO2 (domain: hvac)
+# Manual review recommended before committing
+---
 device_type: CO2
 domain: hvac
 broadcast_safe: false
@@ -59,12 +63,6 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: '2412'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 200
-  payloads: []
-  description: CO2 calibration
 - code: 31DA
   rq_verb: RQ
   rp_verb: RP

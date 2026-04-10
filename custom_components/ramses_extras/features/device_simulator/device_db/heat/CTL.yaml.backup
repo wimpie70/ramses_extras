@@ -1,3 +1,7 @@
+# Auto-generated from ramses_rf sources
+# Device type: CTL (domain: heat)
+# Manual review recommended before committing
+---
 device_type: CTL
 domain: heat
 broadcast_safe: false
@@ -212,77 +216,12 @@ autonomous:
   interval_seconds: 60.0
   payloads: []
 responses:
-- code: '0001'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 50
-  payloads:
-  - FA00
-  - '0204'
-  - F914
-  description: System identification
-- code: '0010'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 50
-  payloads:
-  - 0013880003E8
-  description: Temperature reading
-- code: '0016'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-- code: 042F
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 50
-  payloads: []
-  description: System error
-- code: 10D0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 150
-  payloads: []
-  description: Device information
-- code: 10E0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 200
-  payloads:
-  - 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
-  description: Device capabilities
-- code: 22D9
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '00'
-- code: 22F2
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-  description: System control
-- code: 2E10
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-  description: System configuration
-- code: '3120'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 0
-  payloads: []
-  description: System status
-- code: '3200'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 0
-  payloads: []
-  description: System heartbeat
 - code: '3220'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
+- code: '0016'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
@@ -293,7 +232,9 @@ responses:
   delay_ms: 100
   payloads:
   - '00'
-protocol_notes:
-- CTL devices act as system controllers
-- CTL devices respond to system identification via 0008
-- CTL devices provide system status via 0009
+- code: 22D9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00'

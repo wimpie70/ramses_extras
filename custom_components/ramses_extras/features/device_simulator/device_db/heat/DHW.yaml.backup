@@ -1,3 +1,7 @@
+# Auto-generated from ramses_rf sources
+# Device type: DHW (domain: heat)
+# Manual review recommended before committing
+---
 device_type: DHW
 domain: heat
 broadcast_safe: false
@@ -28,26 +32,3 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: '2209'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []
-  description: DHW control
-- code: '2309'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - 0005DC0101F40205DC
-  - '030514'
-  - 01070802079E03073A
-  description: DHW status
-- code: '2349'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 150
-  payloads:
-  - 0007D000FFFFFF
-  - 01079E00FFFFFF
-  description: DHW parameters
