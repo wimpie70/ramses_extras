@@ -589,21 +589,24 @@ The simulator runs as a ramses_extras feature in the **same HA container**. The 
 - Message database scaffold with parser
 - Basic service + WebSocket API scaffolding
 
-### Phase 2: Device Database — Build + Loader
+### Phase 2: Device Database — Build + Loader ✅ (COMPLETED)
+
+**Status**: Device database generated from 10,033 regression packets. 21 device types created.
+Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
 **2a: Offline build script** (`scripts/build_device_db.py`):
 
-- [ ] Scaffold YAML stubs from `_DEV_KLASSES_HEAT/HVAC` + `fingerprints.py`
-- [ ] Mine `regression_packets_sorted.txt`: extract example payloads per `(slug, code, verb)`, compute `interval_seconds` for periodic `I` messages
-- [ ] Flag `broadcast_safe` per device type (suppress by default)
-- [ ] LLM-assisted annotation pass: fill gaps, validate RQ→RP pairing
-- [ ] Human review of generated YAML files
+- [x] Scaffold YAML stubs from `_DEV_KLASSES_HEAT/HVAC` + `fingerprints.py`
+- [x] Mine `regression_packets_sorted.txt`: extract example payloads per `(slug, code, verb)`, compute `interval_seconds` for periodic `I` messages
+- [x] Flag `broadcast_safe` per device type (suppress by default)
+- [x] LLM-assisted annotation pass: fill gaps, validate RQ→RP pairing
+- [ ] Human review of generated YAML files (deferred)
 
 **2b: Runtime loader** (`device_db.py`):
 
-- [ ] Load + index all YAML files from `device_db/`
-- [ ] Implement `find_response(slug, code)`, `get_periodic(slug)`, `get_fingerprint_payload(fingerprint)`
-- [ ] Implement `import_user_log(path, name)` for user-submitted logs
+- [x] Load + index all YAML files from `device_db/`
+- [x] Implement `find_response(slug, code)`, `get_periodic(slug)`, `get_fingerprint_payload(fingerprint)`
+- [x] Implement `import_user_log(path, name)` for user-submitted logs
 
 **Done When**: `device_db.load_all()` returns correctly indexed device definitions; `find_response("FAN", "31DA")` returns a valid payload.
 

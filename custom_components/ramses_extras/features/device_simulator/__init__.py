@@ -140,6 +140,7 @@ async def create_device_simulator_feature(
 
     from .comm_endpoint import MqttEndpoint
     from .device_db import DeviceDatabase
+    from .response_engine import ResponseEngine
     from .scenario_engine import ScenarioEngine
     from .services import async_setup_services
     from .websocket import async_register_websocket_commands
@@ -161,6 +162,16 @@ async def create_device_simulator_feature(
         )
         await registry["device_simulator_endpoint"].async_connect()
 
+    if "device_simulator_response_engine" not in registry:
+        registry["device_simulator_response_engine"] = ResponseEngine(
+            registry["device_simulator_db"],
+            registry["device_simulator_endpoint"],
+        )
+        # Wire up response engine to handle inbound frames
+        registry["device_simulator_endpoint"]._inbound_handler = registry[
+            "device_simulator_response_engine"
+        ].handle_inbound_frame
+
     if "device_simulator_engine" not in registry:
         registry["device_simulator_engine"] = ScenarioEngine(
             hass,
@@ -179,6 +190,7 @@ async def create_device_simulator_feature(
     return {
         "db": registry["device_simulator_db"],
         "endpoint": registry["device_simulator_endpoint"],
+        "response_engine": registry["device_simulator_response_engine"],
         "engine": registry["device_simulator_engine"],
         "feature_name": "device_simulator",
     }
