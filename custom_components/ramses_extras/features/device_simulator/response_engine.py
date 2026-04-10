@@ -31,13 +31,14 @@ class ResponseEngine:
     # RAMSES frame format:  I 001 37:168270 37:126776 31DA 001 21...
     #                        V RSSI  SRC        DST        CODE LEN PAYLOAD
     FRAME_PATTERN = re.compile(
-        r"^(?P<verb>[IRW])\s+"
+        r"^(?P<verb>[IRW]|RQ|RP)\s+"
         r"(?P<rssi>\d{3})\s+"
         r"(?P<src>[0-9A-Fa-f]{2}:[0-9A-Fa-f]{6})\s+"
         r"(?P<dst>[0-9A-Fa-f]{2}:[0-9A-Fa-f]{6}|--:------)\s+"
         r"(?P<code>[0-9A-Fa-f]{4})\s+"
         r"(?P<len>\d{3})\s*"
-        r"(?P<payload>[0-9A-Fa-f]*)"
+        r"(?P<payload>[0-9A-Fa-f]*)",
+        re.IGNORECASE,
     )
 
     def __init__(

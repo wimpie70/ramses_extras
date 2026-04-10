@@ -144,6 +144,7 @@ async def create_device_simulator_feature(
     from .response_engine import ResponseEngine
     from .scenario_engine import ScenarioEngine
     from .services import async_setup_services
+    from .system_config import ConfigProfileStore, apply_timeout_scale
     from .websocket import async_register_websocket_commands
 
     # Enforce simulator isolation: reconfigure ramses_cc if needed
@@ -151,6 +152,15 @@ async def create_device_simulator_feature(
     await _enforce_simulator_isolation(hass)
 
     hass.data.setdefault("ramses_extras", {})
+
+    # Initialize system configuration profiles
+    if "device_simulator_config_store" not in hass.data["ramses_extras"]:
+        config_store = ConfigProfileStore()
+        hass.data["ramses_extras"]["device_simulator_config_store"] = config_store
+        _LOGGER.debug("Device Simulator: initialized config profile store")
+
+        # Apply default timeout scaling (can be overridden by loaded profile)
+        apply_timeout_scale(1.0)
     registry = hass.data["ramses_extras"]
 
     if "device_simulator_db" not in registry:
@@ -201,6 +211,7 @@ async def create_device_simulator_feature(
         "response_engine": registry["device_simulator_response_engine"],
         "periodic_emitter": registry["device_simulator_periodic_emitter"],
         "engine": registry["device_simulator_engine"],
+        "config_store": hass.data["ramses_extras"]["device_simulator_config_store"],
         "feature_name": "device_simulator",
     }
 

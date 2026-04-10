@@ -658,19 +658,21 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
 ---
 
-### Phase 6: System Configuration Profiles
+### Phase 6: System Configuration Profiles ✅ (COMPLETED)
+
+**Status**: System config profiles implemented with 8 built-in profiles and user profile persistence.
 
 **Tasks**:
 
-- [ ] Implement `SystemConfigProfile` dataclass + `ConfigProfileStore`
-- [ ] Build profile loader: writes config fragment to HA config dir, triggers reload
-- [ ] Implement `apply_timeout_scale(scale)` — patches `ramses_rf.const` module constants
-- [ ] Expose `heartbeat_timeout_scale` (and `heartbeat_timeout_override_seconds`) in simulator config
-- [ ] Apply timeout scale at simulator feature load, before ramses_cc processes any messages
-- [ ] Create built-in profiles from regression data (heat, hvac, mixed)
-- [ ] Create `device_unavailability` profile (normal run → silence devices)
-- [ ] Create `hvac_device_loss` profile (FAN stops emitting mid-run)
-- [ ] `export_profile()` / `import_profile()` for user bug reports
+- [x] Implement `SystemConfigProfile` dataclass + `ConfigProfileStore`
+- [ ] Build profile loader: writes config fragment to HA config dir, triggers reload (deferred)
+- [x] Implement `apply_timeout_scale(scale)` — patches `ramses_rf.const` module constants
+- [x] Expose `heartbeat_timeout_scale` (and `heartbeat_timeout_override_seconds`) in simulator config
+- [x] Apply timeout scale at simulator feature load, before ramses_cc processes any messages
+- [x] Create built-in profiles from regression data (heat, hvac, mixed)
+- [x] Create `device_unavailability` profile (normal run → silence devices)
+- [x] Create `hvac_device_loss` profile (FAN stops emitting mid-run)
+- [x] `export_profile()` / `import_profile()` for user bug reports
 
 **Done When**: Can switch configs without touching files; unavailability triggers within seconds at scale=0.01.
 

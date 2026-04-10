@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -375,11 +376,19 @@ class TestResponseEngineShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_cancels_tasks(self, engine: ResponseEngine) -> None:
         """Test that shutdown cancels pending tasks."""
-        # Create a mock task
-        mock_task = MagicMock()
-        engine._pending_tasks.add(mock_task)
+
+        # Create a real asyncio task that will be cancelled
+        async def dummy_task():
+            try:
+                await asyncio.sleep(10)  # Long sleep that will be cancelled
+            except asyncio.CancelledError:
+                return "cancelled"
+
+        real_task = asyncio.create_task(dummy_task())
+        engine._pending_tasks.add(real_task)
 
         await engine.shutdown()
 
-        mock_task.cancel.assert_called_once()
+        # Check that the task was cancelled
+        assert real_task.cancelled()
         assert len(engine._pending_tasks) == 0
