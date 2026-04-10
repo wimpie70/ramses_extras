@@ -678,17 +678,21 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
 ---
 
-### Phase 7: Scenario Engine — Wire to Comm Endpoint + Profiles
+### Phase 7: Scenario Engine (COMPLETED)
+
+**Status**: Scenario engine implemented with device management, periodic emission, response handling, and test scenario runners.
 
 **Tasks**:
 
-- [ ] Device Playback: sequential replay via comm endpoint
-- [ ] Device Suite: activate multiple periodic emitters
-- [ ] Discovery Test: emit `10E0` + initial `I` messages
-- [ ] Timeout Test: activate device with drop-response enabled
-- [ ] Flooding Test: high-rate `I` emission
-- [ ] **Device Unavailability**: run normal → silence → observe → resume
-- [ ] Integrate profile loading into scenario start
+- [x] Device Playback: sequential replay via comm endpoint
+- [x] Device Suite: activate multiple periodic emitters
+- [x] Discovery Test: emit `10E0` + initial `I` messages
+- [x] Timeout Test: activate device with drop-response enabled
+- [x] Flooding Test: high-rate `I` emission
+- [x] **Device Unavailability**: run normal → silence → observe → resume
+- [x] Integrate profile loading into scenario start
+
+**Done When**: Can run a full regression scenario end-to-end.
 
 ---
 
