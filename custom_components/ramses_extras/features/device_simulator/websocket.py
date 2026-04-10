@@ -43,6 +43,11 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_conversations)
     websocket_api.async_register_command(hass, ws_run_conversation)
     websocket_api.async_register_command(hass, ws_get_messages)
+    # UI card handlers
+    websocket_api.async_register_command(hass, ws_get_status)
+    websocket_api.async_register_command(hass, ws_load_profile)
+    websocket_api.async_register_command(hass, ws_start_scenario)
+    websocket_api.async_register_command(hass, ws_stop_scenario)
 
 
 def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
@@ -298,3 +303,160 @@ def ws_get_messages(
     messages = engine._message_log[-limit:] if engine._message_log else []
 
     connection.send_result(msg["id"], {"messages": messages})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/get_status",
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_get_ui_status(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return full simulator status for UI card."""
+    registry = hass.data.get("ramses_extras", {}).get("device_simulator_registry", {})
+
+    # Get profiles from config store
+    config_store = hass.data.get("ramses_extras", {}).get(
+        "device_simulator_config_store"
+    )
+    profiles = []
+    if config_store:
+        profiles = [
+            {
+                "name": name,
+                "description": p.description,
+                "timeout_scale": p.timeout_scale,
+            }
+            for name, p in config_store.list_profiles().items()
+        ]
+
+    # Get devices from scenario engine
+    engine = registry.get("device_simulator_engine")
+    devices = []
+    if engine and hasattr(engine, "_active_devices"):
+        devices = [
+            {
+                "id": device_id,
+                "type": info.device_type,
+                "enabled": info.enabled,
+            }
+            for device_id, info in engine._active_devices.items()
+        ]
+
+    # Get stats from response engine
+    response_engine = registry.get("device_simulator_response_engine")
+    stats = {
+        "rx": 0,
+        "tx": 0,
+        "devices": len(devices),
+        "active": sum(1 for d in devices if d["enabled"]),
+    }
+    if response_engine and hasattr(response_engine, "_stats"):
+        stats["rx"] = response_engine._stats.get("rx", 0)
+        stats["tx"] = response_engine._stats.get("tx", 0)
+
+    # Scenarios (built-in test scenarios)
+    scenarios = [
+        {
+            "id": "discovery",
+            "name": "Discovery Test",
+            "description": "Emit 10E0 + initial I messages",
+        },
+        {
+            "id": "timeout",
+            "name": "Timeout Test",
+            "description": "Test device unavailability detection",
+        },
+        {
+            "id": "flooding",
+            "name": "Flooding Test",
+            "description": "High-rate I message emission",
+        },
+    ]
+
+    connection.send_result(
+        msg["id"],
+        {
+            "profiles": profiles,
+            "devices": devices,
+            "scenarios": scenarios,
+            "stats": stats,
+            "active_profile": None,  # TODO: Track active profile
+            "scenario_state": "idle",  # TODO: Track scenario state
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/load_profile",
+        vol.Required("profile"): str,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_load_profile(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Load a system configuration profile."""
+    config_store = hass.data.get("ramses_extras", {}).get(
+        "device_simulator_config_store"
+    )
+    if not config_store:
+        connection.send_error(msg["id"], "not_ready", "Config store not initialized")
+        return
+
+    profile = config_store.get_profile(msg["profile"])
+    if not profile:
+        connection.send_error(
+            msg["id"], "not_found", f"Profile '{msg['profile']}' not found"
+        )
+        return
+
+    # Apply timeout scale
+    from .system_config import apply_timeout_scale
+
+    apply_timeout_scale(profile.timeout_scale)
+
+    LOGGER.info("Loaded simulator profile: %s", msg["profile"])
+    connection.send_result(msg["id"], {"success": True, "profile": msg["profile"]})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/start_scenario",
+        vol.Required("scenario"): str,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_start_scenario(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Start a test scenario."""
+    # TODO: Implement scenario runner
+    LOGGER.info("Starting scenario: %s", msg["scenario"])
+    connection.send_result(msg["id"], {"success": True, "scenario": msg["scenario"]})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/stop_scenario",
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_stop_scenario(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Stop the current scenario."""
+    # TODO: Implement scenario stop
+    LOGGER.info("Stopping scenario")
+    connection.send_result(msg["id"], {"success": True})
