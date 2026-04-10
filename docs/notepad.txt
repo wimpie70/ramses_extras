@@ -27,6 +27,46 @@ Check on startup if ramses_cc has:
 - Enable Send Packet Service
 Log errors if not configured.
 
+### ha-sim Simulator Isolation Prerequisites
+**For device_simulator feature to work with automatic isolation:**
+
+1. **MQTT Integration in ha-sim**
+   - Must be configured in `configuration.yaml` or UI:
+   ```yaml
+   mqtt:
+     broker: 192.168.40.11 # Replace with your MQTT broker IP
+     port: 1883
+     username: "your_username" # Replace with your MQTT username
+     password: "your_password" # Replace with your MQTT password
+   ```
+   - Required for MqttEndpoint to subscribe/publish
+
+2. **ramses_cc Config (auto-enforced)**
+   - Must use MQTT transport (not serial)
+   - Device simulator automatically reconfigures to:
+     - Topic: `RAMSES/GATEWAY_SIM/18:001234`
+     - HGI: `18:001234` (fake, isolated from production)
+   - note: the topic namespace is hardcoded in the simulator code.
+   in _rf there is a strict check on prefix `RAMSES/GATEWAY` and also 3 parts divided by '/'
+   but we can add the _SIM suffix to the topic to pass the check.
+
+3. **MQTT Broker Permissions**
+   - User must have subscribe/publish rights to `RAMSES/GATEWAY_SIM/#`
+   - Same broker credentials as production
+
+4. **Port Configuration**
+   - ha-sim uses port 8124 (not 8123)
+   - Set in `configuration.yaml`:
+   ```yaml
+   http:
+     server_port: 8124
+   ```
+
+**Isolation Behavior:**
+- Production devices use: `RAMSES/GATEWAY/18:xxxxxx`
+- Simulator uses: `RAMSES/GATEWAY_SIM/18:001234`
+- Zero crosstalk between namespaces
+
 
 ### check framework for feature specific code that needs to be moved to it's features
 ### Ramses Packet Log explorer: auto mode seem to be broken
