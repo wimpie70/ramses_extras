@@ -140,6 +140,7 @@ async def create_device_simulator_feature(
 
     from .comm_endpoint import MqttEndpoint
     from .device_db import DeviceDatabase
+    from .periodic_emitter import PeriodicEmitter
     from .response_engine import ResponseEngine
     from .scenario_engine import ScenarioEngine
     from .services import async_setup_services
@@ -172,6 +173,13 @@ async def create_device_simulator_feature(
             "device_simulator_response_engine"
         ].handle_inbound_frame
 
+    if "device_simulator_periodic_emitter" not in registry:
+        registry["device_simulator_periodic_emitter"] = PeriodicEmitter(
+            registry["device_simulator_db"],
+            registry["device_simulator_endpoint"],
+        )
+        await registry["device_simulator_periodic_emitter"].start()
+
     if "device_simulator_engine" not in registry:
         registry["device_simulator_engine"] = ScenarioEngine(
             hass,
@@ -191,6 +199,7 @@ async def create_device_simulator_feature(
         "db": registry["device_simulator_db"],
         "endpoint": registry["device_simulator_endpoint"],
         "response_engine": registry["device_simulator_response_engine"],
+        "periodic_emitter": registry["device_simulator_periodic_emitter"],
         "engine": registry["device_simulator_engine"],
         "feature_name": "device_simulator",
     }

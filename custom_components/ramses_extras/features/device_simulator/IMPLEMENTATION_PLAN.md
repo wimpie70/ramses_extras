@@ -612,40 +612,47 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
 ---
 
-### Phase 3: Comm Endpoint (MQTT mode first)
+### Phase 3: Comm Endpoint (MQTT mode first) ✅ (COMPLETED)
+
+**Status**: MQTT endpoint connected and operational on `RAMSES/GATEWAY_SIM`.
 
 **Tasks**:
 
-- [ ] Implement `MqttEndpoint`: connects to broker, pub/sub on correct topics
-- [ ] Parse inbound `/tx` frames from ramses_rf (detect RQ → route to response engine)
-- [ ] Send outbound `/rx` frames to ramses_rf (responses + periodic I)
-- [ ] Implement `SerialEndpoint` for socat/pty use (secondary priority)
+- [x] Implement `MqttEndpoint`: connects to broker, pub/sub on correct topics
+- [x] Parse inbound `/tx` frames from ramses_rf (detect RQ → route to response engine)
+- [x] Send outbound `/rx` frames to ramses_rf (responses + periodic I)
+- [ ] Implement `SerialEndpoint` for socat/pty use (deferred)
 
 **Done When**: Simulator connects to MQTT broker and raw packet exchange works.
 
 ---
 
-### Phase 4: Response Engine
+### Phase 4: Response Engine ✅ (COMPLETED)
+
+**Status**: Response engine implemented with frame parsing, device type detection, DB lookup, and delayed sending.
 
 **Tasks**:
 
-- [ ] Parse incoming RQ frame: extract `verb`, `src`, `dst`, `code`
-- [ ] Look up RP in message DB
-- [ ] Wait configurable delay, then send RP via comm endpoint
-- [ ] Drop-response mode per device/code (for timeout tests)
+- [x] Parse incoming RQ frame: extract `verb`, `src`, `dst`, `code`
+- [x] Look up RP in device database
+- [x] Wait configurable delay, then send RP via comm endpoint
+- [ ] Drop-response mode per device/code (for timeout tests - deferred)
 
 **Done When**: ramses_rf sends an RQ, gets a real RP back, device entity appears in HA.
 
 ---
 
-### Phase 5: Periodic Emitter
+### Phase 5: Periodic Emitter ✅ (COMPLETED)
+
+**Status**: Periodic emitter implemented with background loop, per-device speed control, and enable/disable.
 
 **Tasks**:
 
-- [ ] Background task per active device
-- [ ] Emit periodic `I` messages at correct intervals (from DB timestamps)
-- [ ] Speed control (1x, 10x, instant)
-- [ ] Per-device enable/disable
+- [x] Background task per active device
+- [x] Emit periodic `I` messages at correct intervals (from DB timestamps)
+- [x] Speed control (1x, 10x, instant)
+- [x] Per-device enable/disable
+- [x] Per-code exclusion support
 
 **Done When**: Virtual FAN emits periodic 31DA → ramses_rf creates FAN entity with attributes.
 
