@@ -1,0 +1,312 @@
+/**
+ * Device Simulator Card for Ramses Extras
+ * Phase 8: UI Cards - Main simulator interface
+ */
+
+import {
+  LitElement,
+  html,
+  css,
+} from "https://unpkg.com/lit-element@2.4.0/lit-element.js?module";
+
+class DeviceSimulatorCard extends LitElement {
+  static get properties() {
+    return {
+      hass: { type: Object },
+      config: { type: Object },
+      _profiles: { type: Array },
+      _activeProfile: { type: String },
+      _devices: { type: Array },
+      _scenarios: { type: Array },
+      _scenarioState: { type: String },
+      _events: { type: Array },
+      _stats: { type: Object },
+      _tab: { type: String },
+    };
+  }
+
+  static get styles() {
+    return css`
+      :host { display: block; padding: 16px; }
+      .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+      .title { font-size: 1.2em; font-weight: 500; }
+      .badge { padding: 4px 12px; border-radius: 12px; font-size: 0.75em; text-transform: uppercase; }
+      .badge.active { background: var(--success-color, #4caf50); color: white; }
+      .badge.running { background: var(--primary-color, #03a9f4); color: white; animation: pulse 1.5s infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+      .tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--divider-color); }
+      .tab { padding: 12px 16px; cursor: pointer; border-bottom: 2px solid transparent; font-size: 0.9em; }
+      .tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+      .content { display: none; }
+      .content.active { display: block; }
+      .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+      .btn-primary { background: var(--primary-color); color: white; }
+      .btn-danger { background: var(--error-color); color: white; }
+      .grid { display: grid; gap: 12px; }
+      .card { border: 1px solid var(--divider-color); border-radius: 8px; padding: 16px; }
+      .card:hover { border-color: var(--primary-color); }
+      .card.active { border-color: var(--success-color); background: var(--success-color-light); }
+      .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+      .stat { background: var(--secondary-background-color); padding: 16px; border-radius: 8px; text-align: center; }
+      .stat-value { font-size: 1.5em; font-weight: 600; color: var(--primary-color); }
+      .event-log { max-height: 300px; overflow-y: auto; border: 1px solid var(--divider-color); border-radius: 8px; }
+      .event { display: flex; gap: 12px; padding: 8px; border-bottom: 1px solid var(--divider-color); font-size: 0.85em; }
+      .event.unavailable { background: var(--error-color-light); border-left: 3px solid var(--error-color); }
+      .event-type { padding: 2px 6px; border-radius: 4px; font-size: 0.75em; text-transform: uppercase; }
+      .event-type.rx { background: var(--success-color-light); color: var(--success-color); }
+      .event-type.tx { background: var(--info-color-light); color: var(--info-color); }
+      .event-type.unavailable { background: var(--error-color-light); color: var(--error-color); }
+    `;
+  }
+
+  constructor() {
+    super();
+    this._profiles = [];
+    this._devices = [];
+    this._scenarios = [];
+    this._events = [];
+    this._stats = { rx: 0, tx: 0, devices: 0, active: 0 };
+    this._tab = "profiles";
+    this._scenarioState = "idle";
+  }
+
+  setConfig(config) {
+    this.config = config;
+  }
+
+  getCardSize() {
+    return 6;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._fetchData();
+  }
+
+  async _fetchData() {
+    if (!this.hass) return;
+    try {
+      const result = await this.hass.callWS({
+        type: "ramses_extras/device_simulator/get_status",
+      });
+      this._profiles = result.profiles || [];
+      this._devices = result.devices || [];
+      this._scenarios = result.scenarios || [];
+      this._stats = result.stats || this._stats;
+      this._activeProfile = result.active_profile;
+      this._scenarioState = result.scenario_state || "idle";
+    } catch {
+      // Silently handle fetch errors
+    }
+  }
+
+  _setTab(tab) {
+    this._tab = tab;
+  }
+
+  async _loadProfile(name) {
+    try {
+      await this.hass.callWS({
+        type: "ramses_extras/device_simulator/load_profile",
+        profile: name,
+      });
+      this._activeProfile = name;
+      this._fetchData();
+    } catch {
+      // TODO: Show proper error notification
+      this._fetchData(); // Refresh to show updated state
+    }
+  }
+
+  async _startScenario(id) {
+    try {
+      await this.hass.callWS({
+        type: "ramses_extras/device_simulator/start_scenario",
+        scenario: id,
+      });
+      this._scenarioState = "running";
+    } catch {
+      // TODO: Show proper error notification
+      this._scenarioState = "idle"; // Reset state
+    }
+  }
+
+  async _stopScenario() {
+    try {
+      await this.hass.callWS({
+        type: "ramses_extras/device_simulator/stop_scenario",
+      });
+      this._scenarioState = "idle";
+    } catch {
+      // Silently handle stop errors
+    }
+  }
+
+  render() {
+    if (!this.hass) {
+      return html`<div>Loading...</div>`;
+    }
+
+    return html`
+      <ha-card>
+        <div class="header">
+          <div class="title">🔌 ${this.config?.title || "Device Simulator"}</div>
+          <div class="badge ${this._scenarioState === "running" ? "running" : this._activeProfile ? "active" : ""}">
+            ${this._scenarioState === "running" ? "Running" : this._activeProfile ? "Active" : "Idle"}
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab ${this._tab === "profiles" ? "active" : ""}" @click="${() => this._setTab("profiles")}">Profiles</div>
+          <div class="tab ${this._tab === "devices" ? "active" : ""}" @click="${() => this._setTab("devices")}">Devices</div>
+          <div class="tab ${this._tab === "scenarios" ? "active" : ""}" @click="${() => this._setTab("scenarios")}">Scenarios</div>
+          <div class="tab ${this._tab === "events" ? "active" : ""}" @click="${() => this._setTab("events")}">Events</div>
+        </div>
+
+        <div class="content ${this._tab === "profiles" ? "active" : ""}">
+          ${this._renderProfiles()}
+        </div>
+        <div class="content ${this._tab === "devices" ? "active" : ""}">
+          ${this._renderDevices()}
+        </div>
+        <div class="content ${this._tab === "scenarios" ? "active" : ""}">
+          ${this._renderScenarios()}
+        </div>
+        <div class="content ${this._tab === "events" ? "active" : ""}">
+          ${this._renderEvents()}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _renderProfiles() {
+    return html`
+      <div class="grid">
+        ${this._profiles.length === 0
+          ? html`<div>No profiles available</div>`
+          : this._profiles.map(
+              (p) => html`
+                <div class="card ${this._activeProfile === p.name ? "active" : ""}">
+                  <div><strong>${p.name}</strong></div>
+                  <div style="font-size: 0.85em; color: var(--secondary-text-color);">${p.description || "No description"}</div>
+                  <div style="margin-top: 8px;">
+                    <button class="btn btn-primary" @click="${() => this._loadProfile(p.name)}">Load</button>
+                  </div>
+                </div>
+              `
+            )}
+      </div>
+    `;
+  }
+
+  _renderDevices() {
+    return html`
+      <div class="grid">
+        ${this._devices.map(
+          (d) => html`
+            <div class="card">
+              <div><strong>${d.id}</strong> (${d.type})</div>
+              <div style="font-size: 0.85em;">${d.enabled ? "✅ Enabled" : "❌ Disabled"}</div>
+            </div>
+          `
+        )}
+      </div>
+    `;
+  }
+
+  _renderScenarios() {
+    return html`
+      <div style="margin-bottom: 16px;">
+        ${this._scenarioState === "running"
+          ? html`<button class="btn btn-danger" @click="${() => this._stopScenario()}">Stop Scenario</button>`
+          : ""}
+      </div>
+      <div class="grid">
+        ${this._scenarios.map(
+          (s) => html`
+            <div class="card">
+              <div><strong>${s.name}</strong></div>
+              <div style="font-size: 0.85em; color: var(--secondary-text-color);">${s.description || ""}</div>
+              <div style="margin-top: 8px;">
+                <button class="btn btn-primary" @click="${() => this._startScenario(s.id)}" ?disabled="${this._scenarioState === "running"}">Start</button>
+              </div>
+            </div>
+          `
+        )}
+      </div>
+    `;
+  }
+
+  _renderEvents() {
+    return html`
+      <div class="stats">
+        <div class="stat"><div class="stat-value">${this._stats.rx}</div><div>RX</div></div>
+        <div class="stat"><div class="stat-value">${this._stats.tx}</div><div>TX</div></div>
+        <div class="stat"><div class="stat-value">${this._stats.devices}</div><div>Devices</div></div>
+        <div class="stat"><div class="stat-value">${this._stats.active}</div><div>Active</div></div>
+      </div>
+      <div class="event-log">
+        ${this._events.length === 0
+          ? html`<div style="padding: 16px; text-align: center; color: var(--secondary-text-color);">No events</div>`
+          : this._events.map(
+              (e) => html`
+                <div class="event ${e.type === "unavailable" ? "unavailable" : ""}">
+                  <span class="event-type ${e.type}">${e.type}</span>
+                  <span>${e.message}</span>
+                </div>
+              `
+            )}
+      </div>
+    `;
+  }
+}
+
+customElements.define("device-simulator-card", DeviceSimulatorCard);
+
+// Card editor
+class DeviceSimulatorCardEditor extends LitElement {
+  static get properties() {
+    return {
+      hass: { type: Object },
+      config: { type: Object },
+    };
+  }
+
+  setConfig(config) {
+    this.config = config;
+  }
+
+  configChanged(newConfig) {
+    const event = new CustomEvent("config-changed", {
+      bubbles: true,
+      composed: true,
+      detail: { config: newConfig }
+    });
+    this.dispatchEvent(event);
+  }
+
+  render() {
+    return html`
+      <div class="card-config">
+        <paper-input
+          label="Card Title"
+          .value="${this.config?.title || ""}"
+          @value-changed="${(e) => this.configChanged({ ...this.config, title: e.detail.value })}"
+        ></paper-input>
+      </div>
+    `;
+  }
+}
+
+customElements.define("device-simulator-card-editor", DeviceSimulatorCardEditor);
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "device-simulator-card",
+  name: "Device Simulator",
+  description: "Control and monitor the Ramses device simulator",
+  preview: true,
+  documentationURL: "https://github.com/wimpie70/ramses_extras",
+});
+
+// Device Simulator Card v1.0.0 loaded

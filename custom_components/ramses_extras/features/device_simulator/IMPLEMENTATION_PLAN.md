@@ -696,13 +696,22 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
 ---
 
-### Phase 8: UI Cards
+### Phase 8: UI Cards 🚧 (IN PROGRESS)
 
-- [ ] Profile browser (list, load, import/export, import from ramses_cc config)
-- [ ] Device browser card (per-device enable/disable, per-code exclusion toggles)
-- [ ] Scenario selector + playback controls
-- [ ] Real-time stats + event log (unavailability events highlighted)
-- [ ] Conversation runner card (pick conversation, map device IDs, run)
+**Status**: Basic card structure implemented. WebSocket handlers needed.
+
+- [x] Profile browser (list, load)
+- [ ] Profile import/export dialog
+- [x] Device browser card (list view)
+- [ ] Device enable/disable toggles
+- [ ] Per-code exclusion toggles
+- [x] Scenario selector + playback controls
+- [x] Real-time stats display
+- [x] Event log display
+- [ ] Unavailability event highlighting
+- [ ] Conversation runner card
+
+**Done When**: All card features functional with WebSocket handlers.
 
 ---
 
