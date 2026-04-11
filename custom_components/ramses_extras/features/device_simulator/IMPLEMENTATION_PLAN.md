@@ -640,6 +640,12 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
 **Done When**: ramses_rf sends an RQ, gets a real RP back, device entity appears in HA.
 
+**Note**: The response engine now auto-responds to RQs for any discovered device (based on device ID prefix mapping), even if not explicitly activated. This prevents ramses_cc startup delays from fan parameter timeouts. Device ID prefixes are mapped to types (e.g., "37" → FAN, "32" → HUM) for automatic response generation.
+
+**Frame Format Fix**: RP responses now use correct format `000 RP --- src dst --:------ code len payload` (RSSI first, no extra space after 2-char verbs). See "Frame Format Requirements" section below.
+
+**2411 Parameter Support**: FAN parameter requests (code 2411) are handled with database lookup. The response payload is selected based on the requested parameter ID from the RQ payload. If the exact parameter is not in the database, the engine adapts a base payload by replacing the parameter ID bytes.
+
 ---
 
 ### Phase 5: Periodic Emitter ✅ (COMPLETED)
@@ -655,6 +661,10 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 - [x] Per-code exclusion support
 
 **Done When**: Virtual FAN emits periodic 31DA → ramses_rf creates FAN entity with attributes.
+
+**Frame Format Fix**: I frames now use correct format `082  I --- src --:------ src code len payload` (RSSI first, extra space after 1-char verb, BROADCAST=SRC). This matches real captured frames and passes `ramses_tx` validation. See "Frame Format Requirements" section below.
+
+**22F7 Interval**: Changed from `0.0` (infinite spam) to `60.0` seconds. Interval configuration will be scenario-configurable in future.
 
 ---
 
@@ -1062,6 +1072,74 @@ This is exactly the kind of deterministic stimulus an automation test needs: a k
 
 ---
 
-_Status: Phase 1 Complete — Core infrastructure ready for testing_
-_Priority: After zone project completion_
-_Estimated Effort: 4-5 weeks for MVP (profiles add complexity)_
+## Frame Format Requirements (Discovered During Debugging)
+
+The RAMSES protocol frame format must exactly match what `ramses_tx` expects. Any deviation causes `PacketInvalid` errors.
+
+### Verified Frame Format
+
+```
+RSSI VERB --- SRC DST BROADCAST CODE LEN PAYLOAD
+```
+
+**Field Details:**
+- **RSSI**: 3 digits (e.g., `082` for I frames, `000` for RP responses)
+- **VERB**: 2-3 chars with leading space for 1-char verbs
+  - ` I` (Info) - space + I
+  - ` W` (Write) - space + W
+  - `RQ` (Request) - no leading space
+  - `RP` (Response) - no leading space
+- **SRC/DST**: Device IDs in format `XX:XXXXXX`
+- **BROADCAST**: For I frames, equals SRC; for RP/RQ, typically `--:------`
+- **CODE**: 4 hex digits (e.g., `22F7`, `2411`)
+- **LEN**: 3 digits, payload length in bytes
+- **PAYLOAD**: Hex string, 2 chars per byte
+
+### Critical Format Rules
+
+| Verb | RSSI Position | Extra Space | Example |
+|------|---------------|-------------|---------|
+| I | First | Yes: `082  I` | `082  I --- 32:153289 --:------ 32:153289 22F7 001 00` |
+| W | First | Yes: `000  W` | `000  W --- 32:153289 37:168270 --:------ 22F1 003 000407` |
+| RP | First | No: `000 RP` | `000 RP --- 32:153289 37:168270 --:------ 2411 023 000031...` |
+| RQ | First | No: `000 RQ` | `000 RQ --- 37:168270 32:153289 --:------ 2411 003 000031` |
+
+### Common Mistakes
+
+1. **Verb before RSSI**: `I 082` → Wrong. Must be `082  I`
+2. **Missing BROADCAST field**: Causes `PacketInvalid` - I frames need SRC as BROADCAST
+3. **Wrong spacing after verb**: `082 I ---` → Wrong. Must be `082  I ---` (2 spaces)
+4. **Wrong spacing for 2-char verbs**: `000  RP` → Wrong. Must be `000 RP` (1 space)
+
+### Implementation Reference
+
+```python
+# I frame (periodic announcement)
+frame = f"082  I --- {device_id} --:------ {device_id} {code} {len:03d} {payload}"
+
+# RP frame (response to RQ)
+frame = f"000 RP --- {src} {dst} --:------ {code} {len:03d} {payload}"
+```
+
+### Frame Validation
+
+All frames must pass `ramses_tx.const.COMMAND_REGEX`:
+```python
+COMMAND_REGEX = re.compile(
+    r"^([0-9A-F]{2}([0-9A-F]{2}){1,2}){0,1} "  # RSSI (optional for outbound)
+    r"([ RQW]{1,3}) "                           # Verb
+    r"--- "                                     # Separator
+    r"([0-9:]{9}) "                            # SRC
+    r"([0-9:]{9}|--:------) "                  # DST
+    r"([0-9:]{9}|--:------) "                  # BROADCAST
+    r"([0-9A-F]{4}) "                          # CODE
+    r"(\d{3})"                                 # LEN
+    r"( [0-9A-F]{2,})*$"                       # PAYLOAD
+)
+```
+
+---
+
+_Status: Phase 1-7 Complete — Core infrastructure, device database, comm endpoint, response engine, periodic emitter, config profiles, and scenario engine ready for testing_
+_Priority: UI Cards (Phase 8) and advanced features (Phase 9)_
+_Estimated Effort: 2-3 weeks for full MVP completion_

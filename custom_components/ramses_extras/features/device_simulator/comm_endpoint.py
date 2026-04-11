@@ -17,6 +17,7 @@ MQTT topic layout (from ramses_rf MqttTransport):
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
@@ -54,7 +55,15 @@ class SimulatorCommEndpoint(ABC):
 
     def set_inbound_handler(self, handler: InboundHandler) -> None:
         """Register a handler for inbound frames (RQ/W from ramses_rf)."""
-        self._inbound_handler = handler
+        self._inbound_handlers = [handler]
+
+    def add_inbound_handler(self, handler: InboundHandler) -> None:
+        """Append a handler without removing existing ones."""
+        self._inbound_handlers.append(handler)
+
+    def clear_inbound_handlers(self) -> None:
+        """Remove all inbound handlers."""
+        self._inbound_handlers.clear()
 
 
 InboundHandler = Any
@@ -89,7 +98,7 @@ class MqttEndpoint(SimulatorCommEndpoint):
 
         self._connected = False
         self._unsubscribe: Any = None
-        self._inbound_handler: Any = None
+        self._inbound_handlers: list[InboundHandler] = []
         self._send_queue: asyncio.Queue[str] = asyncio.Queue()
         self._send_task: asyncio.Task | None = None
 
@@ -97,6 +106,12 @@ class MqttEndpoint(SimulatorCommEndpoint):
         """Subscribe to the /tx topic and start the send queue worker."""
         try:
             from homeassistant.components import mqtt
+
+            # Unsubscribe any existing subscription to avoid stale callbacks
+            if self._unsubscribe:
+                LOGGER.info("Unsubscribing existing MQTT callback before reconnecting")
+                self._unsubscribe()
+                self._unsubscribe = None
 
             self._unsubscribe = await mqtt.async_subscribe(
                 self.hass,
@@ -113,7 +128,8 @@ class MqttEndpoint(SimulatorCommEndpoint):
             )
 
             LOGGER.info(
-                "Simulator MQTT endpoint connected. sub=%s pub=%s",
+                "Simulator MQTT endpoint %s connected. sub=%s pub=%s",
+                id(self),
                 self._topic_tx,
                 self._topic_rx,
             )
@@ -169,18 +185,71 @@ class MqttEndpoint(SimulatorCommEndpoint):
         :param msg: MQTT message with .payload and .topic.
         """
         try:
-            frame = (
+            payload = (
                 msg.payload.decode("utf-8")
                 if isinstance(msg.payload, bytes)
                 else msg.payload
             )
+            # Parse JSON wrapper from ramses_rf: {"msg": "RQ --- ...", "ts": "..."}
+            try:
+                import json
+
+                data = json.loads(payload)
+                frame = data.get("msg", "")
+            except json.JSONDecodeError:
+                # Fallback: treat as raw frame (for backward compatibility)
+                frame = payload
+
             LOGGER.debug("Simulator received from ramses_rf: %s", frame[:80])
-            if self._inbound_handler:
-                self.hass.loop.call_soon_threadsafe(
-                    self.hass.async_create_task,
-                    self._inbound_handler(frame),
-                    "device_simulator_handle_inbound",
+            if not self._inbound_handlers:
+                LOGGER.warning(
+                    "Endpoint %s: no inbound handlers registered, dropping frame",
+                    id(self),
                 )
+            else:
+                LOGGER.info(
+                    "Endpoint %s: dispatching frame to %d handler(s)",
+                    id(self),
+                    len(self._inbound_handlers),
+                )
+                for handler in list(self._inbound_handlers):
+                    LOGGER.info(
+                        "Endpoint %s: scheduling handler %s for frame: %s",
+                        id(self),
+                        id(handler),
+                        frame[:50],
+                    )
+                    try:
+                        future = asyncio.run_coroutine_threadsafe(
+                            handler(frame),
+                            self.hass.loop,
+                        )
+
+                        handler_id = id(handler)
+
+                        def _on_handler_done(
+                            fut: concurrent.futures.Future[Any], hid: int = handler_id
+                        ) -> None:
+                            try:
+                                exc = fut.exception()
+                                if exc:
+                                    LOGGER.error(
+                                        "Handler %s failed with exception: %s",
+                                        hid,
+                                        exc,
+                                        exc_info=exc,
+                                    )
+                                else:
+                                    LOGGER.info(
+                                        "Handler %s completed successfully",
+                                        hid,
+                                    )
+                            except Exception as cb_err:
+                                LOGGER.error("Error in done callback: %s", cb_err)
+
+                        future.add_done_callback(_on_handler_done)
+                    except Exception as sched_err:
+                        LOGGER.error("Failed to schedule handler: %s", sched_err)
         except Exception as err:
             LOGGER.warning("Error handling inbound MQTT message: %s", err)
 

@@ -4,8 +4,9 @@
 """Device Simulator feature.
 
 Simulates RAMSES devices at the communication endpoint (MQTT or serial),
-allowing testing without physical RF hardware.
-"""
+allowing testing without physical RF hardware."""
+
+from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, Any
@@ -33,7 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 # This provides complete topic isolation from production traffic
 
 
-async def _enforce_simulator_isolation(hass: "HomeAssistant") -> bool:
+async def _enforce_simulator_isolation(hass: HomeAssistant) -> bool:
     """Enforce that ramses_cc uses isolated topics for simulation.
 
     When device_simulator is enabled, ramses_cc MUST use a different HGI ID
@@ -135,8 +136,8 @@ async def _enforce_simulator_isolation(hass: "HomeAssistant") -> bool:
 
 
 async def create_device_simulator_feature(
-    hass: "HomeAssistant",
-    config_entry: "ConfigEntry",
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
 ) -> dict[str, Any]:
     """Factory function to create the Device Simulator feature.
 
@@ -174,42 +175,78 @@ async def create_device_simulator_feature(
         registry["device_simulator_db"] = DeviceDatabase()
         await hass.async_add_executor_job(registry["device_simulator_db"].load_all)
 
-    if "device_simulator_endpoint" not in registry:
-        registry["device_simulator_endpoint"] = MqttEndpoint(
-            hass, topic_base=SIMULATOR_TOPIC_NS
-        )
-        await registry["device_simulator_endpoint"].async_connect()
+    # Create endpoint first (don't connect yet)
+    # If there's an old endpoint, disconnect it to clean up MQTT subscription
+    if "device_simulator_endpoint" in registry:
+        old_endpoint = registry["device_simulator_endpoint"]
+        if old_endpoint.is_connected:
+            _LOGGER.info("Disconnecting old endpoint...")
+            await old_endpoint.async_disconnect()
+        _LOGGER.info("Removing old endpoint from registry")
+        del registry["device_simulator_endpoint"]
 
-        # Send an initial HGI presence packet to announce the gateway
-        # The retained online status (published by MqttEndpoint) triggers ramses_cc
-        # binding
-        hgi_device_id = SIMULATOR_HGI_ID  # 18:001234
-        dst = "--:------"  # Broadcast
-        code = "0005"  # HGI presence announcement packet
-        payload = "0005DC0101F40205DC"  # HGI presence payload
-        payload_len = len(payload) // 2  # 9 bytes
-        # Format: RSSI(3) + space + VERB(2) + space + --- + SRC DST HGI code + len
-        # Note: VERB is 2 chars (' I' = space + I), so we need 2 spaces after RSSI
-        initial_frame = (
-            f"040  I --- {hgi_device_id} {dst} --:------ {code} "
-            f"{payload_len:03d} {payload}"
-        )
+    _LOGGER.info("Creating new MqttEndpoint...")
+    registry["device_simulator_endpoint"] = MqttEndpoint(
+        hass, topic_base=SIMULATOR_TOPIC_NS
+    )
+    _LOGGER.info(
+        "Created MqttEndpoint instance: %s", id(registry["device_simulator_endpoint"])
+    )
 
-        try:
-            await registry["device_simulator_endpoint"].send_packet(initial_frame)
-            _LOGGER.info("Sent initial HGI presence packet: %s", initial_frame)
-        except Exception as err:
-            _LOGGER.error("Failed to send initial HGI packet: %s", err)
+    # Create and wire up ResponseEngine BEFORE connecting endpoint
+    # This ensures no messages are lost during initialization
+    # Always create fresh to avoid stale handler issues
+    if "device_simulator_response_engine" in registry:
+        _LOGGER.info("Removing stale ResponseEngine...")
+        del registry["device_simulator_response_engine"]
 
-    if "device_simulator_response_engine" not in registry:
-        registry["device_simulator_response_engine"] = ResponseEngine(
-            registry["device_simulator_db"],
-            registry["device_simulator_endpoint"],
-        )
-        # Wire up response engine to handle inbound frames
-        registry["device_simulator_endpoint"]._inbound_handler = registry[
-            "device_simulator_response_engine"
-        ].handle_inbound_frame
+    _LOGGER.info("Creating ResponseEngine...")
+    registry["device_simulator_response_engine"] = ResponseEngine(
+        registry["device_simulator_db"],
+        registry["device_simulator_endpoint"],
+    )
+    _LOGGER.info("ResponseEngine created")
+
+    # ALWAYS wire up handler fresh (in case endpoint was already connected)
+    _LOGGER.info("Wiring up handler to endpoint...")
+    endpoint = registry["device_simulator_endpoint"]
+    endpoint.clear_inbound_handlers()
+    handler = registry["device_simulator_response_engine"].handle_inbound_frame
+    endpoint.add_inbound_handler(handler)
+    _LOGGER.info(
+        "ResponseEngine wired up to endpoint (endpoint_id=%s handler_id=%s)",
+        id(endpoint),
+        id(handler),
+    )
+
+    # Always reconnect endpoint to ensure MQTT callback is bound to fresh instance
+    if registry["device_simulator_endpoint"].is_connected:
+        _LOGGER.info("Disconnecting endpoint to rebind with new handler...")
+        await registry["device_simulator_endpoint"].async_disconnect()
+
+    _LOGGER.info("Connecting endpoint with new handler...")
+    await registry["device_simulator_endpoint"].async_connect()
+
+    # Send an initial HGI presence packet to announce the gateway
+    # The retained online status (published by MqttEndpoint) triggers ramses_cc
+    # binding
+    hgi_device_id = SIMULATOR_HGI_ID  # 18:001234
+    dst = "--:------"  # Broadcast
+    code = "0005"  # HGI presence announcement packet
+    payload = "0005DC0101F40205DC"  # HGI presence payload
+    payload_len = len(payload) // 2  # 9 bytes
+    # Format: RSSI VERB --- SRC DST BROADCAST CODE LEN PAYLOAD
+    # For HGI I frames: BROADCAST = SRC (the HGI itself)
+    initial_frame = (
+        f"040  I --- {hgi_device_id} {dst} {hgi_device_id} {code} "
+        f"{payload_len:03d} {payload}"
+    )
+
+    try:
+        await registry["device_simulator_endpoint"].send_packet(initial_frame)
+        _LOGGER.info("Sent initial HGI presence packet: %s", initial_frame)
+    except Exception as err:
+        _LOGGER.error("Failed to send initial HGI packet: %s", err)
 
     if "device_simulator_periodic_emitter" not in registry:
         registry["device_simulator_periodic_emitter"] = PeriodicEmitter(
@@ -217,6 +254,15 @@ async def create_device_simulator_feature(
             registry["device_simulator_endpoint"],
         )
         await registry["device_simulator_periodic_emitter"].start()
+
+    # Add default FAN device for testing (sends I frames so ramses_cc discovers it)
+    _LOGGER.info("Adding default FAN device 32:153289 to periodic emitter...")
+    periodic_emitter = registry["device_simulator_periodic_emitter"]
+    periodic_emitter.add_device(
+        device_id="32:153289",
+        device_type="FAN",
+        variant_id="default",
+    )
 
     if "device_simulator_engine" not in registry:
         registry["device_simulator_engine"] = ScenarioEngine(
@@ -245,7 +291,7 @@ async def create_device_simulator_feature(
 
 
 # Framework entry point: synchronous wrapper for async feature creation
-def load_feature(hass: "HomeAssistant", config_entry: "ConfigEntry") -> dict[str, Any]:
+def load_feature(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[str, Any]:
     """Load the Device Simulator feature.
 
     This is the synchronous entry point called by the framework.

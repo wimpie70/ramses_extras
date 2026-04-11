@@ -346,13 +346,14 @@ class PeriodicEmitter:
         payload = entry.payloads[0] if entry.payloads else ""
         payload_len = len(payload) // 2 if payload else 0
 
-        # Build I frame in production ramses_esp format:
-        # RSSI VERB --- SRC DST HGI_ID CODE LEN PAYLOAD
-        # Example: 039 I --- 32:153289 --:------ 32:153289 31DA 030 00EF...
+        # Build I frame in production format:
+        # RSSI VERB --- SRC DST BROADCAST CODE LEN PAYLOAD
+        # For inbound I frames (device broadcasting), BROADCAST = SRC
+        # Example: 082  I --- 32:022222 --:------ 32:022222 31DA 030 00EF...
         dst = "--:------"
-        hgi_id = SIMULATOR_HGI_ID  # The HGI that "received" this packet
+        broadcast = device.device_id  # BROADCAST = SRC for I frames
         frame = (
-            f"000 I --- {device.device_id} {dst} {hgi_id} {entry.code} "
+            f"082  I --- {device.device_id} {dst} {broadcast} {entry.code} "
             f"{payload_len:03d} {payload}"
         )
 
@@ -400,9 +401,10 @@ class PeriodicEmitter:
 
         payload_len = len(payload) // 2 if payload else 0
         dst = "--:------"
-        hgi_id = SIMULATOR_HGI_ID
+        broadcast = device_id  # BROADCAST = SRC for I frames
         frame = (
-            f"000 I --- {device_id} {dst} {hgi_id} {code} {payload_len:03d} {payload}"
+            f"082  I --- {device_id} {dst} {broadcast} {code} "
+            f"{payload_len:03d} {payload}"
         )
 
         try:

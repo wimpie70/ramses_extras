@@ -3,6 +3,9 @@
 # Home Assistant configuration directory (adjust if needed)
 HA_CONFIG_DIR ?= /home/willem/docker_files/hass/config
 
+# Simulator HA configuration directory
+HA_SIM_CONFIG ?= /home/willem/docker_files/ha-sim/config
+
 # Docker container name (adjust if needed)
 HA_CONTAINER ?= homeassistant
 
@@ -66,7 +69,22 @@ install-sim:
 	@find /home/willem/docker_files/ha-sim/config/custom_components/ramses_extras -type f -name "*.py" -delete 2>/dev/null || true
 	@find /home/willem/docker_files/ha-sim/config/custom_components/ramses_extras -type d -empty -delete 2>/dev/null || true
 	@# Copy without __pycache__ directories
-	@sudo rsync -av --exclude='__pycache__' $(SOURCE_DIR)/custom_components /home/willem/docker_files/ha-sim/config/
+	@sudo rsync -av --delete \
+		--exclude='.git' \
+		--exclude='__pycache__' \
+		--exclude='*.pyc' \
+		--exclude='.pytest_cache' \
+		--exclude='tests' \
+		--exclude='docs' \
+		--exclude='scripts' \
+		--exclude='wiki' \
+		--exclude='makefile' \
+		--exclude='.windsurf' \
+		--exclude='.github' \
+		custom_components/ramses_extras/ \
+		$(HA_SIM_CONFIG)/custom_components/ramses_extras/
+	@# Clear Python cache inside container to ensure fresh code is loaded
+	@docker exec ha-sim sh -c "find /config/custom_components/ramses_extras -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; echo 'Cache cleared'" || true
 	@echo "✅ Integration installed to ha-sim successfully"
 	@echo "💡 Don't forget to restart ha-sim to load the integration"
 

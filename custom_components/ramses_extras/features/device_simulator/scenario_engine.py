@@ -37,6 +37,23 @@ from .const import (
 )
 from .device_db import AutonomousEntry, ConversationFrame, DeviceDatabase, ResponseEntry
 
+# Device type mapping from device ID prefix (e.g., "37" -> FAN)
+# Used to auto-respond to RQs for discovered but not explicitly activated devices
+# NOTE: These should match ramses_cc known_list device types
+_DEVICE_TYPE_MAP: dict[str, str] = {
+    "37": "FAN",  # Fan (Orcon ventilation units)
+    "32": "FAN",  # Fan (some models like 32:153289)
+    "34": "CO2",  # CO2 sensor
+    "29": "REM",  # Remote
+    "31": "DIS",  # Display
+    "30": "RFS",  # RFS sensor
+    "22": "CTL",  # Controller
+    "01": "DHW",  # DHW sensor
+    "04": "TRV",  # TRV
+    "07": "OTB",  # OTB
+    "13": "BDR",  # BDR relay
+}
+
 _PACKET_RE = re.compile(
     r"^[\d\-T:.]+\s+---\s+(\S+)\s+\S+\s+(\S+)\s+(\S+)\s+\S+\s+([0-9A-F]{4})\s+\d+\s+(\S+)",
     re.IGNORECASE,
@@ -109,7 +126,7 @@ class ScenarioEngine:
         self._messages_sent = 0
         self._message_log: list[str] = []
 
-        endpoint.set_inbound_handler(self._handle_inbound_frame)
+        endpoint.add_inbound_handler(self._handle_inbound_frame)
 
     async def async_setup(self) -> None:
         """Connect the endpoint and load the device DB."""
@@ -318,27 +335,58 @@ class ScenarioEngine:
 
         await self._respond_to_rq(src, dst, code)
 
+    def _get_device_type_from_id(self, device_id: str) -> str | None:
+        """Determine device type from device ID prefix.
+
+        :param device_id: Device address like "32:153289"
+        :return: Device type slug like "FAN", "HUM", etc.
+        """
+        type_code = device_id.split(":")[0]
+        return _DEVICE_TYPE_MAP.get(type_code)
+
     async def _respond_to_rq(self, src: str, dst: str, code: str) -> None:
         """Look up and send an RP for an inbound RQ.
+
+        Responds for:
+        1. Explicitly activated devices (in _active_devices)
+        2. Known device types (from device ID prefix mapping)
 
         :param src: Requesting device ID.
         :param dst: Target device ID (the simulated device being queried).
         :param code: RAMSES code.
         """
         device = self._active_devices.get(dst)
-        if not device:
-            return
-        if not device.enabled or device.suppress_responses:
-            return
-        if code in device.excluded_codes:
+        slug: str | None = None
+        variant_id: str | None = None
+        excluded_codes: list[str] = []
+
+        if device:
+            # Device is explicitly activated - use its settings
+            if not device.enabled or device.suppress_responses:
+                return
+            if code in device.excluded_codes:
+                LOGGER.debug("Dropping RQ %s for %s (excluded)", code, dst)
+                return
+            slug = device.slug
+            variant_id = device.variant_id
+            excluded_codes = device.excluded_codes
+        else:
+            # Device not explicitly activated - try to determine type from ID
+            slug = self._get_device_type_from_id(dst)
+            if not slug:
+                LOGGER.debug("Unknown device type for %s, cannot respond", dst)
+                return
+            LOGGER.debug(
+                "Auto-responding to RQ for discovered device %s (type=%s)", dst, slug
+            )
+
+        if code in excluded_codes:
             LOGGER.debug("Dropping RQ %s for %s (excluded)", code, dst)
             return
 
-        resp: ResponseEntry | None = self._db.find_response(
-            device.slug, code, device.variant_id
-        )
+        resp: ResponseEntry | None = self._db.find_response(slug, code, variant_id)
         if not resp or not resp.payloads:
-            LOGGER.debug("No response entry for %s/%s", device.slug, code)
+            LOGGER.debug("No response entry for %s/%s", slug, code)
             return
 
         payload = resp.payloads[0]

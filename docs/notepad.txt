@@ -9,16 +9,22 @@
 ## Active Projects
 
 ### Device Simulator
-**Status**: Implementation plan complete, structure created
+**Status**: Core infrastructure COMPLETE. Frame format validated against ramses_tx.
 **Location**: `features/device_simulator/IMPLEMENTATION_PLAN.md`
 
 Core components:
 - Message database (parses `ramses_rf/tests/fixtures/regression_packets_sorted.txt`)
-- Virtual gateway (injects events into `ramses_cc_message` bus)
+- Virtual gateway (MQTT endpoint on `RAMSES/GATEWAY_SIM/18:001234`)
+- Response engine (handles RQ → RP, including 2411 parameters)
+- Periodic emitter (I frames at configured intervals)
 - Scenario engine (device playback, flooding, timeout, conversation tests)
-- WebSocket API + UI cards (device-simulator, scenario-builder)
 
-**Next Steps**: After zone project completion
+**Key Implementation Details** (see IMPLEMENTATION_PLAN.md "Frame Format Requirements"):
+- I frames: `082  I --- src --:------ src code len payload` (extra space after verb)
+- RP frames: `000 RP --- src dst --:------ code len payload` (no extra space)
+- 2411 parameters: DB lookup by parameter ID, realistic payload values
+
+**Next Steps**: UI Cards (Phase 8)
 
 ### RF Config Validation
 Check on startup if ramses_cc has:
@@ -71,3 +77,5 @@ Log errors if not configured.
 ### check framework for feature specific code that needs to be moved to it's features
 ### Ramses Packet Log explorer: auto mode seem to be broken
 ### make dynamic card loading in custom_components/ramses_extras/framework/www/main.js
+### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
+or to a saved one that we replaced in the first place

@@ -28,13 +28,14 @@ class ResponseEngine:
     :param endpoint: MQTT endpoint for sending responses
     """
 
-    # RAMSES frame format:  I 001 37:168270 37:126776 31DA 001 21...
-    #                        V RSSI  SRC        DST        CODE LEN PAYLOAD
+    # RAMSES frame format:  RQ --- 37:168270 32:153289 --:------ 2411 003 000001
+    #                        V RSSI  SRC        DST        BROADCAST  CODE LEN PAYLOAD
     FRAME_PATTERN = re.compile(
         r"^(?P<verb>[IRW]|RQ|RP)\s+"
-        r"(?P<rssi>\d{3})\s+"
+        r"(?P<rssi>\d{3}|---)\s+"
         r"(?P<src>[0-9A-Fa-f]{2}:[0-9A-Fa-f]{6})\s+"
         r"(?P<dst>[0-9A-Fa-f]{2}:[0-9A-Fa-f]{6}|--:------)\s+"
+        r"(?P<broadcast>[0-9A-Fa-f]{2}:[0-9A-Fa-f]{6}|--:------)\s+"
         r"(?P<code>[0-9A-Fa-f]{4})\s+"
         r"(?P<len>\d{3})\s*"
         r"(?P<payload>[0-9A-Fa-f]*)",
@@ -63,40 +64,77 @@ class ResponseEngine:
 
         :param frame: Raw RAMSES frame string
         """
-        if not self._endpoint.is_connected:
-            LOGGER.debug("ResponseEngine: endpoint not connected, dropping frame")
-            return
+        try:
+            LOGGER.debug("ResponseEngine: processing frame: %s", frame[:60])
+            if not self._endpoint.is_connected:
+                LOGGER.debug("ResponseEngine: endpoint not connected, dropping")
+                return
 
-        parsed = self._parse_frame(frame)
-        if not parsed:
-            LOGGER.debug("ResponseEngine: failed to parse frame: %s", frame[:80])
-            return
+            parsed = self._parse_frame(frame)
+            if not parsed:
+                LOGGER.debug("ResponseEngine: failed to parse frame: %s", frame[:80])
+                return
 
-        # Only process RQ (request) frames - not I or W
-        if parsed["verb"] != "RQ":
             LOGGER.debug(
-                "ResponseEngine: ignoring %s frame from %s",
-                parsed["verb"],
+                "ResponseEngine: frame parsed, verb=%s, code=%s",
+                parsed.get("verb"),
+                parsed.get("code"),
+            )
+
+            # Only process RQ (request) frames - not I or W
+            if parsed["verb"] != "RQ":
+                LOGGER.debug("ResponseEngine: ignoring %s frame", parsed["verb"])
+                return
+
+            LOGGER.debug(
+                "ResponseEngine: processing RQ from %s to %s code %s",
                 parsed["src"],
+                parsed["dst"],
+                parsed["code"],
             )
-            return
 
-        # Determine device type from source address
-        device_type = self._get_device_type(parsed["src"])
-        if not device_type:
-            LOGGER.debug("ResponseEngine: unknown device type for %s", parsed["src"])
-            return
+            # Determine device type from destination address
+            dst = parsed["dst"]
+            if dst == "--:------" or not dst:
+                LOGGER.debug("ResponseEngine: dropping RQ - broadcast destination")
+                return
 
-        # Look up response in device database
-        response = self._db.find_response(device_type, parsed["code"])
-        if not response:
+            device_type = self._get_device_type(dst)
             LOGGER.debug(
-                "ResponseEngine: no response for %s/%s", device_type, parsed["code"]
+                "ResponseEngine: device_type lookup for %s = %s", dst, device_type
             )
-            return
+            if not device_type:
+                LOGGER.debug(
+                    "ResponseEngine: dropping RQ - unknown device type for %s", dst
+                )
+                return
 
-        # Schedule response with delay
-        await self._send_response(parsed, response)
+            LOGGER.debug("ResponseEngine: device %s is type %s", dst, device_type)
+
+            # Look up response in device database
+            response = self._db.find_response(device_type, parsed["code"])
+            LOGGER.debug(
+                "ResponseEngine: DB lookup for %s/%s = %s",
+                device_type,
+                parsed["code"],
+                response,
+            )
+            if not response:
+                LOGGER.debug(
+                    "ResponseEngine: no response defined for %s/%s",
+                    device_type,
+                    parsed["code"],
+                )
+                return
+
+            LOGGER.info(
+                "ResponseEngine: sending %s/%s response", device_type, parsed["code"]
+            )
+            await self._send_response(parsed, response)
+
+        except Exception as e:
+            LOGGER.error("ResponseEngine: EXCEPTION: %s", e, exc_info=True)
+            raise
 
     def _parse_frame(self, frame: str) -> dict | None:
         """Parse a RAMSES frame string.
@@ -129,10 +167,11 @@ class ResponseEngine:
         :return: Device type slug like "FAN", "REM", etc.
         """
         # Mapping from type code to device type slug
+        # NOTE: These should match ramses_cc known_list device types
         type_map = {
-            "37": "FAN",  # Fan
+            "32": "FAN",  # Fan (Orcon ventilation units)
+            "37": "DIS",  # Display (37:168270)
             "34": "CO2",  # CO2 sensor
-            "32": "HUM",  # Humidity sensor
             "29": "REM",  # Remote
             "31": "DIS",  # Display
             "30": "RFS",  # RFS sensor
@@ -156,27 +195,52 @@ class ResponseEngine:
             LOGGER.debug("ResponseEngine: no payloads for response")
             return
 
-        # Use first available payload
-        payload = response.payloads[0]
+        # For 2411 (fan parameters), find matching payload from database
+        # RQ payload: 000001 (parameter ID), RP payload includes param ID + value
+        if parsed["code"] == "2411" and parsed["payload"]:
+            param_id_rq = parsed["payload"][
+                :6
+            ]  # First 3 bytes = parameter ID (e.g., "000001")
+            param_hex = param_id_rq[4:6].upper()  # Extract "01" from "000001"
+
+            # Find matching payload from database (payloads start with param ID)
+            payload = None
+            for p in response.payloads:
+                if p.startswith(param_id_rq):
+                    payload = p
+                    break
+
+            if not payload:
+                # Fallback: use first available payload and replace param ID
+                base_payload = response.payloads[0]
+                payload = f"{param_id_rq}{base_payload[6:]}"
+                LOGGER.debug("ResponseEngine: adapting payload for param %s", param_hex)
+
+            LOGGER.info(
+                "ResponseEngine: 2411 response for param %s: %s...",
+                param_hex,
+                payload[:30],
+            )
+        else:
+            # Use first available payload
+            payload = response.payloads[0]
+            LOGGER.info("ResponseEngine: using payload from DB: %s...", payload[:20])
 
         # Build response frame (swap src/dst, change verb to RP)
         # Note: In real implementation, we'd need the simulator's device ID
         # For now, we use the destination as source (echo back)
         rsp_frame = self._build_response_frame(parsed, payload)
 
-        # Apply delay
-        delay_ms = response.delay_ms
+        # Send immediately (no delay needed for simulation)
         LOGGER.debug(
-            "ResponseEngine: scheduling %s response in %dms for %s/%s",
+            "ResponseEngine: sending %s response for %s/%s",
             rsp_frame[:30],
-            delay_ms,
             parsed["src"],
             parsed["code"],
         )
 
-        # Create delayed task
         task = asyncio.create_task(
-            self._delayed_send(delay_ms / 1000, rsp_frame),
+            self._send_immediate(rsp_frame),
             name=f"response_{parsed['src']}_{parsed['code']}",
         )
         self._pending_tasks.add(task)
@@ -196,22 +260,23 @@ class ResponseEngine:
         # Calculate payload length (in bytes, not hex chars)
         payload_len = len(payload) // 2 if payload else 0
 
-        # Build frame: R 000 src dst code len payload
-        # Using "R" for response (RP)
-        return f"R 000 {src} {dst} {parsed['code']} {payload_len:03d} {payload}"
+        # Build frame: RSSI VERB --- src dst broadcast code len payload
+        # RSSI is 000 (simulated good signal strength)
+        return (
+            f"000 RP --- {src} {dst} --:------ {parsed['code']} "
+            f"{payload_len:03d} {payload}"
+        )
 
-    async def _delayed_send(self, delay_seconds: float, frame: str) -> None:
-        """Send a frame after a delay.
+    async def _send_immediate(self, frame: str) -> None:
+        """Send a frame immediately.
 
-        :param delay_seconds: Delay in seconds
         :param frame: Frame to send
         """
-        await asyncio.sleep(delay_seconds)
         if self._endpoint.is_connected:
             await self._endpoint.send_packet(frame)
-            LOGGER.debug("ResponseEngine: sent response: %s", frame[:60])
+            LOGGER.info("ResponseEngine: sent response: %s", frame[:70])
         else:
-            LOGGER.debug("ResponseEngine: endpoint disconnected, dropped response")
+            LOGGER.warning("ResponseEngine: endpoint disconnected, dropped response")
 
     async def shutdown(self) -> None:
         """Shutdown the response engine and cancel pending tasks."""
