@@ -16,11 +16,19 @@ if TYPE_CHECKING:
 
 import logging
 
+from .comm_endpoint import MqttEndpoint
+from .const import (
+    DOMAIN,
+    FEATURE_DEFINITION,
+    LOGGER,
+    SIMULATOR_HGI_ID,
+    SIMULATOR_TOPIC_NS,
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 
-SIMULATOR_HGI_ID = "18:001234"
-SIMULATOR_TOPIC_NS = "RAMSES/GATEWAY_SIM"
+# SIMULATOR_TOPIC_NS is imported from const
 # ramses_rf requires RAMSES/GATEWAY prefix, but RAMSES/GATEWAY_SIM is valid
 # This provides complete topic isolation from production traffic
 
@@ -138,7 +146,6 @@ async def create_device_simulator_feature(
     """
     _LOGGER.info("Device Simulator: create_device_simulator_feature starting")
 
-    from .comm_endpoint import MqttEndpoint
     from .device_db import DeviceDatabase
     from .periodic_emitter import PeriodicEmitter
     from .response_engine import ResponseEngine
@@ -173,11 +180,26 @@ async def create_device_simulator_feature(
         )
         await registry["device_simulator_endpoint"].async_connect()
 
-        # Send HGI initialization packet to help ramses_cc bind
-        await registry["device_simulator_endpoint"].send_packet(
-            "0005DC0101F40205DC"  # Proper HGI packet format
+        # Send an initial HGI presence packet to announce the gateway
+        # The retained online status (published by MqttEndpoint) triggers ramses_cc
+        # binding
+        hgi_device_id = SIMULATOR_HGI_ID  # 18:001234
+        dst = "--:------"  # Broadcast
+        code = "0005"  # HGI presence announcement packet
+        payload = "0005DC0101F40205DC"  # HGI presence payload
+        payload_len = len(payload) // 2  # 9 bytes
+        # Format: RSSI(3) + space + VERB(2) + space + --- + SRC DST HGI code + len
+        # Note: VERB is 2 chars (' I' = space + I), so we need 2 spaces after RSSI
+        initial_frame = (
+            f"040  I --- {hgi_device_id} {dst} --:------ {code} "
+            f"{payload_len:03d} {payload}"
         )
-        _LOGGER.info("Sent HGI initialization packet for ramses_cc binding")
+
+        try:
+            await registry["device_simulator_endpoint"].send_packet(initial_frame)
+            _LOGGER.info("Sent initial HGI presence packet: %s", initial_frame)
+        except Exception as err:
+            _LOGGER.error("Failed to send initial HGI packet: %s", err)
 
     if "device_simulator_response_engine" not in registry:
         registry["device_simulator_response_engine"] = ResponseEngine(

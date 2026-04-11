@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .const import LOGGER
+from .const import LOGGER, SIMULATOR_HGI_ID
 
 if TYPE_CHECKING:
     from .comm_endpoint import MqttEndpoint
@@ -346,12 +346,14 @@ class PeriodicEmitter:
         payload = entry.payloads[0] if entry.payloads else ""
         payload_len = len(payload) // 2 if payload else 0
 
-        # Build I frame
-        # Format: I 000 src dst code len payload
-        # dst is broadcast for periodic messages
+        # Build I frame in production ramses_esp format:
+        # RSSI VERB --- SRC DST HGI_ID CODE LEN PAYLOAD
+        # Example: 039 I --- 32:153289 --:------ 32:153289 31DA 030 00EF...
         dst = "--:------"
+        hgi_id = SIMULATOR_HGI_ID  # The HGI that "received" this packet
         frame = (
-            f"I 052 {device.device_id} {dst} {entry.code} {payload_len:03d} {payload}"
+            f"000 I --- {device.device_id} {dst} {hgi_id} {entry.code} "
+            f"{payload_len:03d} {payload}"
         )
 
         # Send via endpoint
@@ -398,7 +400,10 @@ class PeriodicEmitter:
 
         payload_len = len(payload) // 2 if payload else 0
         dst = "--:------"
-        frame = f"I 052 {device_id} {dst} {code} {payload_len:03d} {payload}"
+        hgi_id = SIMULATOR_HGI_ID
+        frame = (
+            f"000 I --- {device_id} {dst} {hgi_id} {code} {payload_len:03d} {payload}"
+        )
 
         try:
             await self._endpoint.send_packet(frame)

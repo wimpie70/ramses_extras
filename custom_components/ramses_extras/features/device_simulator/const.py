@@ -13,6 +13,12 @@ LOGGER = logging.getLogger(__name__)
 DOMAIN = "device_simulator"
 FEATURE_ID = "device_simulator"
 
+# Simulator HGI (gateway) ID - used for packet routing and identification
+SIMULATOR_HGI_ID = "18:001234"
+
+# Simulator topic namespace for MQTT isolation
+SIMULATOR_TOPIC_NS = "RAMSES/GATEWAY_SIM"
+
 # Sensor configs for simulator status sensors
 DEVICE_SIMULATOR_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
     "simulator_status": {
@@ -42,9 +48,7 @@ DEVICE_SIMULATOR_WEBSOCKET_COMMANDS = {
     "get_messages": "ramses_extras/device_simulator/get_messages",
 }
 
-# MQTT topic base used by ramses_rf MqttTransport
-MQTT_TOPIC_BASE = "ramses_gateway"
-
+# MQTT topic suffixes for simulator communication
 # Simulator subscribes to /tx (outbound from ramses_rf = inbound to simulator)
 # Simulator publishes to /rx  (inbound to ramses_rf = outbound from simulator)
 MQTT_TOPIC_SUFFIX_TX = "tx"
@@ -101,9 +105,13 @@ DEVICE_SIMULATOR_CARD_CONFIGS: list[dict[str, Any]] = [
 
 # Feature definition for framework integration
 FEATURE_DEFINITION: dict[str, Any] = {
+    "feature_id": FEATURE_ID,
     "name": "Device Simulator",
-    "id": "device_simulator",
-    "domain": "ramses_extras",
+    "description": "Simulates RAMSES RF devices for testing and development",
+    "version": "0.1.0",
+    "domain": DOMAIN,
+    "dependencies": [],
+    "has_device_config": True,
     "has_sensors": True,
     "has_binary_sensors": False,
     "has_switches": False,
@@ -121,6 +129,8 @@ __all__ = [
     "DOMAIN",
     "FEATURE_ID",
     "FEATURE_DEFINITION",
+    "SIMULATOR_HGI_ID",
+    "SIMULATOR_TOPIC_NS",
     "DEVICE_SIMULATOR_SENSOR_CONFIGS",
     "DEVICE_SIMULATOR_WEBSOCKET_COMMANDS",
     "DEVICE_SIMULATOR_CARD_CONFIGS",

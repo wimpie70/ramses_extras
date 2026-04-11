@@ -6,11 +6,12 @@
 The simulator acts as a second MQTT client on the same broker that ramses_rf uses.
 
 MQTT topic layout (from ramses_rf MqttTransport):
-  ramses_rf  subscribes to:  ramses_gateway/{gwy_id}/rx   (inbound to rf)
-  ramses_rf  publishes  to:  ramses_gateway/{gwy_id}/tx   (outbound from rf)
+  ramses_rf  subscribes to:  RAMSES/GATEWAY_SIM/{gwy_id}/rx   (inbound to rf)
+  ramses_rf  publishes  to:  RAMSES/GATEWAY_SIM/{gwy_id}/tx   (outbound from rf)
 
-  simulator  publishes  to:  ramses_gateway/{gwy_id}/rx   (inject device msgs)
-  simulator  subscribes to:  ramses_gateway/{gwy_id}/tx   (see RQ commands)
+  simulator  publishes  to:  RAMSES/GATEWAY_SIM/{gwy_id}/rx   (inject device msgs
+  + status)
+  simulator  subscribes to:  RAMSES/GATEWAY_SIM/{gwy_id}/tx   (see RQ commands)
 """
 
 from __future__ import annotations
@@ -25,9 +26,9 @@ if TYPE_CHECKING:
 from .const import (
     DEFAULT_GATEWAY_ID,
     LOGGER,
-    MQTT_TOPIC_BASE,
     MQTT_TOPIC_SUFFIX_RX,
     MQTT_TOPIC_SUFFIX_TX,
+    SIMULATOR_TOPIC_NS,
 )
 
 
@@ -70,18 +71,19 @@ class MqttEndpoint(SimulatorCommEndpoint):
         self,
         hass: HomeAssistant,
         gateway_id: str = DEFAULT_GATEWAY_ID,
-        topic_base: str = MQTT_TOPIC_BASE,
+        topic_base: str = SIMULATOR_TOPIC_NS,
     ) -> None:
         """Initialize the MQTT endpoint.
 
         :param hass: Home Assistant instance.
         :param gateway_id: RAMSES gateway device ID (e.g. '18:001234').
-        :param topic_base: MQTT topic root (default: 'ramses_gateway').
+        :param topic_base: MQTT topic root (default: 'RAMSES/GATEWAY_SIM').
         """
         self.hass = hass
         self.gateway_id = gateway_id
         self._topic_base = topic_base
 
+        self._topic_status = f"{topic_base}/{gateway_id}"
         self._topic_rx = f"{topic_base}/{gateway_id}/{MQTT_TOPIC_SUFFIX_RX}"
         self._topic_tx = f"{topic_base}/{gateway_id}/{MQTT_TOPIC_SUFFIX_TX}"
 
@@ -103,6 +105,8 @@ class MqttEndpoint(SimulatorCommEndpoint):
             )
             self._connected = True
 
+            await self._publish_status("online")
+
             self._send_task = self.hass.async_create_background_task(
                 self._send_worker(),
                 name="device_simulator_mqtt_send",
@@ -120,6 +124,8 @@ class MqttEndpoint(SimulatorCommEndpoint):
     async def async_disconnect(self) -> None:
         """Unsubscribe and stop the send worker."""
         self._connected = False
+
+        await self._publish_status("offline")
 
         if self._unsubscribe:
             self._unsubscribe()
@@ -180,12 +186,17 @@ class MqttEndpoint(SimulatorCommEndpoint):
 
     async def _send_worker(self) -> None:
         """Background task: drain the send queue and publish to /rx."""
+        import json
+        from datetime import datetime
+
         from homeassistant.components import mqtt
 
         while self._connected:
             try:
                 frame = await asyncio.wait_for(self._send_queue.get(), timeout=1.0)
-                await mqtt.async_publish(self.hass, self._topic_rx, frame)
+                # ramses_rf expects JSON format with msg first, then ts
+                payload = json.dumps({"msg": frame, "ts": datetime.now().isoformat()})
+                await mqtt.async_publish(self.hass, self._topic_rx, payload)
                 LOGGER.debug(
                     "Simulator published to %s: %s", self._topic_rx, frame[:80]
                 )
@@ -195,3 +206,20 @@ class MqttEndpoint(SimulatorCommEndpoint):
                 break
             except Exception as err:
                 LOGGER.warning("Error publishing MQTT packet: %s", err)
+
+    async def _publish_status(self, status: str) -> None:
+        """Publish a retained status payload (online/offline) on the base topic."""
+        from homeassistant.components import mqtt
+
+        try:
+            await mqtt.async_publish(
+                self.hass,
+                self._topic_status,
+                status,
+                retain=True,
+            )
+            LOGGER.debug(
+                "Simulator published status '%s' to %s", status, self._topic_status
+            )
+        except Exception as err:  # pragma: no cover - defensive
+            LOGGER.warning("Error publishing simulator status: %s", err)
