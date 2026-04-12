@@ -87,14 +87,6 @@ especcially the known device list, can we store our profiles in a yaml file ???
 
 ### scenarios: autonomous emissions -> let devices emit messages autonomously, from a list of possible messages, eg, change temperature, etc....
 we should be able to import (edit field and/or pick from (dedicated) folder) ramses.log style files
-### sim: active top-right pill stays green, what is it indicating  ???
 
 
 ---
-
-- on devices, we can just add a 'in known devices' indicator for each device, no separate section needed.
-- the active profile can be listed on the top section (visible on all tabs)
-- active top-right pill stays green, what is it indicating  ???
-- on profiles, we can remove the ramses CC cache section (no longer need it separate?)
-- when activating hvac_only, (after fresh_start) it takes a long time before the new devices
- are created check the logs for the flow (big log, so search for fresh_start & hvac_only to find the starts)

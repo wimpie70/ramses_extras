@@ -479,7 +479,12 @@ async def ws_load_profile(
                 new_options["known_list"] = known_list
 
                 # Apply _enforce_known_list from profile into the nested ramses_rf dict
-                enforce = bool(profile.device_configs.get("_enforce_known_list", False))
+                _ekl = profile.device_configs.get("_enforce_known_list", False)
+                enforce = (
+                    bool(_ekl.get("enabled", False))
+                    if isinstance(_ekl, dict)
+                    else bool(_ekl)
+                )
                 ramses_rf_opts = dict(new_options.get("ramses_rf", {}))
                 ramses_rf_opts["enforce_known_list"] = enforce
                 new_options["ramses_rf"] = ramses_rf_opts
