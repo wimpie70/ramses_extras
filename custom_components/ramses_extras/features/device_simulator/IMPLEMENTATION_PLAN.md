@@ -708,18 +708,27 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
 ### Phase 8: UI Cards 🚧 (IN PROGRESS)
 
-**Status**: Basic card structure implemented. WebSocket handlers needed.
+**Status**: Basic card structure implemented. Scenarios wired to HA service calls. Devices tab shows active devices with controls.
 
 - [x] Profile browser (list, load)
-- [ ] Profile import/export dialog
-- [x] Device browser card (list view)
-- [ ] Device enable/disable toggles
-- [ ] Per-code exclusion toggles
-- [x] Scenario selector + playback controls
+- [ ] Profile inspect dialog (show timeout_scale, device_configs etc.)
+- [ ] Profile import/export dialog (export to YAML/JSON, import from file)
+- [ ] Profile edit + save (inline editing of profile settings)
+- [x] Device browser card: shows active devices (populated after starting autonomous_emissions scenario)
+- [ ] Device browser: also show known-list devices (from profile/ramses_cc config) with source indicator (active / known / discovered)
+- [x] Device enable/disable toggles (ha-switch, WS-backed)
+- [x] Per-code exclusion chips: add/remove via UI (WS-backed)
+- [x] Scenario selector: Start button calls `ramses_extras.device_simulator_run_scenario` HA service
+- [x] Scenario selector: Stop button calls `ramses_extras.device_simulator_stop_scenario` HA service
 - [x] Real-time stats display
 - [x] Event log display
 - [ ] Unavailability event highlighting
 - [ ] Conversation runner card
+
+**Notes**:
+- Devices tab is empty until an `autonomous_emissions` scenario is started (devices only appear in `_active_devices` after activation)
+- Discovery/timeout/flooding scenarios are still stubs in `scenario_engine.py`
+- Scenarios in the card map to `scenario_type` values: `autonomous_emissions`, `discovery_test`, `timeout_test`, `flooding_test`
 
 **Done When**: All card features functional with WebSocket handlers.
 

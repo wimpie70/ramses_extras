@@ -154,6 +154,18 @@ class ConfigProfileStore:
             },
         )
 
+        self._profiles["fresh_start"] = SystemConfigProfile(
+            name="fresh_start",
+            description=(
+                "Clean slate: only HGI gateway known, all devices discovered fresh"
+            ),
+            timeout_scale=1.0,
+            device_configs={
+                "_known_list": {"18:001234": {"class": "HGI"}},
+                "_clear_cache_on_load": {"enabled": True},
+            },
+        )
+
         LOGGER.debug(
             "ConfigProfileStore: initialized %d built-in profiles", len(self._profiles)
         )

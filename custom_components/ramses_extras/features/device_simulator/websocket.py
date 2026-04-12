@@ -24,6 +24,12 @@ from homeassistant.core import callback
 
 from .const import DOMAIN, LOGGER
 
+RAMSES_CC_STORAGE_KEY = "ramses_cc"
+RAMSES_CC_STORAGE_VERSION = 1
+SZ_CLIENT_STATE = "client_state"
+SZ_SCHEMA = "schema"
+SZ_PACKETS = "packets"
+
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import ActiveConnection
     from homeassistant.core import HomeAssistant
@@ -44,10 +50,13 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_run_conversation)
     websocket_api.async_register_command(hass, ws_get_messages)
     # UI card handlers
-    websocket_api.async_register_command(hass, ws_get_status)
+    websocket_api.async_register_command(hass, ws_get_ui_status)
     websocket_api.async_register_command(hass, ws_load_profile)
     websocket_api.async_register_command(hass, ws_start_scenario)
     websocket_api.async_register_command(hass, ws_stop_scenario)
+    websocket_api.async_register_command(hass, ws_set_device_enabled)
+    websocket_api.async_register_command(hass, ws_set_device_excluded_codes)
+    websocket_api.async_register_command(hass, ws_clear_ramses_cache)
 
 
 def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
@@ -317,64 +326,75 @@ def ws_get_ui_status(
     msg: dict[str, Any],
 ) -> None:
     """Return full simulator status for UI card."""
-    registry = hass.data.get("ramses_extras", {}).get("device_simulator_registry", {})
+    ra = hass.data.get("ramses_extras", {})
 
     # Get profiles from config store
-    config_store = hass.data.get("ramses_extras", {}).get(
-        "device_simulator_config_store"
-    )
+    config_store = ra.get("device_simulator_config_store")
     profiles = []
     if config_store:
-        profiles = [
-            {
-                "name": name,
-                "description": p.description,
-                "timeout_scale": p.timeout_scale,
-            }
-            for name, p in config_store.list_profiles().items()
-        ]
+        for name in config_store.list_profiles():
+            p = config_store.get_profile(name)
+            if p:
+                profiles.append(
+                    {
+                        "name": name,
+                        "description": getattr(p, "description", ""),
+                        "timeout_scale": p.timeout_scale,
+                    }
+                )
 
-    # Get devices from scenario engine
-    engine = registry.get("device_simulator_engine")
+    # Get active devices from scenario engine
+    engine = ra.get("device_simulator_engine")
     devices = []
     if engine and hasattr(engine, "_active_devices"):
         devices = [
             {
-                "id": device_id,
-                "type": info.device_type,
-                "enabled": info.enabled,
+                "id": device.device_id,
+                "type": device.slug,
+                "enabled": device.enabled,
+                "suppress_autonomous": device.suppress_autonomous,
+                "excluded_codes": list(device.excluded_codes),
             }
-            for device_id, info in engine._active_devices.items()
+            for device in engine._active_devices.values()
         ]
 
-    # Get stats from response engine
-    response_engine = registry.get("device_simulator_response_engine")
+    # Stats from engine
     stats = {
         "rx": 0,
-        "tx": 0,
+        "tx": engine.messages_sent if engine else 0,
         "devices": len(devices),
         "active": sum(1 for d in devices if d["enabled"]),
     }
-    if response_engine and hasattr(response_engine, "_stats"):
-        stats["rx"] = response_engine._stats.get("rx", 0)
-        stats["tx"] = response_engine._stats.get("tx", 0)
 
-    # Scenarios (built-in test scenarios)
+    # Scenarios with their HA service scenario_type values
     scenarios = [
+        {
+            "id": "autonomous_emissions",
+            "name": "Autonomous Emissions",
+            "description": "Start periodic I frame emissions for a device",
+            "scenario_type": "autonomous_emissions",
+            "params": {"device_id": "32:153289", "device_type": "FAN"},
+        },
         {
             "id": "discovery",
             "name": "Discovery Test",
-            "description": "Emit 10E0 + initial I messages",
+            "description": "Emit 10E0 + initial I messages (stub)",
+            "scenario_type": "discovery_test",
+            "params": {},
         },
         {
             "id": "timeout",
             "name": "Timeout Test",
-            "description": "Test device unavailability detection",
+            "description": "Test device unavailability detection (stub)",
+            "scenario_type": "timeout_test",
+            "params": {},
         },
         {
             "id": "flooding",
             "name": "Flooding Test",
-            "description": "High-rate I message emission",
+            "description": "High-rate I message emission (stub)",
+            "scenario_type": "flooding_test",
+            "params": {},
         },
     ]
 
@@ -385,8 +405,8 @@ def ws_get_ui_status(
             "devices": devices,
             "scenarios": scenarios,
             "stats": stats,
-            "active_profile": None,  # TODO: Track active profile
-            "scenario_state": "idle",  # TODO: Track scenario state
+            "active_profile": None,
+            "scenario_state": "idle",
         },
     )
 
@@ -397,16 +417,19 @@ def ws_get_ui_status(
         vol.Required("profile"): str,
     }
 )
-@callback  # type: ignore[untyped-decorator]
-def ws_load_profile(
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_load_profile(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
     """Load a system configuration profile."""
-    config_store = hass.data.get("ramses_extras", {}).get(
-        "device_simulator_config_store"
-    )
+    from homeassistant.helpers.storage import Store
+
+    from .system_config import apply_timeout_scale
+
+    ra = hass.data.get("ramses_extras", {})
+    config_store = ra.get("device_simulator_config_store")
     if not config_store:
         connection.send_error(msg["id"], "not_ready", "Config store not initialized")
         return
@@ -418,13 +441,53 @@ def ws_load_profile(
         )
         return
 
-    # Apply timeout scale
-    from .system_config import apply_timeout_scale
+    actions: list[str] = []
 
+    # 1. Stop all active devices in the engine
+    engine = ra.get("device_simulator_engine")
+    if engine:
+        await engine.async_stop_all()
+        actions.append("stopped_devices")
+
+    # 2. Clear ramses_cc cache if the profile requests it
+    clear_on_load = profile.device_configs.get("_clear_cache_on_load", {})
+    if clear_on_load:
+        try:
+            store: Store = Store(hass, RAMSES_CC_STORAGE_VERSION, RAMSES_CC_STORAGE_KEY)
+            stored_data: dict[str, Any] = await store.async_load() or {}
+            if SZ_CLIENT_STATE in stored_data:
+                stored_data[SZ_CLIENT_STATE].pop(SZ_SCHEMA, None)
+                msg_code_filter = {"0004", "0005", "000C"}
+                packets = stored_data[SZ_CLIENT_STATE].get(SZ_PACKETS, {})
+                stored_data[SZ_CLIENT_STATE][SZ_PACKETS] = {
+                    dtm: pkt
+                    for dtm, pkt in packets.items()
+                    if (
+                        isinstance(pkt, dict) and pkt.get("code") not in msg_code_filter
+                    )
+                    or (
+                        isinstance(pkt, str)
+                        and not any(f" {c} " in pkt for c in msg_code_filter)
+                    )
+                }
+                await store.async_save(stored_data)
+                actions.append("cleared_cache")
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning("Profile load: could not clear cache: %s", err)
+
+    # 3. Apply timeout scale
     apply_timeout_scale(profile.timeout_scale)
+    actions.append(f"timeout_scale={profile.timeout_scale}")
 
-    LOGGER.info("Loaded simulator profile: %s", msg["profile"])
-    connection.send_result(msg["id"], {"success": True, "profile": msg["profile"]})
+    LOGGER.info("Loaded simulator profile: %s (actions: %s)", msg["profile"], actions)
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "profile": msg["profile"],
+            "actions": actions,
+        },
+    )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -460,3 +523,143 @@ def ws_stop_scenario(
     # TODO: Implement scenario stop
     LOGGER.info("Stopping scenario")
     connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/set_device_enabled",
+        vol.Required("device_id"): str,
+        vol.Required("enabled"): bool,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_set_device_enabled(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Enable or disable a simulated device."""
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    device = engine._active_devices.get(msg["device_id"])
+    if not device:
+        connection.send_error(
+            msg["id"], "not_found", f"Device '{msg['device_id']}' not active"
+        )
+        return
+
+    device.enabled = msg["enabled"]
+    LOGGER.info("Device %s enabled=%s", msg["device_id"], msg["enabled"])
+    connection.send_result(
+        msg["id"],
+        {"success": True, "device_id": msg["device_id"], "enabled": msg["enabled"]},
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/clear_ramses_cache",
+        vol.Optional("clear_schema", default=True): bool,
+        vol.Optional("clear_packets", default=False): bool,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_clear_ramses_cache(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Clear ramses_cc stored client state (schema and/or packets)."""
+    from homeassistant.helpers.storage import Store
+
+    clear_schema = msg.get("clear_schema", True)
+    clear_packets = msg.get("clear_packets", False)
+
+    try:
+        store: Store = Store(hass, RAMSES_CC_STORAGE_VERSION, RAMSES_CC_STORAGE_KEY)
+        stored_data: dict[str, Any] = await store.async_load() or {}
+
+        if SZ_CLIENT_STATE not in stored_data:
+            connection.send_result(
+                msg["id"], {"success": True, "message": "No cached state found"}
+            )
+            return
+
+        if clear_schema:
+            stored_data[SZ_CLIENT_STATE].pop(SZ_SCHEMA, None)
+            msg_code_filter = {"0004", "0005", "000C"}
+            packets = stored_data[SZ_CLIENT_STATE].get(SZ_PACKETS, {})
+            stored_data[SZ_CLIENT_STATE][SZ_PACKETS] = {
+                dtm: pkt
+                for dtm, pkt in packets.items()
+                if (isinstance(pkt, dict) and pkt.get("code") not in msg_code_filter)
+                or (
+                    isinstance(pkt, str)
+                    and not any(f" {c} " in pkt for c in msg_code_filter)
+                )
+            }
+
+        if clear_packets:
+            stored_data[SZ_CLIENT_STATE].pop(SZ_PACKETS, None)
+
+        await store.async_save(stored_data)
+        LOGGER.info(
+            "Cleared ramses_cc cache: clear_schema=%s clear_packets=%s",
+            clear_schema,
+            clear_packets,
+        )
+        connection.send_result(
+            msg["id"],
+            {
+                "success": True,
+                "clear_schema": clear_schema,
+                "clear_packets": clear_packets,
+                "message": "Cache cleared. Restart ramses_cc to apply.",
+            },
+        )
+    except Exception as err:  # noqa: BLE001
+        LOGGER.error("Failed to clear ramses_cc cache: %s", err)
+        connection.send_error(msg["id"], "error", str(err))
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required(
+            "type"
+        ): "ramses_extras/device_simulator/set_device_excluded_codes",
+        vol.Required("device_id"): str,
+        vol.Required("excluded_codes"): [str],
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_set_device_excluded_codes(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Update the excluded codes for a simulated device."""
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    device = engine._active_devices.get(msg["device_id"])
+    if not device:
+        connection.send_error(
+            msg["id"], "not_found", f"Device '{msg['device_id']}' not active"
+        )
+        return
+
+    device.excluded_codes = list(msg["excluded_codes"])
+    LOGGER.info("Device %s excluded_codes=%s", msg["device_id"], device.excluded_codes)
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "device_id": msg["device_id"],
+            "excluded_codes": device.excluded_codes,
+        },
+    )

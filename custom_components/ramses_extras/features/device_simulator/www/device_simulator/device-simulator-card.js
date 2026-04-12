@@ -40,7 +40,8 @@ class DeviceSimulatorCard extends LitElement {
       .content { display: none; }
       .content.active { display: block; }
       .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
-      .btn-primary { background: var(--primary-color); color: white; }
+      .btn-primary { background: var(--primary-color); color: var(--text-primary-color); }
+      .btn-secondary { background: var(--secondary-background-color); color: var(--primary-text-color); border: 1px solid var(--divider-color); }
       .btn-danger { background: var(--error-color); color: white; }
       .grid { display: grid; gap: 12px; }
       .card { border: 1px solid var(--divider-color); border-radius: 8px; padding: 16px; }
@@ -75,6 +76,7 @@ class DeviceSimulatorCard extends LitElement {
     this._stats = { rx: 0, tx: 0, devices: 0, active: 0 };
     this._tab = "profiles";
     this._scenarioState = "idle";
+    this._activeScenario = null;
     this._newCodeInput = {};
   }
 
@@ -102,7 +104,6 @@ class DeviceSimulatorCard extends LitElement {
       this._scenarios = result.scenarios || [];
       this._stats = result.stats || this._stats;
       this._activeProfile = result.active_profile;
-      this._scenarioState = result.scenario_state || "idle";
     } catch {
       // Silently handle fetch errors
     }
@@ -113,41 +114,45 @@ class DeviceSimulatorCard extends LitElement {
   }
 
   async _loadProfile(name) {
-    try {
-      await this.hass.callWS({
-        type: "ramses_extras/device_simulator/load_profile",
-        profile: name,
-      });
-      this._activeProfile = name;
-      this._fetchData();
-    } catch {
-      // TODO: Show proper error notification
-      this._fetchData(); // Refresh to show updated state
-    }
+    await this.hass.callWS({
+      type: "ramses_extras/device_simulator/load_profile",
+      profile: name,
+    });
+    this._activeProfile = name;
+    this._scenarioState = "idle";
+    this._activeScenario = null;
+    await new Promise((r) => setTimeout(r, 300));
+    await this._fetchData();
   }
 
-  async _startScenario(id) {
-    try {
-      await this.hass.callWS({
-        type: "ramses_extras/device_simulator/start_scenario",
-        scenario: id,
-      });
-      this._scenarioState = "running";
-    } catch {
-      // TODO: Show proper error notification
-      this._scenarioState = "idle"; // Reset state
-    }
+  async _startScenario(scenario) {
+    await this.hass.callService(
+      "ramses_extras",
+      "device_simulator_run_scenario",
+      {
+        scenario_type: scenario.scenario_type,
+        params: scenario.params || {},
+      }
+    );
+    this._scenarioState = "running";
+    this._activeScenario = scenario.id;
+    await new Promise((r) => setTimeout(r, 500));
+    await this._fetchData();
   }
 
-  async _stopScenario() {
-    try {
-      await this.hass.callWS({
-        type: "ramses_extras/device_simulator/stop_scenario",
-      });
-      this._scenarioState = "idle";
-    } catch {
-      // Silently handle stop errors
-    }
+  async _stopScenario(scenario) {
+    await this.hass.callService(
+      "ramses_extras",
+      "device_simulator_stop_scenario",
+      {
+        scenario_id: scenario ? scenario.scenario_type : "autonomous_emissions",
+        ...(scenario?.params?.device_id ? { device_id: scenario.params.device_id } : {}),
+      }
+    );
+    this._scenarioState = "idle";
+    this._activeScenario = null;
+    await new Promise((r) => setTimeout(r, 300));
+    await this._fetchData();
   }
 
   render() {
@@ -187,6 +192,15 @@ class DeviceSimulatorCard extends LitElement {
     `;
   }
 
+  async _clearCache({ clearSchema = true, clearPackets = false } = {}) {
+    const result = await this.hass.callWS({
+      type: "ramses_extras/device_simulator/clear_ramses_cache",
+      clear_schema: clearSchema,
+      clear_packets: clearPackets,
+    });
+    return result;
+  }
+
   _renderProfiles() {
     return html`
       <div class="grid">
@@ -203,6 +217,14 @@ class DeviceSimulatorCard extends LitElement {
                 </div>
               `
             )}
+      </div>
+      <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--divider-color);">
+        <div style="font-size: 0.85em; font-weight: 600; margin-bottom: 8px; color: var(--secondary-text-color);">RAMSES CC CACHE</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn btn-secondary" @click="${() => this._clearCache({ clearSchema: true, clearPackets: false })}">Clear Schema</button>
+          <button class="btn btn-danger" @click="${() => this._clearCache({ clearSchema: true, clearPackets: true })}">Clear All Packets</button>
+        </div>
+        <div style="font-size: 0.75em; color: var(--secondary-text-color); margin-top: 6px;">Restart ramses_cc after clearing to apply changes.</div>
       </div>
     `;
   }
@@ -311,19 +333,21 @@ class DeviceSimulatorCard extends LitElement {
 
   _renderScenarios() {
     return html`
-      <div style="margin-bottom: 16px;">
-        ${this._scenarioState === "running"
-          ? html`<button class="btn btn-danger" @click="${() => this._stopScenario()}">Stop Scenario</button>`
-          : ""}
-      </div>
       <div class="grid">
         ${this._scenarios.map(
           (s) => html`
-            <div class="card">
+            <div class="card ${this._activeScenario === s.id ? "active" : ""}">
               <div><strong>${s.name}</strong></div>
               <div style="font-size: 0.85em; color: var(--secondary-text-color);">${s.description || ""}</div>
-              <div style="margin-top: 8px;">
-                <button class="btn btn-primary" @click="${() => this._startScenario(s.id)}" ?disabled="${this._scenarioState === "running"}">Start</button>
+              <div style="margin-top: 8px; display: flex; gap: 8px;">
+                <button
+                  class="btn btn-primary"
+                  @click="${() => this._startScenario(s)}"
+                  ?disabled="${this._scenarioState === "running" && this._activeScenario !== s.id}"
+                >Start</button>
+                ${this._activeScenario === s.id
+                  ? html`<button class="btn btn-danger" @click="${() => this._stopScenario(s)}">Stop</button>`
+                  : ""}
               </div>
             </div>
           `
