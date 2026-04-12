@@ -376,7 +376,7 @@ def ws_get_ui_status(
             "name": "Autonomous Emissions",
             "description": "Start periodic I frame emissions for a device",
             "scenario_type": "autonomous_emissions",
-            "params": {"device_id": "32:153289", "device_type": "FAN"},
+            "params": {"device_id": "37:168270", "device_type": "FAN"},
         },
         {
             "id": "discovery",
@@ -386,18 +386,24 @@ def ws_get_ui_status(
             "params": {},
         },
         {
-            "id": "timeout",
-            "name": "Timeout Test",
-            "description": "Test device unavailability detection (stub)",
-            "scenario_type": "timeout_test",
-            "params": {},
+            "id": "device_unavailability",
+            "name": "Device Unavailability",
+            "description": (
+                "Silence all active devices after N seconds, resume after M seconds"
+            ),
+            "scenario_type": "device_unavailability",
+            "params": {"silence_after": 30, "resume_after": 60},
         },
         {
-            "id": "flooding",
-            "name": "Flooding Test",
-            "description": "High-rate I message emission (stub)",
-            "scenario_type": "flooding_test",
-            "params": {},
+            "id": "hvac_device_loss",
+            "name": "HVAC Device Loss",
+            "description": "Silence a specific device mid-run (optional restore)",
+            "scenario_type": "hvac_device_loss",
+            "params": {
+                "device_id": "37:168270",
+                "loss_after": 30,
+                "restore_after": 60,
+            },
         },
     ]
 

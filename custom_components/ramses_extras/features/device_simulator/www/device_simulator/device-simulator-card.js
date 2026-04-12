@@ -80,6 +80,7 @@ class DeviceSimulatorCard extends LitElement {
     this._newCodeInput = {};
     this._profileSpeed = {};
     this._profileNotice = null;
+    this._scenarioParams = {};
   }
 
   setConfig(config) {
@@ -136,13 +137,12 @@ class DeviceSimulatorCard extends LitElement {
   }
 
   async _startScenario(scenario) {
+    const overrides = this._scenarioParams[scenario.id] || {};
+    const params = { ...(scenario.params || {}), ...overrides };
     await this.hass.callService(
       "ramses_extras",
       "device_simulator_run_scenario",
-      {
-        scenario_type: scenario.scenario_type,
-        params: scenario.params || {},
-      }
+      { scenario_type: scenario.scenario_type, params }
     );
     this._scenarioState = "running";
     this._activeScenario = scenario.id;
@@ -359,6 +359,34 @@ class DeviceSimulatorCard extends LitElement {
     `;
   }
 
+  _renderScenarioParams(s) {
+    const timedParams = {
+      device_unavailability: ["silence_after", "resume_after"],
+      hvac_device_loss: ["device_id", "loss_after", "restore_after"],
+    };
+    const fields = timedParams[s.id];
+    if (!fields) return "";
+    const overrides = this._scenarioParams[s.id] || {};
+    return html`
+      <div style="margin-top: 8px; display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; font-size: 0.8em;">
+        ${fields.map((f) => html`
+          <label style="color: var(--secondary-text-color);">${f}:</label>
+          <input
+            type="text"
+            style="padding: 2px 6px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); font-size: 0.95em;"
+            .value="${String(overrides[f] ?? (s.params?.[f] ?? ""))}"
+            @change="${(e) => {
+              this._scenarioParams = {
+                ...this._scenarioParams,
+                [s.id]: { ...(this._scenarioParams[s.id] || {}), [f]: e.target.value },
+              };
+            }}"
+          />
+        `)}
+      </div>
+    `;
+  }
+
   _renderScenarios() {
     return html`
       <div class="grid">
@@ -367,6 +395,7 @@ class DeviceSimulatorCard extends LitElement {
             <div class="card ${this._activeScenario === s.id ? "active" : ""}">
               <div><strong>${s.name}</strong></div>
               <div style="font-size: 0.85em; color: var(--secondary-text-color);">${s.description || ""}</div>
+              ${this._renderScenarioParams(s)}
               <div style="margin-top: 8px; display: flex; gap: 8px;">
                 <button
                   class="btn btn-primary"

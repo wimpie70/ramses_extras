@@ -72,6 +72,7 @@ SCENARIO_DISCOVERY_TEST = "discovery_test"
 SCENARIO_TIMEOUT_TEST = "timeout_test"
 SCENARIO_FLOODING_TEST = "flooding_test"
 SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
+SCENARIO_HVAC_DEVICE_LOSS = "hvac_device_loss"
 SCENARIO_RUN_CONVERSATION = "run_conversation"
 SCENARIO_AUTONOMOUS_EMISSIONS = "autonomous_emissions"  # Start/stop autonomous I frames
 

@@ -27,6 +27,8 @@ from datetime import UTC
 from .comm_endpoint import SimulatorCommEndpoint
 from .const import (
     LOGGER,
+    SCENARIO_DEVICE_UNAVAILABILITY,
+    SCENARIO_HVAC_DEVICE_LOSS,
     SCENARIO_STATE_COMPLETED,
     SCENARIO_STATE_ERROR,
     SCENARIO_STATE_IDLE,
@@ -130,6 +132,7 @@ class ScenarioEngine:
         self._active_devices: dict[str, ActiveDevice] = {}
         self._emitter_tasks: dict[str, asyncio.Task] = {}
         self._running_scenarios: dict[str, dict[str, Any]] = {}
+        self._scenario_tasks: dict[str, asyncio.Task] = {}
         self._state = SCENARIO_STATE_IDLE
         self._messages_sent = 0
         self._message_log: list[str] = []
@@ -502,7 +505,130 @@ class ScenarioEngine:
         LOGGER.info("Flooding test: %d messages @ %fs (stub)", count, interval)
         return {"success": True, "message": "Flooding test started"}
 
-    async def async_run_unavailability_test(self, device_id: str) -> dict[str, Any]:
-        """Test device going offline."""
-        LOGGER.info("Unavailability test for %s (stub)", device_id)
-        return {"success": True, "message": "Unavailability test started"}
+    async def async_cancel_scenario(self, scenario_id: str) -> None:
+        """Cancel a running timed scenario task.
+
+        :param scenario_id: The scenario type id to cancel.
+        """
+        task = self._scenario_tasks.pop(scenario_id, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self._running_scenarios.pop(scenario_id, None)
+        LOGGER.info("Scenario '%s' cancelled", scenario_id)
+
+    async def async_run_unavailability_test(
+        self,
+        device_id: str | None = None,
+        silence_after: float = 30.0,
+        resume_after: float = 60.0,
+    ) -> dict[str, Any]:
+        """Simulate device going offline then coming back.
+
+        :param device_id: Specific device to silence, or None for all active devices.
+        :param silence_after: Seconds until device(s) go silent.
+        :param resume_after: Seconds after silence_after until device(s) resume.
+        """
+        targets = [device_id] if device_id else list(self._active_devices.keys())
+        if not targets:
+            return {"success": False, "error": "No active devices to test"}
+
+        async def _run() -> None:
+            LOGGER.info(
+                "device_unavailability: silencing %s in %.0fs", targets, silence_after
+            )
+            await asyncio.sleep(silence_after)
+            for did in targets:
+                await self.async_silence_device(did)
+                LOGGER.info("device_unavailability: silenced %s", did)
+            LOGGER.info(
+                "device_unavailability: resuming %s in %.0fs", targets, resume_after
+            )
+            await asyncio.sleep(resume_after)
+            for did in targets:
+                device = self._active_devices.get(did)
+                if device:
+                    device.suppress_autonomous = False
+                    await self.async_activate_device(device)
+                    LOGGER.info("device_unavailability: resumed %s", did)
+            self._scenario_tasks.pop(SCENARIO_DEVICE_UNAVAILABILITY, None)
+            self._running_scenarios.pop(SCENARIO_DEVICE_UNAVAILABILITY, None)
+            LOGGER.info("device_unavailability scenario completed")
+
+        await self.async_cancel_scenario(SCENARIO_DEVICE_UNAVAILABILITY)
+        task = self.hass.async_create_background_task(
+            _run(), name="device_simulator_unavailability"
+        )
+        self._scenario_tasks[SCENARIO_DEVICE_UNAVAILABILITY] = task
+        self._running_scenarios[SCENARIO_DEVICE_UNAVAILABILITY] = {
+            "targets": targets,
+            "silence_after": silence_after,
+            "resume_after": resume_after,
+        }
+        return {
+            "success": True,
+            "message": (
+                f"Silencing {targets} in {silence_after:.0f}s,"
+                f" resuming after {resume_after:.0f}s"
+            ),
+            "targets": targets,
+        }
+
+    async def async_run_hvac_device_loss(
+        self,
+        device_id: str,
+        loss_after: float = 30.0,
+        restore_after: float | None = None,
+    ) -> dict[str, Any]:
+        """Simulate a specific HVAC device dropping off mid-run.
+
+        :param device_id: Device to silence.
+        :param loss_after: Seconds until device goes silent.
+        :param restore_after: Optional seconds after loss until device resumes.
+                              If None, device stays silent.
+        """
+        if device_id not in self._active_devices:
+            return {
+                "success": False,
+                "error": f"Device '{device_id}' is not active",
+            }
+
+        async def _run() -> None:
+            LOGGER.info(
+                "hvac_device_loss: silencing %s in %.0fs", device_id, loss_after
+            )
+            await asyncio.sleep(loss_after)
+            await self.async_silence_device(device_id)
+            LOGGER.info("hvac_device_loss: %s is now silent", device_id)
+            if restore_after is not None:
+                await asyncio.sleep(restore_after)
+                device = self._active_devices.get(device_id)
+                if device:
+                    device.suppress_autonomous = False
+                    await self.async_activate_device(device)
+                    LOGGER.info("hvac_device_loss: %s restored", device_id)
+            self._scenario_tasks.pop(SCENARIO_HVAC_DEVICE_LOSS, None)
+            self._running_scenarios.pop(SCENARIO_HVAC_DEVICE_LOSS, None)
+            LOGGER.info("hvac_device_loss scenario completed")
+
+        await self.async_cancel_scenario(SCENARIO_HVAC_DEVICE_LOSS)
+        task = self.hass.async_create_background_task(
+            _run(), name="device_simulator_hvac_device_loss"
+        )
+        self._scenario_tasks[SCENARIO_HVAC_DEVICE_LOSS] = task
+        self._running_scenarios[SCENARIO_HVAC_DEVICE_LOSS] = {
+            "device_id": device_id,
+            "loss_after": loss_after,
+            "restore_after": restore_after,
+        }
+        return {
+            "success": True,
+            "message": (
+                f"Silencing {device_id} in {loss_after:.0f}s"
+                + (f", restoring after {restore_after:.0f}s" if restore_after else "")
+            ),
+            "device_id": device_id,
+        }

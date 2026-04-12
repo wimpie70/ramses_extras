@@ -30,6 +30,7 @@ from .const import (
     SCENARIO_DEVICE_UNAVAILABILITY,
     SCENARIO_DISCOVERY_TEST,
     SCENARIO_FLOODING_TEST,
+    SCENARIO_HVAC_DEVICE_LOSS,
     SCENARIO_RUN_CONVERSATION,
     SCENARIO_TIMEOUT_TEST,
 )
@@ -64,6 +65,7 @@ SCHEMA_RUN_SCENARIO = vol.Schema(
                 SCENARIO_DEVICE_PLAYBACK,
                 SCENARIO_DEVICE_SUITE,
                 SCENARIO_DEVICE_UNAVAILABILITY,
+                SCENARIO_HVAC_DEVICE_LOSS,
                 SCENARIO_DISCOVERY_TEST,
                 SCENARIO_FLOODING_TEST,
                 SCENARIO_TIMEOUT_TEST,
@@ -157,7 +159,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         if scenario_type == SCENARIO_AUTONOMOUS_EMISSIONS:
             # Start autonomous I frame emissions (e.g., for device discovery)
-            device_id = params.get("device_id", "32:153289")
+            device_id = params.get("device_id", "37:168270")
             device_type = params.get("device_type", "FAN")
             variant_id = params.get("variant_id", "default")
             # Default to silencing 1FC9 unless explicitly requested
@@ -211,11 +213,22 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             return await engine.async_run_flooding_test(count, interval)
 
         if scenario_type == SCENARIO_DEVICE_UNAVAILABILITY:
-            # Test device going offline
+            return await engine.async_run_unavailability_test(
+                device_id=params.get("device_id"),
+                silence_after=float(params.get("silence_after", 30.0)),
+                resume_after=float(params.get("resume_after", 60.0)),
+            )
+
+        if scenario_type == SCENARIO_HVAC_DEVICE_LOSS:
             device_id = params.get("device_id")
             if not device_id:
                 return {"success": False, "error": "Missing device_id param"}
-            return await engine.async_run_unavailability_test(device_id)
+            restore = params.get("restore_after")
+            return await engine.async_run_hvac_device_loss(
+                device_id=device_id,
+                loss_after=float(params.get("loss_after", 30.0)),
+                restore_after=float(restore) if restore is not None else None,
+            )
 
         return {"success": False, "error": f"Unknown scenario type: {scenario_type}"}
 
@@ -230,14 +243,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         # Handle autonomous_emissions scenario stop
         if scenario_id == SCENARIO_AUTONOMOUS_EMISSIONS or device_id:
-            target_device = device_id or "32:153289"
+            target_device = device_id or "37:168270"
             await engine.async_silence_device(target_device)
             return {
                 "success": True,
                 "message": f"Autonomous emissions stopped for {target_device}",
             }
 
-        # TODO: Track other scenarios by ID for proper cleanup
+        # Cancel timed scenarios by id
+        if scenario_id in (SCENARIO_DEVICE_UNAVAILABILITY, SCENARIO_HVAC_DEVICE_LOSS):
+            await engine.async_cancel_scenario(scenario_id)
+            return {"success": True, "message": f"Scenario '{scenario_id}' cancelled"}
+
         return {"success": True}
 
     async def handle_activate_device(call: ServiceCall) -> dict[str, Any]:

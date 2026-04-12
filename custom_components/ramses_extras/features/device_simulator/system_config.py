@@ -14,7 +14,20 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .const import LOGGER
+from .const import LOGGER, SIMULATOR_HGI_ID
+
+# Canonical simulated device IDs used across all profiles.
+# Prefixes match RAMSES device type codes: 37=FAN, 32=FAN(alt), 34=CO2,
+# 29=REM, 31=DIS, 22=CTL, 04=TRV, 07=OTB, 13=BDR
+SIM_DEVICES: dict[str, dict[str, str]] = {
+    "FAN": {"id": "37:168270", "class": "FAN"},
+    "CO2": {"id": "34:093176", "class": "CO2"},
+    "REM": {"id": "29:151985", "class": "REM"},
+    "CTL": {"id": "22:064213", "class": "CTL"},
+    "TRV": {"id": "04:189078", "class": "TRV"},
+    "DHW": {"id": "07:036213", "class": "DHW"},
+}
+_HGI_ENTRY: dict[str, dict] = {SIMULATOR_HGI_ID: {"class": "HGI"}}
 
 
 @dataclass
@@ -84,33 +97,39 @@ class ConfigProfileStore:
 
     def _init_builtin_profiles(self) -> None:
         """Initialize built-in system configuration profiles."""
+        hvac_devices = ["FAN", "CO2", "REM"]
+        heat_devices = ["CTL", "TRV", "DHW"]
+
+        def _known_list(*types: str) -> dict[str, dict]:
+            entries = {
+                SIM_DEVICES[t]["id"]: {"class": t} for t in types if t in SIM_DEVICES
+            }
+            return {**_HGI_ENTRY, **entries}
+
         self._profiles["normal"] = SystemConfigProfile(
             name="normal",
             description="Normal HVAC/heat environment, standard timeouts",
             timeout_scale=1.0,
+            device_configs={
+                "_known_list": _known_list(*hvac_devices, *heat_devices),
+            },
         )
 
         self._profiles["hvac_only"] = SystemConfigProfile(
             name="hvac_only",
-            description="HVAC devices only (FAN, CO2, HUM, REM)",
+            description="HVAC devices only (FAN, CO2, REM)",
             timeout_scale=1.0,
             device_configs={
-                "CTL": {"enabled": False},
-                "TRV": {"enabled": False},
-                "DHW": {"enabled": False},
-                "PRG": {"enabled": False},
+                "_known_list": _known_list(*hvac_devices),
             },
         )
 
         self._profiles["heat_only"] = SystemConfigProfile(
             name="heat_only",
-            description="Heat devices only (CTL, TRV, DHW, etc.)",
+            description="Heat devices only (CTL, TRV, DHW)",
             timeout_scale=1.0,
             device_configs={
-                "FAN": {"enabled": False},
-                "CO2": {"enabled": False},
-                "HUM": {"enabled": False},
-                "REM": {"enabled": False},
+                "_known_list": _known_list(*heat_devices),
             },
         )
 
@@ -118,6 +137,9 @@ class ConfigProfileStore:
             name="mixed",
             description="Mixed heat and HVAC environment",
             timeout_scale=1.0,
+            device_configs={
+                "_known_list": _known_list(*hvac_devices, *heat_devices),
+            },
         )
 
         self._profiles["fresh_start"] = SystemConfigProfile(
