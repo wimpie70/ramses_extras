@@ -16,6 +16,8 @@ Provides real-time control and monitoring:
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
@@ -338,8 +340,9 @@ def ws_get_ui_status(
                 profiles.append(
                     {
                         "name": name,
-                        "description": getattr(p, "description", ""),
+                        "description": p.description,
                         "timeout_scale": p.timeout_scale,
+                        "speed_options": p.speed_options,
                     }
                 )
 
@@ -415,6 +418,7 @@ def ws_get_ui_status(
     {
         vol.Required("type"): "ramses_extras/device_simulator/load_profile",
         vol.Required("profile"): str,
+        vol.Optional("speed"): vol.Coerce(float),
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -424,8 +428,6 @@ async def ws_load_profile(
     msg: dict[str, Any],
 ) -> None:
     """Load a system configuration profile."""
-    from homeassistant.helpers.storage import Store
-
     from .system_config import apply_timeout_scale
 
     ra = hass.data.get("ramses_extras", {})
@@ -449,35 +451,95 @@ async def ws_load_profile(
         await engine.async_stop_all()
         actions.append("stopped_devices")
 
-    # 2. Clear ramses_cc cache if the profile requests it
-    clear_on_load = profile.device_configs.get("_clear_cache_on_load", {})
-    if clear_on_load:
-        try:
-            store: Store = Store(hass, RAMSES_CC_STORAGE_VERSION, RAMSES_CC_STORAGE_KEY)
-            stored_data: dict[str, Any] = await store.async_load() or {}
-            if SZ_CLIENT_STATE in stored_data:
-                stored_data[SZ_CLIENT_STATE].pop(SZ_SCHEMA, None)
-                msg_code_filter = {"0004", "0005", "000C"}
-                packets = stored_data[SZ_CLIENT_STATE].get(SZ_PACKETS, {})
-                stored_data[SZ_CLIENT_STATE][SZ_PACKETS] = {
-                    dtm: pkt
-                    for dtm, pkt in packets.items()
-                    if (
-                        isinstance(pkt, dict) and pkt.get("code") not in msg_code_filter
-                    )
-                    or (
-                        isinstance(pkt, str)
-                        and not any(f" {c} " in pkt for c in msg_code_filter)
-                    )
-                }
-                await store.async_save(stored_data)
-                actions.append("cleared_cache")
-        except Exception as err:  # noqa: BLE001
-            LOGGER.warning("Profile load: could not clear cache: %s", err)
+    # 2. (Cache clearing is handled post-unload in _reload_ramses_cc below)
 
-    # 3. Apply timeout scale
-    apply_timeout_scale(profile.timeout_scale)
-    actions.append(f"timeout_scale={profile.timeout_scale}")
+    # 3. Update ramses_cc known_list options if profile defines one
+    known_list = profile.device_configs.get("_known_list")
+    if known_list is not None:
+        try:
+            ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
+            if ramses_cc_entries:
+                entry = ramses_cc_entries[0]
+                new_options = dict(entry.options)
+                new_options["known_list"] = known_list
+                hass.config_entries.async_update_entry(entry, options=new_options)
+                actions.append("updated_known_list")
+                LOGGER.info(
+                    "Profile load: updated ramses_cc known_list: %s", known_list
+                )
+
+                clear_db = bool(profile.device_configs.get("_clear_cache_on_load"))
+
+                async def _reload_ramses_cc(entry_id: str, wipe_db: bool) -> None:
+                    """Unload ramses_cc, wipe caches, then set up again."""
+                    from homeassistant.helpers import device_registry as dr
+                    from homeassistant.helpers.storage import Store as HaStore
+
+                    await hass.config_entries.async_unload(entry_id)
+
+                    if wipe_db:
+                        # Remove all HA device registry entries for this config entry
+                        # so stale devices don't linger in the UI after a fresh start
+                        dev_reg = dr.async_get(hass)
+                        stale_devices = dr.async_entries_for_config_entry(
+                            dev_reg, entry_id
+                        )
+                        for device in stale_devices:
+                            dev_reg.async_remove_device(device.id)
+                        if stale_devices:
+                            LOGGER.info(
+                                "Profile load: removed %d stale HA devices",
+                                len(stale_devices),
+                            )
+
+                    if wipe_db:
+                        # Clear HA store AFTER unload so save-on-unload is overwritten
+                        try:
+                            ha_store: HaStore = HaStore(
+                                hass, RAMSES_CC_STORAGE_VERSION, RAMSES_CC_STORAGE_KEY
+                            )
+                            stored: dict[str, Any] = await ha_store.async_load() or {}
+                            if SZ_CLIENT_STATE in stored:
+                                stored[SZ_CLIENT_STATE].pop(SZ_SCHEMA, None)
+                                stored[SZ_CLIENT_STATE].pop(SZ_PACKETS, None)
+                                await ha_store.async_save(stored)
+                                LOGGER.info(
+                                    "Profile load: cleared HA store after unload"
+                                )
+                        except Exception as err:  # noqa: BLE001
+                            LOGGER.warning(
+                                "Profile load: could not clear HA store: %s", err
+                            )
+
+                        # Delete ramses.db after unload
+                        # (final SQLite snapshot already written)
+                        db_path = Path(hass.config.config_dir) / "ramses.db"
+                        try:
+                            if db_path.exists():
+                                db_path.unlink()
+                                LOGGER.info(
+                                    "Profile load: deleted %s after unload", db_path
+                                )
+                        except Exception as err:  # noqa: BLE001
+                            LOGGER.warning(
+                                "Profile load: could not delete ramses.db: %s", err
+                            )
+
+                    await hass.config_entries.async_setup(entry_id)
+
+                hass.async_create_task(_reload_ramses_cc(entry.entry_id, clear_db))
+                actions.append("reloading_ramses_cc")
+            else:
+                LOGGER.warning("Profile load: no ramses_cc config entry found")
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning(
+                "Profile load: could not update ramses_cc known_list: %s", err
+            )
+
+    # 4. Apply timeout scale (msg speed override takes precedence)
+    scale = msg.get("speed", profile.timeout_scale)
+    apply_timeout_scale(scale)
+    actions.append(f"timeout_scale={scale}")
 
     LOGGER.info("Loaded simulator profile: %s (actions: %s)", msg["profile"], actions)
     connection.send_result(
@@ -577,40 +639,45 @@ async def ws_clear_ramses_cache(
 
     clear_schema = msg.get("clear_schema", True)
     clear_packets = msg.get("clear_packets", False)
+    actions: list[str] = []
 
     try:
         store: Store = Store(hass, RAMSES_CC_STORAGE_VERSION, RAMSES_CC_STORAGE_KEY)
         stored_data: dict[str, Any] = await store.async_load() or {}
 
-        if SZ_CLIENT_STATE not in stored_data:
-            connection.send_result(
-                msg["id"], {"success": True, "message": "No cached state found"}
-            )
-            return
+        if SZ_CLIENT_STATE in stored_data:
+            if clear_schema:
+                stored_data[SZ_CLIENT_STATE].pop(SZ_SCHEMA, None)
+                msg_code_filter = {"0004", "0005", "000C"}
+                packets = stored_data[SZ_CLIENT_STATE].get(SZ_PACKETS, {})
+                stored_data[SZ_CLIENT_STATE][SZ_PACKETS] = {
+                    dtm: pkt
+                    for dtm, pkt in packets.items()
+                    if (
+                        isinstance(pkt, dict) and pkt.get("code") not in msg_code_filter
+                    )
+                    or (
+                        isinstance(pkt, str)
+                        and not any(f" {c} " in pkt for c in msg_code_filter)
+                    )
+                }
+                actions.append("cleared_schema")
 
-        if clear_schema:
-            stored_data[SZ_CLIENT_STATE].pop(SZ_SCHEMA, None)
-            msg_code_filter = {"0004", "0005", "000C"}
-            packets = stored_data[SZ_CLIENT_STATE].get(SZ_PACKETS, {})
-            stored_data[SZ_CLIENT_STATE][SZ_PACKETS] = {
-                dtm: pkt
-                for dtm, pkt in packets.items()
-                if (isinstance(pkt, dict) and pkt.get("code") not in msg_code_filter)
-                or (
-                    isinstance(pkt, str)
-                    and not any(f" {c} " in pkt for c in msg_code_filter)
-                )
-            }
+            if clear_packets:
+                stored_data[SZ_CLIENT_STATE].pop(SZ_PACKETS, None)
+                actions.append("cleared_ha_packets")
 
+            await store.async_save(stored_data)
+
+        # Also delete ramses.db SQLite file when clearing all packets
         if clear_packets:
-            stored_data[SZ_CLIENT_STATE].pop(SZ_PACKETS, None)
+            db_path = Path(hass.config.config_dir) / "ramses.db"
+            if db_path.exists():
+                await asyncio.get_event_loop().run_in_executor(None, db_path.unlink)
+                actions.append("deleted_ramses_db")
+                LOGGER.info("Cleared ramses.db at %s", db_path)
 
-        await store.async_save(stored_data)
-        LOGGER.info(
-            "Cleared ramses_cc cache: clear_schema=%s clear_packets=%s",
-            clear_schema,
-            clear_packets,
-        )
+        LOGGER.info("Cleared ramses_cc cache: %s", actions)
         connection.send_result(
             msg["id"],
             {

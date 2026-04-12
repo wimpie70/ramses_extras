@@ -79,7 +79,8 @@ Log errors if not configured.
 ### make dynamic card loading in custom_components/ramses_extras/framework/www/main.js
 ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
-
+### device simulator card: use basic card ? or make sure it only enables when extras is fully loaded like the other cards
+### add tests: device_unavailability and hvac_device_loss
 
 ---
 

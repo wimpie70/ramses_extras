@@ -78,6 +78,8 @@ class DeviceSimulatorCard extends LitElement {
     this._scenarioState = "idle";
     this._activeScenario = null;
     this._newCodeInput = {};
+    this._profileSpeed = {};
+    this._profileNotice = null;
   }
 
   setConfig(config) {
@@ -114,13 +116,21 @@ class DeviceSimulatorCard extends LitElement {
   }
 
   async _loadProfile(name) {
-    await this.hass.callWS({
+    const speed = this._profileSpeed[name] ?? 1.0;
+    const result = await this.hass.callWS({
       type: "ramses_extras/device_simulator/load_profile",
       profile: name,
+      speed,
     });
     this._activeProfile = name;
     this._scenarioState = "idle";
     this._activeScenario = null;
+    if (result?.actions?.includes("reloading_ramses_cc")) {
+      this._profileNotice = "ramses_cc is reloading — wait a few seconds before starting scenarios.";
+      setTimeout(() => { this._profileNotice = null; this.requestUpdate(); }, 5000);
+    } else {
+      this._profileNotice = null;
+    }
     await new Promise((r) => setTimeout(r, 300));
     await this._fetchData();
   }
@@ -210,14 +220,32 @@ class DeviceSimulatorCard extends LitElement {
               (p) => html`
                 <div class="card ${this._activeProfile === p.name ? "active" : ""}">
                   <div><strong>${p.name}</strong></div>
-                  <div style="font-size: 0.85em; color: var(--secondary-text-color);">${p.description || "No description"}</div>
-                  <div style="margin-top: 8px;">
+                  <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-bottom: 8px;">${p.description || "No description"}</div>
+                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <label style="font-size: 0.8em;">Speed:</label>
+                    <select
+                      style="font-size: 0.8em; padding: 2px 4px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color);"
+                      .value="${String(this._profileSpeed[p.name] ?? 1.0)}"
+                      @change="${(e) => { this._profileSpeed = { ...this._profileSpeed, [p.name]: parseFloat(e.target.value) }; }}"
+                    >
+                      ${(p.speed_options || [1.0, 0.1, 0.01]).map((s) => html`
+                        <option value="${s}" ?selected="${(this._profileSpeed[p.name] ?? 1.0) === s}">
+                          ${s === 1.0 ? "1× (normal)" : s === 0.1 ? "10× faster" : s === 0.01 ? "100× faster" : s + "×"}
+                        </option>
+                      `)}
+                    </select>
                     <button class="btn btn-primary" @click="${() => this._loadProfile(p.name)}">Load</button>
                   </div>
                 </div>
               `
             )}
       </div>
+      ${this._profileNotice ? html`
+        <div style="margin-top: 12px; padding: 8px 12px; background: var(--warning-color, #ff9800); color: white; border-radius: 6px; font-size: 0.85em; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <span>⚠️ ${this._profileNotice}</span>
+          <button @click="${() => { this._profileNotice = null; }}" style="background: none; border: none; color: white; cursor: pointer; font-size: 1.1em; line-height: 1; padding: 0 2px;">✕</button>
+        </div>
+      ` : ""}
       <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--divider-color);">
         <div style="font-size: 0.85em; font-weight: 600; margin-bottom: 8px; color: var(--secondary-text-color);">RAMSES CC CACHE</div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">

@@ -36,6 +36,7 @@ class SystemConfigProfile:
     heartbeat_timeout_override_seconds: float | None = None
     device_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     scenario_hooks: dict[str, list[str]] = field(default_factory=dict)
+    speed_options: list[float] = field(default_factory=lambda: [1.0, 0.1, 0.01])
 
     def to_dict(self) -> dict[str, Any]:
         """Convert profile to dictionary."""
@@ -56,14 +57,11 @@ class ConfigProfileStore:
 
     # Built-in profile names
     BUILTIN_PROFILES = {
-        "normal": "Normal operation (1x speed)",
-        "fast_test": "Fast testing (10x speed)",
-        "instant": "Instant responses (100x speed)",
-        "heat_only": "Heat devices only",
-        "hvac_only": "HVAC devices only",
-        "mixed": "Mixed heat + HVAC",
-        "device_unavailability": "Test device timeout/unavailability",
-        "hvac_device_loss": "FAN stops emitting mid-run",
+        "normal": "Normal HVAC/heat environment",
+        "hvac_only": "HVAC devices only (FAN, CO2, HUM, REM)",
+        "heat_only": "Heat devices only (CTL, TRV, DHW)",
+        "mixed": "Mixed heat + HVAC environment",
+        "fresh_start": "Clean slate, re-discover all devices",
     }
 
     def __init__(self, config_dir: Path | None = None) -> None:
@@ -88,32 +86,8 @@ class ConfigProfileStore:
         """Initialize built-in system configuration profiles."""
         self._profiles["normal"] = SystemConfigProfile(
             name="normal",
-            description="Normal operation with standard timeouts",
+            description="Normal HVAC/heat environment, standard timeouts",
             timeout_scale=1.0,
-        )
-
-        self._profiles["fast_test"] = SystemConfigProfile(
-            name="fast_test",
-            description="Fast testing with 10x speedup",
-            timeout_scale=0.1,  # 10x faster
-        )
-
-        self._profiles["instant"] = SystemConfigProfile(
-            name="instant",
-            description="Instant responses for debugging",
-            timeout_scale=0.01,  # 100x faster
-        )
-
-        self._profiles["heat_only"] = SystemConfigProfile(
-            name="heat_only",
-            description="Heat devices only (CTL, TRV, DHW, etc.)",
-            timeout_scale=1.0,
-            device_configs={
-                "FAN": {"enabled": False},
-                "CO2": {"enabled": False},
-                "HUM": {"enabled": False},
-                "REM": {"enabled": False},
-            },
         )
 
         self._profiles["hvac_only"] = SystemConfigProfile(
@@ -128,36 +102,28 @@ class ConfigProfileStore:
             },
         )
 
+        self._profiles["heat_only"] = SystemConfigProfile(
+            name="heat_only",
+            description="Heat devices only (CTL, TRV, DHW, etc.)",
+            timeout_scale=1.0,
+            device_configs={
+                "FAN": {"enabled": False},
+                "CO2": {"enabled": False},
+                "HUM": {"enabled": False},
+                "REM": {"enabled": False},
+            },
+        )
+
         self._profiles["mixed"] = SystemConfigProfile(
             name="mixed",
             description="Mixed heat and HVAC environment",
             timeout_scale=1.0,
         )
 
-        self._profiles["device_unavailability"] = SystemConfigProfile(
-            name="device_unavailability",
-            description="Simulate device going offline (timeout test)",
-            timeout_scale=0.1,  # Fast timeouts
-            scenario_hooks={
-                "30s": ["disable_all_devices"],
-                "60s": ["enable_all_devices"],
-            },
-        )
-
-        self._profiles["hvac_device_loss"] = SystemConfigProfile(
-            name="hvac_device_loss",
-            description="FAN stops emitting mid-run",
-            timeout_scale=1.0,
-            scenario_hooks={
-                "30s": ["disable_device:37:168270"],  # FAN stops
-                "60s": ["enable_device:37:168270"],  # FAN resumes
-            },
-        )
-
         self._profiles["fresh_start"] = SystemConfigProfile(
             name="fresh_start",
             description=(
-                "Clean slate: only HGI gateway known, all devices discovered fresh"
+                "Clean slate: only HGI gateway known, re-discover all devices"
             ),
             timeout_scale=1.0,
             device_configs={

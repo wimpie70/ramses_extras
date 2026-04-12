@@ -729,6 +729,14 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 - Devices tab is empty until an `autonomous_emissions` scenario is started (devices only appear in `_active_devices` after activation)
 - Discovery/timeout/flooding scenarios are still stubs in `scenario_engine.py`
 - Scenarios in the card map to `scenario_type` values: `autonomous_emissions`, `discovery_test`, `timeout_test`, `flooding_test`
+- `device_unavailability` and `hvac_device_loss` removed from profiles — should be implemented as scenario types
+- `timeout_scale` patching silently fails (ramses_rf.const not importable in HA container) — needs investigation
+
+**Pending (noted for later)**:
+- [ ] **Fix timeout_scale**: Debug `ramses_rf.const` import failure in HA container; make speed selection functional
+- [ ] **Implement `device_unavailability` scenario type**: asyncio timed task that disables all devices after N seconds then re-enables
+- [ ] **Implement `hvac_device_loss` scenario type**: asyncio timed task that disables a specific device mid-run
+- [ ] **Devices tab: show profile known devices** with source badges (profile / active / discovered)
 
 **Done When**: All card features functional with WebSocket handlers.
 
