@@ -176,9 +176,12 @@ class DeviceSimulatorCard extends LitElement {
     return html`
       <ha-card>
         <div class="header">
-          <div class="title">🔌 ${this.config?.title || "Device Simulator"}</div>
-          <div class="badge ${this._scenarioState === "running" ? "running" : this._activeProfile ? "active" : ""}">
-            ${this._scenarioState === "running" ? "Running" : this._activeProfile ? "Active" : "Idle"}
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div class="title">🔌 ${this.config?.title || "Device Simulator"}</div>
+            ${this._activeProfile ? html`<div style="font-size: 0.8em; color: var(--secondary-text-color);">Profile: <strong>${this._activeProfile}</strong></div>` : ""}
+          </div>
+          <div class="badge ${this._scenarioState === "running" ? "running" : this._devices.length > 0 ? "active" : ""}" title="${this._scenarioState === "running" ? "Scenario running" : this._devices.length > 0 ? "Devices emitting" : "No active devices"}">
+            ${this._scenarioState === "running" ? "Running" : this._devices.length > 0 ? `${this._devices.filter(d=>d.enabled).length} active` : "Idle"}
           </div>
         </div>
 
@@ -257,14 +260,6 @@ class DeviceSimulatorCard extends LitElement {
           <button @click="${() => { this._profileNotice = null; }}" style="background: none; border: none; color: white; cursor: pointer; font-size: 1.1em; line-height: 1; padding: 0 2px;">✕</button>
         </div>
       ` : ""}
-      <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--divider-color);">
-        <div style="font-size: 0.85em; font-weight: 600; margin-bottom: 8px; color: var(--secondary-text-color);">RAMSES CC CACHE</div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button class="btn btn-secondary" @click="${() => this._clearCache({ clearSchema: true, clearPackets: false })}">Clear Schema</button>
-          <button class="btn btn-danger" @click="${() => this._clearCache({ clearSchema: true, clearPackets: true })}">Clear All Packets</button>
-        </div>
-        <div style="font-size: 0.75em; color: var(--secondary-text-color); margin-top: 6px;">Restart ramses_cc after clearing to apply changes.</div>
-      </div>
     `;
   }
 
@@ -322,16 +317,25 @@ class DeviceSimulatorCard extends LitElement {
     }
   }
 
+  _knownList() {
+    const profile = this._profiles.find((p) => p.name === this._activeProfile);
+    return profile?.known_list || {};
+  }
+
   _renderDevices() {
     if (this._devices.length === 0) {
-      return html`<div style="color: var(--secondary-text-color); padding: 16px;">No active devices. Start an autonomous emissions scenario first.</div>`;
+      return html`<div style="color: var(--secondary-text-color); padding: 8px 0;">No active devices. Start an autonomous emissions scenario first.</div>`;
     }
+    const knownList = this._knownList();
     return html`
       <div class="grid">
         ${this._devices.map(
           (d) => html`
             <div class="card">
-              <div><strong>${d.id}</strong> <span style="color: var(--secondary-text-color); font-size: 0.85em;">${d.type}</span></div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div><strong>${d.id}</strong> <span style="color: var(--secondary-text-color); font-size: 0.85em;">${d.type}</span></div>
+                ${knownList[d.id] ? html`<span style="padding: 1px 6px; border-radius: 10px; font-size: 0.7em; font-weight: 600; background: var(--primary-color); color: white;">known</span>` : ""}
+              </div>
               <div class="device-actions">
                 <label class="toggle">
                   <ha-switch

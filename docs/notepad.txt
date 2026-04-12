@@ -76,22 +76,25 @@ Log errors if not configured.
 
 ### check framework for feature specific code that needs to be moved to it's features
 ### Ramses Packet Log explorer: auto mode seem to be broken
-### make dynamic card loading in custom_components/ramses_extras/framework/www/main.js
+### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
-### device simulator card: use basic card ? or make sure it only enables when extras is fully loaded like the other cards
-### add tests: device_unavailability and hvac_device_loss
+### device simulator card: use base card ? or make sure it only enables when extras is fully loaded like the other cards
+### test scenarios: device_unavailability and hvac_device_loss
+### profiles: add ability to import/export/edit profiles from editfield,
+especcially the known device list, can we store our profiles in a yaml file ???
+### scenarios: add auto-answer functionality to scenarios
+
+### scenarios: autonomous emissions -> let devices emit messages autonomously, from a list of possible messages, eg, change temperature, etc....
+we should be able to import (edit field and/or pick from (dedicated) folder) ramses.log style files
+### sim: active top-right pill stays green, what is it indicating  ???
+
 
 ---
 
-service: ramses_extras.device_simulator_run_scenario
-data:
-  scenario_type: autonomous_emissions
-  params:
-    device_id: "32:153289"
-    device_type: "FAN"
-
-service: ramses_extras.device_simulator_stop_scenario
-data:
-  scenario_id: autonomous_emissions
-  device_id: "32:153289"
+- on devices, we can just add a 'in known devices' indicator for each device, no separate section needed.
+- the active profile can be listed on the top section (visible on all tabs)
+- active top-right pill stays green, what is it indicating  ???
+- on profiles, we can remove the ramses CC cache section (no longer need it separate?)
+- when activating hvac_only, (after fresh_start) it takes a long time before the new devices
+ are created check the logs for the flow (big log, so search for fresh_start & hvac_only to find the starts)

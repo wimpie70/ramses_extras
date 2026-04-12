@@ -131,6 +131,7 @@ class ConfigProfileStore:
             timeout_scale=1.0,
             device_configs={
                 "_known_list": _known_list(*hvac_devices, *heat_devices),
+                "_enforce_known_list": {"enabled": True},
             },
         )
 
@@ -140,6 +141,7 @@ class ConfigProfileStore:
             timeout_scale=1.0,
             device_configs={
                 "_known_list": _known_list(*hvac_devices),
+                "_enforce_known_list": {"enabled": True},
             },
         )
 
@@ -149,6 +151,7 @@ class ConfigProfileStore:
             timeout_scale=1.0,
             device_configs={
                 "_known_list": _known_list(*heat_devices),
+                "_enforce_known_list": {"enabled": True},
             },
         )
 
@@ -158,6 +161,7 @@ class ConfigProfileStore:
             timeout_scale=1.0,
             device_configs={
                 "_known_list": _known_list(*hvac_devices, *heat_devices),
+                "_enforce_known_list": {"enabled": True},
             },
         )
 
@@ -168,8 +172,8 @@ class ConfigProfileStore:
             ),
             timeout_scale=1.0,
             device_configs={
-                "_known_list": {"18:001234": {"class": "HGI"}},
-                "_clear_cache_on_load": {"enabled": True},
+                "_known_list": _HGI_ENTRY,
+                "_enforce_known_list": {"enabled": True},
             },
         )
 
@@ -304,11 +308,29 @@ class ConfigProfileStore:
 _original_timeout_values: dict[str, float] | None = None
 
 
+# Heartbeat timeout constant names in ramses_rf.const (as of current ramses_rf)
+_HEARTBEAT_CONST_NAMES = [
+    "HEARTBEAT_TIMEOUT_DEFAULT",
+    "HEARTBEAT_TIMEOUT_OTB",
+    "HEARTBEAT_TIMEOUT_TRV",
+    "HEARTBEAT_TIMEOUT_REMOTE",
+    "HEARTBEAT_TIMEOUT_SENSOR",
+    "GATEWAY_MESSAGE_TIMEOUT",
+]
+
+# Consumer modules that import the constants by value (must also be patched)
+_HEARTBEAT_CONSUMER_MODULES = [
+    "ramses_rf.device.base",
+    "ramses_rf.device.heat",
+    "ramses_rf.device.hvac",
+]
+
+
 def apply_timeout_scale(scale: float) -> bool:
     """Apply timeout scaling to ramses_rf constants.
 
-    Patches ramses_rf.const module constants to scale timeouts.
-    This should be called before ramses_cc processes any messages.
+    Patches ramses_rf.const module constants and all consumer device modules
+    that import them by value, to scale timeouts.
 
     :param scale: Scale factor (0.01 = 100x faster, 1.0 = normal)
     :return: True if applied successfully
@@ -316,34 +338,50 @@ def apply_timeout_scale(scale: float) -> bool:
     global _original_timeout_values
 
     try:
-        # Import ramses_rf constants module
-        from ramses_rf.const import (
-            DEFAULT_HEARTBEAT_INTERVAL,
-            DEFAULT_HEARTBEAT_TIMEOUT,
-        )
+        import importlib
+        import importlib.util
+        import sys
 
-        # Store original values if not already stored
-        if _original_timeout_values is None:
-            _original_timeout_values = {
-                "DEFAULT_HEARTBEAT_INTERVAL": DEFAULT_HEARTBEAT_INTERVAL,
-                "DEFAULT_HEARTBEAT_TIMEOUT": DEFAULT_HEARTBEAT_TIMEOUT,
-            }
-
-        # Apply scaling
         import ramses_rf.const as const_module
 
-        const_module.DEFAULT_HEARTBEAT_INTERVAL = (
-            _original_timeout_values["DEFAULT_HEARTBEAT_INTERVAL"] * scale
-        )
-        const_module.DEFAULT_HEARTBEAT_TIMEOUT = (
-            _original_timeout_values["DEFAULT_HEARTBEAT_TIMEOUT"] * scale
-        )
+        # Store originals once
+        if _original_timeout_values is None:
+            _original_timeout_values = {
+                name: getattr(const_module, name)
+                for name in _HEARTBEAT_CONST_NAMES
+                if hasattr(const_module, name)
+            }
+
+        if not _original_timeout_values:
+            LOGGER.warning(
+                "SystemConfig: no known heartbeat constants found in ramses_rf.const"
+            )
+            return False
+
+        # Patch const module
+        for name, orig in _original_timeout_values.items():
+            setattr(const_module, name, orig * scale)
+
+        # Patch consumer modules (they imported the values by reference at load time)
+        for mod_name in _HEARTBEAT_CONSUMER_MODULES:
+            mod = sys.modules.get(mod_name) or (
+                importlib.import_module(mod_name)
+                if importlib.util.find_spec(mod_name)
+                else None
+            )
+            if mod is None:
+                continue
+            for name, orig in _original_timeout_values.items():
+                if hasattr(mod, name):
+                    setattr(mod, name, orig * scale)
 
         LOGGER.info(
-            "SystemConfig: applied timeout scale %.3f (interval=%.1fs, timeout=%.1fs)",
+            "SystemConfig: applied timeout scale %.3f (%s)",
             scale,
-            const_module.DEFAULT_HEARTBEAT_INTERVAL,
-            const_module.DEFAULT_HEARTBEAT_TIMEOUT,
+            ", ".join(
+                f"{n}={getattr(const_module, n)}"
+                for n in list(_original_timeout_values)[:2]
+            ),
         )
         return True
 
@@ -360,16 +398,25 @@ def restore_default_timeouts() -> bool:
 
     :return: True if restored successfully
     """
-    if not hasattr(apply_timeout_scale, "_original_values"):
+    if not _original_timeout_values:
         LOGGER.debug("SystemConfig: no original values to restore")
         return False
 
     try:
+        import sys
+
         import ramses_rf.const as const_module
 
-        original = apply_timeout_scale._original_values
-        const_module.DEFAULT_HEARTBEAT_INTERVAL = original["DEFAULT_HEARTBEAT_INTERVAL"]
-        const_module.DEFAULT_HEARTBEAT_TIMEOUT = original["DEFAULT_HEARTBEAT_TIMEOUT"]
+        for name, orig in _original_timeout_values.items():
+            setattr(const_module, name, orig)
+
+        for mod_name in _HEARTBEAT_CONSUMER_MODULES:
+            mod = sys.modules.get(mod_name)
+            if mod is None:
+                continue
+            for name, orig in _original_timeout_values.items():
+                if hasattr(mod, name):
+                    setattr(mod, name, orig)
 
         LOGGER.info("SystemConfig: restored default timeouts")
         return True

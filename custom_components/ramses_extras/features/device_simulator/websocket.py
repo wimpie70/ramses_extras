@@ -27,6 +27,7 @@ from homeassistant.core import callback
 from .const import DOMAIN, LOGGER
 from .system_config import SIM_DEVICE_ID
 
+# Used by ws_clear_ramses_cache
 RAMSES_CC_STORAGE_KEY = "ramses_cc"
 RAMSES_CC_STORAGE_VERSION = 1
 SZ_CLIENT_STATE = "client_state"
@@ -344,6 +345,7 @@ def ws_get_ui_status(
                         "description": p.description,
                         "timeout_scale": p.timeout_scale,
                         "speed_options": p.speed_options,
+                        "known_list": p.device_configs.get("_known_list", {}),
                     }
                 )
 
@@ -408,6 +410,8 @@ def ws_get_ui_status(
         },
     ]
 
+    active_profile = ra.get("device_simulator_active_profile")
+
     connection.send_result(
         msg["id"],
         {
@@ -415,7 +419,7 @@ def ws_get_ui_status(
             "devices": devices,
             "scenarios": scenarios,
             "stats": stats,
-            "active_profile": None,
+            "active_profile": active_profile,
             "scenario_state": "idle",
         },
     )
@@ -453,15 +457,18 @@ async def ws_load_profile(
 
     actions: list[str] = []
 
-    # 1. Stop all active devices in the engine
+    # 1. Stop all active devices in the engine; remember which were active
     engine = ra.get("device_simulator_engine")
+    previously_active: set[str] = set()
     if engine:
+        previously_active = set(engine._active_devices.keys())
         await engine.async_stop_all()
         actions.append("stopped_devices")
 
-    # 2. (Cache clearing is handled post-unload in _reload_ramses_cc below)
-
-    # 3. Update ramses_cc known_list options if profile defines one
+    # 2. Update ramses_cc known_list + enforce_known_list from profile.
+    # enforce_known_list=True causes ramses_cc's _get_saved_packets to
+    # automatically filter out any cached packets whose devices are not in the
+    # known_list — no manual HA store or ramses.db wipe needed.
     known_list = profile.device_configs.get("_known_list")
     if known_list is not None:
         try:
@@ -470,73 +477,115 @@ async def ws_load_profile(
                 entry = ramses_cc_entries[0]
                 new_options = dict(entry.options)
                 new_options["known_list"] = known_list
-                hass.config_entries.async_update_entry(entry, options=new_options)
+
+                # Apply _enforce_known_list from profile into the nested ramses_rf dict
+                enforce = bool(profile.device_configs.get("_enforce_known_list", False))
+                ramses_rf_opts = dict(new_options.get("ramses_rf", {}))
+                ramses_rf_opts["enforce_known_list"] = enforce
+                new_options["ramses_rf"] = ramses_rf_opts
+
+                # Update options directly without firing update_listeners.
+                # async_update_entry triggers async_update_listener in ramses_cc
+                # which starts its own reload before our controlled one.
+                from types import MappingProxyType
+
+                object.__setattr__(entry, "options", MappingProxyType(new_options))
                 actions.append("updated_known_list")
                 LOGGER.info(
-                    "Profile load: updated ramses_cc known_list: %s", known_list
+                    "Profile load: known_list=%s enforce_known_list=%s",
+                    list(known_list.keys()),
+                    enforce,
                 )
 
-                clear_db = bool(profile.device_configs.get("_clear_cache_on_load"))
+                async def _reload_ramses_cc(
+                    entry_id: str,
+                    wipe_schema: bool,
+                    auto_start_devices: dict[str, dict],
+                ) -> None:
+                    """Unload ramses_cc, set up again, auto-start new devices."""
+                    import asyncio
 
-                async def _reload_ramses_cc(entry_id: str, wipe_db: bool) -> None:
-                    """Unload ramses_cc, wipe caches, then set up again."""
                     from homeassistant.helpers import device_registry as dr
                     from homeassistant.helpers.storage import Store as HaStore
 
                     await hass.config_entries.async_unload(entry_id)
 
-                    if wipe_db:
-                        # Remove all HA device registry entries for this config entry
-                        # so stale devices don't linger in the UI after a fresh start
+                    if wipe_schema:
+                        # Remove stale HA device registry entries so old sim
+                        # devices don't linger in the UI after a profile switch.
                         dev_reg = dr.async_get(hass)
-                        stale_devices = dr.async_entries_for_config_entry(
-                            dev_reg, entry_id
-                        )
-                        for device in stale_devices:
-                            dev_reg.async_remove_device(device.id)
-                        if stale_devices:
+                        stale = dr.async_entries_for_config_entry(dev_reg, entry_id)
+                        for dev in stale:
+                            dev_reg.async_remove_device(dev.id)
+                        if stale:
                             LOGGER.info(
                                 "Profile load: removed %d stale HA devices",
-                                len(stale_devices),
+                                len(stale),
                             )
 
-                    if wipe_db:
-                        # Clear HA store AFTER unload so save-on-unload is overwritten
+                        # Unload triggers async_save_client_state which writes sim
+                        # device IDs into the schema. Clear them now so setup doesn't
+                        # fail with "device is in schema but not in known_list".
                         try:
                             ha_store: HaStore = HaStore(
-                                hass, RAMSES_CC_STORAGE_VERSION, RAMSES_CC_STORAGE_KEY
+                                hass,
+                                RAMSES_CC_STORAGE_VERSION,
+                                RAMSES_CC_STORAGE_KEY,
                             )
                             stored: dict[str, Any] = await ha_store.async_load() or {}
-                            if SZ_CLIENT_STATE in stored:
-                                stored[SZ_CLIENT_STATE].pop(SZ_SCHEMA, None)
-                                stored[SZ_CLIENT_STATE].pop(SZ_PACKETS, None)
+                            client_state = stored.get(SZ_CLIENT_STATE, {})
+                            if SZ_SCHEMA in client_state:
+                                client_state.pop(SZ_SCHEMA)
                                 await ha_store.async_save(stored)
                                 LOGGER.info(
-                                    "Profile load: cleared HA store after unload"
+                                    "Profile load: cleared HA store schema after unload"
                                 )
                         except Exception as err:  # noqa: BLE001
                             LOGGER.warning(
-                                "Profile load: could not clear HA store: %s", err
-                            )
-
-                        # Delete ramses.db after unload
-                        # (final SQLite snapshot already written)
-                        db_path = Path(hass.config.config_dir) / "ramses.db"
-                        try:
-                            if db_path.exists():
-                                db_path.unlink()
-                                LOGGER.info(
-                                    "Profile load: deleted %s after unload", db_path
-                                )
-                        except Exception as err:  # noqa: BLE001
-                            LOGGER.warning(
-                                "Profile load: could not delete ramses.db: %s", err
+                                "Profile load: could not clear HA store schema: %s",
+                                err,
                             )
 
                     await hass.config_entries.async_setup(entry_id)
 
+                    # Auto-start autonomous emissions for new known-list devices.
+                    # Brief delay lets ramses_cc finish MQTT reconnect so the
+                    # first emitted packets are actually processed.
+                    if auto_start_devices:
+                        _engine = ra.get("device_simulator_engine")
+                        if _engine:
+                            await asyncio.sleep(3)
+                            from .scenario_engine import ActiveDevice
+
+                            for dev_id, dev_cfg in auto_start_devices.items():
+                                slug = dev_cfg.get("class", "FAN")
+                                device = ActiveDevice(
+                                    device_id=dev_id,
+                                    slug=slug,
+                                    variant_id="default",
+                                    excluded_codes=["1FC9"],
+                                    suppress_autonomous=False,
+                                    suppress_responses=False,
+                                    enabled=True,
+                                )
+                                await _engine.async_activate_device(device)
+                                LOGGER.info(
+                                    "Profile load: auto-started %s (%s)",
+                                    dev_id,
+                                    slug,
+                                )
+
+                # Only auto-start devices that weren't already active before
+                # this profile load — avoids re-flooding on repeated loads.
+                auto_start = {
+                    dev_id: cfg
+                    for dev_id, cfg in known_list.items()
+                    if cfg.get("class") != "HGI" and dev_id not in previously_active
+                }
                 if msg.get("reload_ramses_cc", True):
-                    hass.async_create_task(_reload_ramses_cc(entry.entry_id, clear_db))
+                    hass.async_create_task(
+                        _reload_ramses_cc(entry.entry_id, enforce, auto_start)
+                    )
                     actions.append("reloading_ramses_cc")
                 else:
                     actions.append("skipped_reload")
@@ -547,7 +596,12 @@ async def ws_load_profile(
                 "Profile load: could not update ramses_cc known_list: %s", err
             )
 
-    # 4. Apply timeout scale (msg speed override takes precedence)
+    # 4. Track active profile
+    hass.data.setdefault("ramses_extras", {})["device_simulator_active_profile"] = (
+        profile.name
+    )
+
+    # 5. Apply timeout scale (msg speed override takes precedence)
     scale = msg.get("speed", profile.timeout_scale)
     apply_timeout_scale(scale)
     actions.append(f"timeout_scale={scale}")
