@@ -248,21 +248,17 @@ async def create_device_simulator_feature(
     except Exception as err:
         _LOGGER.error("Failed to send initial HGI packet: %s", err)
 
+    # Create periodic emitter but don't auto-start it
+    # Autonomous emissions are now scenario-controlled only
     if "device_simulator_periodic_emitter" not in registry:
         registry["device_simulator_periodic_emitter"] = PeriodicEmitter(
             registry["device_simulator_db"],
             registry["device_simulator_endpoint"],
         )
-        await registry["device_simulator_periodic_emitter"].start()
-
-    # Add default FAN device for testing (sends I frames so ramses_cc discovers it)
-    _LOGGER.info("Adding default FAN device 32:153289 to periodic emitter...")
-    periodic_emitter = registry["device_simulator_periodic_emitter"]
-    periodic_emitter.add_device(
-        device_id="32:153289",
-        device_type="FAN",
-        variant_id="default",
-    )
+        # Note: Not starting here - scenarios control emissions
+        _LOGGER.info(
+            "Periodic emitter created (not auto-started - scenario controlled)"
+        )
 
     if "device_simulator_engine" not in registry:
         registry["device_simulator_engine"] = ScenarioEngine(

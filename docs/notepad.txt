@@ -79,3 +79,18 @@ Log errors if not configured.
 ### make dynamic card loading in custom_components/ramses_extras/framework/www/main.js
 ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
+
+
+---
+
+service: ramses_extras.device_simulator_run_scenario
+data:
+  scenario_type: autonomous_emissions
+  params:
+    device_id: "32:153289"
+    device_type: "FAN"
+
+service: ramses_extras.device_simulator_stop_scenario
+data:
+  scenario_id: autonomous_emissions
+  device_id: "32:153289"

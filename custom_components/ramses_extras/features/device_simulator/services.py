@@ -24,6 +24,7 @@ from custom_components.ramses_extras.const import DOMAIN as INTEGRATION_DOMAIN
 
 from .const import (
     LOGGER,
+    SCENARIO_AUTONOMOUS_EMISSIONS,
     SCENARIO_DEVICE_PLAYBACK,
     SCENARIO_DEVICE_SUITE,
     SCENARIO_DEVICE_UNAVAILABILITY,
@@ -59,6 +60,7 @@ SCHEMA_RUN_SCENARIO = vol.Schema(
     {
         vol.Required("scenario_type"): vol.In(
             [
+                SCENARIO_AUTONOMOUS_EMISSIONS,
                 SCENARIO_DEVICE_PLAYBACK,
                 SCENARIO_DEVICE_SUITE,
                 SCENARIO_DEVICE_UNAVAILABILITY,
@@ -74,6 +76,7 @@ SCHEMA_RUN_SCENARIO = vol.Schema(
 SCHEMA_STOP_SCENARIO = vol.Schema(
     {
         vol.Required("scenario_id"): str,
+        vol.Optional("device_id"): str,  # For stopping specific device emissions
     }
 )
 
@@ -152,6 +155,33 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         scenario_type = call.data["scenario_type"]
         params = call.data.get("params", {})
 
+        if scenario_type == SCENARIO_AUTONOMOUS_EMISSIONS:
+            # Start autonomous I frame emissions (e.g., for device discovery)
+            device_id = params.get("device_id", "32:153289")
+            device_type = params.get("device_type", "FAN")
+            variant_id = params.get("variant_id", "default")
+            # Default to silencing 1FC9 unless explicitly requested
+            excluded_codes = params.get("excluded_codes")
+            if excluded_codes is None:
+                excluded_codes = ["1FC9"]
+
+            device = ActiveDevice(
+                device_id=device_id,
+                slug=device_type,
+                variant_id=variant_id,
+                excluded_codes=excluded_codes,
+                suppress_autonomous=False,  # Enable autonomous
+                suppress_responses=False,
+                enabled=True,
+            )
+            await engine.async_activate_device(device)
+            return {
+                "success": True,
+                "scenario_id": SCENARIO_AUTONOMOUS_EMISSIONS,
+                "device_id": device_id,
+                "message": f"Autonomous emissions started for {device_id}",
+            }
+
         if scenario_type == SCENARIO_DEVICE_PLAYBACK:
             # Playback device messages from packet log
             log_file = params.get("log_file")
@@ -195,7 +225,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if not engine:
             return {"success": False, "error": "Engine not available"}
 
-        # TODO: Track scenarios by ID
+        scenario_id = call.data.get("scenario_id", "")
+        device_id = call.data.get("device_id")
+
+        # Handle autonomous_emissions scenario stop
+        if scenario_id == SCENARIO_AUTONOMOUS_EMISSIONS or device_id:
+            target_device = device_id or "32:153289"
+            await engine.async_silence_device(target_device)
+            return {
+                "success": True,
+                "message": f"Autonomous emissions stopped for {target_device}",
+            }
+
+        # TODO: Track other scenarios by ID for proper cleanup
         return {"success": True}
 
     async def handle_activate_device(call: ServiceCall) -> dict[str, Any]:

@@ -56,6 +56,13 @@ class DeviceSimulatorCard extends LitElement {
       .event-type.rx { background: var(--success-color-light); color: var(--success-color); }
       .event-type.tx { background: var(--info-color-light); color: var(--info-color); }
       .event-type.unavailable { background: var(--error-color-light); color: var(--error-color); }
+      .device-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+      .toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85em; }
+      .codes-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
+      .code-chip { display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; background: var(--secondary-background-color); border: 1px solid var(--divider-color); }
+      .code-chip button { background: none; border: none; cursor: pointer; padding: 0; font-size: 0.9em; color: var(--secondary-text-color); line-height: 1; }
+      .add-code { display: flex; gap: 4px; margin-top: 4px; }
+      .add-code input { padding: 3px 6px; border: 1px solid var(--divider-color); border-radius: 4px; font-size: 0.8em; width: 80px; background: var(--card-background-color); color: var(--primary-text-color); }
     `;
   }
 
@@ -68,6 +75,7 @@ class DeviceSimulatorCard extends LitElement {
     this._stats = { rx: 0, tx: 0, devices: 0, active: 0 };
     this._tab = "profiles";
     this._scenarioState = "idle";
+    this._newCodeInput = {};
   }
 
   setConfig(config) {
@@ -199,14 +207,101 @@ class DeviceSimulatorCard extends LitElement {
     `;
   }
 
+  async _toggleDeviceEnabled(deviceId, current) {
+    try {
+      await this.hass.callWS({
+        type: "ramses_extras/device_simulator/set_device_enabled",
+        device_id: deviceId,
+        enabled: !current,
+      });
+      this._devices = this._devices.map((d) =>
+        d.id === deviceId ? { ...d, enabled: !current } : d
+      );
+    } catch {
+      this._fetchData();
+    }
+  }
+
+  async _removeExcludedCode(deviceId, code) {
+    const device = this._devices.find((d) => d.id === deviceId);
+    if (!device) return;
+    const updated = device.excluded_codes.filter((c) => c !== code);
+    try {
+      await this.hass.callWS({
+        type: "ramses_extras/device_simulator/set_device_excluded_codes",
+        device_id: deviceId,
+        excluded_codes: updated,
+      });
+      this._devices = this._devices.map((d) =>
+        d.id === deviceId ? { ...d, excluded_codes: updated } : d
+      );
+    } catch {
+      this._fetchData();
+    }
+  }
+
+  async _addExcludedCode(deviceId) {
+    const code = (this._newCodeInput[deviceId] || "").trim().toUpperCase();
+    if (!code) return;
+    const device = this._devices.find((d) => d.id === deviceId);
+    if (!device || device.excluded_codes.includes(code)) return;
+    const updated = [...device.excluded_codes, code];
+    try {
+      await this.hass.callWS({
+        type: "ramses_extras/device_simulator/set_device_excluded_codes",
+        device_id: deviceId,
+        excluded_codes: updated,
+      });
+      this._devices = this._devices.map((d) =>
+        d.id === deviceId ? { ...d, excluded_codes: updated } : d
+      );
+      this._newCodeInput = { ...this._newCodeInput, [deviceId]: "" };
+    } catch {
+      this._fetchData();
+    }
+  }
+
   _renderDevices() {
+    if (this._devices.length === 0) {
+      return html`<div style="color: var(--secondary-text-color); padding: 16px;">No active devices. Start an autonomous emissions scenario first.</div>`;
+    }
     return html`
       <div class="grid">
         ${this._devices.map(
           (d) => html`
             <div class="card">
-              <div><strong>${d.id}</strong> (${d.type})</div>
-              <div style="font-size: 0.85em;">${d.enabled ? "✅ Enabled" : "❌ Disabled"}</div>
+              <div><strong>${d.id}</strong> <span style="color: var(--secondary-text-color); font-size: 0.85em;">${d.type}</span></div>
+              <div class="device-actions">
+                <label class="toggle">
+                  <ha-switch
+                    ?checked="${d.enabled}"
+                    @change="${() => this._toggleDeviceEnabled(d.id, d.enabled)}"
+                  ></ha-switch>
+                  <span>${d.enabled ? "Enabled" : "Disabled"}</span>
+                </label>
+              </div>
+              <div style="font-size: 0.8em; color: var(--secondary-text-color); margin-top: 8px;">Excluded codes:</div>
+              <div class="codes-row">
+                ${(d.excluded_codes || []).map(
+                  (code) => html`
+                    <span class="code-chip">
+                      ${code}
+                      <button @click="${() => this._removeExcludedCode(d.id, code)}" title="Remove">✕</button>
+                    </span>
+                  `
+                )}
+              </div>
+              <div class="add-code">
+                <input
+                  type="text"
+                  maxlength="4"
+                  placeholder="1FC9"
+                  .value="${this._newCodeInput[d.id] || ""}"
+                  @input="${(e) => { this._newCodeInput = { ...this._newCodeInput, [d.id]: e.target.value }; }}"
+                  @keydown="${(e) => e.key === "Enter" && this._addExcludedCode(d.id)}"
+                />
+                <button class="btn btn-primary" @click="${() => this._addExcludedCode(d.id)}">+ Exclude</button>
+              </div>
             </div>
           `
         )}

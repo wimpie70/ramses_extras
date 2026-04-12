@@ -73,6 +73,7 @@ SCENARIO_TIMEOUT_TEST = "timeout_test"
 SCENARIO_FLOODING_TEST = "flooding_test"
 SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
 SCENARIO_RUN_CONVERSATION = "run_conversation"
+SCENARIO_AUTONOMOUS_EMISSIONS = "autonomous_emissions"  # Start/stop autonomous I frames
 
 # Device DB subfolder names
 DB_SUBDIR_HEAT = "heat"

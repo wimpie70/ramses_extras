@@ -13,7 +13,6 @@ autonomous:
   interval_seconds: 5.4
   payloads:
   - 0031E096599B00129896599B002E1096599B0110E096599B001FC996599B
-  - '00'
   - 0022F1965FE10022F3965FE16710E0965FE1001FC9965FE1
   notes: Example payloads from regression file
 - code: '3120'
@@ -54,7 +53,6 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads:
-  - '00'
   - 0000EF
   - 00C8EF
   notes: Example payloads from regression file

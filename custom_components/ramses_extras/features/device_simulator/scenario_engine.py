@@ -55,7 +55,15 @@ _DEVICE_TYPE_MAP: dict[str, str] = {
 }
 
 _PACKET_RE = re.compile(
-    r"^[\d\-T:.]+\s+---\s+(\S+)\s+\S+\s+(\S+)\s+(\S+)\s+\S+\s+([0-9A-F]{4})\s+\d+\s+(\S+)",
+    # Match RAMSES frame format: RSSI VERB SEQ SRC DST BROADCAST CODE LEN PAYLOAD
+    # Example: 000 RP --- 32:153289 37:168270 --:------ 2411 023 0000010020002DCAAF00...
+    r"^(?:\d{3}|---)?\s*"  # Optional RSSI (3 digits or ---)
+    r"([ RQWI]{2,3})\s+"  # Verb (space-padded for 1-char, no pad for 2-char)
+    r"(?:\d{3}|---)\s+"  # SEQ (non-capturing)
+    r"([0-9:]{9})\s+"  # SRC
+    r"([0-9:]{9}|--:------)\s+"  # DST
+    r"(?:[0-9:]{9}|--:------)\s+"  # BROADCAST (non-capturing)
+    r"([0-9A-F]{4})\s+(?:\d{3})\s+([0-9A-F]+)$",  # CODE, LEN (non-capturing), PAYLOAD
     re.IGNORECASE,
 )
 
@@ -144,6 +152,16 @@ class ScenarioEngine:
 
         :param device: ActiveDevice descriptor.
         """
+        # If this device already has an emitter task running, stop it first so that
+        # any updated configuration (e.g. excluded codes) takes effect immediately.
+        existing_task = self._emitter_tasks.pop(device.device_id, None)
+        if existing_task:
+            existing_task.cancel()
+            try:
+                await existing_task
+            except asyncio.CancelledError:
+                pass
+
         if not device.enabled:
             return
 
@@ -328,7 +346,7 @@ class ScenarioEngine:
             return
 
         verb, src, dst, code, payload = match.groups()
-        verb = verb.upper()
+        verb = verb.upper().strip()  # Strip leading space from 1-char verbs like ' I'
 
         if verb != VERB_RQ:
             return
@@ -410,21 +428,32 @@ class ScenarioEngine:
 
     @staticmethod
     def _build_packet(src: str, dst: str, verb: str, code: str, payload: str) -> str:
-        """Build a minimal RAMSES packet string.
+        """Build a minimal RAMSES packet string for transmission.
 
-        Format: TIMESTAMP ---  VERB SRC DST --- CODE LEN PAYLOAD
+        Format: RSSI VERB SEQ SRC DST BROADCAST CODE LEN PAYLOAD
+        Example I frame: 082  I --- 32:153289 --:------ 32:153289 1FC9 030 003...
+        Example RP frame: 000 RP --- 32:153289 37:168270 --:------ 2411 023 000...
 
         :param src: Source device ID.
         :param dst: Destination device ID.
-        :param verb: Message verb.
+        :param verb: Message verb (I, RQ, RP, W).
         :param code: RAMSES code.
         :param payload: Hex payload.
         """
-        from datetime import datetime, timezone
-
-        ts = datetime.now(UTC).isoformat(timespec="microseconds")
         length = len(payload) // 2
-        return f"{ts} ---  {verb} --- {src} {dst} --- {code} {length:03d} {payload}"
+        # Determine RSSI: use 082 for I frames (typical), 000 for responses
+        rssi = "082" if verb == "I" else "000"
+        # Sequence number is not used in modern systems
+        seq = "---"
+        # Determine BROADCAST field: for I frames, BROADCAST = SRC;
+        # for others, --:------
+        broadcast = src if verb == "I" else "--:------"
+        # Spacing: 1-char verbs (I, W) have leading space to make them 2 chars
+        verb_formatted = f" {verb}" if len(verb) == 1 else verb
+        return (
+            f"{rssi} {verb_formatted} {seq} {src} {dst} {broadcast} {code} "
+            f"{length:03d} {payload}"
+        )
 
     @property
     def state(self) -> str:
