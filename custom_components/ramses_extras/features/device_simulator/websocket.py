@@ -426,6 +426,7 @@ def ws_get_ui_status(
         vol.Required("type"): "ramses_extras/device_simulator/load_profile",
         vol.Required("profile"): str,
         vol.Optional("speed"): vol.Coerce(float),
+        vol.Optional("reload_ramses_cc", default=True): bool,
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -534,8 +535,11 @@ async def ws_load_profile(
 
                     await hass.config_entries.async_setup(entry_id)
 
-                hass.async_create_task(_reload_ramses_cc(entry.entry_id, clear_db))
-                actions.append("reloading_ramses_cc")
+                if msg.get("reload_ramses_cc", True):
+                    hass.async_create_task(_reload_ramses_cc(entry.entry_id, clear_db))
+                    actions.append("reloading_ramses_cc")
+                else:
+                    actions.append("skipped_reload")
             else:
                 LOGGER.warning("Profile load: no ramses_cc config entry found")
         except Exception as err:  # noqa: BLE001

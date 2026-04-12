@@ -79,6 +79,7 @@ class DeviceSimulatorCard extends LitElement {
     this._activeScenario = null;
     this._newCodeInput = {};
     this._profileSpeed = {};
+    this._profileReload = {};
     this._profileNotice = null;
     this._scenarioParams = {};
   }
@@ -118,10 +119,12 @@ class DeviceSimulatorCard extends LitElement {
 
   async _loadProfile(name) {
     const speed = this._profileSpeed[name] ?? 1.0;
+    const reloadRf = this._profileReload[name] ?? true;
     const result = await this.hass.callWS({
       type: "ramses_extras/device_simulator/load_profile",
       profile: name,
       speed,
+      reload_ramses_cc: reloadRf,
     });
     this._activeProfile = name;
     this._scenarioState = "idle";
@@ -234,6 +237,14 @@ class DeviceSimulatorCard extends LitElement {
                         </option>
                       `)}
                     </select>
+                    <label style="font-size: 0.8em; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                      <input
+                        type="checkbox"
+                        .checked="${this._profileReload[p.name] ?? true}"
+                        @change="${(e) => { this._profileReload = { ...this._profileReload, [p.name]: e.target.checked }; }}"
+                      />
+                      Reload RF
+                    </label>
                     <button class="btn btn-primary" @click="${() => this._loadProfile(p.name)}">Load</button>
                   </div>
                 </div>
