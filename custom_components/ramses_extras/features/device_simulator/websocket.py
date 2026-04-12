@@ -25,6 +25,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import callback
 
 from .const import DOMAIN, LOGGER
+from .system_config import SIM_DEVICE_ID
 
 RAMSES_CC_STORAGE_KEY = "ramses_cc"
 RAMSES_CC_STORAGE_VERSION = 1
@@ -376,7 +377,7 @@ def ws_get_ui_status(
             "name": "Autonomous Emissions",
             "description": "Start periodic I frame emissions for a device",
             "scenario_type": "autonomous_emissions",
-            "params": {"device_id": "37:168270", "device_type": "FAN"},
+            "params": {"device_id": SIM_DEVICE_ID["FAN"], "device_type": "FAN"},
         },
         {
             "id": "discovery",
@@ -400,7 +401,7 @@ def ws_get_ui_status(
             "description": "Silence a specific device mid-run (optional restore)",
             "scenario_type": "hvac_device_loss",
             "params": {
-                "device_id": "37:168270",
+                "device_id": SIM_DEVICE_ID["FAN"],
                 "loss_after": 30,
                 "restore_after": 60,
             },

@@ -35,6 +35,7 @@ from .const import (
     SCENARIO_TIMEOUT_TEST,
 )
 from .scenario_engine import ActiveDevice, ScenarioEngine
+from .system_config import SIM_DEVICE_ID
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -159,7 +160,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         if scenario_type == SCENARIO_AUTONOMOUS_EMISSIONS:
             # Start autonomous I frame emissions (e.g., for device discovery)
-            device_id = params.get("device_id", "37:168270")
+            device_id = params.get("device_id", SIM_DEVICE_ID["FAN"])
             device_type = params.get("device_type", "FAN")
             variant_id = params.get("variant_id", "default")
             # Default to silencing 1FC9 unless explicitly requested
@@ -243,7 +244,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         # Handle autonomous_emissions scenario stop
         if scenario_id == SCENARIO_AUTONOMOUS_EMISSIONS or device_id:
-            target_device = device_id or "37:168270"
+            target_device = device_id or SIM_DEVICE_ID["FAN"]
             await engine.async_silence_device(target_device)
             return {
                 "success": True,

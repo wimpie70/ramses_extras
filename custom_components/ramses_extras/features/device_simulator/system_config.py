@@ -16,18 +16,37 @@ from typing import Any
 
 from .const import LOGGER, SIMULATOR_HGI_ID
 
-# Canonical simulated device IDs used across all profiles.
-# Prefixes match RAMSES device type codes: 37=FAN, 32=FAN(alt), 34=CO2,
-# 29=REM, 31=DIS, 22=CTL, 04=TRV, 07=OTB, 13=BDR
+# Canonical simulated device IDs used across profiles.
+# IDs are chosen to be clearly fake/sim-only (not real hardware).
 SIM_DEVICES: dict[str, dict[str, str]] = {
-    "FAN": {"id": "37:168270", "class": "FAN"},
-    "CO2": {"id": "34:093176", "class": "CO2"},
-    "REM": {"id": "29:151985", "class": "REM"},
-    "CTL": {"id": "22:064213", "class": "CTL"},
-    "TRV": {"id": "04:189078", "class": "TRV"},
-    "DHW": {"id": "07:036213", "class": "DHW"},
+    # HVAC (dev_type prefixes from ramses_tx fingerprints)
+    "FAN": {"id": "32:150000", "class": "FAN"},  # 32: Orcon MVS/VMD series
+    "CO2": {"id": "37:120000", "class": "CO2"},  # 37: VMS-12C39 / VMS-17C01
+    "HUM": {"id": "29:120000", "class": "HUM"},  # 29: VMS-17HB01
+    "REM": {"id": "37:170000", "class": "REM"},  # 37: VMI-15WSJ53
+    "DIS": {"id": "37:160000", "class": "DIS"},  # 37: same family as REM
+    "RFS": {"id": "30:150000", "class": "RFS"},  # 30: internet gateway / RFS
+    # Heat
+    "CTL": {"id": "01:150000", "class": "CTL"},  # 01: controller
+    "TRV": {"id": "04:150000", "class": "TRV"},  # 04: HR92 / HR91
+    "DHW": {"id": "07:150000", "class": "DHW"},  # 07: DHW sensor
+    "BDR": {"id": "13:150000", "class": "BDR"},  # 13: electrical relay
+    "OTB": {"id": "10:150000", "class": "OTB"},  # 10: OpenTherm bridge
+    "PRG": {"id": "23:150000", "class": "PRG"},  # 23: programmer
+    "UFC": {"id": "02:150000", "class": "UFC"},  # 02: UFH controller
+    "OUT": {"id": "17:150000", "class": "OUT"},  # 17: outdoor sensor
+    "DTS": {"id": "12:150000", "class": "DTS"},  # 12: digital thermostat
+    "HCW": {"id": "03:150000", "class": "HCW"},  # 03: analog thermostat
+    "RND": {"id": "34:150000", "class": "RND"},  # 34: round thermostat T87RF
+    "RFG": {"id": "30:160000", "class": "RFG"},  # 30: internet gateway (RFG)
+    "THM": {"id": "22:150000", "class": "THM"},  # 22: digital thermostat DT4
+    "JIM": {"id": "08:150000", "class": "JIM"},  # 08: Jasper interface
+    "JST": {"id": "31:150000", "class": "JST"},  # 31: Jasper thermostat
 }
 _HGI_ENTRY: dict[str, dict] = {SIMULATOR_HGI_ID: {"class": "HGI"}}
+
+# Flat slug → device_id lookup, e.g. SIM_DEVICE_ID["FAN"] == "32:150000"
+SIM_DEVICE_ID: dict[str, str] = {slug: info["id"] for slug, info in SIM_DEVICES.items()}
 
 
 @dataclass

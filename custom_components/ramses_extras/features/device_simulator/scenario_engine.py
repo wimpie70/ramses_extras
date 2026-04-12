@@ -38,22 +38,32 @@ from .const import (
     VERB_RQ,
 )
 from .device_db import AutonomousEntry, ConversationFrame, DeviceDatabase, ResponseEntry
+from .system_config import SIM_DEVICES
 
-# Device type mapping from device ID prefix (e.g., "37" -> FAN)
-# Used to auto-respond to RQs for discovered but not explicitly activated devices
-# NOTE: These should match ramses_cc known_list device types
+# Full device-ID → type map built from SIM_DEVICES (highest priority).
+# Prefix-only entries below act as fallback for non-sim devices.
 _DEVICE_TYPE_MAP: dict[str, str] = {
-    "37": "FAN",  # Fan (Orcon ventilation units)
-    "32": "FAN",  # Fan (some models like 32:153289)
-    "34": "CO2",  # CO2 sensor
-    "29": "REM",  # Remote
-    "31": "DIS",  # Display
-    "30": "RFS",  # RFS sensor
-    "22": "CTL",  # Controller
-    "01": "DHW",  # DHW sensor
-    "04": "TRV",  # TRV
-    "07": "OTB",  # OTB
-    "13": "BDR",  # BDR relay
+    # Sim device full IDs (prefix collision-safe)
+    **{info["id"]: info["class"] for info in SIM_DEVICES.values()},
+    # Generic prefix fallbacks for real/unknown devices (ramses_tx dev_type)
+    "01": "CTL",
+    "02": "UFC",
+    "03": "HCW",
+    "04": "TRV",
+    "07": "DHW",
+    "08": "JIM",
+    "10": "OTB",
+    "12": "DTS",
+    "13": "BDR",
+    "17": "OUT",
+    "22": "THM",
+    "23": "PRG",
+    "29": "REM",  # most common for REM/HUM/CO2/FAN(VMC)
+    "30": "RFG",
+    "31": "JST",
+    "32": "FAN",  # Orcon MVS/VMD
+    "34": "RND",
+    "37": "CO2",  # most common for CO2/REM/DIS/FAN(CVE)
 }
 
 _PACKET_RE = re.compile(
