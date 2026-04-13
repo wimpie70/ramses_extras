@@ -202,6 +202,7 @@ async def create_device_simulator_feature(
     # active profile before ramses_cc gets a chance to reload.
     if "device_simulator_config_store" not in hass.data["ramses_extras"]:
         config_store = ConfigProfileStore()
+        await config_store.async_initialize(hass)
         hass.data["ramses_extras"]["device_simulator_config_store"] = config_store
         _LOGGER.debug("Device Simulator: initialized config profile store")
 

@@ -114,9 +114,7 @@ class ConfigProfileStore:
         # Initialize built-in profiles
         self._init_builtin_profiles()
 
-        # Load user profiles and persisted state
-        self._load_user_profiles()
-        self._load_state()
+        # NOTE: file I/O is deferred — call async_initialize(hass) from async context
 
     def _init_builtin_profiles(self) -> None:
         """Initialize built-in system configuration profiles."""
@@ -184,6 +182,14 @@ class ConfigProfileStore:
         LOGGER.debug(
             "ConfigProfileStore: initialized %d built-in profiles", len(self._profiles)
         )
+
+    async def async_initialize(self, hass: object) -> None:
+        """Load user profiles and state from disk (runs I/O in executor)."""
+        import asyncio  # noqa: PLC0415
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._load_user_profiles)
+        await loop.run_in_executor(None, self._load_state)
 
     def _load_user_profiles(self) -> None:
         """Load user-defined profiles from disk."""

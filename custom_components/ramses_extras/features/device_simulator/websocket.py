@@ -67,7 +67,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
 def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
     """Get scenario engine from hass data."""
     registry = hass.data.get("ramses_extras", {})
-    return cast(ScenarioEngine | None, registry.get("device_simulator_engine"))
+    return cast("ScenarioEngine | None", registry.get("device_simulator_engine"))
 
 
 async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
@@ -96,7 +96,7 @@ async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
 def _get_db(hass: HomeAssistant) -> DeviceDatabase | None:
     """Get device database from hass data."""
     registry = hass.data.get("ramses_extras", {})
-    return cast(DeviceDatabase | None, registry.get("device_simulator_db"))
+    return cast("DeviceDatabase | None", registry.get("device_simulator_db"))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
