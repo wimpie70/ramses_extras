@@ -134,18 +134,17 @@ class ConfigProfileStore:
             }
             return {**_HGI_ENTRY, **entries}
 
-        # HVAC schema: bind FAN as the ventilation unit so ramses_cc creates an
-        # HvacVentilation zone entity with CO2/REM bound as sensors.
-        _hvac_schema: dict = {
-            "fans": {fan_id: {"co2_sensor": co2_id, "indoor_sensor": rem_id}}
-        }
+        # HVAC schema: FAN device ID is the top-level key (SCH_DEVICE_ID_ANY → SCH_VCS).
+        # remotes = REM devices, sensors = CO2/sensor devices.
+        _hvac_schema: dict = {fan_id: {"remotes": [rem_id], "sensors": [co2_id]}}
 
-        # Heat schema: CTL as controller, one zone with TRV, DHW sensor bound.
+        # Heat schema: CTL device ID is the top-level key (SCH_DEVICE_ID_CTL → SCH_TCS).
+        # zones: zone-index → {sensor: device_id}
+        # stored_hotwater: {sensor: device_id}
         _heat_schema: dict = {
-            "01": {
-                "controller": ctl_id,
+            ctl_id: {
                 "zones": {"00": {"sensor": trv_id}},
-                "dhw": {"sensor": dhw_id},
+                "stored_hotwater": {"sensor": dhw_id},
             }
         }
 
