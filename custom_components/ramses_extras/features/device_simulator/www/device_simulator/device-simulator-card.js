@@ -50,12 +50,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     super();
     this._profiles = [];
     this._devices = [];
-    this._scenarios = [];
+    this._scenarioRegistry = {};
+    this._runningScenarios = [];
+    this._autoAnswer = true;
     this._events = [];
     this._stats = { rx: 0, tx: 0, devices: 0, active: 0 };
     this._tab = "profiles";
-    this._scenarioState = "idle";
-    this._activeScenario = null;
     this._newCodeInput = {};
     this._profileSpeed = {};
     this._profileReload = {};
@@ -105,7 +105,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       });
       this._profiles = result.profiles || [];
       this._devices = result.devices || [];
-      this._scenarios = result.scenarios || [];
+      this._scenarioRegistry = result.scenario_registry || {};
+      this._runningScenarios = result.running_scenarios || [];
+      this._autoAnswer = result.auto_answer !== false;
       this._stats = result.stats || this._stats;
       this._activeProfile = result.active_profile;
       this._scheduleRender();
@@ -143,31 +145,34 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     await this._fetchData();
   }
 
-  async _startScenario(scenario) {
-    const overrides = this._scenarioParams[scenario.id] || {};
-    const params = { ...(scenario.params || {}), ...overrides };
+  async _startScenario(scenarioId) {
+    const overrides = this._scenarioParams[scenarioId] || {};
     await this._hass.callService(
       "ramses_extras",
       "device_simulator_run_scenario",
-      { scenario_type: scenario.scenario_type, params }
+      { scenario_type: scenarioId, params: overrides }
     );
-    this._scenarioState = "running";
-    this._activeScenario = scenario.id;
     await new Promise((r) => setTimeout(r, 500));
     await this._fetchData();
   }
 
-  async _stopScenario(scenario) {
+  async _stopScenario(scenarioId) {
     await this._hass.callService(
       "ramses_extras",
       "device_simulator_stop_scenario",
-      {
-        scenario_id: scenario ? scenario.scenario_type : "autonomous_emissions",
-        ...(scenario?.params?.device_id ? { device_id: scenario.params.device_id } : {}),
-      }
+      { scenario_id: scenarioId }
     );
-    this._scenarioState = "idle";
-    this._activeScenario = null;
+    await new Promise((r) => setTimeout(r, 300));
+    await this._fetchData();
+  }
+
+  async _setAutoAnswer(enabled) {
+    await this._hass.callWS({
+      type: "ramses_extras/device_simulator/set_auto_answer",
+      enabled,
+    });
+    this._autoAnswer = enabled;
+    this._scheduleRender();
     await new Promise((r) => setTimeout(r, 300));
     await this._fetchData();
   }
@@ -175,9 +180,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   // ========== RENDERING ==========
 
   _renderContent() {
-    const badgeClass = this._scenarioState === "running" ? "running" : this._devices.length > 0 ? "active" : "";
-    const badgeTitle = this._scenarioState === "running" ? "Scenario running" : this._devices.length > 0 ? "Devices emitting" : "No active devices";
-    const badgeText = this._scenarioState === "running" ? "Running" : this._devices.length > 0 ? `${this._devices.filter(d => d.enabled).length} active` : "Idle";
+    const hasRunning = this._runningScenarios.length > 0;
+    const badgeClass = hasRunning ? "running" : this._devices.length > 0 ? "active" : "";
+    const badgeTitle = hasRunning ? `Running: ${this._runningScenarios.join(", ")}` : this._devices.length > 0 ? "Devices emitting" : "No active devices";
+    const badgeText = hasRunning ? "Running" : this._devices.length > 0 ? `${this._devices.filter(d => d.enabled).length} active` : "Idle";
 
     this.shadowRoot.innerHTML = `
       <style>${CARD_STYLE}</style>
@@ -226,14 +232,15 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     });
 
     root.querySelectorAll("[data-action='start-scenario']").forEach(btn => {
-      const scenario = this._scenarios.find(s => s.id === btn.dataset.scenarioId);
-      if (scenario) btn.addEventListener("click", () => this._startScenario(scenario));
+      btn.addEventListener("click", () => this._startScenario(btn.dataset.scenarioId));
     });
 
     root.querySelectorAll("[data-action='stop-scenario']").forEach(btn => {
-      const scenario = this._scenarios.find(s => s.id === btn.dataset.scenarioId);
-      if (scenario) btn.addEventListener("click", () => this._stopScenario(scenario));
+      btn.addEventListener("click", () => this._stopScenario(btn.dataset.scenarioId));
     });
+
+    const aaToggle = root.querySelector("[data-action='toggle-auto-answer']");
+    if (aaToggle) aaToggle.addEventListener("change", (e) => this._setAutoAnswer(e.target.checked));
 
     root.querySelectorAll("[data-action='toggle-device']").forEach(el => {
       el.addEventListener("change", () => {
@@ -436,43 +443,77 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     }).join("")}</div>`;
   }
 
-  _buildScenarioParams(s) {
+  _buildScenarioParamsById(scenarioId) {
     const timedParams = {
       device_unavailability: ["silence_after", "resume_after"],
       hvac_device_loss: ["device_id", "loss_after", "restore_after"],
     };
-    const fields = timedParams[s.id];
+    const fields = timedParams[scenarioId];
     if (!fields) return "";
-    const overrides = this._scenarioParams[s.id] || {};
+    const overrides = this._scenarioParams[scenarioId] || {};
     const rows = fields.map((f) => {
-      const val = String(overrides[f] ?? (s.params?.[f] ?? ""));
-      return `
-        <label style="color: var(--secondary-text-color);">${f}:</label>
+      const val = String(overrides[f] ?? "");
+      return `<label style="color: var(--secondary-text-color);">${f}:</label>
         <input type="text"
           style="padding: 2px 6px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); font-size: 0.95em;"
-          data-action="scenario-param" data-scenario-id="${s.id}" data-field="${f}"
+          data-action="scenario-param" data-scenario-id="${scenarioId}" data-field="${f}"
           value="${val}" />`;
     }).join("");
     return `<div style="margin-top: 8px; display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; font-size: 0.8em;">${rows}</div>`;
   }
 
   _buildScenarios() {
-    return `<div class="grid">${this._scenarios.map((s) => {
-      const isRunning = this._scenarioState === "running" && this._activeScenario !== s.id;
-      const stopBtn = this._activeScenario === s.id
-        ? `<button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${s.id}">Stop</button>`
-        : "";
-      return `
-        <div class="card ${this._activeScenario === s.id ? "active" : ""}">
-          <div><strong>${s.name}</strong></div>
-          <div style="font-size: 0.85em; color: var(--secondary-text-color);">${s.description || ""}</div>
-          ${this._buildScenarioParams(s)}
-          <div style="margin-top: 8px; display: flex; gap: 8px;">
-            <button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${s.id}"${isRunning ? " disabled" : ""}>Start</button>
-            ${stopBtn}
-          </div>
-        </div>`;
-    }).join("")}</div>`;
+    const registry = this._scenarioRegistry;
+    const ids = Object.keys(registry);
+    if (!ids.length) return `<div style="color: var(--secondary-text-color); padding: 8px 0;">No scenarios available.</div>`;
+
+    const aaChecked = this._autoAnswer ? " checked" : "";
+    const aaCard = `
+      <div class="card ${this._autoAnswer ? "active" : ""}">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div><strong>Auto Answer (RQ&#8594;RP)</strong></div>
+          <label class="toggle">
+            <ha-switch data-action="toggle-auto-answer"${aaChecked}></ha-switch>
+          </label>
+        </div>
+        <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-top: 4px;">When off: simulator receives RQ frames but never replies &#8212; simulates broken ESP or powered-off device.</div>
+      </div>`;
+
+    const scenarioCards = ids
+      .filter(id => id !== "auto_answer")
+      .map((id) => {
+        const meta = registry[id];
+        const isRunning = this._runningScenarios.includes(id);
+        const conflicts = this._runningScenarios
+          .filter(r => r !== id)
+          .filter(r => {
+            const rm = registry[r] || {};
+            const rc = rm.can_run_with || [];
+            const nc = meta.can_run_with || [];
+            return !(rc.includes("*") || nc.includes("*") || rc.includes(id) || nc.includes(r));
+          });
+        const conflictWarn = conflicts.length
+          ? `<div style="font-size: 0.75em; color: var(--warning-color, #ff9800); margin-top: 4px;">&#9888; Conflicts with: ${conflicts.join(", ")}</div>`
+          : "";
+        const disabledAttr = conflicts.length ? ' style="opacity:0.7"' : "";
+        const actionBtns = meta.toggleable
+          ? (isRunning
+            ? `<button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${id}">Stop</button>`
+            : `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${id}"${disabledAttr}>Start</button>`)
+          : `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${id}"${disabledAttr}>Run</button>`;
+        return `
+          <div class="card ${isRunning ? "active" : ""}">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong>${meta.label || id}</strong>
+              ${isRunning ? `<span style="font-size:0.75em; padding:2px 8px; border-radius:10px; background:var(--success-color,#4caf50); color:white;">running</span>` : ""}
+            </div>
+            ${conflictWarn}
+            ${this._buildScenarioParamsById(id)}
+            <div style="margin-top: 8px; display: flex; gap: 8px;">${actionBtns}</div>
+          </div>`;
+      }).join("");
+
+    return `<div class="grid">${aaCard}${scenarioCards}</div>`;
   }
 
   _buildEvents() {

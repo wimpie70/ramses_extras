@@ -244,12 +244,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         # Handle autonomous_emissions scenario stop
         if scenario_id == SCENARIO_AUTONOMOUS_EMISSIONS or device_id:
-            target_device = device_id or SIM_DEVICE_ID["FAN"]
-            await engine.async_silence_device(target_device)
-            return {
-                "success": True,
-                "message": f"Autonomous emissions stopped for {target_device}",
-            }
+            if device_id:
+                await engine.async_silence_device(device_id)
+                return {
+                    "success": True,
+                    "message": f"Autonomous emissions stopped for {device_id}",
+                }
+            # No specific device — stop all active emitters
+            await engine.async_stop_all()
+            return {"success": True, "message": "Autonomous emissions stopped (all)"}
 
         # Cancel timed scenarios by id
         if scenario_id in (SCENARIO_DEVICE_UNAVAILABILITY, SCENARIO_HVAC_DEVICE_LOSS):
