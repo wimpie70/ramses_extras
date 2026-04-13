@@ -77,16 +77,15 @@ Log errors if not configured.
 ### check framework for feature specific code that needs to be moved to it's features
 ### Ramses Packet Log explorer: auto mode seem to be broken
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
+-
 ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
-### device simulator card: use base card ? or make sure it only enables when extras is fully loaded like the other cards
 ### test scenarios: device_unavailability and hvac_device_loss
 ### profiles: add ability to import/export/edit profiles from editfield,
 especcially the known device list, can we store our profiles in a yaml file ???
-### scenarios: add auto-answer functionality to scenarios
 
 ### scenarios: autonomous emissions -> let devices emit messages autonomously, from a list of possible messages, eg, change temperature, etc....
 we should be able to import (edit field and/or pick from (dedicated) folder) ramses.log style files
 
-
 ---
+### scenarios: add auto-answer functionality to scenarios and use this as startup, so we have shorter startup time

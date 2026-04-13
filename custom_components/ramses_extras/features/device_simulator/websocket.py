@@ -489,12 +489,32 @@ async def ws_load_profile(
                 ramses_rf_opts["enforce_known_list"] = enforce
                 new_options["ramses_rf"] = ramses_rf_opts
 
-                # Update options directly without firing update_listeners.
+                # Update options in-memory without firing update_listeners.
                 # async_update_entry triggers async_update_listener in ramses_cc
                 # which starts its own reload before our controlled one.
                 from types import MappingProxyType
 
                 object.__setattr__(entry, "options", MappingProxyType(new_options))
+
+                # Also persist to HA store so the options survive a restart.
+                # We write directly to the core.config_entries store to avoid
+                # triggering the update listener.
+                try:
+                    from homeassistant.helpers.storage import Store as HaStore
+
+                    ce_store: HaStore = HaStore(hass, 1, "core.config_entries")
+                    ce_data: dict = await ce_store.async_load() or {}
+                    for stored_entry in ce_data.get("entries", []):
+                        if stored_entry.get("entry_id") == entry.entry_id:
+                            stored_entry["options"] = dict(new_options)
+                            break
+                    await ce_store.async_save(ce_data)
+                    LOGGER.debug("Profile load: persisted ramses_cc options to store")
+                except Exception as err:  # noqa: BLE001
+                    LOGGER.warning(
+                        "Profile load: could not persist ramses_cc options: %s", err
+                    )
+
                 actions.append("updated_known_list")
                 LOGGER.info(
                     "Profile load: known_list=%s enforce_known_list=%s",
@@ -539,11 +559,17 @@ async def ws_load_profile(
                             )
                             stored: dict[str, Any] = await ha_store.async_load() or {}
                             client_state = stored.get(SZ_CLIENT_STATE, {})
+                            changed = False
                             if SZ_SCHEMA in client_state:
                                 client_state.pop(SZ_SCHEMA)
+                                changed = True
+                            if SZ_PACKETS in client_state:
+                                client_state.pop(SZ_PACKETS)
+                                changed = True
+                            if changed:
                                 await ha_store.async_save(stored)
                                 LOGGER.info(
-                                    "Profile load: cleared HA store schema after unload"
+                                    "Profile load: cleared HA store schema+packets"
                                 )
                         except Exception as err:  # noqa: BLE001
                             LOGGER.warning(
@@ -601,10 +627,13 @@ async def ws_load_profile(
                 "Profile load: could not update ramses_cc known_list: %s", err
             )
 
-    # 4. Track active profile
-    hass.data.setdefault("ramses_extras", {})["device_simulator_active_profile"] = (
-        profile.name
-    )
+    # 4. Track active profile (in-memory and persisted to disk)
+    ra = hass.data.setdefault("ramses_extras", {})
+    ra["device_simulator_active_profile"] = profile.name
+    config_store = ra.get("device_simulator_config_store")
+    if config_store is not None:
+        config_store.set_active_profile(profile.name)
+        await config_store.async_save_state()
 
     # 5. Apply timeout scale (msg speed override takes precedence)
     scale = msg.get("speed", profile.timeout_scale)

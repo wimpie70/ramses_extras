@@ -104,6 +104,8 @@ class ConfigProfileStore:
         self._config_dir = config_dir or Path.home() / ".ramses_simulator"
         self._profiles: dict[str, SystemConfigProfile] = {}
         self._user_profiles_path = self._config_dir / "user_profiles.json"
+        self._state_path = self._config_dir / "simulator_state.json"
+        self._active_profile: str | None = None
 
         # Ensure config directory exists
         self._config_dir.mkdir(parents=True, exist_ok=True)
@@ -111,8 +113,9 @@ class ConfigProfileStore:
         # Initialize built-in profiles
         self._init_builtin_profiles()
 
-        # Load user profiles
+        # Load user profiles and persisted state
         self._load_user_profiles()
+        self._load_state()
 
     def _init_builtin_profiles(self) -> None:
         """Initialize built-in system configuration profiles."""
@@ -203,6 +206,29 @@ class ConfigProfileStore:
                 self._user_profiles_path,
             )
 
+    def _load_state(self) -> None:
+        """Load persisted simulator state (last active profile) from disk."""
+        if not self._state_path.exists():
+            return
+        try:
+            with open(self._state_path, encoding="utf-8") as f:
+                data = json.load(f)
+            self._active_profile = data.get("active_profile")
+            LOGGER.debug(
+                "ConfigProfileStore: loaded state, last active profile=%s",
+                self._active_profile,
+            )
+        except (json.JSONDecodeError, OSError):
+            LOGGER.warning("ConfigProfileStore: failed to load simulator state")
+
+    def _save_state(self) -> None:
+        """Persist current simulator state (last active profile) to disk (sync)."""
+        try:
+            with open(self._state_path, "w", encoding="utf-8") as f:
+                json.dump({"active_profile": self._active_profile}, f)
+        except OSError:
+            LOGGER.warning("ConfigProfileStore: failed to save simulator state")
+
     def _save_user_profiles(self) -> None:
         """Save user-defined profiles to disk."""
         # Filter out built-in profiles
@@ -222,6 +248,30 @@ class ConfigProfileStore:
                 "ConfigProfileStore: failed to save user profiles to %s",
                 self._user_profiles_path,
             )
+
+    def set_active_profile(self, name: str) -> None:
+        """Set the active profile name in memory; call async_save_state to persist."""
+        self._active_profile = name
+
+    async def async_save_state(self) -> None:
+        """Persist active profile name to disk without blocking the event loop."""
+        import asyncio
+
+        profile = self._active_profile
+        state_path = self._state_path
+
+        def _write() -> None:
+            try:
+                with open(state_path, "w", encoding="utf-8") as f:
+                    json.dump({"active_profile": profile}, f)
+            except OSError:
+                LOGGER.warning("ConfigProfileStore: failed to save simulator state")
+
+        await asyncio.get_event_loop().run_in_executor(None, _write)
+
+    def get_active_profile(self) -> str | None:
+        """Return the last persisted active profile name."""
+        return self._active_profile
 
     def get_profile(self, name: str) -> SystemConfigProfile | None:
         """Get a configuration profile by name.

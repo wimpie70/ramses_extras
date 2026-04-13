@@ -28,6 +28,47 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+_RAMSES_CC_STORAGE_VERSION = 1
+_RAMSES_CC_STORAGE_KEY = "ramses_cc"
+_SZ_CLIENT_STATE = "client_state"
+_SZ_SCHEMA = "schema"
+_SZ_PACKETS = "packets"
+
+
+async def _pre_clear_ramses_cc_schema(hass: HomeAssistant, profile_name: str) -> None:
+    """Clear the ramses_cc HA store schema at startup.
+
+    Called when the last active profile enforced known_list, so the stale
+    schema (from a previous session) does not cause HA to boot with hundreds
+    of old sim devices before our profile reload kicks in.
+    """
+    from homeassistant.helpers.storage import Store as HaStore
+
+    try:
+        ha_store: HaStore = HaStore(
+            hass, _RAMSES_CC_STORAGE_VERSION, _RAMSES_CC_STORAGE_KEY
+        )
+        stored: dict = await ha_store.async_load() or {}
+        client_state = stored.get(_SZ_CLIENT_STATE, {})
+        changed = False
+        for key in (_SZ_SCHEMA, _SZ_PACKETS):
+            if key in client_state:
+                client_state.pop(key)
+                changed = True
+        if changed:
+            await ha_store.async_save(stored)
+            _LOGGER.info(
+                "Startup: pre-cleared ramses_cc store schema+packets (last profile=%s)",
+                profile_name,
+            )
+        else:
+            _LOGGER.debug(
+                "Startup: ramses_cc store already clean (last profile=%s)",
+                profile_name,
+            )
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Startup: could not pre-clear ramses_cc store schema: %s", err)
+
 
 # SIMULATOR_TOPIC_NS is imported from const
 # ramses_rf requires RAMSES/GATEWAY prefix, but RAMSES/GATEWAY_SIM is valid
@@ -155,13 +196,10 @@ async def create_device_simulator_feature(
     from .system_config import ConfigProfileStore, apply_timeout_scale
     from .websocket import async_register_websocket_commands
 
-    # Enforce simulator isolation: reconfigure ramses_cc if needed
-    _LOGGER.info("Device Simulator: calling _enforce_simulator_isolation")
-    await _enforce_simulator_isolation(hass)
-
     hass.data.setdefault("ramses_extras", {})
 
-    # Initialize system configuration profiles
+    # Initialize system configuration profiles first so we can read the last
+    # active profile before ramses_cc gets a chance to reload.
     if "device_simulator_config_store" not in hass.data["ramses_extras"]:
         config_store = ConfigProfileStore()
         hass.data["ramses_extras"]["device_simulator_config_store"] = config_store
@@ -169,7 +207,32 @@ async def create_device_simulator_feature(
 
         # Apply default timeout scaling (can be overridden by loaded profile)
         apply_timeout_scale(1.0)
+
+        # Pre-clear ramses_cc store schema if last active profile enforced known_list.
+        # This ensures that when _enforce_simulator_isolation triggers a ramses_cc
+        # reload below, ramses_cc starts with a clean schema instead of the stale
+        # schema from the previous session's sim devices.
+        last_profile_name = config_store.get_active_profile()
+        if last_profile_name:
+            last_profile = config_store.get_profile(last_profile_name)
+            if last_profile is not None:
+                _ekl = last_profile.device_configs.get("_enforce_known_list", False)
+                enforce = (
+                    bool(_ekl.get("enabled", False))
+                    if isinstance(_ekl, dict)
+                    else bool(_ekl)
+                )
+                if enforce:
+                    await _pre_clear_ramses_cc_schema(hass, last_profile_name)
+
     registry = hass.data["ramses_extras"]
+
+    # Enforce simulator isolation: reconfigure ramses_cc if needed.
+    # If isolation was already configured this returns immediately, but
+    # the schema was already cleared above so the next profile load will
+    # still reload ramses_cc with a clean store.
+    _LOGGER.info("Device Simulator: calling _enforce_simulator_isolation")
+    await _enforce_simulator_isolation(hass)
 
     if "device_simulator_db" not in registry:
         registry["device_simulator_db"] = DeviceDatabase()
