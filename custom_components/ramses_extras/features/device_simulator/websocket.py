@@ -471,6 +471,12 @@ async def ws_load_profile(
                 new_options = dict(entry.options)
                 new_options["known_list"] = known_list
 
+                # Apply _schema from profile so ramses_cc knows the system topology
+                # (e.g. FAN bound as HvacVentilation unit, CTL as heat controller).
+                _schema = profile.device_configs.get("_schema")
+                if _schema is not None:
+                    new_options["schema"] = _schema
+
                 # Apply _enforce_known_list from profile into the nested ramses_rf dict
                 _ekl = profile.device_configs.get("_enforce_known_list", False)
                 enforce = (

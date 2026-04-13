@@ -121,11 +121,33 @@ class ConfigProfileStore:
         hvac_devices = ["FAN", "CO2", "REM"]
         heat_devices = ["CTL", "TRV", "DHW"]
 
+        fan_id = SIM_DEVICES["FAN"]["id"]
+        co2_id = SIM_DEVICES["CO2"]["id"]
+        rem_id = SIM_DEVICES["REM"]["id"]
+        ctl_id = SIM_DEVICES["CTL"]["id"]
+        trv_id = SIM_DEVICES["TRV"]["id"]
+        dhw_id = SIM_DEVICES["DHW"]["id"]
+
         def _known_list(*types: str) -> dict[str, dict]:
             entries = {
                 SIM_DEVICES[t]["id"]: {"class": t} for t in types if t in SIM_DEVICES
             }
             return {**_HGI_ENTRY, **entries}
+
+        # HVAC schema: bind FAN as the ventilation unit so ramses_cc creates an
+        # HvacVentilation zone entity with CO2/REM bound as sensors.
+        _hvac_schema: dict = {
+            "fans": {fan_id: {"co2_sensor": co2_id, "indoor_sensor": rem_id}}
+        }
+
+        # Heat schema: CTL as controller, one zone with TRV, DHW sensor bound.
+        _heat_schema: dict = {
+            "01": {
+                "controller": ctl_id,
+                "zones": {"00": {"sensor": trv_id}},
+                "dhw": {"sensor": dhw_id},
+            }
+        }
 
         self._profiles["normal"] = SystemConfigProfile(
             name="normal",
@@ -134,6 +156,7 @@ class ConfigProfileStore:
             device_configs={
                 "_known_list": _known_list(*hvac_devices, *heat_devices),
                 "_enforce_known_list": {"enabled": True},
+                "_schema": {**_hvac_schema, **_heat_schema},
             },
         )
 
@@ -144,6 +167,7 @@ class ConfigProfileStore:
             device_configs={
                 "_known_list": _known_list(*hvac_devices),
                 "_enforce_known_list": {"enabled": True},
+                "_schema": _hvac_schema,
             },
         )
 
@@ -154,6 +178,7 @@ class ConfigProfileStore:
             device_configs={
                 "_known_list": _known_list(*heat_devices),
                 "_enforce_known_list": {"enabled": True},
+                "_schema": _heat_schema,
             },
         )
 
@@ -164,6 +189,7 @@ class ConfigProfileStore:
             device_configs={
                 "_known_list": _known_list(*hvac_devices, *heat_devices),
                 "_enforce_known_list": {"enabled": True},
+                "_schema": {**_hvac_schema, **_heat_schema},
             },
         )
 
