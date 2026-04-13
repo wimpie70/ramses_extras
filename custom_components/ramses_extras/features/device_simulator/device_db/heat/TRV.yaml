@@ -38,8 +38,7 @@ autonomous:
   interval_seconds: 13.5
   payloads:
   - '006401'
-  - '00FF01  # REMARK: Sentinel bytes present (FF (unavailable (single-byte generic)))
-    but remaining fields decode OK — verify device has those sensors.'
+  - 00FF01
   notes: Example payloads from regression file
 - code: '3150'
   verb: I

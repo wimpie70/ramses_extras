@@ -48,13 +48,9 @@ autonomous:
   trigger: periodic
   interval_seconds: 1459.7
   payloads:
-  - '00EF007FFF3A3004C404D804A904B768000003C8C80000EFEF208A208A00  # REMARK: Sentinel
-    bytes present (FF (unavailable (single-byte generic))) but remaining fields decode
-    OK — verify device has those sensors.'
-  - '00EF007FFF392F04CE04D804B3049F680000011E1E0000EFEF208A208A00  # REMARK: Sentinel
-    bytes present (FF (unavailable (single-byte generic))) but remaining fields decode
-    OK — verify device has those sensors.'
-  notes: Real captured payloads from Orcon VMD device (32:153289)
+  - 00EF007FFF3A3004C404D804A904B768000003C8C80000EFEF208A208A00
+  - 00EF007FFF392F04CE04D804B3049F680000011E1E0000EFEF208A208A00
+  notes: Real captured payloads from Orcon VMD device (32:153289). Sentinel bytes (EF/FF) indicate unavailable sensors.
 - code: 22F7
   verb: I
   trigger: periodic

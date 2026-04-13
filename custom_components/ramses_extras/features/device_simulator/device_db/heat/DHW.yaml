@@ -45,7 +45,5 @@ responses:
   rp_verb: RP
   delay_ms: 150
   payloads:
-  - '0007D000FFFFFF  # REMARK: Sentinel bytes present (FFFF (unavailable (generic)),
-    FF (unavailable (single-byte generic))) but remaining fields decode OK — verify
-    device has those sensors.'
+  - 0007D000FFFFFF
   description: DHW parameters

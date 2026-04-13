@@ -995,10 +995,17 @@ def apply_audit(audit_yaml: Path, db_dir: Path) -> None:
                             removed += 1
                             changed = True
                         elif audit == "Remark":
-                            # Keep but annotate
-                            new_payloads.append(
-                                f"{p}  # REMARK: {remark}" if remark else raw
-                            )
+                            # Keep payload as clean hex; append remark to notes
+                            new_payloads.append(p)
+                            if remark:
+                                existing_notes = entry.get("notes") or ""
+                                tag = f"REMARK: {remark}"
+                                if tag not in existing_notes:
+                                    entry["notes"] = (
+                                        f"{existing_notes}. {tag}".lstrip(". ")
+                                        if existing_notes
+                                        else tag
+                                    )
                             remarked += 1
                             changed = True
                         else:  # ?
