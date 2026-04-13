@@ -270,12 +270,31 @@ async def create_device_simulator_feature(
     )
     _LOGGER.info("ResponseEngine created")
 
-    # ALWAYS wire up handler fresh (in case endpoint was already connected)
-    _LOGGER.info("Wiring up handler to endpoint...")
+    # ALWAYS wire up handlers fresh to the new endpoint.
+    # Both ResponseEngine and ScenarioEngine need to be re-registered because
+    # a new MqttEndpoint is created on every reload — the old handlers would
+    # reference the disconnected old endpoint.
+    _LOGGER.info("Wiring up handlers to new endpoint...")
     endpoint = registry["device_simulator_endpoint"]
     endpoint.clear_inbound_handlers()
+
+    # ResponseEngine — handles legacy RQ→RP path
     handler = registry["device_simulator_response_engine"].handle_inbound_frame
     endpoint.add_inbound_handler(handler)
+
+    # ScenarioEngine — handles auto-answer and inbound frame logic.
+    # Also update its endpoint reference so emitter tasks send to the new one.
+    if "device_simulator_engine" in registry:
+        eng = registry["device_simulator_engine"]
+        # Stop active emitters so they don't keep sending to the old endpoint
+        await eng.async_stop_all()
+        eng._endpoint = endpoint
+        endpoint.add_inbound_handler(eng._handle_inbound_frame)
+        _LOGGER.info(
+            "ScenarioEngine re-wired to new endpoint (endpoint_id=%s)",
+            id(endpoint),
+        )
+
     _LOGGER.info(
         "ResponseEngine wired up to endpoint (endpoint_id=%s handler_id=%s)",
         id(endpoint),
@@ -328,6 +347,16 @@ async def create_device_simulator_feature(
             hass,
             registry["device_simulator_endpoint"],
             registry["device_simulator_db"],
+        )
+
+    # Restore persisted auto_answer setting into the freshly-created engine.
+    _engine_now = registry["device_simulator_engine"]
+    _cs = registry.get("device_simulator_config_store")
+    if _cs is not None:
+        _engine_now.set_auto_answer(_cs.get_auto_answer())
+        _LOGGER.info(
+            "Startup: restored auto_answer=%s from persisted state",
+            _cs.get_auto_answer(),
         )
 
     # Auto-start devices for the persisted active profile on HA restart.

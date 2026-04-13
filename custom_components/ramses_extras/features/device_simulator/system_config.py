@@ -106,6 +106,7 @@ class ConfigProfileStore:
         self._user_profiles_path = self._config_dir / "user_profiles.json"
         self._state_path = self._config_dir / "simulator_state.json"
         self._active_profile: str | None = None
+        self._auto_answer: bool = True
 
         # Ensure config directory exists
         self._config_dir.mkdir(parents=True, exist_ok=True)
@@ -214,9 +215,11 @@ class ConfigProfileStore:
             with open(self._state_path, encoding="utf-8") as f:
                 data = json.load(f)
             self._active_profile = data.get("active_profile")
+            self._auto_answer = data.get("auto_answer", True)
             LOGGER.debug(
-                "ConfigProfileStore: loaded state, last active profile=%s",
+                "ConfigProfileStore: state loaded profile=%s auto_answer=%s",
                 self._active_profile,
+                self._auto_answer,
             )
         except (json.JSONDecodeError, OSError):
             LOGGER.warning("ConfigProfileStore: failed to load simulator state")
@@ -225,7 +228,13 @@ class ConfigProfileStore:
         """Persist current simulator state (last active profile) to disk (sync)."""
         try:
             with open(self._state_path, "w", encoding="utf-8") as f:
-                json.dump({"active_profile": self._active_profile}, f)
+                json.dump(
+                    {
+                        "active_profile": self._active_profile,
+                        "auto_answer": self._auto_answer,
+                    },
+                    f,
+                )
         except OSError:
             LOGGER.warning("ConfigProfileStore: failed to save simulator state")
 
@@ -249,25 +258,41 @@ class ConfigProfileStore:
                 self._user_profiles_path,
             )
 
+    def get_auto_answer(self) -> bool:
+        """Return persisted auto-answer state."""
+        return self._auto_answer
+
+    def set_auto_answer(self, enabled: bool) -> None:
+        """Set auto-answer state in memory; call async_save_state to persist."""
+        self._auto_answer = enabled
+
     def set_active_profile(self, name: str) -> None:
         """Set the active profile name in memory; call async_save_state to persist."""
         self._active_profile = name
 
     async def async_save_state(self) -> None:
-        """Persist active profile name to disk without blocking the event loop."""
+        """Persist simulator state to disk without blocking the event loop."""
         import asyncio
 
         profile = self._active_profile
+        auto_answer = self._auto_answer
         state_path = self._state_path
 
         def _write() -> None:
             try:
                 with open(state_path, "w", encoding="utf-8") as f:
-                    json.dump({"active_profile": profile}, f)
+                    json.dump(
+                        {
+                            "active_profile": profile,
+                            "auto_answer": auto_answer,
+                        },
+                        f,
+                    )
             except OSError:
                 LOGGER.warning("ConfigProfileStore: failed to save simulator state")
 
-        await asyncio.get_event_loop().run_in_executor(None, _write)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _write)
 
     def get_active_profile(self) -> str | None:
         """Return the last persisted active profile name."""

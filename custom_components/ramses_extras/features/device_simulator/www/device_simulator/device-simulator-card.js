@@ -53,6 +53,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._scenarioRegistry = {};
     this._runningScenarios = [];
     this._autoAnswer = true;
+    this._emissionsActive = false;
     this._events = [];
     this._stats = { rx: 0, tx: 0, devices: 0, active: 0 };
     this._tab = "profiles";
@@ -108,6 +109,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._scenarioRegistry = result.scenario_registry || {};
       this._runningScenarios = result.running_scenarios || [];
       this._autoAnswer = result.auto_answer !== false;
+      this._emissionsActive = result.autonomous_emissions_active === true;
       this._stats = result.stats || this._stats;
       this._activeProfile = result.active_profile;
       this._scheduleRender();
@@ -181,9 +183,19 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   _renderContent() {
     const hasRunning = this._runningScenarios.length > 0;
-    const badgeClass = hasRunning ? "running" : this._devices.length > 0 ? "active" : "";
-    const badgeTitle = hasRunning ? `Running: ${this._runningScenarios.join(", ")}` : this._devices.length > 0 ? "Devices emitting" : "No active devices";
-    const badgeText = hasRunning ? "Running" : this._devices.length > 0 ? `${this._devices.filter(d => d.enabled).length} active` : "Idle";
+    const emittingNow = this._emissionsActive && this._autoAnswer;
+    const badgeClass = hasRunning ? "running" : emittingNow ? "active" : this._devices.length > 0 ? "" : "";
+    const enabledCount = this._devices.filter(d => d.enabled).length;
+    const badgeTitle = hasRunning
+      ? `Running: ${this._runningScenarios.join(", ")}`
+      : emittingNow ? `${enabledCount} device(s) emitting`
+      : this._emissionsActive && !this._autoAnswer ? "Devices loaded but auto-answer is off — silent"
+      : this._devices.length > 0 ? "Devices loaded, emissions idle"
+      : "No active devices";
+    const badgeText = hasRunning ? "Running"
+      : emittingNow ? `${enabledCount} emitting`
+      : this._devices.length > 0 ? `${enabledCount} silent`
+      : "Idle";
 
     this.shadowRoot.innerHTML = `
       <style>${CARD_STYLE}</style>

@@ -41,33 +41,6 @@ from .const import (
     VERB_RQ,
 )
 from .device_db import AutonomousEntry, ConversationFrame, DeviceDatabase, ResponseEntry
-from .system_config import SIM_DEVICES
-
-# Full device-ID → type map built from SIM_DEVICES (highest priority).
-# Prefix-only entries below act as fallback for non-sim devices.
-_DEVICE_TYPE_MAP: dict[str, str] = {
-    # Sim device full IDs (prefix collision-safe)
-    **{info["id"]: info["class"] for info in SIM_DEVICES.values()},
-    # Generic prefix fallbacks for real/unknown devices (ramses_tx dev_type)
-    "01": "CTL",
-    "02": "UFC",
-    "03": "HCW",
-    "04": "TRV",
-    "07": "DHW",
-    "08": "JIM",
-    "10": "OTB",
-    "12": "DTS",
-    "13": "BDR",
-    "17": "OUT",
-    "22": "THM",
-    "23": "PRG",
-    "29": "REM",  # most common for REM/HUM/CO2/FAN(VMC)
-    "30": "RFG",
-    "31": "JST",
-    "32": "FAN",  # Orcon MVS/VMD
-    "34": "RND",
-    "37": "CO2",  # most common for CO2/REM/DIS/FAN(CVE)
-}
 
 _PACKET_RE = re.compile(
     # Match RAMSES frame format: RSSI VERB SEQ SRC DST BROADCAST CODE LEN PAYLOAD
@@ -243,6 +216,19 @@ class ScenarioEngine:
         self._emitter_tasks.clear()
         self._active_devices.clear()
         self._state = SCENARIO_STATE_IDLE
+        # Drain any packets that were already queued but not yet published so
+        # they don't get sent after the user pressed Stop.
+        send_queue = getattr(self._endpoint, "_send_queue", None)
+        if send_queue is not None:
+            drained = 0
+            while not send_queue.empty():
+                try:
+                    send_queue.get_nowait()
+                    drained += 1
+                except Exception:  # noqa: BLE001
+                    break
+            if drained:
+                LOGGER.debug("Drained %d queued packets on stop", drained)
         LOGGER.debug("ScenarioEngine stopped all devices")
 
     async def async_play_conversation(
@@ -387,12 +373,18 @@ class ScenarioEngine:
 
         # Immediate startup burst — lets ramses_cc discover the device from I
         # frames rather than waiting for RQ→timeout cycles (can take 20s each).
-        LOGGER.debug("Startup burst for %s (%d codes)", device.device_id, len(entries))
-        await self._emit_burst(device, entries, payload_idx)
+        # Skip when auto-answer is off — no point announcing a "silent" device.
+        if self._auto_answer_enabled:
+            LOGGER.debug(
+                "Startup burst for %s (%d codes)", device.device_id, len(entries)
+            )
+            await self._emit_burst(device, entries, payload_idx)
 
         while True:
             for entry in entries:
                 if device.suppress_autonomous or not device.enabled:
+                    break
+                if not self._auto_answer_enabled:
                     break
                 if entry.code in device.excluded_codes:
                     continue
@@ -453,21 +445,10 @@ class ScenarioEngine:
 
         await self._respond_to_rq(src, dst, code)
 
-    def _get_device_type_from_id(self, device_id: str) -> str | None:
-        """Determine device type from device ID prefix.
-
-        :param device_id: Device address like "32:153289"
-        :return: Device type slug like "FAN", "HUM", etc.
-        """
-        type_code = device_id.split(":")[0]
-        return _DEVICE_TYPE_MAP.get(type_code)
-
     async def _respond_to_rq(self, src: str, dst: str, code: str) -> None:
         """Look up and send an RP for an inbound RQ.
 
-        Responds for:
-        1. Explicitly activated devices (in _active_devices)
-        2. Known device types (from device ID prefix mapping)
+        Only responds for explicitly activated devices (in _active_devices).
 
         :param src: Requesting device ID.
         :param dst: Target device ID (the simulated device being queried).
@@ -489,14 +470,11 @@ class ScenarioEngine:
             variant_id = device.variant_id
             excluded_codes = device.excluded_codes
         else:
-            # Device not explicitly activated - try to determine type from ID
-            slug = self._get_device_type_from_id(dst)
-            if not slug:
-                LOGGER.debug("Unknown device type for %s, cannot respond", dst)
-                return
-            LOGGER.debug(
-                "Auto-responding to RQ for discovered device %s (type=%s)", dst, slug
-            )
+            # Device not in active list — do not respond.
+            # Responding for non-activated devices would cause traffic even
+            # after the user stops all emissions.
+            LOGGER.debug("RQ for inactive device %s/%s, not responding", dst, code)
+            return
 
         if code in excluded_codes:
             LOGGER.debug("Dropping RQ %s for %s (excluded)", code, dst)
@@ -591,15 +569,32 @@ class ScenarioEngine:
         )
 
     def get_running_scenario_ids(self) -> list[str]:
-        """Return IDs of all currently running scenarios (including toggleable ones)."""
-        running = list(self._running_scenarios.keys())
+        """Return IDs of explicitly started timed/toggleable scenarios.
+
+        auto_answer and autonomous_emissions are reported separately via
+        dedicated fields in the status response and must NOT appear here,
+        otherwise the UI badge incorrectly shows "Running" when they are
+        merely enabled/active.
+        """
+        return list(self._running_scenarios.keys())
+
+    @property
+    def autonomous_emissions_active(self) -> bool:
+        """Return True if any device emitter task is currently running."""
+        return bool(self._emitter_tasks)
+
+    def _all_active_scenario_ids(self) -> list[str]:
+        """Return all currently active scenario IDs for conflict checking.
+
+        Unlike get_running_scenario_ids this includes the pseudo-scenarios
+        auto_answer and autonomous_emissions so conflict logic sees them.
+        """
+        ids = list(self._running_scenarios.keys())
         if self._auto_answer_enabled:
-            running.append(SCENARIO_AUTO_ANSWER)
-        # autonomous_emissions is considered running if any emitter task is active
-        if self._emitter_tasks:
-            if SCENARIO_AUTONOMOUS_EMISSIONS not in running:
-                running.append(SCENARIO_AUTONOMOUS_EMISSIONS)
-        return running
+            ids.append(SCENARIO_AUTO_ANSWER)
+        if self._emitter_tasks and SCENARIO_AUTONOMOUS_EMISSIONS not in ids:
+            ids.append(SCENARIO_AUTONOMOUS_EMISSIONS)
+        return ids
 
     def check_scenario_conflicts(self, new_scenario_id: str) -> list[str]:
         """Return running scenario IDs that conflict with new_scenario_id.
@@ -617,7 +612,7 @@ class ScenarioEngine:
             return []
 
         conflicts: list[str] = []
-        for running_id in self.get_running_scenario_ids():
+        for running_id in self._all_active_scenario_ids():
             if running_id == new_scenario_id:
                 continue
             running_meta = SCENARIO_REGISTRY.get(running_id, {})

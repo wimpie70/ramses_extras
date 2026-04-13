@@ -207,13 +207,13 @@ class MqttEndpoint(SimulatorCommEndpoint):
                     id(self),
                 )
             else:
-                LOGGER.info(
+                LOGGER.debug(
                     "Endpoint %s: dispatching frame to %d handler(s)",
                     id(self),
                     len(self._inbound_handlers),
                 )
                 for handler in list(self._inbound_handlers):
-                    LOGGER.info(
+                    LOGGER.debug(
                         "Endpoint %s: scheduling handler %s for frame: %s",
                         id(self),
                         id(handler),
@@ -240,7 +240,7 @@ class MqttEndpoint(SimulatorCommEndpoint):
                                         exc_info=exc,
                                     )
                                 else:
-                                    LOGGER.info(
+                                    LOGGER.debug(
                                         "Handler %s completed successfully",
                                         hid,
                                     )

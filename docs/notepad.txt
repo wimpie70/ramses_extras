@@ -88,6 +88,7 @@ especcially the known device list, can we store our profiles in a yaml file ???
 we should be able to import (edit field and/or pick from (dedicated) folder) ramses.log style files
 ### scenario: rotate log files
 ### some entities will get strange values with our current database, how can we fix this ?
+### card: top right pill keeps showing running, while all scenarios are stopped
 
 ---
 ### scenarios: add auto-answer functionality to scenarios and use this as startup, so we have shorter startup time

@@ -403,6 +403,7 @@ def ws_get_ui_status(
     active_profile = ra.get("device_simulator_active_profile")
     auto_answer = engine.auto_answer_enabled if engine else True
     running_scenarios = engine.get_running_scenario_ids() if engine else []
+    emissions_active = engine.autonomous_emissions_active if engine else False
 
     connection.send_result(
         msg["id"],
@@ -413,6 +414,7 @@ def ws_get_ui_status(
             "active_profile": active_profile,
             "auto_answer": auto_answer,
             "running_scenarios": running_scenarios,
+            "autonomous_emissions_active": emissions_active,
             "scenario_registry": SCENARIO_REGISTRY,
         },
     )
@@ -689,8 +691,8 @@ def ws_stop_scenario(
         vol.Required("enabled"): bool,
     }
 )
-@callback  # type: ignore[untyped-decorator]
-def ws_set_device_enabled(
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_set_device_enabled(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
@@ -708,8 +710,15 @@ def ws_set_device_enabled(
         )
         return
 
+    was_enabled = device.enabled
     device.enabled = msg["enabled"]
     LOGGER.info("Device %s enabled=%s", msg["device_id"], msg["enabled"])
+
+    # Re-activate to restart the emitter with a fresh burst when enabling a
+    # previously disabled device, so traffic starts immediately.
+    if msg["enabled"] and not was_enabled:
+        await engine.async_activate_device(device)
+
     connection.send_result(
         msg["id"],
         {"success": True, "device_id": msg["device_id"], "enabled": msg["enabled"]},
@@ -858,6 +867,13 @@ def ws_set_auto_answer(
         engine.check_scenario_conflicts(SCENARIO_AUTO_ANSWER) if not enabled else []
     )
     engine.set_auto_answer(enabled)
+
+    ra = hass.data.get("ramses_extras", {})
+    config_store = ra.get("device_simulator_config_store")
+    if config_store is not None:
+        config_store.set_auto_answer(enabled)
+        config_store._save_state()
+
     connection.send_result(
         msg["id"],
         {
