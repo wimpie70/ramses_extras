@@ -30,7 +30,9 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads: []
+  payloads:
+  - 0000000001001E00
+  notes: Real captured payloads from log (score=100)
 - code: 042F
   verb: I
   trigger: periodic
@@ -53,12 +55,19 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - '000107'
+  - '000307'
+  notes: Real captured payloads from log (score=100)
 - code: '2411'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 0000077F00000000000000000000000003000000018A00
+  - 0000881510000002BC000001900000076C000000018A33
+  - 0000DA7F00000000000000000000000003000000018A00
+  notes: Real captured payloads from log (score=100)
 - code: '2412'
   rq_verb: RQ
   rp_verb: RP

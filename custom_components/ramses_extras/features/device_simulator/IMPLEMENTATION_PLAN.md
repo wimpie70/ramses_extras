@@ -1042,9 +1042,129 @@ This is exactly the kind of deterministic stimulus an automation test needs: a k
 
 ---
 
+## Device DB Audit Tooling
+
+### Tool: `tools/audit_device_db.py`
+
+Offline script that audits, enriches and applies DB payloads through the full pipeline.
+**Activate venv first**: `source ~/venvs/extras/bin/activate`
+
+### Modes
+
+| Command | What it does |
+|---|---|
+| `python tools/audit_device_db.py` | Parse all DB payloads, write `tools/audit_all.yaml` |
+| `python tools/audit_device_db.py --device FAN` | Audit single device, write `tools/audit_fan.yaml` |
+| `python tools/audit_device_db.py --extract-from-logs` | Mine known log files, update DB YAMLs in-place |
+| `python tools/audit_device_db.py --extract-from-logs /path/a /path/b` | Same, with explicit log paths |
+| `python tools/audit_device_db.py --llm-audit tools/audit_all.yaml` | Heuristic pass, write `tools/audit_all_reviewed.yaml` (attention-only) |
+| `python tools/audit_device_db.py --apply-audit tools/audit_all_reviewed.yaml` | Apply reviewed decisions back to DB YAMLs |
+
+### Full Pipeline (run in order)
+
+```bash
+# 1. Mine any new log files and upgrade DB payloads automatically
+python tools/audit_device_db.py --extract-from-logs
+
+# 2. Audit everything — generates audit_all.yaml with Y/N/Remark per payload
+python tools/audit_device_db.py --output tools/audit_all.yaml
+
+# 3. Heuristic LLM pass — auto-decides obvious cases, writes attention-only file
+python tools/audit_device_db.py --llm-audit tools/audit_all.yaml
+
+# 4. Human review — open tools/audit_all_reviewed.yaml
+#    Change audit: fields where the heuristic was wrong
+#    Y = keep, N = remove, Remark = keep with note
+
+# 5. Apply reviewed decisions back to DB YAMLs
+python tools/audit_device_db.py --apply-audit tools/audit_all_reviewed.yaml
+```
+
+### When New Log Files Arrive
+
+1. Add the log file path to `_DEFAULT_LOG_FILES` in `audit_device_db.py`, **or** pass it explicitly:
+   ```bash
+   python tools/audit_device_db.py --extract-from-logs /path/to/new.log
+   ```
+2. Run the full pipeline from step 1 above.
+3. The extractor will only **replace** existing DB payloads if the new captures score better (fewer sentinels, no implausible values). Existing good payloads are never downgraded.
+
+### Frame Classification Logic
+
+The extractor uses **address pattern + RQ context window**, not just verb, to classify each frame:
+
+| Pattern | Code type | Recent RQ? | → Section |
+|---|---|---|---|
+| `I src --:------ src` | any | — | `autonomous` (self-addressed) |
+| `I src 63:262142 --:------` | any | — | `autonomous` (broadcast) |
+| `I src dst --:------` | I-only (no RQ in schema) | — | `autonomous` (unsolicited push) |
+| `I src dst --:------` | has RQ | no (within 5s) | `autonomous` (unsolicited) |
+| `I src dst --:------` | has RQ | yes (within 5s) | `responses` (solicited) |
+| `RP src dst --:------` | any | — | `responses` |
+
+**I-only codes** (never have a RQ cycle) are loaded from `ramses_tx.CODES_SCHEMA` at runtime. Examples: `31DA`, `31D9`, `1060`, `22F3`, `3150`.
+
+### Sentinel Allowlist
+
+Some codes have sentinel bytes that are **valid** (device has no sensor for that field).
+Configured in `_CODE_SENTINEL_ALLOWLIST` in the script:
+
+| Code | Allowed sentinels | Why |
+|---|---|---|
+| `22F7` | `EF` | Bypass position sensor absent on many units |
+| `31DA` | `7FFF`, `EF`, `EFEF` | Temp / AQ / CO2 sensors optional |
+| `10E0` | `FFFF` | Padding bytes in device info |
+
+### Payload Quality Scoring
+
+Each payload gets a score (used to select best capture from logs):
+- Start: 100
+- `-20` per unexpected sentinel byte pattern
+- `-30` per implausible field value (e.g. temp=-60, fan_speed=0 when all fields zero)
+- `-5` per `None` field (could not be decoded)
+
+Existing DB payloads are only replaced if the new score is strictly higher.
+
+### Audit Decisions
+
+| `audit:` value | Meaning | `--apply-audit` action |
+|---|---|---|
+| `Y` | Good — keep as-is | Keep payload unchanged |
+| `N` | Bad — remove from DB | Payload removed |
+| `Remark` | Keep but note the issue | Keep with inline `# REMARK:` comment |
+| `?` | Unreviewed | Kept with a warning printed |
+
+### Outstanding DB Issues (as of 2026-04-13)
+
+After running the full pipeline, the following categories need human attention in `tools/audit_all_reviewed.yaml`:
+
+**`N` — parser rejects (payload format wrong for verb/code):**
+- `CTL/0404`, `CTL/0001`, `CTL/0010`, `CTL/22D9`, `CTL/3EF0` — payloads don't match RP parser regex; need correct RP-format payloads or removal
+- `DHW/2309`, `DHW/2349` — multi-zone format sent as single-zone RP
+- `TRV/2309`, `TRV/12B0`, `TRV/3150`, `TRV/22D9`, `TRV/3EF0` — same issue
+- `REM/12C8` — wrong verb (12C8 is I-only, not RP)
+- `FAN/22F1`, `FAN/22F3` — payloads too short for parser
+
+**`N` — mostly sentinel (placeholder payloads, no real data):**
+- `RFG/31DA` — all three payloads heavily sentinel; no real RFG captures available
+- `FAN/22F7` — `EF` in a 1-byte field = nothing but sentinel
+
+**`Remark` — sentinel bytes present but decode OK (verify before shipping):**
+- `10E0` on most device types — `FFFF` padding in device info is normal, but double-check real firmware dates
+- `BDR/1100`, `CTL/1F41`, `CTL/2349` — `7FFF` temp setpoint sentinel means "no override active"; may be valid
+
+**Next steps:**
+1. Open `tools/audit_all_reviewed.yaml`, review each `N` and `Remark` entry
+2. For parser-reject `N` entries: find correct RP payload format from `ramses_tx/parsers.py` or remove
+3. For `RFG/31DA`: if no real captures exist, remove the sentinel payloads (DB entry stays with empty `payloads:`)
+4. Run `--apply-audit` to apply decisions
+5. Re-run audit to confirm clean state
+
+---
+
 ## Implementation Status
 
-**Last Updated:** 2026-04-08
+**Last Updated:** 2026-04-13
 
 ### Completed ✅
 

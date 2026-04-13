@@ -112,18 +112,13 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 50
-  payloads:
-  - FA00
-  - '0204'
-  - F914
+  payloads: []
   description: System identification
 - code: '0002'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 50
-  payloads:
-  - FA00
-  - '0204'
+  payloads: []
   description: System identification (alternate)
 - code: '0016'
   rq_verb: RQ

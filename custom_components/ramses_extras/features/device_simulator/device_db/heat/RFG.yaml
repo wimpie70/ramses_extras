@@ -1,7 +1,3 @@
-# Auto-generated from ramses_rf sources
-# Device type: RFG (domain: heat)
-# Manual review recommended before committing
----
 device_type: RFG
 domain: heat
 broadcast_safe: false
@@ -44,10 +40,7 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 1459.7
-  payloads:
-  - 21EF007FFF38EF7FFF7FFF7FFF7FFF0002EF18FFFF000000EF7FFF7FFF
-  - 21EF007FFF41EF7FFF7FFF7FFF7FFF0002EF18FFFF000000EF7FFF7FFF
-  - 21EF00020136EF7FFF7FFF7FFF7FFF0002EF18FFFF000000EF7FFF7FFF
+  payloads: []
   notes: Example payloads from regression file
 responses:
 - code: 0418
@@ -104,8 +97,7 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads:
-  - '00'
+  payloads: []
 - code: '2349'
   rq_verb: RQ
   rp_verb: RP

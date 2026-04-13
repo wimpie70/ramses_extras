@@ -55,7 +55,11 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00200000003D0100
+  - 00200001003E0200
+  - 00200002003F0300
+  notes: Real captured payloads from log (score=100)
 - code: 12A0
   rq_verb: RQ
   rp_verb: RP
@@ -66,10 +70,7 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 50
-  payloads:
-  - 00A740
-  - 007A40
-  - 009540
+  payloads: []
   description: Remote sensor reading
 - code: 12D0
   rq_verb: RQ

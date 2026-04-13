@@ -196,10 +196,7 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads:
-  - 0120000829010368816DCCC91183301005D1D93428200E1C7D720C04402C0442640E82000C851701ADD3AFAED1131151
-  - 0120000829020339DEBC8DBE1EFBDB5EDBA8DDB92DBEDFADDAB6671179E4FF4EC153F0143C05CFC033F00C3C03CFC173
-  - 01200008270303F01C3C072FC00BF002BC00AF7CFEB6DEDE46BBB721EE6DBA78095E8297E0E5CF5BF50DA0291B9C
+  payloads: []
   notes: Example payloads from regression file
 - code: 22C9
   verb: I
@@ -216,17 +213,13 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 50
-  payloads:
-  - FA00
-  - '0204'
-  - F914
+  payloads: []
   description: System identification
 - code: '0010'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 50
-  payloads:
-  - 0013880003E8
+  payloads: []
   description: Temperature reading
 - code: '0016'
   rq_verb: RQ
@@ -256,8 +249,7 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads:
-  - '00'
+  payloads: []
 - code: 22F2
   rq_verb: RQ
   rp_verb: RP
@@ -291,8 +283,7 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads:
-  - '00'
+  payloads: []
 protocol_notes:
 - CTL devices act as system controllers
 - CTL devices respond to system identification via 0008

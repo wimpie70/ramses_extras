@@ -6,17 +6,13 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 150.1
-  payloads:
-  - 0205DC
-  - 017EFF
-  - 0401F4
+  payloads: []
   notes: Example payloads from regression file
 - code: 12B0
   verb: I
   trigger: periodic
   interval_seconds: 0.1
   payloads:
-  - '040000'
   - '000000'
   - 00C800
   notes: Example payloads from regression file
@@ -42,17 +38,14 @@ autonomous:
   interval_seconds: 13.5
   payloads:
   - '006401'
-  - '046401'
-  - 00FF01
+  - '00FF01  # REMARK: Sentinel bytes present (FF (unavailable (single-byte generic)))
+    but remaining fields decode OK — verify device has those sensors.'
   notes: Example payloads from regression file
 - code: '3150'
   verb: I
   trigger: periodic
   interval_seconds: 124.1
-  payloads:
-  - '0144'
-  - '0416'
-  - 012C
+  payloads: []
   notes: Example payloads from regression file
 - code: 10E0
   verb: I
@@ -94,8 +87,7 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads:
-  - '00'
+  payloads: []
   description: Valve position
 - code: 313F
   rq_verb: RQ
@@ -112,8 +104,7 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 200
-  payloads:
-  - '00'
+  payloads: []
   description: Calibration
 protocol_notes:
 - TRV devices control valve position via 22D9

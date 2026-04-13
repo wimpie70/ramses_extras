@@ -38,16 +38,14 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads:
-  - 0005DC0101F40205DC
-  - '030514'
-  - 01070802079E03073A
+  payloads: []
   description: DHW status
 - code: '2349'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 150
   payloads:
-  - 0007D000FFFFFF
-  - 01079E00FFFFFF
+  - '0007D000FFFFFF  # REMARK: Sentinel bytes present (FFFF (unavailable (generic)),
+    FF (unavailable (single-byte generic))) but remaining fields decode OK — verify
+    device has those sensors.'
   description: DHW parameters
