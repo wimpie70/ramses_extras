@@ -24,7 +24,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import callback
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, SCENARIO_REGISTRY
 from .system_config import SIM_DEVICE_ID
 
 # Used by ws_clear_ramses_cache
@@ -61,12 +61,36 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_set_device_enabled)
     websocket_api.async_register_command(hass, ws_set_device_excluded_codes)
     websocket_api.async_register_command(hass, ws_clear_ramses_cache)
+    websocket_api.async_register_command(hass, ws_set_auto_answer)
 
 
 def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
     """Get scenario engine from hass data."""
     registry = hass.data.get("ramses_extras", {})
     return cast(ScenarioEngine | None, registry.get("device_simulator_engine"))
+
+
+async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
+    """Poke the ramses_cc coordinator to run device discovery immediately.
+
+    After a startup burst the coordinator's 60s scan interval would normally
+    be the next chance for new devices to be registered as HA entities. Calling
+    this after the burst skips that wait.
+    """
+    try:
+        ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
+        if not ramses_cc_entries:
+            return
+        entry_id = ramses_cc_entries[0].entry_id
+        coordinator = (hass.data.get("ramses_cc") or {}).get(entry_id)
+        if coordinator is None:
+            return
+        discover = getattr(coordinator, "_async_discovery_task", None)
+        if callable(discover):
+            LOGGER.debug("Triggering immediate ramses_cc discovery after burst")
+            await discover()
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning("Could not trigger ramses_cc discovery: %s", err)
 
 
 def _get_db(hass: HomeAssistant) -> DeviceDatabase | None:
@@ -100,6 +124,9 @@ def ws_get_status(
             "messages_sent": engine.messages_sent,
             "active_devices": len(engine.active_device_ids),
             "active_device_ids": engine.active_device_ids,
+            "auto_answer": engine.auto_answer_enabled,
+            "running_scenarios": engine.get_running_scenario_ids(),
+            "scenario_registry": SCENARIO_REGISTRY,
         },
     )
 
@@ -359,6 +386,7 @@ def ws_get_ui_status(
                 "type": device.slug,
                 "enabled": device.enabled,
                 "suppress_autonomous": device.suppress_autonomous,
+                "suppress_responses": device.suppress_responses,
                 "excluded_codes": list(device.excluded_codes),
             }
             for device in engine._active_devices.values()
@@ -372,55 +400,20 @@ def ws_get_ui_status(
         "active": sum(1 for d in devices if d["enabled"]),
     }
 
-    # Scenarios with their HA service scenario_type values
-    scenarios = [
-        {
-            "id": "autonomous_emissions",
-            "name": "Autonomous Emissions",
-            "description": "Start periodic I frame emissions for a device",
-            "scenario_type": "autonomous_emissions",
-            "params": {"device_id": SIM_DEVICE_ID["FAN"], "device_type": "FAN"},
-        },
-        {
-            "id": "discovery",
-            "name": "Discovery Test",
-            "description": "Emit 10E0 + initial I messages (stub)",
-            "scenario_type": "discovery_test",
-            "params": {},
-        },
-        {
-            "id": "device_unavailability",
-            "name": "Device Unavailability",
-            "description": (
-                "Silence all active devices after N seconds, resume after M seconds"
-            ),
-            "scenario_type": "device_unavailability",
-            "params": {"silence_after": 30, "resume_after": 60},
-        },
-        {
-            "id": "hvac_device_loss",
-            "name": "HVAC Device Loss",
-            "description": "Silence a specific device mid-run (optional restore)",
-            "scenario_type": "hvac_device_loss",
-            "params": {
-                "device_id": SIM_DEVICE_ID["FAN"],
-                "loss_after": 30,
-                "restore_after": 60,
-            },
-        },
-    ]
-
     active_profile = ra.get("device_simulator_active_profile")
+    auto_answer = engine.auto_answer_enabled if engine else True
+    running_scenarios = engine.get_running_scenario_ids() if engine else []
 
     connection.send_result(
         msg["id"],
         {
             "profiles": profiles,
             "devices": devices,
-            "scenarios": scenarios,
             "stats": stats,
             "active_profile": active_profile,
-            "scenario_state": "idle",
+            "auto_answer": auto_answer,
+            "running_scenarios": running_scenarios,
+            "scenario_registry": SCENARIO_REGISTRY,
         },
     )
 
@@ -457,11 +450,9 @@ async def ws_load_profile(
 
     actions: list[str] = []
 
-    # 1. Stop all active devices in the engine; remember which were active
+    # 1. Stop all active devices in the engine
     engine = ra.get("device_simulator_engine")
-    previously_active: set[str] = set()
     if engine:
-        previously_active = set(engine._active_devices.keys())
         await engine.async_stop_all()
         actions.append("stopped_devices")
 
@@ -605,13 +596,18 @@ async def ws_load_profile(
                                     dev_id,
                                     slug,
                                 )
+                            # Wait briefly for ramses_rf to process the burst
+                            # frames, then poke the coordinator so new devices
+                            # are registered as HA entities immediately rather
+                            # than waiting up to 60s for the scan interval.
+                            await asyncio.sleep(1)
+                            await _trigger_ramses_discovery(hass)
 
-                # Only auto-start devices that weren't already active before
-                # this profile load — avoids re-flooding on repeated loads.
+                # Auto-start all non-HGI devices from the new profile.
                 auto_start = {
                     dev_id: cfg
                     for dev_id, cfg in known_list.items()
-                    if cfg.get("class") != "HGI" and dev_id not in previously_active
+                    if cfg.get("class") != "HGI"
                 }
                 if msg.get("reload_ramses_cc", True):
                     hass.async_create_task(
@@ -827,5 +823,46 @@ def ws_set_device_excluded_codes(
             "success": True,
             "device_id": msg["device_id"],
             "excluded_codes": device.excluded_codes,
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/set_auto_answer",
+        vol.Required("enabled"): bool,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_set_auto_answer(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Enable or disable global RQ\u2192RP auto-answering.
+
+    When disabled the simulator receives RQ frames but never replies,
+    simulating a device/ESP that is powered off or unreachable.
+    Conflicts with other running scenarios are reported as warnings only
+    (the caller decides whether to proceed).
+    """
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    from .const import SCENARIO_AUTO_ANSWER
+
+    enabled: bool = msg["enabled"]
+    conflicts = (
+        engine.check_scenario_conflicts(SCENARIO_AUTO_ANSWER) if not enabled else []
+    )
+    engine.set_auto_answer(enabled)
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "auto_answer": enabled,
+            "conflicts": conflicts,
         },
     )

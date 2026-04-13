@@ -27,8 +27,11 @@ from datetime import UTC
 from .comm_endpoint import SimulatorCommEndpoint
 from .const import (
     LOGGER,
+    SCENARIO_AUTO_ANSWER,
+    SCENARIO_AUTONOMOUS_EMISSIONS,
     SCENARIO_DEVICE_UNAVAILABILITY,
     SCENARIO_HVAC_DEVICE_LOSS,
+    SCENARIO_REGISTRY,
     SCENARIO_STATE_COMPLETED,
     SCENARIO_STATE_ERROR,
     SCENARIO_STATE_IDLE,
@@ -146,6 +149,10 @@ class ScenarioEngine:
         self._state = SCENARIO_STATE_IDLE
         self._messages_sent = 0
         self._message_log: list[str] = []
+        # Global RQ→RP auto-answer toggle (default on).
+        # When False the engine receives RQs but never replies — simulates a
+        # device that is powered off or unreachable (e.g. broken ESP).
+        self._auto_answer_enabled: bool = True
 
         endpoint.add_inbound_handler(self._handle_inbound_frame)
 
@@ -159,6 +166,26 @@ class ScenarioEngine:
         """Stop all emitters and disconnect."""
         await self.async_stop_all()
         await self._endpoint.async_disconnect()
+
+    async def async_emit_startup_burst(self) -> None:
+        """Emit an immediate I-frame burst for all active devices.
+
+        Called after HA restarts so ramses_cc can re-discover active devices
+        from I frames rather than waiting for RQ→timeout cycles.
+        """
+        for device in list(self._active_devices.values()):
+            if device.suppress_autonomous or not device.enabled:
+                continue
+            entries = self._db.get_periodic(device.slug, device.variant_id)
+            if not entries:
+                continue
+            payload_idx: dict[str, int] = {e.code: 0 for e in entries}
+            LOGGER.debug(
+                "Startup burst (restart) for %s (%d codes)",
+                device.device_id,
+                len(entries),
+            )
+            await self._emit_burst(device, entries, payload_idx)
 
     async def async_activate_device(self, device: ActiveDevice) -> None:
         """Activate a device: start its periodic emitter.
@@ -288,6 +315,56 @@ class ScenarioEngine:
             errors=errors,
         )
 
+    async def _emit_burst(
+        self,
+        device: ActiveDevice,
+        entries: list[AutonomousEntry],
+        payload_idx: dict[str, int],
+        inter_packet_delay: float = 0.05,
+    ) -> None:
+        """Emit one round of all periodic I frames for a device immediately.
+
+        Used at startup so ramses_cc can discover/characterise devices from I
+        frames rather than waiting for slow RQ→timeout cycles.
+
+        :param device: ActiveDevice.
+        :param entries: Autonomous entries to emit.
+        :param payload_idx: Mutable payload rotation index (updated in-place).
+        :param inter_packet_delay: Seconds between packets (avoid MQTT flooding).
+        """
+        for entry in entries:
+            if device.suppress_autonomous or not device.enabled:
+                break
+            if entry.code in device.excluded_codes:
+                continue
+            if not entry.payloads:
+                continue
+
+            idx = payload_idx[entry.code]
+            payload = entry.payloads[idx % len(entry.payloads)]
+            payload_idx[entry.code] = idx + 1
+
+            packet = self._build_packet(
+                device.device_id, "--:------", VERB_I, entry.code, payload
+            )
+            try:
+                await self._endpoint.send_packet(packet)
+                self._messages_sent += 1
+                self._message_log.append(
+                    f"[{asyncio.get_event_loop().time():.3f}] {packet[:60]}..."
+                )
+                if len(self._message_log) > 1000:
+                    self._message_log = self._message_log[-500:]
+                if inter_packet_delay > 0:
+                    await asyncio.sleep(inter_packet_delay)
+            except Exception as err:
+                LOGGER.warning(
+                    "Burst send error for %s/%s: %s",
+                    device.device_id,
+                    entry.code,
+                    err,
+                )
+
     async def _periodic_emitter(
         self,
         device: ActiveDevice,
@@ -295,6 +372,9 @@ class ScenarioEngine:
         speed: float = 1.0,
     ) -> None:
         """Background task: emit periodic I messages for a device.
+
+        Starts with an immediate burst so ramses_cc can discover the device
+        quickly, then falls into the normal periodic interval loop.
 
         :param device: ActiveDevice.
         :param entries: Autonomous entries to emit.
@@ -304,6 +384,11 @@ class ScenarioEngine:
             return
 
         payload_idx: dict[str, int] = {e.code: 0 for e in entries}
+
+        # Immediate startup burst — lets ramses_cc discover the device from I
+        # frames rather than waiting for RQ→timeout cycles (can take 20s each).
+        LOGGER.debug("Startup burst for %s (%d codes)", device.device_id, len(entries))
+        await self._emit_burst(device, entries, payload_idx)
 
         while True:
             for entry in entries:
@@ -328,11 +413,9 @@ class ScenarioEngine:
                 try:
                     await self._endpoint.send_packet(packet)
                     self._messages_sent += 1
-                    # Log the message
                     self._message_log.append(
                         f"[{asyncio.get_event_loop().time():.3f}] {packet[:60]}..."
                     )
-                    # Keep log size bounded
                     if len(self._message_log) > 1000:
                         self._message_log = self._message_log[-500:]
                 except Exception as err:
@@ -362,6 +445,10 @@ class ScenarioEngine:
         verb = verb.upper().strip()  # Strip leading space from 1-char verbs like ' I'
 
         if verb != VERB_RQ:
+            return
+
+        if not self._auto_answer_enabled:
+            LOGGER.debug("Auto-answer disabled, dropping RQ %s from %s", code, src)
             return
 
         await self._respond_to_rq(src, dst, code)
@@ -474,6 +561,11 @@ class ScenarioEngine:
         return self._state
 
     @property
+    def auto_answer_enabled(self) -> bool:
+        """Return True when the engine will reply to RQ frames."""
+        return self._auto_answer_enabled
+
+    @property
     def messages_sent(self) -> int:
         """Return total messages sent since startup."""
         return self._messages_sent
@@ -482,6 +574,63 @@ class ScenarioEngine:
     def active_device_ids(self) -> list[str]:
         """Return list of currently active device IDs."""
         return list(self._active_devices.keys())
+
+    def set_auto_answer(self, enabled: bool) -> None:
+        """Enable or disable global RQ→RP auto-answering.
+
+        When disabled the engine never responds to RQ frames, simulating a
+        device that is powered off or the ESP transport being unavailable.
+        Individual device suppress_responses flags are still respected when
+        auto-answer is enabled.
+
+        :param enabled: True to respond to RQs, False to drop all responses.
+        """
+        self._auto_answer_enabled = enabled
+        LOGGER.info(
+            "Auto-answer %s", "enabled" if enabled else "disabled (no RQ replies)"
+        )
+
+    def get_running_scenario_ids(self) -> list[str]:
+        """Return IDs of all currently running scenarios (including toggleable ones)."""
+        running = list(self._running_scenarios.keys())
+        if self._auto_answer_enabled:
+            running.append(SCENARIO_AUTO_ANSWER)
+        # autonomous_emissions is considered running if any emitter task is active
+        if self._emitter_tasks:
+            if SCENARIO_AUTONOMOUS_EMISSIONS not in running:
+                running.append(SCENARIO_AUTONOMOUS_EMISSIONS)
+        return running
+
+    def check_scenario_conflicts(self, new_scenario_id: str) -> list[str]:
+        """Return running scenario IDs that conflict with new_scenario_id.
+
+        A conflict exists when a running scenario does not list new_scenario_id
+        in its can_run_with, and new_scenario_id does not list the running
+        scenario in its own can_run_with (and neither side has "*").
+
+        :param new_scenario_id: Scenario about to be started.
+        :return: List of conflicting running scenario IDs (empty = no conflicts).
+        """
+        new_meta = SCENARIO_REGISTRY.get(new_scenario_id, {})
+        new_compat = new_meta.get("can_run_with", [])
+        if "*" in new_compat:
+            return []
+
+        conflicts: list[str] = []
+        for running_id in self.get_running_scenario_ids():
+            if running_id == new_scenario_id:
+                continue
+            running_meta = SCENARIO_REGISTRY.get(running_id, {})
+            running_compat = running_meta.get("can_run_with", [])
+            # Compatible if either side lists the other OR either side has "*"
+            if (
+                "*" in running_compat
+                or new_scenario_id in running_compat
+                or running_id in new_compat
+            ):
+                continue
+            conflicts.append(running_id)
+        return conflicts
 
     # Scenario runner methods (stubs - to be fully implemented)
     async def async_run_device_playback(

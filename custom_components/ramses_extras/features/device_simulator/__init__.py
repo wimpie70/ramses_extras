@@ -330,6 +330,59 @@ async def create_device_simulator_feature(
             registry["device_simulator_db"],
         )
 
+    # Auto-start devices for the persisted active profile on HA restart.
+    # Deferred to a background task so MQTT has time to (re)connect before the
+    # startup burst fires — the same reason ws_load_profile uses asyncio.sleep(3).
+    config_store = registry.get("device_simulator_config_store")
+    last_profile_name = config_store.get_active_profile() if config_store else None
+    if last_profile_name:
+        last_profile = config_store.get_profile(last_profile_name)
+        known_list = (
+            last_profile.device_configs.get("_known_list") if last_profile else None
+        ) or {}
+        boot_devices = {
+            dev_id: dev_cfg
+            for dev_id, dev_cfg in known_list.items()
+            if dev_cfg.get("class") != "HGI"
+        }
+        if boot_devices:
+            from .scenario_engine import ActiveDevice
+
+            _engine = registry["device_simulator_engine"]
+
+            async def _deferred_boot_start() -> None:
+                await asyncio.sleep(3)
+                started: list[str] = []
+                for dev_id, dev_cfg in boot_devices.items():
+                    device = ActiveDevice(
+                        device_id=dev_id,
+                        slug=dev_cfg.get("class", "FAN"),
+                        variant_id="default",
+                        excluded_codes=["1FC9"],
+                        suppress_autonomous=False,
+                        suppress_responses=False,
+                        enabled=True,
+                    )
+                    await _engine.async_activate_device(device)
+                    started.append(dev_id)
+                _LOGGER.info(
+                    "Startup: auto-started %d device(s) from profile '%s': %s",
+                    len(started),
+                    last_profile_name,
+                    started,
+                )
+                # Wait briefly for ramses_rf to process the burst frames, then
+                # trigger discovery so HA entities are created immediately.
+                await asyncio.sleep(1)
+                from .websocket import _trigger_ramses_discovery
+
+                await _trigger_ramses_discovery(hass)
+
+            hass.async_create_background_task(
+                _deferred_boot_start(),
+                name="device_simulator_boot_autostart",
+            )
+
     # Set up services
     await async_setup_services(hass)
 

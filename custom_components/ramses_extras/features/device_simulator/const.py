@@ -75,6 +75,78 @@ SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
 SCENARIO_HVAC_DEVICE_LOSS = "hvac_device_loss"
 SCENARIO_RUN_CONVERSATION = "run_conversation"
 SCENARIO_AUTONOMOUS_EMISSIONS = "autonomous_emissions"  # Start/stop autonomous I frames
+SCENARIO_AUTO_ANSWER = "auto_answer"  # Global RQ→RP response toggle
+
+# Scenario registry: metadata for each scenario type.
+# toggleable: True if the scenario can be independently toggled on/off.
+# can_run_with: list of scenario IDs that may run concurrently.
+#   Use "*" to mean "any".
+SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
+    SCENARIO_AUTONOMOUS_EMISSIONS: {
+        "label": "Autonomous Emissions",
+        "toggleable": True,
+        "can_run_with": [
+            SCENARIO_AUTO_ANSWER,
+            SCENARIO_DEVICE_UNAVAILABILITY,
+            SCENARIO_HVAC_DEVICE_LOSS,
+            SCENARIO_RUN_CONVERSATION,
+        ],
+    },
+    SCENARIO_AUTO_ANSWER: {
+        "label": "Auto Answer (RQ→RP)",
+        "toggleable": True,
+        "can_run_with": ["*"],  # compatible with everything
+    },
+    SCENARIO_DEVICE_UNAVAILABILITY: {
+        "label": "Device Unavailability",
+        "toggleable": True,
+        "can_run_with": [
+            SCENARIO_AUTONOMOUS_EMISSIONS,
+            SCENARIO_AUTO_ANSWER,
+        ],
+    },
+    SCENARIO_HVAC_DEVICE_LOSS: {
+        "label": "HVAC Device Loss",
+        "toggleable": True,
+        "can_run_with": [
+            SCENARIO_AUTONOMOUS_EMISSIONS,
+            SCENARIO_AUTO_ANSWER,
+        ],
+    },
+    SCENARIO_RUN_CONVERSATION: {
+        "label": "Conversation Playback",
+        "toggleable": False,
+        "can_run_with": [
+            SCENARIO_AUTONOMOUS_EMISSIONS,
+            SCENARIO_AUTO_ANSWER,
+        ],
+    },
+    SCENARIO_DISCOVERY_TEST: {
+        "label": "Discovery Test",
+        "toggleable": False,
+        "can_run_with": [SCENARIO_AUTO_ANSWER],
+    },
+    SCENARIO_TIMEOUT_TEST: {
+        "label": "Timeout Test",
+        "toggleable": False,
+        "can_run_with": [],  # exclusive
+    },
+    SCENARIO_FLOODING_TEST: {
+        "label": "Flooding Test",
+        "toggleable": False,
+        "can_run_with": [],  # exclusive
+    },
+    SCENARIO_DEVICE_PLAYBACK: {
+        "label": "Device Playback",
+        "toggleable": False,
+        "can_run_with": [SCENARIO_AUTO_ANSWER],
+    },
+    SCENARIO_DEVICE_SUITE: {
+        "label": "Device Suite",
+        "toggleable": False,
+        "can_run_with": [SCENARIO_AUTO_ANSWER],
+    },
+}
 
 # Device DB subfolder names
 DB_SUBDIR_HEAT = "heat"
@@ -138,4 +210,6 @@ __all__ = [
     "DEVICE_SIMULATOR_CARD_CONFIGS",
     "DEFAULT_GATEWAY_ID",
     "LOGGER",
+    "SCENARIO_AUTO_ANSWER",
+    "SCENARIO_REGISTRY",
 ]
