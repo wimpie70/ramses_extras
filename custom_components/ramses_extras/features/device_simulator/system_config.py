@@ -129,9 +129,14 @@ class ConfigProfileStore:
         dhw_id = SIM_DEVICES["DHW"]["id"]
 
         def _known_list(*types: str) -> dict[str, dict]:
-            entries = {
-                SIM_DEVICES[t]["id"]: {"class": t} for t in types if t in SIM_DEVICES
-            }
+            entries = {}
+            for t in types:
+                if t not in SIM_DEVICES:
+                    continue
+                entry: dict = {"class": t}
+                if t == "FAN" and "REM" in types:
+                    entry["bound"] = rem_id
+                entries[SIM_DEVICES[t]["id"]] = entry
             return {**_HGI_ENTRY, **entries}
 
         # HVAC schema: FAN device ID is the top-level key (SCH_DEVICE_ID_ANY → SCH_VCS).
