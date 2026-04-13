@@ -122,6 +122,7 @@ class ScenarioEngine:
         self._state = SCENARIO_STATE_IDLE
         self._messages_sent = 0
         self._message_log: list[str] = []
+        self._response_index: dict[tuple[str, str], int] = {}
         # Global RQ→RP auto-answer toggle (default on).
         # When False the engine receives RQs but never replies — simulates a
         # device that is powered off or unreachable (e.g. broken ESP).
@@ -485,7 +486,10 @@ class ScenarioEngine:
             LOGGER.debug("No response entry for %s/%s", slug, code)
             return
 
-        payload = resp.payloads[0]
+        key = (slug, code)
+        idx = self._response_index.get(key, 0) % len(resp.payloads)
+        payload = resp.payloads[idx]
+        self._response_index[key] = idx + 1
         if resp.delay_ms > 0:
             await asyncio.sleep(resp.delay_ms / 1000.0)
 
