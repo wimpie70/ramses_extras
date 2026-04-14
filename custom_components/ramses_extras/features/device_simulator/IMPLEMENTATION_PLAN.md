@@ -4,6 +4,13 @@
 
 A developer tool that simulates RAMSES devices by sitting at the **communication endpoint** — the far end of the wire — using the existing transport layer (serial, MQTT) unchanged. Ramses RF/CC runs as normal, using its own config (known devices, schemas, etc.). The simulator is a separate process that reads and writes on the other side of the connection.
 
+> **Status snapshot (Apr 2026)**
+>
+> - Communication endpoint + MQTT bridge are stable; W-frame echoing and REM discovery ordering are verified.
+> - Device Database scaffolding (YAML structure, variant overrides, conversation library) and supporting tooling have largely been implemented; remaining work is incremental data curation.
+> - Scenario modules now live under `scenarios/` with per-file definitions for device playback, suites, discovery, flooding, timeout, and the two failure-mode scenarios (device_unavailability & hvac_device_loss). Services auto-dispatch to these modules via `ScenarioEngine`.
+> - Focus is shifting to richer scenario coverage (autonomous emissions orchestration, realistic device playback) and better profile management (import/export/edit).
+
 ## Design Principle
 
 **Keep ramses_rf/cc source unmodified. Simulate at the communication endpoint only.**
@@ -471,6 +478,24 @@ Drop-response mode: just don't reply → ramses_rf times out naturally.
 | **discovery_test**  | Emit `10E0` announcements; verify ramses_rf detects brand/type |
 | **timeout_test**    | Activate device but drop responses to specific RQ codes        |
 | **flooding_test**   | Emit `I` messages at high rate (N msgs/sec for T seconds)      |
+
+#### Scenario modules (`custom_components/.../scenarios/`)
+
+- `base.py` defines `ScenarioContext`, `ScenarioResult`, and `ScenarioDefinition`.
+- `__init__.py` dynamically discovers modules via `pkgutil` so new scenarios are picked up automatically.
+- `ScenarioEngine` now exposes `has_scenario_definition()` / `async_run_registered_scenario()` and the HA service handler uses those to dispatch scenarios after handling the special `autonomous_emissions` toggle.
+
+| Scenario module | Status | Notes |
+| --- | --- | --- |
+| `device_unavailability.py` | ✅ | Implements silence/resume timing, uses `ScenarioContext` helpers. |
+| `hvac_device_loss.py` | ✅ | Single-device loss + optional restore; shares the same context helpers. |
+| `device_playback.py` | ⚠️ stub | Validates params + logs intent; ready for real log replay logic. |
+| `device_suite.py` | ⚠️ stub | Accepts slug list/duration; will later activate emitters + conversations. |
+| `discovery_test.py` | ⚠️ stub | Placeholder for 10E0 burst; returns success immediately. |
+| `timeout_test.py` | ⚠️ stub | Captures delay parameter; future work will hook into response suppression. |
+| `flooding_test.py` | ⚠️ stub | Records count/interval; future work will schedule emitter bursts. |
+
+> `autonomous_emissions` and `auto_answer` remain special toggle scenarios handled directly by `ScenarioEngine` because they map to persistent engine state rather than a discrete run.
 
 ---
 
@@ -1188,7 +1213,7 @@ After running the full pipeline, the following categories need human attention i
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Scenario runners | 🔄 | Stubs implemented: `async_run_device_playback`, `async_run_device_suite`, `async_run_discovery_test`, `async_run_timeout_test`, `async_run_flooding_test`, `async_run_unavailability_test` |
+| Scenario runners | 🔄 | Per-file modules for `device_playback`, `device_suite`, `discovery_test`, `timeout_test`, `flooding_test`, `device_unavailability`, `hvac_device_loss`; still need full implementations for playback/suite/discovery/flooding/timeouts + UI wiring |
 | End-to-end testing | ⏳ | Requires HA with MQTT broker setup |
 
 ### Pending ⏳

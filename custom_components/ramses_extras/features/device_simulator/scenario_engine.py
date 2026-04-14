@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-from datetime import UTC
 
 from .comm_endpoint import SimulatorCommEndpoint
 from .const import (
@@ -32,16 +31,15 @@ from .const import (
     SCENARIO_DEVICE_UNAVAILABILITY,
     SCENARIO_HVAC_DEVICE_LOSS,
     SCENARIO_REGISTRY,
-    SCENARIO_STATE_COMPLETED,
-    SCENARIO_STATE_ERROR,
     SCENARIO_STATE_IDLE,
-    SCENARIO_STATE_RUNNING,
     VERB_I,
     VERB_RP,
     VERB_RQ,
     VERB_W,
 )
-from .device_db import AutonomousEntry, ConversationFrame, DeviceDatabase, ResponseEntry
+from .device_db import AutonomousEntry, DeviceDatabase, ResponseEntry
+from .scenarios import discover_scenarios
+from .scenarios.base import ScenarioContext, ScenarioResult
 
 _PACKET_RE = re.compile(
     # Match RAMSES frame format: [RSSI] VERB SEQ SRC DST BROADCAST CODE LEN PAYLOAD
@@ -82,24 +80,6 @@ class ActiveDevice:
     bound_device_id: str | None = None
 
 
-@dataclass
-class ScenarioResult:
-    """Result of a scenario run.
-
-    :param scenario_id: Identifier.
-    :param success: Completed without error.
-    :param messages_sent: Total frames sent.
-    :param duration_seconds: Wall-clock duration.
-    :param errors: Error messages.
-    """
-
-    scenario_id: str
-    success: bool
-    messages_sent: int = 0
-    duration_seconds: float = 0.0
-    errors: list[str] = field(default_factory=list)
-
-
 class ScenarioEngine:
     """Orchestrates device simulation scenarios via the comm endpoint."""
 
@@ -127,6 +107,7 @@ class ScenarioEngine:
         self._messages_sent = 0
         self._message_log: list[str] = []
         self._response_index: dict[tuple[str, str], int] = {}
+        self._scenario_definitions = discover_scenarios()
         # Global RQ→RP auto-answer toggle (default on).
         # When False the engine receives RQs but never replies — simulates a
         # device that is powered off or unreachable (e.g. broken ESP).
@@ -706,38 +687,6 @@ class ScenarioEngine:
             conflicts.append(running_id)
         return conflicts
 
-    # Scenario runner methods (stubs - to be fully implemented)
-    async def async_run_device_playback(
-        self, log_file: str, params: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Playback device messages from packet log."""
-        LOGGER.info("Device playback from %s (stub)", log_file)
-        return {"success": True, "message": "Playback started", "messages_sent": 0}
-
-    async def async_run_device_suite(
-        self, slugs: list[str], duration: int
-    ) -> dict[str, Any]:
-        """Run a suite of standard device tests."""
-        LOGGER.info("Device suite test: %s for %ds (stub)", slugs, duration)
-        return {"success": True, "message": "Suite started", "messages_sent": 0}
-
-    async def async_run_discovery_test(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Test device discovery by simulating new devices."""
-        LOGGER.info("Discovery test (stub)")
-        return {"success": True, "message": "Discovery test started"}
-
-    async def async_run_timeout_test(self, delay: float) -> dict[str, Any]:
-        """Test timeout handling with slow responses."""
-        LOGGER.info("Timeout test with delay %fs (stub)", delay)
-        return {"success": True, "message": "Timeout test started"}
-
-    async def async_run_flooding_test(
-        self, count: int, interval: float
-    ) -> dict[str, Any]:
-        """Test flooding/burst message handling."""
-        LOGGER.info("Flooding test: %d messages @ %fs (stub)", count, interval)
-        return {"success": True, "message": "Flooding test started"}
-
     async def async_cancel_scenario(self, scenario_id: str) -> None:
         """Cancel a running timed scenario task.
 
@@ -759,56 +708,14 @@ class ScenarioEngine:
         silence_after: float = 30.0,
         resume_after: float = 60.0,
     ) -> dict[str, Any]:
-        """Simulate device going offline then coming back.
-
-        :param device_id: Specific device to silence, or None for all active devices.
-        :param silence_after: Seconds until device(s) go silent.
-        :param resume_after: Seconds after silence_after until device(s) resume.
-        """
-        targets = [device_id] if device_id else list(self._active_devices.keys())
-        if not targets:
-            return {"success": False, "error": "No active devices to test"}
-
-        async def _run() -> None:
-            LOGGER.info(
-                "device_unavailability: silencing %s in %.0fs", targets, silence_after
-            )
-            await asyncio.sleep(silence_after)
-            for did in targets:
-                await self.async_silence_device(did)
-                LOGGER.info("device_unavailability: silenced %s", did)
-            LOGGER.info(
-                "device_unavailability: resuming %s in %.0fs", targets, resume_after
-            )
-            await asyncio.sleep(resume_after)
-            for did in targets:
-                device = self._active_devices.get(did)
-                if device:
-                    device.suppress_autonomous = False
-                    await self.async_activate_device(device)
-                    LOGGER.info("device_unavailability: resumed %s", did)
-            self._scenario_tasks.pop(SCENARIO_DEVICE_UNAVAILABILITY, None)
-            self._running_scenarios.pop(SCENARIO_DEVICE_UNAVAILABILITY, None)
-            LOGGER.info("device_unavailability scenario completed")
-
-        await self.async_cancel_scenario(SCENARIO_DEVICE_UNAVAILABILITY)
-        task = self.hass.async_create_background_task(
-            _run(), name="device_simulator_unavailability"
-        )
-        self._scenario_tasks[SCENARIO_DEVICE_UNAVAILABILITY] = task
-        self._running_scenarios[SCENARIO_DEVICE_UNAVAILABILITY] = {
-            "targets": targets,
+        params = {
+            "device_id": device_id,
             "silence_after": silence_after,
             "resume_after": resume_after,
         }
-        return {
-            "success": True,
-            "message": (
-                f"Silencing {targets} in {silence_after:.0f}s,"
-                f" resuming after {resume_after:.0f}s"
-            ),
-            "targets": targets,
-        }
+        return await self._run_registered_scenario(
+            SCENARIO_DEVICE_UNAVAILABILITY, params
+        )
 
     async def async_run_hvac_device_loss(
         self,
@@ -816,52 +723,48 @@ class ScenarioEngine:
         loss_after: float = 30.0,
         restore_after: float | None = None,
     ) -> dict[str, Any]:
-        """Simulate a specific HVAC device dropping off mid-run.
-
-        :param device_id: Device to silence.
-        :param loss_after: Seconds until device goes silent.
-        :param restore_after: Optional seconds after loss until device resumes.
-                              If None, device stays silent.
-        """
-        if device_id not in self._active_devices:
-            return {
-                "success": False,
-                "error": f"Device '{device_id}' is not active",
-            }
-
-        async def _run() -> None:
-            LOGGER.info(
-                "hvac_device_loss: silencing %s in %.0fs", device_id, loss_after
-            )
-            await asyncio.sleep(loss_after)
-            await self.async_silence_device(device_id)
-            LOGGER.info("hvac_device_loss: %s is now silent", device_id)
-            if restore_after is not None:
-                await asyncio.sleep(restore_after)
-                device = self._active_devices.get(device_id)
-                if device:
-                    device.suppress_autonomous = False
-                    await self.async_activate_device(device)
-                    LOGGER.info("hvac_device_loss: %s restored", device_id)
-            self._scenario_tasks.pop(SCENARIO_HVAC_DEVICE_LOSS, None)
-            self._running_scenarios.pop(SCENARIO_HVAC_DEVICE_LOSS, None)
-            LOGGER.info("hvac_device_loss scenario completed")
-
-        await self.async_cancel_scenario(SCENARIO_HVAC_DEVICE_LOSS)
-        task = self.hass.async_create_background_task(
-            _run(), name="device_simulator_hvac_device_loss"
-        )
-        self._scenario_tasks[SCENARIO_HVAC_DEVICE_LOSS] = task
-        self._running_scenarios[SCENARIO_HVAC_DEVICE_LOSS] = {
+        params = {
             "device_id": device_id,
             "loss_after": loss_after,
             "restore_after": restore_after,
         }
+        return await self._run_registered_scenario(SCENARIO_HVAC_DEVICE_LOSS, params)
+
+    def has_scenario_definition(self, scenario_id: str) -> bool:
+        """Return True if a dynamic scenario definition exists."""
+
+        return scenario_id in self._scenario_definitions
+
+    async def async_run_registered_scenario(
+        self, scenario_id: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute a dynamically registered scenario."""
+
+        return await self._run_registered_scenario(scenario_id, params)
+
+    async def _run_registered_scenario(
+        self, scenario_id: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        definition = self._scenario_definitions.get(scenario_id)
+        if not definition:
+            return {
+                "success": False,
+                "error": f"Scenario '{scenario_id}' is not available",
+            }
+
+        context = ScenarioContext(self.hass, self)
+        result = await definition.run(context, params)
+
+        if result.success:
+            response: dict[str, Any] = {"success": True}
+            response.update(result.details)
+            if "message" not in response and result.details.get("message"):
+                response["message"] = result.details["message"]
+            return response
+
+        error_msg = result.errors[0] if result.errors else "Scenario failed"
         return {
-            "success": True,
-            "message": (
-                f"Silencing {device_id} in {loss_after:.0f}s"
-                + (f", restoring after {restore_after:.0f}s" if restore_after else "")
-            ),
-            "device_id": device_id,
+            "success": False,
+            "error": error_msg,
+            "details": result.details,
         }

@@ -185,51 +185,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "message": f"Autonomous emissions started for {device_id}",
             }
 
-        if scenario_type == SCENARIO_DEVICE_PLAYBACK:
-            # Playback device messages from packet log
-            log_file = params.get("log_file")
-            if not log_file:
-                return {"success": False, "error": "Missing log_file param"}
-            return await engine.async_run_device_playback(log_file, params)
-
-        if scenario_type == SCENARIO_DEVICE_SUITE:
-            # Run a suite of standard device tests
-            slugs = params.get("slugs", ["FAN", "REM", "CO2"])
-            duration = params.get("duration", 300)
-            return await engine.async_run_device_suite(slugs, duration)
-
-        if scenario_type == SCENARIO_DISCOVERY_TEST:
-            # Test device discovery by simulating new devices
-            return await engine.async_run_discovery_test(params)
-
-        if scenario_type == SCENARIO_TIMEOUT_TEST:
-            # Test timeout handling with slow responses
-            delay = params.get("delay", 10.0)
-            return await engine.async_run_timeout_test(delay)
-
-        if scenario_type == SCENARIO_FLOODING_TEST:
-            # Test flooding/burst message handling
-            count = params.get("count", 100)
-            interval = params.get("interval", 0.1)
-            return await engine.async_run_flooding_test(count, interval)
-
-        if scenario_type == SCENARIO_DEVICE_UNAVAILABILITY:
-            return await engine.async_run_unavailability_test(
-                device_id=params.get("device_id"),
-                silence_after=float(params.get("silence_after", 30.0)),
-                resume_after=float(params.get("resume_after", 60.0)),
-            )
-
-        if scenario_type == SCENARIO_HVAC_DEVICE_LOSS:
-            device_id = params.get("device_id")
-            if not device_id:
-                return {"success": False, "error": "Missing device_id param"}
-            restore = params.get("restore_after")
-            return await engine.async_run_hvac_device_loss(
-                device_id=device_id,
-                loss_after=float(params.get("loss_after", 30.0)),
-                restore_after=float(restore) if restore is not None else None,
-            )
+        if engine.has_scenario_definition(scenario_type):
+            return await engine.async_run_registered_scenario(scenario_type, params)
 
         return {"success": False, "error": f"Unknown scenario type: {scenario_type}"}
 

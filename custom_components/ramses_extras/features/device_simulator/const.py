@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-LOGGER = logging.getLogger(__name__)
+LOGGER: logging.Logger = logging.getLogger(__name__)
 
 DOMAIN = "device_simulator"
 FEATURE_ID = "device_simulator"
