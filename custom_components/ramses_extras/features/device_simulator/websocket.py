@@ -24,7 +24,13 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import callback
 
-from .const import DOMAIN, LOGGER, SCENARIO_REGISTRY
+from .const import (
+    DOMAIN,
+    LOGGER,
+    SCENARIO_AUTO_ANSWER,
+    SCENARIO_AUTONOMOUS_EMISSIONS,
+    SCENARIO_REGISTRY,
+)
 from .system_config import SIM_DEVICE_ID
 
 # Used by ws_clear_ramses_cache
@@ -659,35 +665,145 @@ async def ws_load_profile(
     {
         vol.Required("type"): "ramses_extras/device_simulator/start_scenario",
         vol.Required("scenario"): str,
+        vol.Optional("params", default={}): dict,
     }
 )
-@callback  # type: ignore[untyped-decorator]
-def ws_start_scenario(
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_start_scenario(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Start a test scenario."""
-    # TODO: Implement scenario runner
-    LOGGER.info("Starting scenario: %s", msg["scenario"])
-    connection.send_result(msg["id"], {"success": True, "scenario": msg["scenario"]})
+    """Start a simulator scenario from the UI."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    scenario_id = msg["scenario"]
+    params = msg.get("params", {})
+
+    if scenario_id == SCENARIO_AUTO_ANSWER:
+        connection.send_error(
+            msg["id"],
+            "unsupported",
+            "Use set_auto_answer to toggle the auto-answer scenario",
+        )
+        return
+
+    try:
+        if scenario_id == SCENARIO_AUTONOMOUS_EMISSIONS:
+            response = await _start_autonomous_emissions(engine, params)
+        elif engine.has_scenario_definition(scenario_id):
+            conflicts = engine.check_scenario_conflicts(scenario_id)
+            if conflicts:
+                connection.send_error(
+                    msg["id"],
+                    "conflict",
+                    "Conflicts with running scenarios: " + ", ".join(conflicts),
+                )
+                return
+            response = await engine.async_run_registered_scenario(scenario_id, params)
+        else:
+            connection.send_error(
+                msg["id"], "unknown_scenario", f"Scenario '{scenario_id}' not found"
+            )
+            return
+    except Exception as err:  # noqa: BLE001
+        LOGGER.exception("Scenario %s failed: %s", scenario_id, err)
+        connection.send_error(msg["id"], "error", str(err))
+        return
+
+    connection.send_result(msg["id"], response)
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
         vol.Required("type"): "ramses_extras/device_simulator/stop_scenario",
+        vol.Optional("scenario"): str,
+        vol.Optional("device_id"): str,
     }
 )
-@callback  # type: ignore[untyped-decorator]
-def ws_stop_scenario(
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_stop_scenario(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Stop the current scenario."""
-    # TODO: Implement scenario stop
-    LOGGER.info("Stopping scenario")
+    """Stop a running simulator scenario."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    scenario_id = msg.get("scenario")
+    device_id = msg.get("device_id")
+
+    if scenario_id == SCENARIO_AUTO_ANSWER:
+        connection.send_error(
+            msg["id"], "unsupported", "Use set_auto_answer to toggle auto-answer"
+        )
+        return
+
+    if scenario_id == SCENARIO_AUTONOMOUS_EMISSIONS or device_id:
+        if device_id:
+            await engine.async_silence_device(device_id)
+            connection.send_result(
+                msg["id"],
+                {
+                    "success": True,
+                    "message": f"Autonomous emissions stopped for {device_id}",
+                },
+            )
+            return
+        await engine.async_stop_all()
+        connection.send_result(
+            msg["id"],
+            {"success": True, "message": "Autonomous emissions stopped (all)"},
+        )
+        return
+
+    if scenario_id:
+        await engine.async_cancel_scenario(scenario_id)
+        connection.send_result(
+            msg["id"],
+            {"success": True, "message": f"Scenario '{scenario_id}' cancelled"},
+        )
+        return
+
     connection.send_result(msg["id"], {"success": True})
+
+
+async def _start_autonomous_emissions(
+    engine: ScenarioEngine, params: dict[str, Any]
+) -> dict[str, Any]:
+    from .scenario_engine import ActiveDevice
+
+    device_id = params.get("device_id", SIM_DEVICE_ID["FAN"])
+    device_type = params.get("device_type", "FAN")
+    variant_id = params.get("variant_id", "default")
+    excluded_codes = params.get("excluded_codes")
+    if excluded_codes is None:
+        excluded_codes = ["1FC9"]
+
+    device = ActiveDevice(
+        device_id=device_id,
+        slug=device_type,
+        variant_id=variant_id,
+        excluded_codes=excluded_codes,
+        suppress_autonomous=False,
+        suppress_responses=False,
+        enabled=True,
+    )
+    await engine.async_activate_device(device)
+    return {
+        "success": True,
+        "scenario_id": SCENARIO_AUTONOMOUS_EMISSIONS,
+        "device_id": device_id,
+        "message": f"Autonomous emissions started for {device_id}",
+    }
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

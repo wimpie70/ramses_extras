@@ -211,8 +211,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             await engine.async_stop_all()
             return {"success": True, "message": "Autonomous emissions stopped (all)"}
 
-        # Cancel timed scenarios by id
-        if scenario_id in (SCENARIO_DEVICE_UNAVAILABILITY, SCENARIO_HVAC_DEVICE_LOSS):
+        if scenario_id:
             await engine.async_cancel_scenario(scenario_id)
             return {"success": True, "message": f"Scenario '{scenario_id}' cancelled"}
 

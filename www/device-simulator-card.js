@@ -3,6 +3,63 @@
 
 import { LitElement, html, css } from 'https://unpkg.com/lit@2.8.0/index.js?module';
 
+const SCENARIO_FORM_SCHEMAS = {
+  device_playback: [
+    { key: 'conversation', label: 'Conversation', type: 'text', required: true },
+    { key: 'speed', label: 'Speed (x)', type: 'number', step: 0.1, min: 0.1, default: 1 },
+    { key: 'loops', label: 'Loops', type: 'number', min: 1, default: 1 },
+  ],
+  device_suite: [
+    {
+      key: 'slugs',
+      label: 'Device slugs (comma separated)',
+      type: 'csv',
+      default: 'FAN, CO2, REM',
+    },
+    { key: 'duration', label: 'Duration (s)', type: 'number', min: 0, default: 300 },
+    { key: 'auto_stop', label: 'Auto stop', type: 'checkbox', default: true },
+  ],
+  device_unavailability: [
+    { key: 'device_id', label: 'Device ID (optional)', type: 'text' },
+    { key: 'silence_after', label: 'Silence after (s)', type: 'number', min: 0, default: 30 },
+    { key: 'resume_after', label: 'Resume after (s)', type: 'number', min: 0, default: 60 },
+  ],
+  hvac_device_loss: [
+    { key: 'device_id', label: 'Device ID', type: 'text', required: true },
+    { key: 'loss_after', label: 'Silence after (s)', type: 'number', min: 0, default: 30 },
+    { key: 'restore_after', label: 'Restore after (s)', type: 'number', min: 0 },
+  ],
+  discovery_test: [
+    { key: 'slug', label: 'Device slug', type: 'text', default: 'FAN' },
+    { key: 'device_id', label: 'Device ID (optional)', type: 'text' },
+    { key: 'fingerprint', label: 'Fingerprint (optional)', type: 'text' },
+    { key: 'count', label: 'Frame count', type: 'number', min: 1, default: 3 },
+    { key: 'interval', label: 'Interval (s)', type: 'number', min: 0, step: 0.1, default: 1 },
+  ],
+  flooding_test: [
+    { key: 'slug', label: 'Device slug', type: 'text', default: 'FAN' },
+    { key: 'device_id', label: 'Device ID (optional)', type: 'text' },
+    { key: 'code', label: 'Code', type: 'text', default: '22F7' },
+    { key: 'count', label: 'Frame count', type: 'number', min: 1, default: 200 },
+    { key: 'interval', label: 'Interval (s)', type: 'number', min: 0, step: 0.01, default: 0.05 },
+    { key: 'duration', label: 'Max duration (s)', type: 'number', min: 0, default: 0 },
+  ],
+  timeout_test: [
+    { key: 'device_id', label: 'Device ID', type: 'text', required: true },
+    { key: 'drop_codes', label: 'Drop codes (comma separated)', type: 'csv', default: '31DA' },
+    { key: 'delay', label: 'Delay before drop (s)', type: 'number', min: 0, default: 10 },
+    { key: 'duration', label: 'Hold duration (s)', type: 'number', min: 0, default: 30 },
+    { key: 'suppress_all_responses', label: 'Suppress all responses', type: 'checkbox' },
+  ],
+  autonomous_emissions: [
+    { key: 'device_id', label: 'Device ID', type: 'text', default: '32:150000' },
+    { key: 'device_type', label: 'Device slug', type: 'text', default: 'FAN' },
+    { key: 'variant_id', label: 'Variant', type: 'text', default: 'default' },
+  ],
+};
+
+const SPECIAL_SCENARIOS = new Set(['autonomous_emissions', 'auto_answer']);
+
 class DeviceSimulatorCard extends LitElement {
   static get styles() {
     return css`

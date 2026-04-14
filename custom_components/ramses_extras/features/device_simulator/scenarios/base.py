@@ -11,6 +11,7 @@ LOGGER: logging.Logger = logging.getLogger(__name__)
 if TYPE_CHECKING:  # pragma: no cover
     from homeassistant.core import HomeAssistant
 
+    from ..device_db import DeviceDatabase
     from ..scenario_engine import ActiveDevice, ScenarioEngine
 
 
@@ -58,6 +59,22 @@ class ScenarioContext:
         """Return the ActiveDevice descriptor if it exists."""
         return self.engine._active_devices.get(device_id)
 
+    def active_devices_by_slug(self, slug: str) -> list[ActiveDevice]:
+        """Return active devices filtered by slug."""
+
+        slug = slug.upper()
+        return [
+            device
+            for device in self.engine._active_devices.values()
+            if device.slug == slug
+        ]
+
+    @property
+    def device_db(self) -> DeviceDatabase:
+        """Expose the loaded device database to scenarios."""
+
+        return self.engine._db
+
     def active_device_ids(self) -> list[str]:
         """Return IDs of currently active devices."""
         return list(self.engine._active_devices.keys())
@@ -93,3 +110,22 @@ class ScenarioContext:
         """Remove stored task + metadata for a scenario id."""
         self.engine._scenario_tasks.pop(scenario_id, None)
         self.engine._running_scenarios.pop(scenario_id, None)
+
+    def build_packet(
+        self, src: str, dst: str, verb: str, code: str, payload: str
+    ) -> str:
+        """Proxy to the engine packet builder for convenience."""
+
+        return self.engine._build_packet(src, dst, verb, code, payload)
+
+    async def send_packet(self, packet: str) -> None:
+        """Send a packet via the simulator endpoint."""
+
+        await self.engine._endpoint.send_packet(packet)
+
+    def new_active_device(self, **kwargs: Any) -> ActiveDevice:
+        """Construct an ActiveDevice without importing the engine directly."""
+
+        from ..scenario_engine import ActiveDevice  # Lazy import, avoids circular deps
+
+        return ActiveDevice(**kwargs)
