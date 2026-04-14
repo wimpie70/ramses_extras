@@ -310,26 +310,47 @@ async def create_device_simulator_feature(
     _LOGGER.info("Connecting endpoint with new handler...")
     await registry["device_simulator_endpoint"].async_connect()
 
-    # Send an initial HGI presence packet to announce the gateway
-    # The retained online status (published by MqttEndpoint) triggers ramses_cc
-    # binding
-    hgi_device_id = SIMULATOR_HGI_ID  # 18:001234
-    dst = "--:------"  # Broadcast
-    code = "0005"  # HGI presence announcement packet
-    payload = "0005DC0101F40205DC"  # HGI presence payload
-    payload_len = len(payload) // 2  # 9 bytes
-    # Format: RSSI VERB --- SRC DST BROADCAST CODE LEN PAYLOAD
-    # For HGI I frames: BROADCAST = SRC (the HGI itself)
-    initial_frame = (
-        f"040  I --- {hgi_device_id} {dst} {hgi_device_id} {code} "
-        f"{payload_len:03d} {payload}"
+    def _profile_has_hvac_devices(store: Any | None) -> bool:
+        if not store:
+            return False
+        active = store.get_active_profile()
+        if not active:
+            return False
+        profile = store.get_profile(active)
+        if not profile:
+            return False
+        known = profile.device_configs.get("_known_list", {})
+        for dev_cfg in known.values():
+            slug = (dev_cfg or {}).get("class")
+            if slug in {"FAN", "CO2", "REM", "HUM", "DIS"}:
+                return True
+        return False
+
+    send_hvac_presence = _profile_has_hvac_devices(
+        registry.get("device_simulator_config_store")
     )
 
-    try:
-        await registry["device_simulator_endpoint"].send_packet(initial_frame)
-        _LOGGER.info("Sent initial HGI presence packet: %s", initial_frame)
-    except Exception as err:
-        _LOGGER.error("Failed to send initial HGI packet: %s", err)
+    if send_hvac_presence:
+        # Send an initial HGI presence packet to announce the gateway
+        # The retained online status (published by MqttEndpoint) triggers ramses_cc
+        # binding
+        hgi_device_id = SIMULATOR_HGI_ID  # 18:001234
+        dst = "--:------"  # Broadcast
+        code = "0005"  # HGI presence announcement packet
+        payload = "0005DC0101F40205DC"  # HGI presence payload
+        payload_len = len(payload) // 2  # 9 bytes
+        # Format: RSSI VERB --- SRC DST BROADCAST CODE LEN PAYLOAD
+        # For HGI I frames: BROADCAST = SRC (the HGI itself)
+        initial_frame = (
+            f"040  I --- {hgi_device_id} {dst} {hgi_device_id} {code} "
+            f"{payload_len:03d} {payload}"
+        )
+
+        try:
+            await registry["device_simulator_endpoint"].send_packet(initial_frame)
+            _LOGGER.info("Sent initial HGI presence packet: %s", initial_frame)
+        except Exception as err:
+            _LOGGER.error("Failed to send initial HGI packet: %s", err)
 
     # Create periodic emitter but don't auto-start it
     # Autonomous emissions are now scenario-controlled only

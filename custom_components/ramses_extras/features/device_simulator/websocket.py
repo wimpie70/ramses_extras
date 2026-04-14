@@ -1047,13 +1047,13 @@ def ws_subscribe_devices(
     @callback  # type: ignore[untyped-decorator]
     def _on_device_changed(event: dict[str, Any]) -> None:
         """Push device change event to client."""
-        # Extract event data from the bus event
+        payload = getattr(event, "data", {}) or {}
         data = {
-            "action": event.get("action", "updated"),
-            "device_id": event.get("device_id"),
-            "count": event.get("count"),
-            "enabled": event.get("enabled"),
-            "excluded_codes": event.get("excluded_codes"),
+            "action": payload.get("action", "updated"),
+            "device_id": payload.get("device_id"),
+            "count": payload.get("count"),
+            "enabled": payload.get("enabled"),
+            "excluded_codes": payload.get("excluded_codes"),
         }
         connection.send_message(
             websocket_api.event_message(
