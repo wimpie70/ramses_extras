@@ -220,8 +220,8 @@ KNOWN_PAIRINGS = [
 ]
 
 
-def load_device_file(file_path: Path) -> dict[str, Any]:
-    """Load and parse a device YAML file."""
+def load_device_file(file_path: Path) -> Any:
+    """Load device data from YAML file."""
     import yaml
 
     with open(file_path, encoding="utf-8") as f:
@@ -234,7 +234,7 @@ def save_device_file(file_path: Path, data: dict[str, Any]) -> None:
 
     # Configure YAML for nice formatting
     class CustomDumper(yaml.SafeDumper):
-        def represent_list(self, data):
+        def represent_list(self, data: Any) -> Any:
             if len(data) == 0:
                 return self.represent_sequence(
                     "tag:yaml.org,2002:seq", data, flow_style=True
@@ -415,7 +415,7 @@ def main() -> None:
     print("=" * 50)
 
     # Find all device files
-    device_files = []
+    device_files: list[Path] = []
     for domain_dir in ["heat", "hvac"]:
         domain_path = DEVICE_DB_DIR / domain_dir
         if domain_path.exists():

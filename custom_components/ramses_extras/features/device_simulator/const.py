@@ -38,6 +38,7 @@ DEVICE_SIMULATOR_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
     },
 }
 
+
 # WebSocket commands for device simulator
 DEVICE_SIMULATOR_WEBSOCKET_COMMANDS = {
     "get_simulator_status": "ramses_extras/device_simulator/get_status",
@@ -77,6 +78,246 @@ SCENARIO_RUN_CONVERSATION = "run_conversation"
 SCENARIO_AUTONOMOUS_EMISSIONS = "autonomous_emissions"  # Start/stop autonomous I frames
 SCENARIO_AUTO_ANSWER = "auto_answer"  # Global RQ→RP response toggle
 
+# Parameter schemas for scenario configuration UI
+SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
+    SCENARIO_AUTONOMOUS_EMISSIONS: [
+        {
+            "key": "device_id",
+            "label": "Device ID",
+            "type": "text",
+            "default": "32:150000",
+        },
+        {
+            "key": "device_type",
+            "label": "Device slug",
+            "type": "text",
+            "default": "FAN",
+        },
+        {
+            "key": "variant_id",
+            "label": "Variant",
+            "type": "text",
+            "default": "default",
+        },
+        {
+            "key": "excluded_codes",
+            "label": "Excluded codes",
+            "type": "csv",
+            "default": "1FC9",
+        },
+    ],
+    SCENARIO_DEVICE_PLAYBACK: [
+        {
+            "key": "conversation",
+            "label": "Conversation",
+            "type": "text",
+            "required": True,
+        },
+        {
+            "key": "scheme",
+            "label": "Scheme",
+            "type": "text",
+        },
+        {
+            "key": "speed",
+            "label": "Speed (×)",
+            "type": "number",
+            "default": 1.0,
+            "step": 0.1,
+            "min": 0.1,
+        },
+        {
+            "key": "loops",
+            "label": "Loops",
+            "type": "number",
+            "default": 1,
+            "min": 1,
+        },
+    ],
+    SCENARIO_DEVICE_SUITE: [
+        {
+            "key": "slugs",
+            "label": "Device slugs",
+            "type": "csv",
+            "default": "FAN, CO2, REM",
+        },
+        {
+            "key": "duration",
+            "label": "Duration (s)",
+            "type": "number",
+            "default": 300,
+            "min": 0,
+        },
+        {
+            "key": "auto_stop",
+            "label": "Auto stop",
+            "type": "checkbox",
+            "default": True,
+        },
+    ],
+    SCENARIO_DEVICE_UNAVAILABILITY: [
+        {
+            "key": "device_id",
+            "label": "Specific device ID",
+            "type": "text",
+        },
+        {
+            "key": "silence_after",
+            "label": "Silence after (s)",
+            "type": "number",
+            "default": 30.0,
+            "min": 0,
+        },
+        {
+            "key": "resume_after",
+            "label": "Resume after (s)",
+            "type": "number",
+            "default": 60.0,
+            "min": 0,
+        },
+    ],
+    SCENARIO_HVAC_DEVICE_LOSS: [
+        {
+            "key": "device_id",
+            "label": "Device ID",
+            "type": "text",
+            "required": True,
+        },
+        {
+            "key": "loss_after",
+            "label": "Silence after (s)",
+            "type": "number",
+            "default": 30.0,
+            "min": 0,
+        },
+        {
+            "key": "restore_after",
+            "label": "Restore after (s)",
+            "type": "number",
+            "min": 0,
+        },
+    ],
+    SCENARIO_DISCOVERY_TEST: [
+        {
+            "key": "slug",
+            "label": "Device slug",
+            "type": "text",
+            "default": "FAN",
+        },
+        {
+            "key": "device_id",
+            "label": "Device ID",
+            "type": "text",
+        },
+        {
+            "key": "fingerprint",
+            "label": "Fingerprint",
+            "type": "text",
+        },
+        {
+            "key": "payload",
+            "label": "Payload override",
+            "type": "text",
+        },
+        {
+            "key": "count",
+            "label": "Frame count",
+            "type": "number",
+            "default": 3,
+            "min": 1,
+        },
+        {
+            "key": "interval",
+            "label": "Interval (s)",
+            "type": "number",
+            "default": 1.0,
+            "min": 0,
+            "step": 0.1,
+        },
+        {
+            "key": "include_startup_burst",
+            "label": "Include startup burst",
+            "type": "checkbox",
+            "default": True,
+        },
+    ],
+    SCENARIO_TIMEOUT_TEST: [
+        {
+            "key": "device_id",
+            "label": "Device ID",
+            "type": "text",
+            "required": True,
+        },
+        {
+            "key": "drop_codes",
+            "label": "Drop codes",
+            "type": "csv",
+            "default": "31DA",
+        },
+        {
+            "key": "delay",
+            "label": "Delay before drop (s)",
+            "type": "number",
+            "default": 10.0,
+            "min": 0,
+        },
+        {
+            "key": "duration",
+            "label": "Hold duration (s)",
+            "type": "number",
+            "default": 30.0,
+            "min": 0,
+        },
+        {
+            "key": "suppress_all_responses",
+            "label": "Suppress all responses",
+            "type": "checkbox",
+            "default": False,
+        },
+    ],
+    SCENARIO_FLOODING_TEST: [
+        {
+            "key": "slug",
+            "label": "Device slug",
+            "type": "text",
+            "default": "FAN",
+        },
+        {
+            "key": "device_id",
+            "label": "Device ID",
+            "type": "text",
+        },
+        {
+            "key": "code",
+            "label": "Code",
+            "type": "text",
+            "default": "22F7",
+        },
+        {
+            "key": "count",
+            "label": "Frame count",
+            "type": "number",
+            "default": 200,
+            "min": 1,
+        },
+        {
+            "key": "interval",
+            "label": "Interval (s)",
+            "type": "number",
+            "default": 0.05,
+            "min": 0,
+            "step": 0.01,
+        },
+        {
+            "key": "duration",
+            "label": "Max duration (s)",
+            "type": "number",
+            "default": 0,
+            "min": 0,
+        },
+    ],
+}
+
 # Scenario registry: metadata for each scenario type.
 # toggleable: True if the scenario can be independently toggled on/off.
 # can_run_with: list of scenario IDs that may run concurrently.
@@ -84,6 +325,7 @@ SCENARIO_AUTO_ANSWER = "auto_answer"  # Global RQ→RP response toggle
 SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
     SCENARIO_AUTONOMOUS_EMISSIONS: {
         "label": "Autonomous Emissions",
+        "description": "Activate a simulated device and emit periodic I-frames",
         "toggleable": True,
         "can_run_with": [
             SCENARIO_AUTO_ANSWER,
@@ -94,11 +336,13 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
     },
     SCENARIO_AUTO_ANSWER: {
         "label": "Auto Answer (RQ→RP)",
+        "description": "Automatically reply to RQ frames with database responses",
         "toggleable": True,
         "can_run_with": ["*"],  # compatible with everything
     },
     SCENARIO_DEVICE_UNAVAILABILITY: {
         "label": "Device Unavailability",
+        "description": "Silence all or selected devices after a delay, then resume",
         "toggleable": True,
         "can_run_with": [
             SCENARIO_AUTONOMOUS_EMISSIONS,
@@ -107,6 +351,7 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
     },
     SCENARIO_HVAC_DEVICE_LOSS: {
         "label": "HVAC Device Loss",
+        "description": "Drop one HVAC device mid-run and optionally restore it",
         "toggleable": True,
         "can_run_with": [
             SCENARIO_AUTONOMOUS_EMISSIONS,
@@ -115,6 +360,7 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
     },
     SCENARIO_RUN_CONVERSATION: {
         "label": "Conversation Playback",
+        "description": "Replay a captured conversation block end-to-end",
         "toggleable": False,
         "can_run_with": [
             SCENARIO_AUTONOMOUS_EMISSIONS,
@@ -123,26 +369,31 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
     },
     SCENARIO_DISCOVERY_TEST: {
         "label": "Discovery Test",
+        "description": "Emit 10E0 announcements to validate device discovery",
         "toggleable": False,
         "can_run_with": [SCENARIO_AUTO_ANSWER],
     },
     SCENARIO_TIMEOUT_TEST: {
         "label": "Timeout Test",
+        "description": "Delay or drop responses to reproduce timeout handling",
         "toggleable": False,
         "can_run_with": [],  # exclusive
     },
     SCENARIO_FLOODING_TEST: {
         "label": "Flooding Test",
+        "description": "Burst-send I frames at a configurable rate",
         "toggleable": False,
         "can_run_with": [],  # exclusive
     },
     SCENARIO_DEVICE_PLAYBACK: {
         "label": "Device Playback",
+        "description": "Replay captured device traffic with inferred mapping",
         "toggleable": False,
         "can_run_with": [SCENARIO_AUTO_ANSWER],
     },
     SCENARIO_DEVICE_SUITE: {
         "label": "Device Suite",
+        "description": "Activate a curated set of devices for mixed testing",
         "toggleable": False,
         "can_run_with": [SCENARIO_AUTO_ANSWER],
     },
@@ -211,5 +462,6 @@ __all__ = [
     "DEFAULT_GATEWAY_ID",
     "LOGGER",
     "SCENARIO_AUTO_ANSWER",
+    "SCENARIO_PARAM_SCHEMAS",
     "SCENARIO_REGISTRY",
 ]

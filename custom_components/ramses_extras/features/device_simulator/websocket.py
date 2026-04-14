@@ -29,6 +29,7 @@ from .const import (
     LOGGER,
     SCENARIO_AUTO_ANSWER,
     SCENARIO_AUTONOMOUS_EMISSIONS,
+    SCENARIO_PARAM_SCHEMAS,
     SCENARIO_REGISTRY,
 )
 from .system_config import SIM_DEVICE_ID
@@ -422,6 +423,7 @@ def ws_get_ui_status(
             "running_scenarios": running_scenarios,
             "autonomous_emissions_active": emissions_active,
             "scenario_registry": SCENARIO_REGISTRY,
+            "scenario_param_schemas": SCENARIO_PARAM_SCHEMAS,
         },
     )
 

@@ -38,6 +38,7 @@ import re
 import sys
 from datetime import datetime as dt
 from pathlib import Path
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Path setup: ensure device_db is importable.
@@ -337,7 +338,7 @@ def audit_device(slug: str, db_dir: Path) -> list[dict]:
     except ImportError:
         src_id = "32:150000"
 
-    entries = []
+    entries: list[dict[str, Any]] = []
 
     def _audit_entries(section: str, items: list[dict]) -> None:
         display_verb = "I" if section == "autonomous" else "RP"
@@ -580,7 +581,7 @@ _FRAME_RE = re.compile(
 
 def extract_from_logs(
     log_files: list[Path], db_dir: Path
-) -> dict[str, dict[str, list[str]]]:
+) -> dict[str, dict[str, dict[str, list[str]]]]:
     """Mine log files for real payloads, grouped by slug→code→[payloads].
 
     Returns: {slug: {code: [payload_hex, ...]}}
@@ -591,12 +592,12 @@ def extract_from_logs(
     db_codes: dict[str, list[str]] = {}
     for subdir in ("hvac", "heat"):
         for yf in (db_dir / subdir).glob("*.yaml"):
-            slug = yf.stem.upper()
+            device_slug = yf.stem.upper()
             data = yaml.safe_load(yf.read_text(encoding="utf-8")) or {}
             codes = [str(e.get("code", "")) for e in (data.get("autonomous") or [])] + [
                 str(e.get("code", "")) for e in (data.get("responses") or [])
             ]
-            db_codes[slug] = codes
+            db_codes[device_slug] = codes
 
     # Collect payloads per slug+code+section, deduplicated
     # Key: (slug, code, section) → set of payload hex strings
@@ -647,7 +648,7 @@ def extract_from_logs(
                 # Only care about frames from a real device (not HGI/gateway)
                 if src.startswith(_GW_PREFIX) or src == _NULLADDR:
                     continue
-                slug = _slug_from_frame(verb, src, dst, code, db_codes)
+                slug: str | None = _slug_from_frame(verb, src, dst, code, db_codes)
                 if slug is None:
                     continue
                 if code not in db_codes.get(slug, []):
@@ -730,7 +731,10 @@ def update_db_from_logs(log_files: list[Path], db_dir: Path) -> None:
                     code = str(entry.get("code", ""))
                     # Look up candidates for this specific section, fall back to any
                     # section
-                    code_data = slug_data.get(code, {})
+                    code_data: dict[str, Any] | list[str] = slug_data.get(code, {})
+                    if not isinstance(code_data, dict):
+                        continue
+
                     candidates = list(
                         code_data.get(section_key, set())
                         or code_data.get("autonomous", set())

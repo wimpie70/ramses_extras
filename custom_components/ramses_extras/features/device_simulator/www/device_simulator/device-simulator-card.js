@@ -43,6 +43,15 @@ const CARD_STYLE = `
   .code-chip button { background: none; border: none; cursor: pointer; padding: 0; font-size: 0.9em; color: var(--secondary-text-color); line-height: 1; }
   .add-code { display: flex; gap: 4px; margin-top: 4px; }
   .add-code input { padding: 3px 6px; border: 1px solid var(--divider-color); border-radius: 4px; font-size: 0.8em; width: 80px; background: var(--card-background-color); color: var(--primary-text-color); }
+  .scenario-form { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .scenario-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; }
+  .scenario-field label { color: var(--secondary-text-color); font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .scenario-field input[type="text"],
+  .scenario-field input[type="search"],
+  .scenario-field input[type="number"] { padding: 4px 8px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); font-size: 0.9em; }
+  .scenario-field--checkbox { flex-direction: row; align-items: center; gap: 8px; }
+  .scenario-field--checkbox label { font-weight: 500; margin: 0; }
+  .scenario-description { margin-top: 6px; font-size: 0.8em; color: var(--secondary-text-color); }
 `;
 
 class DeviceSimulatorCard extends RamsesBaseCard {
@@ -51,6 +60,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._profiles = [];
     this._devices = [];
     this._scenarioRegistry = {};
+    this._scenarioSchemas = {};
     this._runningScenarios = [];
     this._autoAnswer = true;
     this._emissionsActive = false;
@@ -107,6 +117,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._profiles = result.profiles || [];
       this._devices = result.devices || [];
       this._scenarioRegistry = result.scenario_registry || {};
+      this._scenarioSchemas = result.scenario_param_schemas || {};
       this._runningScenarios = result.running_scenarios || [];
       this._autoAnswer = result.auto_answer !== false;
       this._emissionsActive = result.autonomous_emissions_active === true;
@@ -148,22 +159,31 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   }
 
   async _startScenario(scenarioId) {
-    const overrides = this._scenarioParams[scenarioId] || {};
-    await this._hass.callService(
-      "ramses_extras",
-      "device_simulator_run_scenario",
-      { scenario_type: scenarioId, params: overrides }
-    );
+    const params = this._prepareScenarioParams(scenarioId);
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/start_scenario",
+        scenario: scenarioId,
+        params,
+      });
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to start scenario", error);
+    }
     await new Promise((r) => setTimeout(r, 500));
     await this._fetchData();
   }
 
   async _stopScenario(scenarioId) {
-    await this._hass.callService(
-      "ramses_extras",
-      "device_simulator_stop_scenario",
-      { scenario_id: scenarioId }
-    );
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/stop_scenario",
+        scenario: scenarioId,
+      });
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to stop scenario", error);
+    }
     await new Promise((r) => setTimeout(r, 300));
     await this._fetchData();
   }
@@ -290,14 +310,15 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       });
     });
 
-    root.querySelectorAll("[data-action='scenario-param']").forEach(input => {
-      input.addEventListener("change", (e) => {
-        const { scenarioId, field } = input.dataset;
-        this._scenarioParams = {
-          ...this._scenarioParams,
-          [scenarioId]: { ...(this._scenarioParams[scenarioId] || {}), [field]: e.target.value },
-        };
-      });
+    root.querySelectorAll("[data-action='scenario-param']").forEach((input) => {
+      const handler = () => this._handleScenarioParamInput(input);
+      const dataType = (input.dataset.type || input.type || "text").toLowerCase();
+      if (dataType === "checkbox") {
+        input.addEventListener("change", handler);
+      } else {
+        input.addEventListener("input", handler);
+        input.addEventListener("change", handler);
+      }
     });
 
     const dismissNotice = root.querySelector("[data-action='dismiss-notice']");
@@ -455,23 +476,100 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     }).join("")}</div>`;
   }
 
-  _buildScenarioParamsById(scenarioId) {
-    const timedParams = {
-      device_unavailability: ["silence_after", "resume_after"],
-      hvac_device_loss: ["device_id", "loss_after", "restore_after"],
+  _handleScenarioParamInput(input) {
+    const { scenarioId, field, type } = input.dataset;
+    let value;
+    if (input.type === "checkbox") {
+      value = input.checked;
+    } else if (type === "number") {
+      const parsed = input.value === "" ? null : Number(input.value);
+      value = Number.isNaN(parsed) ? null : parsed;
+    } else {
+      value = input.value;
+    }
+    this._scenarioParams = {
+      ...this._scenarioParams,
+      [scenarioId]: { ...(this._scenarioParams[scenarioId] || {}), [field]: value },
     };
-    const fields = timedParams[scenarioId];
-    if (!fields) return "";
+  }
+
+  _prepareScenarioParams(scenarioId) {
+    const schema = this._scenarioSchemas[scenarioId] || [];
     const overrides = this._scenarioParams[scenarioId] || {};
-    const rows = fields.map((f) => {
-      const val = String(overrides[f] ?? "");
-      return `<label style="color: var(--secondary-text-color);">${f}:</label>
-        <input type="text"
-          style="padding: 2px 6px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); font-size: 0.95em;"
-          data-action="scenario-param" data-scenario-id="${scenarioId}" data-field="${f}"
-          value="${val}" />`;
-    }).join("");
-    return `<div style="margin-top: 8px; display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; font-size: 0.8em;">${rows}</div>`;
+    const result = {};
+    schema.forEach((field) => {
+      const key = field.key;
+      let value = overrides[key];
+      if (value === undefined || value === null || value === "") {
+        if (field.default !== undefined) {
+          value = field.default;
+        } else {
+          return;
+        }
+      }
+      if (field.type === "number") {
+        const parsed = Number(value);
+        if (!Number.isNaN(parsed)) {
+          result[key] = parsed;
+        }
+        return;
+      }
+      if (field.type === "csv") {
+        const list = String(value)
+          .split(/[,\s]/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+        if (list.length) {
+          result[key] = list;
+        }
+        return;
+      }
+      if (field.type === "checkbox") {
+        result[key] = Boolean(value);
+        return;
+      }
+      result[key] = value;
+    });
+    return result;
+  }
+
+  _buildScenarioParamsById(scenarioId) {
+    const schema = this._scenarioSchemas[scenarioId];
+    if (!schema || schema.length === 0) {
+      return "";
+    }
+    const overrides = this._scenarioParams[scenarioId] || {};
+    const fields = schema
+      .map((field) => this._renderScenarioField(scenarioId, field, overrides[field.key]))
+      .join("");
+    return `<div class="scenario-form">${fields}</div>`;
+  }
+
+  _renderScenarioField(scenarioId, field, rawValue) {
+    const value = rawValue ?? field.default ?? "";
+    const inputId = `${scenarioId}-${field.key}`;
+    const requiredMark = field.required ? "<span style=\"color:var(--error-color);\">*</span>" : "";
+    const commonAttrs = `data-action="scenario-param" data-scenario-id="${scenarioId}" data-field="${field.key}" data-type="${field.type || 'text'}"`;
+
+    if (field.type === "checkbox") {
+      const checked = value === true ? " checked" : "";
+      return `
+        <div class="scenario-field scenario-field--checkbox">
+          <label for="${inputId}">${field.label || field.key} ${requiredMark}</label>
+          <ha-switch id="${inputId}" ${commonAttrs} type="checkbox"${checked}></ha-switch>
+        </div>`;
+    }
+
+    const inputType = field.type === "number" ? "number" : "text";
+    const stepAttr = field.step ? ` step="${field.step}"` : "";
+    const minAttr = field.min !== undefined ? ` min="${field.min}"` : "";
+    const maxAttr = field.max !== undefined ? ` max="${field.max}"` : "";
+    const placeholder = field.placeholder || "";
+    return `
+      <div class="scenario-field">
+        <label for="${inputId}">${field.label || field.key} ${requiredMark}</label>
+        <input id="${inputId}" ${commonAttrs} type="${inputType}"${stepAttr}${minAttr}${maxAttr} placeholder="${placeholder}" value="${value}" />
+      </div>`;
   }
 
   _buildScenarios() {
@@ -519,6 +617,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
               <strong>${meta.label || id}</strong>
               ${isRunning ? `<span style="font-size:0.75em; padding:2px 8px; border-radius:10px; background:var(--success-color,#4caf50); color:white;">running</span>` : ""}
             </div>
+            <div class="scenario-description">${meta.description || "No description"}</div>
             ${conflictWarn}
             ${this._buildScenarioParamsById(id)}
             <div style="margin-top: 8px; display: flex; gap: 8px;">${actionBtns}</div>
