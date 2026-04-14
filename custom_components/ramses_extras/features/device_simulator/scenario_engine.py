@@ -105,6 +105,7 @@ class ScenarioEngine:
         self._scenario_tasks: dict[str, asyncio.Task] = {}
         self._state = SCENARIO_STATE_IDLE
         self._messages_sent = 0
+        self._messages_received = 0
         self._message_log: list[str] = []
         self._response_index: dict[tuple[str, str], int] = {}
         self._scenario_definitions = discover_scenarios()
@@ -146,11 +147,29 @@ class ScenarioEngine:
             )
             await self._emit_burst(device, entries, payload_idx)
 
-    async def async_activate_device(self, device: ActiveDevice) -> None:
-        """Activate a device: start its periodic emitter.
+    async def async_activate_device(
+        self,
+        device: ActiveDevice,
+        *,
+        start_emitter: bool | None = None,
+        emit_startup_burst: bool | None = None,
+    ) -> None:
+        """Activate a device: optionally start its periodic emitter.
 
         :param device: ActiveDevice descriptor.
+        :param start_emitter: Force whether the background emitter task runs.
+            Defaults to ``not device.suppress_autonomous`` so existing callers
+            keep their behaviour.
+        :param emit_startup_burst: When True, emit a discovery burst even if the
+            emitter is not started. Defaults to ``not start_emitter`` so silent
+            registrations still announce themselves once.
         """
+
+        if start_emitter is None:
+            start_emitter = not device.suppress_autonomous
+        if emit_startup_burst is None:
+            emit_startup_burst = not start_emitter
+
         # If this device already has an emitter task running, stop it first so that
         # any updated configuration (e.g. excluded codes) takes effect immediately.
         existing_task = self._emitter_tasks.pop(device.device_id, None)
@@ -176,8 +195,23 @@ class ScenarioEngine:
             },
         )
 
-        if not device.suppress_autonomous:
+        periodic: list[AutonomousEntry] = []
+        needs_periodic = (start_emitter and not device.suppress_autonomous) or (
+            emit_startup_burst and not device.suppress_autonomous
+        )
+        if needs_periodic:
             periodic = self._db.get_periodic(device.slug, device.variant_id)
+
+        if (
+            emit_startup_burst
+            and periodic
+            and self._auto_answer_enabled
+            and not start_emitter
+        ):
+            payload_idx: dict[str, int] = {e.code: 0 for e in periodic}
+            await self._emit_burst(device, periodic, payload_idx)
+
+        if start_emitter and not device.suppress_autonomous:
             task = self.hass.async_create_background_task(
                 self._periodic_emitter(device, periodic),
                 name=f"device_simulator_emitter_{device.device_id}",
@@ -448,6 +482,7 @@ class ScenarioEngine:
             LOGGER.debug("Simulator: frame doesn't match regex: %s", frame)
             return
 
+        self._messages_received += 1
         verb, src, dst, code, payload = match.groups()
         verb_raw = verb
         verb = verb.upper().strip()  # Strip leading space from 1-char verbs like ' I'
@@ -633,6 +668,11 @@ class ScenarioEngine:
     def messages_sent(self) -> int:
         """Return total messages sent since startup."""
         return self._messages_sent
+
+    @property
+    def messages_received(self) -> int:
+        """Return total inbound frames seen since startup."""
+        return self._messages_received
 
     @property
     def active_device_ids(self) -> list[str]:

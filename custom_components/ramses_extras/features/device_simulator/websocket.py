@@ -130,6 +130,7 @@ def ws_get_status(
             "state": engine.state,
             "connected": engine._endpoint.is_connected,
             "messages_sent": engine.messages_sent,
+            "messages_received": engine.messages_received,
             "active_devices": len(engine.active_device_ids),
             "active_device_ids": engine.active_device_ids,
             "auto_answer": engine.auto_answer_enabled,
@@ -402,7 +403,7 @@ def ws_get_ui_status(
 
     # Stats from engine
     stats = {
-        "rx": 0,
+        "rx": engine.messages_received if engine else 0,
         "tx": engine.messages_sent if engine else 0,
         "devices": len(devices),
         "active": sum(1 for d in devices if d["enabled"]),
@@ -479,12 +480,6 @@ async def ws_load_profile(
                 entry = ramses_cc_entries[0]
                 new_options = dict(entry.options)
                 new_options["known_list"] = known_list
-
-                # Apply _schema from profile so ramses_cc knows the system topology
-                # (e.g. FAN bound as HvacVentilation unit, CTL as heat controller).
-                _schema = profile.device_configs.get("_schema")
-                if _schema is not None:
-                    new_options["schema"] = _schema
 
                 # Apply _enforce_known_list from profile into the nested ramses_rf dict
                 _ekl = profile.device_configs.get("_enforce_known_list", False)
@@ -607,7 +602,10 @@ async def ws_load_profile(
                                     suppress_responses=False,
                                     enabled=True,
                                 )
-                                await _engine.async_activate_device(device)
+                                await _engine.async_activate_device(
+                                    device,
+                                    start_emitter=False,
+                                )
                                 LOGGER.info(
                                     "Profile load: auto-started %s (%s)",
                                     dev_id,

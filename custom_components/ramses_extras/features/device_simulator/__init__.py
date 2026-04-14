@@ -434,7 +434,10 @@ async def create_device_simulator_feature(
                         enabled=True,
                         bound_device_id=bound_device_id,
                     )
-                    await _engine.async_activate_device(device)
+                    await _engine.async_activate_device(
+                        device,
+                        start_emitter=False,
+                    )
                     started.append(dev_id)
                 _LOGGER.info(
                     "Startup: auto-started %d device(s) from profile '%s': %s",
