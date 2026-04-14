@@ -166,6 +166,16 @@ class ScenarioEngine:
 
         self._active_devices[device.device_id] = device
 
+        # Fire event to notify UI that devices have changed
+        self.hass.bus.async_fire(
+            "ramses_extras_simulator_devices_changed",
+            {
+                "device_id": device.device_id,
+                "action": "activated",
+                "count": len(self._active_devices),
+            },
+        )
+
         if not device.suppress_autonomous:
             periodic = self._db.get_periodic(device.slug, device.variant_id)
             task = self.hass.async_create_background_task(
@@ -189,6 +199,15 @@ class ScenarioEngine:
                 pass
         if device_id in self._active_devices:
             self._active_devices[device_id].suppress_autonomous = True
+            # Fire event to notify UI that devices have changed
+            self.hass.bus.async_fire(
+                "ramses_extras_simulator_devices_changed",
+                {
+                    "device_id": device_id,
+                    "action": "silenced",
+                    "count": len(self._active_devices),
+                },
+            )
         LOGGER.info("Device %s silenced", device_id)
 
     async def async_stop_all(self) -> None:
@@ -200,8 +219,15 @@ class ScenarioEngine:
             except asyncio.CancelledError:
                 pass
         self._emitter_tasks.clear()
+        device_count = len(self._active_devices)
         self._active_devices.clear()
         self._state = SCENARIO_STATE_IDLE
+        # Fire event to notify UI that all devices have been stopped
+        if device_count > 0:
+            self.hass.bus.async_fire(
+                "ramses_extras_simulator_devices_changed",
+                {"action": "stopped_all", "count": 0},
+            )
         # Drain any packets that were already queued but not yet published so
         # they don't get sent after the user pressed Stop.
         send_queue = getattr(self._endpoint, "_send_queue", None)

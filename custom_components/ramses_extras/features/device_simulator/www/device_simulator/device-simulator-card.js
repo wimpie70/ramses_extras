@@ -74,6 +74,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._profileReload = {};
     this._profileNotice = null;
     this._scenarioParams = {};
+    this._deviceSubscription = null;
   }
 
   // ========== REQUIRED BASE CLASS OVERRIDES ==========
@@ -106,6 +107,14 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   _onConnected() {
     this._fetchData();
+    this._subscribeToDevices();
+  }
+
+  _onDisconnected() {
+    if (this._deviceSubscription) {
+      this._deviceSubscription();
+      this._deviceSubscription = null;
+    }
   }
 
   // ========== DATA FETCHING ==========
@@ -128,6 +137,38 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._scheduleRender();
     } catch {
       // Silently handle fetch errors
+    }
+  }
+
+  async _subscribeToDevices() {
+    if (!this._hass || this._deviceSubscription) return;
+
+    try {
+      // Subscribe to real-time device updates
+      this._deviceSubscription = await this._hass.callWS({
+        type: "ramses_extras/device_simulator/subscribe_devices",
+      }, (event) => {
+        // Handle incoming device update events
+        if (event.event_type === "devices_changed") {
+          const data = event.data || {};
+          const action = data.action || "updated";
+          const deviceId = data.device_id;
+          const count = data.count;
+
+          // Log the update for debugging
+          // eslint-disable-next-line no-console
+          console.log(`Device Simulator: ${action} ${deviceId || 'all devices'} (total: ${count})`);
+
+          // Refresh the device list when any change occurs
+          this._fetchData();
+        }
+      });
+
+      // eslint-disable-next-line no-console
+      console.log("Device Simulator: subscribed to device updates");
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Device Simulator: failed to subscribe to device updates", err);
     }
   }
 

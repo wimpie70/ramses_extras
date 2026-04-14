@@ -69,6 +69,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_set_device_excluded_codes)
     websocket_api.async_register_command(hass, ws_clear_ramses_cache)
     websocket_api.async_register_command(hass, ws_set_auto_answer)
+    websocket_api.async_register_command(hass, ws_subscribe_devices)
 
 
 def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
@@ -838,6 +839,12 @@ async def ws_set_device_enabled(
     device.enabled = msg["enabled"]
     LOGGER.info("Device %s enabled=%s", msg["device_id"], msg["enabled"])
 
+    # Fire event to notify UI that device state has changed
+    hass.bus.async_fire(
+        "ramses_extras_simulator_devices_changed",
+        {"device_id": msg["device_id"], "action": "updated", "enabled": msg["enabled"]},
+    )
+
     # Re-activate to restart the emitter with a fresh burst when enabling a
     # previously disabled device, so traffic starts immediately.
     if msg["enabled"] and not was_enabled:
@@ -950,6 +957,17 @@ def ws_set_device_excluded_codes(
 
     device.excluded_codes = list(msg["excluded_codes"])
     LOGGER.info("Device %s excluded_codes=%s", msg["device_id"], device.excluded_codes)
+
+    # Fire event to notify UI that device state has changed
+    hass.bus.async_fire(
+        "ramses_extras_simulator_devices_changed",
+        {
+            "device_id": msg["device_id"],
+            "action": "updated",
+            "excluded_codes": list(device.excluded_codes),
+        },
+    )
+
     connection.send_result(
         msg["id"],
         {
@@ -1009,3 +1027,75 @@ def ws_set_auto_answer(
             "conflicts": conflicts,
         },
     )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/subscribe_devices",
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_subscribe_devices(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to device simulator device changes.
+
+    Pushes updates to the client whenever devices are activated, silenced,
+    or their properties change.
+    """
+
+    @callback  # type: ignore[untyped-decorator]
+    def _on_device_changed(event: dict[str, Any]) -> None:
+        """Push device change event to client."""
+        # Extract event data from the bus event
+        data = {
+            "action": event.get("action", "updated"),
+            "device_id": event.get("device_id"),
+            "count": event.get("count"),
+            "enabled": event.get("enabled"),
+            "excluded_codes": event.get("excluded_codes"),
+        }
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "event_type": "devices_changed",
+                    "data": data,
+                },
+            )
+        )
+
+    # Subscribe to device change events
+    unsubscribe = hass.bus.async_listen(
+        "ramses_extras_simulator_devices_changed",
+        _on_device_changed,
+    )
+
+    # Send initial device list
+    engine = _get_engine(hass)
+    devices = []
+    if engine and hasattr(engine, "_active_devices"):
+        devices = [
+            {
+                "id": device.device_id,
+                "type": device.slug,
+                "enabled": device.enabled,
+                "suppress_autonomous": device.suppress_autonomous,
+                "suppress_responses": device.suppress_responses,
+                "excluded_codes": list(device.excluded_codes),
+            }
+            for device in engine._active_devices.values()
+        ]
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "devices": devices,
+        },
+    )
+
+    # Store unsubscribe function to clean up when connection closes
+    connection.subscriptions[msg["id"]] = unsubscribe
