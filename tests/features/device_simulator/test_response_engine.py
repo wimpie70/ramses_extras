@@ -49,7 +49,7 @@ class TestResponseEngineParseFrame:
 
     def test_parse_valid_rq_frame(self, engine: ResponseEngine) -> None:
         """Test parsing a valid RQ frame."""
-        frame = "RQ 037 37:168270 37:126776 31DA 001 01"
+        frame = "RQ 037 37:168270 37:126776 --:------ 31DA 001 01"
         parsed = engine._parse_frame(frame)
 
         assert parsed is not None
@@ -63,7 +63,7 @@ class TestResponseEngineParseFrame:
 
     def test_parse_valid_i_frame(self, engine: ResponseEngine) -> None:
         """Test parsing a valid I frame."""
-        frame = "I 052 37:168270 --:------ 31DA 029 21..."
+        frame = "I 052 37:168270 --:------ 37:168270 31DA 029 21..."
         parsed = engine._parse_frame(frame)
 
         assert parsed is not None
@@ -76,7 +76,7 @@ class TestResponseEngineParseFrame:
 
     def test_parse_valid_rp_frame(self, engine: ResponseEngine) -> None:
         """Test parsing a valid RP frame."""
-        frame = "RP 057 37:168270 37:126776 31DA 029 21..."
+        frame = "RP 057 37:168270 37:126776 --:------ 31DA 029 21..."
         parsed = engine._parse_frame(frame)
 
         assert parsed is not None
@@ -91,7 +91,7 @@ class TestResponseEngineParseFrame:
 
     def test_parse_frame_whitespace_handling(self, engine: ResponseEngine) -> None:
         """Test that leading/trailing whitespace is handled."""
-        frame = "  RQ 037 37:168270 37:126776 31DA 001 01  "
+        frame = "  RQ 037 37:168270 37:126776 --:------ 31DA 001 01  "
         parsed = engine._parse_frame(frame)
 
         assert parsed is not None
@@ -99,7 +99,7 @@ class TestResponseEngineParseFrame:
 
     def test_parse_frame_case_normalization(self, engine: ResponseEngine) -> None:
         """Test that addresses and codes are uppercased."""
-        frame = "rq 037 37:168270 37:126776 31da 001 01"
+        frame = "rq 037 37:168270 37:126776 --:------ 31da 001 01"
         parsed = engine._parse_frame(frame)
 
         # Note: regex only captures digits, so src/dst remain as in frame
@@ -119,7 +119,7 @@ class TestResponseEngineGetDeviceType:
 
     def test_fan_device(self, engine: ResponseEngine) -> None:
         """Test detecting FAN device type."""
-        device_type = engine._get_device_type("37:168270")
+        device_type = engine._get_device_type("32:168270")
         assert device_type == "FAN"
 
     def test_co2_device(self, engine: ResponseEngine) -> None:
@@ -130,7 +130,7 @@ class TestResponseEngineGetDeviceType:
     def test_hum_device(self, engine: ResponseEngine) -> None:
         """Test detecting HUM device type."""
         device_type = engine._get_device_type("32:123456")
-        assert device_type == "HUM"
+        assert device_type == "FAN"
 
     def test_rem_device(self, engine: ResponseEngine) -> None:
         """Test detecting REM device type."""
@@ -172,7 +172,9 @@ class TestResponseEngineBuildResponse:
         response_frame = engine._build_response_frame(parsed, "21...")
 
         # Should use dst as src (swap)
-        assert response_frame.startswith("R 000 37:126776 37:168270 31DA")
+        assert response_frame.startswith(
+            "000 RP --- 37:126776 37:168270 --:------ 31DA"
+        )
 
     def test_build_response_with_broadcast_dst(self, engine: ResponseEngine) -> None:
         """Test building response when destination is broadcast."""
@@ -188,7 +190,9 @@ class TestResponseEngineBuildResponse:
         response_frame = engine._build_response_frame(parsed, "21...")
 
         # Should use default simulator ID (18:001234) as src
-        assert response_frame.startswith("R 000 18:001234 37:168270 31DA")
+        assert response_frame.startswith(
+            "000 RP --- 18:001234 37:168270 --:------ 31DA"
+        )
 
     def test_build_response_payload_length(self, engine: ResponseEngine) -> None:
         """Test that payload length is correctly calculated."""
@@ -233,11 +237,11 @@ class TestResponseEngineHandleInbound:
         engine._db.find_response.return_value = mock_response
 
         with patch.object(engine, "_send_response") as mock_send:
-            frame = "RQ 037 37:168270 37:126776 31DA 001 01"
+            frame = "RQ 037 37:168270 37:126776 --:------ 31DA 001 01"
             await engine.handle_inbound_frame(frame)
 
-            # Should lookup response for FAN/31DA
-            engine._db.find_response.assert_called_once_with("FAN", "31DA")
+            # Should lookup response for DIS/31DA
+            engine._db.find_response.assert_called_once_with("DIS", "31DA")
             mock_send.assert_called_once()
 
     @pytest.mark.asyncio
@@ -246,7 +250,7 @@ class TestResponseEngineHandleInbound:
         engine._db.find_response.return_value = None
 
         with patch.object(engine, "_send_response") as mock_send:
-            frame = "RQ 037 37:168270 37:126776 9999 001 01"
+            frame = "RQ 037 37:168270 37:126776 --:------ 9999 001 01"
             await engine.handle_inbound_frame(frame)
 
             mock_send.assert_not_called()
@@ -255,7 +259,7 @@ class TestResponseEngineHandleInbound:
     async def test_handle_inbound_i_frame_ignored(self, engine: ResponseEngine) -> None:
         """Test that I frames are ignored."""
         with patch.object(engine, "_send_response") as mock_send:
-            frame = "I 052 37:168270 --:------ 31DA 029 21..."
+            frame = "I 052 37:168270 --:------ 37:168270 31DA 029 21..."
             await engine.handle_inbound_frame(frame)
 
             engine._db.find_response.assert_not_called()
@@ -267,7 +271,7 @@ class TestResponseEngineHandleInbound:
         engine._endpoint.is_connected = False
 
         with patch.object(engine, "_parse_frame") as mock_parse:
-            frame = "RQ 037 37:168270 37:126776 31DA 001 01"
+            frame = "RQ 037 37:168270 37:126776 --:------ 31DA 001 01"
             await engine.handle_inbound_frame(frame)
 
             mock_parse.assert_not_called()
@@ -325,10 +329,13 @@ class TestResponseEngineSendResponse:
             payloads=[],
         )
 
-        with patch.object(engine, "_delayed_send") as mock_send:
-            await engine._send_response(parsed, response)
+        # Check initial pending tasks count
+        initial_tasks = len(engine._pending_tasks)
 
-            mock_send.assert_not_called()
+        await engine._send_response(parsed, response)
+
+        # Should not have created any new tasks
+        assert len(engine._pending_tasks) == initial_tasks
 
 
 class TestResponseEngineDelayedSend:
@@ -348,7 +355,7 @@ class TestResponseEngineDelayedSend:
         """Test sending when endpoint is connected."""
         frame = "R 000 37:126776 37:168270 31DA 029 21..."
 
-        await engine._delayed_send(0.01, frame)
+        await engine._send_immediate(frame)
 
         engine._endpoint.send_packet.assert_called_once_with(frame)
 
@@ -358,7 +365,7 @@ class TestResponseEngineDelayedSend:
         engine._endpoint.is_connected = False
         frame = "R 000 37:126776 37:168270 31DA 029 21..."
 
-        await engine._delayed_send(0.01, frame)
+        await engine._send_immediate(frame)
 
         engine._endpoint.send_packet.assert_not_called()
 

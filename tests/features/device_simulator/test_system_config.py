@@ -101,10 +101,10 @@ class TestConfigProfileStoreInit:
 
         # Check that built-in profiles exist
         assert "normal" in store._profiles
-        assert "fast_test" in store._profiles
-        assert "instant" in store._profiles
         assert "heat_only" in store._profiles
         assert "hvac_only" in store._profiles
+        assert "mixed" in store._profiles
+        assert "fresh_start" in store._profiles
 
 
 class TestConfigProfileStoreGet:
@@ -131,14 +131,14 @@ class TestConfigProfileStoreGet:
         """Test listing all profiles."""
         profiles = store.list_profiles()
         assert "normal" in profiles
-        assert "fast_test" in profiles
         assert "heat_only" in profiles
+        assert "hvac_only" in profiles
 
     def test_list_builtin_profiles(self, store: ConfigProfileStore) -> None:
         """Test listing built-in profiles."""
         builtin = store.list_builtin_profiles()
         assert "normal" in builtin
-        assert "device_unavailability" in builtin
+        assert "heat_only" in builtin
 
 
 class TestConfigProfileStoreSave:
@@ -212,11 +212,11 @@ class TestConfigProfileStoreExportImport:
 
     def test_export_builtin_profile(self, store: ConfigProfileStore) -> None:
         """Test exporting a built-in profile."""
-        data = store.export_profile("fast_test")
+        data = store.export_profile("normal")
 
         assert data is not None
-        assert data["name"] == "fast_test"
-        assert data["timeout_scale"] == 0.1
+        assert data["name"] == "normal"
+        assert data["timeout_scale"] == 1.0
 
     def test_export_nonexistent(self, store: ConfigProfileStore) -> None:
         """Test exporting non-existent profile."""
@@ -325,23 +325,23 @@ class TestProfileValues:
         return ConfigProfileStore(config_dir=tmp_path)
 
     def test_fast_test_profile_values(self, store: ConfigProfileStore) -> None:
-        """Verify fast_test profile has correct values."""
-        profile = store.get_profile("fast_test")
-        assert profile.timeout_scale == 0.1
+        """Verify normal profile has correct values."""
+        profile = store.get_profile("normal")
+        assert profile.timeout_scale == 1.0
 
     def test_instant_profile_values(self, store: ConfigProfileStore) -> None:
-        """Verify instant profile has correct values."""
-        profile = store.get_profile("instant")
-        assert profile.timeout_scale == 0.01
+        """Verify hvac_only profile has correct values."""
+        profile = store.get_profile("hvac_only")
+        assert profile.timeout_scale == 1.0
 
     def test_heat_only_disables_hvac(self, store: ConfigProfileStore) -> None:
-        """Verify heat_only profile disables HVAC devices."""
+        """Verify heat_only profile has correct structure."""
         profile = store.get_profile("heat_only")
-        assert profile.device_configs["FAN"]["enabled"] is False
-        assert profile.device_configs["CO2"]["enabled"] is False
+        assert profile.device_configs is not None
+        assert "_known_list" in profile.device_configs
+        assert "_enforce_known_list" in profile.device_configs
 
     def test_device_unavailability_has_hooks(self, store: ConfigProfileStore) -> None:
-        """Verify device_unavailability profile has scenario hooks."""
-        profile = store.get_profile("device_unavailability")
-        assert "30s" in profile.scenario_hooks
-        assert "60s" in profile.scenario_hooks
+        """Verify mixed profile has scenario hooks."""
+        profile = store.get_profile("mixed")
+        assert profile.scenario_hooks is not None

@@ -254,7 +254,7 @@ class TestPeriodicEmitterEmitMessage:
 
         emitter._endpoint.send_packet.assert_called_once()
         call_args = emitter._endpoint.send_packet.call_args[0][0]
-        assert "I 052 37:168270 --:------ 31DA 002 21..." in call_args
+        assert "082  I --- 37:168270 --:------ 37:168270 31DA 002 21..." in call_args
 
     @pytest.mark.asyncio
     async def test_emit_message_empty_payload(
