@@ -112,7 +112,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   _onDisconnected() {
     if (this._deviceSubscription) {
-      this._deviceSubscription();
+      try {
+        this._deviceSubscription();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("Device Simulator: failed to unsubscribe", err);
+      }
       this._deviceSubscription = null;
     }
   }
@@ -142,27 +147,26 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   async _subscribeToDevices() {
     if (!this._hass || this._deviceSubscription) return;
+    if (!this._hass.connection) return;
 
     try {
       // Subscribe to real-time device updates
-      this._deviceSubscription = await this._hass.callWS({
-        type: "ramses_extras/device_simulator/subscribe_devices",
-      }, (event) => {
-        // Handle incoming device update events
-        if (event.event_type === "devices_changed") {
-          const data = event.data || {};
-          const action = data.action || "updated";
-          const deviceId = data.device_id;
-          const count = data.count;
+      this._deviceSubscription = await this._hass.connection.subscribeMessage(
+        (event) => {
+          if (event?.event_type === "devices_changed") {
+            const data = event.data || {};
+            const action = data.action || "updated";
+            const deviceId = data.device_id;
+            const count = data.count;
 
-          // Log the update for debugging
-          // eslint-disable-next-line no-console
-          console.log(`Device Simulator: ${action} ${deviceId || 'all devices'} (total: ${count})`);
+            // eslint-disable-next-line no-console
+            console.log(`Device Simulator: ${action} ${deviceId || 'all devices'} (total: ${count})`);
 
-          // Refresh the device list when any change occurs
-          this._fetchData();
-        }
-      });
+            this._fetchData();
+          }
+        },
+        { type: "ramses_extras/device_simulator/subscribe_devices" },
+      );
 
       // eslint-disable-next-line no-console
       console.log("Device Simulator: subscribed to device updates");
@@ -177,6 +181,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   _setTab(tab) {
     this._tab = tab;
     this._scheduleRender();
+    void this._fetchData();
   }
 
   async _loadProfile(name) {
