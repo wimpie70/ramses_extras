@@ -5,6 +5,8 @@
 
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 
+const SCENARIO_AUTONOMOUS_EMISSIONS = "autonomous_emissions";
+
 const CARD_STYLE = `
   :host { display: block; padding: 16px; }
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
@@ -589,13 +591,22 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-top: 4px;">When off: simulator receives RQ frames but never replies &#8212; simulates broken ESP or powered-off device.</div>
       </div>`;
 
+    const activeScenarioIds = new Set(this._runningScenarios || []);
+    if (this._emissionsActive) {
+      activeScenarioIds.add(SCENARIO_AUTONOMOUS_EMISSIONS);
+    }
+
     const scenarioCards = ids
       .filter(id => id !== "auto_answer")
       .map((id) => {
         const meta = registry[id];
-        const isRunning = this._runningScenarios.includes(id);
-        const conflicts = this._runningScenarios
-          .filter(r => r !== id)
+        const isAutonomous = id === SCENARIO_AUTONOMOUS_EMISSIONS;
+        const isRunning = isAutonomous
+          ? this._emissionsActive
+          : activeScenarioIds.has(id);
+
+        const conflicts = Array.from(activeScenarioIds)
+          .filter((r) => r !== id)
           .filter(r => {
             const rm = registry[r] || {};
             const rc = rm.can_run_with || [];
