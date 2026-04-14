@@ -497,7 +497,60 @@ Drop-response mode: just don't reply → ramses_rf times out naturally.
 
 > `autonomous_emissions` and `auto_answer` remain special toggle scenarios handled directly by `ScenarioEngine` because they map to persistent engine state rather than a discrete run.
 
----
+### Reworking autonomous emissions (new plan)
+
+The current `autonomous_emissions` toggle is acting as an ad-hoc **device injector** rather than a real scenario, which makes the UI confusing (you expect all profile devices to start emitting, but instead you spawn a single custom device). We’re going to split this into two explicit features:
+
+1. **Manual Device Injection (formerly autonomous_emissions)**
+   - Purpose: add a single simulated device that isn’t part of the active profile (e.g., to reproduce a user-specific ID/variant).
+   - UX changes:
+     - Move the form out of the Scenarios grid into the **Devices** tab (or Profiles section) as “Add Simulated Device”.
+     - Keep the existing schema (slug, variant, device_id, excluded codes) but expose presets sourced from the profile/DB so users can pick IDs quickly.
+   - Backend impact:
+     - Keep using `_start_autonomous_emissions`, but rename the scenario constant/description to reflect its real behaviour.
+     - Update websocket + services names once the UI move happens (legacy alias maintained temporarily).
+
+2. **Profile Device Emissions (new bulk scenario)**
+   - Purpose: start/stop emitters for **all devices defined by the active profile** with one action (the “spam everything” load test).
+   - Behaviour:
+     - Engine iterates the active profile’s `device_configs`, activates each device (respecting variants, exclusions, timeout scale), and keeps track so it can stop them as a group.
+     - Optional filters (e.g., start only HVAC devices) can be added later via params.
+   - UI:
+     - Remains in the Scenarios tab as a new card (e.g., “Profile Device Emissions”).
+     - Shows running status, conflict warnings, and provides a Stop button.
+   - Backend tasks:
+     - Add a new scenario id (e.g., `profile_emissions`) with metadata + schema.
+     - Extend `ScenarioEngine` with helpers to map profile entries → `ActiveDevice` records.
+     - Update websocket/service dispatchers and the card to consume the new scenario.
+
+3. **Devices tab enhancements**
+   - Add real-time stats (already in progress with the event subscription) plus:
+     - “Add device” form (Manual Injection) + list of suggested slugs/variants based on the active profile.
+     - Buttons for “Start emissions for all active devices” / “Stop all emissions” that call into the new bulk scenario.
+     - Clear badges indicating whether a listed device came from the profile or was manually injected.
+
+Implementation steps:
+
+1. **Rename & relocate manual injection**
+   - Update `SCENARIO_REGISTRY`, constants, and UI copy to “Manual Device Injection”.
+   - Move the form from `_buildScenarios()` to `_buildDevices()` (or a new helper) and wire the buttons directly to the websocket start/stop commands.
+   - Keep a compatibility alias `autonomous_emissions` on the backend until HA configs are migrated.
+
+2. **Introduce `profile_emissions` scenario**
+   - Define schema (toggle, optional filters) + engine handler that walks the active profile and activates devices (respecting `start_emitter`/`emit_startup_burst`).
+   - Track per-device ownership so stopping the scenario only stops what it started, not manually injected devices.
+   - Include conflict metadata so it can’t run alongside flooding/failure scenarios.
+
+3. **UI wiring**
+   - Devices tab: add the new manual-injection form, show chips for profile vs manual devices, expose “start/stop all profile devices” buttons.
+   - Scenarios tab: remove the old autonomous card, add the new profile scenario card using the dynamic schema metadata.
+   - Update websocket state payloads to expose ownership info (profile vs manual) and new scenario status fields.
+
+4. **Docs & testing**
+   - Update this plan + docs/wiki to describe the two separate flows.
+   - Extend existing `test_services.py` / websocket tests to cover manual injection + profile scenario, including conflict handling.
+
+----
 
 ### 6. System Configuration Profiles (`config_profiles.py`) — NEW
 

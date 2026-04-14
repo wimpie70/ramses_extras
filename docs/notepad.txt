@@ -82,6 +82,8 @@ Log errors if not configured.
 
 ### test scenarios: device_unavailability and hvac_device_loss
 
+### support zones/ctl-childs -> check how rf/cc does this (and how we can support this in our framework)
+
 --- next to do:
 ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
