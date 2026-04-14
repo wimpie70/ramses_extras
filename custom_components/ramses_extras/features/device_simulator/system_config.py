@@ -8,6 +8,7 @@ Manages timeout scaling and configuration profiles for different test scenarios.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import asdict, dataclass, field
@@ -215,8 +216,6 @@ class ConfigProfileStore:
 
     async def async_initialize(self, hass: object) -> None:
         """Load user profiles and state from disk (runs I/O in executor)."""
-        import asyncio  # noqa: PLC0415
-
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._load_user_profiles)
         await loop.run_in_executor(None, self._load_state)
@@ -274,16 +273,19 @@ class ConfigProfileStore:
         except OSError:
             LOGGER.warning("ConfigProfileStore: failed to save simulator state")
 
-    def _save_user_profiles(self) -> None:
-        """Save user-defined profiles to disk."""
-        # Filter out built-in profiles
-        user_profiles = {
-            name: profile.to_dict()
-            for name, profile in self._profiles.items()
-            if name not in self.BUILTIN_PROFILES
+    def _user_profiles_payload(self) -> dict[str, Any]:
+        """Return the dict that should be written to user_profiles.json."""
+        return {
+            "profiles": {
+                name: profile.to_dict()
+                for name, profile in self._profiles.items()
+                if name not in self.BUILTIN_PROFILES
+            }
         }
 
-        data = {"profiles": user_profiles}
+    def _save_user_profiles(self) -> None:
+        """Save user-defined profiles to disk (sync helper)."""
+        data = self._user_profiles_payload()
 
         try:
             with open(self._user_profiles_path, "w", encoding="utf-8") as f:
@@ -293,6 +295,34 @@ class ConfigProfileStore:
                 "ConfigProfileStore: failed to save user profiles to %s",
                 self._user_profiles_path,
             )
+
+    async def async_save_user_profiles(self) -> None:
+        """Persist user-defined profiles without blocking the event loop."""
+
+        data = self._user_profiles_payload()
+        path = self._user_profiles_path
+
+        def _write() -> None:
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+            except OSError:
+                LOGGER.warning(
+                    "ConfigProfileStore: failed to save user profiles to %s",
+                    path,
+                )
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _write)
+
+    def _schedule_user_profiles_save(self) -> None:
+        """Schedule a non-blocking save, fallback to sync if no loop is running."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._save_user_profiles()
+        else:
+            loop.create_task(self.async_save_user_profiles())
 
     def get_auto_answer(self) -> bool:
         """Return persisted auto-answer state."""
@@ -308,8 +338,6 @@ class ConfigProfileStore:
 
     async def async_save_state(self) -> None:
         """Persist simulator state to disk without blocking the event loop."""
-        import asyncio
-
         profile = self._active_profile
         auto_answer = self._auto_answer
         state_path = self._state_path
@@ -363,7 +391,8 @@ class ConfigProfileStore:
         :return: True if saved successfully
         """
         self._profiles[profile.name] = profile
-        self._save_user_profiles()
+        self._schedule_user_profiles_save()
+
         LOGGER.debug("ConfigProfileStore: saved profile '%s'", profile.name)
         return True
 
@@ -383,7 +412,8 @@ class ConfigProfileStore:
             return False
 
         del self._profiles[name]
-        self._save_user_profiles()
+        self._schedule_user_profiles_save()
+
         LOGGER.debug("ConfigProfileStore: deleted profile '%s'", name)
         return True
 

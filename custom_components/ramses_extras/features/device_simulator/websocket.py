@@ -878,7 +878,10 @@ def ws_set_auto_answer(
     config_store = ra.get("device_simulator_config_store")
     if config_store is not None:
         config_store.set_auto_answer(enabled)
-        config_store._save_state()
+        hass.async_create_background_task(
+            config_store.async_save_state(),
+            "ramses_extras.device_simulator.save_state",
+        )
 
     connection.send_result(
         msg["id"],

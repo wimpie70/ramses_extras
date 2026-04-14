@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import json
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
@@ -190,10 +191,9 @@ class MqttEndpoint(SimulatorCommEndpoint):
                 if isinstance(msg.payload, bytes)
                 else msg.payload
             )
+            LOGGER.debug("Simulator MQTT msg on %s: %s", msg.topic, payload[:80])
             # Parse JSON wrapper from ramses_rf: {"msg": "RQ --- ...", "ts": "..."}
             try:
-                import json
-
                 data = json.loads(payload)
                 frame = data.get("msg", "")
             except json.JSONDecodeError:

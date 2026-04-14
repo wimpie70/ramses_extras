@@ -39,19 +39,21 @@ from .const import (
     VERB_I,
     VERB_RP,
     VERB_RQ,
+    VERB_W,
 )
 from .device_db import AutonomousEntry, ConversationFrame, DeviceDatabase, ResponseEntry
 
 _PACKET_RE = re.compile(
-    # Match RAMSES frame format: RSSI VERB SEQ SRC DST BROADCAST CODE LEN PAYLOAD
+    # Match RAMSES frame format: [RSSI] VERB SEQ SRC DST BROADCAST CODE LEN PAYLOAD
     # Example: 000 RP --- 32:153289 37:168270 --:------ 2411 023 0000010020002DCAAF00...
-    r"^(?:\d{3}|---)?\s*"  # Optional RSSI (3 digits or ---)
-    r"([ RQWI]{2,3})\s+"  # Verb (space-padded for 1-char, no pad for 2-char)
-    r"(?:\d{3}|---)\s+"  # SEQ (non-capturing)
+    # Or:  W --- 37:170000 32:150000 --:------ 2411 023 000075009200000438...
+    r"^(?:\d{3}|---)?\s*"  # Optional RSSI (3 digits) or '---'
+    r"([ RQWI]{1,2})\s+"  # Verb (space-padded for 1-char, 2-char verbs as-is)
+    r"(?:\d{3}|---)?\s+"  # Optional SEQ (some frames omit it)
     r"([0-9:]{9})\s+"  # SRC
     r"([0-9:]{9}|--:------)\s+"  # DST
     r"(?:[0-9:]{9}|--:------)\s+"  # BROADCAST (non-capturing)
-    r"([0-9A-F]{4})\s+(?:\d{3})\s+([0-9A-F]+)$",  # CODE, LEN (non-capturing), PAYLOAD
+    r"([0-9A-F]{4})\s+(?:\d{3})?\s*([0-9A-F]+)$",  # CODE, optional LEN, PAYLOAD
     re.IGNORECASE,
 )
 
@@ -67,6 +69,7 @@ class ActiveDevice:
     :param suppress_autonomous: If True, no autonomous messages are emitted.
     :param suppress_responses: If True, no RQ responses are sent.
     :param enabled: If False, device is completely silent.
+    :param bound_device_id: Device ID this device is bound to (e.g. FAN -> REM).
     """
 
     device_id: str
@@ -76,6 +79,7 @@ class ActiveDevice:
     suppress_autonomous: bool = False
     suppress_responses: bool = False
     enabled: bool = True
+    bound_device_id: str | None = None
 
 
 @dataclass
@@ -424,20 +428,44 @@ class ScenarioEngine:
             await asyncio.sleep(min_interval / speed)
 
     async def _handle_inbound_frame(self, frame: str) -> None:
-        """Handle a frame received from ramses_rf (outbound /tx).
+        """Handle a frame received from ramses_rf (outbound /tx) or from device
+        (inbound /rx).
 
-        Parses the verb and code, routes RQ to response engine.
+        Parses the verb and code, routes RQ to response engine, echoes W frames.
 
         :param frame: Raw RAMSES packet string.
         """
+        LOGGER.debug("Simulator inbound frame: %s", frame)
         match = _PACKET_RE.match(frame.strip())
         if not match:
+            LOGGER.debug("Simulator: frame doesn't match regex: %s", frame)
             return
 
         verb, src, dst, code, payload = match.groups()
+        verb_raw = verb
         verb = verb.upper().strip()  # Strip leading space from 1-char verbs like ' I'
+        LOGGER.debug(
+            "Simulator parsed: verb_raw='%s', verb='%s', src=%s, dst=%s, code=%s",
+            verb_raw,
+            verb,
+            src,
+            dst,
+            code,
+        )
+        LOGGER.debug(
+            "VERB_W='%s', comparison: verb == VERB_W = %s", VERB_W, verb == VERB_W
+        )
+
+        # Echo W frames to satisfy ramses_tx WantEcho state
+        if verb == VERB_W:
+            LOGGER.debug(
+                "Simulator received W frame: %s -> %s, code=%s", src, dst, code
+            )
+            await self._echo_write(src, dst, code, payload)
+            return
 
         if verb != VERB_RQ:
+            LOGGER.debug("Simulator: ignoring non-RQ, non-W frame: verb=%s", verb)
             return
 
         if not self._auto_answer_enabled:
@@ -445,6 +473,53 @@ class ScenarioEngine:
             return
 
         await self._respond_to_rq(src, dst, code)
+
+    async def _echo_write(self, src: str, dst: str, code: str, payload: str) -> None:
+        """Echo a W frame back so the FSM WantEcho state is satisfied.
+
+        The ramses_tx FSM waits for its outbound W frame to appear on the bus
+        as confirmation. Without this echo the FSM times out after 20 s.
+
+        If this is a FAN with a bound REM that hasn't been discovered yet,
+        emit a minimal packet for the REM so it gets discovered immediately.
+
+        :param src: Original sender (HGI / REM).
+        :param dst: Target simulated device.
+        :param code: RAMSES code.
+        :param payload: Hex payload.
+        """
+        device = self._active_devices.get(dst)
+        LOGGER.debug("Echo W: looking up device %s -> %s", dst, device)
+        if not device:
+            LOGGER.warning("Echo W: device %s not active", dst)
+            return
+        if not device.enabled:
+            LOGGER.debug("Echo W: device %s disabled", dst)
+            return
+        if device.suppress_responses:
+            LOGGER.debug("Echo W: device %s suppresses responses", dst)
+            return
+
+        # If this is a FAN with a bound REM that isn't active yet, wake up the REM
+        if device.slug == "FAN" and hasattr(device, "bound_device_id"):
+            bound_id = getattr(device, "bound_device_id", None)
+            if bound_id and bound_id not in self._active_devices:
+                # Emit a minimal I frame for the bound REM so it gets discovered
+                rem_packet = self._build_packet(
+                    bound_id, "--:------", VERB_I, "0000", ""
+                )
+                try:
+                    await self._endpoint.send_packet(rem_packet)
+                    LOGGER.debug("Emitted wake-up packet for bound REM %s", bound_id)
+                except Exception as err:  # noqa: BLE001
+                    LOGGER.warning("Failed to emit wake-up for %s: %s", bound_id, err)
+
+        packet = self._build_packet(src, dst, VERB_W, code, payload)
+        try:
+            await self._endpoint.send_packet(packet)
+            LOGGER.debug("Echoed W frame %s/%s for %s", code, dst, src)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning("Failed to echo W for %s/%s: %s", dst, code, err)
 
     async def _respond_to_rq(self, src: str, dst: str, code: str) -> None:
         """Look up and send an RP for an inbound RQ.

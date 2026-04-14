@@ -375,6 +375,7 @@ async def create_device_simulator_feature(
             for dev_id, dev_cfg in known_list.items()
             if dev_cfg.get("class") != "HGI"
         }
+        _LOGGER.info("Boot devices: %s", list(boot_devices.keys()))
         if boot_devices:
             from .scenario_engine import ActiveDevice
 
@@ -383,7 +384,46 @@ async def create_device_simulator_feature(
             async def _deferred_boot_start() -> None:
                 await asyncio.sleep(3)
                 started: list[str] = []
+                # Separate devices: those that are bound targets (e.g. REM) vs
+                # those that bind (e.g. FAN)
+                bound_targets: dict[str, dict] = {}
+                binders: dict[str, dict] = {}
                 for dev_id, dev_cfg in boot_devices.items():
+                    if dev_cfg.get("bound"):
+                        # This device binds to another (e.g. FAN with bound: REM)
+                        binders[dev_id] = dev_cfg
+                    else:
+                        # This device might be a bound target (e.g. REM)
+                        bound_targets[dev_id] = dev_cfg
+                # Activate bound targets first, then binders
+                for dev_id, dev_cfg in {**bound_targets, **binders}.items():
+                    # If this is a FAN with a bound REM, emit a packet for the REM
+                    # BEFORE activating the FAN, so REM is discovered first
+                    bound_device_id = dev_cfg.get("bound")
+                    if dev_cfg.get("class") == "FAN" and bound_device_id:
+                        from .scenario_engine import VERB_I
+
+                        rem_packet = _engine._build_packet(
+                            bound_device_id, "--:------", VERB_I, "0000", ""
+                        )
+                        try:
+                            await _engine._endpoint.send_packet(rem_packet)
+                            _LOGGER.info(
+                                "Emitted discovery packet for bound REM %s before "
+                                "activating FAN %s",
+                                bound_device_id,
+                                dev_id,
+                            )
+                            # Longer delay to ensure REM is processed by ramses_rf
+                            # before FAN activation
+                            await asyncio.sleep(1.0)
+                        except Exception as err:  # noqa: BLE001
+                            _LOGGER.warning(
+                                "Failed to emit discovery packet for %s: %s",
+                                bound_device_id,
+                                err,
+                            )
+
                     device = ActiveDevice(
                         device_id=dev_id,
                         slug=dev_cfg.get("class", "FAN"),
@@ -392,6 +432,7 @@ async def create_device_simulator_feature(
                         suppress_autonomous=False,
                         suppress_responses=False,
                         enabled=True,
+                        bound_device_id=bound_device_id,
                     )
                     await _engine.async_activate_device(device)
                     started.append(dev_id)

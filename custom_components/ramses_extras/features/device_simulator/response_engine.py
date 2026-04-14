@@ -127,7 +127,7 @@ class ResponseEngine:
                 )
                 return
 
-            LOGGER.info(
+            LOGGER.debug(
                 "ResponseEngine: sending %s/%s response", device_type, parsed["code"]
             )
             await self._send_response(parsed, response)
@@ -216,7 +216,7 @@ class ResponseEngine:
                 payload = f"{param_id_rq}{base_payload[6:]}"
                 LOGGER.debug("ResponseEngine: adapting payload for param %s", param_hex)
 
-            LOGGER.info(
+            LOGGER.debug(
                 "ResponseEngine: 2411 response for param %s: %s...",
                 param_hex,
                 payload[:30],
@@ -224,7 +224,7 @@ class ResponseEngine:
         else:
             # Use first available payload
             payload = response.payloads[0]
-            LOGGER.info("ResponseEngine: using payload from DB: %s...", payload[:20])
+            LOGGER.debug("ResponseEngine: using payload from DB: %s...", payload[:20])
 
         # Build response frame (swap src/dst, change verb to RP)
         # Note: In real implementation, we'd need the simulator's device ID
@@ -274,13 +274,13 @@ class ResponseEngine:
         """
         if self._endpoint.is_connected:
             await self._endpoint.send_packet(frame)
-            LOGGER.info("ResponseEngine: sent response: %s", frame[:70])
+            LOGGER.debug("ResponseEngine: sent response: %s", frame[:70])
         else:
             LOGGER.warning("ResponseEngine: endpoint disconnected, dropped response")
 
     async def shutdown(self) -> None:
         """Shutdown the response engine and cancel pending tasks."""
-        LOGGER.info(
+        LOGGER.debug(
             "ResponseEngine: shutting down, cancelling %d tasks",
             len(self._pending_tasks),
         )
