@@ -168,6 +168,13 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "type": "text",
         },
         {
+            "key": "zone_id",
+            "label": "Heat zone",
+            "type": "select",
+            "placeholder": "Select a zone or leave blank",
+            "options_source": "zones",
+        },
+        {
             "key": "silence_after",
             "label": "Silence after (s)",
             "type": "number",

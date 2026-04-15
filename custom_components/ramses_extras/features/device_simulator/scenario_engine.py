@@ -108,7 +108,7 @@ class ScenarioEngine:
         self._emitter_tasks: dict[str, asyncio.Task] = {}
         self._running_scenarios: dict[str, dict[str, Any]] = {}
         self._scenario_tasks: dict[str, asyncio.Task] = {}
-        self._state = SCENARIO_STATE_IDLE
+        self._state: str = SCENARIO_STATE_IDLE
         self._messages_sent = 0
         self._messages_received = 0
         self._message_log: list[str] = []
@@ -834,19 +834,58 @@ class ScenarioEngine:
         )
 
     def get_running_scenario_ids(self) -> list[str]:
-        """Return IDs of explicitly started timed/toggleable scenarios.
+        """Return IDs of explicitly started timed/toggleable scenarios."""
 
-        auto_answer and autonomous_emissions are reported separately via
-        dedicated fields in the status response and must NOT appear here,
-        otherwise the UI badge incorrectly shows "Running" when they are
-        merely enabled/active.
-        """
         return list(self._running_scenarios.keys())
+
+    def get_running_metadata(self) -> dict[str, dict[str, Any]]:
+        """Return a copy of running scenario metadata."""
+
+        return dict(self._running_scenarios)
 
     @property
     def autonomous_emissions_active(self) -> bool:
         """Return True if any device emitter task is currently running."""
         return bool(self._emitter_tasks)
+
+    def has_scenario_definition(self, scenario_id: str) -> bool:
+        """Return True if a dynamic scenario definition exists."""
+
+        return scenario_id in self._scenario_definitions
+
+    async def async_run_registered_scenario(
+        self, scenario_id: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute a dynamically registered scenario."""
+
+        return await self._run_registered_scenario(scenario_id, params)
+
+    async def _run_registered_scenario(
+        self, scenario_id: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        definition = self._scenario_definitions.get(scenario_id)
+        if not definition:
+            return {
+                "success": False,
+                "error": f"Scenario '{scenario_id}' is not available",
+            }
+
+        context = ScenarioContext(self.hass, self)
+        result = await definition.run(context, params)
+
+        if result.success:
+            response: dict[str, Any] = {"success": True}
+            response.update(result.details)
+            if "message" not in response and result.details.get("message"):
+                response["message"] = result.details["message"]
+            return response
+
+        error_msg = result.errors[0] if result.errors else "Scenario failed"
+        return {
+            "success": False,
+            "error": error_msg,
+            "details": result.details,
+        }
 
     def _all_active_scenario_ids(self) -> list[str]:
         """Return all currently active scenario IDs for conflict checking.
@@ -934,42 +973,3 @@ class ScenarioEngine:
             "restore_after": restore_after,
         }
         return await self._run_registered_scenario(SCENARIO_HVAC_DEVICE_LOSS, params)
-
-    def has_scenario_definition(self, scenario_id: str) -> bool:
-        """Return True if a dynamic scenario definition exists."""
-
-        return scenario_id in self._scenario_definitions
-
-    async def async_run_registered_scenario(
-        self, scenario_id: str, params: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Execute a dynamically registered scenario."""
-
-        return await self._run_registered_scenario(scenario_id, params)
-
-    async def _run_registered_scenario(
-        self, scenario_id: str, params: dict[str, Any]
-    ) -> dict[str, Any]:
-        definition = self._scenario_definitions.get(scenario_id)
-        if not definition:
-            return {
-                "success": False,
-                "error": f"Scenario '{scenario_id}' is not available",
-            }
-
-        context = ScenarioContext(self.hass, self)
-        result = await definition.run(context, params)
-
-        if result.success:
-            response: dict[str, Any] = {"success": True}
-            response.update(result.details)
-            if "message" not in response and result.details.get("message"):
-                response["message"] = result.details["message"]
-            return response
-
-        error_msg = result.errors[0] if result.errors else "Scenario failed"
-        return {
-            "success": False,
-            "error": error_msg,
-            "details": result.details,
-        }

@@ -51,11 +51,21 @@ def _format_message(
 
 
 async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResult:
+    explicit_targets = params.get("targets")
+    if isinstance(explicit_targets, str):
+        explicit_targets = [explicit_targets]
+    elif explicit_targets is None:
+        explicit_targets = []
+
     device_id = params.get("device_id")
     silence_after = float(params.get("silence_after", 30.0))
     resume_after = float(params.get("resume_after", 60.0))
 
-    targets = [device_id] if device_id else context.active_device_ids()
+    targets = (
+        [str(device) for device in explicit_targets if device]
+        if explicit_targets
+        else ([device_id] if device_id else context.active_device_ids())
+    )
     if not targets:
         return ScenarioResult(
             scenario_id=SCENARIO_DEVICE_UNAVAILABILITY,

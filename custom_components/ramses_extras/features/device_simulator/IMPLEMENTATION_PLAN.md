@@ -792,6 +792,8 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 - [x] YAML loader card on Profiles tab (textarea input, schema-backed validation, conflict messaging)
 - [x] Show active profile YAML + timeout scale in loader and pre-fill textarea for editing
 - [x] Allow deleting user-imported profiles (built-ins protected) via UI + websocket
+- [x] Auto-fill loader conflicts/controls with active profile schema + zones; hide loader scenario from scenario tab
+- [x] Auto-start/stop profile device emissions from Profiles tab with inline status + Stop button
 - [ ] Profile inspect dialog (show timeout_scale, device_configs etc.)
 - [ ] Profile import/export dialog (export to YAML/JSON, import from file)
 - [ ] Profile edit + save (inline editing of profile settings)

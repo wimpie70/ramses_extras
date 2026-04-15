@@ -93,13 +93,49 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._activeProfileYaml = null;
     this._activeProfileTimeoutScale = null;
     this._loaderActiveProfileSnapshot = null;
+    this._activeProfileKnownList = null;
+    this._activeProfileSchema = null;
+    this._activeProfileZones = [];
+    this._runningMetadata = {};
 
     this._loadLoaderDraft();
+  }
+
+  _buildProfileDevicesStatus() {
+    const engineActive = this._emissionsActive && !!this._activeProfile;
+    if (!engineActive) {
+      return "";
+    }
+
+    const runningMeta = (this._runningMetadata || {})["profile_emissions"] || {};
+    const deviceCount = runningMeta.devices?.length
+      || (this._devices || []).filter((d) => d.owned_by_profile).length;
+    const label = deviceCount ? `${deviceCount} devices emitting` : "Profile devices active";
+    return `
+      <div style="margin-top:8px; padding:8px 12px; border-radius:8px; background:var(--primary-color, #3f51b5); color:var(--text-primary-color,#fff); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span>🔥 ${label}</span>
+        <button class="btn btn-secondary" data-action="stop-profile-devices">Stop profile devices</button>
+      </div>`;
   }
 
   _getScenarioFieldMeta(scenarioId, key) {
     const schema = this._scenarioSchemas[scenarioId] || [];
     return schema.find((field) => field.key === key) || null;
+  }
+
+  _getDynamicOptions(source) {
+    if (!source) {
+      return [];
+    }
+
+    if (source === "zones") {
+      return (this._activeProfileZones || []).map((zone) => ({
+        value: zone.id,
+        label: `${zone.label || zone.zone_id}${zone.sensor ? ` · sensor ${zone.sensor}` : ""}`,
+      }));
+    }
+
+    return [];
   }
 
   // ========== REQUIRED BASE CLASS OVERRIDES ==========
@@ -160,6 +196,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._scenarioRegistry = result.scenario_registry || {};
       this._scenarioSchemas = result.scenario_param_schemas || {};
       this._runningScenarios = result.running_scenarios || [];
+      this._runningMetadata = result.running_metadata || {};
       this._autoAnswer = result.auto_answer !== false;
       this._emissionsActive = result.autonomous_emissions_active === true;
       this._stats = result.stats || this._stats;
@@ -167,6 +204,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._activeProfile = result.active_profile || null;
       this._activeProfileYaml = result.active_profile_yaml || null;
       this._activeProfileTimeoutScale = result.active_profile_timeout_scale ?? null;
+      this._activeProfileKnownList = result.active_profile_known_list || null;
+      this._activeProfileSchema = result.active_profile_schema || null;
+      this._activeProfileZones = result.active_profile_zones || [];
       this._scheduleRender();
       if (
         this._activeProfile &&
@@ -252,6 +292,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._profileNotice = null;
     }
     await new Promise((r) => setTimeout(r, 300));
+    await this._fetchData();
+  }
+
+  async _stopProfileDevices() {
+    await this._stopScenario("profile_emissions");
     await this._fetchData();
   }
 
@@ -406,6 +451,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     root.querySelectorAll("[data-action='start-scenario']").forEach(btn => {
       btn.addEventListener("click", () => this._startScenario(btn.dataset.scenarioId));
     });
+
+    const stopProfileBtn = root.querySelector("[data-action='stop-profile-devices']");
+    if (stopProfileBtn) {
+      stopProfileBtn.addEventListener("click", () => this._stopProfileDevices());
+    }
 
     root.querySelectorAll("[data-action='delete-profile']").forEach(btn => {
       btn.addEventListener("click", () => this._confirmDeleteProfile(btn.dataset.profile));
@@ -681,7 +731,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   }
 
   _buildProfileLoaderCard() {
-    const conflicts = this._scenarioConflicts(SCENARIO_LOAD_PROFILE);
+    const conflicts = this._scenarioConflicts(SCENARIO_LOAD_PROFILE).filter((id) => ![SCENARIO_LOAD_PROFILE, SCENARIO_PROFILE_EMISSIONS].includes(id));
     const conflictWarn = conflicts.length
       ? `<div style="font-size: 0.75em; color: var(--warning-color, #ff9800); margin-top: 4px;">⚠️ Conflicts with: ${conflicts.join(", ")}</div>`
       : "";
@@ -740,8 +790,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         <div style="font-size:0.85em; color: var(--secondary-text-color); margin-top:4px;">
           Paste a known_devices YAML snippet to import a simulator profile and activate its devices.
         </div>
-        ${this._activeProfile ? `<div style="font-size:0.8em; color: var(--secondary-text-color); margin-top:6px;">Active profile: <strong>${this._activeProfile}</strong></div>` : ""}
+        ${this._activeProfile ? `<div style="font-size:0.8em; color: var(--secondary-text-color); margin-top:6px;">Active profile: <strong>${this._activeProfile}</strong>${this._activeProfileZones?.length ? ` · ${this._activeProfileZones.length} zones detected` : ""}</div>` : ""}
         ${conflictWarn}
+        ${this._buildProfileDevicesStatus()}
         ${profileNameInput}
         ${yamlInput}
         <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
@@ -975,8 +1026,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         </div>`;
     }
 
-    if (Array.isArray(field.options) && field.options.length) {
-      const optionsMarkup = field.options.map((opt) => {
+    const optionSource = this._getDynamicOptions(field.options_source);
+    if ((Array.isArray(field.options) && field.options.length) || optionSource.length) {
+      const optionList = optionSource.length ? optionSource : field.options;
+      const optionsMarkup = optionList.map((opt) => {
         const optValue = opt.value ?? opt;
         const optLabel = opt.label ?? optValue;
         const selected = String(value ?? field.default ?? "") === String(optValue) ? " selected" : "";
@@ -1091,7 +1144,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       </div>`;
 
     const scenarioCards = ids
-      .filter(id => id !== "auto_answer" && id !== SCENARIO_MANUAL_DEVICE)
+      .filter(id => id !== "auto_answer" && id !== SCENARIO_MANUAL_DEVICE && id !== SCENARIO_LOAD_PROFILE && id !== SCENARIO_PROFILE_EMISSIONS)
       .map((id) => {
         const meta = registry[id];
         const isRunning = (this._runningScenarios || []).includes(id);

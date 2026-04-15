@@ -82,17 +82,17 @@ Log errors if not configured.
 
 ### test scenarios: device_unavailability and hvac_device_loss
 
+--- next to do:
+
 ### support zones/ctl-childs -> check how rf/cc does this (and how we can support this in our framework)
 
---- next to do:
+
+### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
+
+
 ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
-
-### profiles: add ability to import/export/edit profiles from editfield,
-especcially the known device list, can we store our profiles in a yaml file ???
 
 ### scenarios: autonomous emissions -> let devices emit messages autonomously,
 from a list of possible messages, eg, change temperature, etc....
 we should be able to import (edit field and/or pick from (dedicated) folder) ramses.log style files
-
-### scenario: rotate log files

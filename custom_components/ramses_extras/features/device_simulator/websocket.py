@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
     LOGGER,
     SCENARIO_AUTO_ANSWER,
+    SCENARIO_DEVICE_UNAVAILABILITY,
     SCENARIO_LOAD_PROFILE_YAML,
     SCENARIO_MANUAL_DEVICE_INJECTION,
     SCENARIO_PARAM_SCHEMAS,
@@ -61,7 +62,7 @@ from .profile_loader import (
     build_profile_from_yaml,
     profile_to_yaml,
 )
-from .system_config import SIM_DEVICE_ID
+from .system_config import SIM_DEVICE_ID, SystemConfigProfile
 
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import ActiveConnection
@@ -109,6 +110,105 @@ def _get_config_store(hass: HomeAssistant) -> ConfigProfileStore | None:
     return cast(
         "ConfigProfileStore | None", registry.get("device_simulator_config_store")
     )
+
+
+def _build_profile_zone_index(profile: SystemConfigProfile) -> list[dict[str, Any]]:
+    """Create a lightweight summary of CTL zones for UI consumption."""
+
+    schema = profile.device_configs.get("_schema") or {}
+    known_list = profile.device_configs.get("_known_list") or {}
+    zones: list[dict[str, Any]] = []
+
+    for ctl_id, ctl_cfg in schema.items():
+        if not isinstance(ctl_cfg, dict):
+            continue
+        ctl_zones = ctl_cfg.get("zones")
+        if not isinstance(ctl_zones, dict):
+            continue
+        for zone_id, zone_cfg in ctl_zones.items():
+            if not isinstance(zone_cfg, dict):
+                continue
+            zone_label = zone_cfg.get("label") or f"Zone {zone_id}"
+            sensor_id = zone_cfg.get("sensor")
+            raw_devices: list[str] = []
+            if sensor_id:
+                raw_devices.append(str(sensor_id))
+            for key in ("devices", "actuators", "children"):
+                payload = zone_cfg.get(key)
+                if isinstance(payload, list):
+                    raw_devices.extend(str(item) for item in payload if item)
+                elif isinstance(payload, dict):
+                    raw_devices.extend(
+                        str(value)
+                        for value in payload.values()
+                        if isinstance(value, str)
+                    )
+
+            # Preserve order while deduplicating
+            seen: set[str] = set()
+            device_entries: list[dict[str, Any]] = []
+            for device_id in raw_devices:
+                if device_id in seen:
+                    continue
+                seen.add(device_id)
+                info = known_list.get(device_id, {})
+                device_entries.append(
+                    {
+                        "id": device_id,
+                        "class": info.get("class"),
+                    }
+                )
+
+            zones.append(
+                {
+                    "id": f"{ctl_id}|{zone_id}",
+                    "zone_id": zone_id,
+                    "controller": ctl_id,
+                    "label": zone_label,
+                    "sensor": sensor_id,
+                    "devices": device_entries,
+                }
+            )
+
+    return zones
+
+
+def _resolve_zone_devices(profile: SystemConfigProfile, zone_key: str) -> list[str]:
+    """Return device IDs for a given zone selector value."""
+
+    zones = _build_profile_zone_index(profile)
+    match = next((zone for zone in zones if zone["id"] == zone_key), None)
+    if not match:
+        return []
+    return [device["id"] for device in match.get("devices", []) if device.get("id")]
+
+
+async def _start_profile_emissions(
+    engine: ScenarioEngine, profile_name: str, profile: SystemConfigProfile
+) -> list[str]:
+    """Activate all devices defined by the profile, respecting conflicts."""
+
+    if engine.is_scenario_running(SCENARIO_PROFILE_EMISSIONS):
+        raise RuntimeError("Profile device emissions are already running")
+
+    conflicts = engine.check_scenario_conflicts(SCENARIO_PROFILE_EMISSIONS)
+    if conflicts:
+        raise RuntimeError("Conflicts with running scenarios: " + ", ".join(conflicts))
+
+    profile_devices = engine.build_profile_devices(profile)
+    if not profile_devices:
+        raise RuntimeError("Active profile does not define any devices")
+
+    started_ids: list[str] = []
+    for device in profile_devices:
+        await engine.async_activate_device(device)
+        started_ids.append(device.device_id)
+
+    engine.set_running_metadata(
+        SCENARIO_PROFILE_EMISSIONS,
+        {"profile": profile_name, "devices": started_ids},
+    )
+    return started_ids
 
 
 async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
@@ -407,6 +507,9 @@ def ws_get_ui_status(
     active_profile = None
     active_profile_yaml: str | None = None
     active_profile_scale: float | None = None
+    active_profile_known_list: dict[str, Any] | None = None
+    active_profile_schema: dict[str, Any] | None = None
+    active_profile_zones: list[dict[str, Any]] = []
     if config_store:
         active_profile = config_store.get_active_profile()
         for name in config_store.list_profiles():
@@ -414,6 +517,7 @@ def ws_get_ui_status(
             if not p:
                 continue
             is_builtin = name in config_store.BUILTIN_PROFILES
+            schema = p.device_configs.get("_schema") or {}
             profiles.append(
                 {
                     "name": name,
@@ -424,11 +528,15 @@ def ws_get_ui_status(
                     "is_builtin": is_builtin,
                     "can_delete": not is_builtin,
                     "is_active": name == active_profile,
+                    "schema": schema or None,
                 }
             )
             if name == active_profile:
                 active_profile_yaml = profile_to_yaml(p)
                 active_profile_scale = p.timeout_scale
+                active_profile_known_list = p.device_configs.get("_known_list", {})
+                active_profile_schema = schema or None
+                active_profile_zones = _build_profile_zone_index(p)
 
     # Get active devices from scenario engine
     engine = ra.get("device_simulator_engine")
@@ -459,6 +567,7 @@ def ws_get_ui_status(
     active_profile = ra.get("device_simulator_active_profile")
     auto_answer = engine.auto_answer_enabled if engine else True
     running_scenarios = engine.get_running_scenario_ids() if engine else []
+    running_metadata = engine.get_running_metadata() if engine else {}
     emissions_active = engine.autonomous_emissions_active if engine else False
 
     connection.send_result(
@@ -470,8 +579,12 @@ def ws_get_ui_status(
             "active_profile": active_profile,
             "active_profile_yaml": active_profile_yaml,
             "active_profile_timeout_scale": active_profile_scale,
+            "active_profile_known_list": active_profile_known_list,
+            "active_profile_schema": active_profile_schema,
+            "active_profile_zones": active_profile_zones,
             "auto_answer": auto_answer,
             "running_scenarios": running_scenarios,
+            "running_metadata": running_metadata,
             "autonomous_emissions_active": emissions_active,
             "scenario_registry": SCENARIO_REGISTRY,
             "scenario_param_schemas": SCENARIO_PARAM_SCHEMAS,
@@ -523,6 +636,15 @@ async def ws_load_profile(
     ra["device_simulator_active_profile"] = profile.name
     config_store.set_active_profile(profile.name)
     await config_store.async_save_state()
+
+    engine = _get_engine(hass)
+    started_ids: list[str] = []
+    if engine:
+        try:
+            started_ids = await _start_profile_emissions(engine, profile.name, profile)
+        except RuntimeError as err:
+            LOGGER.warning("Auto-start profile devices failed: %s", err)
+    result["started_devices"] = len(started_ids)
 
     connection.send_result(msg["id"], result)
 
@@ -646,28 +768,48 @@ async def ws_start_scenario(
                     "Conflicts with running scenarios: " + ", ".join(conflicts),
                 )
                 return
-            profile_devices = engine.build_profile_devices(profile)
-            if not profile_devices:
-                connection.send_error(
-                    msg["id"],
-                    "no_devices",
-                    "Active profile does not define any devices to emit",
+            try:
+                started_ids = await _start_profile_emissions(
+                    engine, active_profile_name, profile
                 )
+            except RuntimeError as err:
+                connection.send_error(msg["id"], "error", str(err))
                 return
-            started_ids: list[str] = []
-            for device in profile_devices:
-                await engine.async_activate_device(device)
-                started_ids.append(device.device_id)
-            engine.set_running_metadata(
-                SCENARIO_PROFILE_EMISSIONS,
-                {"profile": active_profile_name, "devices": started_ids},
-            )
             response = {
                 "success": True,
                 "scenario_id": SCENARIO_PROFILE_EMISSIONS,
                 "message": f"Started profile devices ({len(started_ids)})",
             }
         elif engine.has_scenario_definition(scenario_id):
+            if scenario_id == SCENARIO_DEVICE_UNAVAILABILITY and params.get("zone_id"):
+                config_store = _get_config_store(hass)
+                active_name = (
+                    config_store.get_active_profile() if config_store else None
+                )
+                if not config_store or not active_name:
+                    connection.send_error(
+                        msg["id"],
+                        "no_active_profile",
+                        "Load a simulator profile before selecting a zone",
+                    )
+                    return
+                profile = config_store.get_profile(active_name)
+                if not profile:
+                    connection.send_error(
+                        msg["id"],
+                        "no_active_profile",
+                        "Active profile is missing or invalid",
+                    )
+                    return
+                zone_devices = _resolve_zone_devices(profile, params["zone_id"])
+                if not zone_devices:
+                    connection.send_error(
+                        msg["id"],
+                        "invalid_zone",
+                        "Selected zone has no devices",
+                    )
+                    return
+                params = {**params, "targets": zone_devices}
             conflicts = engine.check_scenario_conflicts(scenario_id)
             if conflicts:
                 connection.send_error(
@@ -819,7 +961,7 @@ async def _start_load_profile_yaml(
     ra = hass.data.setdefault("ramses_extras", {})
     ra["device_simulator_active_profile"] = profile.name
 
-    result = await async_apply_profile(
+    result: dict[str, Any] = await async_apply_profile(
         hass,
         profile_name=profile.name,
         profile=profile,
@@ -831,6 +973,14 @@ async def _start_load_profile_yaml(
         "message",
         f"Loaded profile '{profile.name}' from YAML",
     )
+    engine = _get_engine(hass)
+    if engine:
+        try:
+            started_ids = await _start_profile_emissions(engine, profile.name, profile)
+        except RuntimeError as err:
+            LOGGER.warning("Auto-start profile devices failed: %s", err)
+        else:
+            result["started_devices"] = len(started_ids)
     return result
 
 
