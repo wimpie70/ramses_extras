@@ -404,3 +404,92 @@ class TestServiceConstants:
         assert hasattr(services, "SCHEMA_STOP_SCENARIO")
         assert hasattr(services, "SCHEMA_ACTIVATE_DEVICE")
         assert hasattr(services, "SCHEMA_SILENCE_DEVICE")
+
+
+class TestHelperFunctions:
+    """Tests for helper functions."""
+
+    def test_get_engine_success(self) -> None:
+        """Test _get_engine when engine exists."""
+        from custom_components.ramses_extras.features.device_simulator.services import (
+            _get_engine,
+        )
+
+        hass = MagicMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": MagicMock()}}
+        result = _get_engine(hass)
+        assert result is not None
+
+    def test_get_engine_not_found(self) -> None:
+        """Test _get_engine when engine doesn't exist."""
+        from custom_components.ramses_extras.features.device_simulator.services import (
+            _get_engine,
+        )
+
+        hass = MagicMock()
+        hass.data = {}
+        result = _get_engine(hass)
+        assert result is None
+
+    def test_get_config_store_success(self) -> None:
+        """Test _get_config_store when store exists."""
+        from custom_components.ramses_extras.features.device_simulator.services import (
+            _get_config_store,
+        )
+
+        hass = MagicMock()
+        hass.data = {"ramses_extras": {"device_simulator_config_store": MagicMock()}}
+        result = _get_config_store(hass)
+        assert result is not None
+
+    def test_get_config_store_not_found(self) -> None:
+        """Test _get_config_store when store doesn't exist."""
+        from custom_components.ramses_extras.features.device_simulator.services import (
+            _get_config_store,
+        )
+
+        hass = MagicMock()
+        hass.data = {}
+        result = _get_config_store(hass)
+        assert result is None
+
+
+class TestUnloadServices:
+    """Tests for service unloading."""
+
+    @pytest.mark.asyncio
+    async def test_async_unload_services(self) -> None:
+        """Test that all services are removed."""
+        from custom_components.ramses_extras.features.device_simulator.services import (
+            SERVICE_ACTIVATE_DEVICE,
+            SERVICE_IMPORT_USER_CONFIG,
+            SERVICE_INJECT_MESSAGE,
+            SERVICE_RUN_CONVERSATION,
+            SERVICE_RUN_SCENARIO,
+            SERVICE_SILENCE_DEVICE,
+            SERVICE_STOP_SCENARIO,
+            async_unload_services,
+        )
+
+        hass = MagicMock()
+        hass.services = MagicMock()
+        hass.services.async_remove = MagicMock()
+
+        await async_unload_services(hass)
+
+        # Verify services were removed
+        removed_calls = hass.services.async_remove.call_args_list
+        removed_services = [call[0][1] for call in removed_calls]
+
+        expected_services = [
+            SERVICE_INJECT_MESSAGE,
+            SERVICE_RUN_SCENARIO,
+            SERVICE_STOP_SCENARIO,
+            SERVICE_ACTIVATE_DEVICE,
+            SERVICE_SILENCE_DEVICE,
+            SERVICE_RUN_CONVERSATION,
+            SERVICE_IMPORT_USER_CONFIG,
+        ]
+
+        for service in expected_services:
+            assert service in removed_services
