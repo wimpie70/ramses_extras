@@ -399,3 +399,186 @@ class TestResponseEngineShutdown:
         # Check that the task was cancelled
         assert real_task.cancelled()
         assert len(engine._pending_tasks) == 0
+
+
+class TestResponseEngine2411ParameterHandling:
+    """Tests for 2411 parameter code handling."""
+
+    @pytest.fixture
+    def engine(self) -> ResponseEngine:
+        """Create a ResponseEngine with mocked dependencies."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        mock_endpoint.is_connected = True
+        return ResponseEngine(mock_db, mock_endpoint)
+
+    @pytest.mark.asyncio
+    async def test_send_response_2411_param_matching(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test 2411 response with parameter ID matching."""
+        parsed = {
+            "verb": "RQ",
+            "rssi": "037",
+            "src": "37:168270",
+            "dst": "32:153289",
+            "code": "2411",
+            "len": 3,
+            "payload": "000001",  # Parameter ID 01
+        }
+        response = ResponseEntry(
+            code="2411",
+            delay_ms=100,
+            payloads=[
+                "000001value1",
+                "000002value2",
+            ],
+        )
+
+        with patch.object(engine, "_build_response_frame") as mock_build:
+            await engine._send_response(parsed, response)
+
+            # Should use the matching payload
+            call_payload = mock_build.call_args[0][1]
+            assert call_payload.startswith("000001")
+
+    @pytest.mark.asyncio
+    async def test_send_response_2411_fallback_payload(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test 2411 response with fallback when no matching payload."""
+        parsed = {
+            "verb": "RQ",
+            "rssi": "037",
+            "src": "37:168270",
+            "dst": "32:153289",
+            "code": "2411",
+            "len": 3,
+            "payload": "000003",  # Parameter ID 03
+        }
+        response = ResponseEntry(
+            code="2411",
+            delay_ms=100,
+            payloads=[
+                "000001value1",
+                "000002value2",
+            ],
+        )
+
+        with patch.object(engine, "_build_response_frame") as mock_build:
+            await engine._send_response(parsed, response)
+
+            # Should adapt the first payload with the param ID
+            call_payload = mock_build.call_args[0][1]
+            assert call_payload.startswith("000003")
+
+    @pytest.mark.asyncio
+    async def test_send_response_2411_no_payload_in_rq(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test 2411 response when RQ has no payload."""
+        parsed = {
+            "verb": "RQ",
+            "rssi": "037",
+            "src": "37:168270",
+            "dst": "32:153289",
+            "code": "2411",
+            "len": 0,
+            "payload": "",
+        }
+        response = ResponseEntry(
+            code="2411",
+            delay_ms=100,
+            payloads=["payload1"],
+        )
+
+        with patch.object(engine, "_build_response_frame") as mock_build:
+            await engine._send_response(parsed, response)
+
+            # Should use first available payload
+            call_payload = mock_build.call_args[0][1]
+            assert call_payload == "payload1"
+
+
+class TestResponseEngineHandleInboundEdgeCases:
+    """Tests for handle_inbound_frame edge cases."""
+
+    @pytest.fixture
+    def engine(self) -> ResponseEngine:
+        """Create a ResponseEngine with mocked dependencies."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        mock_endpoint.is_connected = True
+        return ResponseEngine(mock_db, mock_endpoint)
+
+    @pytest.mark.asyncio
+    async def test_handle_inbound_broadcast_dst(self, engine: ResponseEngine) -> None:
+        """Test handling RQ with broadcast destination."""
+        with patch.object(engine, "_send_response") as mock_send:
+            frame = "RQ 037 37:168270 --:------ --:------ 31DA 001 01"
+            await engine.handle_inbound_frame(frame)
+
+            # Should not send response for broadcast
+            mock_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_inbound_unknown_device_type(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test handling RQ from unknown device type."""
+        # Use device type 99 which is not in the map
+        engine._db.find_response.return_value = None
+        with patch.object(engine, "_send_response") as mock_send:
+            frame = "RQ 037 99:123456 32:153289 --:------ 31DA 001 01"
+            await engine.handle_inbound_frame(frame)
+
+            # Should not send response for unknown device
+            mock_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_inbound_unknown_device_type_logs_debug(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test that unknown device type logs debug message."""
+        # Use device type 99 which is not in the map
+        with patch.object(engine, "_get_device_type", return_value=None):
+            frame = "RQ 037 99:123456 32:153289 --:------ 31DA 001 01"
+            await engine.handle_inbound_frame(frame)
+
+        # Should have logged debug message about unknown device type
+        # The debug log happens when device_type is None after _get_device_type
+
+    @pytest.mark.asyncio
+    async def test_handle_inbound_parse_failure(self, engine: ResponseEngine) -> None:
+        """Test handling when frame parsing fails."""
+        with patch.object(engine, "_send_response") as mock_send:
+            frame = "invalid frame data"
+            await engine.handle_inbound_frame(frame)
+
+            # Should not send response for invalid frame
+            mock_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_inbound_w_frame_ignored(self, engine: ResponseEngine) -> None:
+        """Test that W frames are ignored."""
+        with patch.object(engine, "_send_response") as mock_send:
+            frame = "W 052 37:168270 --:------ 37:168270 31DA 029 21..."
+            await engine.handle_inbound_frame(frame)
+
+            engine._db.find_response.assert_not_called()
+            mock_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_inbound_exception_handling(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test that exceptions are caught and logged."""
+        # Make find_response raise an exception
+        engine._db.find_response.side_effect = Exception("DB error")
+
+        # The exception should be caught and logged, then re-raised
+        frame = "RQ 037 37:168270 32:153289 --:------ 31DA 001 01"
+        with pytest.raises(Exception, match="DB error"):
+            await engine.handle_inbound_frame(frame)
+
+        engine._db.find_response.assert_called_once()

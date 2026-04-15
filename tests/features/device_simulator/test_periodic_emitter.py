@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -155,6 +156,22 @@ class TestPeriodicEmitterDeviceManagement:
         """Test enabling a non-existent device."""
         assert emitter.enable_device("99:999999") is False
 
+    def test_disable_nonexistent_device(self, emitter: PeriodicEmitter) -> None:
+        """Test disabling a non-existent device."""
+        assert emitter.disable_device("99:999999") is False
+
+    def test_set_device_speed_nonexistent(self, emitter: PeriodicEmitter) -> None:
+        """Test setting speed on non-existent device."""
+        assert emitter.set_device_speed("99:999999", 5.0) is False
+
+    def test_exclude_code_nonexistent(self, emitter: PeriodicEmitter) -> None:
+        """Test excluding code on non-existent device."""
+        assert emitter.exclude_code("99:999999", "31DA") is False
+
+    def test_include_code_nonexistent(self, emitter: PeriodicEmitter) -> None:
+        """Test including code on non-existent device."""
+        assert emitter.include_code("99:999999", "31DA") is False
+
     def test_set_device_speed(self, emitter: PeriodicEmitter) -> None:
         """Test setting device speed."""
         device = emitter.add_device("37:168270", "FAN")
@@ -268,6 +285,19 @@ class TestPeriodicEmitterEmitMessage:
         emitter._endpoint.send_packet.assert_called_once()
         call_args = emitter._endpoint.send_packet.call_args[0][0]
         assert "31DA 000 " in call_args
+
+    @pytest.mark.asyncio
+    async def test_emit_message_payload_length_calculation(
+        self, emitter: PeriodicEmitter, device: ActiveDevice
+    ) -> None:
+        """Test payload length calculation in frame."""
+        # 6 hex chars = 3 bytes
+        entry = AutonomousEntry(code="31DA", interval_seconds=30.0, payloads=["ABCDEF"])
+
+        await emitter._emit_message(device, entry)
+
+        call_args = emitter._endpoint.send_packet.call_args[0][0]
+        assert " 003 " in call_args
 
 
 class TestPeriodicEmitterEmitOnce:
@@ -384,3 +414,282 @@ class TestPeriodicEmitterStartStop:
         await emitter.stop()
 
         assert emitter._running is False
+
+
+class TestPeriodicEmitterCheckAndEmit:
+    """Tests for _check_and_emit method."""
+
+    @pytest.fixture
+    def emitter(self) -> PeriodicEmitter:
+        """Create a PeriodicEmitter with mocked dependencies."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        mock_endpoint.is_connected = True
+        mock_endpoint.send_packet = AsyncMock()
+
+        # Setup periodic entries
+        mock_periodic = [
+            AutonomousEntry(code="31DA", interval_seconds=30.0, payloads=["payload1"]),
+            AutonomousEntry(code="31D9", interval_seconds=60.0, payloads=["payload2"]),
+        ]
+        mock_db.get_periodic.return_value = mock_periodic
+
+        return PeriodicEmitter(mock_db, mock_endpoint)
+
+    @pytest.mark.asyncio
+    async def test_check_and_emit_emits_due_messages(
+        self, emitter: PeriodicEmitter
+    ) -> None:
+        """Test that due messages are emitted."""
+        device = emitter.add_device("37:168270", "FAN")
+        # Record emission in the past
+        device.record_emission("31DA", 0.0)
+
+        await emitter._check_and_emit()
+
+        # Should have emitted 31DA (due) and 31D9 (first time)
+        assert emitter._endpoint.send_packet.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_check_and_emit_skips_disabled_device(
+        self, emitter: PeriodicEmitter
+    ) -> None:
+        """Test that disabled devices are skipped."""
+        device = emitter.add_device("37:168270", "FAN")
+        device.enabled = False
+
+        await emitter._check_and_emit()
+
+        emitter._endpoint.send_packet.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_check_and_emit_skips_excluded_code(
+        self, emitter: PeriodicEmitter
+    ) -> None:
+        """Test that excluded codes are skipped."""
+        device = emitter.add_device("37:168270", "FAN")
+        device.excluded_codes.add("31DA")
+
+        await emitter._check_and_emit()
+
+        # Should only emit 31D9, not 31DA
+        assert emitter._endpoint.send_packet.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_check_and_emit_applies_global_speed(
+        self, emitter: PeriodicEmitter
+    ) -> None:
+        """Test that global speed multiplier is applied."""
+        emitter.set_global_speed(2.0)
+        device = emitter.add_device("37:168270", "FAN")
+        device.record_emission("31DA", 0.0)
+
+        await emitter._check_and_emit()
+
+        # With 2x global speed, both should emit
+        assert emitter._endpoint.send_packet.call_count == 2
+
+
+class TestPeriodicEmitterEmitOnceEdgeCases:
+    """Tests for emit_once edge cases."""
+
+    @pytest.fixture
+    def emitter(self) -> PeriodicEmitter:
+        """Create a PeriodicEmitter with mocked dependencies."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        mock_endpoint.is_connected = True
+        mock_endpoint.send_packet = AsyncMock()
+
+        # Setup periodic entries with empty payloads
+        mock_periodic = [
+            AutonomousEntry(code="31DA", interval_seconds=30.0, payloads=[]),
+        ]
+        mock_db.get_periodic.return_value = mock_periodic
+
+        return PeriodicEmitter(mock_db, mock_endpoint)
+
+    @pytest.mark.asyncio
+    async def test_emit_once_empty_db_payload(self, emitter: PeriodicEmitter) -> None:
+        """Test manual emit when DB has empty payload."""
+        emitter.add_device("37:168270", "FAN")
+
+        result = await emitter.emit_once("37:168270", "31DA")
+
+        assert result is True
+        call_args = emitter._endpoint.send_packet.call_args[0][0]
+        assert "31DA 000 " in call_args  # Empty payload
+
+    @pytest.mark.asyncio
+    async def test_emit_once_code_not_in_db(self, emitter: PeriodicEmitter) -> None:
+        """Test manual emit when code not in DB."""
+        emitter.add_device("37:168270", "FAN")
+
+        result = await emitter.emit_once("37:168270", "9999")
+
+        assert result is True
+        call_args = emitter._endpoint.send_packet.call_args[0][0]
+        assert "9999 000 " in call_args  # Empty payload fallback
+
+    @pytest.mark.asyncio
+    async def test_emit_once_empty_custom_payload(
+        self, emitter: PeriodicEmitter
+    ) -> None:
+        """Test manual emit with empty custom payload."""
+        emitter.add_device("37:168270", "FAN")
+
+        result = await emitter.emit_once("37:168270", "31DA", "")
+
+        assert result is True
+        call_args = emitter._endpoint.send_packet.call_args[0][0]
+        assert "31DA 000 " in call_args
+
+    @pytest.mark.asyncio
+    async def test_emit_once_send_exception(self, emitter: PeriodicEmitter) -> None:
+        """Test manual emit when send raises exception."""
+        emitter._endpoint.send_packet = AsyncMock(side_effect=Exception("Send error"))
+        emitter.add_device("37:168270", "FAN")
+
+        result = await emitter.emit_once("37:168270", "31DA")
+
+        assert result is False
+
+
+class TestPeriodicEmitterGlobalSpeed:
+    """Tests for global speed multiplier."""
+
+    @pytest.fixture
+    def emitter(self) -> PeriodicEmitter:
+        """Create a PeriodicEmitter with mocked dependencies."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        return PeriodicEmitter(mock_db, mock_endpoint)
+
+    def test_set_global_speed_min_bound(self, emitter: PeriodicEmitter) -> None:
+        """Test global speed minimum bound."""
+        emitter.set_global_speed(0.001)
+        assert emitter._global_speed == 0.01  # Clamped to minimum
+
+
+class TestPeriodicEmitterEmitMessageException:
+    """Tests for _emit_message exception handling."""
+
+    @pytest.fixture
+    def emitter(self) -> PeriodicEmitter:
+        """Create a PeriodicEmitter with mocked dependencies."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        mock_endpoint.send_packet = AsyncMock(side_effect=Exception("Send error"))
+        return PeriodicEmitter(mock_db, mock_endpoint)
+
+    @pytest.fixture
+    def device(self, emitter: PeriodicEmitter) -> ActiveDevice:
+        """Create an active device."""
+        return emitter.add_device("37:168270", "FAN")
+
+    @pytest.mark.asyncio
+    async def test_emit_message_exception_handling(
+        self, emitter: PeriodicEmitter, device: ActiveDevice
+    ) -> None:
+        """Test that exceptions in _emit_message are caught and logged."""
+        entry = AutonomousEntry(
+            code="31DA", interval_seconds=30.0, payloads=["payload"]
+        )
+
+        # The exception is caught and logged, not re-raised
+        await emitter._emit_message(device, entry)
+
+        # Send was attempted
+        emitter._endpoint.send_packet.assert_called_once()
+
+
+class TestPeriodicEmitterLoop:
+    """Tests for _emitter_loop method."""
+
+    @pytest.fixture
+    def emitter(self) -> PeriodicEmitter:
+        """Create a PeriodicEmitter with mocked dependencies."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        mock_endpoint.is_connected = True
+        mock_endpoint.send_packet = AsyncMock()
+        return PeriodicEmitter(mock_db, mock_endpoint)
+
+    @pytest.mark.asyncio
+    async def test_emitter_loop_exception_handling(
+        self, emitter: PeriodicEmitter
+    ) -> None:
+        """Test that exceptions in emitter loop are caught and logged."""
+        emitter.add_device("37:168270", "FAN")
+        # Make _check_and_emit raise an exception
+        emitter._check_and_emit = AsyncMock(side_effect=Exception("Loop error"))
+
+        # Start the emitter loop
+        emitter._running = True
+        emitter._shutdown_event.clear()
+
+        # Run the loop (it should catch the exception, log it, and re-raise)
+        with pytest.raises(Exception, match="Loop error"):
+            await emitter._emitter_loop()
+
+        # The exception is re-raised after logging, so _running is still True
+        # The loop doesn't set _running to False on exception
+        assert emitter._running is True
+
+    @pytest.mark.asyncio
+    async def test_emitter_loop_cancelled(self, emitter: PeriodicEmitter) -> None:
+        """Test that CancelledError is handled and re-raised."""
+        emitter.add_device("37:168270", "FAN")
+        # Make _check_and_emit raise CancelledError
+        emitter._check_and_emit = AsyncMock(side_effect=asyncio.CancelledError())
+
+        emitter._running = True
+        emitter._shutdown_event.clear()
+
+        # CancelledError should be caught, logged, and re-raised
+        with pytest.raises(asyncio.CancelledError):
+            await emitter._emitter_loop()
+
+    @pytest.mark.asyncio
+    async def test_emitter_loop_shutdown_event(self, emitter: PeriodicEmitter) -> None:
+        """Test that emitter loop breaks when shutdown event is set."""
+        emitter.add_device("37:168270", "FAN")
+        emitter._running = True
+        emitter._shutdown_event.clear()
+
+        # Set shutdown event immediately
+        emitter._shutdown_event.set()
+
+        # Run the loop - it should break immediately
+        await emitter._emitter_loop()
+
+        # Loop should have stopped (the loop sets _running = False when it exits)
+        # Actually, looking at the code, the loop doesn't set _running = False
+        # It just breaks out of the while loop
+        assert (
+            emitter._running is True
+        )  # Still True since the loop doesn't set it to False
+
+    @pytest.mark.asyncio
+    async def test_emitter_loop_not_connected(self, emitter: PeriodicEmitter) -> None:
+        """Test that emitter loop continues when not connected."""
+        emitter.add_device("37:168270", "FAN")
+        emitter._endpoint.is_connected = False
+        emitter._running = True
+        emitter._shutdown_event.clear()
+
+        # Set shutdown event after 1.5 seconds to ensure loop
+        # runs at least one iteration
+        async def set_shutdown_after_delay():
+            await asyncio.sleep(1.5)
+            emitter._shutdown_event.set()
+
+        # Run loop and shutdown task in parallel
+        task = asyncio.create_task(emitter._emitter_loop())
+        asyncio.create_task(set_shutdown_after_delay())
+
+        # Wait for loop to finish
+        await asyncio.wait_for(task, timeout=2.0)
+
+        # _check_and_emit should not have been called since not connected
+        # The loop should have hit the continue statement

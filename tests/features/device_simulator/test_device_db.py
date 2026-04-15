@@ -516,6 +516,39 @@ class TestDeviceDatabaseVariantOverrides:
         assert resp_premium.delay_ms == 200
         assert resp_premium.payloads == ["premium_payload"]
 
+    def test_find_response_override_partial_fields(
+        self, db_with_overrides: DeviceDatabase
+    ) -> None:
+        """Test response lookup with override that only specifies some fields."""
+        # Add a variant with partial override
+        hvac_dir = db_with_overrides._db_dir / "hvac"
+        fan_yaml = hvac_dir / "FAN.yaml"
+        fan_data = yaml.safe_load(fan_yaml.read_text())
+        fan_data["variants"].append(
+            {
+                "id": "partial",
+                "codes": ["31DA"],
+                "overrides": {
+                    "responses": [
+                        {
+                            "code": "31DA",
+                            # Only override delay_ms, not payloads
+                            "delay_ms": 300,
+                        }
+                    ]
+                },
+            }
+        )
+        fan_yaml.write_text(yaml.dump(fan_data))
+
+        db_with_overrides.load_all()
+
+        resp = db_with_overrides.find_response("FAN", "31DA", variant_id="partial")
+        assert resp is not None
+        assert resp.delay_ms == 300
+        # Payloads should be empty since not specified in override
+        assert resp.payloads == []
+
     def test_get_periodic_with_variant_override(
         self, db_with_overrides: DeviceDatabase
     ) -> None:
@@ -541,3 +574,272 @@ class TestDeviceDatabaseVariantOverrides:
         periodic_premium = db_with_overrides.get_periodic("FAN", variant_id="premium")
         assert len(periodic_premium) == 1
         assert periodic_premium[0].code == "31DA"
+
+    def test_get_periodic_variant_filters_out_unsupported_codes(
+        self, db_with_overrides: DeviceDatabase
+    ) -> None:
+        """Test that variant codes filter removes unsupported codes."""
+        # Add a code to baseline that's not in the variant
+        hvac_dir = db_with_overrides._db_dir / "hvac"
+        fan_yaml = hvac_dir / "FAN.yaml"
+        fan_data = yaml.safe_load(fan_yaml.read_text())
+        fan_data["autonomous"].append(
+            {"code": "31D9", "interval_seconds": 45.0, "payloads": ["extra"]}
+        )
+        # Change base variant to only support 31DA
+        fan_data["variants"][0]["codes"] = ["31DA"]
+        fan_yaml.write_text(yaml.dump(fan_data))
+
+        # Reload
+        db_with_overrides.load_all()
+
+        # Base variant should only have 31DA (filtered by codes)
+        periodic_base = db_with_overrides.get_periodic("FAN", variant_id="base")
+        assert len(periodic_base) == 1
+        assert periodic_base[0].code == "31DA"
+
+        # Premium variant has 31DA and 31D9 in its codes list
+        periodic_premium = db_with_overrides.get_periodic("FAN", variant_id="premium")
+        # Premium codes list is ["31DA", "31D9"], so it should have both
+        assert len(periodic_premium) == 2
+
+
+class TestDeviceDatabaseLoadAllEdgeCases:
+    """Tests for load_all edge cases."""
+
+    def test_load_all_yaml_parse_error(self, tmp_path: Path) -> None:
+        """Test load_all with YAML parse error."""
+        hvac_dir = tmp_path / "hvac"
+        hvac_dir.mkdir()
+        fan_yaml = hvac_dir / "FAN.yaml"
+        fan_yaml.write_text("invalid: yaml: content: [unclosed")
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        # Should not raise, just log warning
+        assert db._device_types == {}
+
+    def test_load_all_missing_subdirectories(self, tmp_path: Path) -> None:
+        """Test load_all when subdirectories don't exist."""
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        # Should not raise
+        assert db._device_types == {}
+        assert db._conversations == {}
+
+    def test_load_all_empty_yaml(self, tmp_path: Path) -> None:
+        """Test load_all with empty YAML file."""
+        hvac_dir = tmp_path / "hvac"
+        hvac_dir.mkdir()
+        fan_yaml = hvac_dir / "FAN.yaml"
+        fan_yaml.write_text("")
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        # Should not raise
+        assert db._device_types == {}
+
+    def test_load_all_conversation_parse_error(self, tmp_path: Path) -> None:
+        """Test load_all with conversation parse error."""
+        conv_dir = tmp_path / "conversations"
+        conv_dir.mkdir()
+        conv_yaml = conv_dir / "test.yaml"
+        conv_yaml.write_text("invalid: yaml: content: [unclosed")
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        # Should not raise, just log warning
+        assert db._conversations == {}
+
+
+class TestDeviceDatabaseParseEdgeCases:
+    """Tests for parsing edge cases."""
+
+    def test_parse_device_type_missing_required_field(self, tmp_path: Path) -> None:
+        """Test parsing device type without required device_type field."""
+        hvac_dir = tmp_path / "hvac"
+        hvac_dir.mkdir()
+        fan_yaml = hvac_dir / "FAN.yaml"
+        fan_data = {
+            # Missing device_type field
+            "domain": "hvac",
+            "variants": [],
+        }
+        fan_yaml.write_text(yaml.dump(fan_data))
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        # Should not raise, just log warning
+        assert db._device_types == {}
+
+    def test_parse_conversations_empty_list(self, tmp_path: Path) -> None:
+        """Test parsing conversations with empty list."""
+        conv_dir = tmp_path / "conversations"
+        conv_dir.mkdir()
+        conv_yaml = conv_dir / "test.yaml"
+        conv_data = {
+            "peers": ["FAN", "REM"],
+            "conversations": [],
+        }
+        conv_yaml.write_text(yaml.dump(conv_data))
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        # Should not raise
+        assert db._conversations == {}
+
+    def test_parse_conversations_missing_peers(self, tmp_path: Path) -> None:
+        """Test parsing conversations without peers field."""
+        conv_dir = tmp_path / "conversations"
+        conv_dir.mkdir()
+        conv_yaml = conv_dir / "test.yaml"
+        conv_data = {
+            "conversations": [
+                {
+                    "id": "test",
+                    "frames": [],
+                }
+            ],
+        }
+        conv_yaml.write_text(yaml.dump(conv_data))
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        # Should not raise, creates conversation with empty peers list
+        assert len(db._conversations) == 1
+        assert db._conversations["/test"].peers == []
+
+
+class TestDeviceDatabaseFingerprintPayload:
+    """Tests for get_fingerprint_payload edge cases."""
+
+    def test_get_fingerprint_payload_with_10e0_response(self, tmp_path: Path) -> None:
+        """Test get_fingerprint_payload when variant has 10E0 response."""
+        hvac_dir = tmp_path / "hvac"
+        hvac_dir.mkdir()
+        fan_yaml = hvac_dir / "FAN.yaml"
+        fan_data = {
+            "device_type": "FAN",
+            "domain": "hvac",
+            "variants": [
+                {
+                    "id": "test_variant",
+                    "fingerprint": "00-00-00-1F-82",
+                }
+            ],
+            "responses": [
+                {
+                    "code": "10E0",
+                    "delay_ms": 100,
+                    "payloads": ["fingerprint_payload"],
+                }
+            ],
+        }
+        fan_yaml.write_text(yaml.dump(fan_data))
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        payload = db.get_fingerprint_payload("00-00-00-1F-82")
+        assert payload == "fingerprint_payload"
+
+    def test_get_fingerprint_payload_empty_fingerprint(self, tmp_path: Path) -> None:
+        """Test get_fingerprint_payload with empty fingerprint."""
+        hvac_dir = tmp_path / "hvac"
+        hvac_dir.mkdir()
+        fan_yaml = hvac_dir / "FAN.yaml"
+        fan_data = {
+            "device_type": "FAN",
+            "domain": "hvac",
+            "variants": [
+                {
+                    "id": "test_variant",
+                    "fingerprint": "",
+                }
+            ],
+            "responses": [
+                {
+                    "code": "10E0",
+                    "delay_ms": 100,
+                    "payloads": ["fingerprint_payload"],
+                }
+            ],
+        }
+        fan_yaml.write_text(yaml.dump(fan_data))
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        # Empty fingerprint matches the empty fingerprint in the variant
+        payload = db.get_fingerprint_payload("")
+        assert payload == "fingerprint_payload"
+
+
+class TestDeviceDatabaseFindResponseEdgeCases:
+    """Tests for find_response edge cases."""
+
+    def test_find_response_variant_not_found(self, tmp_path: Path) -> None:
+        """Test find_response when variant_id doesn't exist."""
+        hvac_dir = tmp_path / "hvac"
+        hvac_dir.mkdir()
+        fan_yaml = hvac_dir / "FAN.yaml"
+        fan_data = {
+            "device_type": "FAN",
+            "domain": "hvac",
+            "variants": [
+                {
+                    "id": "base",
+                    "overrides": {
+                        "responses": [
+                            {"code": "31DA", "delay_ms": 200, "payloads": ["override"]}
+                        ]
+                    },
+                }
+            ],
+            "responses": [{"code": "31DA", "delay_ms": 100, "payloads": ["base"]}],
+        }
+        fan_yaml.write_text(yaml.dump(fan_data))
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        # Non-existent variant should fall back to baseline
+        resp = db.find_response("FAN", "31DA", variant_id="nonexistent")
+        assert resp is not None
+        assert resp.delay_ms == 100
+        assert resp.payloads == ["base"]
+
+    def test_find_response_override_without_payloads(self, tmp_path: Path) -> None:
+        """Test find_response with override that has no payloads."""
+        hvac_dir = tmp_path / "hvac"
+        hvac_dir.mkdir()
+        fan_yaml = hvac_dir / "FAN.yaml"
+        fan_data = {
+            "device_type": "FAN",
+            "domain": "hvac",
+            "variants": [
+                {
+                    "id": "base",
+                    "overrides": {
+                        "responses": [{"code": "31DA", "delay_ms": 200, "payloads": []}]
+                    },
+                }
+            ],
+            "responses": [{"code": "31DA", "delay_ms": 100, "payloads": ["base"]}],
+        }
+        fan_yaml.write_text(yaml.dump(fan_data))
+
+        db = DeviceDatabase(db_dir=tmp_path)
+        db.load_all()
+
+        resp = db.find_response("FAN", "31DA", variant_id="base")
+        assert resp is not None
+        assert resp.delay_ms == 200
+        assert resp.payloads == []
