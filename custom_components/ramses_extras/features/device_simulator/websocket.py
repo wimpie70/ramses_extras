@@ -17,6 +17,7 @@ Provides real-time control and monitoring:
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -28,18 +29,39 @@ from .const import (
     DOMAIN,
     LOGGER,
     SCENARIO_AUTO_ANSWER,
-    SCENARIO_AUTONOMOUS_EMISSIONS,
+    SCENARIO_LOAD_PROFILE_YAML,
+    SCENARIO_MANUAL_DEVICE_INJECTION,
     SCENARIO_PARAM_SCHEMAS,
+    SCENARIO_PROFILE_EMISSIONS,
     SCENARIO_REGISTRY,
 )
-from .system_config import SIM_DEVICE_ID
 
-# Used by ws_clear_ramses_cache
-RAMSES_CC_STORAGE_KEY = "ramses_cc"
-RAMSES_CC_STORAGE_VERSION = 1
-SZ_CLIENT_STATE = "client_state"
-SZ_SCHEMA = "schema"
-SZ_PACKETS = "packets"
+# Import ramses_cc storage constants
+try:
+    from custom_components.ramses_cc.const import (
+        STORAGE_KEY as RAMSES_CC_STORAGE_KEY,
+    )
+    from custom_components.ramses_cc.const import (
+        STORAGE_VERSION as RAMSES_CC_STORAGE_VERSION,
+    )
+    from custom_components.ramses_cc.const import (
+        SZ_CLIENT_STATE,
+        SZ_PACKETS,
+    )
+    from ramses_rf.schemas import SZ_SCHEMA
+except ImportError:
+    # Fallback for testing environments where ramses_cc may not be available
+    RAMSES_CC_STORAGE_VERSION = 1
+    RAMSES_CC_STORAGE_KEY = "ramses_cc"
+    SZ_CLIENT_STATE = "client_state"
+    SZ_PACKETS = "packets"
+    SZ_SCHEMA = "schema"
+from .profile_loader import (
+    async_apply_profile,
+    build_profile_from_yaml,
+    profile_to_yaml,
+)
+from .system_config import SIM_DEVICE_ID
 
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import ActiveConnection
@@ -47,6 +69,7 @@ if TYPE_CHECKING:
 
     from .device_db import DeviceDatabase
     from .scenario_engine import ScenarioEngine
+    from .system_config import ConfigProfileStore
 
 
 @callback  # type: ignore[untyped-decorator]
@@ -70,12 +93,22 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_clear_ramses_cache)
     websocket_api.async_register_command(hass, ws_set_auto_answer)
     websocket_api.async_register_command(hass, ws_subscribe_devices)
+    websocket_api.async_register_command(hass, ws_delete_profile)
 
 
 def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
     """Get scenario engine from hass data."""
     registry = hass.data.get("ramses_extras", {})
     return cast("ScenarioEngine | None", registry.get("device_simulator_engine"))
+
+
+def _get_config_store(hass: HomeAssistant) -> ConfigProfileStore | None:
+    """Return the configuration profile store if available."""
+
+    registry = hass.data.get("ramses_extras", {})
+    return cast(
+        "ConfigProfileStore | None", registry.get("device_simulator_config_store")
+    )
 
 
 async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
@@ -371,19 +404,31 @@ def ws_get_ui_status(
     # Get profiles from config store
     config_store = ra.get("device_simulator_config_store")
     profiles = []
+    active_profile = None
+    active_profile_yaml: str | None = None
+    active_profile_scale: float | None = None
     if config_store:
+        active_profile = config_store.get_active_profile()
         for name in config_store.list_profiles():
             p = config_store.get_profile(name)
-            if p:
-                profiles.append(
-                    {
-                        "name": name,
-                        "description": p.description,
-                        "timeout_scale": p.timeout_scale,
-                        "speed_options": p.speed_options,
-                        "known_list": p.device_configs.get("_known_list", {}),
-                    }
-                )
+            if not p:
+                continue
+            is_builtin = name in config_store.BUILTIN_PROFILES
+            profiles.append(
+                {
+                    "name": name,
+                    "description": p.description,
+                    "timeout_scale": p.timeout_scale,
+                    "speed_options": p.speed_options,
+                    "known_list": p.device_configs.get("_known_list", {}),
+                    "is_builtin": is_builtin,
+                    "can_delete": not is_builtin,
+                    "is_active": name == active_profile,
+                }
+            )
+            if name == active_profile:
+                active_profile_yaml = profile_to_yaml(p)
+                active_profile_scale = p.timeout_scale
 
     # Get active devices from scenario engine
     engine = ra.get("device_simulator_engine")
@@ -397,6 +442,8 @@ def ws_get_ui_status(
                 "suppress_autonomous": device.suppress_autonomous,
                 "suppress_responses": device.suppress_responses,
                 "excluded_codes": list(device.excluded_codes),
+                "source": device.origin,
+                "owned_by_profile": engine.is_profile_device(device.device_id),
             }
             for device in engine._active_devices.values()
         ]
@@ -421,6 +468,8 @@ def ws_get_ui_status(
             "devices": devices,
             "stats": stats,
             "active_profile": active_profile,
+            "active_profile_yaml": active_profile_yaml,
+            "active_profile_timeout_scale": active_profile_scale,
             "auto_answer": auto_answer,
             "running_scenarios": running_scenarios,
             "autonomous_emissions_active": emissions_active,
@@ -445,9 +494,8 @@ async def ws_load_profile(
     msg: dict[str, Any],
 ) -> None:
     """Load a system configuration profile."""
-    from .system_config import apply_timeout_scale
 
-    ra = hass.data.get("ramses_extras", {})
+    ra = hass.data.setdefault("ramses_extras", {})
     config_store = ra.get("device_simulator_config_store")
     if not config_store:
         connection.send_error(msg["id"], "not_ready", "Config store not initialized")
@@ -460,206 +508,68 @@ async def ws_load_profile(
         )
         return
 
-    actions: list[str] = []
+    try:
+        result = await async_apply_profile(
+            hass,
+            profile_name=profile.name,
+            profile=profile,
+            reload_ramses_cc=msg.get("reload_ramses_cc", True),
+            speed=msg.get("speed"),
+        )
+    except Exception as err:  # noqa: BLE001
+        connection.send_error(msg["id"], "error", str(err))
+        return
 
-    # 1. Stop all active devices in the engine
-    engine = ra.get("device_simulator_engine")
-    if engine:
-        await engine.async_stop_all()
-        actions.append("stopped_devices")
-
-    # 2. Update ramses_cc known_list + enforce_known_list from profile.
-    # enforce_known_list=True causes ramses_cc's _get_saved_packets to
-    # automatically filter out any cached packets whose devices are not in the
-    # known_list — no manual HA store or ramses.db wipe needed.
-    known_list = profile.device_configs.get("_known_list")
-    if known_list is not None:
-        try:
-            ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
-            if ramses_cc_entries:
-                entry = ramses_cc_entries[0]
-                new_options = dict(entry.options)
-                new_options["known_list"] = known_list
-
-                # Apply _enforce_known_list from profile into the nested ramses_rf dict
-                _ekl = profile.device_configs.get("_enforce_known_list", False)
-                enforce = (
-                    bool(_ekl.get("enabled", False))
-                    if isinstance(_ekl, dict)
-                    else bool(_ekl)
-                )
-                ramses_rf_opts = dict(new_options.get("ramses_rf", {}))
-                ramses_rf_opts["enforce_known_list"] = enforce
-                new_options["ramses_rf"] = ramses_rf_opts
-
-                # Update options in-memory without firing update_listeners.
-                # async_update_entry triggers async_update_listener in ramses_cc
-                # which starts its own reload before our controlled one.
-                from types import MappingProxyType
-
-                object.__setattr__(entry, "options", MappingProxyType(new_options))
-
-                # Also persist to HA store so the options survive a restart.
-                # We write directly to the core.config_entries store to avoid
-                # triggering the update listener.
-                try:
-                    from homeassistant.helpers.storage import Store as HaStore
-
-                    ce_store: HaStore = HaStore(hass, 1, "core.config_entries")
-                    ce_data: dict = await ce_store.async_load() or {}
-                    for stored_entry in ce_data.get("entries", []):
-                        if stored_entry.get("entry_id") == entry.entry_id:
-                            stored_entry["options"] = dict(new_options)
-                            break
-                    await ce_store.async_save(ce_data)
-                    LOGGER.debug("Profile load: persisted ramses_cc options to store")
-                except Exception as err:  # noqa: BLE001
-                    LOGGER.warning(
-                        "Profile load: could not persist ramses_cc options: %s", err
-                    )
-
-                actions.append("updated_known_list")
-                LOGGER.info(
-                    "Profile load: known_list=%s enforce_known_list=%s",
-                    list(known_list.keys()),
-                    enforce,
-                )
-
-                async def _reload_ramses_cc(
-                    entry_id: str,
-                    wipe_schema: bool,
-                    auto_start_devices: dict[str, dict],
-                ) -> None:
-                    """Unload ramses_cc, set up again, auto-start new devices."""
-                    import asyncio
-
-                    from homeassistant.helpers import device_registry as dr
-                    from homeassistant.helpers.storage import Store as HaStore
-
-                    await hass.config_entries.async_unload(entry_id)
-
-                    if wipe_schema:
-                        # Remove stale HA device registry entries so old sim
-                        # devices don't linger in the UI after a profile switch.
-                        dev_reg = dr.async_get(hass)
-                        stale = dr.async_entries_for_config_entry(dev_reg, entry_id)
-                        for dev in stale:
-                            dev_reg.async_remove_device(dev.id)
-                        if stale:
-                            LOGGER.info(
-                                "Profile load: removed %d stale HA devices",
-                                len(stale),
-                            )
-
-                        # Unload triggers async_save_client_state which writes sim
-                        # device IDs into the schema. Clear them now so setup doesn't
-                        # fail with "device is in schema but not in known_list".
-                        try:
-                            ha_store: HaStore = HaStore(
-                                hass,
-                                RAMSES_CC_STORAGE_VERSION,
-                                RAMSES_CC_STORAGE_KEY,
-                            )
-                            stored: dict[str, Any] = await ha_store.async_load() or {}
-                            client_state = stored.get(SZ_CLIENT_STATE, {})
-                            changed = False
-                            if SZ_SCHEMA in client_state:
-                                client_state.pop(SZ_SCHEMA)
-                                changed = True
-                            if SZ_PACKETS in client_state:
-                                client_state.pop(SZ_PACKETS)
-                                changed = True
-                            if changed:
-                                await ha_store.async_save(stored)
-                                LOGGER.info(
-                                    "Profile load: cleared HA store schema+packets"
-                                )
-                        except Exception as err:  # noqa: BLE001
-                            LOGGER.warning(
-                                "Profile load: could not clear HA store schema: %s",
-                                err,
-                            )
-
-                    await hass.config_entries.async_setup(entry_id)
-
-                    # Auto-start autonomous emissions for new known-list devices.
-                    # Brief delay lets ramses_cc finish MQTT reconnect so the
-                    # first emitted packets are actually processed.
-                    if auto_start_devices:
-                        _engine = ra.get("device_simulator_engine")
-                        if _engine:
-                            await asyncio.sleep(3)
-                            from .scenario_engine import ActiveDevice
-
-                            for dev_id, dev_cfg in auto_start_devices.items():
-                                slug = dev_cfg.get("class", "FAN")
-                                device = ActiveDevice(
-                                    device_id=dev_id,
-                                    slug=slug,
-                                    variant_id="default",
-                                    excluded_codes=["1FC9"],
-                                    suppress_autonomous=False,
-                                    suppress_responses=False,
-                                    enabled=True,
-                                )
-                                await _engine.async_activate_device(
-                                    device,
-                                    start_emitter=False,
-                                )
-                                LOGGER.info(
-                                    "Profile load: auto-started %s (%s)",
-                                    dev_id,
-                                    slug,
-                                )
-                            # Wait briefly for ramses_rf to process the burst
-                            # frames, then poke the coordinator so new devices
-                            # are registered as HA entities immediately rather
-                            # than waiting up to 60s for the scan interval.
-                            await asyncio.sleep(1)
-                            await _trigger_ramses_discovery(hass)
-
-                # Auto-start all non-HGI devices from the new profile.
-                auto_start = {
-                    dev_id: cfg
-                    for dev_id, cfg in known_list.items()
-                    if cfg.get("class") != "HGI"
-                }
-                if msg.get("reload_ramses_cc", True):
-                    hass.async_create_task(
-                        _reload_ramses_cc(entry.entry_id, enforce, auto_start)
-                    )
-                    actions.append("reloading_ramses_cc")
-                else:
-                    actions.append("skipped_reload")
-            else:
-                LOGGER.warning("Profile load: no ramses_cc config entry found")
-        except Exception as err:  # noqa: BLE001
-            LOGGER.warning(
-                "Profile load: could not update ramses_cc known_list: %s", err
-            )
-
-    # 4. Track active profile (in-memory and persisted to disk)
-    ra = hass.data.setdefault("ramses_extras", {})
     ra["device_simulator_active_profile"] = profile.name
-    config_store = ra.get("device_simulator_config_store")
-    if config_store is not None:
-        config_store.set_active_profile(profile.name)
+    config_store.set_active_profile(profile.name)
+    await config_store.async_save_state()
+
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/delete_profile",
+        vol.Required("profile"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_delete_profile(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Delete a user-defined profile."""
+
+    config_store = _get_config_store(hass)
+    if not config_store:
+        connection.send_error(msg["id"], "not_ready", "Config store not initialized")
+        return
+
+    profile_name = msg["profile"]
+    if profile_name in config_store.BUILTIN_PROFILES:
+        connection.send_error(
+            msg["id"],
+            "cannot_delete_builtin",
+            f"Profile '{profile_name}' is built-in and cannot be deleted",
+        )
+        return
+
+    if not config_store.delete_profile(profile_name):
+        connection.send_error(
+            msg["id"],
+            "not_found",
+            f"Profile '{profile_name}' not found or already removed",
+        )
+        return
+
+    ra = hass.data.setdefault("ramses_extras", {})
+    if ra.get("device_simulator_active_profile") == profile_name:
+        ra["device_simulator_active_profile"] = None
+        config_store.set_active_profile(None)
         await config_store.async_save_state()
 
-    # 5. Apply timeout scale (msg speed override takes precedence)
-    scale = msg.get("speed", profile.timeout_scale)
-    apply_timeout_scale(scale)
-    actions.append(f"timeout_scale={scale}")
-
-    LOGGER.info("Loaded simulator profile: %s (actions: %s)", msg["profile"], actions)
-    connection.send_result(
-        msg["id"],
-        {
-            "success": True,
-            "profile": msg["profile"],
-            "actions": actions,
-        },
-    )
+    connection.send_result(msg["id"], {"success": True, "profile": profile_name})
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -694,8 +604,69 @@ async def ws_start_scenario(
         return
 
     try:
-        if scenario_id == SCENARIO_AUTONOMOUS_EMISSIONS:
+        if scenario_id == SCENARIO_MANUAL_DEVICE_INJECTION:
             response = await _start_autonomous_emissions(engine, params)
+        elif scenario_id == SCENARIO_LOAD_PROFILE_YAML:
+            response = await _start_load_profile_yaml(hass, params)
+        elif scenario_id == SCENARIO_PROFILE_EMISSIONS:
+            config_store = _get_config_store(hass)
+            if not config_store:
+                connection.send_error(
+                    msg["id"], "not_ready", "Config profile store not initialized"
+                )
+                return
+            active_profile_name = config_store.get_active_profile()
+            if not active_profile_name:
+                connection.send_error(
+                    msg["id"],
+                    "no_active_profile",
+                    "Load a simulator profile before starting profile emissions",
+                )
+                return
+            profile = config_store.get_profile(active_profile_name)
+            if not profile:
+                connection.send_error(
+                    msg["id"],
+                    "no_active_profile",
+                    "Active profile is missing or invalid",
+                )
+                return
+            if engine.is_scenario_running(SCENARIO_PROFILE_EMISSIONS):
+                connection.send_error(
+                    msg["id"],
+                    "already_running",
+                    "Profile device emissions are already running",
+                )
+                return
+            conflicts = engine.check_scenario_conflicts(SCENARIO_PROFILE_EMISSIONS)
+            if conflicts:
+                connection.send_error(
+                    msg["id"],
+                    "conflict",
+                    "Conflicts with running scenarios: " + ", ".join(conflicts),
+                )
+                return
+            profile_devices = engine.build_profile_devices(profile)
+            if not profile_devices:
+                connection.send_error(
+                    msg["id"],
+                    "no_devices",
+                    "Active profile does not define any devices to emit",
+                )
+                return
+            started_ids: list[str] = []
+            for device in profile_devices:
+                await engine.async_activate_device(device)
+                started_ids.append(device.device_id)
+            engine.set_running_metadata(
+                SCENARIO_PROFILE_EMISSIONS,
+                {"profile": active_profile_name, "devices": started_ids},
+            )
+            response = {
+                "success": True,
+                "scenario_id": SCENARIO_PROFILE_EMISSIONS,
+                "message": f"Started profile devices ({len(started_ids)})",
+            }
         elif engine.has_scenario_definition(scenario_id):
             conflicts = engine.check_scenario_conflicts(scenario_id)
             if conflicts:
@@ -748,21 +719,38 @@ async def ws_stop_scenario(
         )
         return
 
-    if scenario_id == SCENARIO_AUTONOMOUS_EMISSIONS or device_id:
-        if device_id:
-            await engine.async_silence_device(device_id)
+    if scenario_id == SCENARIO_MANUAL_DEVICE_INJECTION or device_id:
+        target_id = device_id
+        if target_id and not engine.is_manual_device(target_id):
+            connection.send_error(
+                msg["id"],
+                "not_manual",
+                f"Device '{target_id}' is not a manual injection",
+            )
+            return
+        if target_id:
+            await engine.async_stop_manual_devices(target_id)
             connection.send_result(
                 msg["id"],
                 {
                     "success": True,
-                    "message": f"Autonomous emissions stopped for {device_id}",
+                    "message": f"Manual device injection stopped for {target_id}",
                 },
             )
             return
-        await engine.async_stop_all()
+        await engine.async_stop_manual_devices()
         connection.send_result(
             msg["id"],
-            {"success": True, "message": "Autonomous emissions stopped (all)"},
+            {"success": True, "message": "Manual device injections stopped"},
+        )
+        return
+
+    if scenario_id == SCENARIO_PROFILE_EMISSIONS:
+        await engine.async_stop_profile_devices()
+        engine.clear_running_metadata(SCENARIO_PROFILE_EMISSIONS)
+        connection.send_result(
+            msg["id"],
+            {"success": True, "message": "Profile device emissions stopped"},
         )
         return
 
@@ -797,14 +785,53 @@ async def _start_autonomous_emissions(
         suppress_autonomous=False,
         suppress_responses=False,
         enabled=True,
+        origin="manual",
     )
     await engine.async_activate_device(device)
     return {
         "success": True,
-        "scenario_id": SCENARIO_AUTONOMOUS_EMISSIONS,
+        "scenario_id": SCENARIO_MANUAL_DEVICE_INJECTION,
         "device_id": device_id,
-        "message": f"Autonomous emissions started for {device_id}",
+        "message": f"Manual device injection started for {device_id}",
     }
+
+
+async def _start_load_profile_yaml(
+    hass: HomeAssistant, params: dict[str, Any]
+) -> dict[str, Any]:
+    config_store = _get_config_store(hass)
+    if not config_store:
+        raise RuntimeError("Profile store not available")
+
+    yaml_blob = params.get("profile_yaml")
+    if not isinstance(yaml_blob, str) or not yaml_blob.strip():
+        raise ValueError("profile_yaml param is required")
+
+    profile_name = (params.get("profile_name") or "").strip()
+    if not profile_name:
+        profile_name = f"imported_profile_{int(time.time())}"
+
+    profile = build_profile_from_yaml(profile_name, yaml_blob)
+    config_store.save_profile(profile)
+    config_store.set_active_profile(profile.name)
+    await config_store.async_save_state()
+
+    ra = hass.data.setdefault("ramses_extras", {})
+    ra["device_simulator_active_profile"] = profile.name
+
+    result = await async_apply_profile(
+        hass,
+        profile_name=profile.name,
+        profile=profile,
+        reload_ramses_cc=params.get("reload_ramses", True),
+        speed=params.get("speed"),
+    )
+    result.setdefault("scenario_id", SCENARIO_LOAD_PROFILE_YAML)
+    result.setdefault(
+        "message",
+        f"Loaded profile '{profile.name}' from YAML",
+    )
+    return result
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

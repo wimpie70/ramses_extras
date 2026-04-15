@@ -27,9 +27,10 @@ from .comm_endpoint import SimulatorCommEndpoint
 from .const import (
     LOGGER,
     SCENARIO_AUTO_ANSWER,
-    SCENARIO_AUTONOMOUS_EMISSIONS,
     SCENARIO_DEVICE_UNAVAILABILITY,
     SCENARIO_HVAC_DEVICE_LOSS,
+    SCENARIO_MANUAL_DEVICE_INJECTION,
+    SCENARIO_PROFILE_EMISSIONS,
     SCENARIO_REGISTRY,
     SCENARIO_STATE_IDLE,
     VERB_I,
@@ -39,7 +40,8 @@ from .const import (
 )
 from .device_db import AutonomousEntry, DeviceDatabase, ResponseEntry
 from .scenarios import discover_scenarios
-from .scenarios.base import ScenarioContext, ScenarioResult
+from .scenarios.base import ScenarioContext, ScenarioDefinition, ScenarioResult
+from .system_config import SystemConfigProfile
 
 _PACKET_RE = re.compile(
     # Match RAMSES frame format: [RSSI] VERB SEQ SRC DST BROADCAST CODE LEN PAYLOAD
@@ -78,6 +80,7 @@ class ActiveDevice:
     suppress_responses: bool = False
     enabled: bool = True
     bound_device_id: str | None = None
+    origin: str = "scenario"
 
 
 class ScenarioEngine:
@@ -88,6 +91,8 @@ class ScenarioEngine:
         hass: HomeAssistant,
         endpoint: SimulatorCommEndpoint,
         db: DeviceDatabase,
+        *,
+        scenario_definitions: dict[str, ScenarioDefinition] | None = None,
     ) -> None:
         """Initialize the scenario engine.
 
@@ -108,7 +113,9 @@ class ScenarioEngine:
         self._messages_received = 0
         self._message_log: list[str] = []
         self._response_index: dict[tuple[str, str], int] = {}
-        self._scenario_definitions = discover_scenarios()
+        self._scenario_definitions = scenario_definitions or discover_scenarios()
+        self._profile_device_ids: set[str] = set()
+        self._manual_device_ids: set[str] = set()
         # Global RQ→RP auto-answer toggle (default on).
         # When False the engine receives RQs but never replies — simulates a
         # device that is powered off or unreachable (e.g. broken ESP).
@@ -121,6 +128,21 @@ class ScenarioEngine:
         self._db.load_all()
         await self._endpoint.async_connect()
         LOGGER.info("ScenarioEngine ready. DB: %s", self._db.stats())
+
+    def is_scenario_running(self, scenario_id: str) -> bool:
+        """Return True if the scenario id is currently marked as running."""
+
+        return scenario_id in self._running_scenarios
+
+    def set_running_metadata(self, scenario_id: str, metadata: dict[str, Any]) -> None:
+        """Store metadata describing a running scenario."""
+
+        self._running_scenarios[scenario_id] = metadata
+
+    def clear_running_metadata(self, scenario_id: str) -> None:
+        """Clear metadata for a scenario id if present."""
+
+        self._running_scenarios.pop(scenario_id, None)
 
     async def async_teardown(self) -> None:
         """Stop all emitters and disconnect."""
@@ -146,6 +168,107 @@ class ScenarioEngine:
                 len(entries),
             )
             await self._emit_burst(device, entries, payload_idx)
+
+    @staticmethod
+    def _coerce_code_list(value: Any) -> list[str]:
+        """Normalize excluded code inputs to a list of uppercase strings."""
+
+        if not value:
+            return []
+        if isinstance(value, str):
+            stripped = value.strip()
+            return [stripped.upper()] if stripped else []
+        if isinstance(value, (list, tuple, set)):
+            return [str(code).strip().upper() for code in value if str(code).strip()]
+        return []
+
+    def build_profile_devices(self, profile: SystemConfigProfile) -> list[ActiveDevice]:
+        """Construct ActiveDevice instances for every profile known_list entry."""
+
+        known_list = profile.device_configs.get("_known_list") or {}
+        devices: list[ActiveDevice] = []
+        for device_id, entry in known_list.items():
+            if not isinstance(entry, dict):
+                continue
+            slug = (entry.get("class") or "FAN").upper()
+            if slug == "HGI":
+                continue
+            overrides = profile.device_configs.get(device_id, {})
+            variant_id = (
+                overrides.get("variant_id")
+                or overrides.get("variant")
+                or entry.get("variant_id")
+                or entry.get("variant")
+            )
+            excluded_codes = overrides.get("excluded_codes")
+            if excluded_codes is None:
+                excluded_codes = entry.get("excluded_codes")
+            suppress_autonomous = overrides.get(
+                "suppress_autonomous", entry.get("suppress_autonomous", False)
+            )
+            suppress_responses = overrides.get(
+                "suppress_responses", entry.get("suppress_responses", False)
+            )
+            enabled = overrides.get("enabled", entry.get("enabled", True))
+            bound_device_id = overrides.get("bound") or entry.get("bound")
+
+            device = ActiveDevice(
+                device_id=device_id,
+                slug=slug,
+                variant_id=variant_id,
+                excluded_codes=self._coerce_code_list(excluded_codes),
+                suppress_autonomous=bool(suppress_autonomous),
+                suppress_responses=bool(suppress_responses),
+                enabled=bool(enabled),
+                bound_device_id=bound_device_id,
+                origin="profile",
+            )
+            devices.append(device)
+        return devices
+
+    async def async_stop_profile_devices(self) -> None:
+        """Stop and remove devices that were started via the profile scenario."""
+
+        for device_id in list(self._profile_device_ids):
+            await self.async_silence_device(device_id)
+            device = self._active_devices.get(device_id)
+            if device and device.origin == "profile":
+                self._active_devices.pop(device_id, None)
+        self._profile_device_ids.clear()
+
+    async def async_stop_manual_devices(self, device_id: str | None = None) -> None:
+        """Stop and remove devices that were injected manually."""
+
+        targets = (
+            [device_id] if device_id is not None else list(self._manual_device_ids)
+        )
+        for target_id in targets:
+            if target_id not in self._manual_device_ids:
+                continue
+            await self.async_silence_device(target_id)
+            self._active_devices.pop(target_id, None)
+            self._manual_device_ids.discard(target_id)
+
+    def get_device_source(self, device_id: str) -> str | None:
+        """Return the origin/source tag for a device if it exists."""
+
+        device = self._active_devices.get(device_id)
+        return device.origin if device else None
+
+    def is_profile_device(self, device_id: str) -> bool:
+        """Return True if the device was started via the profile scenario."""
+
+        return device_id in self._profile_device_ids
+
+    def is_manual_device(self, device_id: str) -> bool:
+        """Return True if the device was injected manually."""
+
+        return device_id in self._manual_device_ids
+
+    def has_manual_devices(self) -> bool:
+        """Return True if any manual injection devices are active."""
+
+        return bool(self._manual_device_ids)
 
     async def async_activate_device(
         self,
@@ -184,6 +307,15 @@ class ScenarioEngine:
             return
 
         self._active_devices[device.device_id] = device
+        if device.origin == "profile":
+            self._profile_device_ids.add(device.device_id)
+            self._manual_device_ids.discard(device.device_id)
+        elif device.origin == "manual":
+            self._manual_device_ids.add(device.device_id)
+            self._profile_device_ids.discard(device.device_id)
+        else:
+            self._profile_device_ids.discard(device.device_id)
+            self._manual_device_ids.discard(device.device_id)
 
         # Fire event to notify UI that devices have changed
         self.hass.bus.async_fire(
@@ -192,6 +324,7 @@ class ScenarioEngine:
                 "device_id": device.device_id,
                 "action": "activated",
                 "count": len(self._active_devices),
+                "source": device.origin,
             },
         )
 
@@ -224,6 +357,7 @@ class ScenarioEngine:
 
         :param device_id: Device to silence.
         """
+        device = self._active_devices.get(device_id)
         task = self._emitter_tasks.pop(device_id, None)
         if task:
             task.cancel()
@@ -240,8 +374,11 @@ class ScenarioEngine:
                     "device_id": device_id,
                     "action": "silenced",
                     "count": len(self._active_devices),
+                    "source": device.origin if device else None,
                 },
             )
+        self._profile_device_ids.discard(device_id)
+        self._manual_device_ids.discard(device_id)
         LOGGER.info("Device %s silenced", device_id)
 
     async def async_stop_all(self) -> None:
@@ -255,6 +392,8 @@ class ScenarioEngine:
         self._emitter_tasks.clear()
         device_count = len(self._active_devices)
         self._active_devices.clear()
+        self._profile_device_ids.clear()
+        self._manual_device_ids.clear()
         self._state = SCENARIO_STATE_IDLE
         # Fire event to notify UI that all devices have been stopped
         if device_count > 0:
@@ -718,8 +857,8 @@ class ScenarioEngine:
         ids = list(self._running_scenarios.keys())
         if self._auto_answer_enabled:
             ids.append(SCENARIO_AUTO_ANSWER)
-        if self._emitter_tasks and SCENARIO_AUTONOMOUS_EMISSIONS not in ids:
-            ids.append(SCENARIO_AUTONOMOUS_EMISSIONS)
+        if self._manual_device_ids and SCENARIO_MANUAL_DEVICE_INJECTION not in ids:
+            ids.append(SCENARIO_MANUAL_DEVICE_INJECTION)
         return ids
 
     def check_scenario_conflicts(self, new_scenario_id: str) -> list[str]:
@@ -765,7 +904,7 @@ class ScenarioEngine:
                 await task
             except asyncio.CancelledError:
                 pass
-        self._running_scenarios.pop(scenario_id, None)
+        self.clear_running_metadata(scenario_id)
         LOGGER.info("Scenario '%s' cancelled", scenario_id)
 
     async def async_run_unavailability_test(

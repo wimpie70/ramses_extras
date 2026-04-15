@@ -70,6 +70,7 @@ class SystemConfigProfile:
     device_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     scenario_hooks: dict[str, list[str]] = field(default_factory=dict)
     speed_options: list[float] = field(default_factory=lambda: [1.0, 0.1, 0.01])
+    source_yaml: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert profile to dictionary."""
@@ -332,7 +333,7 @@ class ConfigProfileStore:
         """Set auto-answer state in memory; call async_save_state to persist."""
         self._auto_answer = enabled
 
-    def set_active_profile(self, name: str) -> None:
+    def set_active_profile(self, name: str | None) -> None:
         """Set the active profile name in memory; call async_save_state to persist."""
         self._active_profile = name
 

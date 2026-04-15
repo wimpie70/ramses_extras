@@ -5,8 +5,9 @@ from typing import Any
 
 from ..const import (
     SCENARIO_AUTO_ANSWER,
-    SCENARIO_AUTONOMOUS_EMISSIONS,
     SCENARIO_HVAC_DEVICE_LOSS,
+    SCENARIO_MANUAL_DEVICE_INJECTION,
+    SCENARIO_PROFILE_EMISSIONS,
 )
 from .base import ScenarioContext, ScenarioDefinition, ScenarioResult
 
@@ -98,7 +99,8 @@ SCENARIO_DEFINITION = ScenarioDefinition(
     label="HVAC Device Loss",
     toggleable=True,
     can_run_with=[
-        SCENARIO_AUTONOMOUS_EMISSIONS,
+        SCENARIO_MANUAL_DEVICE_INJECTION,
+        SCENARIO_PROFILE_EMISSIONS,
         SCENARIO_AUTO_ANSWER,
     ],
     description="Silence a single HVAC device mid-run, optionally restore later",

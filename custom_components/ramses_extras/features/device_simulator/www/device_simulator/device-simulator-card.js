@@ -5,7 +5,10 @@
 
 import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 
-const SCENARIO_AUTONOMOUS_EMISSIONS = "autonomous_emissions";
+const SCENARIO_MANUAL_DEVICE = "autonomous_emissions";
+const SCENARIO_PROFILE_EMISSIONS = "profile_emissions";
+const SCENARIO_LOAD_PROFILE = "load_profile_yaml";
+const LOADER_DRAFT_KEY = "ramsesExtras.deviceSimulator.loaderDraft";
 
 const CARD_STYLE = `
   :host { display: block; padding: 16px; }
@@ -45,12 +48,23 @@ const CARD_STYLE = `
   .code-chip button { background: none; border: none; cursor: pointer; padding: 0; font-size: 0.9em; color: var(--secondary-text-color); line-height: 1; }
   .add-code { display: flex; gap: 4px; margin-top: 4px; }
   .add-code input { padding: 3px 6px; border: 1px solid var(--divider-color); border-radius: 4px; font-size: 0.8em; width: 80px; background: var(--card-background-color); color: var(--primary-text-color); }
+  .device-controls { margin-bottom: 16px; }
+  .device-list-empty { color: var(--secondary-text-color); padding: 8px 0; }
+  .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 0.7em; font-weight: 600; text-transform: uppercase; }
+  .chip.profile { background: var(--primary-color); color: white; }
+  .chip.manual { background: var(--info-color, #0288d1); color: white; }
+  .chip.known { background: var(--success-color, #388e3c); color: white; }
+  .chip.muted { background: var(--divider-color); color: var(--secondary-text-color); }
+  .chip.source { background: var(--secondary-background-color); color: var(--secondary-text-color); }
+  .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
   .scenario-form { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
   .scenario-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; }
   .scenario-field label { color: var(--secondary-text-color); font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .scenario-field input[type="text"],
   .scenario-field input[type="search"],
   .scenario-field input[type="number"] { padding: 4px 8px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); font-size: 0.9em; }
+  .scenario-field select { padding: 4px 8px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); font-size: 0.9em; }
+  .scenario-field textarea { padding: 8px; border: 1px solid var(--divider-color); border-radius: 6px; min-height: 140px; font-family: var(--code-font-family, 'Fira Code', monospace); font-size: 0.85em; background: var(--card-background-color); color: var(--primary-text-color); resize: vertical; line-height: 1.35; }
   .scenario-field--checkbox { flex-direction: row; align-items: center; gap: 8px; }
   .scenario-field--checkbox label { font-weight: 500; margin: 0; }
   .scenario-description { margin-top: 6px; font-size: 0.8em; color: var(--secondary-text-color); }
@@ -75,6 +89,17 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._profileNotice = null;
     this._scenarioParams = {};
     this._deviceSubscription = null;
+    this._activeProfile = null;
+    this._activeProfileYaml = null;
+    this._activeProfileTimeoutScale = null;
+    this._loaderActiveProfileSnapshot = null;
+
+    this._loadLoaderDraft();
+  }
+
+  _getScenarioFieldMeta(scenarioId, key) {
+    const schema = this._scenarioSchemas[scenarioId] || [];
+    return schema.find((field) => field.key === key) || null;
   }
 
   // ========== REQUIRED BASE CLASS OVERRIDES ==========
@@ -138,8 +163,32 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._autoAnswer = result.auto_answer !== false;
       this._emissionsActive = result.autonomous_emissions_active === true;
       this._stats = result.stats || this._stats;
-      this._activeProfile = result.active_profile;
+      const previousActive = this._activeProfile;
+      this._activeProfile = result.active_profile || null;
+      this._activeProfileYaml = result.active_profile_yaml || null;
+      this._activeProfileTimeoutScale = result.active_profile_timeout_scale ?? null;
       this._scheduleRender();
+      if (
+        this._activeProfile &&
+        this._activeProfileYaml &&
+        this._activeProfile !== this._loaderActiveProfileSnapshot
+      ) {
+        const current = this._scenarioParams[SCENARIO_LOAD_PROFILE] || {};
+        this._scenarioParams = {
+          ...this._scenarioParams,
+          [SCENARIO_LOAD_PROFILE]: {
+            ...current,
+            profile_name: this._activeProfile,
+            profile_yaml: this._activeProfileYaml,
+            speed:
+              current.speed ?? this._activeProfileTimeoutScale ?? current.speed ?? 1.0,
+          },
+        };
+        this._loaderActiveProfileSnapshot = this._activeProfile;
+        this._persistLoaderDraft();
+      } else if (!this._activeProfile && previousActive) {
+        this._loaderActiveProfileSnapshot = null;
+      }
     } catch {
       // Silently handle fetch errors
     }
@@ -220,6 +269,49 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     }
     await new Promise((r) => setTimeout(r, 500));
     await this._fetchData();
+  }
+
+  async _confirmDeleteProfile(profileName) {
+    if (!profileName || !this._hass) {
+      return;
+    }
+
+    const profile = this._profiles.find((p) => p.name === profileName);
+    if (profile?.is_builtin) {
+      this._profileNotice = "Built-in profiles cannot be deleted.";
+      this._scheduleRender();
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete profile "${profileName}"? This cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/delete_profile",
+        profile: profileName,
+      });
+
+      if (this._activeProfile === profileName) {
+        this._activeProfile = null;
+        this._activeProfileYaml = null;
+        this._activeProfileTimeoutScale = null;
+        this._loaderActiveProfileSnapshot = null;
+        this._scenarioParams = {
+          ...this._scenarioParams,
+          [SCENARIO_LOAD_PROFILE]: {},
+        };
+        this._persistLoaderDraft();
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await this._fetchData();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to delete profile", error);
+    }
   }
 
   async _stopScenario(scenarioId) {
@@ -315,6 +407,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       btn.addEventListener("click", () => this._startScenario(btn.dataset.scenarioId));
     });
 
+    root.querySelectorAll("[data-action='delete-profile']").forEach(btn => {
+      btn.addEventListener("click", () => this._confirmDeleteProfile(btn.dataset.profile));
+    });
+
     root.querySelectorAll("[data-action='stop-scenario']").forEach(btn => {
       btn.addEventListener("click", () => this._stopScenario(btn.dataset.scenarioId));
     });
@@ -373,6 +469,29 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     if (dismissNotice) {
       dismissNotice.addEventListener("click", () => { this._profileNotice = null; this._scheduleRender(); });
     }
+
+    const manualTemplate = root.querySelector("[data-action='manual-template']");
+    if (manualTemplate) {
+      manualTemplate.addEventListener("change", (event) => {
+        const select = event.target;
+        const option = select.selectedOptions?.[0];
+        if (option && option.value) {
+          this._applyManualTemplate(option);
+          select.value = "";
+        }
+      });
+    }
+
+    const resetLoader = root.querySelector("[data-action='reset-loader']");
+    if (resetLoader) {
+      resetLoader.addEventListener("click", () => {
+        this._scenarioParams = { ...this._scenarioParams, [SCENARIO_LOAD_PROFILE]: {} };
+        this._scheduleRender();
+        this._persistLoaderDraft();
+      });
+    }
+
+    this._updateLoaderStatusUI();
   }
 
   async _clearCache({ clearSchema = true, clearPackets = false } = {}) {
@@ -446,9 +565,71 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     return profile?.known_list || {};
   }
 
+  _manualDeviceCount() {
+    return this._devices.filter((d) => !d.owned_by_profile).length;
+  }
+
+  _profileDeviceCount() {
+    return this._devices.filter((d) => d.owned_by_profile).length;
+  }
+
+  _activeScenarioIds() {
+    const ids = new Set(this._runningScenarios || []);
+    if (this._manualDeviceCount() > 0) {
+      ids.add(SCENARIO_MANUAL_DEVICE);
+    }
+    return ids;
+  }
+
+  _scenarioConflicts(scenarioId) {
+    const registry = this._scenarioRegistry || {};
+    const meta = registry[scenarioId] || {};
+    const newCompat = meta.can_run_with || [];
+    if (newCompat.includes("*")) {
+      return [];
+    }
+    const conflicts = [];
+    const activeIds = this._activeScenarioIds();
+    activeIds.forEach((runningId) => {
+      if (runningId === scenarioId) {
+        return;
+      }
+      const runningMeta = registry[runningId] || {};
+      const runningCompat = runningMeta.can_run_with || [];
+      if (
+        runningCompat.includes("*") ||
+        runningCompat.includes(scenarioId) ||
+        newCompat.includes(runningId)
+      ) {
+        return;
+      }
+      conflicts.push(runningId);
+    });
+    return conflicts;
+  }
+
+  _applyManualTemplate(option) {
+    if (!option || !option.value) return;
+    const deviceId = option.value;
+    const slug = (option.dataset.slug || "FAN").toUpperCase();
+    const variant = option.dataset.variant || "default";
+    const current = this._scenarioParams[SCENARIO_MANUAL_DEVICE] || {};
+    this._scenarioParams = {
+      ...this._scenarioParams,
+      [SCENARIO_MANUAL_DEVICE]: {
+        ...current,
+        device_id: deviceId,
+        device_type: slug,
+        variant_id: variant,
+      },
+    };
+    this._scheduleRender();
+  }
+
   // ========== HTML BUILDERS ==========
 
   _buildProfiles() {
+    const loaderCard = this._buildProfileLoaderCard();
     const profileCards = this._profiles.length === 0
       ? "<div>No profiles available</div>"
       : this._profiles.map((p) => {
@@ -458,9 +639,21 @@ class DeviceSimulatorCard extends RamsesBaseCard {
             return `<option value="${s}"${sel}>${label}</option>`;
           }).join("");
           const reloadChecked = (this._profileReload[p.name] ?? true) ? " checked" : "";
+          const deleteButton = p.can_delete
+            ? `<button class="btn btn-secondary" data-action="delete-profile" data-profile="${p.name}" style="margin-left:auto;">Delete</button>`
+            : "";
+          const badges = `
+            <div style="display:flex; gap:4px; align-items:center; font-size:0.75em; color:var(--secondary-text-color);">
+              ${p.is_active ? "<span class=\"chip profile\">Active</span>" : ""}
+              ${p.is_builtin ? "<span class=\"chip source\">Built-in</span>" : ""}
+            </div>`;
           return `
             <div class="card ${this._activeProfile === p.name ? "active" : ""}">
-              <div><strong>${p.name}</strong></div>
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <strong>${p.name}</strong>
+                ${badges}
+                ${deleteButton}
+              </div>
               <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-bottom: 8px;">${p.description || "No description"}</div>
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <label style="font-size: 0.8em;">Speed:</label>
@@ -484,27 +677,115 @@ class DeviceSimulatorCard extends RamsesBaseCard {
          </div>`
       : "";
 
-    return `<div class="grid">${profileCards}</div>${notice}`;
+    return `${loaderCard}<div class="grid">${profileCards}</div>${notice}`;
+  }
+
+  _buildProfileLoaderCard() {
+    const conflicts = this._scenarioConflicts(SCENARIO_LOAD_PROFILE);
+    const conflictWarn = conflicts.length
+      ? `<div style="font-size: 0.75em; color: var(--warning-color, #ff9800); margin-top: 4px;">⚠️ Conflicts with: ${conflicts.join(", ")}</div>`
+      : "";
+    const params = this._scenarioParams[SCENARIO_LOAD_PROFILE] || {};
+    const nameField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "profile_name");
+    const yamlField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "profile_yaml");
+    const speedField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "speed");
+    const reloadField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "reload_ramses");
+
+    const profileName = (params.profile_name ?? this._activeProfile ?? nameField?.default ?? "").trim();
+    const yamlValue = params.profile_yaml ?? this._activeProfileYaml ?? "";
+    const hasYaml = Boolean((yamlValue || "").trim());
+    const speedValue = params.speed ?? this._activeProfileTimeoutScale ?? speedField?.default ?? 1.0;
+    const reloadValue = params.reload_ramses ?? reloadField?.default ?? true;
+
+    const speedOptions = (speedField?.options || []).map((opt) => {
+      const optValue = opt.value ?? opt;
+      const optLabel = opt.label ?? optValue;
+      const selected = Number(speedValue) === Number(optValue) ? " selected" : "";
+      return `<option value="${optValue}"${selected}>${optLabel}</option>`;
+    }).join("");
+
+    const profileNameInput = `
+      <div class="scenario-field">
+        <label for="loader-profile-name">${nameField?.label || "Profile name"}</label>
+        <input id="loader-profile-name" type="text" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="profile_name" value="${profileName}" placeholder="${nameField?.placeholder || "imported_profile"}" />
+      </div>`;
+
+    const yamlInput = `
+      <div class="scenario-field">
+        <label for="loader-profile-yaml">${yamlField?.label || "Profile YAML"} <span style="color:var(--error-color);">*</span></label>
+        <textarea id="loader-profile-yaml" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="profile_yaml" placeholder="${yamlField?.placeholder || "known_list:\n  32:150000:\n    class: FAN"}">${yamlValue}</textarea>
+      </div>`;
+
+    const speedSelector = speedOptions
+      ? `<label style="font-size: 0.8em; display:flex; flex-direction:column; gap:4px;">
+          <span>${speedField?.label || "Profile speed"}</span>
+          <select data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="speed" data-type="number" style="font-size:0.85em; padding:4px; border:1px solid var(--divider-color); border-radius:4px; background:var(--card-background-color); color:var(--primary-text-color);">
+            ${speedOptions}
+          </select>
+        </label>`
+      : "";
+
+    const reloadToggle = `
+      <label style="font-size: 0.8em; display:flex; align-items:center; gap:4px; cursor:pointer;">
+        <input type="checkbox" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="reload_ramses" data-type="checkbox" ${reloadValue ? "checked" : ""} />
+        ${reloadField?.label || "Reload RF"}
+      </label>`;
+
+    return `
+      <div class="card" style="margin-bottom: 16px;" data-card="profile-loader">
+        <div style="display:flex; justify-content: space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+          <strong>Load Ramses RF profile (YAML)</strong>
+          <span class="chip ${hasYaml ? "profile" : "muted"}" data-loader-chip>${hasYaml ? "Ready" : "Awaiting YAML"}</span>
+        </div>
+        <div style="font-size:0.85em; color: var(--secondary-text-color); margin-top:4px;">
+          Paste a known_devices YAML snippet to import a simulator profile and activate its devices.
+        </div>
+        ${this._activeProfile ? `<div style="font-size:0.8em; color: var(--secondary-text-color); margin-top:6px;">Active profile: <strong>${this._activeProfile}</strong></div>` : ""}
+        ${conflictWarn}
+        ${profileNameInput}
+        ${yamlInput}
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          ${speedSelector}
+          ${reloadToggle}
+        </div>
+        <div style="margin-top: 8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_LOAD_PROFILE}" ${!hasYaml || conflicts.length ? "disabled" : ""}>Load</button>
+          <button class="btn btn-secondary" data-action="reset-loader" ${hasYaml ? "" : "disabled"}>Clear form</button>
+        </div>
+      </div>`;
   }
 
   _buildDevices() {
+    const controls = `
+      <div class="grid device-controls">
+        ${this._buildManualInjectionCard()}
+        ${this._buildProfileEmissionsCard()}
+      </div>`;
+
     if (this._devices.length === 0) {
-      return `<div style="color: var(--secondary-text-color); padding: 8px 0;">No active devices. Start an autonomous emissions scenario first.</div>`;
+      return `${controls}<div class="device-list-empty">No active devices. Use Manual Device Injection or Profile Device Emissions above to start emitters.</div>`;
     }
+
     const knownList = this._knownList();
-    return `<div class="grid">${this._devices.map((d) => {
+    const deviceCards = this._devices.map((d) => {
+      const ownershipChip = d.owned_by_profile
+        ? `<span class="chip profile" title="Defined by the active profile">Profile</span>`
+        : `<span class="chip manual" title="Manually injected device">Manual</span>`;
       const knownBadge = knownList[d.id]
-        ? `<span style="padding: 1px 6px; border-radius: 10px; font-size: 0.7em; font-weight: 600; background: var(--primary-color); color: white;">known</span>`
+        ? `<span class="chip known" title="Device appears in profile known list">Known</span>`
         : "";
-      const chips = (d.excluded_codes || []).map((code) =>
+      const extraSource = d.source && !["manual", "profile"].includes(d.source)
+        ? `<span class="chip source" title="Origin scenario">${d.source}</span>`
+        : "";
+      const chipsMarkup = (d.excluded_codes || []).map((code) =>
         `<span class="code-chip">${code}<button data-action="remove-code" data-device-id="${d.id}" data-code="${code}" title="Remove">✕</button></span>`
       ).join("");
       const checkedAttr = d.enabled ? " checked" : "";
       return `
         <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
             <div><strong>${d.id}</strong> <span style="color: var(--secondary-text-color); font-size: 0.85em;">${d.type}</span></div>
-            ${knownBadge}
+            <div style="display:flex; gap:4px; flex-wrap: wrap;">${ownershipChip}${knownBadge}${extraSource}</div>
           </div>
           <div class="device-actions">
             <label class="toggle">
@@ -513,7 +794,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
             </label>
           </div>
           <div style="font-size: 0.8em; color: var(--secondary-text-color); margin-top: 8px;">Excluded codes:</div>
-          <div class="codes-row">${chips}</div>
+          <div class="codes-row">${chipsMarkup || `<span class="chip muted">none</span>`}</div>
           <div class="add-code">
             <input type="text" maxlength="4" placeholder="1FC9"
               data-action="code-input" data-device-id="${d.id}"
@@ -521,7 +802,88 @@ class DeviceSimulatorCard extends RamsesBaseCard {
             <button class="btn btn-primary" data-action="add-code" data-device-id="${d.id}">+ Exclude</button>
           </div>
         </div>`;
-    }).join("")}</div>`;
+    }).join("");
+
+    return `${controls}<div class="grid">${deviceCards}</div>`;
+  }
+
+  _buildManualInjectionCard() {
+    const manualCount = this._manualDeviceCount();
+    const conflicts = this._scenarioConflicts(SCENARIO_MANUAL_DEVICE);
+    const conflictWarn = conflicts.length
+      ? `<div style="font-size: 0.75em; color: var(--warning-color, #ff9800); margin-top: 4px;">⚠️ Conflicts with: ${conflicts.join(", ")}</div>`
+      : "";
+    const statusChip = manualCount
+      ? `<span class="chip manual">${manualCount} active</span>`
+      : `<span class="chip muted">Idle</span>`;
+    const knownList = this._knownList();
+    const templateOptions = Object.entries(knownList).map(([deviceId, meta]) => {
+      const slug = (meta?.class || "FAN").toUpperCase();
+      const variant = meta?.variant || meta?.variant_id || "default";
+      return `<option value="${deviceId}" data-slug="${slug}" data-variant="${variant}">${deviceId} • ${slug}</option>`;
+    }).join("");
+    const templateSelect = templateOptions
+      ? `<label style="font-size: 0.8em; display:flex; flex-direction:column; gap:4px;">
+            <span>Preset from profile</span>
+            <select data-action="manual-template" style="font-size:0.85em; padding:4px; border:1px solid var(--divider-color); border-radius:4px; background:var(--card-background-color); color:var(--primary-text-color);">
+              <option value="">Select device...</option>
+              ${templateOptions}
+            </select>
+         </label>`
+      : "";
+
+    return `
+      <div class="card">
+        <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap: wrap; gap:8px;">
+          <strong>Manual Device Injection</strong>
+          ${statusChip}
+        </div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">Inject an ad-hoc device that emits its periodic frames. Use profile presets to auto-fill slug/device id.</div>
+        ${templateSelect}
+        ${this._buildScenarioParamsById(SCENARIO_MANUAL_DEVICE)}
+        ${conflictWarn}
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_MANUAL_DEVICE}" ${conflicts.length ? "disabled" : ""}>Inject Device</button>
+          <button class="btn btn-secondary" data-action="stop-scenario" data-scenario-id="${SCENARIO_MANUAL_DEVICE}" ${manualCount ? "" : "disabled"}>Stop manual devices</button>
+        </div>
+      </div>`;
+  }
+
+  _buildProfileEmissionsCard() {
+    const running = (this._runningScenarios || []).includes(SCENARIO_PROFILE_EMISSIONS);
+    const conflicts = this._scenarioConflicts(SCENARIO_PROFILE_EMISSIONS);
+    const conflictWarn = conflicts.length
+      ? `<div style="font-size: 0.75em; color: var(--warning-color, #ff9800); margin-top: 4px;">⚠️ Conflicts with: ${conflicts.join(", ")}</div>`
+      : "";
+    const knownList = this._knownList();
+    const knownCount = Object.keys(knownList).length;
+    const profileCount = this._profileDeviceCount();
+    const statusChip = running
+      ? `<span class="chip profile">${profileCount || knownCount} active</span>`
+      : `<span class="chip muted">Idle</span>`;
+    const disableStart = !this._activeProfile || !knownCount || conflicts.length;
+    const summary = !this._activeProfile
+      ? "Load a profile to enable bulk emissions."
+      : knownCount === 0
+        ? "Active profile has no known devices configured."
+        : running
+          ? `Emitting ${profileCount || knownCount} profile device(s).`
+          : `Ready to emit ${knownCount} device(s) from the active profile.`;
+
+    const buttonRow = running
+      ? `<button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}">Stop profile devices</button>`
+      : `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}" ${disableStart ? "disabled" : ""}>Start profile devices</button>`;
+
+    return `
+      <div class="card">
+        <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <strong>Profile Device Emissions</strong>
+          ${statusChip}
+        </div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${summary}</div>
+        ${conflictWarn}
+        <div style="margin-top:8px; display:flex; gap:8px;">${buttonRow}</div>
+      </div>`;
   }
 
   _handleScenarioParamInput(input) {
@@ -539,6 +901,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       ...this._scenarioParams,
       [scenarioId]: { ...(this._scenarioParams[scenarioId] || {}), [field]: value },
     };
+
+    if (scenarioId === SCENARIO_LOAD_PROFILE) {
+      this._updateLoaderStatusUI();
+      this._persistLoaderDraft();
+    }
   }
 
   _prepareScenarioParams(scenarioId) {
@@ -608,6 +975,30 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         </div>`;
     }
 
+    if (Array.isArray(field.options) && field.options.length) {
+      const optionsMarkup = field.options.map((opt) => {
+        const optValue = opt.value ?? opt;
+        const optLabel = opt.label ?? optValue;
+        const selected = String(value ?? field.default ?? "") === String(optValue) ? " selected" : "";
+        return `<option value="${optValue}"${selected}>${optLabel}</option>`;
+      }).join("");
+      return `
+        <div class="scenario-field">
+          <label for="${inputId}">${field.label || field.key} ${requiredMark}</label>
+          <select id="${inputId}" ${commonAttrs}>${optionsMarkup}</select>
+        </div>`;
+    }
+
+    if (field.type === "textarea") {
+      const rowsAttr = field.rows ? ` rows="${field.rows}"` : " rows=\"8\"";
+      const placeholder = field.placeholder || "known_list:\n  32:150000:\n    class: FAN";
+      return `
+        <div class="scenario-field">
+          <label for="${inputId}">${field.label || field.key} ${requiredMark}</label>
+          <textarea id="${inputId}" ${commonAttrs}${rowsAttr} placeholder="${placeholder}">${value}</textarea>
+        </div>`;
+    }
+
     const inputType = field.type === "number" ? "number" : "text";
     const stepAttr = field.step ? ` step="${field.step}"` : "";
     const minAttr = field.min !== undefined ? ` min="${field.min}"` : "";
@@ -618,6 +1009,68 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         <label for="${inputId}">${field.label || field.key} ${requiredMark}</label>
         <input id="${inputId}" ${commonAttrs} type="${inputType}"${stepAttr}${minAttr}${maxAttr} placeholder="${placeholder}" value="${value}" />
       </div>`;
+  }
+
+  _updateLoaderStatusUI() {
+    if (!this.shadowRoot) return;
+    const card = this.shadowRoot.querySelector('[data-card="profile-loader"]');
+    if (!card) return;
+    const params = this._scenarioParams[SCENARIO_LOAD_PROFILE] || {};
+    const hasYaml = Boolean((params.profile_yaml || "").trim());
+    const conflicts = this._scenarioConflicts(SCENARIO_LOAD_PROFILE);
+
+    const importBtn = card.querySelector(`[data-action='start-scenario'][data-scenario-id='${SCENARIO_LOAD_PROFILE}']`);
+    if (importBtn) {
+      importBtn.disabled = !hasYaml || conflicts.length > 0;
+    }
+
+    const resetBtn = card.querySelector("[data-action='reset-loader']");
+    if (resetBtn) {
+      resetBtn.disabled = !hasYaml;
+    }
+
+    const chip = card.querySelector("[data-loader-chip]");
+    if (chip) {
+      chip.textContent = hasYaml ? "Ready" : "Awaiting YAML";
+      chip.classList.remove("profile", "muted");
+      chip.classList.add(hasYaml ? "profile" : "muted");
+    }
+  }
+
+  _loadLoaderDraft() {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(LOADER_DRAFT_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        this._scenarioParams[SCENARIO_LOAD_PROFILE] = parsed;
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn("Device Simulator: failed to load loader draft", error);
+    }
+  }
+
+  _persistLoaderDraft() {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return;
+    }
+    const params = this._scenarioParams[SCENARIO_LOAD_PROFILE];
+    if (!params || Object.keys(params).length === 0) {
+      window.localStorage.removeItem(LOADER_DRAFT_KEY);
+      return;
+    }
+    try {
+      window.localStorage.setItem(LOADER_DRAFT_KEY, JSON.stringify(params));
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn("Device Simulator: failed to persist loader draft", error);
+    }
   }
 
   _buildScenarios() {
@@ -637,32 +1090,16 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-top: 4px;">When off: simulator receives RQ frames but never replies &#8212; simulates broken ESP or powered-off device.</div>
       </div>`;
 
-    const activeScenarioIds = new Set(this._runningScenarios || []);
-    if (this._emissionsActive) {
-      activeScenarioIds.add(SCENARIO_AUTONOMOUS_EMISSIONS);
-    }
-
     const scenarioCards = ids
-      .filter(id => id !== "auto_answer")
+      .filter(id => id !== "auto_answer" && id !== SCENARIO_MANUAL_DEVICE)
       .map((id) => {
         const meta = registry[id];
-        const isAutonomous = id === SCENARIO_AUTONOMOUS_EMISSIONS;
-        const isRunning = isAutonomous
-          ? this._emissionsActive
-          : activeScenarioIds.has(id);
-
-        const conflicts = Array.from(activeScenarioIds)
-          .filter((r) => r !== id)
-          .filter(r => {
-            const rm = registry[r] || {};
-            const rc = rm.can_run_with || [];
-            const nc = meta.can_run_with || [];
-            return !(rc.includes("*") || nc.includes("*") || rc.includes(id) || nc.includes(r));
-          });
+        const isRunning = (this._runningScenarios || []).includes(id);
+        const conflicts = this._scenarioConflicts(id);
         const conflictWarn = conflicts.length
           ? `<div style="font-size: 0.75em; color: var(--warning-color, #ff9800); margin-top: 4px;">&#9888; Conflicts with: ${conflicts.join(", ")}</div>`
           : "";
-        const disabledAttr = conflicts.length ? ' style="opacity:0.7"' : "";
+        const disabledAttr = conflicts.length ? " disabled" : "";
         const actionBtns = meta.toggleable
           ? (isRunning
             ? `<button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${id}">Stop</button>`

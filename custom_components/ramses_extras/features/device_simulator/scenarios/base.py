@@ -104,12 +104,12 @@ class ScenarioContext:
 
     def set_running_metadata(self, scenario_id: str, metadata: dict[str, Any]) -> None:
         """Persist metadata about a running scenario."""
-        self.engine._running_scenarios[scenario_id] = metadata
+        self.engine.set_running_metadata(scenario_id, metadata)
 
     def clear_running(self, scenario_id: str) -> None:
         """Remove stored task + metadata for a scenario id."""
         self.engine._scenario_tasks.pop(scenario_id, None)
-        self.engine._running_scenarios.pop(scenario_id, None)
+        self.engine.clear_running_metadata(scenario_id)
 
     def build_packet(
         self, src: str, dst: str, verb: str, code: str, payload: str

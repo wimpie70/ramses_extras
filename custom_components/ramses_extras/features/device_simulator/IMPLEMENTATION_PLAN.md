@@ -753,7 +753,7 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 **Tasks**:
 
 - [x] Implement `SystemConfigProfile` dataclass + `ConfigProfileStore`
-- [ ] Build profile loader: writes config fragment to HA config dir, triggers reload (deferred)
+- [x] Build profile loader: parse/import known_devices YAML via `load_profile_yaml` scenario + websocket/service helpers, persist to profile store, update HA config, trigger ramses_cc reload
 - [x] Implement `apply_timeout_scale(scale)` — patches `ramses_rf.const` module constants
 - [x] Expose `heartbeat_timeout_scale` (and `heartbeat_timeout_override_seconds`) in simulator config
 - [x] Apply timeout scale at simulator feature load, before ramses_cc processes any messages
@@ -789,6 +789,9 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 **Status**: Basic card structure implemented. Scenarios wired to HA service calls. Devices tab shows active devices with controls.
 
 - [x] Profile browser (list, load)
+- [x] YAML loader card on Profiles tab (textarea input, schema-backed validation, conflict messaging)
+- [x] Show active profile YAML + timeout scale in loader and pre-fill textarea for editing
+- [x] Allow deleting user-imported profiles (built-ins protected) via UI + websocket
 - [ ] Profile inspect dialog (show timeout_scale, device_configs etc.)
 - [ ] Profile import/export dialog (export to YAML/JSON, import from file)
 - [ ] Profile edit + save (inline editing of profile settings)

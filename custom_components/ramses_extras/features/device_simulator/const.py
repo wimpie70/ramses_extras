@@ -75,12 +75,18 @@ SCENARIO_FLOODING_TEST = "flooding_test"
 SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
 SCENARIO_HVAC_DEVICE_LOSS = "hvac_device_loss"
 SCENARIO_RUN_CONVERSATION = "run_conversation"
-SCENARIO_AUTONOMOUS_EMISSIONS = "autonomous_emissions"  # Start/stop autonomous I frames
+SCENARIO_MANUAL_DEVICE_INJECTION = "autonomous_emissions"
+# Legacy alias
+SCENARIO_AUTONOMOUS_EMISSIONS = (
+    SCENARIO_MANUAL_DEVICE_INJECTION  # Start/stop autonomous I frames
+)
+SCENARIO_PROFILE_EMISSIONS = "profile_emissions"
+SCENARIO_LOAD_PROFILE_YAML = "load_profile_yaml"
 SCENARIO_AUTO_ANSWER = "auto_answer"  # Global RQ→RP response toggle
 
 # Parameter schemas for scenario configuration UI
 SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
-    SCENARIO_AUTONOMOUS_EMISSIONS: [
+    SCENARIO_MANUAL_DEVICE_INJECTION: [
         {
             "key": "device_id",
             "label": "Device ID",
@@ -316,6 +322,39 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "min": 0,
         },
     ],
+    SCENARIO_PROFILE_EMISSIONS: [],
+    SCENARIO_LOAD_PROFILE_YAML: [
+        {
+            "key": "profile_name",
+            "label": "Profile name",
+            "type": "text",
+            "default": "imported_profile",
+        },
+        {
+            "key": "profile_yaml",
+            "label": "Profile YAML",
+            "type": "textarea",
+            "required": True,
+            "placeholder": "known_list:\n  32:150000:\n    class: FAN",
+        },
+        {
+            "key": "speed",
+            "label": "Profile speed",
+            "type": "number",
+            "default": 1.0,
+            "options": [
+                {"label": "1× (normal)", "value": 1.0},
+                {"label": "10× faster", "value": 0.1},
+                {"label": "100× faster", "value": 0.01},
+            ],
+        },
+        {
+            "key": "reload_ramses",
+            "label": "Reload RF",
+            "type": "checkbox",
+            "default": True,
+        },
+    ],
 }
 
 # Scenario registry: metadata for each scenario type.
@@ -323,15 +362,16 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
 # can_run_with: list of scenario IDs that may run concurrently.
 #   Use "*" to mean "any".
 SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
-    SCENARIO_AUTONOMOUS_EMISSIONS: {
-        "label": "Autonomous Emissions",
-        "description": "Activate a simulated device and emit periodic I-frames",
+    SCENARIO_MANUAL_DEVICE_INJECTION: {
+        "label": "Manual Device Injection",
+        "description": "Add an ad-hoc simulated device that emits its periodic frames",
         "toggleable": True,
         "can_run_with": [
             SCENARIO_AUTO_ANSWER,
             SCENARIO_DEVICE_UNAVAILABILITY,
             SCENARIO_HVAC_DEVICE_LOSS,
             SCENARIO_RUN_CONVERSATION,
+            SCENARIO_PROFILE_EMISSIONS,
         ],
     },
     SCENARIO_AUTO_ANSWER: {
@@ -345,7 +385,8 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Silence all or selected devices after a delay, then resume",
         "toggleable": True,
         "can_run_with": [
-            SCENARIO_AUTONOMOUS_EMISSIONS,
+            SCENARIO_MANUAL_DEVICE_INJECTION,
+            SCENARIO_PROFILE_EMISSIONS,
             SCENARIO_AUTO_ANSWER,
         ],
     },
@@ -354,7 +395,8 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Drop one HVAC device mid-run and optionally restore it",
         "toggleable": True,
         "can_run_with": [
-            SCENARIO_AUTONOMOUS_EMISSIONS,
+            SCENARIO_MANUAL_DEVICE_INJECTION,
+            SCENARIO_PROFILE_EMISSIONS,
             SCENARIO_AUTO_ANSWER,
         ],
     },
@@ -363,7 +405,8 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Replay a captured conversation block end-to-end",
         "toggleable": False,
         "can_run_with": [
-            SCENARIO_AUTONOMOUS_EMISSIONS,
+            SCENARIO_MANUAL_DEVICE_INJECTION,
+            SCENARIO_PROFILE_EMISSIONS,
             SCENARIO_AUTO_ANSWER,
         ],
     },
@@ -396,6 +439,26 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Activate a curated set of devices for mixed testing",
         "toggleable": False,
         "can_run_with": [SCENARIO_AUTO_ANSWER],
+    },
+    SCENARIO_PROFILE_EMISSIONS: {
+        "label": "Profile Device Emissions",
+        "description": (
+            "Start/stop autonomous emitters for all devices in the active profile"
+        ),
+        "toggleable": True,
+        "can_run_with": [SCENARIO_AUTO_ANSWER, SCENARIO_MANUAL_DEVICE_INJECTION],
+    },
+    SCENARIO_LOAD_PROFILE_YAML: {
+        "label": "Load Ramses RF profile",
+        "description": (
+            "Paste a known_list YAML snippet to import and activate a profile"
+        ),
+        "toggleable": False,
+        "can_run_with": [
+            SCENARIO_AUTO_ANSWER,
+            SCENARIO_MANUAL_DEVICE_INJECTION,
+            SCENARIO_PROFILE_EMISSIONS,
+        ],
     },
 }
 
@@ -462,6 +525,9 @@ __all__ = [
     "DEFAULT_GATEWAY_ID",
     "LOGGER",
     "SCENARIO_AUTO_ANSWER",
+    "SCENARIO_MANUAL_DEVICE_INJECTION",
+    "SCENARIO_PROFILE_EMISSIONS",
+    "SCENARIO_LOAD_PROFILE_YAML",
     "SCENARIO_PARAM_SCHEMAS",
     "SCENARIO_REGISTRY",
 ]

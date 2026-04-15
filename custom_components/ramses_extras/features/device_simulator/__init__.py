@@ -25,6 +25,7 @@ from .const import (
     SIMULATOR_HGI_ID,
     SIMULATOR_TOPIC_NS,
 )
+from .scenarios import async_discover_scenarios, discover_scenarios
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -364,11 +365,14 @@ async def create_device_simulator_feature(
             "Periodic emitter created (not auto-started - scenario controlled)"
         )
 
+    await async_discover_scenarios(hass)
+
     if "device_simulator_engine" not in registry:
         registry["device_simulator_engine"] = ScenarioEngine(
             hass,
             registry["device_simulator_endpoint"],
             registry["device_simulator_db"],
+            scenario_definitions=discover_scenarios(),
         )
 
     # Restore persisted auto_answer setting into the freshly-created engine.
@@ -445,11 +449,13 @@ async def create_device_simulator_feature(
                                 err,
                             )
 
+                    slug = dev_cfg.get("class", "FAN")
                     device = ActiveDevice(
                         device_id=dev_id,
-                        slug=dev_cfg.get("class", "FAN"),
+                        slug=slug,
                         variant_id="default",
                         excluded_codes=["1FC9"],
+                        origin="profile",
                         suppress_autonomous=False,
                         suppress_responses=False,
                         enabled=True,
