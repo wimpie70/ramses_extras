@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -29,13 +30,19 @@ from .const import (
     DOMAIN,
     LOGGER,
     SCENARIO_AUTO_ANSWER,
-    SCENARIO_DEVICE_UNAVAILABILITY,
     SCENARIO_LOAD_PROFILE_YAML,
     SCENARIO_MANUAL_DEVICE_INJECTION,
     SCENARIO_PARAM_SCHEMAS,
     SCENARIO_PROFILE_EMISSIONS,
     SCENARIO_REGISTRY,
 )
+
+try:  # pragma: no cover - legacy fallback for partially updated installs
+    from .const import SCENARIO_DEVICE_UNAVAILABILITY
+except ImportError:  # pragma: no cover - safety net when const is missing
+    SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
+except AttributeError:  # pragma: no cover - attribute missing in older builds
+    SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
 
 # Import ramses_cc storage constants
 try:
@@ -91,8 +98,10 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_stop_scenario)
     websocket_api.async_register_command(hass, ws_set_device_enabled)
     websocket_api.async_register_command(hass, ws_set_device_excluded_codes)
+    websocket_api.async_register_command(hass, ws_activate_profile_device)
     websocket_api.async_register_command(hass, ws_clear_ramses_cache)
     websocket_api.async_register_command(hass, ws_set_auto_answer)
+    websocket_api.async_register_command(hass, ws_set_autonomous_speed)
     websocket_api.async_register_command(hass, ws_subscribe_devices)
     websocket_api.async_register_command(hass, ws_delete_profile)
 
@@ -130,34 +139,38 @@ def _build_profile_zone_index(profile: SystemConfigProfile) -> list[dict[str, An
                 continue
             zone_label = zone_cfg.get("label") or f"Zone {zone_id}"
             sensor_id = zone_cfg.get("sensor")
-            raw_devices: list[str] = []
+            raw_devices: list[tuple[str, str]] = []
             if sensor_id:
-                raw_devices.append(str(sensor_id))
+                raw_devices.append((str(sensor_id), "sensor"))
             for key in ("devices", "actuators", "children"):
                 payload = zone_cfg.get(key)
+                role = key[:-1] if key.endswith("s") else key
                 if isinstance(payload, list):
-                    raw_devices.extend(str(item) for item in payload if item)
+                    raw_devices.extend((str(item), role) for item in payload if item)
                 elif isinstance(payload, dict):
                     raw_devices.extend(
-                        str(value)
+                        (str(value), role)
                         for value in payload.values()
                         if isinstance(value, str)
                     )
 
-            # Preserve order while deduplicating
-            seen: set[str] = set()
-            device_entries: list[dict[str, Any]] = []
-            for device_id in raw_devices:
-                if device_id in seen:
+            # Preserve order while deduplicating but keep role metadata
+            device_lookup: dict[str, dict[str, Any]] = {}
+            for device_id, role in raw_devices:
+                if not device_id:
                     continue
-                seen.add(device_id)
                 info = known_list.get(device_id, {})
-                device_entries.append(
+                entry = device_lookup.setdefault(
+                    device_id,
                     {
                         "id": device_id,
                         "class": info.get("class"),
-                    }
+                        "roles": [],
+                    },
                 )
+                if role and role not in entry["roles"]:
+                    entry["roles"].append(role)
+            device_entries = list(device_lookup.values())
 
             zones.append(
                 {
@@ -171,6 +184,46 @@ def _build_profile_zone_index(profile: SystemConfigProfile) -> list[dict[str, An
             )
 
     return zones
+
+
+def _build_zone_membership(
+    zones: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Return per-device zone memberships for quick UI lookups."""
+
+    membership: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for zone in zones:
+        summary = {
+            "id": zone.get("id"),
+            "zone_id": zone.get("zone_id"),
+            "label": zone.get("label"),
+            "controller": zone.get("controller"),
+            "sensor": zone.get("sensor"),
+        }
+
+        controller_id = zone.get("controller")
+        if controller_id:
+            membership[controller_id].append(
+                {
+                    **summary,
+                    "roles": ["controller"],
+                    "members": zone.get("devices", []),
+                }
+            )
+
+        for member in zone.get("devices", []):
+            device_id = member.get("id")
+            if not device_id:
+                continue
+            membership[device_id].append(
+                {
+                    **summary,
+                    "roles": member.get("roles", []),
+                    "class": member.get("class"),
+                }
+            )
+
+    return dict(membership)
 
 
 def _resolve_zone_devices(profile: SystemConfigProfile, zone_key: str) -> list[str]:
@@ -510,6 +563,8 @@ def ws_get_ui_status(
     active_profile_known_list: dict[str, Any] | None = None
     active_profile_schema: dict[str, Any] | None = None
     active_profile_zones: list[dict[str, Any]] = []
+    zone_membership: dict[str, list[dict[str, Any]]] = {}
+    filtered_known_list: dict[str, Any] | None = None
     if config_store:
         active_profile = config_store.get_active_profile()
         for name in config_store.list_profiles():
@@ -537,6 +592,12 @@ def ws_get_ui_status(
                 active_profile_known_list = p.device_configs.get("_known_list", {})
                 active_profile_schema = schema or None
                 active_profile_zones = _build_profile_zone_index(p)
+                zone_membership = _build_zone_membership(active_profile_zones)
+                filtered_known_list = {
+                    device_id: meta
+                    for device_id, meta in active_profile_known_list.items()
+                    if (meta.get("class") or "").upper() != "HGI"
+                }
 
     # Get active devices from scenario engine
     engine = ra.get("device_simulator_engine")
@@ -552,9 +613,28 @@ def ws_get_ui_status(
                 "excluded_codes": list(device.excluded_codes),
                 "source": device.origin,
                 "owned_by_profile": engine.is_profile_device(device.device_id),
+                "zones": zone_membership.get(device.device_id, []),
             }
             for device in engine._active_devices.values()
         ]
+
+    active_device_ids = {device["id"] for device in devices}
+
+    profile_device_summary: list[dict[str, Any]] = []
+    profile_device_counts = {"known": 0, "active": 0}
+    if filtered_known_list:
+        for device_id, meta in filtered_known_list.items():
+            summary_entry = {
+                "id": device_id,
+                "class": meta.get("class"),
+                "active": device_id in active_device_ids,
+                "label": meta.get("name") or meta.get("label"),
+            }
+            profile_device_summary.append(summary_entry)
+        profile_device_counts = {
+            "known": len(profile_device_summary),
+            "active": sum(1 for entry in profile_device_summary if entry["active"]),
+        }
 
     # Stats from engine
     stats = {
@@ -569,6 +649,11 @@ def ws_get_ui_status(
     running_scenarios = engine.get_running_scenario_ids() if engine else []
     running_metadata = engine.get_running_metadata() if engine else {}
     emissions_active = engine.autonomous_emissions_active if engine else False
+    autonomous_speed = (
+        engine.get_autonomous_speed()
+        if engine
+        else (config_store.get_autonomous_speed() if config_store else 1.0)
+    )
 
     connection.send_result(
         msg["id"],
@@ -583,11 +668,75 @@ def ws_get_ui_status(
             "active_profile_schema": active_profile_schema,
             "active_profile_zones": active_profile_zones,
             "auto_answer": auto_answer,
+            "autonomous_speed": autonomous_speed,
             "running_scenarios": running_scenarios,
             "running_metadata": running_metadata,
             "autonomous_emissions_active": emissions_active,
             "scenario_registry": SCENARIO_REGISTRY,
             "scenario_param_schemas": SCENARIO_PARAM_SCHEMAS,
+            "profile_device_summary": profile_device_summary,
+            "profile_device_counts": profile_device_counts,
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/activate_profile_device",
+        vol.Required("device_id"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_activate_profile_device(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Activate a single configured device from the active profile."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    config_store = _get_config_store(hass)
+    if not config_store:
+        connection.send_error(msg["id"], "not_ready", "Config store not initialized")
+        return
+
+    active_profile_name = config_store.get_active_profile()
+    if not active_profile_name:
+        connection.send_error(msg["id"], "no_active_profile", "Load a profile first")
+        return
+
+    profile = config_store.get_profile(active_profile_name)
+    if not profile:
+        connection.send_error(
+            msg["id"], "invalid_profile", "Active profile is missing or invalid"
+        )
+        return
+
+    device_id = msg["device_id"].upper()
+    if engine.is_device_active(device_id):
+        connection.send_error(
+            msg["id"], "already_active", f"Device {device_id} is already active"
+        )
+        return
+
+    device = engine.build_profile_device(profile, device_id)
+    if not device:
+        connection.send_error(
+            msg["id"], "not_found", f"Device {device_id} is not defined in profile"
+        )
+        return
+
+    await engine.async_activate_device(device)
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "device_id": device_id,
+            "message": f"Activated {device_id} from profile '{active_profile_name}'",
         },
     )
 
@@ -1027,7 +1176,45 @@ async def ws_set_device_enabled(
 
     connection.send_result(
         msg["id"],
-        {"success": True, "device_id": msg["device_id"], "enabled": msg["enabled"]},
+        {"success": True, "enabled": bool(engine and engine.auto_answer_enabled)},
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/set_autonomous_speed",
+        vol.Required("speed"): vol.All(
+            vol.Coerce(float), vol.Clamp(min=0.01, max=100.0)
+        ),
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_set_autonomous_speed(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Set the global autonomous emission speed multiplier."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    speed = msg["speed"]
+    engine.set_autonomous_speed(speed)
+
+    config_store = _get_config_store(hass)
+    if config_store is not None:
+        config_store.set_autonomous_speed(speed)
+        hass.async_create_background_task(
+            config_store.async_save_state(),
+            "ramses_extras.device_simulator.save_state",
+        )
+
+    connection.send_result(
+        msg["id"],
+        {"success": True, "speed": engine.get_autonomous_speed()},
     )
 
 

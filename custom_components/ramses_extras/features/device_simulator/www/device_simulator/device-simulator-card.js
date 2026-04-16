@@ -50,10 +50,19 @@ const CARD_STYLE = `
   .add-code input { padding: 3px 6px; border: 1px solid var(--divider-color); border-radius: 4px; font-size: 0.8em; width: 80px; background: var(--card-background-color); color: var(--primary-text-color); }
   .device-controls { margin-bottom: 16px; }
   .device-list-empty { color: var(--secondary-text-color); padding: 8px 0; }
+  .profile-missing { margin-top: 12px; padding: 8px 12px; border-radius: 8px; background: var(--secondary-background-color); display: flex; flex-direction: column; gap: 8px; }
+  .profile-missing strong { font-size: 0.85em; color: var(--secondary-text-color); }
+  .profile-missing-entry { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 0.8em; }
+  .speed-card { display:flex; flex-direction:column; gap:10px; }
+  .speed-card .speed-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .speed-card input[type='range'] { width:200px; }
+  .speed-card input[type='number'] { width:90px; padding:4px; border:1px solid var(--divider-color); border-radius:4px; background:var(--card-background-color); color:var(--primary-text-color); }
+  .speed-card button { font-size:0.8em; }
   .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 0.7em; font-weight: 600; text-transform: uppercase; }
   .chip.profile { background: var(--primary-color); color: white; }
   .chip.manual { background: var(--info-color, #0288d1); color: white; }
   .chip.known { background: var(--success-color, #388e3c); color: white; }
+  .chip.sensor { background: var(--warning-color, #ffa000); color: #000; }
   .chip.muted { background: var(--divider-color); color: var(--secondary-text-color); }
   .chip.source { background: var(--secondary-background-color); color: var(--secondary-text-color); }
   .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
@@ -97,6 +106,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._activeProfileSchema = null;
     this._activeProfileZones = [];
     this._runningMetadata = {};
+    this._profileDeviceSummary = [];
+    this._profileDeviceCounts = null;
+    this._autonomousSpeed = 1.0;
+    this._pendingSpeed = 1.0;
+    this._speedSaving = false;
 
     this._loadLoaderDraft();
   }
@@ -136,6 +150,55 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     }
 
     return [];
+  }
+
+  _renderDeviceZones(device) {
+    const zones = device?.zones || [];
+    if (!zones.length) {
+      return "";
+    }
+
+    const items = zones.map((zone) => {
+      const label = zone.label || `Zone ${zone.zone_id || "?"}`;
+      const controller = zone.controller ? `CTL ${zone.controller}` : null;
+      const roleLabel = (zone.roles || [])
+        .map((role) => (role === "devices" ? "device" : role))
+        .join(", ");
+      const badge = roleLabel ? `<span class="chip muted">${roleLabel}</span>` : "";
+      const sensor = zone.sensor ? `<span class="chip sensor">sensor ${zone.sensor}</span>` : "";
+
+      let members = "";
+      if ((zone.roles || []).includes("controller") && Array.isArray(zone.members)) {
+        const formattedMembers = zone.members
+          .map((member) => {
+            const memberRoles = member.roles?.includes("sensor")
+              ? "(sensor)"
+              : member.roles?.includes("actuator")
+                ? "(actuator)"
+                : "";
+            return `${member.id}${memberRoles ? ` ${memberRoles}` : ""}`;
+          })
+          .join(", ");
+        if (formattedMembers) {
+          members = `<div class="device-zone-members">Members: ${formattedMembers}</div>`;
+        }
+      }
+
+      return `
+        <div class="device-zone-row">
+          <div>
+            <strong>${label}</strong>${controller ? ` · ${controller}` : ""}
+          </div>
+          <div style="display:flex; gap:4px; flex-wrap:wrap; font-size:0.75em;">${badge}${sensor}</div>
+          ${members}
+        </div>`;
+    }).join("");
+
+    return `
+      <div class="device-zones" style="margin-top:12px;">
+        <div style="font-size:0.8em; color:var(--secondary-text-color); margin-bottom:4px;">Zone relationships</div>
+        <div class="device-zone-list" style="display:flex; flex-direction:column; gap:6px;">${items}</div>
+      </div>`;
   }
 
   // ========== REQUIRED BASE CLASS OVERRIDES ==========
@@ -207,6 +270,14 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._activeProfileKnownList = result.active_profile_known_list || null;
       this._activeProfileSchema = result.active_profile_schema || null;
       this._activeProfileZones = result.active_profile_zones || [];
+      this._profileDeviceSummary = result.profile_device_summary || [];
+      this._profileDeviceCounts = result.profile_device_counts || null;
+      if (typeof result.autonomous_speed === "number") {
+        this._autonomousSpeed = result.autonomous_speed;
+        if (!this._speedSaving) {
+          this._pendingSpeed = result.autonomous_speed;
+        }
+      }
       this._scheduleRender();
       if (
         this._activeProfile &&
@@ -300,6 +371,23 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     await this._fetchData();
   }
 
+  async _activateProfileDevice(deviceId) {
+    if (!deviceId || !this._hass) {
+      return;
+    }
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/activate_profile_device",
+        device_id: deviceId,
+      });
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to activate profile device", error);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await this._fetchData();
+  }
+
   async _startScenario(scenarioId) {
     const params = this._prepareScenarioParams(scenarioId);
     try {
@@ -384,6 +472,38 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     await this._fetchData();
   }
 
+  async _setAutonomousSpeed(value) {
+    if (!this._hass) {
+      return;
+    }
+
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return;
+    }
+
+    const clamped = Math.min(100, Math.max(0.01, numeric));
+    this._pendingSpeed = clamped;
+    this._speedSaving = true;
+    this._scheduleRender();
+
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/set_autonomous_speed",
+        speed: clamped,
+      });
+      this._autonomousSpeed = clamped;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to set autonomous speed", error);
+    } finally {
+      this._speedSaving = false;
+      this._scheduleRender();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await this._fetchData();
+    }
+  }
+
   // ========== RENDERING ==========
 
   _renderContent() {
@@ -456,6 +576,33 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     if (stopProfileBtn) {
       stopProfileBtn.addEventListener("click", () => this._stopProfileDevices());
     }
+
+    root.querySelectorAll("[data-action='activate-profile-device']").forEach((btn) => {
+      btn.addEventListener("click", () => this._activateProfileDevice(btn.dataset.deviceId));
+    });
+
+    const speedSlider = root.querySelector("[data-action='speed-slider']");
+    if (speedSlider) {
+      speedSlider.addEventListener("input", (e) => {
+        this._pendingSpeed = Number(e.target.value);
+        this._scheduleRender();
+      });
+      speedSlider.addEventListener("change", (e) => this._setAutonomousSpeed(e.target.value));
+    }
+
+    const speedInput = root.querySelector("[data-action='speed-input']");
+    if (speedInput) {
+      speedInput.addEventListener("input", (e) => {
+        this._pendingSpeed = Number(e.target.value);
+        this._scheduleRender();
+      });
+      speedInput.addEventListener("change", (e) => this._setAutonomousSpeed(e.target.value));
+    }
+
+    const speedPresets = root.querySelectorAll("[data-action='speed-preset']");
+    speedPresets.forEach((btn) => {
+      btn.addEventListener("click", () => this._setAutonomousSpeed(btn.dataset.speed));
+    });
 
     root.querySelectorAll("[data-action='delete-profile']").forEach(btn => {
       btn.addEventListener("click", () => this._confirmDeleteProfile(btn.dataset.profile));
@@ -610,9 +757,15 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     }
   }
 
-  _knownList() {
+  _knownList(includeHgi = false) {
     const profile = this._profiles.find((p) => p.name === this._activeProfile);
-    return profile?.known_list || {};
+    const knownList = profile?.known_list || {};
+    if (includeHgi) {
+      return knownList;
+    }
+    return Object.fromEntries(
+      Object.entries(knownList).filter(([, meta]) => (meta?.class || "").toUpperCase() !== "HGI"),
+    );
   }
 
   _manualDeviceCount() {
@@ -811,6 +964,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       <div class="grid device-controls">
         ${this._buildManualInjectionCard()}
         ${this._buildProfileEmissionsCard()}
+        ${this._buildAutonomousSpeedCard()}
       </div>`;
 
     if (this._devices.length === 0) {
@@ -832,6 +986,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         `<span class="code-chip">${code}<button data-action="remove-code" data-device-id="${d.id}" data-code="${code}" title="Remove">✕</button></span>`
       ).join("");
       const checkedAttr = d.enabled ? " checked" : "";
+      const zoneMarkup = this._renderDeviceZones(d);
       return `
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -852,6 +1007,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
               value="${this._newCodeInput[d.id] || ""}" />
             <button class="btn btn-primary" data-action="add-code" data-device-id="${d.id}">+ Exclude</button>
           </div>
+          ${zoneMarkup}
         </div>`;
     }).join("");
 
@@ -907,13 +1063,15 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       ? `<div style="font-size: 0.75em; color: var(--warning-color, #ff9800); margin-top: 4px;">⚠️ Conflicts with: ${conflicts.join(", ")}</div>`
       : "";
     const knownList = this._knownList();
-    const knownCount = Object.keys(knownList).length;
-    const profileCount = this._profileDeviceCount();
+    const summary = this._profileDeviceSummary || [];
+    const counts = this._profileDeviceCounts || null;
+    const knownCount = counts?.known ?? (summary.length || Object.keys(knownList).length);
+    const profileCount = counts?.active ?? this._profileDeviceCount();
     const statusChip = running
       ? `<span class="chip profile">${profileCount || knownCount} active</span>`
       : `<span class="chip muted">Idle</span>`;
     const disableStart = !this._activeProfile || !knownCount || conflicts.length;
-    const summary = !this._activeProfile
+    const summaryText = !this._activeProfile
       ? "Load a profile to enable bulk emissions."
       : knownCount === 0
         ? "Active profile has no known devices configured."
@@ -925,15 +1083,91 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       ? `<button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}">Stop profile devices</button>`
       : `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}" ${disableStart ? "disabled" : ""}>Start profile devices</button>`;
 
+    const missingDevices = summary.filter((entry) => !entry.active);
+    const missingMarkup = missingDevices.length
+      ? `
+        <div class="profile-missing">
+          <strong>${missingDevices.length === 1 ? "1 device" : `${missingDevices.length} devices`} not emitting</strong>
+          ${missingDevices
+            .map(
+              (entry) => `
+                <div class="profile-missing-entry">
+                  <span>${entry.id}${entry.class ? ` • ${entry.class}` : ""}</span>
+                  <button class="btn btn-secondary" data-action="activate-profile-device" data-device-id="${entry.id}">
+                    Activate
+                  </button>
+                </div>`,
+            )
+            .join("")}
+        </div>`
+      : "";
+
     return `
       <div class="card">
         <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap:wrap; gap:8px;">
           <strong>Profile Device Emissions</strong>
           ${statusChip}
         </div>
-        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${summary}</div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${summaryText}</div>
         ${conflictWarn}
         <div style="margin-top:8px; display:flex; gap:8px;">${buttonRow}</div>
+        ${missingMarkup}
+      </div>`;
+  }
+
+  _formatAutonomousSpeedLabel(speed) {
+    const value = Number(speed) || 1;
+    if (Math.abs(value - 1) < 0.01) {
+      return "1× normal";
+    }
+    if (value > 1) {
+      const magnitude = value >= 10 ? value.toFixed(0) : value.toFixed(1);
+      return `${magnitude}× faster`;
+    }
+    const slower = 1 / value;
+    const text = slower >= 10 ? slower.toFixed(0) : slower.toFixed(1);
+    return `${text}× slower`;
+  }
+
+  _buildAutonomousSpeedCard() {
+    const current = Number(this._autonomousSpeed) || 1;
+    const pending = Number.isFinite(this._pendingSpeed) ? this._pendingSpeed : current;
+    const sliderValue = Math.min(1, Math.max(0.01, pending || 1));
+    const presetValues = [2, 1, 0.5, 0.25, 0.1, 0.05, 0.02];
+
+    const badge = this._speedSaving
+      ? '<span class="chip muted">Saving…</span>'
+      : `<span class="chip profile">${this._formatAutonomousSpeedLabel(current)}</span>`;
+
+    const presetButtons = presetValues
+      .map((value) => {
+        const active = Math.abs(current - value) < 0.001 ? "btn-primary" : "btn-secondary";
+        return `<button class="btn ${active}" data-action="speed-preset" data-speed="${value}">${this._formatAutonomousSpeedLabel(value)}</button>`;
+      })
+      .join("");
+
+    return `
+      <div class="card speed-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <strong>Autonomous Emission Speed</strong>
+          ${badge}
+        </div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color);">
+          Lower than 1× slows emitters down, higher than 1× speeds them up. The slider covers 0.01–1×; use the number field or presets for faster modes.
+        </div>
+        <div class="speed-controls">
+          <label style="display:flex; flex-direction:column; gap:4px; font-size:0.75em;">
+            <span>Slowdown (0.01–1×)</span>
+            <input type="range" min="0.01" max="1" step="0.01" value="${sliderValue}" data-action="speed-slider" />
+          </label>
+          <label style="display:flex; flex-direction:column; gap:4px; font-size:0.75em;">
+            <span>Exact multiplier</span>
+            <input type="number" min="0.01" max="100" step="0.01" value="${pending}" data-action="speed-input" />
+          </label>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          ${presetButtons}
+        </div>
       </div>`;
   }
 

@@ -109,6 +109,7 @@ class ConfigProfileStore:
         self._state_path = self._config_dir / "simulator_state.json"
         self._active_profile: str | None = None
         self._auto_answer: bool = True
+        self._autonomous_speed: float = 1.0
 
         # Ensure config directory exists
         self._config_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +122,7 @@ class ConfigProfileStore:
     def _init_builtin_profiles(self) -> None:
         """Initialize built-in system configuration profiles."""
         hvac_devices = ["FAN", "CO2", "REM"]
-        heat_devices = ["CTL", "TRV", "DHW"]
+        hvac_devices_extended = ["FAN", "CO2", "REM", "HUM"]
 
         fan_id = SIM_DEVICES["FAN"]["id"]
         co2_id = SIM_DEVICES["CO2"]["id"]
@@ -141,6 +142,76 @@ class ConfigProfileStore:
                 entries[SIM_DEVICES[t]["id"]] = entry
             return {**_HGI_ENTRY, **entries}
 
+        multi_zone_heat: list[dict[str, Any]] = [
+            {
+                "zone_id": "03",
+                "label": "Lounge",
+                "sensor": "01:150000_03",
+                "devices": ["04:150000_03"],
+            },
+            {
+                "zone_id": "04",
+                "label": "Hallway",
+                "sensor": "01:150000_04",
+                "devices": ["04:150000_04"],
+            },
+            {
+                "zone_id": "05",
+                "label": "Master bedroom",
+                "sensor": "01:150000_05",
+                "devices": ["04:150000_05"],
+            },
+            {
+                "zone_id": "06",
+                "label": "Guest bedroom",
+                "sensor": "01:150000_06",
+                "devices": ["04:150000_06"],
+            },
+            {
+                "zone_id": "07",
+                "label": "Kitchen",
+                "sensor": "01:150000_07",
+                "devices": ["04:150000_07"],
+            },
+            {
+                "zone_id": "08",
+                "label": "Office",
+                "sensor": "01:150000_08",
+                "devices": ["04:150000_08"],
+            },
+        ]
+
+        heat_zone_known: dict[str, dict[str, Any]] = {}
+        heat_zone_schema: dict[str, Any] = {}
+        for zone in multi_zone_heat:
+            sensor_id = zone["sensor"]
+            zone_id = zone["zone_id"]
+            label = zone["label"]
+            heat_zone_known[sensor_id] = {
+                "class": "TRV",
+                "label": label,
+                "zone": zone_id,
+            }
+            for device_id in zone.get("devices", []):
+                heat_zone_known[device_id] = {
+                    "class": "TRV",
+                    "label": f"{label} valve",
+                    "zone": zone_id,
+                }
+            heat_zone_schema[zone_id] = {
+                "label": label,
+                "sensor": sensor_id,
+                "devices": zone.get("devices", []),
+            }
+
+        heat_only_known = {
+            **_HGI_ENTRY,
+            ctl_id: {"class": "CTL"},
+            dhw_id: {"class": "DHW"},
+            trv_id: {"class": "TRV"},
+            **heat_zone_known,
+        }
+
         # HVAC schema: FAN device ID is the top-level key (SCH_DEVICE_ID_ANY → SCH_VCS).
         # remotes = REM devices, sensors = CO2/sensor devices.
         _hvac_schema: dict = {fan_id: {"remotes": [rem_id], "sensors": [co2_id]}}
@@ -150,17 +221,20 @@ class ConfigProfileStore:
         # stored_hotwater: {sensor: device_id}
         _heat_schema: dict = {
             ctl_id: {
-                "zones": {"00": {"sensor": trv_id}},
+                "zones": heat_zone_schema,
                 "stored_hotwater": {"sensor": dhw_id},
             }
         }
 
         self._profiles["normal"] = SystemConfigProfile(
             name="normal",
-            description="Normal HVAC/heat environment, standard timeouts",
+            description="Balanced HVAC + multi-zone heat environment",
             timeout_scale=1.0,
             device_configs={
-                "_known_list": _known_list(*hvac_devices, *heat_devices),
+                "_known_list": {
+                    **_known_list(*hvac_devices),
+                    **heat_only_known,
+                },
                 "_enforce_known_list": {"enabled": True},
                 "_schema": {**_hvac_schema, **_heat_schema},
             },
@@ -182,7 +256,7 @@ class ConfigProfileStore:
             description="Heat devices only (CTL, TRV, DHW)",
             timeout_scale=1.0,
             device_configs={
-                "_known_list": _known_list(*heat_devices),
+                "_known_list": heat_only_known,
                 "_enforce_known_list": {"enabled": True},
                 "_schema": _heat_schema,
             },
@@ -190,10 +264,13 @@ class ConfigProfileStore:
 
         self._profiles["mixed"] = SystemConfigProfile(
             name="mixed",
-            description="Mixed heat and HVAC environment",
+            description="Full HVAC + extended multi-zone heat environment",
             timeout_scale=1.0,
             device_configs={
-                "_known_list": _known_list(*hvac_devices, *heat_devices),
+                "_known_list": {
+                    **_known_list(*hvac_devices_extended),
+                    **heat_only_known,
+                },
                 "_enforce_known_list": {"enabled": True},
                 "_schema": {**_hvac_schema, **_heat_schema},
             },
@@ -252,10 +329,16 @@ class ConfigProfileStore:
                 data = json.load(f)
             self._active_profile = data.get("active_profile")
             self._auto_answer = data.get("auto_answer", True)
+            speed_value = data.get("autonomous_speed", 1.0)
+            try:
+                self._autonomous_speed = float(speed_value)
+            except (TypeError, ValueError):
+                self._autonomous_speed = 1.0
             LOGGER.debug(
-                "ConfigProfileStore: state loaded profile=%s auto_answer=%s",
+                "ConfigProfileStore: state loaded profile=%s auto_answer=%s speed=%s",
                 self._active_profile,
                 self._auto_answer,
+                self._autonomous_speed,
             )
         except (json.JSONDecodeError, OSError):
             LOGGER.warning("ConfigProfileStore: failed to load simulator state")
@@ -268,6 +351,7 @@ class ConfigProfileStore:
                     {
                         "active_profile": self._active_profile,
                         "auto_answer": self._auto_answer,
+                        "autonomous_speed": self._autonomous_speed,
                     },
                     f,
                 )
@@ -333,6 +417,20 @@ class ConfigProfileStore:
         """Set auto-answer state in memory; call async_save_state to persist."""
         self._auto_answer = enabled
 
+    def get_autonomous_speed(self) -> float:
+        """Return persisted global autonomous-emission speed multiplier."""
+
+        return self._autonomous_speed
+
+    def set_autonomous_speed(self, speed: float) -> None:
+        """Set the global autonomous speed multiplier (clamped)."""
+
+        try:
+            value = float(speed)
+        except (TypeError, ValueError):
+            value = 1.0
+        self._autonomous_speed = max(0.01, min(value, 100.0))
+
     def set_active_profile(self, name: str | None) -> None:
         """Set the active profile name in memory; call async_save_state to persist."""
         self._active_profile = name
@@ -341,6 +439,7 @@ class ConfigProfileStore:
         """Persist simulator state to disk without blocking the event loop."""
         profile = self._active_profile
         auto_answer = self._auto_answer
+        autonomous_speed = self._autonomous_speed
         state_path = self._state_path
 
         def _write() -> None:
@@ -350,6 +449,7 @@ class ConfigProfileStore:
                         {
                             "active_profile": profile,
                             "auto_answer": auto_answer,
+                            "autonomous_speed": autonomous_speed,
                         },
                         f,
                     )

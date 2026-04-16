@@ -380,6 +380,7 @@ async def create_device_simulator_feature(
     _cs = registry.get("device_simulator_config_store")
     if _cs is not None:
         _engine_now.set_auto_answer(_cs.get_auto_answer())
+        _engine_now.set_autonomous_speed(_cs.get_autonomous_speed())
         _LOGGER.info(
             "Startup: restored auto_answer=%s from persisted state",
             _cs.get_auto_answer(),

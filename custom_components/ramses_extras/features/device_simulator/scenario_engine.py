@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -116,6 +117,7 @@ class ScenarioEngine:
         self._scenario_definitions = scenario_definitions or discover_scenarios()
         self._profile_device_ids: set[str] = set()
         self._manual_device_ids: set[str] = set()
+        self._autonomous_speed: float = 1.0
         # Global RQ→RP auto-answer toggle (default on).
         # When False the engine receives RQs but never replies — simulates a
         # device that is powered off or unreachable (e.g. broken ESP).
@@ -182,49 +184,73 @@ class ScenarioEngine:
             return [str(code).strip().upper() for code in value if str(code).strip()]
         return []
 
+    def _build_profile_device_entry(
+        self,
+        profile: SystemConfigProfile,
+        device_id: str,
+        entry: Any,
+    ) -> ActiveDevice | None:
+        """Return an ActiveDevice for a single known_list entry."""
+
+        if not isinstance(entry, dict):
+            return None
+
+        slug = (entry.get("class") or "FAN").upper()
+        if slug == "HGI":
+            return None
+
+        overrides = profile.device_configs.get(device_id, {})
+        variant_id = (
+            overrides.get("variant_id")
+            or overrides.get("variant")
+            or entry.get("variant_id")
+            or entry.get("variant")
+        )
+        excluded_codes = overrides.get("excluded_codes")
+        if excluded_codes is None:
+            excluded_codes = entry.get("excluded_codes")
+        suppress_autonomous = overrides.get(
+            "suppress_autonomous", entry.get("suppress_autonomous", False)
+        )
+        suppress_responses = overrides.get(
+            "suppress_responses", entry.get("suppress_responses", False)
+        )
+        enabled = overrides.get("enabled", entry.get("enabled", True))
+        bound_device_id = overrides.get("bound") or entry.get("bound")
+
+        return ActiveDevice(
+            device_id=device_id,
+            slug=slug,
+            variant_id=variant_id,
+            excluded_codes=self._coerce_code_list(excluded_codes),
+            suppress_autonomous=bool(suppress_autonomous),
+            suppress_responses=bool(suppress_responses),
+            enabled=bool(enabled),
+            bound_device_id=bound_device_id,
+            origin="profile",
+        )
+
     def build_profile_devices(self, profile: SystemConfigProfile) -> list[ActiveDevice]:
         """Construct ActiveDevice instances for every profile known_list entry."""
 
         known_list = profile.device_configs.get("_known_list") or {}
         devices: list[ActiveDevice] = []
         for device_id, entry in known_list.items():
-            if not isinstance(entry, dict):
-                continue
-            slug = (entry.get("class") or "FAN").upper()
-            if slug == "HGI":
-                continue
-            overrides = profile.device_configs.get(device_id, {})
-            variant_id = (
-                overrides.get("variant_id")
-                or overrides.get("variant")
-                or entry.get("variant_id")
-                or entry.get("variant")
-            )
-            excluded_codes = overrides.get("excluded_codes")
-            if excluded_codes is None:
-                excluded_codes = entry.get("excluded_codes")
-            suppress_autonomous = overrides.get(
-                "suppress_autonomous", entry.get("suppress_autonomous", False)
-            )
-            suppress_responses = overrides.get(
-                "suppress_responses", entry.get("suppress_responses", False)
-            )
-            enabled = overrides.get("enabled", entry.get("enabled", True))
-            bound_device_id = overrides.get("bound") or entry.get("bound")
-
-            device = ActiveDevice(
-                device_id=device_id,
-                slug=slug,
-                variant_id=variant_id,
-                excluded_codes=self._coerce_code_list(excluded_codes),
-                suppress_autonomous=bool(suppress_autonomous),
-                suppress_responses=bool(suppress_responses),
-                enabled=bool(enabled),
-                bound_device_id=bound_device_id,
-                origin="profile",
-            )
-            devices.append(device)
+            device = self._build_profile_device_entry(profile, device_id, entry)
+            if device:
+                devices.append(device)
         return devices
+
+    def build_profile_device(
+        self, profile: SystemConfigProfile, device_id: str
+    ) -> ActiveDevice | None:
+        """Construct a single ActiveDevice from the profile known_list."""
+
+        known_list = profile.device_configs.get("_known_list") or {}
+        entry = known_list.get(device_id)
+        if not entry:
+            return None
+        return self._build_profile_device_entry(profile, device_id, entry)
 
     async def async_stop_profile_devices(self) -> None:
         """Stop and remove devices that were started via the profile scenario."""
@@ -260,6 +286,11 @@ class ScenarioEngine:
 
         return device_id in self._profile_device_ids
 
+    def is_device_active(self, device_id: str) -> bool:
+        """Return True if a device_id currently has an active descriptor."""
+
+        return device_id in self._active_devices
+
     def is_manual_device(self, device_id: str) -> bool:
         """Return True if the device was injected manually."""
 
@@ -269,6 +300,20 @@ class ScenarioEngine:
         """Return True if any manual injection devices are active."""
 
         return bool(self._manual_device_ids)
+
+    def get_autonomous_speed(self) -> float:
+        """Return the global autonomous emission speed multiplier."""
+
+        return self._autonomous_speed
+
+    def set_autonomous_speed(self, speed: float) -> None:
+        """Set the global autonomous emission speed multiplier (clamped)."""
+
+        try:
+            value = float(speed)
+        except (TypeError, ValueError):
+            value = 1.0
+        self._autonomous_speed = max(0.01, min(value, 100.0))
 
     async def async_activate_device(
         self,
@@ -540,7 +585,6 @@ class ScenarioEngine:
         self,
         device: ActiveDevice,
         entries: list[AutonomousEntry],
-        speed: float = 1.0,
     ) -> None:
         """Background task: emit periodic I messages for a device.
 
@@ -555,6 +599,10 @@ class ScenarioEngine:
             return
 
         payload_idx: dict[str, int] = {e.code: 0 for e in entries}
+        next_due: dict[str, float] = {e.code: time.monotonic() for e in entries}
+        interval_cache: dict[str, float] = {
+            e.code: max(float(e.interval_seconds or 1.0), 0.5) for e in entries
+        }
 
         # Immediate startup burst — lets ramses_cc discover the device from I
         # frames rather than waiting for RQ→timeout cycles (can take 20s each).
@@ -566,6 +614,7 @@ class ScenarioEngine:
             await self._emit_burst(device, entries, payload_idx)
 
         while True:
+            now = time.monotonic()
             for entry in entries:
                 if device.suppress_autonomous or not device.enabled:
                     break
@@ -574,6 +623,10 @@ class ScenarioEngine:
                 if entry.code in device.excluded_codes:
                     continue
                 if not entry.payloads:
+                    continue
+
+                due = next_due.get(entry.code, now)
+                if now < due:
                     continue
 
                 idx = payload_idx[entry.code]
@@ -603,9 +656,13 @@ class ScenarioEngine:
                         err,
                     )
 
-            # Sleep for the shortest interval among all entries (next wake-up)
-            min_interval = min((e.interval_seconds for e in entries), default=60.0)
-            await asyncio.sleep(min_interval / speed)
+                current_speed = max(self._autonomous_speed, 0.01)
+                interval = interval_cache.get(entry.code, 60.0) / current_speed
+                next_due[entry.code] = time.monotonic() + interval
+
+            soonest_due = min(next_due.values(), default=time.monotonic() + 5.0)
+            delay = max(soonest_due - time.monotonic(), 0.5)
+            await asyncio.sleep(min(delay, 5.0))
 
     async def _handle_inbound_frame(self, frame: str) -> None:
         """Handle a frame received from ramses_rf (outbound /tx) or from device
