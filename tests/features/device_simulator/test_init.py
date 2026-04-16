@@ -7,6 +7,7 @@ import pytest
 from custom_components.ramses_extras.features.device_simulator import (
     _enforce_simulator_isolation,
     _pre_clear_ramses_cc_schema,
+    async_restore_ramses_cc_gateway_topic,
     create_device_simulator_feature,
     load_feature,
 )
@@ -112,7 +113,13 @@ class TestEnforceSimulatorIsolation:
         hass.config_entries.async_update_entry = MagicMock()
         hass.config_entries.async_reload = AsyncMock()
 
-        result = await _enforce_simulator_isolation(hass)
+        with patch("homeassistant.helpers.storage.Store") as mock_store_class:
+            mock_store = MagicMock()
+            mock_store.async_load = AsyncMock(return_value={})
+            mock_store.async_save = AsyncMock()
+            mock_store_class.return_value = mock_store
+
+            result = await _enforce_simulator_isolation(hass)
         assert result is True
         hass.config_entries.async_update_entry.assert_called_once()
 
@@ -130,7 +137,13 @@ class TestEnforceSimulatorIsolation:
         hass.config_entries.async_update_entry = MagicMock()
         hass.config_entries.async_reload = AsyncMock()
 
-        result = await _enforce_simulator_isolation(hass)
+        with patch("homeassistant.helpers.storage.Store") as mock_store_class:
+            mock_store = MagicMock()
+            mock_store.async_load = AsyncMock(return_value={})
+            mock_store.async_save = AsyncMock()
+            mock_store_class.return_value = mock_store
+
+            result = await _enforce_simulator_isolation(hass)
         assert result is True
 
     @pytest.mark.asyncio
@@ -146,8 +159,16 @@ class TestEnforceSimulatorIsolation:
             side_effect=Exception("test error")
         )
 
-        with pytest.raises(RuntimeError, match="Failed to enforce simulator isolation"):
-            await _enforce_simulator_isolation(hass)
+        with patch("homeassistant.helpers.storage.Store") as mock_store_class:
+            mock_store = MagicMock()
+            mock_store.async_load = AsyncMock(return_value={})
+            mock_store.async_save = AsyncMock()
+            mock_store_class.return_value = mock_store
+
+            with pytest.raises(
+                RuntimeError, match="Failed to enforce simulator isolation"
+            ):
+                await _enforce_simulator_isolation(hass)
 
 
 class TestLoadFeature:
@@ -181,3 +202,79 @@ class TestCreateDeviceSimulatorFeature:
         """Test feature creation with existing endpoint."""
         # Skip complex integration test due to MQTT dependency
         # The function is well-covered by integration tests
+
+
+class TestRestoreGatewayTopic:
+    """Test async_restore_ramses_cc_gateway_topic."""
+
+    @pytest.mark.asyncio
+    async def test_restore_gateway_no_entries(self):
+        hass = MagicMock()
+        hass.config_entries = MagicMock()
+        hass.config_entries.async_entries = MagicMock(return_value=[])
+
+        result = await async_restore_ramses_cc_gateway_topic(hass)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_restore_gateway_with_stored_original(self):
+        hass = MagicMock()
+        entry = MagicMock()
+        entry.entry_id = "test_entry"
+        entry.options = {
+            "serial_port": {"port_name": "mqtt://host/RAMSES/GATEWAY_SIM/18:001234"}
+        }
+        hass.config_entries = MagicMock()
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
+        hass.config_entries.async_update_entry = MagicMock()
+        hass.config_entries.async_reload = AsyncMock()
+
+        with patch("homeassistant.helpers.storage.Store") as mock_store_class:
+            mock_store = MagicMock()
+            mock_store.async_load = AsyncMock(
+                return_value={
+                    "original_port_name": "mqtt://host/RAMSES/GATEWAY/18:ABCDEF"
+                }
+            )
+            mock_store.async_save = AsyncMock()
+            mock_store_class.return_value = mock_store
+
+            result = await async_restore_ramses_cc_gateway_topic(hass)
+
+        assert result is True
+        hass.config_entries.async_update_entry.assert_called_once()
+        hass.config_entries.async_reload.assert_awaited_once()
+        mock_store.async_save.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_restore_gateway_fallback(self):
+        hass = MagicMock()
+        entry = MagicMock()
+        entry.entry_id = "test_entry"
+        entry.options = {
+            "serial_port": {"port_name": "mqtt://host/RAMSES/GATEWAY_SIM/18:001234"}
+        }
+        hass.config_entries = MagicMock()
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
+        hass.config_entries.async_update_entry = MagicMock()
+        hass.config_entries.async_reload = AsyncMock()
+
+        with patch("homeassistant.helpers.storage.Store") as mock_store_class:
+            mock_store = MagicMock()
+            mock_store.async_load = AsyncMock(return_value={})
+            mock_store.async_save = AsyncMock()
+            mock_store_class.return_value = mock_store
+
+            result = await async_restore_ramses_cc_gateway_topic(hass)
+
+        assert result is True
+        hass.config_entries.async_update_entry.assert_called_once()
+        updated_options = hass.config_entries.async_update_entry.call_args.kwargs[
+            "options"
+        ]
+        assert (
+            updated_options["serial_port"]["port_name"]
+            == "mqtt://host/RAMSES/GATEWAY/18:001234"
+        )
+        hass.config_entries.async_reload.assert_awaited_once()

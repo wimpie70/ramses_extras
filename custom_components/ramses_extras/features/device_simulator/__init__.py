@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.storage import Store as HaStore
 
 import logging
 
@@ -34,6 +35,158 @@ _RAMSES_CC_STORAGE_KEY = "ramses_cc"
 _SZ_CLIENT_STATE = "client_state"
 _SZ_SCHEMA = "schema"
 _SZ_PACKETS = "packets"
+
+_SIM_ISOLATION_STORAGE_VERSION = 1
+_SIM_ISOLATION_STORAGE_KEY = "ramses_extras_device_sim_isolation"
+_SZ_ORIGINAL_PORT = "original_port_name"
+_DEFAULT_GATEWAY_TOPIC_NS = "RAMSES/GATEWAY"
+
+
+def _make_isolation_store(hass: HomeAssistant) -> HaStore:
+    from homeassistant.helpers.storage import (
+        Store,  # local import to avoid HA dependency at import time
+    )
+
+    return Store(hass, _SIM_ISOLATION_STORAGE_VERSION, _SIM_ISOLATION_STORAGE_KEY)
+
+
+async def _load_isolation_state(hass: HomeAssistant) -> tuple[Any, dict[str, Any]]:
+    store = _make_isolation_store(hass)
+    state = await store.async_load()
+    if not isinstance(state, dict):
+        state = {}
+    return store, state
+
+
+def _parse_mqtt_port(port_name: str) -> tuple[str, str, str]:
+    if not isinstance(port_name, str) or not port_name.startswith("mqtt://"):
+        raise ValueError("serial_port.port_name must be an mqtt:// URL")
+    url_body = port_name[7:]
+    auth_section = ""
+    remainder = url_body
+    if "@" in remainder:
+        auth_section, remainder = remainder.split("@", 1)
+        auth_section = f"{auth_section}@"
+    if "/" in remainder:
+        host_port, path = remainder.split("/", 1)
+    else:
+        host_port = remainder
+        path = ""
+    return auth_section, host_port, path
+
+
+def _split_topic_and_gateway(path: str) -> tuple[str, str | None]:
+    segments = [segment for segment in path.split("/") if segment]
+    if not segments:
+        return "", None
+    if len(segments) == 1:
+        return segments[0], None
+    topic = "/".join(segments[:-1])
+    gateway = segments[-1]
+    return topic, gateway
+
+
+def _compose_mqtt_port(
+    auth: str, host_port: str, topic: str, gateway: str | None
+) -> str:
+    topic = topic.strip("/") if topic else ""
+    path_parts = [part for part in (topic, gateway) if part]
+    if path_parts:
+        return f"mqtt://{auth}{host_port}/{'/'.join(path_parts)}"
+    return f"mqtt://{auth}{host_port}"
+
+
+def _build_default_gateway_port(port_name: str) -> str:
+    auth, host_port, path = _parse_mqtt_port(port_name)
+    _, gateway = _split_topic_and_gateway(path)
+    return _compose_mqtt_port(auth, host_port, _DEFAULT_GATEWAY_TOPIC_NS, gateway)
+
+
+async def _remember_original_port_name(
+    hass: HomeAssistant, port_name: str | None
+) -> None:
+    if not isinstance(port_name, str) or not port_name:
+        return
+    if SIMULATOR_TOPIC_NS in port_name:
+        return
+    store, state = await _load_isolation_state(hass)
+    if state.get(_SZ_ORIGINAL_PORT):
+        return
+    state[_SZ_ORIGINAL_PORT] = port_name
+    await store.async_save(state)
+    _LOGGER.info("Stored original ramses_cc MQTT serial_port for simulator cleanup")
+
+
+async def async_restore_ramses_cc_gateway_topic(hass: HomeAssistant) -> bool:
+    """Restore the ramses_cc serial_port if simulator isolation modified it."""
+
+    entries = hass.config_entries.async_entries("ramses_cc")
+    if not entries:
+        _LOGGER.warning(
+            "No ramses_cc config entry found - cannot restore gateway topic"
+        )
+        return False
+
+    cc_entry = entries[0]
+    cc_options = dict(cc_entry.options) if cc_entry.options else {}
+    serial_port = dict(cc_options.get("serial_port", {}))
+    current_port = serial_port.get("port_name")
+
+    store, state = await _load_isolation_state(hass)
+    stored_port = state.get(_SZ_ORIGINAL_PORT)
+    isolation_active = isinstance(current_port, str) and (
+        SIMULATOR_TOPIC_NS in current_port or SIMULATOR_HGI_ID in current_port
+    )
+
+    if not stored_port and not isolation_active:
+        _LOGGER.debug("Simulator isolation already cleared - nothing to restore")
+        if state:
+            await store.async_save(state)
+        return False
+
+    target_port = stored_port
+    used_fallback = False
+
+    if not target_port:
+        if not isinstance(current_port, str):
+            _LOGGER.warning(
+                "Simulator isolation fallback failed: current ramses_cc port missing",
+            )
+            return False
+        try:
+            target_port = _build_default_gateway_port(current_port)
+            used_fallback = True
+        except ValueError as err:
+            _LOGGER.warning(
+                "Simulator isolation fallback failed for '%s': %s",
+                current_port,
+                err,
+            )
+            return False
+
+    if target_port == current_port:
+        _LOGGER.debug("Gateway topic already in desired state")
+        if stored_port and state.pop(_SZ_ORIGINAL_PORT, None) is not None:
+            await store.async_save(state)
+        return False
+
+    serial_port["port_name"] = target_port
+    cc_options["serial_port"] = serial_port
+
+    hass.config_entries.async_update_entry(cc_entry, options=cc_options)
+    await hass.config_entries.async_reload(cc_entry.entry_id)
+
+    if state.pop(_SZ_ORIGINAL_PORT, None) is not None or used_fallback:
+        await store.async_save(state)
+
+    _LOGGER.info("Restored ramses_cc MQTT serial_port to %s", target_port)
+    if used_fallback:
+        _LOGGER.warning(
+            "Simulator restore used fallback topic %s - please verify gateway ID",
+            target_port,
+        )
+
+    return True
 
 
 async def _pre_clear_ramses_cc_schema(hass: HomeAssistant, profile_name: str) -> None:
@@ -121,30 +274,16 @@ async def _enforce_simulator_isolation(hass: HomeAssistant) -> bool:
     # Parse mqtt://[user:pass@]host:port/topic/gwid format
     # or mqtt://[user:pass@]host:port (uses defaults)
     try:
-        # Remove mqtt:// prefix
-        url_body = port_name[7:]  # after mqtt://
+        await _remember_original_port_name(hass, port_name)
 
-        # Split auth and host
-        if "@" in url_body:
-            auth_host = url_body.split("@", 1)[1]
-        else:
-            auth_host = url_body
-
-        # Split host:port and path
-        if "/" in auth_host:
-            host_port, _ = auth_host.split("/", 1)
-        else:
-            host_port = auth_host
-
-        # Rebuild with simulator topic and HGI
-        if "@" in url_body:
-            auth = url_body.split("@", 1)[0] + "@"
-        else:
-            auth = ""
+        auth, host_port, _ = _parse_mqtt_port(port_name)
 
         # ramses_rf requires RAMSES/GATEWAY* prefix, SIMULATOR_TOPIC_NS is valid
-        new_port_name = (
-            f"mqtt://{auth}{host_port}/{SIMULATOR_TOPIC_NS}/{SIMULATOR_HGI_ID}"
+        new_port_name = _compose_mqtt_port(
+            auth,
+            host_port,
+            SIMULATOR_TOPIC_NS,
+            SIMULATOR_HGI_ID,
         )
 
         _LOGGER.info(
@@ -447,4 +586,8 @@ def load_feature(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[str, An
     }
 
 
-__all__ = ["create_device_simulator_feature", "load_feature"]
+__all__ = [
+    "create_device_simulator_feature",
+    "load_feature",
+    "async_restore_ramses_cc_gateway_topic",
+]
