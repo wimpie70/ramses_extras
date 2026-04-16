@@ -84,8 +84,9 @@ Log errors if not configured.
 
 --- next to do:
 
-### support zones/ctl-childs -> check how rf/cc does this (and how we can support this in our framework)
-
+### On profile change (or restart) we shouldn't start emitting msgs, only answer.
+We want to simulate the normal RF behaviour
+We will have to start a scenario by hand. This will also prevent extra long startup times
 
 ### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
 

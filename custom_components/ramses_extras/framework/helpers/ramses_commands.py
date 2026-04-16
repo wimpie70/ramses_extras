@@ -317,6 +317,16 @@ class RamsesCommands:
         # Convert device_id format if needed (32_153289 -> 32:153289)
         device_id_formatted = device_id.replace("_", ":")
 
+        # Ensure the ramses_rf device advertises 2411 support before spamming requests
+        supports_2411 = await self._device_supports_2411(device_id_formatted)
+        if supports_2411 is False:
+            msg = (
+                f"Device {device_id_formatted} does not advertise 2411 support; "
+                "skipping update_fan_params"
+            )
+            _LOGGER.info(msg)
+            return CommandResult(success=False, error_message=msg)
+
         # Check if already running for this device
         if device_id_formatted in self._update_fan_params_tasks:
             task = self._update_fan_params_tasks[device_id_formatted]
@@ -632,6 +642,33 @@ class RamsesCommands:
             _LOGGER.debug(f"Could not get ramses_cc coordinator: {e}")
 
         return None
+
+    async def _get_ramses_device(self, device_id: str) -> Any | None:
+        """Return the underlying ramses_rf device for the given ID."""
+
+        coordinator = await self._get_ramses_cc_coordinator()
+        if not coordinator or not hasattr(coordinator, "_get_device"):
+            return None
+
+        lookup_id = device_id.replace("_", ":")
+        try:
+            return coordinator._get_device(lookup_id)
+        except Exception as err:  # pragma: no cover - defensive
+            _LOGGER.debug("Failed to resolve device %s: %s", lookup_id, err)
+            return None
+
+    async def _device_supports_2411(self, device_id: str) -> bool | None:
+        """Return True if the resolved device advertises 2411 support."""
+
+        device = await self._get_ramses_device(device_id)
+        if device is None:
+            return None
+
+        supports_attr = getattr(device, "supports_2411", None)
+        if supports_attr is None:
+            return False
+
+        return bool(supports_attr)
 
     async def _get_bound_rem_device(self, device_id: str) -> str | None:
         """Get the bound REM device ID for a FAN device.
