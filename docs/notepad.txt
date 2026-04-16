@@ -87,9 +87,7 @@ Log errors if not configured.
 ### it seems like we are sending hvac msgs to heat devices, and heat msgs to hvac devices.
 Shouldn't we filter this ? we know from our database what belongs to what
 
-### On profile change (or restart) we shouldn't start emitting msgs, only answer.
-We want to simulate the normal RF behaviour
-We will have to start a scenario by hand. This will also prevent extra long startup times
+### check if we add a heat device, if it will show up in RF (and sim)
 
 ### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
 

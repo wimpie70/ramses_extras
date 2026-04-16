@@ -273,7 +273,7 @@ async def _update_known_list_and_reload(
             _reload_ramses_cc(
                 hass,
                 entry.entry_id,
-                enforce,
+                True,
                 auto_start_on_reload,
                 profile_devices,
             )
