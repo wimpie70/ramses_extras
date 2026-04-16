@@ -239,9 +239,16 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     profile=profile,
                     reload_ramses_cc=params.get("reload_ramses", True),
                     speed=params.get("speed"),
+                    auto_start_devices=False,
                 )
             except Exception as err:  # noqa: BLE001
                 return {"success": False, "error": str(err)}
+
+            result.setdefault("started_devices", 0)
+            result.setdefault(
+                "message",
+                "Profile applied. Use the profile emissions scenario to start devices.",
+            )
 
             return result
 

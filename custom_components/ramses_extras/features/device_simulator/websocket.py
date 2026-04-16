@@ -786,14 +786,10 @@ async def ws_load_profile(
     config_store.set_active_profile(profile.name)
     await config_store.async_save_state()
 
-    engine = _get_engine(hass)
-    started_ids: list[str] = []
-    if engine:
-        try:
-            started_ids = await _start_profile_emissions(engine, profile.name, profile)
-        except RuntimeError as err:
-            LOGGER.warning("Auto-start profile devices failed: %s", err)
-    result["started_devices"] = len(started_ids)
+    result["started_devices"] = 0
+    result["message"] = (
+        "Profile applied. Use the profile emissions scenario to start devices."
+    )
 
     connection.send_result(msg["id"], result)
 

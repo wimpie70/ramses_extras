@@ -360,7 +360,11 @@ class TestUpdateKnownListAndReload:
             mock_store_class.return_value = mock_store
 
             result = await _update_known_list_and_reload(
-                hass, {"32:168270": {"class": "FAN"}}, {"enabled": False}, True
+                hass,
+                {"32:168270": {"class": "FAN"}},
+                {"enabled": False},
+                True,
+                auto_start_on_reload=True,
             )
 
             assert "updated_known_list" in result
@@ -374,7 +378,10 @@ class TestUpdateKnownListAndReload:
         hass.config_entries.async_entries = MagicMock(return_value=[])
 
         result = await _update_known_list_and_reload(
-            hass, {"32:168270": {"class": "FAN"}}, {"enabled": False}, True
+            hass,
+            {"32:168270": {"class": "FAN"}},
+            {"enabled": False},
+            True,
         )
 
         assert result == []
@@ -399,7 +406,10 @@ class TestUpdateKnownListAndReload:
             mock_store_class.return_value = mock_store
 
             result = await _update_known_list_and_reload(
-                hass, {"32:168270": {"class": "FAN"}}, {"enabled": False}, False
+                hass,
+                {"32:168270": {"class": "FAN"}},
+                {"enabled": False},
+                False,
             )
 
             assert "updated_known_list" in result
@@ -470,11 +480,15 @@ class TestAsyncApplyProfile:
         with patch(
             "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
             AsyncMock(return_value=["updated_known_list"]),
-        ):
+        ) as mock_reload:
             result = await async_apply_profile(hass, "test_profile", profile)
 
-            assert result["success"] is True
-            assert "stopped_devices" in result["actions"]
+        mock_reload.assert_awaited_once()
+        _, kwargs = mock_reload.await_args
+        assert kwargs.get("auto_start_on_reload") is True
+
+        assert result["success"] is True
+        assert "stopped_devices" in result["actions"]
 
     @pytest.mark.asyncio
     async def test_async_apply_profile_no_engine(self):
@@ -488,11 +502,15 @@ class TestAsyncApplyProfile:
         with patch(
             "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
             AsyncMock(return_value=["updated_known_list"]),
-        ):
+        ) as mock_reload:
             result = await async_apply_profile(hass, "test_profile", profile)
 
-            assert result["success"] is True
-            assert "stopped_devices" not in result["actions"]
+        mock_reload.assert_awaited_once()
+        _, kwargs = mock_reload.await_args
+        assert kwargs.get("auto_start_on_reload") is True
+
+        assert result["success"] is True
+        assert "stopped_devices" not in result["actions"]
 
     @pytest.mark.asyncio
     async def test_async_apply_profile_with_custom_speed(self):
@@ -509,8 +527,12 @@ class TestAsyncApplyProfile:
         with patch(
             "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
             AsyncMock(return_value=["updated_known_list"]),
-        ):
+        ) as mock_reload:
             result = await async_apply_profile(hass, "test_profile", profile, speed=2.0)
 
-            assert result["success"] is True
-            assert "timeout_scale=2.0" in result["actions"]
+        mock_reload.assert_awaited_once()
+        _, kwargs = mock_reload.await_args
+        assert kwargs.get("auto_start_on_reload") is True
+
+        assert result["success"] is True
+        assert "timeout_scale=2.0" in result["actions"]

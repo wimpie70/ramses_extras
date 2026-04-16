@@ -386,104 +386,16 @@ async def create_device_simulator_feature(
             _cs.get_auto_answer(),
         )
 
-    # Auto-start devices for the persisted active profile on HA restart.
-    # Deferred to a background task so MQTT has time to (re)connect before the
-    # startup burst fires — the same reason ws_load_profile uses asyncio.sleep(3).
+    # On restart we no longer auto-start profile devices. Users should trigger the
+    # "Profile Emissions" scenario after selecting a profile to mimic real RF
+    # behaviour and avoid unsolicited bursts during HA startup.
     config_store = registry.get("device_simulator_config_store")
-    last_profile_name = config_store.get_active_profile() if config_store else None
-    if last_profile_name:
-        last_profile = config_store.get_profile(last_profile_name)
-        known_list = (
-            last_profile.device_configs.get("_known_list") if last_profile else None
-        ) or {}
-        boot_devices = {
-            dev_id: dev_cfg
-            for dev_id, dev_cfg in known_list.items()
-            if dev_cfg.get("class") != "HGI"
-        }
-        _LOGGER.info("Boot devices: %s", list(boot_devices.keys()))
-        if boot_devices:
-            from .scenario_engine import ActiveDevice
-
-            _engine = registry["device_simulator_engine"]
-
-            async def _deferred_boot_start() -> None:
-                await asyncio.sleep(3)
-                started: list[str] = []
-                # Separate devices: those that are bound targets (e.g. REM) vs
-                # those that bind (e.g. FAN)
-                bound_targets: dict[str, dict] = {}
-                binders: dict[str, dict] = {}
-                for dev_id, dev_cfg in boot_devices.items():
-                    if dev_cfg.get("bound"):
-                        # This device binds to another (e.g. FAN with bound: REM)
-                        binders[dev_id] = dev_cfg
-                    else:
-                        # This device might be a bound target (e.g. REM)
-                        bound_targets[dev_id] = dev_cfg
-                # Activate bound targets first, then binders
-                for dev_id, dev_cfg in {**bound_targets, **binders}.items():
-                    # If this is a FAN with a bound REM, emit a packet for the REM
-                    # BEFORE activating the FAN, so REM is discovered first
-                    bound_device_id = dev_cfg.get("bound")
-                    if dev_cfg.get("class") == "FAN" and bound_device_id:
-                        from .scenario_engine import VERB_I
-
-                        rem_packet = _engine._build_packet(
-                            bound_device_id, "--:------", VERB_I, "0000", ""
-                        )
-                        try:
-                            await _engine._endpoint.send_packet(rem_packet)
-                            _LOGGER.info(
-                                "Emitted discovery packet for bound REM %s before "
-                                "activating FAN %s",
-                                bound_device_id,
-                                dev_id,
-                            )
-                            # Longer delay to ensure REM is processed by ramses_rf
-                            # before FAN activation
-                            await asyncio.sleep(1.0)
-                        except Exception as err:  # noqa: BLE001
-                            _LOGGER.warning(
-                                "Failed to emit discovery packet for %s: %s",
-                                bound_device_id,
-                                err,
-                            )
-
-                    slug = dev_cfg.get("class", "FAN")
-                    device = ActiveDevice(
-                        device_id=dev_id,
-                        slug=slug,
-                        variant_id="default",
-                        excluded_codes=["1FC9"],
-                        origin="profile",
-                        suppress_autonomous=False,
-                        suppress_responses=False,
-                        enabled=True,
-                        bound_device_id=bound_device_id,
-                    )
-                    await _engine.async_activate_device(
-                        device,
-                        start_emitter=False,
-                    )
-                    started.append(dev_id)
-                _LOGGER.info(
-                    "Startup: auto-started %d device(s) from profile '%s': %s",
-                    len(started),
-                    last_profile_name,
-                    started,
-                )
-                # Wait briefly for ramses_rf to process the burst frames, then
-                # trigger discovery so HA entities are created immediately.
-                await asyncio.sleep(1)
-                from .websocket import _trigger_ramses_discovery
-
-                await _trigger_ramses_discovery(hass)
-
-            hass.async_create_background_task(
-                _deferred_boot_start(),
-                name="device_simulator_boot_autostart",
-            )
+    if config_store and config_store.get_active_profile():
+        _LOGGER.info(
+            "Device Simulator: profile '%s' loaded. Use the profile emissions scenario "
+            "to start simulated devices when needed.",
+            config_store.get_active_profile(),
+        )
 
     # Set up services
     await async_setup_services(hass)

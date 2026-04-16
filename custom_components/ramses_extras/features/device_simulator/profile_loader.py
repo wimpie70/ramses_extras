@@ -164,6 +164,7 @@ async def async_apply_profile(
     *,
     reload_ramses_cc: bool = True,
     speed: float | None = None,
+    auto_start_devices: bool = True,
 ) -> dict[str, Any]:
     """Apply a profile: stop devices, update known_list, reload, set timeouts."""
 
@@ -183,6 +184,7 @@ async def async_apply_profile(
                 dict(known_list),
                 profile.device_configs.get("_enforce_known_list", False),
                 reload_ramses_cc,
+                auto_start_on_reload=auto_start_devices,
             )
         )
 
@@ -203,6 +205,8 @@ async def _update_known_list_and_reload(
     known_list: dict[str, Any],
     enforce_cfg: Any,
     reload_ramses_cc: bool,
+    *,
+    auto_start_on_reload: bool = True,
 ) -> list[str]:
     """Persist known_list to ramses_cc options and optionally reload the entry."""
 
@@ -248,9 +252,13 @@ async def _update_known_list_and_reload(
         enforce,
     )
 
-    auto_start = {
-        dev_id: cfg for dev_id, cfg in known_list.items() if cfg.get("class") != "HGI"
-    }
+    auto_start = {}
+    if auto_start_on_reload:
+        auto_start = {
+            dev_id: cfg
+            for dev_id, cfg in known_list.items()
+            if cfg.get("class") != "HGI"
+        }
 
     if reload_ramses_cc:
         hass.async_create_task(
