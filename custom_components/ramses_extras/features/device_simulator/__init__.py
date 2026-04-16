@@ -408,6 +408,7 @@ async def create_device_simulator_feature(
     registry["device_simulator_response_engine"] = ResponseEngine(
         registry["device_simulator_db"],
         registry["device_simulator_endpoint"],
+        config_store=registry["device_simulator_config_store"],
     )
     _LOGGER.info("ResponseEngine created")
 
@@ -513,6 +514,10 @@ async def create_device_simulator_feature(
             registry["device_simulator_db"],
             scenario_definitions=discover_scenarios(),
         )
+
+    registry["device_simulator_response_engine"].set_engine(
+        registry["device_simulator_engine"]
+    )
 
     # Restore persisted auto_answer setting into the freshly-created engine.
     _engine_now = registry["device_simulator_engine"]

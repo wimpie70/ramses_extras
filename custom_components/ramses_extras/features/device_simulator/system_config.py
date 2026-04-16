@@ -11,9 +11,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+from ramses_tx.const import SZ_ACTUATORS, SZ_NAME
 
 from .const import LOGGER, SIMULATOR_HGI_ID
 
@@ -45,6 +48,29 @@ SIM_DEVICES: dict[str, dict[str, str]] = {
     "JST": {"id": "31:150000", "class": "JST"},  # 31: Jasper thermostat
 }
 _HGI_ENTRY: dict[str, dict] = {SIMULATOR_HGI_ID: {"class": "HGI"}}
+
+_DEVICE_ID_SUFFIX_RE = re.compile(
+    r"^(?P<prefix>\d{2}):(?P<body>\d{6})(?:_(?P<delta>\d+))?$"
+)
+
+
+def _normalize_device_id(device_id: str) -> str:
+    """Convert pseudo IDs like '04:150000_03' into valid RAMSES addresses."""
+
+    match = _DEVICE_ID_SUFFIX_RE.match(device_id)
+    if not match:
+        return device_id
+    delta = match.group("delta")
+    if not delta:
+        return device_id
+    try:
+        base_value = int(match.group("body"))
+        increment = int(delta)
+    except (TypeError, ValueError):
+        return device_id
+    normalized = base_value + increment
+    return f"{match.group('prefix')}:{normalized:06d}"
+
 
 # Flat slug → device_id lookup, e.g. SIM_DEVICE_ID["FAN"] == "32:150000"
 SIM_DEVICE_ID: dict[str, str] = {slug: info["id"] for slug, info in SIM_DEVICES.items()}
@@ -184,24 +210,25 @@ class ConfigProfileStore:
         heat_zone_known: dict[str, dict[str, Any]] = {}
         heat_zone_schema: dict[str, Any] = {}
         for zone in multi_zone_heat:
-            sensor_id = zone["sensor"]
+            sensor_id = _normalize_device_id(zone["sensor"])
             zone_id = zone["zone_id"]
             label = zone["label"]
             heat_zone_known[sensor_id] = {
-                "class": "TRV",
-                "label": label,
-                "zone": zone_id,
+                "class": "CTL",
+                "alias": f"{label} sensor",
             }
-            for device_id in zone.get("devices", []):
+            zone_devices = [
+                _normalize_device_id(device_id) for device_id in zone.get("devices", [])
+            ]
+            for device_id in zone_devices:
                 heat_zone_known[device_id] = {
                     "class": "TRV",
-                    "label": f"{label} valve",
-                    "zone": zone_id,
+                    "alias": f"{label} valve",
                 }
             heat_zone_schema[zone_id] = {
-                "label": label,
+                f"_{SZ_NAME}": label,
                 "sensor": sensor_id,
-                "devices": zone.get("devices", []),
+                SZ_ACTUATORS: zone_devices,
             }
 
         heat_only_known = {

@@ -374,6 +374,41 @@ class TestWsGetUIStatus:
         ws_get_ui_status(hass, connection, msg)
         connection.send_result.assert_called_once()
 
+    def test_ws_get_ui_status_prefers_store_profile(
+        self, hass, connection, engine, config_store
+    ):
+        device = MagicMock()
+        device.device_id = "37:168270"
+        device.slug = "FAN"
+        device.enabled = True
+        device.suppress_autonomous = False
+        device.suppress_responses = False
+        device.excluded_codes = []
+        device.origin = "profile"
+        engine._active_devices = {"37:168270": device}
+        engine.is_profile_device = MagicMock(return_value=True)
+        profile = MagicMock()
+        profile.description = "Test"
+        profile.timeout_scale = 1.0
+        profile.speed_options = [1.0]
+        profile.device_configs = {"_known_list": {"37:168270": {"class": "FAN"}}}
+        config_store.get_profile = MagicMock(return_value=profile)
+        hass.data = {
+            "ramses_extras": {
+                "device_simulator_engine": engine,
+                "device_simulator_config_store": config_store,
+            }
+        }
+        msg = {"id": 1, "type": "ramses_extras/device_simulator/get_status"}
+        ws_get_ui_status(hass, connection, msg)
+        connection.send_result.assert_called_once()
+        _, payload = connection.send_result.call_args[0]
+        assert payload["active_profile"] == "default"
+        assert (
+            hass.data["ramses_extras"].get("device_simulator_active_profile")
+            == "default"
+        )
+
     def test_ws_get_ui_status_profile_none(
         self, hass, connection, engine, config_store
     ):
@@ -528,10 +563,16 @@ class TestStartLoadProfileYaml:
             with patch(
                 "custom_components.ramses_extras.features.device_simulator.websocket.async_apply_profile",
                 AsyncMock(return_value={"success": True}),
-            ):
+            ) as mock_apply:
                 params = {"profile_yaml": "test: yaml"}
                 result = await _start_load_profile_yaml(hass, params)
                 assert result["success"] is True
+                assert result.get("started_devices") == 0
+                assert "profile emissions scenario" in result.get("message", "")
+
+        mock_apply.assert_awaited_once()
+        _, kwargs = mock_apply.await_args
+        assert kwargs.get("auto_start_devices") is None
 
     @pytest.mark.asyncio
     async def test_start_load_profile_yaml_no_store(self, hass):

@@ -128,7 +128,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     return `
       <div style="margin-top:8px; padding:8px 12px; border-radius:8px; background:var(--primary-color, #3f51b5); color:var(--text-primary-color,#fff); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <span>🔥 ${label}</span>
-        <button class="btn btn-secondary" data-action="stop-profile-devices">Stop profile devices</button>
+        <button class="btn btn-secondary" data-action="stop-profile-devices">Stop all profile devices</button>
       </div>`;
   }
 
@@ -572,10 +572,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       btn.addEventListener("click", () => this._startScenario(btn.dataset.scenarioId));
     });
 
-    const stopProfileBtn = root.querySelector("[data-action='stop-profile-devices']");
-    if (stopProfileBtn) {
-      stopProfileBtn.addEventListener("click", () => this._stopProfileDevices());
-    }
+    root.querySelectorAll("[data-action='stop-profile-devices']").forEach((btn) => {
+      btn.addEventListener("click", () => this._stopProfileDevices());
+    });
 
     root.querySelectorAll("[data-action='activate-profile-device']").forEach((btn) => {
       btn.addEventListener("click", () => this._activateProfileDevice(btn.dataset.deviceId));
@@ -968,7 +967,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       </div>`;
 
     if (this._devices.length === 0) {
-      return `${controls}<div class="device-list-empty">No active devices. Use Manual Device Injection or Profile Device Emissions above to start emitters.</div>`;
+      return `${controls}<div class="device-list-empty">No active devices. Use Manual Device Injection or Start all profile devices above to start emitters.</div>`;
     }
 
     const knownList = this._knownList();
@@ -1071,6 +1070,8 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       ? `<span class="chip profile">${profileCount || knownCount} active</span>`
       : `<span class="chip muted">Idle</span>`;
     const disableStart = !this._activeProfile || !knownCount || conflicts.length;
+    const startDisabled = disableStart || running;
+    const stopDisabled = profileCount === 0;
     const summaryText = !this._activeProfile
       ? "Load a profile to enable bulk emissions."
       : knownCount === 0
@@ -1079,9 +1080,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           ? `Emitting ${profileCount || knownCount} profile device(s).`
           : `Ready to emit ${knownCount} device(s) from the active profile.`;
 
-    const buttonRow = running
-      ? `<button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}">Stop profile devices</button>`
-      : `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}" ${disableStart ? "disabled" : ""}>Start profile devices</button>`;
+    const startButton = `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}" ${startDisabled ? "disabled" : ""}>Start all profile devices</button>`;
+    const stopButton = `<button class="btn btn-secondary" data-action="stop-profile-devices" ${stopDisabled ? "disabled" : ""}>Stop all profile devices</button>`;
+    const buttonRow = `${startButton}${stopButton}`;
 
     const missingDevices = summary.filter((entry) => !entry.active);
     const missingMarkup = missingDevices.length
@@ -1105,12 +1106,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     return `
       <div class="card">
         <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-          <strong>Profile Device Emissions</strong>
+          <strong>Start all profile devices</strong>
           ${statusChip}
         </div>
         <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${summaryText}</div>
         ${conflictWarn}
-        <div style="margin-top:8px; display:flex; gap:8px;">${buttonRow}</div>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">${buttonRow}</div>
         ${missingMarkup}
       </div>`;
   }

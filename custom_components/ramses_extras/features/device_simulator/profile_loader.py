@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from functools import partial
 from types import MappingProxyType
 from typing import Any
 
 import yaml
+from custom_components.ramses_cc.const import CONF_SCHEMA
 from homeassistant.core import HomeAssistant
 
 from .const import LOGGER, SIMULATOR_HGI_ID
@@ -164,7 +166,7 @@ async def async_apply_profile(
     *,
     reload_ramses_cc: bool = True,
     speed: float | None = None,
-    auto_start_devices: bool = True,
+    auto_start_devices: bool = False,
 ) -> dict[str, Any]:
     """Apply a profile: stop devices, update known_list, reload, set timeouts."""
 
@@ -177,6 +179,8 @@ async def async_apply_profile(
         actions.append("stopped_devices")
 
     known_list = profile.device_configs.get("_known_list")
+    schema = profile.device_configs.get("_schema")
+    schema_payload = dict(schema) if isinstance(schema, dict) else None
     if known_list is not None:
         actions.extend(
             await _update_known_list_and_reload(
@@ -185,6 +189,7 @@ async def async_apply_profile(
                 profile.device_configs.get("_enforce_known_list", False),
                 reload_ramses_cc,
                 auto_start_on_reload=auto_start_devices,
+                schema=schema_payload,
             )
         )
 
@@ -207,6 +212,7 @@ async def _update_known_list_and_reload(
     reload_ramses_cc: bool,
     *,
     auto_start_on_reload: bool = True,
+    schema: dict[str, Any] | None = None,
 ) -> list[str]:
     """Persist known_list to ramses_cc options and optionally reload the entry."""
 
@@ -229,6 +235,11 @@ async def _update_known_list_and_reload(
     ramses_rf_opts["enforce_known_list"] = enforce
     new_options["ramses_rf"] = ramses_rf_opts
 
+    if schema is not None:
+        new_options[CONF_SCHEMA] = deepcopy(schema)
+    else:
+        new_options.pop(CONF_SCHEMA, None)
+
     object.__setattr__(entry, "options", MappingProxyType(new_options))
 
     try:
@@ -247,22 +258,25 @@ async def _update_known_list_and_reload(
 
     actions.append("updated_known_list")
     LOGGER.info(
-        "Profile load: known_list=%s enforce_known_list=%s",
+        "Profile load: known_list=%s enforce_known_list=%s schema_keys=%s",
         list(known_list.keys()),
         enforce,
+        list(schema.keys()) if schema else [],
     )
 
-    auto_start = {}
-    if auto_start_on_reload:
-        auto_start = {
-            dev_id: cfg
-            for dev_id, cfg in known_list.items()
-            if cfg.get("class") != "HGI"
-        }
+    profile_devices = {
+        dev_id: cfg for dev_id, cfg in known_list.items() if cfg.get("class") != "HGI"
+    }
 
     if reload_ramses_cc:
         hass.async_create_task(
-            _reload_ramses_cc(hass, entry.entry_id, enforce, auto_start)
+            _reload_ramses_cc(
+                hass,
+                entry.entry_id,
+                enforce,
+                auto_start_on_reload,
+                profile_devices,
+            )
         )
         actions.append("reloading_ramses_cc")
     else:
@@ -275,7 +289,8 @@ async def _reload_ramses_cc(
     hass: HomeAssistant,
     entry_id: str,
     wipe_schema: bool,
-    auto_start_devices: dict[str, dict],
+    auto_start_on_reload: bool,
+    profile_devices: dict[str, dict],
 ) -> None:
     """Unload ramses_cc, reload it, and auto-start devices."""
 
@@ -315,14 +330,14 @@ async def _reload_ramses_cc(
 
     await hass.config_entries.async_setup(entry_id)
 
-    if auto_start_devices:
+    if profile_devices:
         ra = hass.data.get("ramses_extras", {})
         engine = ra.get("device_simulator_engine")
         if engine:
             await asyncio.sleep(3)
             from .scenario_engine import ActiveDevice
 
-            for dev_id, dev_cfg in auto_start_devices.items():
+            for dev_id, dev_cfg in profile_devices.items():
                 slug = dev_cfg.get("class", "FAN")
                 device = ActiveDevice(
                     device_id=dev_id,
@@ -332,8 +347,13 @@ async def _reload_ramses_cc(
                     suppress_autonomous=False,
                     suppress_responses=False,
                     enabled=True,
+                    origin="profile",
                 )
-                await engine.async_activate_device(device, start_emitter=False)
-                LOGGER.info("Profile load: auto-started %s (%s)", dev_id, slug)
+                await engine.async_activate_device(
+                    device,
+                    start_emitter=auto_start_on_reload,
+                    emit_startup_burst=False,
+                )
+                LOGGER.info("Profile load: registered %s (%s)", dev_id, slug)
             await asyncio.sleep(1)
             await _trigger_ramses_discovery(hass)

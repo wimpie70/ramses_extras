@@ -448,9 +448,10 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
         "can_run_with": [SCENARIO_AUTO_ANSWER],
     },
     SCENARIO_PROFILE_EMISSIONS: {
-        "label": "Profile Device Emissions",
+        "label": "Start all profile devices",
         "description": (
-            "Start/stop autonomous emitters for all devices in the active profile"
+            "Manually start or stop autonomous emitters for every "
+            "device in the active profile"
         ),
         "toggleable": True,
         "can_run_with": [SCENARIO_AUTO_ANSWER, SCENARIO_MANUAL_DEVICE_INJECTION],

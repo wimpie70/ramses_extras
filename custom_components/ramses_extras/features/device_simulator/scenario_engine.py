@@ -40,6 +40,7 @@ from .const import (
     VERB_W,
 )
 from .device_db import AutonomousEntry, DeviceDatabase, ResponseEntry
+from .response_templates import build_dynamic_response
 from .scenarios import discover_scenarios
 from .scenarios.base import ScenarioContext, ScenarioDefinition, ScenarioResult
 from .system_config import SystemConfigProfile
@@ -710,7 +711,7 @@ class ScenarioEngine:
             LOGGER.debug("Auto-answer disabled, dropping RQ %s from %s", code, src)
             return
 
-        await self._respond_to_rq(src, dst, code)
+        await self._respond_to_rq(src, dst, code, payload)
 
     async def _echo_write(self, src: str, dst: str, code: str, payload: str) -> None:
         """Echo a W frame back so the FSM WantEcho state is satisfied.
@@ -759,7 +760,13 @@ class ScenarioEngine:
         except Exception as err:  # noqa: BLE001
             LOGGER.warning("Failed to echo W for %s/%s: %s", dst, code, err)
 
-    async def _respond_to_rq(self, src: str, dst: str, code: str) -> None:
+    async def _respond_to_rq(
+        self,
+        src: str,
+        dst: str,
+        code: str,
+        rq_payload: str,
+    ) -> None:
         """Look up and send an RP for an inbound RQ.
 
         Only responds for explicitly activated devices (in _active_devices).
@@ -795,16 +802,23 @@ class ScenarioEngine:
             return
 
         resp: ResponseEntry | None = self._db.find_response(slug, code, variant_id)
-        if not resp or not resp.payloads:
+        payload: str | None = None
+        delay_ms = 0
+        if resp and resp.payloads:
+            key = (slug, code)
+            idx = self._response_index.get(key, 0) % len(resp.payloads)
+            payload = resp.payloads[idx]
+            self._response_index[key] = idx + 1
+            delay_ms = resp.delay_ms
+        else:
+            payload = build_dynamic_response(slug, code, rq_payload)
+
+        if not payload:
             LOGGER.debug("No response entry for %s/%s", slug, code)
             return
 
-        key = (slug, code)
-        idx = self._response_index.get(key, 0) % len(resp.payloads)
-        payload = resp.payloads[idx]
-        self._response_index[key] = idx + 1
-        if resp.delay_ms > 0:
-            await asyncio.sleep(resp.delay_ms / 1000.0)
+        if delay_ms > 0:
+            await asyncio.sleep(delay_ms / 1000.0)
 
         packet = self._build_packet(dst, src, VERB_RP, code, payload)
         try:

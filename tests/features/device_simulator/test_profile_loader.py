@@ -365,6 +365,7 @@ class TestUpdateKnownListAndReload:
                 {"enabled": False},
                 True,
                 auto_start_on_reload=True,
+                schema={"01:150000": {"zones": {}}},
             )
 
             assert "updated_known_list" in result
@@ -382,6 +383,7 @@ class TestUpdateKnownListAndReload:
             {"32:168270": {"class": "FAN"}},
             {"enabled": False},
             True,
+            schema={"01:150000": {"zones": {}}},
         )
 
         assert result == []
@@ -410,6 +412,7 @@ class TestUpdateKnownListAndReload:
                 {"32:168270": {"class": "FAN"}},
                 {"enabled": False},
                 False,
+                schema={"01:150000": {"zones": {}}},
             )
 
             assert "updated_known_list" in result
@@ -474,7 +477,10 @@ class TestAsyncApplyProfile:
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
 
         profile = MagicMock()
-        profile.device_configs = {"_known_list": {"32:168270": {"class": "FAN"}}}
+        profile.device_configs = {
+            "_known_list": {"32:168270": {"class": "FAN"}},
+            "_schema": {"01:150000": {"zones": {}}},
+        }
         profile.timeout_scale = 1.0
 
         with patch(
@@ -485,7 +491,8 @@ class TestAsyncApplyProfile:
 
         mock_reload.assert_awaited_once()
         _, kwargs = mock_reload.await_args
-        assert kwargs.get("auto_start_on_reload") is True
+        assert kwargs.get("auto_start_on_reload") is False
+        assert kwargs.get("schema") == {"01:150000": {"zones": {}}}
 
         assert result["success"] is True
         assert "stopped_devices" in result["actions"]
@@ -497,7 +504,10 @@ class TestAsyncApplyProfile:
         hass.data = {"ramses_extras": {}}
 
         profile = MagicMock()
-        profile.device_configs = {"_known_list": {"32:168270": {"class": "FAN"}}}
+        profile.device_configs = {
+            "_known_list": {"32:168270": {"class": "FAN"}},
+            "_schema": {"01:150000": {"zones": {}}},
+        }
 
         with patch(
             "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
@@ -507,10 +517,41 @@ class TestAsyncApplyProfile:
 
         mock_reload.assert_awaited_once()
         _, kwargs = mock_reload.await_args
-        assert kwargs.get("auto_start_on_reload") is True
+        assert kwargs.get("auto_start_on_reload") is False
+        assert kwargs.get("schema") == {"01:150000": {"zones": {}}}
 
         assert result["success"] is True
         assert "stopped_devices" not in result["actions"]
+
+    @pytest.mark.asyncio
+    async def test_async_apply_profile_auto_start_opt_out(self):
+        """Allow callers to disable auto-start when needed."""
+        hass = MagicMock()
+        engine = MagicMock()
+        engine.async_stop_all = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+
+        profile = MagicMock()
+        profile.device_configs = {
+            "_known_list": {"32:168270": {"class": "FAN"}},
+            "_schema": {"01:150000": {"zones": {}}},
+        }
+        profile.timeout_scale = 1.0
+
+        with patch(
+            "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
+            AsyncMock(return_value=["updated_known_list"]),
+        ) as mock_reload:
+            await async_apply_profile(
+                hass,
+                "test_profile",
+                profile,
+                auto_start_devices=False,
+            )
+
+        mock_reload.assert_awaited_once()
+        _, kwargs = mock_reload.await_args
+        assert kwargs.get("auto_start_on_reload") is False
 
     @pytest.mark.asyncio
     async def test_async_apply_profile_with_custom_speed(self):
@@ -521,7 +562,10 @@ class TestAsyncApplyProfile:
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
 
         profile = MagicMock()
-        profile.device_configs = {"_known_list": {"32:168270": {"class": "FAN"}}}
+        profile.device_configs = {
+            "_known_list": {"32:168270": {"class": "FAN"}},
+            "_schema": {"01:150000": {"zones": {}}},
+        }
         profile.timeout_scale = 1.0
 
         with patch(
@@ -532,7 +576,8 @@ class TestAsyncApplyProfile:
 
         mock_reload.assert_awaited_once()
         _, kwargs = mock_reload.await_args
-        assert kwargs.get("auto_start_on_reload") is True
+        assert kwargs.get("auto_start_on_reload") is False
+        assert kwargs.get("schema") == {"01:150000": {"zones": {}}}
 
         assert result["success"] is True
         assert "timeout_scale=2.0" in result["actions"]

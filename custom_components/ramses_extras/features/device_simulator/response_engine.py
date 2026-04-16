@@ -15,10 +15,13 @@ import re
 from typing import TYPE_CHECKING
 
 from .const import LOGGER
+from .device_db import DeviceDatabase, ResponseEntry
+from .response_templates import build_dynamic_response
+from .system_config import ConfigProfileStore
 
 if TYPE_CHECKING:
     from .comm_endpoint import MqttEndpoint
-    from .device_db import DeviceDatabase, ResponseEntry
+    from .scenario_engine import ScenarioEngine
 
 
 class ResponseEngine:
@@ -46,6 +49,8 @@ class ResponseEngine:
         self,
         device_db: DeviceDatabase,
         endpoint: MqttEndpoint,
+        *,
+        config_store: ConfigProfileStore | None = None,
     ) -> None:
         """Initialize the response engine.
 
@@ -55,6 +60,13 @@ class ResponseEngine:
         self._db = device_db
         self._endpoint = endpoint
         self._pending_tasks: set[asyncio.Task] = set()
+        self._config_store = config_store
+        self._engine: ScenarioEngine | None = None
+
+    def set_engine(self, engine: ScenarioEngine | None) -> None:
+        """Provide the ScenarioEngine so we can skip duplicate replies."""
+
+        self._engine = engine
 
     async def handle_inbound_frame(self, frame: str) -> None:
         """Handle an incoming frame from ramses_rf.
@@ -93,10 +105,17 @@ class ResponseEngine:
                 parsed["code"],
             )
 
-            # Determine device type from destination address
             dst = parsed["dst"]
             if dst == "--:------" or not dst:
                 LOGGER.debug("ResponseEngine: dropping RQ - broadcast destination")
+                return
+
+            if self._engine and self._engine.is_device_active(dst):
+                LOGGER.debug(
+                    "ResponseEngine: %s handled by ScenarioEngine; "
+                    "skipping legacy reply",
+                    dst,
+                )
                 return
 
             device_type = self._get_device_type(dst)
@@ -111,15 +130,27 @@ class ResponseEngine:
 
             LOGGER.debug("ResponseEngine: device %s is type %s", dst, device_type)
 
-            # Look up response in device database
-            response = self._db.find_response(device_type, parsed["code"])
-            LOGGER.debug(
-                "ResponseEngine: DB lookup for %s/%s = %s",
-                device_type,
-                parsed["code"],
-                response,
-            )
-            if not response:
+            response = None
+            if device_type:
+                response = self._db.find_response(device_type, parsed["code"])
+                LOGGER.debug(
+                    "ResponseEngine: DB lookup for %s/%s = %s",
+                    device_type,
+                    parsed["code"],
+                    response,
+                )
+
+            payload: str | None = None
+            delay_ms = 0
+            if response and response.payloads:
+                payload = response.payloads[0]
+                delay_ms = response.delay_ms
+            else:
+                payload = build_dynamic_response(
+                    device_type, parsed["code"], parsed["payload"]
+                )
+
+            if not payload:
                 LOGGER.debug(
                     "ResponseEngine: no response defined for %s/%s",
                     device_type,
@@ -130,7 +161,14 @@ class ResponseEngine:
             LOGGER.debug(
                 "ResponseEngine: sending %s/%s response", device_type, parsed["code"]
             )
-            await self._send_response(parsed, response)
+            await self._send_response(
+                parsed,
+                ResponseEntry(
+                    code=parsed["code"],
+                    delay_ms=delay_ms,
+                    payloads=[payload],
+                ),
+            )
 
         except Exception as e:
             LOGGER.error("ResponseEngine: EXCEPTION: %s", e, exc_info=True)
@@ -156,6 +194,23 @@ class ResponseEngine:
             "payload": match.group("payload"),
         }
 
+    def _lookup_profile_device_type(self, device_id: str) -> str | None:
+        if not self._config_store:
+            return None
+        profile_name = self._config_store.get_active_profile()
+        if not profile_name:
+            return None
+        profile = self._config_store.get_profile(profile_name)
+        if not profile:
+            return None
+        known_list = profile.device_configs.get("_known_list", {})
+        entry = known_list.get(device_id)
+        if isinstance(entry, dict):
+            device_class = entry.get("class")
+            if device_class:
+                return str(device_class).upper()
+        return None
+
     def _get_device_type(self, device_id: str) -> str | None:
         """Determine device type from device ID.
 
@@ -168,6 +223,10 @@ class ResponseEngine:
         """
         # Mapping from type code to device type slug
         # NOTE: These should match ramses_cc known_list device types
+        device_class = self._lookup_profile_device_type(device_id)
+        if device_class:
+            return device_class
+
         type_map = {
             "32": "FAN",  # Fan (Orcon ventilation units)
             "37": "DIS",  # Display (37:168270)
@@ -176,9 +235,10 @@ class ResponseEngine:
             "31": "DIS",  # Display
             "30": "RFS",  # RFS sensor
             "22": "CTL",  # Controller
-            "01": "DHW",  # DHW sensor
+            "01": "CTL",  # Legacy controller prefix
             "04": "TRV",  # TRV
-            "07": "OTB",  # OTB
+            "07": "DHW",  # DHW sensor
+            "10": "OTB",  # OpenTherm bridge
             "13": "BDR",  # BDR relay
         }
 

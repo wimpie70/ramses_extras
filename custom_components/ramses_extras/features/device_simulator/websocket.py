@@ -552,7 +552,7 @@ def ws_get_ui_status(
     msg: dict[str, Any],
 ) -> None:
     """Return full simulator status for UI card."""
-    ra = hass.data.get("ramses_extras", {})
+    ra = hass.data.setdefault("ramses_extras", {})
 
     # Get profiles from config store
     config_store = ra.get("device_simulator_config_store")
@@ -644,7 +644,12 @@ def ws_get_ui_status(
         "active": sum(1 for d in devices if d["enabled"]),
     }
 
-    active_profile = ra.get("device_simulator_active_profile")
+    ra_active_profile = ra.get("device_simulator_active_profile")
+    if active_profile:
+        if ra_active_profile != active_profile:
+            ra["device_simulator_active_profile"] = active_profile
+    elif ra_active_profile:
+        active_profile = ra_active_profile
     auto_answer = engine.auto_answer_enabled if engine else True
     running_scenarios = engine.get_running_scenario_ids() if engine else []
     running_metadata = engine.get_running_metadata() if engine else {}
@@ -1116,16 +1121,10 @@ async def _start_load_profile_yaml(
     result.setdefault("scenario_id", SCENARIO_LOAD_PROFILE_YAML)
     result.setdefault(
         "message",
-        f"Loaded profile '{profile.name}' from YAML",
+        "Profile applied from YAML. Use the profile emissions scenario to "
+        "start devices.",
     )
-    engine = _get_engine(hass)
-    if engine:
-        try:
-            started_ids = await _start_profile_emissions(engine, profile.name, profile)
-        except RuntimeError as err:
-            LOGGER.warning("Auto-start profile devices failed: %s", err)
-        else:
-            result["started_devices"] = len(started_ids)
+    result.setdefault("started_devices", 0)
     return result
 
 

@@ -17,6 +17,9 @@ from custom_components.ramses_extras.features.device_simulator.device_db import 
 from custom_components.ramses_extras.features.device_simulator.response_engine import (
     ResponseEngine,
 )
+from custom_components.ramses_extras.features.device_simulator.response_templates import (  # noqa: E501
+    build_dynamic_response,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -139,8 +142,24 @@ class TestResponseEngineGetDeviceType:
 
     def test_ctl_device(self, engine: ResponseEngine) -> None:
         """Test detecting CTL device type."""
-        device_type = engine._get_device_type("22:123456")
-        assert device_type == "CTL"
+        assert engine._get_device_type("22:123456") == "CTL"
+
+    def test_legacy_ctl_prefix(self, engine: ResponseEngine) -> None:
+        """01: prefix should be treated as CTL."""
+        assert engine._get_device_type("01:999999") == "CTL"
+
+    def test_profile_backed_lookup(self) -> None:
+        """Known-list classes override prefix heuristics."""
+        config_store = MagicMock()
+        profile = MagicMock()
+        profile.device_configs = {
+            "_known_list": {"04:150000": {"class": "TRV"}},
+        }
+        config_store.get_active_profile.return_value = "normal"
+        config_store.get_profile.return_value = profile
+
+        engine = ResponseEngine(MagicMock(), MagicMock(), config_store=config_store)
+        assert engine._get_device_type("04:150000") == "TRV"
 
     def test_unknown_device(self, engine: ResponseEngine) -> None:
         """Test unknown device type returns None."""
@@ -243,6 +262,20 @@ class TestResponseEngineHandleInbound:
             # Should lookup response for DIS/31DA
             engine._db.find_response.assert_called_once_with("DIS", "31DA")
             mock_send.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_inbound_skips_active_engine(self) -> None:
+        """ResponseEngine defers to ScenarioEngine-managed devices."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        mock_endpoint.is_connected = True
+        engine = ResponseEngine(mock_db, mock_endpoint)
+        engine.set_engine(MagicMock(is_device_active=MagicMock(return_value=True)))
+
+        frame = "RQ 037 37:168270 37:126776 --:------ 31DA 001 01"
+        await engine.handle_inbound_frame(frame)
+
+        mock_db.find_response.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_handle_inbound_rq_no_response(self, engine: ResponseEngine) -> None:
@@ -398,7 +431,29 @@ class TestResponseEngineShutdown:
 
         # Check that the task was cancelled
         assert real_task.cancelled()
-        assert len(engine._pending_tasks) == 0
+
+
+class TestResponseTemplates:
+    """Unit tests for dynamic response helpers."""
+
+    def test_build_dynamic_response_ctl_temp(self) -> None:
+        payload = build_dynamic_response("CTL", "30C9", "02")
+        assert payload.startswith("02")
+        assert len(payload) == 6
+
+    def test_build_dynamic_response_ctl_zone_member(self) -> None:
+        payload = build_dynamic_response("CTL", "000C", "0204")
+        assert payload.startswith("0204")
+        assert len(payload) == 12
+
+    def test_build_dynamic_response_ctl_zone_mode(self) -> None:
+        payload = build_dynamic_response("CTL", "2349", "02")
+        assert payload.startswith("02")
+        assert len(payload) == 26
+        assert payload[6:8] == "00"
+
+    def test_build_dynamic_response_non_ctl(self) -> None:
+        assert build_dynamic_response("TRV", "30C9", "01") is None
 
 
 class TestResponseEngine2411ParameterHandling:

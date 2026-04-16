@@ -84,6 +84,9 @@ Log errors if not configured.
 
 --- next to do:
 
+### it seems like we are sending hvac msgs to heat devices, and heat msgs to hvac devices.
+Shouldn't we filter this ? we know from our database what belongs to what
+
 ### On profile change (or restart) we shouldn't start emitting msgs, only answer.
 We want to simulate the normal RF behaviour
 We will have to start a scenario by hand. This will also prevent extra long startup times
@@ -91,7 +94,7 @@ We will have to start a scenario by hand. This will also prevent extra long star
 ### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
 
 
-### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
+test: ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
 
 ### scenarios: autonomous emissions -> let devices emit messages autonomously,

@@ -2033,7 +2033,7 @@ class TestScenarioEngineRespondToRq:
         device = ActiveDevice(device_id="37:168270", slug="FAN", origin="manual")
         engine._active_devices["37:168270"] = device
 
-        await engine._respond_to_rq("32:150000", "37:168270", "31DA")
+        await engine._respond_to_rq("32:150000", "37:168270", "31DA", "")
 
         endpoint.send_packet.assert_called()
 
@@ -2047,7 +2047,7 @@ class TestScenarioEngineRespondToRq:
 
         engine = ScenarioEngine(hass, endpoint, db)
 
-        await engine._respond_to_rq("32:150000", "37:168270", "31DA")
+        await engine._respond_to_rq("32:150000", "37:168270", "31DA", "")
 
         endpoint.send_packet.assert_not_called()
 
@@ -2063,7 +2063,7 @@ class TestScenarioEngineRespondToRq:
         device = ActiveDevice(device_id="37:168270", slug="FAN", enabled=False)
         engine._active_devices["37:168270"] = device
 
-        await engine._respond_to_rq("32:150000", "37:168270", "31DA")
+        await engine._respond_to_rq("32:150000", "37:168270", "31DA", "")
 
         endpoint.send_packet.assert_not_called()
 
@@ -2081,7 +2081,7 @@ class TestScenarioEngineRespondToRq:
         )
         engine._active_devices["37:168270"] = device
 
-        await engine._respond_to_rq("32:150000", "37:168270", "31DA")
+        await engine._respond_to_rq("32:150000", "37:168270", "31DA", "")
 
         endpoint.send_packet.assert_not_called()
 
@@ -2099,7 +2099,7 @@ class TestScenarioEngineRespondToRq:
         )
         engine._active_devices["37:168270"] = device
 
-        await engine._respond_to_rq("32:150000", "37:168270", "31DA")
+        await engine._respond_to_rq("32:150000", "37:168270", "31DA", "")
 
         endpoint.send_packet.assert_not_called()
 
@@ -2116,7 +2116,7 @@ class TestScenarioEngineRespondToRq:
         device = ActiveDevice(device_id="37:168270", slug="FAN", origin="manual")
         engine._active_devices["37:168270"] = device
 
-        await engine._respond_to_rq("32:150000", "37:168270", "31DA")
+        await engine._respond_to_rq("32:150000", "37:168270", "31DA", "")
 
         endpoint.send_packet.assert_not_called()
 
@@ -2137,7 +2137,7 @@ class TestScenarioEngineRespondToRq:
         device = ActiveDevice(device_id="37:168270", slug="FAN", origin="manual")
         engine._active_devices["37:168270"] = device
 
-        await engine._respond_to_rq("32:150000", "37:168270", "31DA")
+        await engine._respond_to_rq("32:150000", "37:168270", "31DA", "")
 
         endpoint.send_packet.assert_called()
 
@@ -2155,17 +2155,31 @@ class TestScenarioEngineRespondToRq:
         db.find_response = MagicMock(return_value=resp)
 
         engine = ScenarioEngine(hass, endpoint, db)
-        device = ActiveDevice(device_id="37:168270", slug="FAN", origin="manual")
-        engine._active_devices["37:168270"] = device
-
         # Should handle error gracefully
-        await engine._respond_to_rq("32:150000", "37:168270", "1FC9")
+        await engine._respond_to_rq("32:150000", "37:168270", "1FC9", "")
 
         endpoint.send_packet.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_respond_to_rq_dynamic_ctl_payload(self) -> None:
+        """CTL devices synthesize responses when DB lacks entries."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        endpoint.send_packet = AsyncMock()
+        db = MagicMock()
+        db.find_response = MagicMock(return_value=None)
+
+        engine = ScenarioEngine(hass, endpoint, db)
+        device = ActiveDevice(device_id="01:150000", slug="CTL", origin="manual")
+        engine._active_devices["01:150000"] = device
+
+        await engine._respond_to_rq("18:000730", "01:150000", "30C9", "02")
+
+        endpoint.send_packet.assert_called()
+
+    @pytest.mark.asyncio
     async def test_respond_to_rq_log_truncation(self) -> None:
-        """Test responding to RQ with message log truncation."""
+        """Ensure the message log remains bounded."""
         hass = MagicMock()
         endpoint = MagicMock()
         endpoint.send_packet = AsyncMock()
@@ -2177,14 +2191,12 @@ class TestScenarioEngineRespondToRq:
         db.find_response = MagicMock(return_value=resp)
 
         engine = ScenarioEngine(hass, endpoint, db)
-        # Pre-fill the message log to trigger truncation
         engine._message_log = ["msg"] * 1001
         device = ActiveDevice(device_id="37:168270", slug="FAN", origin="manual")
         engine._active_devices["37:168270"] = device
 
-        await engine._respond_to_rq("32:150000", "37:168270", "1FC9")
+        await engine._respond_to_rq("32:150000", "37:168270", "1FC9", "")
 
-        # Log should have been truncated
         assert len(engine._message_log) <= 1000
 
 
