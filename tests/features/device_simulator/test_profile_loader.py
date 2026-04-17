@@ -1,5 +1,6 @@
 """Tests for profile_loader.py."""
 
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -581,3 +582,112 @@ class TestAsyncApplyProfile:
 
         assert result["success"] is True
         assert "timeout_scale=2.0" in result["actions"]
+
+    @pytest.mark.asyncio
+    async def test_async_apply_profile_without_schema_preload(self):
+        """Schema payload should be omitted when preload_schema=False."""
+
+        hass = MagicMock()
+        engine = MagicMock()
+        engine.async_stop_all = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+
+        profile = MagicMock()
+        profile.device_configs = {
+            "_known_list": {"32:168270": {"class": "FAN"}},
+            "_schema": {"01:150000": {"zones": {}}},
+        }
+        profile.timeout_scale = 1.0
+
+        with patch(
+            "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
+            AsyncMock(return_value=["updated_known_list"]),
+        ) as mock_reload:
+            await async_apply_profile(
+                hass,
+                "test_profile",
+                profile,
+                preload_schema=False,
+            )
+
+        mock_reload.assert_awaited_once()
+        _, kwargs = mock_reload.await_args
+        assert kwargs.get("schema") is None
+
+    @pytest.mark.asyncio
+    async def test_async_apply_profile_resets_rf_cache(self):
+        """Verify optional RF cache clearing helper is invoked."""
+
+        hass = MagicMock()
+        engine = MagicMock()
+        engine.async_stop_all = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+
+        profile = MagicMock()
+        profile.device_configs = {
+            "_known_list": {"32:168270": {"class": "FAN"}},
+            "_schema": {"01:150000": {"zones": {}}},
+        }
+        profile.timeout_scale = 1.0
+
+        with (
+            patch(
+                "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
+                AsyncMock(return_value=["updated_known_list"]),
+            ),
+            patch(
+                "custom_components.ramses_extras.features.device_simulator.profile_loader._clear_ramses_rf_cache",
+                AsyncMock(),
+            ) as mock_clear,
+        ):
+            await async_apply_profile(
+                hass,
+                "test_profile",
+                profile,
+                reset_rf_cache=True,
+            )
+
+        mock_clear.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_async_apply_profile_skip_rf_hydrate(self, monkeypatch):
+        """Ensure env override is toggled when requested."""
+
+        monkeypatch.delenv("RAMSES_RF_SKIP_HYDRATE", raising=False)
+        hass = MagicMock()
+        engine = MagicMock()
+        engine.async_stop_all = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+
+        profile = MagicMock()
+        profile.device_configs = {
+            "_known_list": {"32:168270": {"class": "FAN"}},
+            "_schema": {"01:150000": {"zones": {}}},
+        }
+        profile.timeout_scale = 1.0
+
+        with patch(
+            "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
+            AsyncMock(return_value=["updated_known_list"]),
+        ):
+            await async_apply_profile(
+                hass,
+                "test_profile",
+                profile,
+                skip_rf_hydrate=True,
+            )
+
+        assert os.environ.get("RAMSES_RF_SKIP_HYDRATE") == "1"
+
+        with patch(
+            "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
+            AsyncMock(return_value=["updated_known_list"]),
+        ):
+            await async_apply_profile(
+                hass,
+                "test_profile",
+                profile,
+                skip_rf_hydrate=False,
+            )
+
+        assert "RAMSES_RF_SKIP_HYDRATE" not in os.environ

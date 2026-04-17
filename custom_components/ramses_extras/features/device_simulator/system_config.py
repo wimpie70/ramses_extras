@@ -87,6 +87,7 @@ class SystemConfigProfile:
     :param heartbeat_timeout_override_seconds: Optional absolute timeout override
     :param device_configs: Per-device configuration overrides
     :param scenario_hooks: Actions to take at scenario stages
+    :param remove_database: Remove database file on profile activation
     """
 
     name: str
@@ -95,8 +96,8 @@ class SystemConfigProfile:
     heartbeat_timeout_override_seconds: float | None = None
     device_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     scenario_hooks: dict[str, list[str]] = field(default_factory=dict)
-    speed_options: list[float] = field(default_factory=lambda: [1.0, 0.1, 0.01])
     source_yaml: str | None = None
+    remove_database: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert profile to dictionary."""
@@ -136,6 +137,7 @@ class ConfigProfileStore:
         self._active_profile: str | None = None
         self._auto_answer: bool = True
         self._autonomous_speed: float = 1.0
+        self._remove_database: bool = False
 
         # Ensure config directory exists
         self._config_dir.mkdir(parents=True, exist_ok=True)
@@ -287,6 +289,7 @@ class ConfigProfileStore:
                 "_enforce_known_list": {"enabled": True},
                 "_schema": _heat_schema,
             },
+            remove_database=True,
         )
 
         self._profiles["mixed"] = SystemConfigProfile(
@@ -313,6 +316,7 @@ class ConfigProfileStore:
                 "_known_list": _HGI_ENTRY,
                 "_enforce_known_list": {"enabled": True},
             },
+            remove_database=True,
         )
 
         LOGGER.debug(
@@ -356,16 +360,19 @@ class ConfigProfileStore:
                 data = json.load(f)
             self._active_profile = data.get("active_profile")
             self._auto_answer = data.get("auto_answer", True)
+            self._remove_database = data.get("remove_database", False)
             speed_value = data.get("autonomous_speed", 1.0)
             try:
                 self._autonomous_speed = float(speed_value)
             except (TypeError, ValueError):
                 self._autonomous_speed = 1.0
             LOGGER.debug(
-                "ConfigProfileStore: state loaded profile=%s auto_answer=%s speed=%s",
+                "ConfigProfileStore: state loaded profile=%s auto_answer=%s "
+                "speed=%s remove_db=%s",
                 self._active_profile,
                 self._auto_answer,
                 self._autonomous_speed,
+                self._remove_database,
             )
         except (json.JSONDecodeError, OSError):
             LOGGER.warning("ConfigProfileStore: failed to load simulator state")
@@ -379,6 +386,7 @@ class ConfigProfileStore:
                         "active_profile": self._active_profile,
                         "auto_answer": self._auto_answer,
                         "autonomous_speed": self._autonomous_speed,
+                        "remove_database": self._remove_database,
                     },
                     f,
                 )
@@ -467,6 +475,7 @@ class ConfigProfileStore:
         profile = self._active_profile
         auto_answer = self._auto_answer
         autonomous_speed = self._autonomous_speed
+        remove_database = self._remove_database
         state_path = self._state_path
 
         def _write() -> None:
@@ -477,6 +486,7 @@ class ConfigProfileStore:
                             "active_profile": profile,
                             "auto_answer": auto_answer,
                             "autonomous_speed": autonomous_speed,
+                            "remove_database": remove_database,
                         },
                         f,
                     )
@@ -497,6 +507,14 @@ class ConfigProfileStore:
         :return: Profile or None if not found
         """
         return self._profiles.get(name)
+
+    def get_remove_database(self) -> bool:
+        """Return persisted remove_database flag."""
+        return self._remove_database
+
+    def set_remove_database(self, enabled: bool) -> None:
+        """Set remove_database flag in memory; call async_save_state to persist."""
+        self._remove_database = enabled
 
     def list_profiles(self) -> list[str]:
         """List all available profile names.

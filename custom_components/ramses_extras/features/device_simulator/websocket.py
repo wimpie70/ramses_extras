@@ -104,6 +104,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_set_autonomous_speed)
     websocket_api.async_register_command(hass, ws_subscribe_devices)
     websocket_api.async_register_command(hass, ws_delete_profile)
+    websocket_api.async_register_command(hass, ws_get_device_messages)
 
 
 def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
@@ -527,17 +528,47 @@ def ws_get_messages(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Return recent message log."""
+    """Return recent message log (legacy raw strings)."""
     engine = _get_engine(hass)
     if not engine:
         connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
         return
 
-    # Get last N messages
     limit = msg.get("limit", 50)
     messages = engine._message_log[-limit:] if engine._message_log else []
 
     connection.send_result(msg["id"], {"messages": messages})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/get_messages",
+        vol.Optional("limit", default=100): int,
+        vol.Optional("device_id"): str,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_get_device_messages(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return structured, parsed simulator message log."""
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    limit: int = msg.get("limit", 100)
+    device_id: str | None = msg.get("device_id")
+    entries = engine.message_log.get_recent(limit=limit, device_id=device_id)
+    connection.send_result(
+        msg["id"],
+        {
+            "messages": [engine.message_log.to_dict(e) for e in entries],
+            "total": len(entries),
+        },
+    )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -578,7 +609,6 @@ def ws_get_ui_status(
                     "name": name,
                     "description": p.description,
                     "timeout_scale": p.timeout_scale,
-                    "speed_options": p.speed_options,
                     "known_list": p.device_configs.get("_known_list", {}),
                     "is_builtin": is_builtin,
                     "can_delete": not is_builtin,
@@ -752,6 +782,9 @@ async def ws_activate_profile_device(
         vol.Required("profile"): str,
         vol.Optional("speed"): vol.Coerce(float),
         vol.Optional("reload_ramses_cc", default=True): bool,
+        vol.Optional("preload_schema", default=True): bool,
+        vol.Optional("reset_rf_cache", default=False): bool,
+        vol.Optional("remove_database", default=False): bool,
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -776,12 +809,20 @@ async def ws_load_profile(
         return
 
     try:
+        # Use profile's remove_database setting, but allow override from UI
+        remove_database = msg.get("remove_database")
+        if remove_database is None:
+            remove_database = getattr(profile, "remove_database", False)
+
         result = await async_apply_profile(
             hass,
             profile_name=profile.name,
             profile=profile,
             reload_ramses_cc=msg.get("reload_ramses_cc", True),
             speed=msg.get("speed"),
+            preload_schema=msg.get("preload_schema", True),
+            reset_rf_cache=msg.get("reset_rf_cache", False),
+            skip_rf_hydrate=remove_database,
         )
     except Exception as err:  # noqa: BLE001
         connection.send_error(msg["id"], "error", str(err))
@@ -1117,6 +1158,9 @@ async def _start_load_profile_yaml(
         profile=profile,
         reload_ramses_cc=params.get("reload_ramses", True),
         speed=params.get("speed"),
+        preload_schema=params.get("preload_schema", True),
+        reset_rf_cache=params.get("reset_rf_cache", False),
+        skip_rf_hydrate=params.get("remove_database"),
     )
     result.setdefault("scenario_id", SCENARIO_LOAD_PROFILE_YAML)
     result.setdefault(

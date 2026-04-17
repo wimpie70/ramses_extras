@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from copy import deepcopy
 from functools import partial
+from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from custom_components.ramses_cc.const import CONF_SCHEMA
@@ -108,8 +110,9 @@ def build_profile_from_yaml(
 def profile_to_yaml(profile: SystemConfigProfile) -> str:
     """Render a SystemConfigProfile back to a YAML string."""
 
-    if profile.source_yaml:
-        return profile.source_yaml
+    source_yaml: str | None = profile.source_yaml
+    if source_yaml is not None:
+        return source_yaml
 
     payload: dict[str, Any] = {}
     known_list = profile.device_configs.get("_known_list")
@@ -167,6 +170,9 @@ async def async_apply_profile(
     reload_ramses_cc: bool = True,
     speed: float | None = None,
     auto_start_devices: bool = False,
+    preload_schema: bool = True,
+    reset_rf_cache: bool = False,
+    skip_rf_hydrate: bool | None = None,
 ) -> dict[str, Any]:
     """Apply a profile: stop devices, update known_list, reload, set timeouts."""
 
@@ -180,7 +186,20 @@ async def async_apply_profile(
 
     known_list = profile.device_configs.get("_known_list")
     schema = profile.device_configs.get("_schema")
-    schema_payload = dict(schema) if isinstance(schema, dict) else None
+    schema_payload = (
+        dict(schema) if preload_schema and isinstance(schema, dict) else None
+    )
+    if skip_rf_hydrate is not None:
+        # Set the remove_database flag in the simulator config store
+        ra = hass.data.get("ramses_extras", {})
+        config_store = ra.get("device_simulator_config_store")
+        if config_store:
+            config_store.set_remove_database(skip_rf_hydrate)
+            await config_store.async_save_state()
+            actions.append(
+                f"remove_database={'enabled' if skip_rf_hydrate else 'disabled'}"
+            )
+
     if known_list is not None:
         actions.extend(
             await _update_known_list_and_reload(
@@ -196,6 +215,13 @@ async def async_apply_profile(
     scale = speed if speed is not None else profile.timeout_scale
     apply_timeout_scale(scale)
     actions.append(f"timeout_scale={scale}")
+
+    if reset_rf_cache:
+        try:
+            await _clear_ramses_rf_cache(hass)
+            actions.append("cleared_rf_cache")
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning("Profile load: failed to clear RF cache: %s", err)
 
     LOGGER.info("Loaded simulator profile: %s (actions: %s)", profile_name, actions)
     return {
@@ -283,6 +309,34 @@ async def _update_known_list_and_reload(
         actions.append("skipped_reload")
 
     return actions
+
+
+async def _clear_ramses_rf_cache(hass: HomeAssistant) -> None:
+    """Clear ramses_cc client_state schema/packets and delete ramses.db."""
+
+    from homeassistant.helpers.storage import Store as HaStore
+
+    ha_store: HaStore = HaStore(hass, RAMSES_CC_STORAGE_VERSION, RAMSES_CC_STORAGE_KEY)
+    stored: dict[str, Any] = await ha_store.async_load() or {}
+    client_state = stored.get(SZ_CLIENT_STATE, {})
+    changed = False
+    if SZ_SCHEMA in client_state:
+        client_state.pop(SZ_SCHEMA, None)
+        changed = True
+    if SZ_PACKETS in client_state:
+        client_state.pop(SZ_PACKETS, None)
+        changed = True
+    if changed:
+        await ha_store.async_save(stored)
+        LOGGER.info("Profile load: cleared HA client_state schema/packets")
+
+    try:
+        db_path = Path(hass.config.config_dir) / "ramses.db"
+        if db_path.exists():
+            await asyncio.get_event_loop().run_in_executor(None, db_path.unlink)
+            LOGGER.info("Profile load: deleted %s", db_path)
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning("Profile load: failed to delete ramses.db: %s", err)
 
 
 async def _reload_ramses_cc(

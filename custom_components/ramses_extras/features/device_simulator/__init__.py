@@ -14,9 +14,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.storage import Store as HaStore
-
 import logging
+from pathlib import Path
+
+from homeassistant.helpers.storage import Store as HaStore
 
 from .comm_endpoint import MqttEndpoint
 from .const import (
@@ -541,6 +542,13 @@ async def create_device_simulator_feature(
             config_store.get_active_profile(),
         )
 
+    # Handle database removal if requested
+    config_store = registry.get("device_simulator_config_store")
+    if config_store and config_store.get_remove_database():
+        await _remove_ramses_database(hass)
+        config_store.set_remove_database(False)  # Clear flag after use
+        _LOGGER.info("Database removal completed and flag cleared")
+
     # Set up services
     await async_setup_services(hass)
 
@@ -558,6 +566,34 @@ async def create_device_simulator_feature(
         "config_store": hass.data["ramses_extras"]["device_simulator_config_store"],
         "feature_name": "device_simulator",
     }
+
+
+async def _remove_ramses_database(hass: HomeAssistant) -> None:
+    """Remove the ramses database file."""
+    try:
+        # Get ramses_cc config to find database path
+        entries = hass.config_entries.async_entries("ramses_cc")
+        if not entries:
+            _LOGGER.warning("No ramses_cc entry found - cannot determine database path")
+            return
+
+        cc_entry = entries[0]
+        cc_options = dict(cc_entry.options) if cc_entry.options else {}
+        ramses_rf_config = cc_options.get("ramses_rf", {})
+        database_path = ramses_rf_config.get("database_path", "ramses.db")
+
+        if database_path:
+            db_path = Path(database_path)
+            if db_path.exists():
+                db_path.unlink()
+                _LOGGER.info("Removed ramses database file: %s", db_path)
+            else:
+                _LOGGER.info("Database file not found: %s", db_path)
+        else:
+            _LOGGER.warning("No database path configured")
+
+    except Exception as err:
+        _LOGGER.error("Failed to remove database file: %s", err)
 
 
 # Framework entry point: synchronous wrapper for async feature creation

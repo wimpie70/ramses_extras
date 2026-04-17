@@ -361,6 +361,25 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "type": "checkbox",
             "default": True,
         },
+        {
+            "key": "preload_schema",
+            "label": "Preload schema into RF",
+            "type": "checkbox",
+            "default": True,
+        },
+        {
+            "key": "reset_rf_cache",
+            "label": "Reset RF cache (packets + ramses.db)",
+            "type": "checkbox",
+            "default": False,
+        },
+        {
+            "key": "remove_database",
+            "label": "Remove database file",
+            "type": "checkbox",
+            "default": False,
+            "helper": "Removes the ramses database file for a clean start.",
+        },
     ],
 }
 

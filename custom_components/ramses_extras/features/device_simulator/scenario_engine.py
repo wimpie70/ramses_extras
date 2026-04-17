@@ -40,6 +40,7 @@ from .const import (
     VERB_W,
 )
 from .device_db import AutonomousEntry, DeviceDatabase, ResponseEntry
+from .message_log import DeviceMessageLog
 from .response_templates import build_dynamic_response
 from .scenarios import discover_scenarios
 from .scenarios.base import ScenarioContext, ScenarioDefinition, ScenarioResult
@@ -123,6 +124,7 @@ class ScenarioEngine:
         # When False the engine receives RQs but never replies — simulates a
         # device that is powered off or unreachable (e.g. broken ESP).
         self._auto_answer_enabled: bool = True
+        self.message_log: DeviceMessageLog = DeviceMessageLog()
 
         endpoint.add_inbound_handler(self._handle_inbound_frame)
 
@@ -521,6 +523,7 @@ class ScenarioEngine:
                 # Keep log size bounded
                 if len(self._message_log) > 1000:
                     self._message_log = self._message_log[-500:]
+                self.message_log.log("outbound", packet)
             except Exception as err:
                 errors.append(str(err))
 
@@ -572,6 +575,7 @@ class ScenarioEngine:
                 )
                 if len(self._message_log) > 1000:
                     self._message_log = self._message_log[-500:]
+                self.message_log.log("outbound", packet)
                 if inter_packet_delay > 0:
                     await asyncio.sleep(inter_packet_delay)
             except Exception as err:
@@ -649,6 +653,7 @@ class ScenarioEngine:
                     )
                     if len(self._message_log) > 1000:
                         self._message_log = self._message_log[-500:]
+                    self.message_log.log("outbound", packet)
                 except Exception as err:
                     LOGGER.warning(
                         "Emitter send error for %s/%s: %s",
@@ -680,6 +685,7 @@ class ScenarioEngine:
             return
 
         self._messages_received += 1
+        self.message_log.log("inbound", frame)
         verb, src, dst, code, payload = match.groups()
         verb_raw = verb
         verb = verb.upper().strip()  # Strip leading space from 1-char verbs like ' I'
@@ -831,6 +837,7 @@ class ScenarioEngine:
             # Keep log size bounded
             if len(self._message_log) > 1000:
                 self._message_log = self._message_log[-500:]
+            self.message_log.log("outbound", packet)
             LOGGER.debug("Responded %s RP/%s → %s", dst, code, src)
         except Exception as err:
             LOGGER.warning("Failed to send RP for %s/%s: %s", dst, code, err)

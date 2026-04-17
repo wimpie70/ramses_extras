@@ -82,12 +82,13 @@ Log errors if not configured.
 
 ### test scenarios: device_unavailability and hvac_device_loss
 
+### add message logging (parsed) to devices (both directions) just a few lines with scrollbars
+
 --- next to do:
 
 ### it seems like we are sending hvac msgs to heat devices, and heat msgs to hvac devices.
 Shouldn't we filter this ? we know from our database what belongs to what
 
-### check if we add a heat device, if it will show up in RF (and sim)
 
 ### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
 
