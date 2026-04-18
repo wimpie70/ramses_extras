@@ -12,8 +12,8 @@ to Home Assistant instances.
 
 Both share the same MQTT broker (port 1883). They use separate MQTT topic namespaces:
 
-- Production: `ramses/gateway/...`
-- Simulator: `ramses/simulator/...`
+- Production: `RAMSES/GATEWAY/...`
+- Simulator: `RAMSES/GATEWAY_SIM/...`
 
 ## Directory layout
 
@@ -30,29 +30,36 @@ deployments/
 ## Quick start — Simulator HA
 
 ```bash
-# 1. Create config directory
-mkdir -p /home/willem/docker_files/ha-sim/config
+# 1. Set config path and create directory
+export HA_SIM_CONFIG=/path/to/your/ha-sim/config
+mkdir -p $HA_SIM_CONFIG
 
-# 2. Start the container
-cd /home/willem/docker_files/ha-sim
+# 2. Copy docker-compose.yml and configuration.yaml
+cp /path/to/ramses_extras/deployments/ha-sim/docker-compose.yml $HA_SIM_CONFIG/../
+cp /path/to/ramses_extras/deployments/ha-sim/configuration.yaml.example $HA_SIM_CONFIG/configuration.yaml
+
+# 3. Start the container
+cd $HA_SIM_CONFIG/..
 docker compose up -d
 
-# 3. Deploy all components (from their respective repos)
-cd /home/willem/dev/ramses_rf    && make install_rf-sim
-cd /home/willem/dev/ramses_cc    && make install-sim
-cd /home/willem/dev/ramses_extras && make install-sim
+# 4. Deploy all components (from their respective repos)
+cd /path/to/ramses_rf    && HA_SIM_CONFIG=$HA_SIM_CONFIG make install-sim
+cd /path/to/ramses_cc    && HA_SIM_CONFIG=$HA_SIM_CONFIG make install-sim
+cd /path/to/ramses_extras && HA_SIM_CONFIG=$HA_SIM_CONFIG make install-sim
 
-# 4. Restart to load
+# 5. Restart to load
 docker restart ha-sim
 ```
 
 Access at: http://localhost:8124
 
+**Note**: The `HA_SIM_CONFIG` environment variable can be set in your shell profile or passed inline. See `ha-sim/README.md` for detailed instructions.
+
 ## Deploying to production HA
 
 ```bash
-cd /home/willem/dev/ramses_rf    && make install_rf
-cd /home/willem/dev/ramses_cc    && make install
-cd /home/willem/dev/ramses_extras && make install
+cd /path/to/ramses_rf    && make install
+cd /path/to/ramses_cc    && make install
+cd /path/to/ramses_extras && make install
 docker restart hass
 ```

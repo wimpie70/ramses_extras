@@ -2,24 +2,28 @@ version: '3.8'
 
 # Simulator Home Assistant instance
 # Runs on port 8124 alongside production HA (port 8123)
-# Shares the same MQTT broker but uses separate topics (ramses/simulator/*)
+# Shares the same MQTT broker but uses separate topics (RAMSES/GATEWAY_SIM/*)
 #
 # IMPORTANT: Before first run, create configuration.yaml with port 8124:
-#   cp configuration.yaml.example /home/willem/docker_files/ha-sim/config/configuration.yaml
+#   cp configuration.yaml.example ${HA_SIM_CONFIG}/configuration.yaml
 #
 # Without this, HA will default to port 8123 and conflict with production HA.
+#
+# Set HA_SIM_CONFIG environment variable before running:
+#   export HA_SIM_CONFIG=/path/to/your/ha-sim/config
+#   docker compose up -d
 
 services:
   homeassistant:
     container_name: ha-sim
     image: ghcr.io/home-assistant/home-assistant:stable
     volumes:
-      - /home/willem/docker_files/ha-sim/config:/config
+      - ${HA_SIM_CONFIG:-./config}:/config
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
     network_mode: host
     environment:
-      - TZ=Europe/Amsterdam
+      - TZ=${TZ:-Europe/Amsterdam}
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:8124']
       interval: 30s
