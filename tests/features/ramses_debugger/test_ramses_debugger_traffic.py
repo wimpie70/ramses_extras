@@ -271,16 +271,15 @@ async def test_collector_ignores_invalid_event(hass) -> None:
 def test_collector_time_fired_used_when_missing_dtm(hass) -> None:
     collector = TrafficCollector(hass)
 
-    event = MagicMock()
-    event.data = {
+    data = {
         "src": "01:111111",
         "dst": "02:222222",
         "verb": "RQ",
         "code": "000A",
+        "time_fired": "2026-01-20T12:00:00",
     }
-    event.time_fired = datetime(2026, 1, 20, 12, 0, 0)
 
-    collector._handle_ramses_cc_message(event)
+    collector._ingest_message(data)
 
     stats = collector.get_stats()
     assert stats["total_count"] == 1
@@ -291,15 +290,16 @@ def test_collector_time_fired_used_when_missing_dtm(hass) -> None:
 def test_collector_ingests_direct_client_messages(hass) -> None:
     collector = TrafficCollector(hass)
 
-    msg = MagicMock()
-    msg.src.id = "32:153289"
-    msg.dst.id = "37:169161"
-    msg.verb = " I"
-    msg.code = "31DA"
-    msg.payload = "payload"
-    msg.dtm = datetime(2026, 1, 20, 12, 0, 1)
+    data = {
+        "src": "32:153289",
+        "dst": "37:169161",
+        "verb": " I",
+        "code": "31DA",
+        "payload": "payload",
+        "dtm": "2026-01-20T12:00:01",
+    }
 
-    collector._handle_msg(msg)
+    collector._ingest_message(data)
 
     stats = collector.get_stats()
     assert stats["total_count"] == 1

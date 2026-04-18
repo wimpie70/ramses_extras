@@ -490,6 +490,18 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     _LOGGER.info("Removing Ramses Extras integration and cleaning up...")
 
+    try:
+        from ...features.device_simulator import async_restore_ramses_cc_gateway_topic
+    except ImportError:
+        async_restore_ramses_cc_gateway_topic = None  # type: ignore[assignment]
+    if callable(async_restore_ramses_cc_gateway_topic):
+        try:
+            await async_restore_ramses_cc_gateway_topic(hass)
+        except Exception as err:  # pragma: no cover - defensive
+            _LOGGER.warning(
+                "Failed to restore simulator gateway topic on removal: %s", err
+            )
+
     # 1. Stop any running automations
     if DOMAIN in hass.data:
         domain_data = hass.data[DOMAIN]

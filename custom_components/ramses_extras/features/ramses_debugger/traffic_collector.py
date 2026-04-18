@@ -16,9 +16,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 
-from ...framework.helpers.ramses_commands import RamsesCommands
+from ...framework.helpers.ramses_message_stream import get_ramses_message_stream
 from .messages_provider import TrafficBufferProvider
 
 _LOGGER = logging.getLogger(__name__)
@@ -71,8 +71,7 @@ class TrafficCollector:
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        self._event_unsub: CALLBACK_TYPE | None = None
-        self._msg_handler_unsub: CALLBACK_TYPE | None = None
+        self._stream_unsub: CALLBACK_TYPE | None = None
         self._subscribers: dict[int, Callable[[dict[str, Any]], None]] = {}
         self._next_subscription_id = 0
 
@@ -140,45 +139,20 @@ class TrafficCollector:
             self._buffer_provider.evict_flow(oldest_key)
 
     def start(self) -> None:
-        """Start listening for ``ramses_cc_message`` events."""
-        if self._event_unsub is not None or self._msg_handler_unsub is not None:
+        """Start listening for processed RAMSES messages."""
+        if self._stream_unsub is not None:
             return
-        self._event_unsub = self._hass.bus.async_listen(
-            "ramses_cc_message",
-            self._handle_ramses_cc_message,
-        )
-        self._hass.async_create_task(self._async_attach_client_listener())
-        _LOGGER.debug("TrafficCollector started (listening for ramses_cc_message)")
+        stream = get_ramses_message_stream(self._hass)
+        stream.start()
+        self._stream_unsub = stream.subscribe(self._ingest_message)
+        _LOGGER.debug("TrafficCollector started")
 
     def stop(self) -> None:
-        """Stop listening for ``ramses_cc_message`` events."""
-        if self._event_unsub is not None:
-            self._event_unsub()
-            self._event_unsub = None
-        if self._msg_handler_unsub is not None:
-            self._msg_handler_unsub()
-            self._msg_handler_unsub = None
+        """Stop listening for processed RAMSES messages."""
+        if self._stream_unsub is not None:
+            self._stream_unsub()
+            self._stream_unsub = None
         _LOGGER.debug("TrafficCollector stopped")
-
-    async def _async_attach_client_listener(self) -> None:
-        commands = RamsesCommands(self._hass)
-        coordinator = await commands._get_ramses_cc_coordinator()
-        client = (
-            getattr(coordinator, "client", None) if coordinator is not None else None
-        )
-        add_msg_handler = getattr(client, "add_msg_handler", None)
-        if not callable(add_msg_handler) or self._msg_handler_unsub is not None:
-            return
-
-        msg_handler_unsub = add_msg_handler(self._handle_msg)
-        if callable(msg_handler_unsub):
-            self._msg_handler_unsub = msg_handler_unsub
-            if self._event_unsub is not None:
-                self._event_unsub()
-                self._event_unsub = None
-            _LOGGER.debug(
-                "TrafficCollector switched to direct ramses_cc client message handler"
-            )
 
     def reset(self) -> None:
         """Clear all collected counters and restart the session start time."""
@@ -303,27 +277,3 @@ class TrafficCollector:
 
         self._evict_flows_if_needed()
         self._notify_subscribers(data)
-
-    def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
-        raw = event.data or {}
-        data = dict(raw)
-        data["time_fired"] = event.time_fired.isoformat(timespec="microseconds")
-
-        self._ingest_message(data)
-
-    def _handle_msg(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        data = {
-            "src": getattr(getattr(msg, "src", None), "id", None),
-            "dst": getattr(getattr(msg, "dst", None), "id", None),
-            "verb": str(getattr(msg, "verb", "")) or None,
-            "code": str(getattr(msg, "code", "")) or None,
-            "payload": str(getattr(msg, "payload", "")) or None,
-        }
-
-        dtm = getattr(msg, "dtm", None)
-        if isinstance(dtm, datetime):
-            data["dtm"] = dtm.isoformat(timespec="microseconds")
-        elif isinstance(dtm, str):
-            data["dtm"] = dtm
-
-        self._ingest_message(data)

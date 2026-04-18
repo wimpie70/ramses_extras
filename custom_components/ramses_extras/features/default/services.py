@@ -138,9 +138,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             _LOGGER.info("Parser: no command found in dict payload")
             return None
 
+        # Handle list payloads (for fan codes like 12A0, 31DA)
+        if isinstance(payload, list):
+            _LOGGER.info("Parser handling list payload: %s", payload)
+            # Try to find command in first dict of the list
+            if payload and isinstance(payload[0], dict):
+                return _observed_command_from_packet(code, payload[0])
+            _LOGGER.info("Parser: no valid dict in list payload")
+            return None
+
         # Handle string payloads (raw hex)
         if not isinstance(payload, str):
-            _LOGGER.info("Parser rejected: payload is not string or dict")
+            _LOGGER.info("Parser rejected: payload is not string or dict or list")
             return None
 
         normalized_payload = payload.strip().upper()

@@ -6,6 +6,51 @@ device_type: RFS
 domain: hvac
 broadcast_safe: false
 autonomous:
+- code: '3110'
+  verb: I
+  trigger: periodic
+  interval_seconds: 415.1
+  payloads: []
+- code: 30C9
+  verb: I
+  trigger: periodic
+  interval_seconds: 218.0
+  payloads: []
+- code: '3120'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 2E10
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 22F1
+  verb: I
+  trigger: periodic
+  interval_seconds: 15.8
+  payloads: []
+- code: 3EF0
+  verb: I
+  trigger: periodic
+  interval_seconds: 200.7
+  payloads: []
+- code: '1060'
+  verb: I
+  trigger: periodic
+  interval_seconds: 13.5
+  payloads: []
+- code: 12C0
+  verb: I
+  trigger: periodic
+  interval_seconds: 1.0
+  payloads: []
+- code: 22F3
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
 - code: 10E0
   verb: I
   trigger: periodic
@@ -16,58 +61,13 @@ autonomous:
   trigger: periodic
   interval_seconds: 146.5
   payloads: []
-- code: '3120'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: '3110'
-  verb: I
-  trigger: periodic
-  interval_seconds: 415.1
-  payloads: []
-- code: 22F3
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: 2E10
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: '1060'
-  verb: I
-  trigger: periodic
-  interval_seconds: 13.5
-  payloads: []
-- code: 3EF0
-  verb: I
-  trigger: periodic
-  interval_seconds: 200.7
-  payloads: []
-- code: 30C9
-  verb: I
-  trigger: periodic
-  interval_seconds: 218.0
-  payloads: []
-- code: 12C0
-  verb: I
-  trigger: periodic
-  interval_seconds: 1.0
-  payloads: []
-- code: 22F1
-  verb: I
-  trigger: periodic
-  interval_seconds: 15.8
-  payloads: []
 responses:
-- code: 31DA
+- code: 31D9
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads: []
-- code: 31D9
+- code: 31DA
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100

@@ -1,7 +1,7 @@
 """Tests for Ramses Commands helper."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
@@ -287,7 +287,8 @@ async def test_update_fan_params_success(ramses_commands, hass):
     mock_broker.get_all_fan_params = MagicMock()
     hass.data = {"ramses_cc": {"entry_id": mock_broker}}
 
-    result = await ramses_commands.update_fan_params("32_123456", "18_654321")
+    with patch.object(ramses_commands, "_device_supports_2411", return_value=True):
+        result = await ramses_commands.update_fan_params("32_123456", "18_654321")
 
     assert result.success is True
     mock_broker.get_all_fan_params.assert_called_once_with(
@@ -300,7 +301,8 @@ async def test_update_fan_params_no_broker(ramses_commands, hass):
     """Test fan params update when broker not found."""
     hass.data = {"ramses_cc": {}}
 
-    result = await ramses_commands.update_fan_params("32_123456")
+    with patch.object(ramses_commands, "_device_supports_2411", return_value=True):
+        result = await ramses_commands.update_fan_params("32_123456")
 
     assert result.success is False
     assert "broker not found" in result.error_message
@@ -313,10 +315,47 @@ async def test_update_fan_params_error(ramses_commands, hass):
     mock_broker.get_all_fan_params.side_effect = RuntimeError("Update failed")
     hass.data = {"ramses_cc": {"entry_id": mock_broker}}
 
-    result = await ramses_commands.update_fan_params("32_123456")
+    with patch.object(ramses_commands, "_device_supports_2411", return_value=True):
+        result = await ramses_commands.update_fan_params("32_123456")
 
     assert result.success is False
     assert "Update failed" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_update_fan_params_blocked_when_no_2411_support(ramses_commands, hass):
+    """Ensure fan param refresh is skipped when device lacks 2411 support."""
+    hass.data = {"ramses_cc": {"entry_id": MagicMock()}}
+
+    with (
+        patch.object(
+            ramses_commands, "_device_supports_2411", return_value=False
+        ) as mock_supports,
+        patch.dict(hass.data["ramses_cc"], {}, clear=False),
+    ):
+        result = await ramses_commands.update_fan_params("01_150000")
+
+    mock_supports.assert_called_once()
+    assert result.success is False
+    assert "does not advertise 2411" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test__device_supports_2411_uses_device_flag(ramses_commands):
+    """Verify helper reads supports_2411 attribute."""
+
+    mock_device = MagicMock()
+    type(mock_device).supports_2411 = PropertyMock(return_value=True)
+
+    with patch.object(ramses_commands, "_get_ramses_device", return_value=mock_device):
+        assert await ramses_commands._device_supports_2411("32:123456") is True
+
+    type(mock_device).supports_2411 = PropertyMock(return_value=False)
+    with patch.object(ramses_commands, "_get_ramses_device", return_value=mock_device):
+        assert await ramses_commands._device_supports_2411("32:123456") is False
+
+    with patch.object(ramses_commands, "_get_ramses_device", return_value=None):
+        assert await ramses_commands._device_supports_2411("32:123456") is None
 
 
 @pytest.mark.asyncio

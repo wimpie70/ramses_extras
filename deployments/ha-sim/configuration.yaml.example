@@ -1,0 +1,31 @@
+# Home Assistant configuration for ha-sim (simulator instance)
+# Copy this file to your ha-sim config directory before first run:
+#   cp configuration.yaml.example /home/willem/docker_files/ha-sim/config/configuration.yaml
+#
+# This ensures HA runs on port 8124 instead of the default 8123
+# (which is used by your production HA instance).
+
+homeassistant:
+  name: Home Simulator
+  latitude: 52.0
+  longitude: 5.0
+  elevation: 0
+  unit_system: metric
+  time_zone: Europe/Amsterdam
+  country: NL
+  language: en
+
+# HTTP server on port 8124 (required to avoid conflict with production HA on 8123)
+http:
+  server_port: 8124
+
+# Enable default integrations
+# This loads a sensible set of default integrations including frontend
+default_config:
+
+# Logging configuration
+logger:
+  default: info
+
+# Example: Enable ramses_cc integration (configure via UI after first start)
+# ramses_cc:

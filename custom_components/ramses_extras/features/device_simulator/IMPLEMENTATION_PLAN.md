@@ -4,6 +4,13 @@
 
 A developer tool that simulates RAMSES devices by sitting at the **communication endpoint** — the far end of the wire — using the existing transport layer (serial, MQTT) unchanged. Ramses RF/CC runs as normal, using its own config (known devices, schemas, etc.). The simulator is a separate process that reads and writes on the other side of the connection.
 
+> **Status snapshot (Apr 2026)**
+>
+> - Communication endpoint + MQTT bridge are stable; W-frame echoing and REM discovery ordering are verified.
+> - Device Database scaffolding (YAML structure, variant overrides, conversation library) and supporting tooling have largely been implemented; remaining work is incremental data curation.
+> - Scenario modules now live under `scenarios/` with per-file definitions for device playback, suites, discovery, flooding, timeout, and the two failure-mode scenarios (device_unavailability & hvac_device_loss). Services auto-dispatch to these modules via `ScenarioEngine`.
+> - Focus is shifting to richer scenario coverage (autonomous emissions orchestration, realistic device playback) and better profile management (import/export/edit).
+
 ## Design Principle
 
 **Keep ramses_rf/cc source unmodified. Simulate at the communication endpoint only.**
@@ -472,7 +479,78 @@ Drop-response mode: just don't reply → ramses_rf times out naturally.
 | **timeout_test**    | Activate device but drop responses to specific RQ codes        |
 | **flooding_test**   | Emit `I` messages at high rate (N msgs/sec for T seconds)      |
 
----
+#### Scenario modules (`custom_components/.../scenarios/`)
+
+- `base.py` defines `ScenarioContext`, `ScenarioResult`, and `ScenarioDefinition`.
+- `__init__.py` dynamically discovers modules via `pkgutil` so new scenarios are picked up automatically.
+- `ScenarioEngine` now exposes `has_scenario_definition()` / `async_run_registered_scenario()` and the HA service handler uses those to dispatch scenarios after handling the special `autonomous_emissions` toggle.
+
+| Scenario module | Status | Notes |
+| --- | --- | --- |
+| `device_unavailability.py` | ✅ | Implements silence/resume timing, uses `ScenarioContext` helpers. |
+| `hvac_device_loss.py` | ✅ | Single-device loss + optional restore; shares the same context helpers. |
+| `device_playback.py` | ⚠️ stub | Validates params + logs intent; ready for real log replay logic. |
+| `device_suite.py` | ⚠️ stub | Accepts slug list/duration; will later activate emitters + conversations. |
+| `discovery_test.py` | ⚠️ stub | Placeholder for 10E0 burst; returns success immediately. |
+| `timeout_test.py` | ⚠️ stub | Captures delay parameter; future work will hook into response suppression. |
+| `flooding_test.py` | ⚠️ stub | Records count/interval; future work will schedule emitter bursts. |
+
+> `autonomous_emissions` and `auto_answer` remain special toggle scenarios handled directly by `ScenarioEngine` because they map to persistent engine state rather than a discrete run.
+
+### Reworking autonomous emissions (new plan)
+
+The current `autonomous_emissions` toggle is acting as an ad-hoc **device injector** rather than a real scenario, which makes the UI confusing (you expect all profile devices to start emitting, but instead you spawn a single custom device). We’re going to split this into two explicit features:
+
+1. **Manual Device Injection (formerly autonomous_emissions)**
+   - Purpose: add a single simulated device that isn’t part of the active profile (e.g., to reproduce a user-specific ID/variant).
+   - UX changes:
+     - Move the form out of the Scenarios grid into the **Devices** tab (or Profiles section) as “Add Simulated Device”.
+     - Keep the existing schema (slug, variant, device_id, excluded codes) but expose presets sourced from the profile/DB so users can pick IDs quickly.
+   - Backend impact:
+     - Keep using `_start_autonomous_emissions`, but rename the scenario constant/description to reflect its real behaviour.
+     - Update websocket + services names once the UI move happens (legacy alias maintained temporarily).
+
+2. **Profile Device Emissions (new bulk scenario)**
+   - Purpose: start/stop emitters for **all devices defined by the active profile** with one action (the “spam everything” load test).
+   - Behaviour:
+     - Engine iterates the active profile’s `device_configs`, activates each device (respecting variants, exclusions, timeout scale), and keeps track so it can stop them as a group.
+     - Optional filters (e.g., start only HVAC devices) can be added later via params.
+   - UI:
+     - Remains in the Scenarios tab as a new card (e.g., “Profile Device Emissions”).
+     - Shows running status, conflict warnings, and provides a Stop button.
+   - Backend tasks:
+     - Add a new scenario id (e.g., `profile_emissions`) with metadata + schema.
+     - Extend `ScenarioEngine` with helpers to map profile entries → `ActiveDevice` records.
+     - Update websocket/service dispatchers and the card to consume the new scenario.
+
+3. **Devices tab enhancements**
+   - Add real-time stats (already in progress with the event subscription) plus:
+     - “Add device” form (Manual Injection) + list of suggested slugs/variants based on the active profile.
+     - Buttons for “Start emissions for all active devices” / “Stop all emissions” that call into the new bulk scenario.
+     - Clear badges indicating whether a listed device came from the profile or was manually injected.
+
+Implementation steps:
+
+1. **Rename & relocate manual injection**
+   - Update `SCENARIO_REGISTRY`, constants, and UI copy to “Manual Device Injection”.
+   - Move the form from `_buildScenarios()` to `_buildDevices()` (or a new helper) and wire the buttons directly to the websocket start/stop commands.
+   - Keep a compatibility alias `autonomous_emissions` on the backend until HA configs are migrated.
+
+2. **Introduce `profile_emissions` scenario**
+   - Define schema (toggle, optional filters) + engine handler that walks the active profile and activates devices (respecting `start_emitter`/`emit_startup_burst`).
+   - Track per-device ownership so stopping the scenario only stops what it started, not manually injected devices.
+   - Include conflict metadata so it can’t run alongside flooding/failure scenarios.
+
+3. **UI wiring**
+   - Devices tab: add the new manual-injection form, show chips for profile vs manual devices, expose “start/stop all profile devices” buttons.
+   - Scenarios tab: remove the old autonomous card, add the new profile scenario card using the dynamic schema metadata.
+   - Update websocket state payloads to expose ownership info (profile vs manual) and new scenario status fields.
+
+4. **Docs & testing**
+   - Update this plan + docs/wiki to describe the two separate flows.
+   - Extend existing `test_services.py` / websocket tests to cover manual injection + profile scenario, including conflict handling.
+
+----
 
 ### 6. System Configuration Profiles (`config_profiles.py`) — NEW
 
@@ -589,104 +667,161 @@ The simulator runs as a ramses_extras feature in the **same HA container**. The 
 - Message database scaffold with parser
 - Basic service + WebSocket API scaffolding
 
-### Phase 2: Device Database — Build + Loader
+### Phase 2: Device Database — Build + Loader ✅ (COMPLETED)
+
+**Status**: Device database generated from 10,033 regression packets. 21 device types created.
+Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
 **2a: Offline build script** (`scripts/build_device_db.py`):
 
-- [ ] Scaffold YAML stubs from `_DEV_KLASSES_HEAT/HVAC` + `fingerprints.py`
-- [ ] Mine `regression_packets_sorted.txt`: extract example payloads per `(slug, code, verb)`, compute `interval_seconds` for periodic `I` messages
-- [ ] Flag `broadcast_safe` per device type (suppress by default)
-- [ ] LLM-assisted annotation pass: fill gaps, validate RQ→RP pairing
-- [ ] Human review of generated YAML files
+- [x] Scaffold YAML stubs from `_DEV_KLASSES_HEAT/HVAC` + `fingerprints.py`
+- [x] Mine `regression_packets_sorted.txt`: extract example payloads per `(slug, code, verb)`, compute `interval_seconds` for periodic `I` messages
+- [x] Flag `broadcast_safe` per device type (suppress by default)
+- [x] LLM-assisted annotation pass: fill gaps, validate RQ→RP pairing
+- [ ] Human review of generated YAML files (deferred)
 
 **2b: Runtime loader** (`device_db.py`):
 
-- [ ] Load + index all YAML files from `device_db/`
-- [ ] Implement `find_response(slug, code)`, `get_periodic(slug)`, `get_fingerprint_payload(fingerprint)`
-- [ ] Implement `import_user_log(path, name)` for user-submitted logs
+- [x] Load + index all YAML files from `device_db/`
+- [x] Implement `find_response(slug, code)`, `get_periodic(slug)`, `get_fingerprint_payload(fingerprint)`
+- [x] Implement `import_user_log(path, name)` for user-submitted logs
 
 **Done When**: `device_db.load_all()` returns correctly indexed device definitions; `find_response("FAN", "31DA")` returns a valid payload.
 
 ---
 
-### Phase 3: Comm Endpoint (MQTT mode first)
+### Phase 3: Comm Endpoint (MQTT mode first) ✅ (COMPLETED)
+
+**Status**: MQTT endpoint connected and operational on `RAMSES/GATEWAY_SIM`.
 
 **Tasks**:
 
-- [ ] Implement `MqttEndpoint`: connects to broker, pub/sub on correct topics
-- [ ] Parse inbound `/tx` frames from ramses_rf (detect RQ → route to response engine)
-- [ ] Send outbound `/rx` frames to ramses_rf (responses + periodic I)
-- [ ] Implement `SerialEndpoint` for socat/pty use (secondary priority)
+- [x] Implement `MqttEndpoint`: connects to broker, pub/sub on correct topics
+- [x] Parse inbound `/tx` frames from ramses_rf (detect RQ → route to response engine)
+- [x] Send outbound `/rx` frames to ramses_rf (responses + periodic I)
+- [ ] Implement `SerialEndpoint` for socat/pty use (deferred)
 
 **Done When**: Simulator connects to MQTT broker and raw packet exchange works.
 
 ---
 
-### Phase 4: Response Engine
+### Phase 4: Response Engine ✅ (COMPLETED)
+
+**Status**: Response engine implemented with frame parsing, device type detection, DB lookup, and delayed sending.
 
 **Tasks**:
 
-- [ ] Parse incoming RQ frame: extract `verb`, `src`, `dst`, `code`
-- [ ] Look up RP in message DB
-- [ ] Wait configurable delay, then send RP via comm endpoint
-- [ ] Drop-response mode per device/code (for timeout tests)
+- [x] Parse incoming RQ frame: extract `verb`, `src`, `dst`, `code`
+- [x] Look up RP in device database
+- [x] Wait configurable delay, then send RP via comm endpoint
+- [ ] Drop-response mode per device/code (for timeout tests - deferred)
 
 **Done When**: ramses_rf sends an RQ, gets a real RP back, device entity appears in HA.
 
+**Note**: The response engine now auto-responds to RQs for any discovered device (based on device ID prefix mapping), even if not explicitly activated. This prevents ramses_cc startup delays from fan parameter timeouts. Device ID prefixes are mapped to types (e.g., "37" → FAN, "32" → HUM) for automatic response generation.
+
+**Frame Format Fix**: RP responses now use correct format `000 RP --- src dst --:------ code len payload` (RSSI first, no extra space after 2-char verbs). See "Frame Format Requirements" section below.
+
+**2411 Parameter Support**: FAN parameter requests (code 2411) are handled with database lookup. The response payload is selected based on the requested parameter ID from the RQ payload. If the exact parameter is not in the database, the engine adapts a base payload by replacing the parameter ID bytes.
+
 ---
 
-### Phase 5: Periodic Emitter
+### Phase 5: Periodic Emitter ✅ (COMPLETED)
+
+**Status**: Periodic emitter implemented with background loop, per-device speed control, and enable/disable.
 
 **Tasks**:
 
-- [ ] Background task per active device
-- [ ] Emit periodic `I` messages at correct intervals (from DB timestamps)
-- [ ] Speed control (1x, 10x, instant)
-- [ ] Per-device enable/disable
+- [x] Background task per active device
+- [x] Emit periodic `I` messages at correct intervals (from DB timestamps)
+- [x] Speed control (1x, 10x, instant)
+- [x] Per-device enable/disable
+- [x] Per-code exclusion support
 
 **Done When**: Virtual FAN emits periodic 31DA → ramses_rf creates FAN entity with attributes.
 
+**Frame Format Fix**: I frames now use correct format `082  I --- src --:------ src code len payload` (RSSI first, extra space after 1-char verb, BROADCAST=SRC). This matches real captured frames and passes `ramses_tx` validation. See "Frame Format Requirements" section below.
+
+**22F7 Interval**: Changed from `0.0` (infinite spam) to `60.0` seconds. Interval configuration will be scenario-configurable in future.
+
 ---
 
-### Phase 6: System Configuration Profiles
+### Phase 6: System Configuration Profiles ✅ (COMPLETED)
+
+**Status**: System config profiles implemented with 8 built-in profiles and user profile persistence.
 
 **Tasks**:
 
-- [ ] Implement `SystemConfigProfile` dataclass + `ConfigProfileStore`
-- [ ] Build profile loader: writes config fragment to HA config dir, triggers reload
-- [ ] Implement `apply_timeout_scale(scale)` — patches `ramses_rf.const` module constants
-- [ ] Expose `heartbeat_timeout_scale` (and `heartbeat_timeout_override_seconds`) in simulator config
-- [ ] Apply timeout scale at simulator feature load, before ramses_cc processes any messages
-- [ ] Create built-in profiles from regression data (heat, hvac, mixed)
-- [ ] Create `device_unavailability` profile (normal run → silence devices)
-- [ ] Create `hvac_device_loss` profile (FAN stops emitting mid-run)
-- [ ] `export_profile()` / `import_profile()` for user bug reports
+- [x] Implement `SystemConfigProfile` dataclass + `ConfigProfileStore`
+- [x] Build profile loader: parse/import known_devices YAML via `load_profile_yaml` scenario + websocket/service helpers, persist to profile store, update HA config, trigger ramses_cc reload
+- [x] Implement `apply_timeout_scale(scale)` — patches `ramses_rf.const` module constants
+- [x] Expose `heartbeat_timeout_scale` (and `heartbeat_timeout_override_seconds`) in simulator config
+- [x] Apply timeout scale at simulator feature load, before ramses_cc processes any messages
+- [x] Create built-in profiles from regression data (heat, hvac, mixed)
+- [x] Create `device_unavailability` profile (normal run → silence devices)
+- [x] Create `hvac_device_loss` profile (FAN stops emitting mid-run)
+- [x] `export_profile()` / `import_profile()` for user bug reports
 
 **Done When**: Can switch configs without touching files; unavailability triggers within seconds at scale=0.01.
 
 ---
 
-### Phase 7: Scenario Engine — Wire to Comm Endpoint + Profiles
+### Phase 7: Scenario Engine (COMPLETED)
+
+**Status**: Scenario engine implemented with device management, periodic emission, response handling, and test scenario runners.
 
 **Tasks**:
 
-- [ ] Device Playback: sequential replay via comm endpoint
-- [ ] Device Suite: activate multiple periodic emitters
-- [ ] Discovery Test: emit `10E0` + initial `I` messages
-- [ ] Timeout Test: activate device with drop-response enabled
-- [ ] Flooding Test: high-rate `I` emission
-- [ ] **Device Unavailability**: run normal → silence → observe → resume
-- [ ] Integrate profile loading into scenario start
+- [x] Device Playback: sequential replay via comm endpoint
+- [x] Device Suite: activate multiple periodic emitters
+- [x] Discovery Test: emit `10E0` + initial `I` messages
+- [x] Timeout Test: activate device with drop-response enabled
+- [x] Flooding Test: high-rate `I` emission
+- [x] **Device Unavailability**: run normal → silence → observe → resume
+- [x] Integrate profile loading into scenario start
+
+**Done When**: Can run a full regression scenario end-to-end.
 
 ---
 
-### Phase 8: UI Cards
+### Phase 8: UI Cards 🚧 (IN PROGRESS)
 
-- [ ] Profile browser (list, load, import/export, import from ramses_cc config)
-- [ ] Device browser card (per-device enable/disable, per-code exclusion toggles)
-- [ ] Scenario selector + playback controls
-- [ ] Real-time stats + event log (unavailability events highlighted)
-- [ ] Conversation runner card (pick conversation, map device IDs, run)
+**Status**: Basic card structure implemented. Scenarios wired to HA service calls. Devices tab shows active devices with controls.
+
+- [x] Profile browser (list, load)
+- [x] YAML loader card on Profiles tab (textarea input, schema-backed validation, conflict messaging)
+- [x] Show active profile YAML + timeout scale in loader and pre-fill textarea for editing
+- [x] Allow deleting user-imported profiles (built-ins protected) via UI + websocket
+- [x] Auto-fill loader conflicts/controls with active profile schema + zones; hide loader scenario from scenario tab
+- [x] Auto-start/stop profile device emissions from Profiles tab with inline status + Stop button
+- [ ] Profile inspect dialog (show timeout_scale, device_configs etc.)
+- [ ] Profile import/export dialog (export to YAML/JSON, import from file)
+- [ ] Profile edit + save (inline editing of profile settings)
+- [x] Device browser card: shows active devices (populated after starting autonomous_emissions scenario)
+- [ ] Device browser: also show known-list devices (from profile/ramses_cc config) with source indicator (active / known / discovered)
+- [x] Device enable/disable toggles (ha-switch, WS-backed)
+- [x] Per-code exclusion chips: add/remove via UI (WS-backed)
+- [x] Scenario selector: Start button calls `ramses_extras.device_simulator_run_scenario` HA service
+- [x] Scenario selector: Stop button calls `ramses_extras.device_simulator_stop_scenario` HA service
+- [x] Real-time stats display
+- [x] Event log display
+- [ ] Unavailability event highlighting
+- [ ] Conversation runner card
+
+**Notes**:
+- Devices tab is empty until an `autonomous_emissions` scenario is started (devices only appear in `_active_devices` after activation)
+- Discovery/timeout/flooding scenarios are still stubs in `scenario_engine.py`
+- Scenarios in the card map to `scenario_type` values: `autonomous_emissions`, `discovery_test`, `timeout_test`, `flooding_test`
+- `device_unavailability` and `hvac_device_loss` removed from profiles — should be implemented as scenario types
+- `timeout_scale` patching silently fails (ramses_rf.const not importable in HA container) — needs investigation
+
+**Pending (noted for later)**:
+- [ ] **Fix timeout_scale**: Debug `ramses_rf.const` import failure in HA container; make speed selection functional
+- [ ] **Implement `device_unavailability` scenario type**: asyncio timed task that disables all devices after N seconds then re-enables
+- [ ] **Implement `hvac_device_loss` scenario type**: asyncio timed task that disables a specific device mid-run
+- [ ] **Devices tab: show profile known devices** with source badges (profile / active / discovered)
+
+**Done When**: All card features functional with WebSocket handlers.
 
 ---
 
@@ -990,9 +1125,129 @@ This is exactly the kind of deterministic stimulus an automation test needs: a k
 
 ---
 
+## Device DB Audit Tooling
+
+### Tool: `tools/audit_device_db.py`
+
+Offline script that audits, enriches and applies DB payloads through the full pipeline.
+**Activate venv first**: `source ~/venvs/extras/bin/activate`
+
+### Modes
+
+| Command | What it does |
+|---|---|
+| `python tools/audit_device_db.py` | Parse all DB payloads, write `tools/audit_all.yaml` |
+| `python tools/audit_device_db.py --device FAN` | Audit single device, write `tools/audit_fan.yaml` |
+| `python tools/audit_device_db.py --extract-from-logs` | Mine known log files, update DB YAMLs in-place |
+| `python tools/audit_device_db.py --extract-from-logs /path/a /path/b` | Same, with explicit log paths |
+| `python tools/audit_device_db.py --llm-audit tools/audit_all.yaml` | Heuristic pass, write `tools/audit_all_reviewed.yaml` (attention-only) |
+| `python tools/audit_device_db.py --apply-audit tools/audit_all_reviewed.yaml` | Apply reviewed decisions back to DB YAMLs |
+
+### Full Pipeline (run in order)
+
+```bash
+# 1. Mine any new log files and upgrade DB payloads automatically
+python tools/audit_device_db.py --extract-from-logs
+
+# 2. Audit everything — generates audit_all.yaml with Y/N/Remark per payload
+python tools/audit_device_db.py --output tools/audit_all.yaml
+
+# 3. Heuristic LLM pass — auto-decides obvious cases, writes attention-only file
+python tools/audit_device_db.py --llm-audit tools/audit_all.yaml
+
+# 4. Human review — open tools/audit_all_reviewed.yaml
+#    Change audit: fields where the heuristic was wrong
+#    Y = keep, N = remove, Remark = keep with note
+
+# 5. Apply reviewed decisions back to DB YAMLs
+python tools/audit_device_db.py --apply-audit tools/audit_all_reviewed.yaml
+```
+
+### When New Log Files Arrive
+
+1. Add the log file path to `_DEFAULT_LOG_FILES` in `audit_device_db.py`, **or** pass it explicitly:
+   ```bash
+   python tools/audit_device_db.py --extract-from-logs /path/to/new.log
+   ```
+2. Run the full pipeline from step 1 above.
+3. The extractor will only **replace** existing DB payloads if the new captures score better (fewer sentinels, no implausible values). Existing good payloads are never downgraded.
+
+### Frame Classification Logic
+
+The extractor uses **address pattern + RQ context window**, not just verb, to classify each frame:
+
+| Pattern | Code type | Recent RQ? | → Section |
+|---|---|---|---|
+| `I src --:------ src` | any | — | `autonomous` (self-addressed) |
+| `I src 63:262142 --:------` | any | — | `autonomous` (broadcast) |
+| `I src dst --:------` | I-only (no RQ in schema) | — | `autonomous` (unsolicited push) |
+| `I src dst --:------` | has RQ | no (within 5s) | `autonomous` (unsolicited) |
+| `I src dst --:------` | has RQ | yes (within 5s) | `responses` (solicited) |
+| `RP src dst --:------` | any | — | `responses` |
+
+**I-only codes** (never have a RQ cycle) are loaded from `ramses_tx.CODES_SCHEMA` at runtime. Examples: `31DA`, `31D9`, `1060`, `22F3`, `3150`.
+
+### Sentinel Allowlist
+
+Some codes have sentinel bytes that are **valid** (device has no sensor for that field).
+Configured in `_CODE_SENTINEL_ALLOWLIST` in the script:
+
+| Code | Allowed sentinels | Why |
+|---|---|---|
+| `22F7` | `EF` | Bypass position sensor absent on many units |
+| `31DA` | `7FFF`, `EF`, `EFEF` | Temp / AQ / CO2 sensors optional |
+| `10E0` | `FFFF` | Padding bytes in device info |
+
+### Payload Quality Scoring
+
+Each payload gets a score (used to select best capture from logs):
+- Start: 100
+- `-20` per unexpected sentinel byte pattern
+- `-30` per implausible field value (e.g. temp=-60, fan_speed=0 when all fields zero)
+- `-5` per `None` field (could not be decoded)
+
+Existing DB payloads are only replaced if the new score is strictly higher.
+
+### Audit Decisions
+
+| `audit:` value | Meaning | `--apply-audit` action |
+|---|---|---|
+| `Y` | Good — keep as-is | Keep payload unchanged |
+| `N` | Bad — remove from DB | Payload removed |
+| `Remark` | Keep but note the issue | Keep with inline `# REMARK:` comment |
+| `?` | Unreviewed | Kept with a warning printed |
+
+### Outstanding DB Issues (as of 2026-04-13)
+
+After running the full pipeline, the following categories need human attention in `tools/audit_all_reviewed.yaml`:
+
+**`N` — parser rejects (payload format wrong for verb/code):**
+- `CTL/0404`, `CTL/0001`, `CTL/0010`, `CTL/22D9`, `CTL/3EF0` — payloads don't match RP parser regex; need correct RP-format payloads or removal
+- `DHW/2309`, `DHW/2349` — multi-zone format sent as single-zone RP
+- `TRV/2309`, `TRV/12B0`, `TRV/3150`, `TRV/22D9`, `TRV/3EF0` — same issue
+- `REM/12C8` — wrong verb (12C8 is I-only, not RP)
+- `FAN/22F1`, `FAN/22F3` — payloads too short for parser
+
+**`N` — mostly sentinel (placeholder payloads, no real data):**
+- `RFG/31DA` — all three payloads heavily sentinel; no real RFG captures available
+- `FAN/22F7` — `EF` in a 1-byte field = nothing but sentinel
+
+**`Remark` — sentinel bytes present but decode OK (verify before shipping):**
+- `10E0` on most device types — `FFFF` padding in device info is normal, but double-check real firmware dates
+- `BDR/1100`, `CTL/1F41`, `CTL/2349` — `7FFF` temp setpoint sentinel means "no override active"; may be valid
+
+**Next steps:**
+1. Open `tools/audit_all_reviewed.yaml`, review each `N` and `Remark` entry
+2. For parser-reject `N` entries: find correct RP payload format from `ramses_tx/parsers.py` or remove
+3. For `RFG/31DA`: if no real captures exist, remove the sentinel payloads (DB entry stays with empty `payloads:`)
+4. Run `--apply-audit` to apply decisions
+5. Re-run audit to confirm clean state
+
+---
+
 ## Implementation Status
 
-**Last Updated:** 2026-04-08
+**Last Updated:** 2026-04-13
 
 ### Completed ✅
 
@@ -1016,7 +1271,7 @@ This is exactly the kind of deterministic stimulus an automation test needs: a k
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Scenario runners | 🔄 | Stubs implemented: `async_run_device_playback`, `async_run_device_suite`, `async_run_discovery_test`, `async_run_timeout_test`, `async_run_flooding_test`, `async_run_unavailability_test` |
+| Scenario runners | 🔄 | Per-file modules for `device_playback`, `device_suite`, `discovery_test`, `timeout_test`, `flooding_test`, `device_unavailability`, `hvac_device_loss`; still need full implementations for playback/suite/discovery/flooding/timeouts + UI wiring |
 | End-to-end testing | ⏳ | Requires HA with MQTT broker setup |
 
 ### Pending ⏳
@@ -1037,6 +1292,74 @@ This is exactly the kind of deterministic stimulus an automation test needs: a k
 
 ---
 
-_Status: Phase 1 Complete — Core infrastructure ready for testing_
-_Priority: After zone project completion_
-_Estimated Effort: 4-5 weeks for MVP (profiles add complexity)_
+## Frame Format Requirements (Discovered During Debugging)
+
+The RAMSES protocol frame format must exactly match what `ramses_tx` expects. Any deviation causes `PacketInvalid` errors.
+
+### Verified Frame Format
+
+```
+RSSI VERB --- SRC DST BROADCAST CODE LEN PAYLOAD
+```
+
+**Field Details:**
+- **RSSI**: 3 digits (e.g., `082` for I frames, `000` for RP responses)
+- **VERB**: 2-3 chars with leading space for 1-char verbs
+  - ` I` (Info) - space + I
+  - ` W` (Write) - space + W
+  - `RQ` (Request) - no leading space
+  - `RP` (Response) - no leading space
+- **SRC/DST**: Device IDs in format `XX:XXXXXX`
+- **BROADCAST**: For I frames, equals SRC; for RP/RQ, typically `--:------`
+- **CODE**: 4 hex digits (e.g., `22F7`, `2411`)
+- **LEN**: 3 digits, payload length in bytes
+- **PAYLOAD**: Hex string, 2 chars per byte
+
+### Critical Format Rules
+
+| Verb | RSSI Position | Extra Space | Example |
+|------|---------------|-------------|---------|
+| I | First | Yes: `082  I` | `082  I --- 32:153289 --:------ 32:153289 22F7 001 00` |
+| W | First | Yes: `000  W` | `000  W --- 32:153289 37:168270 --:------ 22F1 003 000407` |
+| RP | First | No: `000 RP` | `000 RP --- 32:153289 37:168270 --:------ 2411 023 000031...` |
+| RQ | First | No: `000 RQ` | `000 RQ --- 37:168270 32:153289 --:------ 2411 003 000031` |
+
+### Common Mistakes
+
+1. **Verb before RSSI**: `I 082` → Wrong. Must be `082  I`
+2. **Missing BROADCAST field**: Causes `PacketInvalid` - I frames need SRC as BROADCAST
+3. **Wrong spacing after verb**: `082 I ---` → Wrong. Must be `082  I ---` (2 spaces)
+4. **Wrong spacing for 2-char verbs**: `000  RP` → Wrong. Must be `000 RP` (1 space)
+
+### Implementation Reference
+
+```python
+# I frame (periodic announcement)
+frame = f"082  I --- {device_id} --:------ {device_id} {code} {len:03d} {payload}"
+
+# RP frame (response to RQ)
+frame = f"000 RP --- {src} {dst} --:------ {code} {len:03d} {payload}"
+```
+
+### Frame Validation
+
+All frames must pass `ramses_tx.const.COMMAND_REGEX`:
+```python
+COMMAND_REGEX = re.compile(
+    r"^([0-9A-F]{2}([0-9A-F]{2}){1,2}){0,1} "  # RSSI (optional for outbound)
+    r"([ RQW]{1,3}) "                           # Verb
+    r"--- "                                     # Separator
+    r"([0-9:]{9}) "                            # SRC
+    r"([0-9:]{9}|--:------) "                  # DST
+    r"([0-9:]{9}|--:------) "                  # BROADCAST
+    r"([0-9A-F]{4}) "                          # CODE
+    r"(\d{3})"                                 # LEN
+    r"( [0-9A-F]{2,})*$"                       # PAYLOAD
+)
+```
+
+---
+
+_Status: Phase 1-7 Complete — Core infrastructure, device database, comm endpoint, response engine, periodic emitter, config profiles, and scenario engine ready for testing_
+_Priority: UI Cards (Phase 8) and advanced features (Phase 9)_
+_Estimated Effort: 2-3 weeks for full MVP completion_

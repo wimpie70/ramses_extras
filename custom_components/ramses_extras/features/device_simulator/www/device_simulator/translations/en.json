@@ -1,0 +1,28 @@
+{
+  "ui": {
+    "card": {
+      "device_simulator": {
+        "title": "Device Simulator",
+        "tab_profiles": "Profiles",
+        "tab_devices": "Devices",
+        "tab_scenarios": "Scenarios",
+        "tab_events": "Events",
+        "no_profiles": "No profiles available",
+        "no_devices": "No active devices. Load a profile to start.",
+        "no_scenarios": "No scenarios available.",
+        "load": "Load",
+        "start": "Start",
+        "stop": "Stop",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "known": "known",
+        "excluded_codes": "Excluded codes:",
+        "speed": "Speed:",
+        "reload_rf": "Reload RF",
+        "auto_answer": "Auto Answer",
+        "conflict_warning": "Conflicts with:",
+        "reloading_notice": "ramses_cc is reloading — wait a few seconds before starting scenarios."
+      }
+    }
+  }
+}
