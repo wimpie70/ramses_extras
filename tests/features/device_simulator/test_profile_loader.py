@@ -446,7 +446,7 @@ class TestReloadRamsesCc:
                 mock_store.async_save = AsyncMock()
                 mock_store_class.return_value = mock_store
 
-                await _reload_ramses_cc(hass, "test_entry", True, {})
+                await _reload_ramses_cc(hass, "test_entry", True, {}, {})
 
                 hass.config_entries.async_unload.assert_called_once_with("test_entry")
                 hass.config_entries.async_setup.assert_called_once_with("test_entry")
@@ -460,7 +460,7 @@ class TestReloadRamsesCc:
         hass.config_entries.async_setup = AsyncMock()
         hass.data = {"ramses_extras": {}}
 
-        await _reload_ramses_cc(hass, "test_entry", False, {})
+        await _reload_ramses_cc(hass, "test_entry", False, {}, {})
 
         hass.config_entries.async_unload.assert_called_once_with("test_entry")
         hass.config_entries.async_setup.assert_called_once_with("test_entry")
@@ -650,14 +650,21 @@ class TestAsyncApplyProfile:
         mock_clear.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_async_apply_profile_skip_rf_hydrate(self, monkeypatch):
-        """Ensure env override is toggled when requested."""
+    async def test_async_apply_profile_skip_rf_hydrate(self):
+        """Ensure config_store remove_database flag is set when requested."""
 
-        monkeypatch.delenv("RAMSES_RF_SKIP_HYDRATE", raising=False)
         hass = MagicMock()
         engine = MagicMock()
         engine.async_stop_all = AsyncMock()
-        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        config_store = MagicMock()
+        config_store.set_remove_database = MagicMock()
+        config_store.async_save_state = AsyncMock()
+        hass.data = {
+            "ramses_extras": {
+                "device_simulator_engine": engine,
+                "device_simulator_config_store": config_store,
+            }
+        }
 
         profile = MagicMock()
         profile.device_configs = {
@@ -677,7 +684,10 @@ class TestAsyncApplyProfile:
                 skip_rf_hydrate=True,
             )
 
-        assert os.environ.get("RAMSES_RF_SKIP_HYDRATE") == "1"
+        config_store.set_remove_database.assert_called_once_with(True)
+        config_store.async_save_state.assert_awaited_once()
+
+        config_store.reset_mock()
 
         with patch(
             "custom_components.ramses_extras.features.device_simulator.profile_loader._update_known_list_and_reload",
@@ -690,4 +700,5 @@ class TestAsyncApplyProfile:
                 skip_rf_hydrate=False,
             )
 
-        assert "RAMSES_RF_SKIP_HYDRATE" not in os.environ
+        config_store.set_remove_database.assert_called_once_with(False)
+        config_store.async_save_state.assert_awaited_once()

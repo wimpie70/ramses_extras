@@ -2225,6 +2225,19 @@ class TestScenarioEngineRespondToRq:
         db.find_response = MagicMock(return_value=resp)
 
         engine = ScenarioEngine(hass, endpoint, db)
+        # Add device to active devices so _respond_to_rq will process it
+        device = ActiveDevice(
+            device_id="37:168270",
+            slug="FAN",
+            variant_id="default",
+            excluded_codes=[],
+            suppress_autonomous=False,
+            suppress_responses=False,
+            enabled=True,
+            origin="test",
+        )
+        engine._active_devices["37:168270"] = device
+
         # Should handle error gracefully
         await engine._respond_to_rq("32:150000", "37:168270", "1FC9", "")
 

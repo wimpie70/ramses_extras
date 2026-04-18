@@ -9,11 +9,15 @@ from types import MappingProxyType
 from typing import Any, cast
 
 import yaml
-from custom_components.ramses_cc.const import CONF_SCHEMA
 from homeassistant.core import HomeAssistant
 
 from .const import LOGGER, SIMULATOR_HGI_ID
 from .system_config import SystemConfigProfile, apply_timeout_scale
+
+try:
+    from custom_components.ramses_cc.const import CONF_SCHEMA
+except ModuleNotFoundError:
+    CONF_SCHEMA = "schema"  # Fallback key
 
 RAMSES_CC_STORAGE_KEY = "ramses_cc"
 RAMSES_CC_STORAGE_VERSION = 1
