@@ -79,10 +79,8 @@ Log errors if not configured.
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 
 - pre releases:
-- fix 2411 flow (no RP)
 - fx issue #73
 - fix param detection on startup (send RQ)
-- fix pytest version -> 9.0.3
 - check deployment helpers
 - little doc how to install/use the sim (extra reload browser needed)
 - bump
