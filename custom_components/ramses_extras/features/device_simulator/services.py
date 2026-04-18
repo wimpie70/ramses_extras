@@ -29,10 +29,20 @@ from .const import (
     SCENARIO_DEVICE_UNAVAILABILITY,
     SCENARIO_DISCOVERY_TEST,
     SCENARIO_FLOODING_TEST,
+    SCENARIO_HVAC_DEVICE_LOSS,
+    SCENARIO_LOAD_PROFILE_YAML,
+    SCENARIO_MANUAL_DEVICE_INJECTION,
+    SCENARIO_PROFILE_EMISSIONS,
     SCENARIO_RUN_CONVERSATION,
     SCENARIO_TIMEOUT_TEST,
 )
+from .profile_loader import async_apply_profile, build_profile_from_yaml
 from .scenario_engine import ActiveDevice, ScenarioEngine
+from .system_config import (
+    SIM_DEVICE_ID,
+    ConfigProfileStore,
+    SystemConfigProfile,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -59,9 +69,13 @@ SCHEMA_RUN_SCENARIO = vol.Schema(
     {
         vol.Required("scenario_type"): vol.In(
             [
+                SCENARIO_MANUAL_DEVICE_INJECTION,
+                SCENARIO_LOAD_PROFILE_YAML,
+                SCENARIO_PROFILE_EMISSIONS,
                 SCENARIO_DEVICE_PLAYBACK,
                 SCENARIO_DEVICE_SUITE,
                 SCENARIO_DEVICE_UNAVAILABILITY,
+                SCENARIO_HVAC_DEVICE_LOSS,
                 SCENARIO_DISCOVERY_TEST,
                 SCENARIO_FLOODING_TEST,
                 SCENARIO_TIMEOUT_TEST,
@@ -74,6 +88,7 @@ SCHEMA_RUN_SCENARIO = vol.Schema(
 SCHEMA_STOP_SCENARIO = vol.Schema(
     {
         vol.Required("scenario_id"): str,
+        vol.Optional("device_id"): str,  # For stopping specific device emissions
     }
 )
 
@@ -121,6 +136,18 @@ def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
     return cast(ScenarioEngine | None, registry.get("device_simulator_engine"))
 
 
+def _get_config_store(hass: HomeAssistant) -> ConfigProfileStore | None:
+    """Get the config profile store from hass data."""
+    from typing import cast
+
+    from .system_config import ConfigProfileStore
+
+    registry = hass.data.get("ramses_extras", {})
+    return cast(
+        ConfigProfileStore | None, registry.get("device_simulator_config_store")
+    )
+
+
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Set up Device Simulator services."""
 
@@ -152,40 +179,132 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         scenario_type = call.data["scenario_type"]
         params = call.data.get("params", {})
 
-        if scenario_type == SCENARIO_DEVICE_PLAYBACK:
-            # Playback device messages from packet log
-            log_file = params.get("log_file")
-            if not log_file:
-                return {"success": False, "error": "Missing log_file param"}
-            return await engine.async_run_device_playback(log_file, params)
+        if scenario_type == SCENARIO_MANUAL_DEVICE_INJECTION:
+            # Start autonomous I frame emissions (e.g., for device discovery)
+            device_id = params.get("device_id", SIM_DEVICE_ID["FAN"])
+            device_type = params.get("device_type", "FAN")
+            variant_id = params.get("variant_id", "default")
+            # Default to silencing 1FC9 unless explicitly requested
+            excluded_codes = params.get("excluded_codes")
+            if excluded_codes is None:
+                excluded_codes = ["1FC9"]
 
-        if scenario_type == SCENARIO_DEVICE_SUITE:
-            # Run a suite of standard device tests
-            slugs = params.get("slugs", ["FAN", "REM", "CO2"])
-            duration = params.get("duration", 300)
-            return await engine.async_run_device_suite(slugs, duration)
+            device = ActiveDevice(
+                device_id=device_id,
+                slug=device_type,
+                variant_id=variant_id,
+                excluded_codes=excluded_codes,
+                suppress_autonomous=False,  # Enable autonomous
+                suppress_responses=False,
+                enabled=True,
+                origin="manual",
+            )
+            await engine.async_activate_device(device)
+            return {
+                "success": True,
+                "scenario_id": SCENARIO_MANUAL_DEVICE_INJECTION,
+                "device_id": device_id,
+                "message": f"Manual device injection started for {device_id}",
+            }
 
-        if scenario_type == SCENARIO_DISCOVERY_TEST:
-            # Test device discovery by simulating new devices
-            return await engine.async_run_discovery_test(params)
+        if scenario_type == SCENARIO_LOAD_PROFILE_YAML:
+            config_store = _get_config_store(hass)
+            if not config_store:
+                return {"success": False, "error": "Profile store not available"}
 
-        if scenario_type == SCENARIO_TIMEOUT_TEST:
-            # Test timeout handling with slow responses
-            delay = params.get("delay", 10.0)
-            return await engine.async_run_timeout_test(delay)
+            yaml_blob = params.get("profile_yaml")
+            if not yaml_blob:
+                return {"success": False, "error": "profile_yaml param is required"}
 
-        if scenario_type == SCENARIO_FLOODING_TEST:
-            # Test flooding/burst message handling
-            count = params.get("count", 100)
-            interval = params.get("interval", 0.1)
-            return await engine.async_run_flooding_test(count, interval)
+            profile_name = (params.get("profile_name") or "imported_profile").strip()
+            if not profile_name:
+                profile_name = "imported_profile"
 
-        if scenario_type == SCENARIO_DEVICE_UNAVAILABILITY:
-            # Test device going offline
-            device_id = params.get("device_id")
-            if not device_id:
-                return {"success": False, "error": "Missing device_id param"}
-            return await engine.async_run_unavailability_test(device_id)
+            try:
+                profile = build_profile_from_yaml(profile_name, yaml_blob)
+            except ValueError as err:
+                return {"success": False, "error": str(err)}
+
+            config_store.save_profile(profile)
+            config_store.set_active_profile(profile.name)
+            await config_store.async_save_state()
+
+            ra = hass.data.setdefault("ramses_extras", {})
+            ra["device_simulator_active_profile"] = profile.name
+
+            try:
+                result = await async_apply_profile(
+                    hass,
+                    profile_name=profile.name,
+                    profile=profile,
+                    reload_ramses_cc=params.get("reload_ramses", True),
+                    speed=params.get("speed"),
+                    auto_start_devices=False,
+                )
+            except Exception as err:  # noqa: BLE001
+                return {"success": False, "error": str(err)}
+
+            result.setdefault("started_devices", 0)
+            result.setdefault(
+                "message",
+                "Profile applied. Use the profile emissions scenario to start devices.",
+            )
+
+            return result
+
+        if scenario_type == SCENARIO_PROFILE_EMISSIONS:
+            config_store = _get_config_store(hass)
+            if not config_store:
+                return {"success": False, "error": "Profile store not available"}
+            active_profile_name = config_store.get_active_profile()
+            if not active_profile_name:
+                return {
+                    "success": False,
+                    "error": "Load a simulator profile before starting "
+                    "profile emissions",
+                }
+            active_profile: SystemConfigProfile | None = config_store.get_profile(
+                active_profile_name
+            )
+            if not active_profile:
+                return {
+                    "success": False,
+                    "error": "Active profile is missing or invalid",
+                }
+            if engine.is_scenario_running(SCENARIO_PROFILE_EMISSIONS):
+                return {
+                    "success": False,
+                    "error": "Profile device emissions are already running",
+                }
+            conflicts = engine.check_scenario_conflicts(SCENARIO_PROFILE_EMISSIONS)
+            if conflicts:
+                return {
+                    "success": False,
+                    "error": "Conflicts with running scenarios: "
+                    + ", ".join(conflicts),
+                }
+            profile_devices = engine.build_profile_devices(active_profile)
+            if not profile_devices:
+                return {
+                    "success": False,
+                    "error": "Active profile does not define any devices",
+                }
+            started_ids: list[str] = []
+            for device in profile_devices:
+                await engine.async_activate_device(device)
+                started_ids.append(device.device_id)
+            engine.set_running_metadata(
+                SCENARIO_PROFILE_EMISSIONS,
+                {"profile": active_profile_name, "devices": started_ids},
+            )
+            return {
+                "success": True,
+                "scenario_id": SCENARIO_PROFILE_EMISSIONS,
+                "message": f"Started profile devices ({len(started_ids)})",
+            }
+
+        if engine.has_scenario_definition(scenario_type):
+            return await engine.async_run_registered_scenario(scenario_type, params)
 
         return {"success": False, "error": f"Unknown scenario type: {scenario_type}"}
 
@@ -195,7 +314,41 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if not engine:
             return {"success": False, "error": "Engine not available"}
 
-        # TODO: Track scenarios by ID
+        scenario_id = call.data.get("scenario_id", "")
+        device_id = call.data.get("device_id")
+
+        # Handle autonomous_emissions scenario stop
+        if scenario_id == SCENARIO_MANUAL_DEVICE_INJECTION or device_id:
+            target_id = device_id
+            if target_id and not engine.is_manual_device(target_id):
+                return {
+                    "success": False,
+                    "error": f"Device '{target_id}' is not a manual injection",
+                }
+            if target_id:
+                await engine.async_stop_manual_devices(target_id)
+                return {
+                    "success": True,
+                    "message": f"Manual device injection stopped for {target_id}",
+                }
+            await engine.async_stop_manual_devices()
+            return {
+                "success": True,
+                "message": "Manual device injections stopped",
+            }
+
+        if scenario_id == SCENARIO_PROFILE_EMISSIONS:
+            await engine.async_stop_profile_devices()
+            engine.clear_running_metadata(SCENARIO_PROFILE_EMISSIONS)
+            return {
+                "success": True,
+                "message": "Profile device emissions stopped",
+            }
+
+        if scenario_id:
+            await engine.async_cancel_scenario(scenario_id)
+            return {"success": True, "message": f"Scenario '{scenario_id}' cancelled"}
+
         return {"success": True}
 
     async def handle_activate_device(call: ServiceCall) -> dict[str, Any]:

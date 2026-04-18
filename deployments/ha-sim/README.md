@@ -11,16 +11,24 @@ without affecting real hardware.
 mkdir -p /home/willem/docker_files/ha-sim/config
 ```
 
-### 2. Copy docker-compose.yml
+### 2. Copy docker-compose.yml and configuration
 
 ```bash
 cp deployments/ha-sim/docker-compose.yml /home/willem/docker_files/ha-sim/
+cp deployments/ha-sim/configuration.yaml.example /home/willem/docker_files/ha-sim/config/configuration.yaml
 ```
 
-Or use directly from the repo (the `docker compose` command accepts a `-f` flag):
+**Important:** The `configuration.yaml` sets the HTTP port to 8124. Without this, HA defaults to 8123 and conflicts with your production HA.
+
+Or use directly from the repo:
 
 ```bash
-docker compose -f /home/willem/dev/ramses_extras/deployments/ha-sim/docker-compose.yml up -d
+# Copy both files from repo
+cp /home/willem/dev/ramses_extras/deployments/ha-sim/docker-compose.yml /home/willem/docker_files/ha-sim/
+cp /home/willem/dev/ramses_extras/deployments/ha-sim/configuration.yaml.example /home/willem/docker_files/ha-sim/config/configuration.yaml
+
+# Start the container
+docker compose -f /home/willem/docker_files/ha-sim/docker-compose.yml up -d
 ```
 
 ### 3. Deploy components
@@ -48,6 +56,6 @@ HGI ID (e.g. `18:001234`) so it doesn't conflict with production.
 ## Notes
 
 - Uses `network_mode: host` so it can reach the MQTT broker at `localhost:1883`
-- HA runs internally on port 8123, mapped to host port 8124
+- HA runs on port 8124 (configured in `configuration.yaml` to avoid conflict with production HA on 8123)
 - Config is stored in `/home/willem/docker_files/ha-sim/config/`
 - The `ramses/simulator/*` MQTT topics are used exclusively by the simulator

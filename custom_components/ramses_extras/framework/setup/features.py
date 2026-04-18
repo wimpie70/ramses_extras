@@ -196,6 +196,19 @@ async def create_and_start_feature_instances(
         prefer_hass_data=False,
     )
 
+    if "device_simulator" not in enabled_feature_names:
+        try:
+            from ...features.device_simulator import (
+                async_restore_ramses_cc_gateway_topic,
+            )
+        except ImportError:
+            async_restore_ramses_cc_gateway_topic = None  # type: ignore[assignment]
+        if callable(async_restore_ramses_cc_gateway_topic):
+            try:
+                await async_restore_ramses_cc_gateway_topic(hass)
+            except Exception as err:  # pragma: no cover - defensive
+                _LOGGER.warning("Failed to restore gateway topic: %s", err)
+
     automation_managers_to_start: list[Any] = []
     cards_pending_features: set[str] = set()
 
@@ -243,8 +256,12 @@ async def create_and_start_feature_instances(
     )
 
     for feature_name in enabled_feature_names:
-        if feature_name in features:
+        # Always recreate device_simulator to avoid stale handler state
+        if feature_name in features and feature_name != "device_simulator":
             continue
+        if feature_name == "device_simulator" and feature_name in features:
+            _LOGGER.info("Recreating device_simulator feature to ensure fresh state")
+            del features[feature_name]
         try:
             feature_module_name = (
                 f"custom_components.ramses_extras.features.{feature_name}"

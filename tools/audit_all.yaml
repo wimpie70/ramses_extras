@@ -1,0 +1,1606 @@
+- device: BDR
+  section: autonomous
+  code: 3B00
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00C8
+      quality: ok
+      parsed:
+        actuator_sync: true
+      audit: Y
+- device: BDR
+  section: autonomous
+  code: '1100'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00180400007FFF01
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        cycle_rate: 6
+        min_on_time: 1.0
+        min_off_time: 0.0
+        _unknown_0: '00'
+        proportional_band_width: null
+        _unknown_1: '01'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 00180404007FFF01
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        cycle_rate: 6
+        min_on_time: 1.0
+        min_off_time: 1.0
+        _unknown_0: '00'
+        proportional_band_width: null
+        _unknown_1: '01'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000C1400007FFF01
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        cycle_rate: 3
+        min_on_time: 5.0
+        min_off_time: 0.0
+        _unknown_0: '00'
+        proportional_band_width: null
+        _unknown_1: '01'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: BDR
+  section: autonomous
+  code: 3EF0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0000FF
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        modulation_level: 0.0
+        _flags_2: FF
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CO2
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0031D982041D0031DA82041D
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '31D9', '32:132125'], ['00', '31DA', '32:132125']]"
+      audit: Y
+    - payload: 0031D9825FE10031DA825FE1
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '31D9', '32:155617'], ['00', '31DA', '32:155617']]"
+      audit: Y
+    - payload: 0022F1832EF46C10E0832EF4001FC9832EF4
+      quality: ok
+      sentinels:
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        phase: offer
+        bindings: "[['00', '22F1', '32:208628'], ['6C', '10E0', '32:208628'],
+          ['00', '1FC9', '32:208628']]"
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CO2
+  section: autonomous
+  code: 31E0
+  verb: I
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: 0000000001001E00
+      quality: ok
+      parsed:
+        flags: '00'
+        vent_demand: 0.0
+        _unknown_3: 0001001E00
+      audit: Y
+- device: CO2
+  section: autonomous
+  code: 042F
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000000100F00105050
+      quality: ok
+      parsed:
+        counter_1: '0x0000'
+        counter_3: '0x100F'
+        counter_5: '0x0010'
+        unknown_7: '0x5050'
+      audit: Y
+    - payload: 00050E0B0C00111470
+      quality: ok
+      parsed:
+        counter_1: '0x050E'
+        counter_3: '0x0B0C'
+        counter_5: '0x0011'
+        unknown_7: '0x1470'
+      audit: Y
+- device: CO2
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000001C8510D0167FEFFFFFFFFFF0B0207E3564D532D3135434D313700000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '67'
+        manufacturer_sub_id: C8
+        product_id: '51'
+        date_1: '2019-02-11'
+        date_2: '0000-00-00'
+        description: VMS-15CM17
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001C8A2050367FEFFFFFFFFFF1D0807E6564D442D3135524D5338362D3200000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '67'
+        manufacturer_sub_id: C8
+        product_id: A2
+        date_1: '2022-08-29'
+        date_2: '0000-00-00'
+        description: VMD-15RMS86-2
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001C85E0B0567FFFFFFFFFFFFFFFFFFFF564D442D3135525053373500
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '67'
+        manufacturer_sub_id: C8
+        product_id: 5E
+        date_1: '0000-00-00'
+        date_2: '0000-00-00'
+        description: VMD-15RPS75
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CO2
+  section: responses
+  code: 22F1
+  verb: RP
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: '000107'
+      quality: ok
+      parsed:
+        fan_mode: low
+        _scheme: orcon
+        _mode_idx: '01'
+        _mode_max: '07'
+      audit: Y
+    - payload: '000307'
+      quality: ok
+      parsed:
+        fan_mode: high
+        _scheme: orcon
+        _mode_idx: '03'
+        _mode_max: '07'
+      audit: Y
+- device: CO2
+  section: responses
+  code: '2411'
+  verb: RP
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: 0000077F00000000000000000000000003000000018A00
+      quality: ok
+      parsed:
+        parameter: '07'
+        description: Unknown
+        value: 0
+        _value_06: 7F00
+        min_value: 0
+        max_value: 3
+        precision: 1
+        _value_42: 8A00
+      audit: Y
+    - payload: 0000881510000002BC000001900000076C000000018A33
+      quality: ok
+      parsed:
+        parameter: '88'
+        description: Unknown
+        value: 700
+        _value_06: '1510'
+        min_value: 400
+        max_value: 1900
+        precision: 1
+        _value_42: 8A33
+      audit: Y
+    - payload: 0000DA7F00000000000000000000000003000000018A00
+      quality: ok
+      parsed:
+        parameter: DA
+        description: Unknown
+        value: 0
+        _value_06: 7F00
+        min_value: 0
+        max_value: 3
+        precision: 1
+        _value_42: 8A00
+      audit: Y
+- device: CO2
+  section: responses
+  code: 31DA
+  verb: RP
+  payloads:
+    - payload: 00EF007FFF2B27060E0848089605F9F000445800000000EFEF02D2154400
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        hvac_id: '00'
+        exhaust_fan_speed: 0.0
+        fan_info: auto
+        _unknown_fan_info_flags: '[0, 1, 0]'
+        air_quality: null
+        co2_level: null
+        indoor_humidity: 0.43
+        outdoor_humidity: 0.39
+        exhaust_temp: 15.5
+        supply_temp: 21.2
+        indoor_temp: 21.98
+        outdoor_temp: 15.29
+        speed_capabilities: "['off', 'low_med_high', 'timer', 'boost']"
+        bypass_position: 0.34
+        supply_fan_speed: 0.0
+        remaining_mins: 0
+        post_heat: null
+        pre_heat: null
+        supply_flow: 7.22
+        exhaust_flow: 54.44
+        _extra: '00'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: '2309'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0005DC0101F40205DC
+      quality: ok
+      parsed:
+        zone_idx: '00'
+        setpoint: 15.0
+      audit: Y
+    - payload: '030514'
+      quality: ok
+      parsed:
+        zone_idx: '03'
+        setpoint: 13.0
+      audit: Y
+    - payload: 01070802079E03073A
+      quality: ok
+      parsed:
+        zone_idx: '01'
+        setpoint: 18.0
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 072309054E29
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['07', '2309', '01:085545']]"
+      audit: Y
+    - payload: 08230906368E
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['08', '2309', '01:145038']]"
+      audit: Y
+    - payload: 0010A006368E
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '10A0', '01:145038']]"
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 0008
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FA00
+      quality: ok
+      parsed:
+        domain_id: FA
+        relay_demand: 0.0
+      audit: Y
+    - payload: '0204'
+      quality: ok
+      parsed:
+        zone_idx: '02'
+        relay_demand: 0.02
+      audit: Y
+    - payload: F914
+      quality: ok
+      parsed:
+        domain_id: F9
+        relay_demand: 0.1
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 1F09
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FF091A
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        remaining_seconds: 233.0
+        _next_sync: '17:51:06'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: FF04B5
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        remaining_seconds: 120.5
+        _next_sync: '17:49:14'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: FF086B
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        remaining_seconds: 215.5
+        _next_sync: '17:50:49'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 1F41
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000000FFFFFF
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        dhw_idx: '00'
+        mode: follow_schedule
+        active: false
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 0009
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FC00FFF900FF
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        domain_id: FC
+        failsafe_enabled: false
+        unknown_0: FF
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 10A0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0013880003E8
+      quality: ok
+      parsed:
+        dhw_idx: '00'
+        setpoint: 50.0
+        overrun: 0
+        differential: 10.0
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 3B00
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FCC8
+      quality: ok
+      parsed:
+        domain_id: FC
+        actuator_sync: true
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: '2349'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0007D000FFFFFF
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        zone_idx: '00'
+        mode: follow_schedule
+        setpoint: 20.0
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 01079E00FFFFFF
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        zone_idx: '01'
+        mode: follow_schedule
+        setpoint: 19.5
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 03073A00FFFFFF
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        zone_idx: '03'
+        mode: follow_schedule
+        setpoint: 18.5
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: '0005'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0000FF01
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        zone_type: '00'
+        zone_mask: '[1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]'
+        zone_class: heating_zone
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 0004FF01
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        zone_type: '04'
+        zone_mask: '[1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]'
+        zone_class: heating_zone
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 00080400
+      quality: ok
+      parsed:
+        zone_type: 08
+        zone_mask: '[0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]'
+        zone_class: radiator_valve
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 0418
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000000B0060402000000BC955AB2FFFFFF70020F131A
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        log_idx: '00'
+        log_entry: ('21-11-25T11:21:37', 'fault', 'comms_fault', 'setpoint', '04', '03:201498',
+          'B0', '0000', 'FFFF7002')
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 004000B0060402000000BC95717AFFFFFF70020F131A
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        log_idx: '00'
+        log_entry: ('21-11-25T14:11:53', 'restore', 'comms_fault', 'setpoint', '04',
+          '03:201498', 'B0', '0000', 'FFFF7002')
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 004006B0061C04000000C39500CDFFFFFF700037F3CD
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        log_idx: '06'
+        log_entry: ('21-12-07T00:06:27', 'restore', 'comms_fault', 'actuator', '1C',
+          '13:259021', 'B0', '0000', 'FFFF7000')
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 2E04
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 022D151B0A07E301
+      quality: ok
+      parsed:
+        system_mode: eco_boost
+        until: '2019-10-27T21:45:00'
+      audit: Y
+    - payload: 0300001D0A07E301
+      quality: ok
+      parsed:
+        system_mode: away
+        until: '2019-10-29T00:00:00'
+      audit: Y
+    - payload: 040000020B07E301
+      quality: ok
+      parsed:
+        system_mode: day_off
+        until: '2019-11-02T00:00:00'
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 000A
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 011001F40DAC
+      quality: ok
+      parsed:
+        zone_idx: '01'
+        min_temp: 5.0
+        max_temp: 35.0
+        local_override: true
+        openwindow_function: true
+        multiroom_mode: false
+        _unknown_bitmap: '0b00010000'
+      audit: Y
+    - payload: 021001F40DAC
+      quality: ok
+      parsed:
+        zone_idx: '02'
+        min_temp: 5.0
+        max_temp: 35.0
+        local_override: true
+        openwindow_function: true
+        multiroom_mode: false
+        _unknown_bitmap: '0b00010000'
+      audit: Y
+    - payload: 001001F40DAC
+      quality: ok
+      parsed:
+        zone_idx: '00'
+        min_temp: 5.0
+        max_temp: 35.0
+        local_override: true
+        openwindow_function: true
+        multiroom_mode: false
+        _unknown_bitmap: '0b00010000'
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: '1100'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FC180400007FFF01
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        domain_id: FC
+        cycle_rate: 6
+        min_on_time: 1.0
+        min_off_time: 0.0
+        _unknown_0: '00'
+        proportional_band_width: null
+        _unknown_1: '01'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: FC0C1400007FFF01
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        domain_id: FC
+        cycle_rate: 3
+        min_on_time: 5.0
+        min_off_time: 0.0
+        _unknown_0: '00'
+        proportional_band_width: null
+        _unknown_1: '01'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 30C9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0007BB
+      quality: ok
+      parsed:
+        zone_idx: '00'
+        temperature: 19.79
+      audit: Y
+    - payload: 0107DC
+      quality: ok
+      parsed:
+        zone_idx: '01'
+        temperature: 20.12
+      audit: Y
+    - payload: 0307B2
+      quality: ok
+      parsed:
+        zone_idx: '03'
+        temperature: 19.7
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: '0004'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0000434850204F666669636500000000000000000000
+      quality: ok
+      parsed:
+        zone_idx: '00'
+        name: CHP Office
+      audit: Y
+    - payload: 01004C6F756E67650000000000000000000000000000
+      quality: ok
+      parsed:
+        zone_idx: '01'
+        name: Lounge
+      audit: Y
+    - payload: 020048616C6C77617900000000000000000000000000
+      quality: ok
+      parsed:
+        zone_idx: '02'
+        name: Hallway
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 12B0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: '000000'
+      quality: ok
+      parsed:
+        zone_idx: '00'
+        window_open: false
+      audit: Y
+    - payload: '010000'
+      quality: ok
+      parsed:
+        zone_idx: '01'
+        window_open: false
+      audit: Y
+    - payload: '030000'
+      quality: ok
+      parsed:
+        zone_idx: '03'
+        window_open: false
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 313F
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00FC081CCF0D0307E6
+      quality: ok
+      parsed:
+        datetime: '2022-03-13T15:28:08'
+        is_dst: null
+        _unknown_0: FC
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: '3150'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FC0A
+      quality: ok
+      parsed:
+        domain_id: FC
+        heat_demand: 0.05
+      audit: Y
+    - payload: FC14
+      quality: ok
+      parsed:
+        domain_id: FC
+        heat_demand: 0.1
+      audit: Y
+    - payload: FCC8
+      quality: ok
+      parsed:
+        domain_id: FC
+        heat_demand: 1.0
+      audit: Y
+- device: CTL
+  section: responses
+  code: 10E0
+  verb: RP
+  notes: Device capabilities
+  payloads:
+    - payload: 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '01'
+        manufacturer_sub_id: '00'
+        product_id: 1B
+        date_1: '2019-04-11'
+        date_2: '0000-00-00'
+        description: CVE-RF
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: DHW
+  section: responses
+  code: '2349'
+  verb: RP
+  notes: DHW parameters
+  payloads:
+    - payload: 0007D000FFFFFF
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        mode: follow_schedule
+        setpoint: 20.0
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: FAN
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0031E096599B00129896599B002E1096599B0110E096599B001FC996599B
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '31E0', '37:154011'], ['00', '1298', '37:154011'],
+          ['00', '2E10', '37:154011'], ['01', '10E0', '37:154011'], ['00',
+          '1FC9', '37:154011']]"
+      audit: Y
+    - payload: 0022F1965FE10022F3965FE16710E0965FE1001FC9965FE1
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '22F1', '37:155617'], ['00', '22F3', '37:155617'],
+          ['67', '10E0', '37:155617'], ['00', '1FC9', '37:155617']]"
+      audit: Y
+- device: FAN
+  section: autonomous
+  code: 12C8
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00A740
+      quality: ok
+      parsed:
+        air_quality: 0.835
+        air_quality_basis: rel_humidity
+      audit: Y
+    - payload: 007A40
+      quality: ok
+      parsed:
+        air_quality: 0.61
+        air_quality_basis: rel_humidity
+      audit: Y
+    - payload: 009540
+      quality: ok
+      parsed:
+        air_quality: 0.745
+        air_quality_basis: rel_humidity
+      audit: Y
+- device: FAN
+  section: autonomous
+  code: '2411'
+  verb: I
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: 0000312610000000B400000000000007080000001E70
+      quality: ok
+      parsed:
+        parameter: '31'
+        description: Time to change filter (days)
+        value: 180
+        _value_06: '2610'
+        min_value: 0
+        max_value: 1800
+        precision: 30
+        _value_42: '70'
+      audit: Y
+    - payload: 0000312E100000009600000000000007080000001EA62C
+      quality: ok
+      parsed:
+        parameter: '31'
+        description: Time to change filter (days)
+        value: 150
+        _value_06: 2E10
+        min_value: 0
+        max_value: 1800
+        precision: 30
+        _value_42: A62C
+      audit: Y
+    - payload: 0000312E10000000B400000000000007080000001EA62C
+      quality: ok
+      parsed:
+        parameter: '31'
+        description: Time to change filter (days)
+        value: 180
+        _value_06: 2E10
+        min_value: 0
+        max_value: 1800
+        precision: 30
+        _value_42: A62C
+      audit: Y
+- device: FAN
+  section: autonomous
+  code: 31DA
+  verb: I
+  notes: Real captured payloads from Orcon VMD device (32:153289)
+  payloads:
+    - payload: 00EF007FFF3A3004C404D804A904B768000003C8C80000EFEF208A208A00
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        hvac_id: '00'
+        exhaust_fan_speed: 1.0
+        fan_info: speed 3, high
+        _unknown_fan_info_flags: '[0, 0, 0]'
+        air_quality: null
+        co2_level: null
+        indoor_humidity: 0.58
+        outdoor_humidity: 0.48
+        exhaust_temp: 12.2
+        supply_temp: 12.4
+        indoor_temp: 11.93
+        outdoor_temp: 12.07
+        speed_capabilities: "['low_med_high', 'timer', 'auto']"
+        bypass_position: 0.0
+        supply_fan_speed: 1.0
+        remaining_mins: 0
+        post_heat: null
+        pre_heat: null
+        supply_flow: 83.3
+        exhaust_flow: 83.3
+        _extra: '00'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 00EF007FFF392F04CE04D804B3049F680000011E1E0000EFEF208A208A00
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        hvac_id: '00'
+        exhaust_fan_speed: 0.15
+        fan_info: speed 1, low
+        _unknown_fan_info_flags: '[0, 0, 0]'
+        air_quality: null
+        co2_level: null
+        indoor_humidity: 0.57
+        outdoor_humidity: 0.47
+        exhaust_temp: 12.3
+        supply_temp: 12.4
+        indoor_temp: 12.03
+        outdoor_temp: 11.83
+        speed_capabilities: "['low_med_high', 'timer', 'auto']"
+        bypass_position: 0.0
+        supply_fan_speed: 0.15
+        remaining_mins: 0
+        post_heat: null
+        pre_heat: null
+        supply_flow: 83.3
+        exhaust_flow: 83.3
+        _extra: '00'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: FAN
+  section: autonomous
+  code: '2210'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00FF00FFFFFF0000000000FFFFFFFFFF00FFFFFF0000000000FFFFFFFFFFFFFFFF000000000000000140
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        exhaust_fan_speed: null
+        req_reason: IDL
+        unknown_78: '00'
+        unknown_80: '01'
+        unknown_82: '40'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: FAN
+  section: autonomous
+  code: 31E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: '00000000'
+      quality: ok
+      parsed:
+        flags: '00'
+        vent_demand: 0.0
+        _unknown_3: '00'
+      audit: Y
+- device: FAN
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '01'
+        manufacturer_sub_id: '00'
+        product_id: 1B
+        date_1: '2019-04-11'
+        date_2: '0000-00-00'
+        description: CVE-RF
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001001B2E1901FEFFFFFFFFFF1D0B07E14356452D52460000000000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '01'
+        manufacturer_sub_id: '00'
+        product_id: 1B
+        date_1: '2017-11-29'
+        date_2: '0000-00-00'
+        description: CVE-RF
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 0000010028080101FEFFFFFFFFFF1D0407E3564D532D31324333390000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '01'
+        manufacturer_sub_id: '00'
+        product_id: '28'
+        date_1: '2019-04-29'
+        date_2: '0000-00-00'
+        description: VMS-12C39
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: FAN
+  section: autonomous
+  code: 22F4
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: '00403000000000000000000000'
+      quality: ok
+      parsed:
+        fan_mode: auto
+        fan_rate: speed 0
+      audit: Y
+    - payload: 000000000060C9000000000000
+      quality: ok
+      parsed:
+        fan_mode: manual
+        fan_rate: speed 1
+      audit: Y
+    - payload: 000000000060CA000000000000
+      quality: ok
+      parsed:
+        fan_mode: manual
+        fan_rate: speed 2
+      audit: Y
+- device: FAN
+  section: autonomous
+  code: '1298'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000280
+      quality: ok
+      parsed:
+        co2_level: 640
+      audit: Y
+    - payload: 0001C6
+      quality: ok
+      parsed:
+        co2_level: 454
+      audit: Y
+- device: FAN
+  section: responses
+  code: 22F1
+  verb: RP
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: '000107'
+      quality: ok
+      parsed:
+        fan_mode: low
+        _scheme: orcon
+        _mode_idx: '01'
+        _mode_max: '07'
+      audit: Y
+    - payload: '000307'
+      quality: ok
+      parsed:
+        fan_mode: high
+        _scheme: orcon
+        _mode_idx: '03'
+        _mode_max: '07'
+      audit: Y
+- device: FAN
+  section: responses
+  code: '2411'
+  verb: RP
+  notes: Fan parameter responses — real captured payloads from Orcon VMD/MVS device
+  payloads:
+    - payload: 00000100000000003200000000000000FF0000000120
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        parameter: '01'
+        description: Support
+        value: 50
+        _value_06: '0000'
+        min_value: 0
+        max_value: 255
+        precision: 1
+        _value_42: '20'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 0000312E100000009600000000000007080000001EA62C
+      quality: ok
+      parsed:
+        parameter: '31'
+        description: Time to change filter (days)
+        value: 150
+        _value_06: 2E10
+        min_value: 0
+        max_value: 1800
+        precision: 30
+        _value_42: A62C
+      audit: Y
+    - payload: 00003D370F00000018000000000000005000000001A632
+      quality: ok
+      parsed:
+        parameter: 3D
+        description: Away mode Supply fan rate (%)
+        value: 0.12
+        _value_06: 370F
+        min_value: 0.0
+        max_value: 0.4
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 00003E380F00000014000000000000005000000001A632
+      quality: ok
+      parsed:
+        parameter: 3E
+        description: Away mode Exhaust fan rate (%)
+        value: 0.1
+        _value_06: 380F
+        min_value: 0.0
+        max_value: 0.4
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 00003F390F0000004600000000000000A000000001A632
+      quality: ok
+      parsed:
+        parameter: 3F
+        description: Low mode Supply fan rate (%)
+        value: 0.35
+        _value_06: 390F
+        min_value: 0.0
+        max_value: 0.8
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000403A0F0000003400000000000000A000000001A632
+      quality: ok
+      parsed:
+        parameter: '40'
+        description: Low mode Exhaust fan rate (%)
+        value: 0.26
+        _value_06: 3A0F
+        min_value: 0.0
+        max_value: 0.8
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000413B0F0000008C00000000000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '41'
+        description: Medium mode Supply fan rate (%)
+        value: 0.7
+        _value_06: 3B0F
+        min_value: 0.0
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000423C0F0000007800000014000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '42'
+        description: Medium mode Exhaust fan rate (%)
+        value: 0.6
+        _value_06: 3C0F
+        min_value: 0.1
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000433D0F0000009600000000000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '43'
+        description: High mode Supply fan rate (%)
+        value: 0.75
+        _value_06: 3D0F
+        min_value: 0.0
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000443E0F0000009600000014000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '44'
+        description: High mode Exhaust fan rate (%)
+        value: 0.75
+        _value_06: 3E0F
+        min_value: 0.1
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 00004B39000000000000000000000000020000000170
+      quality: ok
+      parsed:
+        parameter: 4B
+        description: (Test) Bypass Valve (0=auto, 1=open, 2=closed)
+        value: 0
+        _value_06: '3900'
+        min_value: 0
+        max_value: 2
+        precision: 1
+        _value_42: '70'
+      audit: Y
+    - payload: 00004E460000000000000000000000000100000001A600
+      quality: ok
+      parsed:
+        parameter: 4E
+        description: Moisture scenario position (0=medium, 1=high)
+        value: 0
+        _value_06: '4600'
+        min_value: 0
+        max_value: 1
+        precision: 1
+        _value_42: A600
+      audit: Y
+    - payload: 0000524A010000001400000000000000FA00000001A632
+      quality: ok
+      parsed:
+        parameter: '52'
+        description: Sensor sensitivity (%)
+        value: 2.0
+        _value_06: 4A01
+        min_value: 0.0
+        max_value: 25.0
+        precision: 0.1
+        _value_42: A632
+      audit: Y
+    - payload: 0000544C00000000140000000F0000003C00000001A62A
+      quality: ok
+      parsed:
+        parameter: '54'
+        description: Moisture sensor overrun time (mins)
+        value: 20
+        _value_06: 4C00
+        min_value: 15
+        max_value: 60
+        precision: 1
+        _value_42: A62A
+      audit: Y
+    - payload: 0000755892000008200000000000000BB800000001A601
+      quality: ok
+      parsed:
+        parameter: '75'
+        description: Comfort temperature (°C)
+        value: 20.8
+        _value_06: '5892'
+        min_value: 0.0
+        max_value: 30.0
+        precision: 0.01
+        _value_42: A601
+      audit: Y
+    - payload: 0000953F0F000000BE00000000000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '95'
+        description: Boost mode Supply/exhaust fan rate (%)
+        value: 0.95
+        _value_06: 3F0F
+        min_value: 0.0
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000881510000002BC000001900000076C000000018A33
+      quality: ok
+      parsed:
+        parameter: '88'
+        description: Unknown
+        value: 700
+        _value_06: '1510'
+        min_value: 400
+        max_value: 1900
+        precision: 1
+        _value_42: 8A33
+      audit: Y
+- device: REM
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0023098968530030C9896853000008896853001FC9896853
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '2309', '34:092243'], ['00', '30C9', '34:092243'],
+          ['00', '0008', '34:092243'], ['00', '1FC9', '34:092243']]"
+      audit: Y
+    - payload: 072309896853
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['07', '2309', '34:092243']]"
+      audit: Y
+- device: REM
+  section: autonomous
+  code: '1060'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00FF01
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        battery_low: false
+        battery_level: null
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: REM
+  section: autonomous
+  code: 042F
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00000000230023F5
+      quality: ok
+      parsed:
+        counter_1: '0x0000'
+        counter_3: '0x0023'
+        counter_5: '0x0023'
+        unknown_7: '0xF5'
+      audit: Y
+    - payload: 00000000240024F5
+      quality: ok
+      parsed:
+        counter_1: '0x0000'
+        counter_3: '0x0024'
+        counter_5: '0x0024'
+        unknown_7: '0xF5'
+      audit: Y
+    - payload: 00000000250025F5
+      quality: ok
+      parsed:
+        counter_1: '0x0000'
+        counter_3: '0x0025'
+        counter_5: '0x0025'
+        unknown_7: '0xF5'
+      audit: Y
+- device: REM
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000001C8380F0100F1FF1D0807E2030507E15438375246323032350000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '00'
+        manufacturer_sub_id: C8
+        product_id: '38'
+        date_1: '2017-05-03'
+        date_2: '2018-08-29'
+        description: T87RF2025
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001C8380F0100F1FF0D0C07E2030507E15438375246323032350000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '00'
+        manufacturer_sub_id: C8
+        product_id: '38'
+        date_1: '2017-05-03'
+        date_2: '2018-12-13'
+        description: T87RF2025
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001C8380F0100F1FF1B0507E3030507E15438375246323032350000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '00'
+        manufacturer_sub_id: C8
+        product_id: '38'
+        date_1: '2017-05-03'
+        date_2: '2019-05-27'
+        description: T87RF2025
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: REM
+  section: responses
+  code: '0001'
+  verb: RP
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: 00200000003D0100
+      quality: ok
+      parsed:
+        payload: 00200000003D0100
+        slot_num: '00'
+        param_num: 3D
+        next_slot_num: '01'
+        boolean_14: false
+      audit: Y
+    - payload: 00200001003E0200
+      quality: ok
+      parsed:
+        payload: 00200001003E0200
+        slot_num: '01'
+        param_num: 3E
+        next_slot_num: '02'
+        boolean_14: false
+      audit: Y
+    - payload: 00200002003F0300
+      quality: ok
+      parsed:
+        payload: 00200002003F0300
+        slot_num: '02'
+        param_num: 3F
+        next_slot_num: '03'
+        boolean_14: false
+      audit: Y
+- device: RFG
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000002FF1E03FFFFFFFF150807E3150407E1496E7465726E6574204761746577617900000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: FF
+        manufacturer_sub_id: FF
+        product_id: 1E
+        date_1: '2017-04-21'
+        date_2: '2019-08-21'
+        description: Internet Gateway
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000002FF1E03FFFFFFFF0F0107DE150407E1496E7465726E6574204761746577617900000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: FF
+        manufacturer_sub_id: FF
+        product_id: 1E
+        date_1: '2017-04-21'
+        date_2: '2014-01-15'
+        description: Internet Gateway
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000002FF1E03FFFFFFFF110407DF150407E1496E7465726E6574204761746577617900000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: FF
+        manufacturer_sub_id: FF
+        product_id: 1E
+        date_1: '2017-04-21'
+        date_2: '2015-04-17'
+        description: Internet Gateway
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: TRV
+  section: autonomous
+  code: 12B0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: '000000'
+      quality: ok
+      parsed:
+        window_open: false
+      audit: Y
+    - payload: 00C800
+      quality: ok
+      parsed:
+        window_open: true
+      audit: Y
+- device: TRV
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0030C912E294
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '30C9', '04:189076']]"
+      audit: Y
+- device: TRV
+  section: autonomous
+  code: 30C9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0007C3
+      quality: ok
+      parsed:
+        temperature: 19.87
+      audit: Y
+    - payload: 0006B1
+      quality: ok
+      parsed:
+        temperature: 17.13
+      audit: Y
+    - payload: 000849
+      quality: ok
+      parsed:
+        temperature: 21.21
+      audit: Y
+- device: TRV
+  section: autonomous
+  code: '1060'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: '006401'
+      quality: ok
+      parsed:
+        battery_low: false
+        battery_level: 0.5
+      audit: Y
+    - payload: 00FF01
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        battery_low: false
+        battery_level: null
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: TRV
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000002FF050BFFFFFFFF0E0907E2070307E148523931205261646961746F72204374726C2E00
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: FF
+        manufacturer_sub_id: FF
+        product_id: '05'
+        date_1: '2017-03-07'
+        date_2: '2018-09-14'
+        description: HR91 Radiator Ctrl.
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000002FF0412FFFFFFFF030807E10D0307DE48523932205261646961746F72204374726C2E00
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: FF
+        manufacturer_sub_id: FF
+        product_id: '04'
+        date_1: '2014-03-13'
+        date_2: '2017-08-03'
+        description: HR92 Radiator Ctrl.
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000002FF0412FFFFFFFF1B0707E20D0307DE48523932205261646961746F72204374726C2E00
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: FF
+        manufacturer_sub_id: FF
+        product_id: '04'
+        date_1: '2014-03-13'
+        date_2: '2018-07-27'
+        description: HR92 Radiator Ctrl.
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
