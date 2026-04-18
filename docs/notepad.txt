@@ -80,7 +80,6 @@ Log errors if not configured.
 
 - pre releases:
 - fix param detection on startup (send RQ)
-- check deployment helpers
 - little doc how to install/use the sim (extra reload browser needed)
 - bump
 
