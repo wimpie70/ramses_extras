@@ -284,6 +284,16 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     };
   }
 
+  static getStubConfig() {
+    return {
+      type: `custom:${this.getTagName()}`,
+      layout_options: {
+        grid_columns: 200,
+        rows: 1,
+      },
+    };
+  }
+
   async _loadInitialState() {
     await this._fetchData();
   }

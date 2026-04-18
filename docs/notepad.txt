@@ -78,16 +78,6 @@ Log errors if not configured.
 ### Ramses Packet Log explorer: auto mode seem to be broken
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 
-- pre releases:
-- fix param detection on startup (send RQ)
-- little doc how to install/use the sim (extra reload browser needed)
-- bump
-
---
-For bash, add this to ~/.bashrc:
-
-bash
-export PS1="\[\033[36m\]\t\[\033[m\] \[\033[1;34m\]\u@\h:\w\[\033[m\]\$ "
 
 ---
 
