@@ -9,6 +9,7 @@ const SCENARIO_MANUAL_DEVICE = "autonomous_emissions";
 const SCENARIO_PROFILE_EMISSIONS = "profile_emissions";
 const SCENARIO_LOAD_PROFILE = "load_profile_yaml";
 const LOADER_DRAFT_KEY = "ramsesExtras.deviceSimulator.loaderDraft";
+const MESSAGE_HISTORY_LIMIT = 80;
 
 const CARD_STYLE = `
   :host { display: block; padding: 16px; }
@@ -28,6 +29,7 @@ const CARD_STYLE = `
   .btn-secondary { background: var(--secondary-background-color); color: var(--primary-text-color); border: 1px solid var(--divider-color); }
   .btn-danger { background: var(--error-color); color: white; }
   .grid { display: grid; gap: 12px; }
+  .devices-grid { grid-template-columns: repeat(auto-fit, minmax(720px, 1fr)); }
   .card { border: 1px solid var(--divider-color); border-radius: 8px; padding: 16px; }
   .card:hover { border-color: var(--primary-color); }
   .card.active { border-color: var(--success-color); background: var(--success-color-light); }
@@ -79,21 +81,35 @@ const CARD_STYLE = `
   .scenario-field--checkbox { flex-direction: row; align-items: center; gap: 8px; }
   .scenario-field--checkbox label { font-weight: 500; margin: 0; }
   .scenario-description { margin-top: 6px; font-size: 0.8em; color: var(--secondary-text-color); }
-  .msg-log { font-family: var(--code-font-family, 'Fira Code', monospace); font-size: 0.78em; max-height: 320px; overflow-y: auto; border: 1px solid var(--divider-color); border-radius: 6px; }
-  .msg-log-row { display: grid; grid-template-columns: 3.5em 2.5em 3em 4em 9em 9em 1fr; gap: 0 8px; padding: 3px 8px; border-bottom: 1px solid var(--divider-color); align-items: baseline; white-space: nowrap; overflow: hidden; }
-  .msg-log-row:last-child { border-bottom: none; }
-  .msg-log-row.in { background: rgba(var(--rgb-success-color, 76,175,80), 0.07); }
-  .msg-log-row.out { background: rgba(var(--rgb-info-color, 3,169,244), 0.07); }
+  .msg-log {
+    font-family: var(--code-font-family, 'Fira Code', monospace);
+    font-size: 0.75em;
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid var(--divider-color);
+    border-radius: 6px;
+    width: 100%;
+    max-width: 100%;
+  }
+  .msg-log-table { width: max-content; min-width: 100%; border-collapse: collapse; }
+  .msg-log-table th,
+  .msg-log-table td { padding: 4px 8px; white-space: nowrap; border-bottom: 1px solid var(--divider-color); text-align: left; user-select: text; -webkit-user-select: text; }
+  .msg-log-table thead th { font-weight: 600; color: var(--secondary-text-color); font-size: 0.78em; background: var(--secondary-background-color); position: sticky; top: 0; z-index: 1; }
+  .msg-log-table tbody tr:last-child td { border-bottom: none; }
+  .msg-log-table tbody tr.in td { background: rgba(var(--rgb-success-color, 76,175,80), 0.07); }
+  .msg-log-table tbody tr.out td { background: rgba(var(--rgb-info-color, 3,169,244), 0.07); }
   .msg-dir { font-weight: 700; font-size: 0.8em; text-transform: uppercase; }
   .msg-dir.in { color: var(--success-color, #4caf50); }
   .msg-dir.out { color: var(--info-color, #0288d1); }
   .msg-verb { font-weight: 600; color: var(--primary-color); }
   .msg-code { font-weight: 600; }
-  .msg-addr { color: var(--secondary-text-color); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; }
-  .msg-payload { color: var(--secondary-text-color); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; }
+  .msg-addr { color: var(--secondary-text-color); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .msg-payload { color: var(--secondary-text-color); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
   .msg-ts { color: var(--disabled-color, #9e9e9e); font-size: 0.85em; }
   .msg-log-empty { padding: 12px; color: var(--secondary-text-color); font-size: 0.85em; }
   .msg-log-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .msg-log-header-row { display:flex; align-items:center; justify-content: space-between; gap:8px; margin-bottom:6px; }
+  .msg-log-header-row button { font-size:0.7em; padding:4px 8px; }
 `;
 
 class DeviceSimulatorCard extends RamsesBaseCard {
@@ -130,10 +146,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._autonomousSpeed = 1.0;
     this._pendingSpeed = 1.0;
     this._speedSaving = false;
-    this._msgLogMessages = [];
-    this._msgLogDevice = null;
-    this._msgLogLimit = 80;
-    this._msgLogLoading = false;
+    this._deviceMsgPreviews = {};
+    this._profileZoneMembership = {};
+    this._msgSubscription = null;
 
     this._loadLoaderDraft();
   }
@@ -276,6 +291,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   _onConnected() {
     this._fetchData();
     this._subscribeToDevices();
+    if (this._tab === "devices") {
+      void this._subscribeToMessageEvents();
+    }
   }
 
   _onDisconnected() {
@@ -288,6 +306,16 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       }
       this._deviceSubscription = null;
     }
+
+    if (this._msgSubscription) {
+      try {
+        this._msgSubscription();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("Device Simulator: failed to unsubscribe from message events", err);
+      }
+      this._msgSubscription = null;
+    }
   }
 
   // ========== DATA FETCHING ==========
@@ -298,8 +326,29 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       const result = await this._hass.callWS({
         type: "ramses_extras/device_simulator/get_status",
       });
+      const profileSummary = Array.isArray(result.profile_device_summary)
+        ? result.profile_device_summary
+        : [];
+      const zoneMembership = result.profile_zone_membership || {};
+      const devices = Array.isArray(result.devices) ? result.devices : [];
+      const mergedDevices = [...devices];
+      const existingIds = new Set(mergedDevices.map((d) => d.id));
+      if (profileSummary.length) {
+        for (const entry of profileSummary) {
+          if (!entry?.id || existingIds.has(entry.id)) {
+            continue;
+          }
+          const stub = this._buildProfileDeviceStub(entry);
+          if (stub) {
+            mergedDevices.push(stub);
+            existingIds.add(entry.id);
+          }
+        }
+      }
+
       this._profiles = result.profiles || [];
-      this._devices = result.devices || [];
+      this._profileZoneMembership = zoneMembership;
+      this._devices = mergedDevices;
       this._scenarioRegistry = result.scenario_registry || {};
       this._scenarioSchemas = result.scenario_param_schemas || {};
       this._runningScenarios = result.running_scenarios || [];
@@ -314,8 +363,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._activeProfileKnownList = result.active_profile_known_list || null;
       this._activeProfileSchema = result.active_profile_schema || null;
       this._activeProfileZones = result.active_profile_zones || [];
-      this._profileDeviceSummary = result.profile_device_summary || [];
+      this._profileDeviceSummary = profileSummary;
       this._profileDeviceCounts = result.profile_device_counts || null;
+      this._deviceMsgPreviews = result.device_message_previews || {};
       if (typeof result.autonomous_speed === "number") {
         this._autonomousSpeed = result.autonomous_speed;
         if (!this._speedSaving) {
@@ -380,6 +430,31 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     }
   }
 
+  async _subscribeToMessageEvents() {
+    if (!this._hass || this._msgSubscription) return;
+    if (!this._hass.connection) return;
+
+    try {
+      this._msgSubscription = await this._hass.connection.subscribeMessage(
+        (event) => {
+          if (!event?.event_type || event.event_type !== "device_messages") {
+            return;
+          }
+          const payload = event?.data;
+          if (!payload || !Array.isArray(payload.messages)) {
+            return;
+          }
+          this._mergeDeviceMessages(payload.messages);
+        },
+        { type: "ramses_extras/device_simulator/subscribe_messages" },
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to subscribe to message events", err);
+      this._msgSubscription = null;
+    }
+  }
+
   // ========== INTERACTIONS ==========
 
   _setTab(tab) {
@@ -387,7 +462,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._scheduleRender();
     void this._fetchData();
     if (tab === "devices") {
-      void this._fetchMessages(this._msgLogDevice);
+      void this._subscribeToMessageEvents();
     }
   }
 
@@ -495,29 +570,6 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("DeviceSimulatorCard: failed to delete profile", error);
-    }
-  }
-
-  async _fetchMessages(deviceId) {
-    if (!this._hass) {
-      return;
-    }
-    this._msgLogLoading = true;
-    this._scheduleRender();
-    try {
-      const result = await this._hass.callWS({
-        type: "ramses_extras/device_simulator/get_messages",
-        limit: this._msgLogLimit,
-        ...(deviceId ? { device_id: deviceId } : {}),
-      });
-      this._msgLogMessages = result?.messages || [];
-      this._msgLogDevice = deviceId || null;
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("DeviceSimulatorCard: failed to fetch messages", err);
-    } finally {
-      this._msgLogLoading = false;
-      this._scheduleRender();
     }
   }
 
@@ -695,6 +747,13 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       });
     });
 
+    root.querySelectorAll("[data-action='clear-device-log']").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const deviceId = btn.dataset.deviceId;
+        void this._clearDeviceMessages(deviceId || null);
+      });
+    });
+
     root.querySelectorAll("[data-action='remove-code']").forEach(btn => {
       btn.addEventListener("click", () => this._removeExcludedCode(btn.dataset.deviceId, btn.dataset.code));
     });
@@ -746,20 +805,6 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         input.addEventListener("change", handler);
       }
     });
-
-    const msgLogDevice = root.querySelector("[data-action='msg-log-device']");
-    if (msgLogDevice) {
-      msgLogDevice.addEventListener("change", (e) => {
-        void this._fetchMessages(e.target.value || null);
-      });
-    }
-
-    const refreshMsgLog = root.querySelector("[data-action='refresh-msg-log']");
-    if (refreshMsgLog) {
-      refreshMsgLog.addEventListener("click", () => {
-        void this._fetchMessages(this._msgLogDevice);
-      });
-    }
 
     const dismissNotice = root.querySelector("[data-action='dismiss-notice']");
     if (dismissNotice) {
@@ -1137,49 +1182,146 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       </div>`;
   }
 
-  _buildMessageLog() {
-    const messages = this._msgLogMessages;
-    const deviceId = this._msgLogDevice;
-    const title = deviceId ? `Messages for ${deviceId}` : "Recent messages (all devices)";
-    const deviceOptions = this._devices.map(
-      (d) => `<option value="${d.id}"${deviceId === d.id ? " selected" : ""}>${d.id}</option>`
-    ).join("");
+  _fmtHex(hex) {
+    if (!hex) return "";
+    return hex.match(/.{1,2}/g)?.join(" ") || hex;
+  }
 
-    let rows = "";
-    if (this._msgLogLoading) {
-      rows = `<div class="msg-log-empty">Loading…</div>`;
-    } else if (!messages.length) {
-      rows = `<div class="msg-log-empty">No messages yet. Start emissions or wait for inbound traffic.</div>`;
-    } else {
-      rows = messages.slice().reverse().map((m) => {
-        const dir = m.direction === "inbound" ? "in" : "out";
-        const ts = new Date(m.ts * 1000).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        return `<div class="msg-log-row ${dir}">
-          <span class="msg-ts">${ts}</span>
-          <span class="msg-dir ${dir}">${dir}</span>
-          <span class="msg-verb">${m.verb}</span>
-          <span class="msg-code">${m.code}</span>
-          <span class="msg-addr" title="${m.src}">${m.src}</span>
-          <span class="msg-addr" title="${m.dst}">${m.dst}</span>
-          <span class="msg-payload" title="${m.payload}">${m.payload}</span>
-        </div>`;
-      }).join("");
+  _fmtDecoded(decoded) {
+    if (decoded == null) return null;
+    if (typeof decoded === "string") return decoded;
+    if (typeof decoded === "number" || typeof decoded === "boolean") return String(decoded);
+    try {
+      return JSON.stringify(decoded);
+    } catch {
+      return String(decoded);
     }
+  }
 
-    return `
-      <div class="card" style="margin-top:16px;">
-        <div class="msg-log-header">
-          <strong>${title}</strong>
-          <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-            <select data-action="msg-log-device" style="font-size:0.8em; padding:3px 6px; border:1px solid var(--divider-color); border-radius:4px; background:var(--card-background-color); color:var(--primary-text-color);">
-              <option value=""${!deviceId ? " selected" : ""}>All devices</option>
-              ${deviceOptions}
-            </select>
-            <button class="btn btn-secondary" data-action="refresh-msg-log" style="font-size:0.8em; padding:4px 8px;">Refresh</button>
-          </div>
-        </div>
-        <div class="msg-log">${rows}</div>
+  _mergeDeviceMessages(batch) {
+    if (!Array.isArray(batch) || batch.length === 0) {
+      return;
+    }
+    const nextPreviews = { ...this._deviceMsgPreviews };
+    batch.forEach((message) => {
+      if (!message) {
+        return;
+      }
+      const ids = Array.isArray(message.device_ids) && message.device_ids.length
+        ? message.device_ids
+        : message.device_id
+          ? [message.device_id]
+          : [];
+      if (!ids.length) {
+        return;
+      }
+      ids.forEach((deviceId) => {
+        if (!deviceId) {
+          return;
+        }
+        const existing = nextPreviews[deviceId] ? [...nextPreviews[deviceId]] : [];
+        const last = existing[existing.length - 1];
+        const lastKey = last ? `${last.ts}-${last.direction}-${last.code}-${last.verb}` : null;
+        const nextKey = `${message.ts}-${message.direction}-${message.code}-${message.verb}`;
+        if (lastKey === nextKey) {
+          return;
+        }
+        existing.push(message);
+        if (existing.length > MESSAGE_HISTORY_LIMIT) {
+          existing.splice(0, existing.length - MESSAGE_HISTORY_LIMIT);
+        }
+        nextPreviews[deviceId] = existing;
+      });
+    });
+    this._deviceMsgPreviews = nextPreviews;
+    this._scheduleRender();
+  }
+
+  async _clearDeviceMessages(deviceId) {
+    if (!this._hass) {
+      return;
+    }
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/clear_messages",
+        ...(deviceId ? { device_ids: [deviceId] } : {}),
+      });
+      if (deviceId) {
+        const next = { ...this._deviceMsgPreviews };
+        delete next[deviceId];
+        this._deviceMsgPreviews = next;
+      } else {
+        this._deviceMsgPreviews = {};
+      }
+      this._scheduleRender();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to clear messages", err);
+    }
+  }
+
+  _buildProfileDeviceStub(summary) {
+    if (!summary?.id) {
+      return null;
+    }
+    const deviceId = summary.id;
+    const zones = this._profileZoneMembership?.[deviceId] || [];
+    return {
+      id: deviceId,
+      type: (summary.class || "profile").toLowerCase(),
+      enabled: Boolean(summary.active),
+      suppress_autonomous: false,
+      suppress_responses: false,
+      excluded_codes: [],
+      source: "profile",
+      owned_by_profile: true,
+      zones,
+    };
+  }
+
+  _buildDeviceMsgPreview(deviceId) {
+    const messages = this._deviceMsgPreviews[deviceId];
+    if (!messages || !messages.length) {
+      return `<div class="msg-log-empty">No traffic yet — refresh to update</div>`;
+    }
+    const headerRow = `
+      <div class="msg-log-header-row">
+        <span>Recent traffic</span>
+        <button class="btn btn-secondary" data-action="clear-device-log" data-device-id="${deviceId}">Clear</button>
       </div>`;
+    const header = `
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Dir</th>
+          <th>Verb</th>
+          <th>Code</th>
+          <th>Src</th>
+          <th>Dst</th>
+          <th>Bcast</th>
+          <th>Payload</th>
+        </tr>
+      </thead>`;
+    const rows = messages.slice().sort((a, b) => b.ts - a.ts).map((m) => {
+      const dir = m.direction === "inbound" ? "in" : "out";
+      const ts = new Date(m.ts * 1000).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 });
+      const hexPayload = this._fmtHex(m.payload);
+      const decoded = this._fmtDecoded(m.decoded_payload);
+      const payloadDisplay = decoded ?? hexPayload;
+      const payloadTitle = decoded ? `${decoded}\n\nraw: ${hexPayload}` : hexPayload;
+      const bcast = m.broadcast || "--:------";
+      return `<tr class="${dir}">
+        <td class="msg-ts">${ts}</td>
+        <td class="msg-dir ${dir}">${dir === "in" ? "RX" : "TX"}</td>
+        <td class="msg-verb">${m.verb}</td>
+        <td class="msg-code">${m.code}</td>
+        <td class="msg-addr" title="${m.src}">${m.src}</td>
+        <td class="msg-addr" title="${m.dst}">${m.dst}</td>
+        <td class="msg-addr" title="${bcast}">${bcast}</td>
+        <td class="msg-payload" title="${payloadTitle}">${payloadDisplay}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="msg-log">${headerRow}<table class="msg-log-table">${header}<tbody>${rows}</tbody></table></div>`;
   }
 
   _buildDevices() {
@@ -1191,7 +1333,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       </div>`;
 
     if (this._devices.length === 0) {
-      return `${controls}${this._buildMessageLog()}<div class="device-list-empty">No active devices. Use Manual Device Injection or Start all profile devices above to start emitters.</div>`;
+      return `${controls}<div class="device-list-empty">No active devices. Use Manual Device Injection or Start all profile devices above to start emitters.</div>`;
     }
 
     const knownList = this._knownList();
@@ -1231,10 +1373,14 @@ class DeviceSimulatorCard extends RamsesBaseCard {
             <button class="btn btn-primary" data-action="add-code" data-device-id="${d.id}">+ Exclude</button>
           </div>
           ${zoneMarkup}
+          <div style="margin-top:10px;">
+            <div style="font-size:0.75em; color:var(--secondary-text-color); margin-bottom:3px; font-weight:600;">Recent traffic</div>
+            ${this._buildDeviceMsgPreview(d.id)}
+          </div>
         </div>`;
     }).join("");
 
-    return `${controls}${this._buildMessageLog()}<div class="grid">${deviceCards}</div>`;
+    return `${controls}<div class="grid devices-grid">${deviceCards}</div>`;
   }
 
   _buildManualInjectionCard() {

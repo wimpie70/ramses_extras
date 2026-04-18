@@ -1,6 +1,3 @@
-# Part of the Ramses Extra integration
-# See https://github.com/wimpie70/ramses_extras for more information
-#
 """WebSocket commands for Device Simulator.
 
 Provides real-time control and monitoring:
@@ -16,6 +13,8 @@ Provides real-time control and monitoring:
 
 from __future__ import annotations
 
+# Part of the Ramses Extra integration
+# See https://github.com/wimpie70/ramses_extras for more information
 import asyncio
 import time
 from collections import defaultdict
@@ -36,6 +35,7 @@ from .const import (
     SCENARIO_PROFILE_EMISSIONS,
     SCENARIO_REGISTRY,
 )
+from .scenario_engine import MESSAGE_EVENT, ScenarioEngine
 
 try:  # pragma: no cover - legacy fallback for partially updated installs
     from .const import SCENARIO_DEVICE_UNAVAILABILITY
@@ -76,8 +76,32 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .device_db import DeviceDatabase
-    from .scenario_engine import ScenarioEngine
+    from .scenario_engine import MESSAGE_EVENT, ScenarioEngine
     from .system_config import ConfigProfileStore
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/clear_messages",
+        vol.Optional("device_ids", default=[]): [str],
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_clear_device_messages(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Clear simulator message log (optionally per-device)."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    device_ids = msg.get("device_ids") or []
+    engine.message_log.clear(device_ids or None)
+    connection.send_result(msg["id"], {"status": "ok"})
 
 
 @callback  # type: ignore[untyped-decorator]
@@ -103,8 +127,10 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_set_auto_answer)
     websocket_api.async_register_command(hass, ws_set_autonomous_speed)
     websocket_api.async_register_command(hass, ws_subscribe_devices)
+    websocket_api.async_register_command(hass, ws_subscribe_messages)
     websocket_api.async_register_command(hass, ws_delete_profile)
     websocket_api.async_register_command(hass, ws_get_device_messages)
+    websocket_api.async_register_command(hass, ws_clear_device_messages)
 
 
 def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
@@ -690,6 +716,18 @@ def ws_get_ui_status(
         else (config_store.get_autonomous_speed() if config_store else 1.0)
     )
 
+    device_message_previews: dict[str, list] = {}
+    target_ids: list[str] = [d["id"] for d in devices]
+    if not target_ids and profile_device_summary:
+        target_ids = [
+            entry["id"] for entry in profile_device_summary if entry.get("id")
+        ]
+    if engine and target_ids:
+        device_message_previews = engine.message_log.get_for_devices(
+            target_ids,
+            per_device=20,
+        )
+
     connection.send_result(
         msg["id"],
         {
@@ -711,6 +749,8 @@ def ws_get_ui_status(
             "scenario_param_schemas": SCENARIO_PARAM_SCHEMAS,
             "profile_device_summary": profile_device_summary,
             "profile_device_counts": profile_device_counts,
+            "profile_zone_membership": zone_membership,
+            "device_message_previews": device_message_previews,
         },
     )
 
@@ -1500,3 +1540,80 @@ def ws_subscribe_devices(
 
     # Store unsubscribe function to clean up when connection closes
     connection.subscriptions[msg["id"]] = unsubscribe
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/subscribe_messages",
+        vol.Optional("device_ids", default=[]): [str],
+        vol.Optional("limit", default=50): vol.All(int, vol.Range(min=1, max=200)),
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_subscribe_messages(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to simulator message log updates."""
+
+    engine = _get_engine(hass)
+    device_ids = msg.get("device_ids") or []
+    target_ids = {device_id for device_id in device_ids if device_id}
+    limit: int = msg.get("limit", 50)
+    limit = max(1, min(limit, 200))
+
+    def _send_messages(messages: list[dict]) -> None:
+        if not messages:
+            return
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "event_type": "device_messages",
+                    "data": {"messages": messages},
+                },
+            )
+        )
+
+    initial: list[dict[str, Any]] = []
+    if engine:
+        if target_ids:
+            snapshots = engine.message_log.get_for_devices(
+                list(target_ids),
+                per_device=limit,
+            )
+            for entries in snapshots.values():
+                initial.extend(entries)
+        else:
+            initial = [
+                engine.message_log.to_dict(entry)
+                for entry in engine.message_log.get_recent(limit=limit)
+            ]
+
+    @callback  # type: ignore[untyped-decorator]
+    def _on_message_event(event: dict[str, Any]) -> None:
+        payload = getattr(event, "data", {}) or {}
+        messages: list[dict[str, Any]] = payload.get("messages") or []
+        if not messages:
+            return
+        if target_ids:
+            filtered = []
+            for message in messages:
+                ids = message.get("device_ids") or []
+                if not ids and message.get("device_id"):
+                    ids = [message["device_id"]]
+                if not ids:
+                    continue
+                if target_ids.isdisjoint(ids):
+                    continue
+                filtered.append(message)
+            _send_messages(filtered)
+        else:
+            _send_messages(messages)
+
+    unsubscribe = hass.bus.async_listen(MESSAGE_EVENT, _on_message_event)
+    connection.subscriptions[msg["id"]] = unsubscribe
+    connection.send_result(msg["id"], {"success": True})
+    if initial:
+        _send_messages(initial)

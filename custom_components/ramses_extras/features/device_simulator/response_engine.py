@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from .const import LOGGER
 from .device_db import DeviceDatabase, ResponseEntry
@@ -22,6 +22,9 @@ from .system_config import ConfigProfileStore
 if TYPE_CHECKING:
     from .comm_endpoint import MqttEndpoint
     from .scenario_engine import ScenarioEngine
+
+
+SUPPORTED_WRITE_CODES: Final[set[str]] = {"2411"}
 
 
 class ResponseEngine:
@@ -87,15 +90,22 @@ class ResponseEngine:
                 LOGGER.debug("ResponseEngine: failed to parse frame: %s", frame[:80])
                 return
 
+            verb = parsed.get("verb", "").upper()
+            code = parsed.get("code", "").upper()
+
             LOGGER.debug(
                 "ResponseEngine: frame parsed, verb=%s, code=%s",
-                parsed.get("verb"),
-                parsed.get("code"),
+                verb,
+                code,
             )
 
-            # Only process RQ (request) frames - not I or W
-            if parsed["verb"] != "RQ":
-                LOGGER.debug("ResponseEngine: ignoring %s frame", parsed["verb"])
+            if verb == "W" and code not in SUPPORTED_WRITE_CODES:
+                LOGGER.debug("ResponseEngine: ignoring unsupported W frame %s", code)
+                return
+
+            # Only process RQ frames plus selected W frames
+            if verb not in {"RQ", "W"}:
+                LOGGER.debug("ResponseEngine: ignoring %s frame", verb)
                 return
 
             LOGGER.debug(
@@ -110,7 +120,7 @@ class ResponseEngine:
                 LOGGER.debug("ResponseEngine: dropping RQ - broadcast destination")
                 return
 
-            if self._engine and self._engine.is_device_active(dst):
+            if verb == "RQ" and self._engine and self._engine.is_device_active(dst):
                 LOGGER.debug(
                     "ResponseEngine: %s handled by ScenarioEngine; "
                     "skipping legacy reply",
@@ -132,7 +142,7 @@ class ResponseEngine:
 
             response = None
             if device_type:
-                response = self._db.find_response(device_type, parsed["code"])
+                response = self._db.find_response(device_type, code)
                 LOGGER.debug(
                     "ResponseEngine: DB lookup for %s/%s = %s",
                     device_type,
@@ -142,13 +152,14 @@ class ResponseEngine:
 
             payload: str | None = None
             delay_ms = 0
-            if response and response.payloads:
+            if verb == "W":
+                payload = self._build_write_ack_payload(parsed, response)
+
+            if not payload and response and response.payloads:
                 payload = response.payloads[0]
                 delay_ms = response.delay_ms
-            else:
-                payload = build_dynamic_response(
-                    device_type, parsed["code"], parsed["payload"]
-                )
+            elif not payload:
+                payload = build_dynamic_response(device_type, code, parsed["payload"])
 
             if not payload:
                 LOGGER.debug(
@@ -245,6 +256,28 @@ class ResponseEngine:
         type_code = device_id.split(":")[0]
         return type_map.get(type_code)
 
+    def _build_write_ack_payload(
+        self, parsed: dict[str, str], response: ResponseEntry | None
+    ) -> str | None:
+        """Return an RP payload for supported W frames."""
+
+        code = (parsed.get("code") or "").upper()
+        if code not in SUPPORTED_WRITE_CODES:
+            return None
+
+        request_payload = (parsed.get("payload") or "").strip()
+        if not request_payload:
+            return None
+
+        payload = request_payload.upper()
+
+        if code == "2411" and response and response.payloads:
+            template = response.payloads[0]
+            if template and len(template) > len(payload):
+                payload = payload.ljust(len(template), "0")
+
+        return payload if payload else None
+
     async def _send_response(self, parsed: dict, response: ResponseEntry) -> None:
         """Send a response frame after the configured delay.
 
@@ -334,6 +367,8 @@ class ResponseEngine:
         """
         if self._endpoint.is_connected:
             await self._endpoint.send_packet(frame)
+            if self._engine:
+                self._engine._log_and_emit("outbound", frame)
             LOGGER.debug("ResponseEngine: sent response: %s", frame[:70])
         else:
             LOGGER.warning("ResponseEngine: endpoint disconnected, dropped response")

@@ -18,12 +18,14 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 
+from ...framework.helpers.ramses_message_stream import get_ramses_message_stream
 from .comm_endpoint import SimulatorCommEndpoint
 from .const import (
     LOGGER,
@@ -40,11 +42,13 @@ from .const import (
     VERB_W,
 )
 from .device_db import AutonomousEntry, DeviceDatabase, ResponseEntry
-from .message_log import DeviceMessageLog
+from .message_log import DeviceMessageLog, PacketDirection
 from .response_templates import build_dynamic_response
 from .scenarios import discover_scenarios
 from .scenarios.base import ScenarioContext, ScenarioDefinition, ScenarioResult
-from .system_config import SystemConfigProfile
+from .system_config import SIM_DEVICE_ID, SystemConfigProfile
+
+MESSAGE_EVENT = "ramses_extras_simulator_messages"
 
 _PACKET_RE = re.compile(
     # Match RAMSES frame format: [RSSI] VERB SEQ SRC DST BROADCAST CODE LEN PAYLOAD
@@ -119,7 +123,9 @@ class ScenarioEngine:
         self._scenario_definitions = scenario_definitions or discover_scenarios()
         self._profile_device_ids: set[str] = set()
         self._manual_device_ids: set[str] = set()
+        self._primed_fans: set[str] = set()
         self._autonomous_speed: float = 1.0
+        self._recent_frames: dict[tuple[PacketDirection, str], float] = {}
         # Global RQ→RP auto-answer toggle (default on).
         # When False the engine receives RQs but never replies — simulates a
         # device that is powered off or unreachable (e.g. broken ESP).
@@ -133,6 +139,32 @@ class ScenarioEngine:
         self._db.load_all()
         await self._endpoint.async_connect()
         LOGGER.info("ScenarioEngine ready. DB: %s", self._db.stats())
+
+    def _log_and_emit(
+        self, direction: PacketDirection, frame: str, timestamp: float | None = None
+    ) -> None:
+        now = time.monotonic()
+        key = (direction, frame)
+        last_seen = self._recent_frames.get(key)
+        if last_seen is not None and now - last_seen < 0.25:
+            return
+        self._recent_frames[key] = now
+        cutoff = now - 2.0
+        self._recent_frames = {
+            recent_key: recent_ts
+            for recent_key, recent_ts in self._recent_frames.items()
+            if recent_ts >= cutoff
+        }
+        entry = self.message_log.log(direction, frame, timestamp)
+        if not entry:
+            return
+        self.hass.bus.async_fire(
+            MESSAGE_EVENT,
+            {"messages": [self.message_log.to_dict(entry)]},
+        )
+
+    def log_processed_frame(self, frame: str, timestamp: float | None = None) -> None:
+        self._log_and_emit("outbound", frame, timestamp)
 
     def is_scenario_running(self, scenario_id: str) -> bool:
         """Return True if the scenario id is currently marked as running."""
@@ -387,18 +419,22 @@ class ScenarioEngine:
             emit_startup_burst
             and periodic
             and self._auto_answer_enabled
-            and not start_emitter
+            and not device.suppress_responses
         ):
-            payload_idx: dict[str, int] = {e.code: 0 for e in periodic}
-            await self._emit_burst(device, periodic, payload_idx)
+            payload_idx = {entry.code: 0 for entry in periodic}
+            LOGGER.debug(
+                "Startup burst for %s (%d codes)", device.device_id, len(periodic)
+            )
+            asyncio.create_task(self._emit_burst(device, periodic, payload_idx))
 
         if start_emitter and not device.suppress_autonomous:
-            task = self.hass.async_create_background_task(
-                self._periodic_emitter(device, periodic),
-                name=f"device_simulator_emitter_{device.device_id}",
+            LOGGER.debug("Starting emitter task for %s", device.device_id)
+            self._emitter_tasks[device.device_id] = asyncio.create_task(
+                self._periodic_emitter(device, periodic)
             )
-            self._emitter_tasks[device.device_id] = task
-            LOGGER.debug("Started emitter for %s (%s)", device.device_id, device.slug)
+
+        if device.slug == "FAN":
+            await self._prime_fan_params(device)
 
     async def async_silence_device(self, device_id: str) -> None:
         """Stop a device's autonomous emission (simulate going offline).
@@ -523,7 +559,7 @@ class ScenarioEngine:
                 # Keep log size bounded
                 if len(self._message_log) > 1000:
                     self._message_log = self._message_log[-500:]
-                self.message_log.log("outbound", packet)
+                self._log_and_emit("outbound", packet)
             except Exception as err:
                 errors.append(str(err))
 
@@ -575,7 +611,7 @@ class ScenarioEngine:
                 )
                 if len(self._message_log) > 1000:
                     self._message_log = self._message_log[-500:]
-                self.message_log.log("outbound", packet)
+                self._log_and_emit("outbound", packet)
                 if inter_packet_delay > 0:
                     await asyncio.sleep(inter_packet_delay)
             except Exception as err:
@@ -590,6 +626,7 @@ class ScenarioEngine:
         self,
         device: ActiveDevice,
         entries: list[AutonomousEntry],
+        speed_override: float | None = None,
     ) -> None:
         """Background task: emit periodic I messages for a device.
 
@@ -598,7 +635,7 @@ class ScenarioEngine:
 
         :param device: ActiveDevice.
         :param entries: Autonomous entries to emit.
-        :param speed: Speed multiplier.
+        :param speed_override: Optional per-task speed multiplier.
         """
         if not entries:
             return
@@ -653,7 +690,7 @@ class ScenarioEngine:
                     )
                     if len(self._message_log) > 1000:
                         self._message_log = self._message_log[-500:]
-                    self.message_log.log("outbound", packet)
+                    self._log_and_emit("outbound", packet)
                 except Exception as err:
                     LOGGER.warning(
                         "Emitter send error for %s/%s: %s",
@@ -662,7 +699,12 @@ class ScenarioEngine:
                         err,
                     )
 
-                current_speed = max(self._autonomous_speed, 0.01)
+                current_speed = max(
+                    speed_override
+                    if speed_override is not None
+                    else self._autonomous_speed,
+                    0.01,
+                )
                 interval = interval_cache.get(entry.code, 60.0) / current_speed
                 next_due[entry.code] = time.monotonic() + interval
 
@@ -685,8 +727,9 @@ class ScenarioEngine:
             return
 
         self._messages_received += 1
-        self.message_log.log("inbound", frame)
+        self._log_and_emit("inbound", frame)
         verb, src, dst, code, payload = match.groups()
+        self._inject_inbound_to_stream(verb, src, dst, code, payload, frame)
         verb_raw = verb
         verb = verb.upper().strip()  # Strip leading space from 1-char verbs like ' I'
         LOGGER.debug(
@@ -718,6 +761,34 @@ class ScenarioEngine:
             return
 
         await self._respond_to_rq(src, dst, code, payload)
+
+    def _inject_inbound_to_stream(
+        self, verb: str, src: str, dst: str, code: str, payload: str, frame: str
+    ) -> None:
+        """Push RQ/W frames the simulator received into the shared message stream.
+
+        The ramses_rf add_msg_handler only fires for inbound RP/I frames;
+        outbound RQ/W commands never appear there for MQTT transports.
+        Injecting them here makes the Packet Log Explorer see the full exchange.
+        """
+        verb_upper = verb.upper().strip()
+        if verb_upper not in {"RQ", "W"}:
+            return
+        try:
+            stream = get_ramses_message_stream(self.hass)
+            stream.inject(
+                {
+                    "verb": verb_upper,
+                    "src": src,
+                    "dst": dst,
+                    "code": code,
+                    "payload": payload,
+                    "frame": frame,
+                    "dtm": datetime.now(tz=UTC).isoformat(timespec="microseconds"),
+                }
+            )
+        except Exception:
+            pass
 
     async def _echo_write(self, src: str, dst: str, code: str, payload: str) -> None:
         """Echo a W frame back so the FSM WantEcho state is satisfied.
@@ -837,10 +908,54 @@ class ScenarioEngine:
             # Keep log size bounded
             if len(self._message_log) > 1000:
                 self._message_log = self._message_log[-500:]
-            self.message_log.log("outbound", packet)
+            self._log_and_emit("outbound", packet)
             LOGGER.debug("Responded %s RP/%s → %s", dst, code, src)
         except Exception as err:
             LOGGER.warning("Failed to send RP for %s/%s: %s", dst, code, err)
+
+    async def _prime_fan_params(self, device: ActiveDevice) -> None:
+        """Send an initial 2411 detection RQ so FAN params are available early."""
+
+        if device.device_id in self._primed_fans:
+            return
+
+        self._primed_fans.add(device.device_id)
+
+        if not self._auto_answer_enabled:
+            LOGGER.debug(
+                "Skipping FAN prime for %s: auto-answer disabled", device.device_id
+            )
+            return
+
+        if not self._endpoint.is_connected:
+            LOGGER.debug(
+                "Skipping FAN prime for %s: endpoint not connected", device.device_id
+            )
+            return
+
+        rem_id = device.bound_device_id or SIM_DEVICE_ID.get("REM")
+        if not rem_id:
+            LOGGER.debug("Skipping FAN prime for %s: no REM id", device.device_id)
+            return
+
+        payload = "00003E"  # Param 0x3E matches the real detection RQ
+        packet = self._build_packet(rem_id, device.device_id, VERB_RQ, "2411", payload)
+
+        try:
+            await self._endpoint.send_packet(packet)
+            self._messages_sent += 1
+            self._message_log.append(
+                f"[{asyncio.get_event_loop().time():.3f}] {packet[:60]}..."
+            )
+            if len(self._message_log) > 1000:
+                self._message_log = self._message_log[-500:]
+            self._log_and_emit("outbound", packet)
+            LOGGER.debug(
+                "Primed FAN %s with 2411/3E request from %s", device.device_id, rem_id
+            )
+            await self._respond_to_rq(rem_id, device.device_id, "2411", payload)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.warning("Failed to prime FAN %s: %s", device.device_id, err)
 
     @staticmethod
     def _build_packet(src: str, dst: str, verb: str, code: str, payload: str) -> str:

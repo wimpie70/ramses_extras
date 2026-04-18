@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.ramses_extras.features.device_simulator.device_db import (
+    ResponseEntry,
+)
 from custom_components.ramses_extras.features.device_simulator.scenario_engine import (
+    MESSAGE_EVENT,
     ActiveDevice,
     ScenarioEngine,
 )
@@ -85,6 +89,29 @@ class TestScenarioEngineInit:
         assert engine._manual_device_ids == set()
         assert engine._auto_answer_enabled is True
         endpoint.add_inbound_handler.assert_called_once()
+
+
+class TestScenarioEngineProcessedFrames:
+    def test_log_processed_frame_logs_rp_once(self) -> None:
+        hass = MagicMock()
+        hass.bus.async_fire = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+        frame = (
+            "000 RP --- 32:150000 37:170000 --:------ "
+            "2411 023 0000750092000002080000000000000BB8000000010001"
+        )
+
+        engine.log_processed_frame(frame)
+        engine.log_processed_frame(frame)
+
+        messages = engine.message_log.get_recent(limit=10, device_id="32:150000")
+        assert len(messages) == 1
+        assert messages[0].raw == frame
+        hass.bus.async_fire.assert_called_once()
+        assert hass.bus.async_fire.call_args.args[0] == MESSAGE_EVENT
 
     def test_init_with_custom_scenario_definitions(self) -> None:
         """Test initialization with custom scenario definitions."""
@@ -798,8 +825,51 @@ class TestScenarioEngineAsyncActivateDevice:
 
         await engine.async_activate_device(device, start_emitter=False)
 
-        # Should have discarded from both profile and manual device IDs
         assert "37:168270" not in engine._profile_device_ids
+        assert "37:168270" not in engine._manual_device_ids
+
+    @pytest.mark.asyncio
+    async def test_fan_activation_primes_detection_param(self) -> None:
+        """Activating a FAN issues an RQ 2411/3E warm-up."""
+
+        hass = MagicMock()
+        hass.bus.async_fire = MagicMock()
+        endpoint = MagicMock()
+        endpoint.send_packet = AsyncMock()
+        endpoint.is_connected = True
+        db = MagicMock()
+        db.get_periodic = MagicMock(return_value=[])
+        db.find_response = MagicMock(
+            return_value=ResponseEntry(
+                code="2411",
+                payloads=["00003E000000000000000000"],
+                delay_ms=0,
+            )
+        )
+
+        engine = ScenarioEngine(hass, endpoint, db)
+        device = ActiveDevice(
+            device_id="32:150000",
+            slug="FAN",
+            origin="profile",
+            bound_device_id="37:170000",
+        )
+
+        await engine.async_activate_device(
+            device,
+            start_emitter=False,
+            emit_startup_burst=False,
+        )
+
+        assert endpoint.send_packet.await_count == 2
+        rq_frame = endpoint.send_packet.await_args_list[0].args[0]
+        rp_frame = endpoint.send_packet.await_args_list[1].args[0]
+        assert " RQ " in rq_frame
+        assert "2411 003 00003E" in rq_frame
+        assert " RP " in rp_frame
+        assert "2411" in rp_frame
+        assert "00003E" in rp_frame
+        assert device.device_id in engine._primed_fans
         assert "37:168270" not in engine._manual_device_ids
 
 

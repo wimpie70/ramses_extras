@@ -393,6 +393,20 @@ class TestResponseEngineDelayedSend:
         engine._endpoint.send_packet.assert_called_once_with(frame)
 
     @pytest.mark.asyncio
+    async def test_delayed_send_logs_via_scenario_engine(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Sent responses should also reach the simulator message log."""
+
+        scenario_engine = MagicMock()
+        engine.set_engine(scenario_engine)
+        frame = "000 RP --- 32:150000 37:170000 --:------ 2411 023 000075"
+
+        await engine._send_immediate(frame)
+
+        scenario_engine._log_and_emit.assert_called_once_with("outbound", frame)
+
+    @pytest.mark.asyncio
     async def test_delayed_send_when_disconnected(self, engine: ResponseEngine) -> None:
         """Test sending when endpoint is disconnected."""
         engine._endpoint.is_connected = False
@@ -615,13 +629,32 @@ class TestResponseEngineHandleInboundEdgeCases:
 
     @pytest.mark.asyncio
     async def test_handle_inbound_w_frame_ignored(self, engine: ResponseEngine) -> None:
-        """Test that W frames are ignored."""
+        """Unsupported W codes are ignored."""
         with patch.object(engine, "_send_response") as mock_send:
             frame = "W 052 37:168270 --:------ 37:168270 31DA 029 21..."
             await engine.handle_inbound_frame(frame)
 
             engine._db.find_response.assert_not_called()
             mock_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_inbound_w_2411_ack(self, engine: ResponseEngine) -> None:
+        """Supported W codes (2411) respond with an RP payload."""
+
+        payload = "00007500920000072F0000000000000BB8000000010001"
+        payload_len = f"{len(payload) // 2:03d}"
+        frame = f"W --- 37:170000 32:150000 --:------ 2411 {payload_len} {payload}"
+
+        mock_response = ResponseEntry(code="2411", delay_ms=0, payloads=[payload])
+        engine._db.find_response.return_value = mock_response
+
+        with patch.object(engine, "_send_response") as mock_send:
+            await engine.handle_inbound_frame(frame)
+
+        engine._db.find_response.assert_called_once_with("FAN", "2411")
+        mock_send.assert_called_once()
+        sent_entry = mock_send.call_args[0][1]
+        assert sent_entry.payloads == [payload.upper()]
 
     @pytest.mark.asyncio
     async def test_handle_inbound_exception_handling(

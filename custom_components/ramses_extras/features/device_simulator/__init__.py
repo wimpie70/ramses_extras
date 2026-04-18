@@ -9,6 +9,7 @@ allowing testing without physical RF hardware."""
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -19,6 +20,7 @@ from pathlib import Path
 
 from homeassistant.helpers.storage import Store as HaStore
 
+from ...framework.helpers.ramses_message_stream import get_ramses_message_stream
 from .comm_endpoint import MqttEndpoint
 from .const import (
     DOMAIN,
@@ -518,6 +520,33 @@ async def create_device_simulator_feature(
 
     registry["device_simulator_response_engine"].set_engine(
         registry["device_simulator_engine"]
+    )
+
+    existing_stream_unsub = registry.get("device_simulator_message_stream_unsub")
+    if callable(existing_stream_unsub):
+        existing_stream_unsub()
+
+    stream = get_ramses_message_stream(hass)
+    stream.start()
+
+    def _handle_processed_message(data: dict[str, Any]) -> None:
+        frame = data.get("frame")
+        verb = data.get("verb")
+        if not isinstance(frame, str) or not frame.strip():
+            return
+        if verb not in {"RP", "I"}:
+            return
+        dtm = data.get("dtm")
+        timestamp = None
+        if isinstance(dtm, str):
+            try:
+                timestamp = datetime.fromisoformat(dtm).timestamp()
+            except Exception:
+                pass
+        registry["device_simulator_engine"].log_processed_frame(frame, timestamp)
+
+    registry["device_simulator_message_stream_unsub"] = stream.subscribe(
+        _handle_processed_message
     )
 
     # Restore persisted auto_answer setting into the freshly-created engine.

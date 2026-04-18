@@ -78,13 +78,32 @@ Log errors if not configured.
 ### Ramses Packet Log explorer: auto mode seem to be broken
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 
+- pre releases:
+- fix 2411 flow (no RP)
+- fx issue #73
+- fix param detection on startup (send RQ)
+- fix pytest version -> 9.0.3
+- check deployment helpers
+- little doc how to install/use the sim (extra reload browser needed)
+- bump
+
+--
+For bash, add this to ~/.bashrc:
+
+bash
+export PS1="\[\033[36m\]\t\[\033[m\] \[\033[1;34m\]\u@\h:\w\[\033[m\]\$ "
+
+---
+
 - simulator:
+### check loading time takes long
 
 ### test scenarios: device_unavailability and hvac_device_loss
-
-### add message logging (parsed) to devices (both directions) just a few lines with scrollbars
+### import msg logs and playback
+### indicate what scenarios are implemented
 
 --- next to do:
+
 
 ### it seems like we are sending hvac msgs to heat devices, and heat msgs to hvac devices.
 Shouldn't we filter this ? we know from our database what belongs to what
@@ -99,3 +118,11 @@ or to a saved one that we replaced in the first place
 ### scenarios: autonomous emissions -> let devices emit messages autonomously,
 from a list of possible messages, eg, change temperature, etc....
 we should be able to import (edit field and/or pick from (dedicated) folder) ramses.log style files
+
+_cc PR:
+## Summary
+- Fix fan parameter services to use `known_list` bindings when the REM isn’t yet discovered, avoiding “No valid source device” errors during profile loads.
+- Add (skipped for now) regression test ensuring [_get_device_and_from_id](cci:1://file:///home/willem/dev/ramses_cc/custom_components/ramses_cc/services.py:4:4-21:62) pulls the REM from config options when necessary.
+
+## Testing
+- source ~/venvs/_cc/bin/activate && cd /home/willem/dev/ramses_cc && pytest tests/tests_new/test_services.py -k known_list
