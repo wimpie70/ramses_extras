@@ -1,0 +1,458 @@
+- device: CTL
+  section: autonomous
+  code: '2309'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0005DC0101F40205DC
+      quality: ok
+      parsed:
+        zone_idx: '00'
+        setpoint: 15.0
+      audit: Y
+    - payload: '030514'
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 03, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+    - payload: 01070802079E03073A
+      quality: ok
+      parsed:
+        zone_idx: '01'
+        setpoint: 18.0
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 072309054E29
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['07', '2309', '01:085545']]"
+      audit: Y
+    - payload: 08230906368E
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['08', '2309', '01:145038']]"
+      audit: Y
+    - payload: 0010A006368E
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '10A0', '01:145038']]"
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 0008
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FA00
+      quality: no_fields
+      remark: 'parse error: PacketInvalid: Bad packet'
+      audit: '?'
+    - payload: '0204'
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 02, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+    - payload: F914
+      quality: no_fields
+      remark: 'parse error: PacketInvalid: Bad packet'
+      audit: '?'
+- device: CTL
+  section: autonomous
+  code: 1F09
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FF091A
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        remaining_seconds: 233.0
+        _next_sync: '14:59:48'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: FF04B5
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        remaining_seconds: 120.5
+        _next_sync: '14:57:56'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: FF086B
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        remaining_seconds: 215.5
+        _next_sync: '14:59:31'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 1F41
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000000FFFFFF
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        mode: follow_schedule
+        active: false
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 0009
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FC00FFF900FF
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        domain_id: FC
+        failsafe_enabled: false
+        unknown_0: FF
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 10A0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0013880003E8
+      quality: ok
+      parsed:
+        setpoint: 50.0
+        overrun: 0
+        differential: 10.0
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 3B00
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FCC8
+      quality: no_fields
+      remark: 'parse error: PacketInvalid: Bad packet'
+      audit: '?'
+- device: CTL
+  section: autonomous
+  code: '2349'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0007D000FFFFFF
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        mode: follow_schedule
+        setpoint: 20.0
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 01079E00FFFFFF
+      quality: no_fields
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 01, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+    - payload: 03073A00FFFFFF
+      quality: no_fields
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 03, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+- device: CTL
+  section: autonomous
+  code: '0005'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0000FF01
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        zone_type: '00'
+        zone_mask: '[1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]'
+        zone_class: heating_zone
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 0004FF01
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        zone_type: '04'
+        zone_mask: '[1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]'
+        zone_class: heating_zone
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 00080400
+      quality: ok
+      parsed:
+        zone_type: 08
+        zone_mask: '[0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]'
+        zone_class: radiator_valve
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 0418
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000000B0060402000000BC955AB2FFFFFF70020F131A
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        log_idx: '00'
+        log_entry: ('21-11-25T11:21:37', 'fault', 'comms_fault', 'setpoint', '04', '03:201498',
+          'B0', '0000', 'FFFF7002')
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 004000B0060402000000BC95717AFFFFFF70020F131A
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        log_idx: '00'
+        log_entry: ('21-11-25T14:11:53', 'restore', 'comms_fault', 'setpoint', '04',
+          '03:201498', 'B0', '0000', 'FFFF7002')
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 004006B0061C04000000C39500CDFFFFFF700037F3CD
+      quality: ok
+      sentinels:
+        - FFFF (unavailable (generic))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        log_idx: '06'
+        log_entry: ('21-12-07T00:06:27', 'restore', 'comms_fault', 'actuator', '1C',
+          '13:259021', 'B0', '0000', 'FFFF7000')
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 2E04
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 022D151B0A07E301
+      quality: ok
+      parsed:
+        system_mode: eco_boost
+        until: '2019-10-27T21:45:00'
+      audit: Y
+    - payload: 0300001D0A07E301
+      quality: ok
+      parsed:
+        system_mode: away
+        until: '2019-10-29T00:00:00'
+      audit: Y
+    - payload: 040000020B07E301
+      quality: ok
+      parsed:
+        system_mode: day_off
+        until: '2019-11-02T00:00:00'
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: 000A
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 011001F40DAC
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 01, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+    - payload: 021001F40DAC
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 02, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+    - payload: 001001F40DAC
+      quality: ok
+      parsed:
+        min_temp: 5.0
+        max_temp: 35.0
+        local_override: true
+        openwindow_function: true
+        multiroom_mode: false
+        _unknown_bitmap: '0b00010000'
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: '1100'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FC180400007FFF01
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        domain_id: FC
+        cycle_rate: 6
+        min_on_time: 1.0
+        min_off_time: 0.0
+        _unknown_0: '00'
+        proportional_band_width: null
+        _unknown_1: '01'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: FC0C1400007FFF01
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        domain_id: FC
+        cycle_rate: 3
+        min_on_time: 5.0
+        min_off_time: 0.0
+        _unknown_0: '00'
+        proportional_band_width: null
+        _unknown_1: '01'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CTL
+  section: autonomous
+  code: 30C9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0007BB
+      quality: ok
+      parsed:
+        temperature: 19.79
+      audit: Y
+    - payload: 0107DC
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 01, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+    - payload: 0307B2
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 03, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+- device: CTL
+  section: autonomous
+  code: '0004'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0000434850204F666669636500000000000000000000
+      quality: ok
+      parsed:
+        name: CHP Office
+      audit: Y
+    - payload: 01004C6F756E67650000000000000000000000000000
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 01, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+    - payload: 020048616C6C77617900000000000000000000000000
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 02, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+- device: CTL
+  section: autonomous
+  code: 12B0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: '000000'
+      quality: ok
+      parsed:
+        window_open: false
+      audit: Y
+    - payload: '010000'
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 01, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+    - payload: '030000'
+      quality: no_fields
+      remark: 'parse error: PacketPayloadInvalid: Packet idx is 03, but expecting no
+        idx (00) (0xAB)'
+      audit: '?'
+- device: CTL
+  section: autonomous
+  code: 313F
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00FC081CCF0D0307E6
+      quality: ok
+      parsed:
+        datetime: '2022-03-13T15:28:08'
+        is_dst: null
+        _unknown_0: FC
+      audit: Y
+- device: CTL
+  section: autonomous
+  code: '3150'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: FC0A
+      quality: no_fields
+      remark: 'parse error: PacketInvalid: Bad packet'
+      audit: '?'
+    - payload: FC14
+      quality: no_fields
+      remark: 'parse error: PacketInvalid: Bad packet'
+      audit: '?'
+    - payload: FCC8
+      quality: no_fields
+      remark: 'parse error: PacketInvalid: Bad packet'
+      audit: '?'
+- device: CTL
+  section: responses
+  code: 10E0
+  verb: RP
+  notes: Device capabilities
+  payloads:
+    - payload: 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '01'
+        manufacturer_sub_id: '00'
+        product_id: 1B
+        date_1: '2019-04-11'
+        date_2: '0000-00-00'
+        description: CVE-RF
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark

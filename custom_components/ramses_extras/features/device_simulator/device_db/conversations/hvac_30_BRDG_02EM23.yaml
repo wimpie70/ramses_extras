@@ -1,0 +1,12 @@
+id: hvac_30_BRDG_02EM23
+description: 'Harvested from ramses_rf: fingerprints/hvac/30_BRDG-02EM23.log'
+peers:
+- 30:006056
+- 63:262142
+frames:
+- t: 0.0
+  src: 30:006056
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C848260066FEFEFFFFFFFF1C0B07E3425244472D3032454D3233000000000000000000

@@ -1,0 +1,49 @@
+id: hvac_rem_fan_nuaire
+description: 'Harvested from ramses_rf: bindings/hvac/rem_fan_nuaire.log'
+peers:
+- 30:098165
+- 32:208628
+- 63:262142
+frames:
+- t: 0.0
+  src: 30:098165
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C9001D006CFEFEFFFFFFFF120707E3425244472D30324A415330310000000000000000
+- t: 602.971092
+  src: 30:098165
+  dst: --:------
+  code: 31DA
+  verb: I
+  payload: '00'
+- t: 1229862.026791
+  src: 32:208628
+  dst: --:------
+  code: 1FC9
+  verb: I
+  payload: 0022F1832EF46C10E0832EF4001FC9832EF4
+- t: 1229862.085663
+  src: 30:098165
+  dst: 32:208628
+  code: 1FC9
+  verb: W
+  payload: 2131DA797F75
+- t: 1229862.106189
+  src: 32:208628
+  dst: 30:098165
+  code: 1FC9
+  verb: I
+  payload: A
+- t: 1229862.18572
+  src: 32:208628
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C85A01016CFFFFFFFFFFFF010607E0564D4E2D32334C4D48323300
+- t: 1229862.18572
+  src: 32:208628
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: BE

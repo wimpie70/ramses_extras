@@ -1,0 +1,43 @@
+id: hvac_rem_fan_vasco
+description: 'Harvested from ramses_rf: bindings/hvac/rem_fan_vasco.log'
+peers:
+- 29:091138
+- 32:022222
+- 63:262142
+frames:
+- t: 0.0
+  src: 29:091138
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C8400F0166FFFFFFFFFFFF0E0207E3564D4E2D31374C4D503031000000000000000000
+- t: 0.0
+  src: 29:091138
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: BE
+- t: 945380.712
+  src: 32:022222
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: D60
+- t: 2909671.0585
+  src: 29:091138
+  dst: --:------
+  code: 1FC9
+  verb: I
+  payload: 0022F17564020022F37564026610E0756402001FC9756402
+- t: 2909671.106203
+  src: 32:022222
+  dst: 29:091138
+  code: 1FC9
+  verb: W
+  payload: 0031D98056CE0031DA8056CE
+- t: 2909671.112284
+  src: 29:091138
+  dst: 32:022222
+  code: 1FC9
+  verb: I
+  payload: A

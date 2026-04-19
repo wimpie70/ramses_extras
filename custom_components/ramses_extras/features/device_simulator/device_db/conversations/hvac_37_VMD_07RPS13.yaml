@@ -1,0 +1,12 @@
+id: hvac_37_VMD_07RPS13
+description: 'Harvested from ramses_rf: fingerprints/hvac/37_VMD-07RPS13.log'
+peers:
+- 37:153226
+- 63:262142
+frames:
+- t: 0.0
+  src: 37:153226
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C8830C0A65FEFFFFFFFFFF110C07E4564D442D30375250533133000000000000000000

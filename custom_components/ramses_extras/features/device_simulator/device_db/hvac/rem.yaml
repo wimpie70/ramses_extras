@@ -1,0 +1,14 @@
+device_type: REM
+domain: hvac
+broadcast_safe: false
+variants: []
+autonomous: []
+responses:
+- code: 1FC9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - A
+  notes: Extracted from harvested conversations
+conversation_refs: []

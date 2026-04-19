@@ -1,0 +1,50 @@
+id: hvac_co2_fan_nuaire
+description: 'Harvested from ramses_rf: bindings/hvac/co2_fan_nuaire.log'
+peers:
+- 30:072506
+- 30:098165
+- 32:166025
+- 63:262142
+frames:
+- t: 0.0
+  src: 30:098165
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C9001D006CFEFEFFFFFFFF120707E3425244472D30324A415330310000000000000000
+- t: 90343768.648656
+  src: 30:072506
+  dst: --:------
+  code: 31DA
+  verb: I
+  payload: 21EF007FFF39EF7FFF7FFF7FFF7FFF0002EF18FFFF000000EF7FFF7FFF00
+- t: 90375183.754551
+  src: 32:166025
+  dst: --:------
+  code: 1FC9
+  verb: I
+  payload: 0031E08288896C10E0828889001FC9828889
+- t: 90375183.822671
+  src: 30:072506
+  dst: 32:166025
+  code: 1FC9
+  verb: W
+  payload: 2131DA791B3A
+- t: 90375183.841696
+  src: 32:166025
+  dst: 30:072506
+  code: 1FC9
+  verb: I
+  payload: A
+- t: 90375184.69262
+  src: 32:166025
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C85701016CFFFFFFFFFFFF110607E0564D532D32334333330000000000000000000000
+- t: 90375184.69262
+  src: 32:166025
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: BE

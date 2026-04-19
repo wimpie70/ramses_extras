@@ -1,0 +1,64 @@
+- device: REM
+  section: autonomous
+  code: '1060'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00FF01
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        battery_low: false
+        battery_level: null
+      remark: Sentinel bytes present (FF (unavailable (single-byte generic))) but remaining
+        fields decode OK — verify device has those sensors.
+      audit: Remark
+- device: REM
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000001C8380F0100F1FF1D0807E2030507E15438375246323032350000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '00'
+        manufacturer_sub_id: C8
+        product_id: '38'
+        date_1: '2017-05-03'
+        date_2: '2018-08-29'
+        description: T87RF2025
+      remark: Sentinel bytes present (FF (unavailable (single-byte generic))) but remaining
+        fields decode OK — verify device has those sensors.
+      audit: Remark
+    - payload: 000001C8380F0100F1FF0D0C07E2030507E15438375246323032350000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '00'
+        manufacturer_sub_id: C8
+        product_id: '38'
+        date_1: '2017-05-03'
+        date_2: '2018-12-13'
+        description: T87RF2025
+      remark: Sentinel bytes present (FF (unavailable (single-byte generic))) but remaining
+        fields decode OK — verify device has those sensors.
+      audit: Remark
+    - payload: 000001C8380F0100F1FF1B0507E3030507E15438375246323032350000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '00'
+        manufacturer_sub_id: C8
+        product_id: '38'
+        date_1: '2017-05-03'
+        date_2: '2019-05-27'
+        description: T87RF2025
+      remark: Sentinel bytes present (FF (unavailable (single-byte generic))) but remaining
+        fields decode OK — verify device has those sensors.
+      audit: Remark

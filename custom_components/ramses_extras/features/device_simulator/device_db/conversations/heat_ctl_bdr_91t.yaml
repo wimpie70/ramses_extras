@@ -1,0 +1,18 @@
+id: heat_ctl_bdr_91t
+description: 'Harvested from ramses_rf: bindings/heat/ctl_bdr_91t.log'
+peers:
+- 01:078710
+- 13:208181
+frames:
+- t: 0.0
+  src: 01:078710
+  dst: --:------
+  code: 1FC9
+  verb: I
+  payload: F62D49053376F61FC9053376
+- t: 0.997747
+  src: 13:208181
+  dst: 01:078710
+  code: 1FC9
+  verb: W
+  payload: 003EF0372D35

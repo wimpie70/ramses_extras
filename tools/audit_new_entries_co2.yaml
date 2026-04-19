@@ -1,0 +1,208 @@
+- device: CO2
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0031D982041D0031DA82041D
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '31D9', '32:132125'], ['00', '31DA', '32:132125']]"
+      audit: Y
+    - payload: 0031D9825FE10031DA825FE1
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '31D9', '32:155617'], ['00', '31DA', '32:155617']]"
+      audit: Y
+    - payload: 0022F1832EF46C10E0832EF4001FC9832EF4
+      quality: ok
+      sentinels:
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        phase: offer
+        bindings: "[['00', '22F1', '32:208628'], ['6C', '10E0', '32:208628'],
+          ['00', '1FC9', '32:208628']]"
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CO2
+  section: autonomous
+  code: 31E0
+  verb: I
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: 0000000001001E00
+      quality: ok
+      parsed:
+        flags: '00'
+        vent_demand: 0.0
+        _unknown_3: 0001001E00
+      audit: Y
+- device: CO2
+  section: autonomous
+  code: 042F
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000000100F00105050
+      quality: ok
+      parsed:
+        counter_1: '0x0000'
+        counter_3: '0x100F'
+        counter_5: '0x0010'
+        unknown_7: '0x5050'
+      audit: Y
+    - payload: 00050E0B0C00111470
+      quality: ok
+      parsed:
+        counter_1: '0x050E'
+        counter_3: '0x0B0C'
+        counter_5: '0x0011'
+        unknown_7: '0x1470'
+      audit: Y
+- device: CO2
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000001C8510D0167FEFFFFFFFFFF0B0207E3564D532D3135434D313700000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '67'
+        manufacturer_sub_id: C8
+        product_id: '51'
+        date_1: '2019-02-11'
+        date_2: '0000-00-00'
+        description: VMS-15CM17
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001C8A2050367FEFFFFFFFFFF1D0807E6564D442D3135524D5338362D3200000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '67'
+        manufacturer_sub_id: C8
+        product_id: A2
+        date_1: '2022-08-29'
+        date_2: '0000-00-00'
+        description: VMD-15RMS86-2
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001C85E0B0567FFFFFFFFFFFFFFFFFFFF564D442D3135525053373500
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '67'
+        manufacturer_sub_id: C8
+        product_id: 5E
+        date_1: '0000-00-00'
+        date_2: '0000-00-00'
+        description: VMD-15RPS75
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: CO2
+  section: responses
+  code: 22F1
+  verb: RP
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: '000107'
+      quality: ok
+      parsed:
+        fan_mode: low
+        _scheme: orcon
+        _mode_idx: '01'
+        _mode_max: '07'
+      audit: Y
+    - payload: '000307'
+      quality: ok
+      parsed:
+        fan_mode: high
+        _scheme: orcon
+        _mode_idx: '03'
+        _mode_max: '07'
+      audit: Y
+- device: CO2
+  section: responses
+  code: '2411'
+  verb: RP
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: 0000077F00000000000000000000000003000000018A00
+      quality: ok
+      parsed:
+        parameter: '07'
+        description: Unknown
+        value: 0
+        _value_06: 7F00
+        min_value: 0
+        max_value: 3
+        precision: 1
+        _value_42: 8A00
+      audit: Y
+    - payload: 0000881510000002BC000001900000076C000000018A33
+      quality: ok
+      parsed:
+        parameter: '88'
+        description: Unknown
+        value: 700
+        _value_06: '1510'
+        min_value: 400
+        max_value: 1900
+        precision: 1
+        _value_42: 8A33
+      audit: Y
+    - payload: 0000DA7F00000000000000000000000003000000018A00
+      quality: ok
+      parsed:
+        parameter: DA
+        description: Unknown
+        value: 0
+        _value_06: 7F00
+        min_value: 0
+        max_value: 3
+        precision: 1
+        _value_42: 8A00
+      audit: Y
+- device: CO2
+  section: responses
+  code: 31DA
+  verb: RP
+  payloads:
+    - payload: 00EF007FFF2B27060E0848089605F9F000445800000000EFEF02D2154400
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        hvac_id: '00'
+        exhaust_fan_speed: 0.0
+        fan_info: auto
+        _unknown_fan_info_flags: '[0, 1, 0]'
+        air_quality: null
+        co2_level: null
+        indoor_humidity: 0.43
+        outdoor_humidity: 0.39
+        exhaust_temp: 15.5
+        supply_temp: 21.2
+        indoor_temp: 21.98
+        outdoor_temp: 15.29
+        speed_capabilities: "['off', 'low_med_high', 'timer', 'boost']"
+        bypass_position: 0.34
+        supply_fan_speed: 0.0
+        remaining_mins: 0
+        post_heat: null
+        pre_heat: null
+        supply_flow: 7.22
+        exhaust_flow: 54.44
+        _extra: '00'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
