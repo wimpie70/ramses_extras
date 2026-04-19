@@ -13,11 +13,30 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         or params.get("conversation_ref")
         or params.get("log_file")
     )
+    log_content = params.get("log_content")
+
+    # If log_content is provided, import it first
+    if log_content:
+        name = params.get("name") or "imported_log"
+        save_yaml = bool(params.get("save_yaml", False))
+        success = context.device_db.import_user_log(
+            None, name, log_content, save_yaml=save_yaml
+        )
+        if not success:
+            return ScenarioResult(
+                scenario_id=SCENARIO_DEVICE_PLAYBACK,
+                success=False,
+                errors=["Failed to import log content"],
+            )
+        conversation = name
+
     if not conversation:
         return ScenarioResult(
             scenario_id=SCENARIO_DEVICE_PLAYBACK,
             success=False,
-            errors=["Provide 'conversation' (or legacy log_file) parameter"],
+            errors=[
+                "Provide 'conversation' (or legacy log_file) or 'log_content' parameter"
+            ],
         )
 
     scheme = params.get("scheme")
@@ -125,6 +144,9 @@ SCENARIO_DEFINITION = ScenarioDefinition(
     label="Device Playback",
     toggleable=False,
     can_run_with=[SCENARIO_AUTO_ANSWER],
-    description="Replay captured conversation blocks with inferred device mapping",
+    description=(
+        "Replay captured conversation blocks with inferred device mapping. "
+        "Can use existing conversations or paste ramses.log content directly."
+    ),
     run=run,
 )

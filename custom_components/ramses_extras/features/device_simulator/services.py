@@ -54,6 +54,7 @@ SERVICE_ACTIVATE_DEVICE = "device_simulator_activate_device"
 SERVICE_SILENCE_DEVICE = "device_simulator_silence_device"
 SERVICE_RUN_CONVERSATION = "device_simulator_run_conversation"
 SERVICE_IMPORT_USER_CONFIG = "device_simulator_import_user_config"
+SERVICE_IMPORT_USER_LOG = "device_simulator_import_user_log"
 
 SCHEMA_INJECT_MESSAGE = vol.Schema(
     {
@@ -124,6 +125,15 @@ SCHEMA_IMPORT_USER_CONFIG = vol.Schema(
         vol.Required("source"): str,
         vol.Required("name"): str,
         vol.Optional("attach_log"): str,
+    }
+)
+
+SCHEMA_IMPORT_USER_LOG = vol.Schema(
+    {
+        vol.Optional("path"): str,
+        vol.Required("name"): str,
+        vol.Optional("content"): str,
+        vol.Optional("save_yaml", default=False): bool,
     }
 )
 
@@ -467,6 +477,33 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             LOGGER.error("Failed to import profile: %s", err)
             return {"success": False, "error": str(err)}
 
+    async def handle_import_user_log(call: ServiceCall) -> dict[str, Any]:
+        """Import a user's ramses.log file as a conversation for playback."""
+        from pathlib import Path
+
+        path = call.data.get("path")
+        name = call.data["name"]
+        content = call.data.get("content")
+        save_yaml = call.data.get("save_yaml", False)
+
+        engine = _get_engine(hass)
+        if not engine:
+            return {"success": False, "error": "Engine not available"}
+
+        db = engine.device_db
+        if not db:
+            return {"success": False, "error": "Device database not available"}
+
+        # Import the log file (from path or content)
+        success = db.import_user_log(path, name, content, save_yaml=save_yaml)
+        if success:
+            return {
+                "success": True,
+                "conversation_name": name,
+                "message": f"Imported log as conversation '{name}'",
+            }
+        return {"success": False, "error": "Failed to import log"}
+
     # Register services under ramses_extras domain (not device_simulator)
     # to avoid "IntegrationNotFound: device_simulator" errors
     hass.services.async_register(
@@ -511,6 +548,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         handle_import_user_config,
         schema=SCHEMA_IMPORT_USER_CONFIG,
     )
+    hass.services.async_register(
+        INTEGRATION_DOMAIN,
+        SERVICE_IMPORT_USER_LOG,
+        handle_import_user_log,
+        schema=SCHEMA_IMPORT_USER_LOG,
+    )
 
     LOGGER.debug("Device Simulator services registered")
 
@@ -525,5 +568,6 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_SILENCE_DEVICE,
         SERVICE_RUN_CONVERSATION,
         SERVICE_IMPORT_USER_CONFIG,
+        SERVICE_IMPORT_USER_LOG,
     ):
         hass.services.async_remove(INTEGRATION_DOMAIN, service)

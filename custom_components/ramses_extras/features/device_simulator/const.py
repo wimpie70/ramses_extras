@@ -117,7 +117,24 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "key": "conversation",
             "label": "Conversation",
             "type": "text",
-            "required": True,
+        },
+        {
+            "key": "log_content",
+            "label": "Log content (paste ramses.log)",
+            "type": "textarea",
+            "placeholder": "Paste ramses.log content here...",
+        },
+        {
+            "key": "name",
+            "label": "Imported log name",
+            "type": "text",
+            "placeholder": "Auto-generated if using log_content",
+        },
+        {
+            "key": "save_yaml",
+            "label": "Save as reusable YAML conversation",
+            "type": "checkbox",
+            "default": False,
         },
         {
             "key": "scheme",

@@ -20,7 +20,9 @@ Each device type YAML has:
 
 from __future__ import annotations
 
+import re as _re
 from dataclasses import dataclass, field
+from datetime import datetime as _datetime
 from pathlib import Path
 from typing import Any
 
@@ -162,6 +164,144 @@ class DeviceTypeEntry:
     autonomous: list[AutonomousEntry] = field(default_factory=list)
     responses: list[ResponseEntry] = field(default_factory=list)
     conversation_refs: list[str] = field(default_factory=list)
+
+
+# Matches both ISO "2026-04-18T18:51:46.915588" and classic "2024-01-01 12:00:00.123"
+_TS_PATTERN = _re.compile(r"\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)\b")
+_VERBS = ("RQ", "RP", "I", "W")
+_DEVICE_ID = _re.compile(r"(?:\d{2}:\d{6}|--:------|\d{3}:\d{6})")
+
+
+def _parse_timestamp(raw: str) -> _datetime | None:
+    """Parse an ISO or classic ramses timestamp."""
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+    ):
+        try:
+            return _datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def parse_ramses_log(
+    content: str,
+) -> tuple[list[ConversationFrame], set[str]]:
+    """Parse a ramses log blob into chronologically sorted frames.
+
+    Accepts two styles (fields may be tab- or space-separated, in any order of lines):
+
+    * **Classic ramses.log**: ``timestamp RSSI verb src dst code payload``
+      e.g. ``2024-01-01 12:00:00.123 082 I 20:123456 --:------ 31DA 0001020304``
+    * **Newer tab-separated dumps**: ``timestamp verb code src dst length payload``
+      e.g. ``2026-04-18T18:51:46.915588\tRP\t2349\t01:150000\t18:000730\t013 0807C0...``
+
+    Multiple records may be concatenated on a single line (with tabs). The parser
+    splits the input by detected timestamps, tokenises each record, and identifies
+    the verb/code/src/dst positions dynamically so it tolerates both orderings.
+
+    Returns ``(frames, peers_set)`` where frames are sorted chronologically and
+    peer device_ids (excluding broadcast ``--:------``) are collected.
+
+    :param content: Raw log content as a single string.
+    """
+    # Split the content into chunks that each start with a timestamp
+    matches = list(_TS_PATTERN.finditer(content))
+    if not matches:
+        return [], set()
+
+    records: list[tuple[_datetime, list[str]]] = []
+    for idx, m in enumerate(matches):
+        ts_raw = m.group(1)
+        ts = _parse_timestamp(ts_raw)
+        if ts is None:
+            continue
+        start = m.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(content)
+        rest = content[start:end]
+        tokens = [tok for tok in _re.split(r"[\t ]+", rest.strip()) if tok]
+        if not tokens:
+            continue
+        records.append((ts, tokens))
+
+    # Parse each record into a ConversationFrame candidate
+    frames: list[ConversationFrame] = []
+    raw_frames: list[tuple[_datetime, ConversationFrame]] = []
+    peers_set: set[str] = set()
+
+    for ts, tokens in records:
+        # Find verb
+        verb_idx = next((i for i, t in enumerate(tokens) if t in _VERBS), None)
+        if verb_idx is None:
+            continue
+        verb = tokens[verb_idx]
+
+        # Find two device-id tokens (src, dst) — in that order
+        dev_idxs = [i for i, t in enumerate(tokens) if _DEVICE_ID.fullmatch(t)]
+        if len(dev_idxs) < 2:
+            continue
+        src = tokens[dev_idxs[0]]
+        dst = tokens[dev_idxs[1]]
+
+        # Find the 4-hex-digit code (appears once, separate from payload)
+        code_candidates = [
+            (i, t)
+            for i, t in enumerate(tokens)
+            if len(t) == 4
+            and all(c in "0123456789ABCDEFabcdef" for c in t)
+            and i != verb_idx
+            and i not in dev_idxs
+        ]
+        if not code_candidates:
+            continue
+        code_idx, code = code_candidates[0]
+
+        # Payload = last long hex token (skip length prefix)
+        hex_tokens = [
+            (i, t)
+            for i, t in enumerate(tokens)
+            if i > max(verb_idx, code_idx, *dev_idxs)
+            and len(t) >= 4
+            and all(c in "0123456789ABCDEFabcdef" for c in t)
+        ]
+        if not hex_tokens:
+            continue
+        payload = hex_tokens[-1][1].upper()
+
+        frame_src = src
+        frame_dst = dst
+        raw_frames.append(
+            (
+                ts,
+                ConversationFrame(
+                    t=0.0,  # filled in after sorting
+                    src=frame_src,
+                    dst=frame_dst,
+                    code=code.upper(),
+                    verb=verb,
+                    payload=payload,
+                ),
+            )
+        )
+
+        peers_set.add(frame_src)
+        if frame_dst != "--:------" and frame_dst != "ALL":
+            peers_set.add(frame_dst)
+
+    if not raw_frames:
+        return [], peers_set
+
+    # Sort chronologically, compute relative t from first frame
+    raw_frames.sort(key=lambda pair: pair[0])
+    t0 = raw_frames[0][0]
+    for ts, fr in raw_frames:
+        fr.t = (ts - t0).total_seconds()
+        frames.append(fr)
+
+    return frames, peers_set
 
 
 class DeviceDatabase:
@@ -415,6 +555,126 @@ class DeviceDatabase:
         if scheme and conv.scheme and conv.scheme != scheme:
             return None
         return conv
+
+    def import_user_log(
+        self,
+        path: str | None,
+        name: str,
+        content: str | None = None,
+        save_yaml: bool = False,
+    ) -> bool:
+        """Import a user's ramses log and convert to a replayable conversation.
+
+        Supports multiple log formats (see :func:`parse_ramses_log`). Entries may be
+        spread across multiple lines or concatenated on a single line with tab
+        separators; the parser splits by detected timestamps. Frames are sorted
+        chronologically before being stored so out-of-order log dumps still replay
+        correctly.
+
+        :param path: Path to a log file (optional if ``content`` is provided).
+        :param name: Name used for the generated conversation id.
+        :param content: Raw log content (optional if ``path`` is provided).
+        :param save_yaml: If True, also persist a reusable YAML conversation under
+            ``device_db/conversations/imported/<name>.yaml``.
+        :return: True if import succeeded, False otherwise.
+        """
+        from pathlib import Path
+
+        if content is None:
+            if not path:
+                LOGGER.error("Either path or content must be provided")
+                return False
+
+            log_path = Path(path)
+            if not log_path.exists():
+                LOGGER.error("Log file not found: %s", path)
+                return False
+
+            with open(log_path, encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+
+        if not content:
+            LOGGER.error("No log content to import")
+            return False
+
+        try:
+            frames, peers_set = parse_ramses_log(content)
+        except Exception as err:
+            LOGGER.error("Failed to parse log: %s", err)
+            return False
+
+        if not frames:
+            LOGGER.error("No valid frames found in log")
+            return False
+
+        # Create conversation
+        peers = sorted(peers_set)
+        conv_id = name.lower().replace(" ", "_")
+        source = Path(path).name if path else "pasted content"
+        conv = Conversation(
+            id=conv_id,
+            peers=peers,
+            description=f"Imported from {source}",
+            scheme=None,
+            frames=frames,
+        )
+
+        # Store in runtime conversations
+        key = f"{'+'.join(peers).lower()}/{conv.id}"
+        self._conversations[key] = conv
+        # Also index by bare id for easy lookup from UI
+        self._conversations[conv.id] = conv
+
+        # Optionally persist as YAML for reuse across restarts
+        if save_yaml:
+            try:
+                self._save_conversation_yaml(conv)
+            except Exception as err:
+                LOGGER.warning("Imported but failed to save YAML: %s", err)
+
+        LOGGER.info(
+            "Imported conversation '%s' from %s (%d frames, %d peers: %s)",
+            name,
+            source,
+            len(frames),
+            len(peers),
+            ", ".join(peers),
+        )
+        return True
+
+    def _save_conversation_yaml(self, conv: Conversation) -> Path:
+        """Write an imported conversation to device_db/conversations/imported/."""
+        import yaml
+
+        target_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS / "imported"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_file = target_dir / f"{conv.id}.yaml"
+
+        data = {
+            "peers": conv.peers,
+            "conversations": [
+                {
+                    "id": conv.id,
+                    "description": conv.description,
+                    "scheme": conv.scheme,
+                    "frames": [
+                        {
+                            "t": round(f.t, 6),
+                            "src": f.src,
+                            "dst": f.dst,
+                            "code": f.code,
+                            "verb": f.verb,
+                            "payload": f.payload,
+                        }
+                        for f in conv.frames
+                    ],
+                }
+            ],
+        }
+        with open(target_file, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(data, fh, sort_keys=False)
+        LOGGER.info("Saved imported conversation YAML → %s", target_file)
+        return target_file
 
     def get_fingerprint_payload(self, fingerprint: str) -> str | None:
         """Return the 10E0 RP payload for a given hardware fingerprint.

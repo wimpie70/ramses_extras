@@ -134,6 +134,11 @@ class ScenarioEngine:
 
         endpoint.add_inbound_handler(self._handle_inbound_frame)
 
+    @property
+    def device_db(self) -> DeviceDatabase:
+        """Expose the device database to external consumers."""
+        return self._db
+
     async def async_setup(self) -> None:
         """Connect the endpoint and load the device DB."""
         self._db.load_all()

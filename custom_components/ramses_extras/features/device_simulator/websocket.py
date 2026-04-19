@@ -126,6 +126,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_clear_ramses_cache)
     websocket_api.async_register_command(hass, ws_set_auto_answer)
     websocket_api.async_register_command(hass, ws_set_autonomous_speed)
+    websocket_api.async_register_command(hass, ws_import_user_log)
     websocket_api.async_register_command(hass, ws_subscribe_devices)
     websocket_api.async_register_command(hass, ws_subscribe_messages)
     websocket_api.async_register_command(hass, ws_delete_profile)
@@ -923,6 +924,53 @@ async def ws_delete_profile(
         await config_store.async_save_state()
 
     connection.send_result(msg["id"], {"success": True, "profile": profile_name})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/import_user_log",
+        vol.Optional("path"): str,
+        vol.Required("name"): str,
+        vol.Optional("content"): str,
+        vol.Optional("save_yaml", default=False): bool,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_import_user_log(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Import a user's ramses.log file as a conversation for playback."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    db = engine.device_db
+    if not db:
+        connection.send_error(msg["id"], "not_ready", "Device database not available")
+        return
+
+    # Import the log file (from path or content)
+    path = msg.get("path")
+    name = msg["name"]
+    content = msg.get("content")
+    save_yaml = msg.get("save_yaml", False)
+
+    success = db.import_user_log(path, name, content, save_yaml=save_yaml)
+    if success:
+        connection.send_result(
+            msg["id"],
+            {
+                "success": True,
+                "conversation_name": name,
+                "message": f"Imported log as conversation '{name}'",
+            },
+        )
+    else:
+        connection.send_error(msg["id"], "import_failed", "Failed to import log")
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
