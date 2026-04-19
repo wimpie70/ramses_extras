@@ -89,6 +89,16 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         if raw_imd not in (None, "") and isinstance(raw_imd, (int, float, str))
         else None
     )
+    # skip_answers=True (or skip_verbs=[...]) silences chosen verbs so the
+    # simulator's auto-answer scenario can respond to RQ frames instead of
+    # playing the recorded RP. Timing of later frames is preserved.
+    skip_verbs_param = params.get("skip_verbs")
+    if isinstance(skip_verbs_param, (list, tuple)):
+        skip_verbs: tuple[str, ...] | None = tuple(str(v) for v in skip_verbs_param)
+    elif params.get("skip_answers"):
+        skip_verbs = ("RP",)
+    else:
+        skip_verbs = None
     total_messages = 0
     total_duration = 0.0
     run_errors: list[str] = []
@@ -126,6 +136,7 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
                 speed=speed,
                 pause_event=pause_event,
                 inter_message_delay=inter_message_delay,
+                skip_verbs=skip_verbs,
             )
             if not playback.success:
                 run_errors.extend(playback.errors)
@@ -153,14 +164,16 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         duration_seconds=total_duration,
         details={
             "message": (
-                f"Replayed {conversation} x{loops} @ {speed:.2f}x"
+                f"Replayed {conversation} x{loops}"
                 if loops > 1
-                else f"Replayed {conversation} @ {speed:.2f}x"
-            ),
+                else f"Replayed {conversation}"
+            )
+            + (f" @ {speed:.2f}x" if speed is not None else " @ live speed"),
             "conversation": conversation,
             "device_map": device_map,
             "loops": loops,
             "speed": speed,
+            "skip_verbs": list(skip_verbs) if skip_verbs else [],
         },
     )
 

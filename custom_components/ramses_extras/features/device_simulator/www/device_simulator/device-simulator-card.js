@@ -154,6 +154,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._playbackImportDraft = { log_content: "", name: "" };
     this._playbackSaving = false;
     this._playbackInterMsgDelay = "";
+    this._playbackSkipAnswers = false;
 
     this._loadLoaderDraft();
   }
@@ -488,6 +489,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         payload.params.inter_message_delay = parsed;
       }
     }
+    if (this._playbackSkipAnswers) {
+      payload.params.skip_answers = true;
+    }
     try {
       await this._hass.callWS(payload);
       await this._fetchData();
@@ -529,6 +533,30 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   _clearPlaybackImport() {
     this._playbackImportDraft = { log_content: "", name: "" };
     this._scheduleRender();
+  }
+
+  async _loadPlaybackIntoEditor(identifier) {
+    if (!this._hass || !identifier) return;
+    try {
+      const res = await this._hass.callWS({
+        type: "ramses_extras/device_simulator/get_playback_text",
+        identifier,
+      });
+      this._playbackImportDraft = {
+        log_content: res?.text || "",
+        // Pre-fill a new name so saving doesn't silently overwrite the original.
+        name: `${identifier}_edited`,
+      };
+      // Jump to Scenarios tab where the editor lives.
+      if (this._tab !== "scenarios") {
+        this._setTab("scenarios");
+      } else {
+        this._scheduleRender();
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: load playback failed", err);
+    }
   }
 
   async _toggleScenario(scenarioId, enable) {
@@ -903,6 +931,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       btn.addEventListener("click", () => this._deleteSavedPlayback(btn.dataset.identifier));
     });
 
+    root.querySelectorAll("[data-action='load-playback-editor']").forEach(btn => {
+      btn.addEventListener("click", () => this._loadPlaybackIntoEditor(btn.dataset.identifier));
+    });
+
     root.querySelectorAll("[data-action='start-saved-playback']").forEach(btn => {
       btn.addEventListener("click", () => this._startSavedPlayback(btn.dataset.identifier));
     });
@@ -956,6 +988,13 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     if (imdInput) {
       imdInput.addEventListener("input", (e) => {
         this._playbackInterMsgDelay = e.target.value;
+      });
+    }
+
+    const skipAnswers = root.querySelector("[data-action='playback-skip-answers']");
+    if (skipAnswers) {
+      skipAnswers.addEventListener("change", (e) => {
+        this._playbackSkipAnswers = Boolean(e.target.checked);
       });
     }
 
@@ -1767,6 +1806,13 @@ class DeviceSimulatorCard extends RamsesBaseCard {
                    placeholder="Leave blank to use recorded timing"
                    data-action="playback-inter-msg-delay" />
           </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.75em; cursor:pointer;"
+                 title="Skip recorded RP frames so Auto Answer (if enabled) replies instead.">
+            <input type="checkbox"
+                   data-action="playback-skip-answers"
+                   ${this._playbackSkipAnswers ? "checked" : ""} />
+            <span>Skip recorded answers (let Auto Answer reply)</span>
+          </label>
         </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
           <button class="btn btn-primary" data-action="start-saved-playback" data-identifier="${selection}"${playDisabled}>▶ Play</button>
@@ -2099,6 +2145,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       const builtinTag = p.builtin
         ? `<span class="chip muted" style="font-size:0.65em;">built-in</span>`
         : "";
+      const editBtn = `<button class="btn btn-secondary" style="padding:2px 8px; font-size:0.75em;"
+               data-action="load-playback-editor" data-identifier="${p.id}"
+               title="Load frames into the editor above (${p.builtin ? "saves as a new copy" : "edit and save as new name"})">Edit</button>`;
       const deleteBtn = p.builtin
         ? ""
         : `<button class="btn btn-danger" style="padding:2px 8px; font-size:0.75em;"
@@ -2113,7 +2162,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
               ${p.frames} frame${p.frames === 1 ? "" : "s"} · ${(p.peers || []).join(", ") || "no peers"}
             </span>
           </div>
-          ${deleteBtn}
+          <div style="display:flex; gap:4px;">${editBtn}${deleteBtn}</div>
         </div>`;
     }).join("");
     return `${header}<div style="margin-top:4px;">${rows}</div>`;

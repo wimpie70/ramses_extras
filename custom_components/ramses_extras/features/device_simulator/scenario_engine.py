@@ -515,6 +515,7 @@ class ScenarioEngine:
         speed: float | None = None,
         pause_event: asyncio.Event | None = None,
         inter_message_delay: float | None = None,
+        skip_verbs: tuple[str, ...] | None = None,
     ) -> ScenarioResult:
         """Play back a conversation block by ref.
 
@@ -530,6 +531,10 @@ class ScenarioEngine:
             playback immediately.
         :param inter_message_delay: Optional fixed gap (seconds) between every
             frame, overriding the conversation's recorded timing.
+        :param skip_verbs: Optional tuple of verbs (e.g. ``("RP",)``) to skip
+            during playback so another subsystem (such as Auto Answer) can
+            handle them. Timing of subsequent frames is preserved relative to
+            the *original* recording.
         """
         conv = self._db.get_conversation(ref, scheme)
         if not conv:
@@ -541,6 +546,7 @@ class ScenarioEngine:
 
         messages_sent = 0
         errors: list[str] = []
+        skip_set = {v.upper() for v in (skip_verbs or ())}
         start = asyncio.get_event_loop().time()
 
         prev_t = 0.0
@@ -560,6 +566,12 @@ class ScenarioEngine:
             if delay > 0:
                 await asyncio.sleep(delay)
             prev_t = frame.t
+
+            # Honour skip_verbs (e.g. skip RP so auto-answer replies instead).
+            # Timing still advanced via prev_t above so subsequent frames land
+            # at the correct relative offset.
+            if frame.verb.upper() in skip_set:
+                continue
 
             src_id = device_map.get(frame.src, frame.src)
             dst_id = (

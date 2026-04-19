@@ -766,6 +766,60 @@ class DeviceDatabase:
         LOGGER.info("Deleted saved playback %s (%s)", target_file.name, removed_ids)
         return True
 
+    def get_playback_log_text(self, identifier: str) -> str | None:
+        """Serialize a saved playback back to a ramses.log-style text blob.
+
+        The produced text is round-trippable through :func:`parse_ramses_log`
+        *for imported logs* (where ``src``/``dst`` are real device IDs like
+        ``32:155617``). Built-in conversations that use peer slugs (e.g.
+        ``FAN``, ``REM``) will still render, but re-importing the edited text
+        requires replacing the slugs with actual device IDs first.
+
+        Uses an arbitrary base timestamp of ``2025-01-01T00:00:00.000000`` so
+        relative frame times are preserved verbatim.
+
+        :param identifier: Conversation ``id`` or YAML filename.
+        :return: Tab-separated log text (one line per frame) or ``None`` if
+            the conversation cannot be located.
+        """
+        from datetime import datetime, timedelta
+
+        conv = self._conversations.get(identifier.lower()) or next(
+            (
+                c
+                for c in self._conversations.values()
+                if c.id.lower() == identifier.lower()
+            ),
+            None,
+        )
+        if conv is None:
+            return None
+
+        base = datetime(2025, 1, 1, 0, 0, 0)
+        lines: list[str] = []
+        for frame in conv.frames:
+            ts = base + timedelta(seconds=float(frame.t))
+            ts_str = ts.strftime("%Y-%m-%dT%H:%M:%S.%f")
+            # Length prefix is byte count = len(payload)//2, zero-padded to 3
+            try:
+                length = f"{len(frame.payload) // 2:03d}"
+            except Exception:  # noqa: BLE001
+                length = "000"
+            lines.append(
+                "\t".join(
+                    [
+                        ts_str,
+                        frame.verb,
+                        frame.code,
+                        frame.src,
+                        frame.dst,
+                        length,
+                        frame.payload,
+                    ]
+                )
+            )
+        return "\n".join(lines)
+
     def _save_conversation_yaml(self, conv: Conversation) -> Path:
         """Write an imported conversation to device_db/conversations/imported/."""
         import yaml
