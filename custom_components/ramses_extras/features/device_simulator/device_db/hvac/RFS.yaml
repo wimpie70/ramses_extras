@@ -6,45 +6,45 @@ device_type: RFS
 domain: hvac
 broadcast_safe: false
 autonomous:
-- code: '3110'
-  verb: I
-  trigger: periodic
-  interval_seconds: 415.1
-  payloads: []
-- code: 30C9
-  verb: I
-  trigger: periodic
-  interval_seconds: 218.0
-  payloads: []
 - code: '3120'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
-- code: 2E10
+- code: 22C9
   verb: I
   trigger: periodic
-  interval_seconds: 60.0
+  interval_seconds: 146.5
   payloads: []
-- code: 22F1
+- code: '3110'
   verb: I
   trigger: periodic
-  interval_seconds: 15.8
-  payloads: []
-- code: 3EF0
-  verb: I
-  trigger: periodic
-  interval_seconds: 200.7
+  interval_seconds: 415.1
   payloads: []
 - code: '1060'
   verb: I
   trigger: periodic
   interval_seconds: 13.5
   payloads: []
+- code: 22F1
+  verb: I
+  trigger: periodic
+  interval_seconds: 15.8
+  payloads: []
+- code: 2E10
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
 - code: 12C0
   verb: I
   trigger: periodic
   interval_seconds: 1.0
+  payloads: []
+- code: 3EF0
+  verb: I
+  trigger: periodic
+  interval_seconds: 200.7
   payloads: []
 - code: 22F3
   verb: I
@@ -56,10 +56,10 @@ autonomous:
   trigger: periodic
   interval_seconds: 61.7
   payloads: []
-- code: 22C9
+- code: 30C9
   verb: I
   trigger: periodic
-  interval_seconds: 146.5
+  interval_seconds: 218.0
   payloads: []
 responses:
 - code: 31D9

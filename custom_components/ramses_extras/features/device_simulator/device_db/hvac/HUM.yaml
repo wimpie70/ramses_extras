@@ -11,7 +11,7 @@ autonomous:
   trigger: periodic
   interval_seconds: 5.4
   payloads: []
-- code: 12A0
+- code: 31E0
   verb: I
   trigger: periodic
   interval_seconds: 60.0
@@ -21,7 +21,12 @@ autonomous:
   trigger: periodic
   interval_seconds: 13.5
   payloads: []
-- code: 31E0
+- code: 10E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 61.7
+  payloads: []
+- code: 12A0
   verb: I
   trigger: periodic
   interval_seconds: 60.0
@@ -30,11 +35,6 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads: []
-- code: 10E0
-  verb: I
-  trigger: periodic
-  interval_seconds: 61.7
   payloads: []
 responses:
 - code: 31DA

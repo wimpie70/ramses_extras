@@ -23,12 +23,15 @@ Modes:
 Usage:
     source ~/venvs/extras/bin/activate
     # Full pipeline (run in order):
-    python tools/audit_device_db.py --extract-from-logs \
-        ~/docker_files/hass/config/ramses_log [more...]
-    python tools/audit_device_db.py [--device FAN] [--output tools/audit_all.yaml]
-    python tools/audit_device_db.py --llm-audit tools/audit_all.yaml
-    # Review tools/audit_all.yaml, change audit: fields as needed, then:
-    python tools/audit_device_db.py --apply-audit tools/audit_all.yaml
+    python custom_components/ramses_extras/features/device_simulator/tools/
+        audit_device_db.py --extract-from-logs ~/docker_files/hass/config/ramses_log
+    python custom_components/ramses_extras/features/device_simulator/tools/
+        audit_device_db.py [--device FAN] [--output tools/audit_all.yaml]
+    python custom_components/ramses_extras/features/device_simulator/tools/
+        audit_device_db.py --llm-audit tools/audit_all.yaml
+    # Review audit_all.yaml, change audit: fields as needed, then:
+    python custom_components/ramses_extras/features/device_simulator/tools/
+        audit_device_db.py --apply-audit tools/audit_all.yaml
 """
 
 from __future__ import annotations

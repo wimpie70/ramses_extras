@@ -554,15 +554,18 @@ async def create_device_simulator_feature(
         _handle_processed_message
     )
 
-    # Restore persisted auto_answer setting into the freshly-created engine.
+    # Restore persisted auto_answer and answer_unknown_devices settings into the
+    # freshly-created engine.
     _engine_now = registry["device_simulator_engine"]
     _cs = registry.get("device_simulator_config_store")
     if _cs is not None:
         _engine_now.set_auto_answer(_cs.get_auto_answer())
         _engine_now.set_autonomous_speed(_cs.get_autonomous_speed())
+        _engine_now.set_answer_unknown_devices(_cs.get_answer_unknown_devices())
         _LOGGER.info(
-            "Startup: restored auto_answer=%s from persisted state",
+            "Startup: restored auto_answer=%s answer_unknown=%s from persisted state",
             _cs.get_auto_answer(),
+            _cs.get_answer_unknown_devices(),
         )
 
     # On restart we no longer auto-start profile devices. Users should trigger the

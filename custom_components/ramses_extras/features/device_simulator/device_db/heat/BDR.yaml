@@ -1,7 +1,23 @@
+# Auto-generated from ramses_rf sources
+# Device type: BDR (domain: heat)
+# Manual review recommended before committing
+---
 device_type: BDR
 domain: heat
 broadcast_safe: false
 autonomous:
+- code: 11F0
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 3EF0
+  verb: I
+  trigger: periodic
+  interval_seconds: 200.7
+  payloads:
+  - 0000FF
+  notes: Example payloads from regression file
 - code: 3B00
   verb: I
   trigger: periodic
@@ -9,6 +25,11 @@ autonomous:
   payloads:
   - 00C8
   notes: Example payloads from regression file
+- code: 2D49
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
 - code: '1100'
   verb: I
   trigger: periodic
@@ -18,20 +39,3 @@ autonomous:
   - 00180404007FFF01
   - 000C1400007FFF01
   notes: Example payloads from regression file
-- code: 3EF0
-  verb: I
-  trigger: periodic
-  interval_seconds: 200.7
-  payloads:
-  - 0000FF
-  notes: Example payloads from regression file
-- code: 11F0
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: 2D49
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []

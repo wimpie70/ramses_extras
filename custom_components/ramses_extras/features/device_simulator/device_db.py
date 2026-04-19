@@ -528,6 +528,46 @@ class DeviceDatabase:
         """
         return self._device_types.get(slug.upper())
 
+    def infer_device_type_from_id(self, device_id: str) -> str | None:
+        """Infer device type slug from device ID based on prefix.
+
+        Maps device ID prefixes (first two digits) to device type slugs.
+        Returns None if the prefix is not recognized.
+
+        :param device_id: Device ID, e.g. '32:150000'.
+        """
+        if not device_id or ":" not in device_id:
+            return None
+        prefix = device_id.split(":")[0]
+        # Mapping of prefixes to device type slugs based on RAMSES device types
+        prefix_to_slug: dict[str, str] = {
+            "01": "CTL",  # Controller
+            "02": "UFC",  # UFH Controller
+            "03": "HCW",  # Analog thermostat
+            "04": "TRV",  # TRV
+            "07": "DHW",  # DHW sensor
+            "08": "JIM",  # Jasper interface
+            "10": "OTB",  # OpenTherm bridge
+            "12": "DTS",  # Digital thermostat
+            "13": "BDR",  # Electrical relay
+            "17": "OUT",  # Outdoor sensor
+            "22": "THM",  # Digital thermostat DT4
+            "23": "PRG",  # Programmer
+            "29": "HUM",  # Humidity sensor
+            "30": "RFS",  # Internet gateway / RFS
+            "31": "JST",  # Jasper thermostat
+            "32": "FAN",  # FAN
+            "34": "RND",  # Round thermostat T87RF
+            "37": "REM",  # REM (default for 37 prefix, could be CO2/DIS too)
+        }
+        slug = prefix_to_slug.get(prefix)
+        # For 37 prefix, try to be more specific based on the device ID suffix
+        if prefix == "37" and device_id:
+            # CO2 devices typically have specific patterns, but we'll default to REM
+            # for now since that's the most common 37 prefix device in HVAC
+            pass
+        return slug
+
     def get_variant(
         self, slug: str, variant_id: str
     ) -> tuple[DeviceTypeEntry, DeviceVariant] | None:

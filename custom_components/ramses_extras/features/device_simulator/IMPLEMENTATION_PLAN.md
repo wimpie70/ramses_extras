@@ -320,7 +320,7 @@ device_db/
 
 ### Building the database
 
-1. **Scaffold** (`scripts/build_device_db.py`):
+1. **Scaffold** (`device_simulator/scripts/build_device_db.py`):
    - Iterate `_DEV_KLASSES_HEAT/HVAC` + `fingerprints.py` → generate device type YAML stubs with all variants, `codes` lists, `scheme_22f1` where applicable
    - Generate empty conversation stubs for each known device pair
 2. **Mine regression file**:
@@ -416,7 +416,7 @@ The database YAML files (under `device_db/heat/` and `device_db/hvac/`) are buil
 - `get_fingerprint_payload(fingerprint)` → `10E0` payload for discovery test
 - `import_user_log(path, name)` — parse user packet log, merge into runtime DB
 
-**Offline build script** (`scripts/build_device_db.py`):
+**Offline build script** (`device_simulator/scripts/build_device_db.py`):
 
 - Reads `ramses.py` (`_DEV_KLASSES_HEAT/HVAC`) + `fingerprints.py` → scaffolds YAML stubs
 - Mines `regression_packets_sorted.txt` → fills `example_payload` + `interval_seconds`
@@ -697,7 +697,7 @@ The simulator runs as a ramses_extras feature in the **same HA container**. The 
 **Status**: Device database generated from 10,033 regression packets. 21 device types created.
 Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
-**2a: Offline build script** (`scripts/build_device_db.py`):
+**2a: Offline build script** (`device_simulator/scripts/build_device_db.py`):
 
 - [x] Scaffold YAML stubs from `_DEV_KLASSES_HEAT/HVAC` + `fingerprints.py`
 - [x] Mine `regression_packets_sorted.txt`: extract example payloads per `(slug, code, verb)`, compute `interval_seconds` for periodic `I` messages
@@ -1135,7 +1135,7 @@ Because the simulator runs **inside the same HA container**, user automations, s
 
 ## Device DB Audit Tooling
 
-### Tool: `tools/audit_device_db.py`
+### Tool: `device_simulator/tools/audit_device_db.py`
 
 Offline script that audits, enriches and applies DB payloads through the full pipeline.
 **Activate venv first**: `source ~/venvs/extras/bin/activate`
@@ -1144,38 +1144,38 @@ Offline script that audits, enriches and applies DB payloads through the full pi
 
 | Command | What it does |
 |---|---|
-| `python tools/audit_device_db.py` | Parse all DB payloads, write `tools/audit_all.yaml` |
-| `python tools/audit_device_db.py --device FAN` | Audit single device, write `tools/audit_fan.yaml` |
-| `python tools/audit_device_db.py --extract-from-logs` | Mine known log files, update DB YAMLs in-place |
-| `python tools/audit_device_db.py --extract-from-logs /path/a /path/b` | Same, with explicit log paths |
-| `python tools/audit_device_db.py --llm-audit tools/audit_all.yaml` | Heuristic pass, write `tools/audit_all_reviewed.yaml` (attention-only) |
-| `python tools/audit_device_db.py --apply-audit tools/audit_all_reviewed.yaml` | Apply reviewed decisions back to DB YAMLs |
+| `python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py` | Parse all DB payloads, write `device_simulator/tools/audit_all.yaml` |
+| `python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --device FAN` | Audit single device, write `device_simulator/tools/audit_fan.yaml` |
+| `python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --extract-from-logs` | Mine known log files, update DB YAMLs in-place |
+| `python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --extract-from-logs /path/a /path/b` | Same, with explicit log paths |
+| `python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --llm-audit device_simulator/tools/audit_all.yaml` | Heuristic pass, write `device_simulator/tools/audit_all_reviewed.yaml` (attention-only) |
+| `python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --apply-audit device_simulator/tools/audit_all_reviewed.yaml` | Apply reviewed decisions back to DB YAMLs |
 
 ### Full Pipeline (run in order)
 
 ```bash
 # 1. Mine any new log files and upgrade DB payloads automatically
-python tools/audit_device_db.py --extract-from-logs
+python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --extract-from-logs
 
 # 2. Audit everything — generates audit_all.yaml with Y/N/Remark per payload
-python tools/audit_device_db.py --output tools/audit_all.yaml
+python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --output device_simulator/tools/audit_all.yaml
 
 # 3. Heuristic LLM pass — auto-decides obvious cases, writes attention-only file
-python tools/audit_device_db.py --llm-audit tools/audit_all.yaml
+python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --llm-audit device_simulator/tools/audit_all.yaml
 
-# 4. Human review — open tools/audit_all_reviewed.yaml
+# 4. Human review — open device_simulator/tools/audit_all_reviewed.yaml
 #    Change audit: fields where the heuristic was wrong
 #    Y = keep, N = remove, Remark = keep with note
 
 # 5. Apply reviewed decisions back to DB YAMLs
-python tools/audit_device_db.py --apply-audit tools/audit_all_reviewed.yaml
+python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --apply-audit device_simulator/tools/audit_all_reviewed.yaml
 ```
 
 ### When New Log Files Arrive
 
 1. Add the log file path to `_DEFAULT_LOG_FILES` in `audit_device_db.py`, **or** pass it explicitly:
    ```bash
-   python tools/audit_device_db.py --extract-from-logs /path/to/new.log
+   python custom_components/ramses_extras/features/device_simulator/tools/audit_device_db.py --extract-from-logs /path/to/new.log
    ```
 2. Run the full pipeline from step 1 above.
 3. The extractor will only **replace** existing DB payloads if the new captures score better (fewer sentinels, no implausible values). Existing good payloads are never downgraded.
@@ -1245,7 +1245,7 @@ After running the full pipeline, the following categories need human attention i
 - `BDR/1100`, `CTL/1F41`, `CTL/2349` — `7FFF` temp setpoint sentinel means "no override active"; may be valid
 
 **Next steps:**
-1. Open `tools/audit_all_reviewed.yaml`, review each `N` and `Remark` entry
+1. Open `device_simulator/tools/audit_all_reviewed.yaml`, review each `N` and `Remark` entry
 2. For parser-reject `N` entries: find correct RP payload format from `ramses_tx/parsers.py` or remove
 3. For `RFG/31DA`: if no real captures exist, remove the sentinel payloads (DB entry stays with empty `payloads:`)
 4. Run `--apply-audit` to apply decisions
@@ -1269,7 +1269,7 @@ After running the full pipeline, the following categories need human attention i
 | `services.py` | ✅ | HA services (inject, activate, silence, run_scenario, stop_scenario, import_config) |
 | `websocket.py` | ✅ | 8 WebSocket commands for real-time control |
 | `platforms/sensor.py` | ✅ | 3 sensors (status, messages_sent, active_devices) |
-| Device DB build script | ✅ | `scripts/build_device_db.py` mines ramses_rf sources |
+| Device DB build script | ✅ | `device_simulator/scripts/build_device_db.py` mines ramses_rf sources |
 | Generated YAML files | ✅ | 21 device types in `device_db/heat/` and `device_db/hvac/` |
 | Conversation YAML | ✅ | `fan_rem.yaml` with RQ/RP exchanges |
 | MQTT dependency | ✅ | Added to `manifest.json` |

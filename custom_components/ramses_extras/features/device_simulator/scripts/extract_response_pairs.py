@@ -14,14 +14,7 @@ from typing import Any, cast
 import yaml
 
 # Device database directory
-DEVICE_DB_DIR = (
-    Path(__file__).parent.parent
-    / "custom_components"
-    / "ramses_extras"
-    / "features"
-    / "device_simulator"
-    / "device_db"
-)
+DEVICE_DB_DIR = Path(__file__).parent.parent / "device_db"
 CONVERSATIONS_DIR = DEVICE_DB_DIR / "conversations"
 
 # src prefix → device type slug (from build_device_db.py)

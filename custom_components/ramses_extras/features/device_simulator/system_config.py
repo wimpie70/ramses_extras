@@ -138,6 +138,7 @@ class ConfigProfileStore:
         self._auto_answer: bool = True
         self._autonomous_speed: float = 1.0
         self._remove_database: bool = False
+        self._answer_unknown_devices: bool = False
 
         # Ensure config directory exists
         self._config_dir.mkdir(parents=True, exist_ok=True)
@@ -361,6 +362,7 @@ class ConfigProfileStore:
             self._active_profile = data.get("active_profile")
             self._auto_answer = data.get("auto_answer", True)
             self._remove_database = data.get("remove_database", False)
+            self._answer_unknown_devices = data.get("answer_unknown_devices", False)
             speed_value = data.get("autonomous_speed", 1.0)
             try:
                 self._autonomous_speed = float(speed_value)
@@ -368,11 +370,12 @@ class ConfigProfileStore:
                 self._autonomous_speed = 1.0
             LOGGER.debug(
                 "ConfigProfileStore: state loaded profile=%s auto_answer=%s "
-                "speed=%s remove_db=%s",
+                "speed=%s remove_db=%s answer_unknown=%s",
                 self._active_profile,
                 self._auto_answer,
                 self._autonomous_speed,
                 self._remove_database,
+                self._answer_unknown_devices,
             )
         except (json.JSONDecodeError, OSError):
             LOGGER.warning("ConfigProfileStore: failed to load simulator state")
@@ -452,6 +455,14 @@ class ConfigProfileStore:
         """Set auto-answer state in memory; call async_save_state to persist."""
         self._auto_answer = enabled
 
+    def get_answer_unknown_devices(self) -> bool:
+        """Return persisted answer_unknown_devices state."""
+        return self._answer_unknown_devices
+
+    def set_answer_unknown_devices(self, enabled: bool) -> None:
+        """Set answer_unknown_devices state in memory; call async_save_state."""
+        self._answer_unknown_devices = enabled
+
     def get_autonomous_speed(self) -> float:
         """Return persisted global autonomous-emission speed multiplier."""
 
@@ -476,6 +487,7 @@ class ConfigProfileStore:
         auto_answer = self._auto_answer
         autonomous_speed = self._autonomous_speed
         remove_database = self._remove_database
+        answer_unknown_devices = self._answer_unknown_devices
         state_path = self._state_path
 
         def _write() -> None:
@@ -487,6 +499,7 @@ class ConfigProfileStore:
                             "auto_answer": auto_answer,
                             "autonomous_speed": autonomous_speed,
                             "remove_database": remove_database,
+                            "answer_unknown_devices": answer_unknown_devices,
                         },
                         f,
                     )

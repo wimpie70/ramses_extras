@@ -9,7 +9,8 @@ This script analyzes existing device database files and:
 
 Usage:
   source ~/venvs/extras/bin/activate
-  python scripts/annotate_device_db.py [--device-type FAN] [--dry-run]
+  python custom_components/ramses_extras/features/device_simulator/scripts/
+      annotate_device_db.py [--device-type FAN] [--dry-run]
 """
 
 from __future__ import annotations
@@ -26,14 +27,7 @@ from typing import Any, Dict, List, Set, Tuple
 RAMSES_RF_PATH = Path("/home/willem/dev/ramses_rf/src")
 sys.path.insert(0, str(RAMSES_RF_PATH))
 
-DEVICE_DB_DIR = (
-    Path(__file__).parent.parent
-    / "custom_components"
-    / "ramses_extras"
-    / "features"
-    / "device_simulator"
-    / "device_db"
-)
+DEVICE_DB_DIR = Path(__file__).parent.parent / "device_db"
 
 
 @dataclass

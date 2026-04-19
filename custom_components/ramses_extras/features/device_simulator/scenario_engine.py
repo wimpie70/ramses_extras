@@ -133,6 +133,11 @@ class ScenarioEngine:
         # When False the engine receives RQs but never replies — simulates a
         # device that is powered off or unreachable (e.g. broken ESP).
         self._auto_answer_enabled: bool = True
+        # Answer unknown devices toggle (default off).
+        # When True the engine responds to RQ frames even if the destination
+        # device is not in the active simulator devices list. Uses device DB
+        # to generate responses for unknown device IDs.
+        self._answer_unknown_devices: bool = False
         self.message_log: DeviceMessageLog = DeviceMessageLog()
 
         endpoint.add_inbound_handler(self._handle_inbound_frame)
@@ -905,7 +910,9 @@ class ScenarioEngine:
     ) -> None:
         """Look up and send an RP for an inbound RQ.
 
-        Only responds for explicitly activated devices (in _active_devices).
+        Responds for explicitly activated devices (in _active_devices).
+        If answer_unknown_devices is enabled, also responds for unknown devices
+        using the device database to infer device type and responses.
 
         :param src: Requesting device ID.
         :param dst: Target device ID (the simulated device being queried).
@@ -927,11 +934,24 @@ class ScenarioEngine:
             variant_id = device.variant_id
             excluded_codes = device.excluded_codes
         else:
-            # Device not in active list — do not respond.
-            # Responding for non-activated devices would cause traffic even
-            # after the user stops all emissions.
-            LOGGER.debug("RQ for inactive device %s/%s, not responding", dst, code)
-            return
+            # Device not in active list
+            if not self._answer_unknown_devices:
+                # Responding for non-activated devices would cause traffic even
+                # after the user stops all emissions.
+                LOGGER.debug("RQ for inactive device %s/%s, not responding", dst, code)
+                return
+            # Try to infer device type from device ID
+            slug = self._db.infer_device_type_from_id(dst)
+            if not slug:
+                LOGGER.debug(
+                    "RQ for unknown device %s/%s (cannot infer type), not responding",
+                    dst,
+                    code,
+                )
+                return
+            LOGGER.debug(
+                "RQ for unknown device %s/%s, responding as %s", dst, code, slug
+            )
 
         if code in excluded_codes:
             LOGGER.debug("Dropping RQ %s for %s (excluded)", code, dst)
@@ -1084,6 +1104,24 @@ class ScenarioEngine:
         LOGGER.info(
             "Auto-answer %s", "enabled" if enabled else "disabled (no RQ replies)"
         )
+
+    @property
+    def answer_unknown_devices(self) -> bool:
+        """Return True when the engine will respond to RQ frames for unknown devices."""
+        return self._answer_unknown_devices
+
+    def set_answer_unknown_devices(self, enabled: bool) -> None:
+        """Enable or disable answering RQ frames for unknown devices.
+
+        When enabled, the engine responds to RQ frames even if the destination
+        device is not in the active simulator devices list. Uses the device DB
+        to generate responses for unknown device IDs.
+
+        :param enabled: True to respond to unknown devices, False to only respond to
+        active devices.
+        """
+        self._answer_unknown_devices = enabled
+        LOGGER.info("Answer unknown devices %s", "enabled" if enabled else "disabled")
 
     def get_running_scenario_ids(self) -> list[str]:
         """Return IDs of explicitly started timed/toggleable scenarios."""

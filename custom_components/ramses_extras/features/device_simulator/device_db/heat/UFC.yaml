@@ -6,6 +6,26 @@ device_type: UFC
 domain: heat
 broadcast_safe: false
 autonomous:
+- code: '3150'
+  verb: I
+  trigger: periodic
+  interval_seconds: 124.1
+  payloads: []
+- code: 4E01
+  verb: I
+  trigger: periodic
+  interval_seconds: 79.9
+  payloads: []
+- code: 1FC9
+  verb: I
+  trigger: periodic
+  interval_seconds: 5.4
+  payloads: []
+- code: 22C9
+  verb: I
+  trigger: periodic
+  interval_seconds: 146.5
+  payloads: []
 - code: '3110'
   verb: I
   trigger: periodic
@@ -16,15 +36,15 @@ autonomous:
   trigger: periodic
   interval_seconds: 1232.5
   payloads: []
-- code: 1FC9
-  verb: I
-  trigger: periodic
-  interval_seconds: 5.4
-  payloads: []
 - code: 1FD4
   verb: I
   trigger: periodic
   interval_seconds: 110.0
+  payloads: []
+- code: 10E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 61.7
   payloads: []
 - code: 0008
   verb: I
@@ -35,24 +55,4 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads: []
-- code: 4E01
-  verb: I
-  trigger: periodic
-  interval_seconds: 79.9
-  payloads: []
-- code: '3150'
-  verb: I
-  trigger: periodic
-  interval_seconds: 124.1
-  payloads: []
-- code: 10E0
-  verb: I
-  trigger: periodic
-  interval_seconds: 61.7
-  payloads: []
-- code: 22C9
-  verb: I
-  trigger: periodic
-  interval_seconds: 146.5
   payloads: []

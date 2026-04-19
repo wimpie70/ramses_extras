@@ -1,21 +1,19 @@
+# Auto-generated from ramses_rf sources
+# Device type: FAN (domain: hvac)
+# Manual review recommended before committing
+---
 device_type: FAN
 domain: hvac
 broadcast_safe: false
 autonomous:
-- code: '3200'
+- code: '2210'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads: []
-- code: 1FC9
-  verb: I
-  trigger: periodic
-  interval_seconds: 5.4
   payloads:
-  - 0031E096599B00129896599B002E1096599B0110E096599B001FC996599B
-  - 0022F1965FE10022F3965FE16710E0965FE1001FC9965FE1
+  - 00FF00FFFFFF0000000000FFFFFFFFFF00FFFFFF0000000000FFFFFFFFFFFFFFFF000000000000000140
   notes: Example payloads from regression file
-- code: '3120'
+- code: 313F
   verb: I
   trigger: periodic
   interval_seconds: 60.0
@@ -29,51 +27,16 @@ autonomous:
   - 007A40
   - 009540
   notes: Example payloads from regression file
-- code: '2411'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads:
-  - 0000312610000000B400000000000007080000001E70
-  - 0000312E100000009600000000000007080000001EA62C
-  - 0000312E10000000B400000000000007080000001EA62C
-  notes: Real captured payloads from log (score=100)
-- code: 1F09
-  verb: I
-  trigger: periodic
-  interval_seconds: 120.5
-  payloads: []
-- code: 31DA
-  verb: I
-  trigger: periodic
-  interval_seconds: 1459.7
-  payloads:
-  - 00EF007FFF3A3004C404D804A904B768000003C8C80000EFEF208A208A00
-  - 00EF007FFF392F04CE04D804B3049F680000011E1E0000EFEF208A208A00
-  notes: 'Real captured payloads from Orcon VMD device (32:153289). Sentinel bytes
-    (EF/FF) indicate unavailable sensors.. REMARK: Sentinel bytes present (FF (unavailable
-    (single-byte generic))) but remaining fields decode OK — verify device has those
-    sensors.'
-- code: 22F7
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-  notes: EF byte is valid sentinel for bypass_position when no position sensor fitted
 - code: 31D9
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
-- code: '2210'
+- code: 22F2
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads:
-  - 00FF00FFFFFF0000000000FFFFFFFFFF00FFFFFF0000000000FFFFFFFFFFFFFFFF000000000000000140
-  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FF
-    (unavailable (single-byte generic))) but remaining fields decode OK — verify device
-    has those sensors.'
+  payloads: []
 - code: 2E10
   verb: I
   trigger: periodic
@@ -87,14 +50,70 @@ autonomous:
   - 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
   - 000001001B2E1901FEFFFFFFFFFF1D0B07E14356452D52460000000000000000000000000000
   - 0000010028080101FEFFFFFFFFFF1D0407E3564D532D31324333390000000000000000000000
-  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FF
-    (unavailable (single-byte generic)), EF (unavailable (single-byte humidity)))
-    but remaining fields decode OK — verify device has those sensors.'
+  notes: Example payloads from regression file
 - code: 12A0
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
+- code: 042F
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 31E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads:
+  - '00000000'
+  notes: Example payloads from regression file
+- code: 10D0
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: '3200'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: '3120'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 1F09
+  verb: I
+  trigger: periodic
+  interval_seconds: 120.5
+  payloads: []
+- code: 1FC9
+  verb: I
+  trigger: periodic
+  interval_seconds: 5.4
+  payloads:
+  - 0031E096599B00129896599B002E1096599B0110E096599B001FC996599B
+  - '00'
+  - 0022F1965FE10022F3965FE16710E0965FE1001FC9965FE1
+  notes: Example payloads from regression file
+- code: '1298'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads:
+  - 000280
+  - 0001C6
+  notes: Example payloads from regression file
+- code: 31DA
+  verb: I
+  trigger: periodic
+  interval_seconds: 1459.7
+  payloads:
+  - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+  - 000010018B0000F830F060E890CE00000000000000000000000000000000
+  - 00EF007FFF2CEF80007FFF7FFF7FFFF800EF0128000000EFEF7FFF7FFF00
+  notes: Example payloads from regression file
 - code: 22F4
   verb: I
   trigger: periodic
@@ -104,35 +123,21 @@ autonomous:
   - 000000000060C9000000000000
   - 000000000060CA000000000000
   notes: Example payloads from regression file
-- code: 042F
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: 22F2
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: '1298'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads:
-  - 000280
-  - 0001C6
-  notes: Example payloads from regression file
-- code: 313F
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
 - code: '3150'
   verb: I
   trigger: periodic
   interval_seconds: 124.1
   payloads: []
-- code: 10D0
+- code: 22F7
+  verb: I
+  trigger: periodic
+  interval_seconds: 0.0
+  payloads:
+  - '00'
+  - 0000EF
+  - 00C8EF
+  notes: Example payloads from regression file
+- code: '2411'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
@@ -142,49 +147,3 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
-responses:
-- code: 22F1
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 200
-  payloads:
-  - '000107'
-  - '000307'
-  description: Fan speed control
-  notes: Real captured payloads from log (score=100)
-- code: 22F3
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 150
-  payloads: []
-  description: Fan mode control
-- code: '2411'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - 00000100000000003200000000000000FF0000000120
-  - 0000312E100000009600000000000007080000001EA62C
-  - 00003D370F00000018000000000000005000000001A632
-  - 00003E380F00000014000000000000005000000001A632
-  - 00003F390F0000004600000000000000A000000001A632
-  - 0000403A0F0000003400000000000000A000000001A632
-  - 0000413B0F0000008C00000000000000C800000001A632
-  - 0000423C0F0000007800000014000000C800000001A632
-  - 0000433D0F0000009600000000000000C800000001A632
-  - 0000443E0F0000009600000014000000C800000001A632
-  - 00004B39000000000000000000000000020000000170
-  - 00004E460000000000000000000000000100000001A600
-  - 0000524A010000001400000000000000FA00000001A632
-  - 0000544C00000000140000000F0000003C00000001A62A
-  - 0000755892000008200000000000000BB800000001A601
-  - 0000953F0F000000BE00000000000000C800000001A632
-  - 0000881510000002BC000001900000076C000000018A33
-  description: Fan parameter responses — real captured payloads from Orcon VMD/MVS
-    device
-  notes: 'REMARK: Sentinel bytes present (FF (unavailable (single-byte generic)))
-    but remaining fields decode OK — verify device has those sensors.'
-protocol_notes:
-- FAN devices support speed control via 22F1 with payload 01/02/03
-- FAN devices provide periodic status via 31DA (system status)
-- FAN devices respond to discovery with 10E0 capabilities

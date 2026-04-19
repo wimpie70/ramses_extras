@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 # Add custom_components to path for imports
-REPO_ROOT = Path(__file__).parent.parent
+REPO_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "custom_components"))
 
 

@@ -121,6 +121,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._scenarioSchemas = {};
     this._runningScenarios = [];
     this._autoAnswer = true;
+    this._answerUnknownDevices = false;
+    this._rfEnforceKnownList = false;
+    this._rfKnownListEnabled = false;
     this._emissionsActive = false;
     this._events = [];
     this._stats = { rx: 0, tx: 0, devices: 0, active: 0 };
@@ -303,6 +306,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   async _loadInitialState() {
     await this._fetchData();
+    await this._fetchRfConfig();
   }
 
   _onConnected() {
@@ -354,6 +358,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       const result = await this._hass.callWS({
         type: "ramses_extras/device_simulator/get_status",
       });
+      await this._fetchRfConfig();
       const profileSummary = Array.isArray(result.profile_device_summary)
         ? result.profile_device_summary
         : [];
@@ -382,6 +387,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._runningScenarios = result.running_scenarios || [];
       this._runningMetadata = result.running_metadata || {};
       this._autoAnswer = result.auto_answer !== false;
+      this._answerUnknownDevices = result.answer_unknown_devices === true;
       this._emissionsActive = result.autonomous_emissions_active === true;
       this._stats = result.stats || this._stats;
       const previousActive = this._activeProfile;
@@ -812,6 +818,31 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     await this._fetchData();
   }
 
+  async _fetchRfConfig() {
+    if (!this._hass) return;
+    try {
+      const result = await this._hass.callWS({
+        type: "ramses_extras/device_simulator/get_rf_config",
+      });
+      this._rfEnforceKnownList = result.enforce_known_list === true;
+      this._rfKnownListEnabled = result.known_list_enabled === true;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to fetch RF config", err);
+    }
+  }
+
+  async _setAnswerUnknownDevices(enabled) {
+    await this._hass.callWS({
+      type: "ramses_extras/device_simulator/set_answer_unknown_devices",
+      enabled,
+    });
+    this._answerUnknownDevices = enabled;
+    this._scheduleRender();
+    await new Promise((r) => setTimeout(r, 300));
+    await this._fetchData();
+  }
+
   async _setAutonomousSpeed(value) {
     if (!this._hass) {
       return;
@@ -1032,6 +1063,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
     const aaToggle = root.querySelector("[data-action='toggle-auto-answer']");
     if (aaToggle) aaToggle.addEventListener("change", (e) => this._setAutoAnswer(e.target.checked));
+
+    const auToggle = root.querySelector("[data-action='toggle-answer-unknown']");
+    if (auToggle) auToggle.addEventListener("change", (e) => this._setAnswerUnknownDevices(e.target.checked));
 
     root.querySelectorAll("[data-action='toggle-device']").forEach(el => {
       el.addEventListener("change", () => {
@@ -2105,6 +2139,30 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-top: 4px;">When off: simulator receives RQ frames but never replies &#8212; simulates broken ESP or powered-off device.</div>
       </div>`;
 
+    const auChecked = this._answerUnknownDevices ? " checked" : "";
+    const auCard = `
+      <div class="card ${this._answerUnknownDevices ? "active" : ""}">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div><strong>Answer Unknown Devices</strong></div>
+          <label class="toggle">
+            <ha-switch data-action="toggle-answer-unknown"${auChecked}></ha-switch>
+          </label>
+        </div>
+        <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-top: 4px;">When on: simulator responds to RQ frames for devices not in the active device list. Uses device DB to infer device type and generate responses.</div>
+      </div>`;
+
+    const rfStatus = this._rfEnforceKnownList
+      ? `<span style="color: var(--warning-color); font-weight: 600;">ENFORCED</span>`
+      : `<span style="color: var(--success-color); font-weight: 600;">NOT ENFORCED</span>`;
+    const rfCard = `
+      <div class="card" style="background: var(--secondary-background-color);">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div><strong>RF Client: Accept only known devices</strong></div>
+          <div>${rfStatus}</div>
+        </div>
+        <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-top: 4px;">RF client ${this._rfEnforceKnownList ? "will only accept messages from devices in its known_list" : "accepts messages from any device"}. ${this._rfKnownListEnabled ? `Known list is configured with entries.` : "No known list configured."}</div>
+      </div>`;
+
     const scenarioCards = ids
       .filter(id =>
         id !== "auto_answer"
@@ -2156,7 +2214,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       }).join("");
 
     const playbackCard = this._buildConversationPlaybackSettingsCard();
-    return `<div class="grid">${aaCard}${playbackCard}${scenarioCards}</div>`;
+    return `<div class="grid">${aaCard}${auCard}${rfCard}${playbackCard}${scenarioCards}</div>`;
   }
 
   _buildSavedPlaybacksPanel() {

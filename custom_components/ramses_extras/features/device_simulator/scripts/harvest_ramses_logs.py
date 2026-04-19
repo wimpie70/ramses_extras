@@ -221,15 +221,7 @@ def parse_ramses_log(
 RAMSES_RF_DIR = Path("/home/willem/dev/ramses_rf/tests/tests")
 
 # Output directory for harvested conversations
-OUTPUT_DIR = (
-    Path(__file__).parent.parent
-    / "custom_components"
-    / "ramses_extras"
-    / "features"
-    / "device_simulator"
-    / "device_db"
-    / "conversations"
-)
+OUTPUT_DIR = Path(__file__).parent.parent / "device_db" / "conversations"
 
 # Log file patterns to harvest
 HVAC_PATTERNS = [

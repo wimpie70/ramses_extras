@@ -124,6 +124,8 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_activate_profile_device)
     websocket_api.async_register_command(hass, ws_clear_ramses_cache)
     websocket_api.async_register_command(hass, ws_set_auto_answer)
+    websocket_api.async_register_command(hass, ws_set_answer_unknown_devices)
+    websocket_api.async_register_command(hass, ws_get_rf_config)
     websocket_api.async_register_command(hass, ws_set_autonomous_speed)
     websocket_api.async_register_command(hass, ws_import_user_log)
     websocket_api.async_register_command(hass, ws_list_saved_playbacks)
@@ -152,6 +154,15 @@ def _get_config_store(hass: HomeAssistant) -> ConfigProfileStore | None:
     return cast(
         "ConfigProfileStore | None", registry.get("device_simulator_config_store")
     )
+
+
+def _get_ramses_cc_coordinator(hass: HomeAssistant) -> Any | None:
+    """Get ramses_cc coordinator if available."""
+    entries = hass.config_entries.async_entries("ramses_cc")
+    if not entries:
+        return None
+    cc_entry = entries[0]
+    return hass.data.get("ramses_cc", {}).get("coordinators", {}).get(cc_entry.entry_id)
 
 
 def _build_profile_zone_index(profile: SystemConfigProfile) -> list[dict[str, Any]]:
@@ -677,6 +688,11 @@ def ws_get_ui_status(
     elif ra_active_profile:
         active_profile = ra_active_profile
     auto_answer = engine.auto_answer_enabled if engine else True
+    answer_unknown_devices = (
+        engine.answer_unknown_devices
+        if engine
+        else (config_store.get_answer_unknown_devices() if config_store else False)
+    )
     running_scenarios = engine.get_running_scenario_ids() if engine else []
     running_metadata = engine.get_running_metadata() if engine else {}
     emissions_active = engine.autonomous_emissions_active if engine else False
@@ -711,6 +727,7 @@ def ws_get_ui_status(
             "active_profile_schema": active_profile_schema,
             "active_profile_zones": active_profile_zones,
             "auto_answer": auto_answer,
+            "answer_unknown_devices": answer_unknown_devices,
             "autonomous_speed": autonomous_speed,
             "running_scenarios": running_scenarios,
             "running_metadata": running_metadata,
@@ -1605,6 +1622,94 @@ def ws_set_auto_answer(
             "success": True,
             "auto_answer": enabled,
             "conflicts": conflicts,
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required(
+            "type"
+        ): "ramses_extras/device_simulator/set_answer_unknown_devices",
+        vol.Required("enabled"): bool,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_set_answer_unknown_devices(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Enable or disable answering RQ frames for unknown devices.
+
+    When enabled, the simulator responds to RQ frames even if the destination
+    device is not in the active simulator devices list. Uses the device DB
+    to infer device type and generate responses for unknown device IDs.
+    """
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    enabled: bool = msg["enabled"]
+    engine.set_answer_unknown_devices(enabled)
+
+    ra = hass.data.get("ramses_extras", {})
+    config_store = ra.get("device_simulator_config_store")
+    if config_store is not None:
+        config_store.set_answer_unknown_devices(enabled)
+        hass.async_create_background_task(
+            config_store.async_save_state(),
+            "ramses_extras.device_simulator.save_state",
+        )
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "answer_unknown_devices": enabled,
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/get_rf_config",
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_get_rf_config(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get RF client configuration settings relevant to the simulator.
+
+    Returns settings like enforce_known_list to help users understand
+    how the RF client will handle device discovery and message filtering.
+    """
+    coordinator = _get_ramses_cc_coordinator(hass)
+    enforce_known_list = False
+    known_list_enabled = False
+
+    if coordinator:
+        try:
+            client = coordinator.client
+            if client and hasattr(client, "config"):
+                rf_config = client.config
+                enforce_known_list = rf_config.get("enforce_known_list", {}).get(
+                    "enabled", False
+                )
+                known_list_enabled = bool(rf_config.get("known_list"))
+        except Exception:  # noqa: BLE001
+            pass
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "enforce_known_list": enforce_known_list,
+            "known_list_enabled": known_list_enabled,
         },
     )
 

@@ -17,7 +17,8 @@ Output:
 
 Usage:
   source ~/venvs/extras/bin/activate
-  python scripts/build_device_db.py
+  python custom_components/ramses_extras/features/device_simulator/scripts/
+      build_device_db.py
 """
 
 from __future__ import annotations
@@ -34,14 +35,7 @@ from typing import Any
 RAMSES_RF_PATH = Path("/home/willem/dev/ramses_rf/src")
 sys.path.insert(0, str(RAMSES_RF_PATH))
 
-OUTPUT_DIR = (
-    Path(__file__).parent.parent
-    / "custom_components"
-    / "ramses_extras"
-    / "features"
-    / "device_simulator"
-    / "device_db"
-)
+OUTPUT_DIR = Path(__file__).parent.parent / "device_db"
 REGRESSION_FILE = Path(
     "/home/willem/dev/ramses_rf/tests/fixtures/regression_packets_sorted.txt"
 )
@@ -424,7 +418,7 @@ def scaffold_device_type_yaml(
         data["responses"] = responses
 
     # YAML output with comments preserved via our structure
-    return yaml.dump(data, sort_keys=False, allow_unicode=True)
+    return str(yaml.dump(data, sort_keys=False, allow_unicode=True))
 
 
 def build_all() -> None:

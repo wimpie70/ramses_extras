@@ -163,7 +163,7 @@ local-ci: env
 # Device Simulator build targets
 build-device-db: env
 	@echo "Building device database from ramses_rf regression packets..."
-	@bash -c "source ~/venvs/extras/bin/activate && python scripts/build_device_db.py"
+	@bash -c "source ~/venvs/extras/bin/activate && python custom_components/ramses_extras/features/device_simulator/scripts/build_device_db.py"
 	@echo "✅ Device database build complete"
 
 test-frontend: env

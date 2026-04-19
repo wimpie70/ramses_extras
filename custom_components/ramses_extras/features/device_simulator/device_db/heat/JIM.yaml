@@ -6,15 +6,15 @@ device_type: JIM
 domain: heat
 broadcast_safe: false
 autonomous:
-- code: '1100'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
 - code: 10E0
   verb: I
   trigger: periodic
   interval_seconds: 61.7
+  payloads: []
+- code: '1100'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
   payloads: []
 - code: 3EF0
   verb: I
