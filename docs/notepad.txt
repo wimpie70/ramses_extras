@@ -78,7 +78,6 @@ Log errors if not configured.
 ### Ramses Packet Log explorer: auto mode seem to be broken
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 
-### base-card: we need to hit ctr-shft-R after restarts. we shouldn't need to do that
 ---
 
 - simulator:
@@ -101,7 +100,6 @@ we should be able to import (edit field and/or pick from (dedicated) folder) ram
 
 ### device_playback == conversation playback + Import msg logs and playback
 - save imported msg logs and persist them after reloads
-- limit the number of lines on the found conversations (scrollbar)
 - refactor device-simulator-card in smaller files:
   - tab files:
     - with sub-components

@@ -22,6 +22,8 @@ from custom_components.ramses_extras.features.device_simulator.device_db import 
     ResponseEntry,
 )
 
+LOG_SAMPLE = "2024-01-01 12:00:00.000 082 I 20:123456 --:------ 31DA 0001020304"
+
 
 class TestAutonomousEntry:
     """Tests for AutonomousEntry dataclass."""
@@ -843,3 +845,25 @@ class TestDeviceDatabaseFindResponseEdgeCases:
         assert resp is not None
         assert resp.delay_ms == 200
         assert resp.payloads == []
+
+
+@pytest.mark.asyncio
+async def test_import_user_log_persistent_dir(tmp_path: Path) -> None:
+    """Imports should be saved into the configured user directory."""
+
+    user_dir = tmp_path / "user_playbacks"
+    db = DeviceDatabase(db_dir=tmp_path, user_conversations_dir=user_dir)
+
+    assert await db.import_user_log(None, "co2_periodic", LOG_SAMPLE, save_yaml=True)
+
+    saved_file = user_dir / "co2_periodic.yaml"
+    assert saved_file.exists()
+
+    playbacks = await db.async_list_saved_playbacks()
+    assert any(p["id"] == "co2_periodic" for p in playbacks)
+
+    db.load_all()
+    assert "co2_periodic" in db._conversations
+
+    assert db.delete_saved_playback("co2_periodic") is True
+    assert not saved_file.exists()

@@ -2198,7 +2198,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           <div style="display:flex; gap:4px;">${editBtn}${deleteBtn}</div>
         </div>`;
     }).join("");
-    return `${header}<div style="margin-top:4px;">${rows}</div>`;
+    return `${header}<div style="margin-top:4px; max-height:300px; overflow-y:auto;">${rows}</div>`;
   }
 
   _buildConversationPlaybackSettingsCard() {

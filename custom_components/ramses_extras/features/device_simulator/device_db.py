@@ -356,14 +356,41 @@ class DeviceDatabase:
     Provides fast lookup by device type slug, code, and variant.
     """
 
-    def __init__(self, db_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        db_dir: Path | None = None,
+        *,
+        user_conversations_dir: Path | None = None,
+    ) -> None:
         """Initialize the device database.
 
         :param db_dir: Path to device_db directory. Defaults to the bundled one.
+        :param user_conversations_dir: Optional directory for user-imported
+            conversation YAMLs. Defaults to ``<db_dir>/conversations/imported`` but
+            can point to the Home Assistant config folder so imports survive
+            deployments.
         """
         self._db_dir = db_dir or _DB_DIR
         self._device_types: dict[str, DeviceTypeEntry] = {}
         self._conversations: dict[str, Conversation] = {}
+        default_import_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS / "imported"
+        self._user_conversations_dir = user_conversations_dir or default_import_dir
+
+    def _import_directories(self) -> list[Path]:
+        """Return all directories that may contain user-provided conversations."""
+
+        dirs: list[Path] = []
+        seen: set[str] = set()
+        for candidate in (
+            self._db_dir / DB_SUBDIR_CONVERSATIONS / "imported",
+            self._user_conversations_dir,
+        ):
+            key = str(candidate)
+            if key in seen:
+                continue
+            dirs.append(candidate)
+            seen.add(key)
+        return dirs
 
     def load_all(self) -> None:
         """Load all YAML files from the database directory."""
@@ -391,17 +418,24 @@ class DeviceDatabase:
 
         conv_path = self._db_dir / DB_SUBDIR_CONVERSATIONS
         if conv_path.exists():
-            # Load top-level built-in conversations + imported/*.yaml saved by users
-            yaml_files = list(conv_path.glob("*.yaml"))
-            imported_dir = conv_path / "imported"
-            if imported_dir.exists():
-                yaml_files.extend(imported_dir.glob("*.yaml"))
-            for yaml_file in yaml_files:
+            for yaml_file in sorted(conv_path.glob("*.yaml")):
                 try:
                     with open(yaml_file, encoding="utf-8") as f:
                         data = yaml.safe_load(f)
                     self._parse_conversations(data)
                 except Exception as err:
+                    LOGGER.warning(
+                        "Failed to load conversation %s: %s", yaml_file.name, err
+                    )
+        for import_dir in self._import_directories():
+            if not import_dir.exists():
+                continue
+            for yaml_file in sorted(import_dir.glob("*.yaml")):
+                try:
+                    with open(yaml_file, encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                    self._parse_conversations(data)
+                except Exception as err:  # noqa: BLE001
                     LOGGER.warning(
                         "Failed to load conversation %s: %s", yaml_file.name, err
                     )
@@ -619,7 +653,7 @@ class DeviceDatabase:
         path: str | None,
         name: str,
         content: str | None = None,
-        save_yaml: bool = False,
+        save_yaml: bool = True,
     ) -> bool:
         """Import a user's ramses log and convert to a replayable conversation.
 
@@ -632,8 +666,10 @@ class DeviceDatabase:
         :param path: Path to a log file (optional if ``content`` is provided).
         :param name: Name used for the generated conversation id.
         :param content: Raw log content (optional if ``path`` is provided).
-        :param save_yaml: If True, also persist a reusable YAML conversation under
-            ``device_db/conversations/imported/<name>.yaml``.
+        :param save_yaml: When True (default) persist a reusable YAML conversation
+            under the configured user conversation directory (defaults to
+            ``device_db/conversations/imported``) so imports survive restarts and
+            deployments.
         :return: True if import succeeded, False otherwise.
         """
         from pathlib import Path
@@ -717,8 +753,6 @@ class DeviceDatabase:
         import yaml
 
         conv_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS
-        if not conv_dir.exists():
-            return []
 
         def _collect_sync(directory: Path, builtin: bool) -> list[dict[str, Any]]:
             items: list[dict[str, Any]] = []
@@ -743,13 +777,15 @@ class DeviceDatabase:
                     LOGGER.warning("Failed to read playback %s: %s", fp, err)
             return items
 
-        builtins = await asyncio.to_thread(_collect_sync, conv_dir, True)
-        imported_dir = conv_dir / "imported"
-        imported = (
-            await asyncio.to_thread(_collect_sync, imported_dir, False)
-            if imported_dir.exists()
-            else []
-        )
+        builtins: list[dict[str, Any]] = []
+        if conv_dir.exists():
+            builtins = await asyncio.to_thread(_collect_sync, conv_dir, True)
+        imported: list[dict[str, Any]] = []
+        for import_dir in self._import_directories():
+            if import_dir.exists():
+                imported.extend(
+                    await asyncio.to_thread(_collect_sync, import_dir, False)
+                )
         return builtins + imported
 
     def delete_saved_playback(self, identifier: str) -> bool:
@@ -761,17 +797,15 @@ class DeviceDatabase:
         :param identifier: Either the conversation ``id`` or the bare filename.
         :return: True if something was removed.
         """
-        target_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS / "imported"
-        if not target_dir.exists():
-            return False
 
-        # Resolve the file
-        target_file = target_dir / identifier
-        if not target_file.exists() and not identifier.endswith(".yaml"):
-            target_file = target_dir / f"{identifier}.yaml"
-        if not target_file.exists():
+        def _resolve_candidate(directory: Path) -> Path | None:
+            target_file = directory / identifier
+            if not target_file.exists() and not identifier.endswith(".yaml"):
+                target_file = directory / f"{identifier}.yaml"
+            if target_file.exists():
+                return target_file
             # Last resort: search by id inside each file
-            for fp in target_dir.glob("*.yaml"):
+            for fp in directory.glob("*.yaml"):
                 try:
                     import yaml
 
@@ -779,16 +813,23 @@ class DeviceDatabase:
                         data = yaml.safe_load(fh) or {}
                     convs = data.get("conversations") or []
                     if any(c.get("id") == identifier for c in convs):
-                        target_file = fp
-                        break
+                        return fp
                 except Exception:  # noqa: BLE001
                     continue
+            return None
 
-        if not target_file.exists():
+        target_file: Path | None = None
+        for import_dir in self._import_directories():
+            if not import_dir.exists():
+                continue
+            target_file = _resolve_candidate(import_dir)
+            if target_file is not None:
+                break
+
+        if target_file is None:
             LOGGER.warning("Saved playback '%s' not found", identifier)
             return False
 
-        # Collect ids to purge from in-memory store before removing file
         removed_ids: list[str] = []
         try:
             import yaml
@@ -808,7 +849,6 @@ class DeviceDatabase:
             LOGGER.error("Failed to delete %s: %s", target_file, err)
             return False
 
-        # Purge from runtime store (both bare id and peer-keyed forms)
         for cid in removed_ids:
             self._conversations.pop(cid, None)
             for key in list(self._conversations):
@@ -876,7 +916,7 @@ class DeviceDatabase:
         """Write an imported conversation to device_db/conversations/imported/."""
         import yaml
 
-        target_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS / "imported"
+        target_dir = self._user_conversations_dir
         target_dir.mkdir(parents=True, exist_ok=True)
         target_file = target_dir / f"{conv.id}.yaml"
 

@@ -24,7 +24,7 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
     # If log_content is provided, import it first
     if log_content:
         name = params.get("name") or "imported_log"
-        save_yaml = bool(params.get("save_yaml", False))
+        save_yaml = bool(params.get("save_yaml", True))
         success = await context.device_db.import_user_log(
             None, name, log_content, save_yaml=save_yaml
         )

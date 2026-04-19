@@ -939,7 +939,7 @@ async def ws_delete_profile(
         vol.Optional("path"): str,
         vol.Required("name"): str,
         vol.Optional("content"): str,
-        vol.Optional("save_yaml", default=False): bool,
+        vol.Optional("save_yaml", default=True): bool,
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -964,7 +964,7 @@ async def ws_import_user_log(
     path = msg.get("path")
     name = msg["name"]
     content = msg.get("content")
-    save_yaml = msg.get("save_yaml", False)
+    save_yaml = msg.get("save_yaml", True)
 
     success = await db.import_user_log(path, name, content, save_yaml=save_yaml)
     if success:

@@ -131,7 +131,7 @@ SCHEMA_IMPORT_USER_LOG = vol.Schema(
         vol.Optional("path"): str,
         vol.Required("name"): str,
         vol.Optional("content"): str,
-        vol.Optional("save_yaml", default=False): bool,
+        vol.Optional("save_yaml", default=True): bool,
     }
 )
 
@@ -482,7 +482,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         path = call.data.get("path")
         name = call.data["name"]
         content = call.data.get("content")
-        save_yaml = call.data.get("save_yaml", False)
+        save_yaml = call.data.get("save_yaml", True)
 
         engine = _get_engine(hass)
         if not engine:
@@ -492,7 +492,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if not db:
             return {"success": False, "error": "Device database not available"}
 
-        # Import the log file (from path or content)
+        # Import the log file (from path or content) and persist by default
         success = await db.import_user_log(path, name, content, save_yaml=save_yaml)
         if success:
             return {

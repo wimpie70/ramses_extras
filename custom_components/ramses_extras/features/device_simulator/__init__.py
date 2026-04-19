@@ -379,7 +379,12 @@ async def create_device_simulator_feature(
     await _enforce_simulator_isolation(hass)
 
     if "device_simulator_db" not in registry:
-        registry["device_simulator_db"] = DeviceDatabase()
+        user_conversations_dir = Path(
+            hass.config.path("ramses_extras", "device_simulator", "conversations")
+        )
+        registry["device_simulator_db"] = DeviceDatabase(
+            user_conversations_dir=user_conversations_dir
+        )
         await hass.async_add_executor_job(registry["device_simulator_db"].load_all)
 
     # Create endpoint first (don't connect yet)
