@@ -551,10 +551,18 @@ class DeviceDatabase:
 
         If scheme is given, prefers conversations with matching scheme.
 
-        :param ref: Conversation reference key.
+        :param ref: Conversation reference key or conversation ID.
         :param scheme: Optional scheme filter (e.g. 'itho').
         """
+        # Try direct lookup by full key first (peers/id)
         conv = self._conversations.get(ref.lower())
+        if conv is None:
+            # Try lookup by conversation ID only (search all conversations)
+            ref_lower = ref.lower()
+            for c in self._conversations.values():
+                if c.id.lower() == ref_lower:
+                    conv = c
+                    break
         if conv is None:
             return None
         if scheme and conv.scheme and conv.scheme != scheme:

@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from ..const import SCENARIO_AUTO_ANSWER, SCENARIO_DEVICE_PLAYBACK
 from ..system_config import SIM_DEVICE_ID
 from .base import ScenarioContext, ScenarioDefinition, ScenarioResult
 
+LOGGER = logging.getLogger(__name__)
+
 
 async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResult:
+    LOGGER.debug("device_playback called with params: %s", params)
     conversation = (
         params.get("conversation")
         or params.get("conversation_ref")
         or params.get("log_file")
     )
+    LOGGER.debug("conversation: %s", conversation)
     log_content = params.get("log_content")
 
     # If log_content is provided, import it first
@@ -41,13 +46,18 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         )
 
     scheme = params.get("scheme")
+    LOGGER.debug("About to access context.device_db")
+    LOGGER.debug("About to call get_conversation: %s (scheme=%s)", conversation, scheme)
     conv = context.device_db.get_conversation(conversation, scheme)
+    LOGGER.debug("get_conversation returned: %s", conv)
     if not conv:
+        LOGGER.error("Conversation '%s' not found", conversation)
         return ScenarioResult(
             scenario_id=SCENARIO_DEVICE_PLAYBACK,
             success=False,
             errors=[f"Conversation '{conversation}' not found"],
         )
+    LOGGER.debug("Conversation found with peers: %s", conv.peers)
 
     raw_device_map = params.get("device_map")
     if isinstance(raw_device_map, dict) and raw_device_map:
@@ -59,6 +69,7 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         device_map, missing = _infer_device_map(context, conv.peers, overrides)
 
     if missing:
+        LOGGER.error("Unable to map conversation peers: %s", missing)
         return ScenarioResult(
             scenario_id=SCENARIO_DEVICE_PLAYBACK,
             success=False,
@@ -66,6 +77,7 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
                 "Unable to map conversation peers: " + ", ".join(sorted(set(missing)))
             ],
         )
+    LOGGER.debug("device_map: %s", device_map)
 
     # speed=None → engine uses global autonomous_speed (Devices-tab slider)
     raw_speed = params.get("speed")
@@ -98,6 +110,13 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
     if current_task is not None:
         engine._scenario_tasks[SCENARIO_DEVICE_PLAYBACK] = current_task
 
+    LOGGER.debug(
+        "Starting playback: conversation=%s, loops=%s, speed=%s, imd=%s",
+        conversation,
+        loops,
+        speed,
+        inter_message_delay,
+    )
     try:
         for _ in range(loops):
             playback = await engine.async_play_conversation(
@@ -159,9 +178,14 @@ def _infer_device_map(
         if slug in overrides:
             mapping[slug] = overrides[slug]
             continue
+        # Try slug lookup first (for conversations that use slugs like FAN, REM)
         active = context.active_devices_by_slug(slug)
         if active:
             mapping[slug] = active[0].device_id
+            continue
+        # Try direct device ID lookup (for conversations that use actual addresses)
+        if context.engine.is_device_active(peer):
+            mapping[slug] = peer
             continue
         default_id = SIM_DEVICE_ID.get(slug)
         if default_id:
