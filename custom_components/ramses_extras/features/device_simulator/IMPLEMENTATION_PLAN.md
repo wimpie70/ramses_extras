@@ -1056,21 +1056,6 @@ Because the simulator runs **inside the same HA container**, user automations, s
 - HA processes the simulated device events exactly as it would real ones
 - Automations fire, scripts execute, entity states update — fully observable
 
-### Import a conversation for automation testing
-
-A user can import a specific conversation block as a standalone playback:
-
-```yaml
-service: device_simulator.run_conversation
-data:
-  conversation: 'fan+co2/dcv_reaction' # from conversations library
-  device_map:
-    FAN: '20:123456' # which device ID to use
-    CO2: '37:654321'
-  speed: 1.0 # real-time
-```
-
-This is exactly the kind of deterministic stimulus an automation test needs: a known sequence of events → verify the automation responded correctly.
 
 ### What this enables
 
@@ -1281,7 +1266,7 @@ After running the full pipeline, the following categories need human attention i
 | `comm_endpoint.py` | ✅ | `MqttEndpoint` with HA MQTT integration |
 | `device_db.py` | ✅ | YAML loader, `DeviceDatabase` with query methods |
 | `scenario_engine.py` | ✅ | `ScenarioEngine` with emitters, responses, conversation playback |
-| `services.py` | ✅ | 7 HA services (inject, activate, silence, run_conversation, run_scenario, stop_scenario, import_config) |
+| `services.py` | ✅ | HA services (inject, activate, silence, run_scenario, stop_scenario, import_config) |
 | `websocket.py` | ✅ | 8 WebSocket commands for real-time control |
 | `platforms/sensor.py` | ✅ | 3 sensors (status, messages_sent, active_devices) |
 | Device DB build script | ✅ | `scripts/build_device_db.py` mines ramses_rf sources |

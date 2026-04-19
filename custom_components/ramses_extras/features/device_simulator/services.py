@@ -9,7 +9,6 @@ Provides HA service calls for programmatic control:
   - stop_scenario: stop a running scenario
   - activate_device: add a device to the simulation
   - silence_device: stop a device's autonomous emission
-  - run_conversation: play a conversation block
   - import_user_config: import ramses_cc config + packet log
 """
 
@@ -32,7 +31,6 @@ from .const import (
     SCENARIO_LOAD_PROFILE_YAML,
     SCENARIO_MANUAL_DEVICE_INJECTION,
     SCENARIO_PROFILE_EMISSIONS,
-    SCENARIO_RUN_CONVERSATION,
     SCENARIO_TIMEOUT_TEST,
 )
 from .profile_loader import async_apply_profile, build_profile_from_yaml
@@ -51,7 +49,6 @@ SERVICE_RUN_SCENARIO = "device_simulator_run_scenario"
 SERVICE_STOP_SCENARIO = "device_simulator_stop_scenario"
 SERVICE_ACTIVATE_DEVICE = "device_simulator_activate_device"
 SERVICE_SILENCE_DEVICE = "device_simulator_silence_device"
-SERVICE_RUN_CONVERSATION = "device_simulator_run_conversation"
 SERVICE_IMPORT_USER_CONFIG = "device_simulator_import_user_config"
 SERVICE_IMPORT_USER_LOG = "device_simulator_import_user_log"
 
@@ -106,15 +103,6 @@ SCHEMA_ACTIVATE_DEVICE = vol.Schema(
 SCHEMA_SILENCE_DEVICE = vol.Schema(
     {
         vol.Required("device_id"): str,
-    }
-)
-
-SCHEMA_RUN_CONVERSATION = vol.Schema(
-    {
-        vol.Required("ref"): str,
-        vol.Required("device_map"): dict,
-        vol.Optional("scheme"): str,
-        vol.Optional("speed", default=1.0): vol.Coerce(float),
     }
 )
 
@@ -386,25 +374,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await engine.async_silence_device(call.data["device_id"])
         return {"success": True}
 
-    async def handle_run_conversation(call: ServiceCall) -> dict[str, Any]:
-        """Run a conversation block."""
-        engine = _get_engine(hass)
-        if not engine:
-            return {"success": False, "error": "Engine not available"}
-
-        result = await engine.async_play_conversation(
-            ref=call.data["ref"],
-            device_map=call.data["device_map"],
-            scheme=call.data.get("scheme"),
-            speed=call.data.get("speed", 1.0),
-        )
-        return {
-            "success": result.success,
-            "messages_sent": result.messages_sent,
-            "duration_seconds": result.duration_seconds,
-            "errors": result.errors,
-        }
-
     async def handle_import_user_config(call: ServiceCall) -> dict[str, Any]:
         """Import a user's ramses_cc config + packet log as a profile."""
         from pathlib import Path
@@ -536,12 +505,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         INTEGRATION_DOMAIN,
-        SERVICE_RUN_CONVERSATION,
-        handle_run_conversation,
-        schema=SCHEMA_RUN_CONVERSATION,
-    )
-    hass.services.async_register(
-        INTEGRATION_DOMAIN,
         SERVICE_IMPORT_USER_CONFIG,
         handle_import_user_config,
         schema=SCHEMA_IMPORT_USER_CONFIG,
@@ -564,7 +527,6 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_STOP_SCENARIO,
         SERVICE_ACTIVATE_DEVICE,
         SERVICE_SILENCE_DEVICE,
-        SERVICE_RUN_CONVERSATION,
         SERVICE_IMPORT_USER_CONFIG,
         SERVICE_IMPORT_USER_LOG,
     ):

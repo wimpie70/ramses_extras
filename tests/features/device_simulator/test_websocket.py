@@ -22,7 +22,6 @@ from custom_components.ramses_extras.features.device_simulator.websocket import 
     ws_get_status,
     ws_get_ui_status,
     ws_load_profile,
-    ws_run_conversation,
     ws_set_auto_answer,
     ws_set_device_enabled,
     ws_set_device_excluded_codes,
@@ -289,38 +288,6 @@ class TestWsGetConversations:
         hass.data = {}
         msg = {"id": 1, "type": "device_simulator/conversations"}
         ws_get_conversations(hass, connection, msg)
-        connection.send_error.assert_called_once()
-
-
-class TestWsRunConversation:
-    @pytest.mark.asyncio
-    async def test_ws_run_conversation_success(self, hass, connection, engine):
-        result = MagicMock()
-        result.success = True
-        result.messages_sent = 10
-        result.duration_seconds = 1.5
-        result.errors = []
-        engine.async_play_conversation = AsyncMock(return_value=result)
-        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
-        msg = {
-            "id": 1,
-            "type": "device_simulator/run_conversation",
-            "ref": "test",
-            "device_map": {},
-        }
-        await ws_run_conversation(hass, connection, msg)
-        connection.send_result.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_ws_run_conversation_not_ready(self, hass, connection):
-        hass.data = {}
-        msg = {
-            "id": 1,
-            "type": "device_simulator/run_conversation",
-            "ref": "test",
-            "device_map": {},
-        }
-        await ws_run_conversation(hass, connection, msg)
         connection.send_error.assert_called_once()
 
 

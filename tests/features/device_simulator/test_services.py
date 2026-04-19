@@ -27,7 +27,6 @@ from custom_components.ramses_extras.features.device_simulator.services import (
     SCHEMA_SILENCE_DEVICE,
     SERVICE_ACTIVATE_DEVICE,
     SERVICE_INJECT_MESSAGE,
-    SERVICE_RUN_CONVERSATION,
     SERVICE_RUN_SCENARIO,
     SERVICE_SILENCE_DEVICE,
     SERVICE_STOP_SCENARIO,
@@ -350,7 +349,6 @@ class TestServiceSetup:
             SERVICE_STOP_SCENARIO,
             SERVICE_ACTIVATE_DEVICE,
             SERVICE_SILENCE_DEVICE,
-            SERVICE_RUN_CONVERSATION,
         ]
 
         for service in expected_services:
@@ -391,7 +389,6 @@ class TestServiceConstants:
         assert hasattr(services, "SERVICE_STOP_SCENARIO")
         assert hasattr(services, "SERVICE_ACTIVATE_DEVICE")
         assert hasattr(services, "SERVICE_SILENCE_DEVICE")
-        assert hasattr(services, "SERVICE_RUN_CONVERSATION")
         assert hasattr(services, "SERVICE_IMPORT_USER_CONFIG")
 
     def test_schema_constants(self) -> None:
@@ -463,7 +460,6 @@ class TestUnloadServices:
             SERVICE_ACTIVATE_DEVICE,
             SERVICE_IMPORT_USER_CONFIG,
             SERVICE_INJECT_MESSAGE,
-            SERVICE_RUN_CONVERSATION,
             SERVICE_RUN_SCENARIO,
             SERVICE_SILENCE_DEVICE,
             SERVICE_STOP_SCENARIO,
@@ -486,7 +482,6 @@ class TestUnloadServices:
             SERVICE_STOP_SCENARIO,
             SERVICE_ACTIVATE_DEVICE,
             SERVICE_SILENCE_DEVICE,
-            SERVICE_RUN_CONVERSATION,
             SERVICE_IMPORT_USER_CONFIG,
         ]
 

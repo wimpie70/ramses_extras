@@ -120,7 +120,6 @@ def test_websocket_commands() -> bool:
             "ws_activate_device",
             "ws_silence_device",
             "ws_get_conversations",
-            "ws_run_conversation",
             "ws_get_messages",
         ]
 
