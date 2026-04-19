@@ -69,6 +69,16 @@ const _ensureOptionsUpdatesSubscribed = (hass) => {
     window.ramsesExtras._optionsUpdatesUnsub = () => Promise.resolve(unsubPromise)
       .then((unsub) => (typeof unsub === 'function' ? unsub() : null))
       .catch(() => {});
+
+    // Subscribe to card refresh event for hard reload on HA restart
+    const refreshUnsubPromise = this._hass.connection.subscribeMessage(() => {
+      logger.info('ramses_extras: received card refresh signal, reloading page');
+      window.location.reload();
+    }, { type: 'ramses_extras_card_refresh' });
+
+    window.ramsesExtras._cardRefreshUnsub = () => Promise.resolve(refreshUnsubPromise)
+      .then((unsub) => (typeof unsub === 'function' ? unsub() : null))
+      .catch(() => {});
   } catch (error) {
     logger.warn('⚠️ Failed to subscribe to options updated events:', error);
   }
@@ -1251,6 +1261,16 @@ export class RamsesBaseCard extends HTMLElement {
     }
     this._optionsUpdatedListenerAttached = false;
     this._optionsUpdatedListener = null;
+
+    // Cleanup card refresh subscription
+    if (typeof window.ramsesExtras._cardRefreshUnsub === 'function') {
+      try {
+        window.ramsesExtras._cardRefreshUnsub();
+      } catch (error) {
+        logger.warn('⚠️ Failed to unsubscribe from card refresh events:', error);
+      }
+      window.ramsesExtras._cardRefreshUnsub = null;
+    }
 
     // Reset state
     this._initialStateLoaded = false;

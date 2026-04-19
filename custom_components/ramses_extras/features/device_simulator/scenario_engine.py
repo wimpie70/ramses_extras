@@ -36,6 +36,7 @@ from .const import (
     SCENARIO_PROFILE_EMISSIONS,
     SCENARIO_REGISTRY,
     SCENARIO_STATE_IDLE,
+    SCENARIOS_CHANGED_EVENT,
     VERB_I,
     VERB_RP,
     VERB_RQ,
@@ -115,6 +116,8 @@ class ScenarioEngine:
         self._emitter_tasks: dict[str, asyncio.Task] = {}
         self._running_scenarios: dict[str, dict[str, Any]] = {}
         self._scenario_tasks: dict[str, asyncio.Task] = {}
+        # Per-scenario pause gates. Event is *set* → running; *cleared* → paused.
+        self._scenario_pause_events: dict[str, asyncio.Event] = {}
         self._state: str = SCENARIO_STATE_IDLE
         self._messages_sent = 0
         self._messages_received = 0
@@ -133,6 +136,11 @@ class ScenarioEngine:
         self.message_log: DeviceMessageLog = DeviceMessageLog()
 
         endpoint.add_inbound_handler(self._handle_inbound_frame)
+
+    @property
+    def device_db(self) -> DeviceDatabase:
+        """Expose the device database to external consumers."""
+        return self._db
 
     async def async_setup(self) -> None:
         """Connect the endpoint and load the device DB."""
@@ -171,15 +179,33 @@ class ScenarioEngine:
 
         return scenario_id in self._running_scenarios
 
+    def _notify_scenario_event(
+        self,
+        scenario_id: str,
+        action: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit a bus event so the UI can refresh scenario state."""
+
+        payload: dict[str, Any] = {
+            "scenario_id": scenario_id,
+            "action": action,
+        }
+        if metadata:
+            payload["metadata"] = metadata
+        self.hass.bus.async_fire(SCENARIOS_CHANGED_EVENT, payload)
+
     def set_running_metadata(self, scenario_id: str, metadata: dict[str, Any]) -> None:
         """Store metadata describing a running scenario."""
 
         self._running_scenarios[scenario_id] = metadata
+        self._notify_scenario_event(scenario_id, "updated", metadata)
 
     def clear_running_metadata(self, scenario_id: str) -> None:
         """Clear metadata for a scenario id if present."""
 
-        self._running_scenarios.pop(scenario_id, None)
+        metadata = self._running_scenarios.pop(scenario_id, None)
+        self._notify_scenario_event(scenario_id, "cleared", metadata)
 
     async def async_teardown(self) -> None:
         """Stop all emitters and disconnect."""
@@ -505,14 +531,29 @@ class ScenarioEngine:
         ref: str,
         device_map: dict[str, str],
         scheme: str | None = None,
-        speed: float = 1.0,
+        speed: float | None = None,
+        pause_event: asyncio.Event | None = None,
+        inter_message_delay: float | None = None,
+        skip_verbs: tuple[str, ...] | None = None,
     ) -> ScenarioResult:
         """Play back a conversation block by ref.
 
         :param ref: Conversation ref (e.g. 'fan+co2/dcv_reaction').
         :param device_map: Slug → device_id mapping (e.g. {'FAN': '20:123456'}).
         :param scheme: Optional scheme filter.
-        :param speed: Playback speed multiplier.
+        :param speed: Playback speed multiplier. ``None`` means follow the
+            engine's global ``autonomous_speed`` so the Devices tab speed
+            control affects playback live.
+        :param pause_event: Optional asyncio.Event. When provided, playback
+            awaits this event before each frame (``set()`` = running,
+            ``clear()`` = paused). Cancellation of the surrounding task stops
+            playback immediately.
+        :param inter_message_delay: Optional fixed gap (seconds) between every
+            frame, overriding the conversation's recorded timing.
+        :param skip_verbs: Optional tuple of verbs (e.g. ``("RP",)``) to skip
+            during playback so another subsystem (such as Auto Answer) can
+            handle them. Timing of subsequent frames is preserved relative to
+            the *original* recording.
         """
         conv = self._db.get_conversation(ref, scheme)
         if not conv:
@@ -524,14 +565,32 @@ class ScenarioEngine:
 
         messages_sent = 0
         errors: list[str] = []
+        skip_set = {v.upper() for v in (skip_verbs or ())}
         start = asyncio.get_event_loop().time()
 
         prev_t = 0.0
         for frame in conv.frames:
-            delay = (frame.t - prev_t) / speed
+            # Honour pause gate before computing delay
+            if pause_event is not None and not pause_event.is_set():
+                await pause_event.wait()
+
+            # Effective speed: explicit > global autonomous
+            eff_speed = speed if speed is not None else self._autonomous_speed
+            eff_speed = max(0.01, float(eff_speed))
+
+            if inter_message_delay is not None:
+                delay = max(0.0, float(inter_message_delay))
+            else:
+                delay = (frame.t - prev_t) / eff_speed
             if delay > 0:
                 await asyncio.sleep(delay)
             prev_t = frame.t
+
+            # Honour skip_verbs (e.g. skip RP so auto-answer replies instead).
+            # Timing still advanced via prev_t above so subsequent frames land
+            # at the correct relative offset.
+            if frame.verb.upper() in skip_set:
+                continue
 
             src_id = device_map.get(frame.src, frame.src)
             dst_id = (
@@ -1130,6 +1189,10 @@ class ScenarioEngine:
         :param scenario_id: The scenario type id to cancel.
         """
         task = self._scenario_tasks.pop(scenario_id, None)
+        # Ensure a paused scenario wakes up so cancellation propagates.
+        ev = self._scenario_pause_events.pop(scenario_id, None)
+        if ev is not None and not ev.is_set():
+            ev.set()
         if task and not task.done():
             task.cancel()
             try:
@@ -1138,6 +1201,57 @@ class ScenarioEngine:
                 pass
         self.clear_running_metadata(scenario_id)
         LOGGER.info("Scenario '%s' cancelled", scenario_id)
+
+    def get_pause_event(self, scenario_id: str) -> asyncio.Event:
+        """Return (creating if needed) the pause gate for ``scenario_id``.
+
+        The event starts in the *set* state (running). Pass this into scenario
+        ``run`` implementations (typically via ``ScenarioContext``) so they can
+        block on it each iteration.
+        """
+        ev = self._scenario_pause_events.get(scenario_id)
+        if ev is None:
+            ev = asyncio.Event()
+            ev.set()
+            self._scenario_pause_events[scenario_id] = ev
+        return ev
+
+    def pause_scenario(self, scenario_id: str) -> bool:
+        """Pause a running scenario that cooperates with its pause event.
+
+        :return: True if a pause gate existed and was cleared, False otherwise.
+        """
+        ev = self._scenario_pause_events.get(scenario_id)
+        if ev is None:
+            return False
+        ev.clear()
+        meta = self._running_scenarios.get(scenario_id)
+        if meta is not None:
+            meta["paused"] = True
+            self._notify_scenario_event(scenario_id, "paused", meta)
+        LOGGER.info("Scenario '%s' paused", scenario_id)
+        return True
+
+    def resume_scenario(self, scenario_id: str) -> bool:
+        """Resume a previously paused scenario.
+
+        :return: True if a pause gate existed and was set, False otherwise.
+        """
+        ev = self._scenario_pause_events.get(scenario_id)
+        if ev is None:
+            return False
+        ev.set()
+        meta = self._running_scenarios.get(scenario_id)
+        if meta is not None:
+            meta["paused"] = False
+            self._notify_scenario_event(scenario_id, "resumed", meta)
+        LOGGER.info("Scenario '%s' resumed", scenario_id)
+        return True
+
+    def is_scenario_paused(self, scenario_id: str) -> bool:
+        """Return True if the scenario's pause gate is currently cleared."""
+        ev = self._scenario_pause_events.get(scenario_id)
+        return ev is not None and not ev.is_set()
 
     async def async_run_unavailability_test(
         self,

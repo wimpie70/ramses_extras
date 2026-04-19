@@ -34,6 +34,7 @@ from .const import (
     SCENARIO_PARAM_SCHEMAS,
     SCENARIO_PROFILE_EMISSIONS,
     SCENARIO_REGISTRY,
+    SCENARIOS_CHANGED_EVENT,
 )
 from .scenario_engine import MESSAGE_EVENT, ScenarioEngine
 
@@ -126,7 +127,14 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_clear_ramses_cache)
     websocket_api.async_register_command(hass, ws_set_auto_answer)
     websocket_api.async_register_command(hass, ws_set_autonomous_speed)
+    websocket_api.async_register_command(hass, ws_import_user_log)
+    websocket_api.async_register_command(hass, ws_list_saved_playbacks)
+    websocket_api.async_register_command(hass, ws_get_playback_text)
+    websocket_api.async_register_command(hass, ws_delete_saved_playback)
+    websocket_api.async_register_command(hass, ws_pause_scenario)
+    websocket_api.async_register_command(hass, ws_resume_scenario)
     websocket_api.async_register_command(hass, ws_subscribe_devices)
+    websocket_api.async_register_command(hass, ws_subscribe_scenarios)
     websocket_api.async_register_command(hass, ws_subscribe_messages)
     websocket_api.async_register_command(hass, ws_delete_profile)
     websocket_api.async_register_command(hass, ws_get_device_messages)
@@ -927,6 +935,175 @@ async def ws_delete_profile(
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
+        vol.Required("type"): "ramses_extras/device_simulator/import_user_log",
+        vol.Optional("path"): str,
+        vol.Required("name"): str,
+        vol.Optional("content"): str,
+        vol.Optional("save_yaml", default=True): bool,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_import_user_log(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Import a user's ramses.log file as a conversation for playback."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    db = engine.device_db
+    if not db:
+        connection.send_error(msg["id"], "not_ready", "Device database not available")
+        return
+
+    # Import the log file (from path or content)
+    path = msg.get("path")
+    name = msg["name"]
+    content = msg.get("content")
+    save_yaml = msg.get("save_yaml", True)
+
+    success = await db.import_user_log(path, name, content, save_yaml=save_yaml)
+    if success:
+        connection.send_result(
+            msg["id"],
+            {
+                "success": True,
+                "conversation_name": name,
+                "message": f"Imported log as conversation '{name}'",
+            },
+        )
+    else:
+        connection.send_error(msg["id"], "import_failed", "Failed to import log")
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {vol.Required("type"): "ramses_extras/device_simulator/list_saved_playbacks"}
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_list_saved_playbacks(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all saved (imported) playback conversations."""
+    engine = _get_engine(hass)
+    if not engine or not engine.device_db:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+    playbacks = await engine.device_db.async_list_saved_playbacks()
+    connection.send_result(msg["id"], {"success": True, "playbacks": playbacks})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/get_playback_text",
+        vol.Required("identifier"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_get_playback_text(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return a saved playback as an editable ramses.log-style text blob."""
+    engine = _get_engine(hass)
+    if not engine or not engine.device_db:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+    text = engine.device_db.get_playback_log_text(msg["identifier"])
+    if text is None:
+        connection.send_error(
+            msg["id"], "not_found", f"Playback '{msg['identifier']}' not found"
+        )
+        return
+    connection.send_result(msg["id"], {"success": True, "text": text})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/delete_saved_playback",
+        vol.Required("identifier"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_delete_saved_playback(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Delete a saved playback by conversation id or filename."""
+    engine = _get_engine(hass)
+    if not engine or not engine.device_db:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+    ok = engine.device_db.delete_saved_playback(msg["identifier"])
+    if ok:
+        connection.send_result(msg["id"], {"success": True})
+    else:
+        connection.send_error(
+            msg["id"], "not_found", f"Saved playback '{msg['identifier']}' not found"
+        )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/pause_scenario",
+        vol.Required("scenario"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_pause_scenario(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Pause a cooperating running scenario (e.g. conversation playback)."""
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+    ok = engine.pause_scenario(msg["scenario"])
+    if ok:
+        connection.send_result(msg["id"], {"success": True, "paused": True})
+    else:
+        connection.send_error(
+            msg["id"], "not_running", f"Scenario '{msg['scenario']}' not running"
+        )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/resume_scenario",
+        vol.Required("scenario"): str,
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_resume_scenario(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Resume a paused scenario."""
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+    ok = engine.resume_scenario(msg["scenario"])
+    if ok:
+        connection.send_result(msg["id"], {"success": True, "paused": False})
+    else:
+        connection.send_error(
+            msg["id"], "not_running", f"Scenario '{msg['scenario']}' not paused"
+        )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
         vol.Required("type"): "ramses_extras/device_simulator/start_scenario",
         vol.Required("scenario"): str,
         vol.Optional("params", default={}): dict,
@@ -1539,6 +1716,51 @@ def ws_subscribe_devices(
     )
 
     # Store unsubscribe function to clean up when connection closes
+    connection.subscriptions[msg["id"]] = unsubscribe
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/subscribe_scenarios",
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_subscribe_scenarios(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to running scenario metadata changes."""
+
+    @callback  # type: ignore[untyped-decorator]
+    def _on_scenario_changed(event: dict[str, Any]) -> None:
+        payload = getattr(event, "data", {}) or {}
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "event_type": "scenarios_changed",
+                    "data": payload,
+                },
+            )
+        )
+
+    unsubscribe = hass.bus.async_listen(
+        SCENARIOS_CHANGED_EVENT,
+        _on_scenario_changed,
+    )
+
+    engine = _get_engine(hass)
+    running_metadata = engine.get_running_metadata() if engine else {}
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "running_metadata": running_metadata,
+        },
+    )
+
     connection.subscriptions[msg["id"]] = unsubscribe
 
 

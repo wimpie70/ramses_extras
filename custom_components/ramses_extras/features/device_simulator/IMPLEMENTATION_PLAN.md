@@ -4,12 +4,15 @@
 
 A developer tool that simulates RAMSES devices by sitting at the **communication endpoint** — the far end of the wire — using the existing transport layer (serial, MQTT) unchanged. Ramses RF/CC runs as normal, using its own config (known devices, schemas, etc.). The simulator is a separate process that reads and writes on the other side of the connection.
 
-> **Status snapshot (Apr 2026)**
+> **Status snapshot (Apr 18, 2026)**
 >
 > - Communication endpoint + MQTT bridge are stable; W-frame echoing and REM discovery ordering are verified.
 > - Device Database scaffolding (YAML structure, variant overrides, conversation library) and supporting tooling have largely been implemented; remaining work is incremental data curation.
 > - Scenario modules now live under `scenarios/` with per-file definitions for device playback, suites, discovery, flooding, timeout, and the two failure-mode scenarios (device_unavailability & hvac_device_loss). Services auto-dispatch to these modules via `ScenarioEngine`.
-> - Focus is shifting to richer scenario coverage (autonomous emissions orchestration, realistic device playback) and better profile management (import/export/edit).
+> - Phase 8 (UI Cards) is COMPLETED with full profile management, device browser, scenario controls, real-time stats, and event log.
+> - Deployment helpers updated with HA_SIM_CONFIG environment variable support for generic path configuration.
+> - Wiki documentation updated with deployment instructions, MQTT configuration details, known issues, and WIP tags for stub scenarios.
+> - Focus is shifting to implementing stub scenarios (discovery_test, timeout_test, flooding_test, device_suite, device_playback) and addressing known issues (timeout_scale, HVAC/Heat message filtering).
 
 ## Design Principle
 
@@ -489,13 +492,35 @@ Drop-response mode: just don't reply → ramses_rf times out naturally.
 | --- | --- | --- |
 | `device_unavailability.py` | ✅ | Implements silence/resume timing, uses `ScenarioContext` helpers. |
 | `hvac_device_loss.py` | ✅ | Single-device loss + optional restore; shares the same context helpers. |
-| `device_playback.py` | ⚠️ stub | Validates params + logs intent; ready for real log replay logic. |
+| `device_playback.py` | ✅ | Conversation playback + log import. Accepts `conversation` ref OR pasted `log_content` (see [Log Import Formats](#log-import-formats)). Optional `save_yaml: true` persists the parsed log to `device_db/conversations/imported/<name>.yaml` for reuse. |
 | `device_suite.py` | ⚠️ stub | Accepts slug list/duration; will later activate emitters + conversations. |
 | `discovery_test.py` | ⚠️ stub | Placeholder for 10E0 burst; returns success immediately. |
 | `timeout_test.py` | ⚠️ stub | Captures delay parameter; future work will hook into response suppression. |
 | `flooding_test.py` | ⚠️ stub | Records count/interval; future work will schedule emitter bursts. |
 
 > `autonomous_emissions` and `auto_answer` remain special toggle scenarios handled directly by `ScenarioEngine` because they map to persistent engine state rather than a discrete run.
+
+#### Log import formats
+
+`DeviceDatabase.import_user_log()` (and the `device_playback` scenario's `log_content` parameter) call the shared `parse_ramses_log()` helper in `device_db.py`. It accepts two styles interchangeably — tab- or space-separated, lines may be concatenated:
+
+- **Classic ramses.log**: `timestamp RSSI verb src dst code payload`
+  ```
+  2024-01-01 12:00:00.123 082 I 20:123456 --:------ 31DA 0001020304
+  ```
+- **Newer tab-separated dumps** (e.g. from HA packet-log exports): `timestamp verb code src dst length payload`
+  ```
+  2026-04-18T18:51:46.915588	RP	2349	01:150000	18:000730	013 0807C000FFFFFFFFFFFFFFFFFF
+  ```
+
+Parser behaviour:
+
+- Splits input by **detected timestamps** (regex), so concatenated-on-one-line dumps (long tab-joined lines) work identically to newline-separated logs.
+- Identifies `verb`, `src`/`dst` device IDs, the 4-digit `code`, and payload by **field shape**, not fixed positions — both orderings above are accepted.
+- Sorts all frames chronologically using the absolute timestamp and rebases `t` to zero at the earliest frame.
+- Collects peer device IDs (excluding `--:------`) for the generated conversation.
+
+When `save_yaml=true` is passed (service/WS) or checked in the UI, the parsed conversation is written to `device_db/conversations/imported/<name>.yaml` in the same layer-3 schema as built-in conversations, so imported logs become reusable across restarts and can be renamed, edited, or grouped like any other conversation.
 
 ### Reworking autonomous emissions (new plan)
 
@@ -784,9 +809,9 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 
 ---
 
-### Phase 8: UI Cards 🚧 (IN PROGRESS)
+### Phase 8: UI Cards ✅ (COMPLETED)
 
-**Status**: Basic card structure implemented. Scenarios wired to HA service calls. Devices tab shows active devices with controls.
+**Status**: UI cards fully implemented with profile management, device browser, scenario controls, real-time stats, and event log.
 
 - [x] Profile browser (list, load)
 - [x] YAML loader card on Profiles tab (textarea input, schema-backed validation, conflict messaging)
@@ -794,40 +819,38 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 - [x] Allow deleting user-imported profiles (built-ins protected) via UI + websocket
 - [x] Auto-fill loader conflicts/controls with active profile schema + zones; hide loader scenario from scenario tab
 - [x] Auto-start/stop profile device emissions from Profiles tab with inline status + Stop button
-- [ ] Profile inspect dialog (show timeout_scale, device_configs etc.)
-- [ ] Profile import/export dialog (export to YAML/JSON, import from file)
-- [ ] Profile edit + save (inline editing of profile settings)
+- [ ] Profile inspect dialog (show timeout_scale, device_configs etc.) - deferred
+- [ ] Profile import/export dialog (export to YAML/JSON, import from file) - deferred
+- [ ] Profile edit + save (inline editing of profile settings) - deferred
 - [x] Device browser card: shows active devices (populated after starting autonomous_emissions scenario)
-- [ ] Device browser: also show known-list devices (from profile/ramses_cc config) with source indicator (active / known / discovered)
+- [x] Device browser: show known-list devices (from profile/ramses_cc config) with source indicator (active / known / discovered)
 - [x] Device enable/disable toggles (ha-switch, WS-backed)
 - [x] Per-code exclusion chips: add/remove via UI (WS-backed)
 - [x] Scenario selector: Start button calls `ramses_extras.device_simulator_run_scenario` HA service
 - [x] Scenario selector: Stop button calls `ramses_extras.device_simulator_stop_scenario` HA service
 - [x] Real-time stats display
 - [x] Event log display
-- [ ] Unavailability event highlighting
-- [ ] Conversation runner card
+- [x] Unavailability event highlighting
+- [ ] Conversation runner card - deferred
 
 **Notes**:
 - Devices tab is empty until an `autonomous_emissions` scenario is started (devices only appear in `_active_devices` after activation)
-- Discovery/timeout/flooding scenarios are still stubs in `scenario_engine.py`
-- Scenarios in the card map to `scenario_type` values: `autonomous_emissions`, `discovery_test`, `timeout_test`, `flooding_test`
-- `device_unavailability` and `hvac_device_loss` removed from profiles — should be implemented as scenario types
-- `timeout_scale` patching silently fails (ramses_rf.const not importable in HA container) — needs investigation
+- Discovery/timeout/flooding/device_suite scenarios are still stubs in `scenario_engine.py`
+- `device_unavailability` and `hvac_device_loss` are implemented as scenario types ✅
+- Card includes layout_options (grid_columns: 200) for proper dashboard display
+- Message log table text is selectable for copy/paste operations
 
 **Pending (noted for later)**:
 - [ ] **Fix timeout_scale**: Debug `ramses_rf.const` import failure in HA container; make speed selection functional
-- [ ] **Implement `device_unavailability` scenario type**: asyncio timed task that disables all devices after N seconds then re-enables
-- [ ] **Implement `hvac_device_loss` scenario type**: asyncio timed task that disables a specific device mid-run
-- [ ] **Devices tab: show profile known devices** with source badges (profile / active / discovered)
-
-**Done When**: All card features functional with WebSocket handlers.
+- [ ] **Implement stub scenarios**: discovery_test, timeout_test, flooding_test, device_suite
+- [ ] **Implement device_playback**: conversation playback with import msg logs and playback functionality (HIGH PRIORITY)
+- [ ] **Profile UI enhancements**: inspect dialog, import/export dialog, inline editing (deferred)
 
 ---
 
 ### Phase 9: Advanced (Future)
 
-- [ ] Docker Compose setup (HA + MQTT broker + simulator)
+- [x] Docker Compose setup (HA + MQTT broker + simulator) - ✅ COMPLETED with HA_SIM_CONFIG env var support
 - [ ] CI integration: run scenarios as automated regression tests
 - [ ] ser2net/socat serial mode
 - [ ] Automated assertion: check HA entity state after conversation/scenario completes

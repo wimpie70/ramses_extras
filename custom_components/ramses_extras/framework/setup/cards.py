@@ -304,6 +304,9 @@ async def register_cards(hass: HomeAssistant) -> None:
 
         _LOGGER.info("Feature-centric CardRegistry registration complete")
 
+        # Signal frontend to hard refresh the card
+        hass.bus.async_fire("ramses_extras_card_refresh")
+
     except Exception as e:
         _LOGGER.error("CardRegistry registration failed: %s", e)
         _LOGGER.warning("Continuing integration startup without card registration")

@@ -20,7 +20,10 @@ Each device type YAML has:
 
 from __future__ import annotations
 
+import asyncio
+import re as _re
 from dataclasses import dataclass, field
+from datetime import datetime as _datetime
 from pathlib import Path
 from typing import Any
 
@@ -164,6 +167,188 @@ class DeviceTypeEntry:
     conversation_refs: list[str] = field(default_factory=list)
 
 
+# Matches both ISO "2026-04-18T18:51:46.915588" and classic "2024-01-01 12:00:00.123"
+_TS_PATTERN = _re.compile(r"\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)\b")
+_VERBS = ("RQ", "RP", "I", "W")
+_DEVICE_ID = _re.compile(r"(?:\d{2}:\d{6}|--:------|\d{3}:\d{6})")
+
+
+def _parse_timestamp(raw: str) -> _datetime | None:
+    """Parse an ISO or classic ramses timestamp."""
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+    ):
+        try:
+            return _datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def parse_ramses_log(
+    content: str,
+) -> tuple[list[ConversationFrame], set[str]]:
+    """Parse a ramses log blob into chronologically sorted frames.
+
+    Accepts three styles (fields may be tab- or space-separated):
+
+    * **Classic ramses.log**: ``timestamp RSSI verb src dst code payload``
+      e.g. ``2024-01-01 12:00:00.123 082 I 20:123456 --:------ 31DA 0001020304``
+    * **Newer tab-separated dumps**: ``timestamp verb code src dst length payload``
+      e.g. ``2026-04-18T18:51:46.915588\tRP\t2349\t01:150000\t18:000730\t013 0807C0...``
+    * **Device-name format**: ``timestamp verb code_hex device_slug target``
+      ``length payload``
+      e.g. ``2025-01-01T00:00:00.000000\tI\t31E0\tCO2\tALL\t007\t6400CD03E803E8``
+
+    The parser splits input by detected timestamps, tokenises each record, and
+    identifies verb/code/src/dst positions dynamically to tolerate various orderings.
+
+    Returns ``(frames, peers_set)`` where frames are sorted chronologically and
+    peer device_ids (excluding broadcast ``--:------``) are collected.
+
+    :param content: Raw log content as a single string.
+    """
+    # Split the content into chunks that each start with a timestamp
+    matches = list(_TS_PATTERN.finditer(content))
+    if not matches:
+        return [], set()
+
+    records: list[tuple[_datetime, list[str]]] = []
+    for idx, m in enumerate(matches):
+        ts_raw = m.group(1)
+        ts = _parse_timestamp(ts_raw)
+        if ts is None:
+            continue
+        start = m.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(content)
+        rest = content[start:end]
+        tokens = [tok for tok in _re.split(r"[\t ]+", rest.strip()) if tok]
+        if not tokens:
+            continue
+        records.append((ts, tokens))
+
+    # Parse each record into a ConversationFrame candidate
+    frames: list[ConversationFrame] = []
+    raw_frames: list[tuple[_datetime, ConversationFrame]] = []
+    peers_set: set[str] = set()
+
+    for ts, tokens in records:
+        # Find verb
+        verb_idx = next((i for i, t in enumerate(tokens) if t in _VERBS), None)
+        if verb_idx is None:
+            continue
+        verb = tokens[verb_idx]
+
+        # Try to find two device-id tokens (src, dst) — in that order
+        dev_idxs = [i for i, t in enumerate(tokens) if _DEVICE_ID.fullmatch(t)]
+
+        # If we don't have 2 device IDs, try alternate format:
+        # timestamp verb code_hex device_name broadcast_flag length payload
+        if len(dev_idxs) < 2:
+            # Look for a 4-hex code right after verb
+            code_candidates = [
+                (i, t)
+                for i, t in enumerate(tokens)
+                if i > verb_idx
+                and len(t) == 4
+                and all(c in "0123456789ABCDEFabcdef" for c in t)
+            ]
+            if not code_candidates:
+                continue
+            code_idx, code = code_candidates[0]
+            # In this format, src/dst are slugs immediately following the code
+            src_idx = code_idx + 1
+            dst_idx = code_idx + 2
+            src = tokens[src_idx].upper() if src_idx < len(tokens) else "UNKNOWN"
+            dst = tokens[dst_idx].upper() if dst_idx < len(tokens) else "ALL"
+            # Payload is the last hex token (skip length prefix if present)
+            hex_tokens = [
+                (i, t)
+                for i, t in enumerate(tokens)
+                if i > code_idx and all(c in "0123456789ABCDEFabcdef" for c in t)
+            ]
+            if not hex_tokens:
+                continue
+            # Skip 3-digit length prefix if present
+            if len(hex_tokens) > 1 and len(hex_tokens[0][1]) == 3:
+                payload = hex_tokens[-1][1].upper()
+            elif len(hex_tokens) == 1 and len(hex_tokens[0][1]) == 3:
+                continue
+            else:
+                payload = hex_tokens[-1][1].upper()
+        else:
+            # Standard format with device IDs
+            if len(dev_idxs) < 2:
+                continue
+            src = tokens[dev_idxs[0]]
+            dst = tokens[dev_idxs[1]]
+
+            # Find the 4-hex-digit code (appears once, separate from payload)
+            code_candidates = [
+                (i, t)
+                for i, t in enumerate(tokens)
+                if len(t) == 4
+                and all(c in "0123456789ABCDEFabcdef" for c in t)
+                and i != verb_idx
+                and i not in dev_idxs
+            ]
+            if not code_candidates:
+                continue
+            code_idx, code = code_candidates[0]
+
+            # Payload = last long hex token after code (skip length prefix if present).
+            hex_tokens = [
+                (i, t)
+                for i, t in enumerate(tokens)
+                if i > max(verb_idx, code_idx, *dev_idxs)
+                and all(c in "0123456789ABCDEFabcdef" for c in t)
+            ]
+            if not hex_tokens:
+                continue
+            # If the first hex token is 3 digits, it's likely a length prefix
+            if len(hex_tokens) > 1 and len(hex_tokens[0][1]) == 3:
+                payload = hex_tokens[-1][1].upper()
+            elif len(hex_tokens) == 1 and len(hex_tokens[0][1]) == 3:
+                continue
+            else:
+                payload = hex_tokens[-1][1].upper()
+
+        frame_src = src
+        frame_dst = dst
+        raw_frames.append(
+            (
+                ts,
+                ConversationFrame(
+                    t=0.0,  # filled in after sorting
+                    src=frame_src,
+                    dst=frame_dst,
+                    code=code.upper(),
+                    verb=verb,
+                    payload=payload,
+                ),
+            )
+        )
+
+        peers_set.add(frame_src)
+        if frame_dst != "--:------" and frame_dst != "ALL":
+            peers_set.add(frame_dst)
+
+    if not raw_frames:
+        return [], peers_set
+
+    # Sort chronologically, compute relative t from first frame
+    raw_frames.sort(key=lambda pair: pair[0])
+    t0 = raw_frames[0][0]
+    for ts, fr in raw_frames:
+        fr.t = (ts - t0).total_seconds()
+        frames.append(fr)
+
+    return frames, peers_set
+
+
 class DeviceDatabase:
     """Runtime loader for the YAML device database.
 
@@ -171,14 +356,41 @@ class DeviceDatabase:
     Provides fast lookup by device type slug, code, and variant.
     """
 
-    def __init__(self, db_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        db_dir: Path | None = None,
+        *,
+        user_conversations_dir: Path | None = None,
+    ) -> None:
         """Initialize the device database.
 
         :param db_dir: Path to device_db directory. Defaults to the bundled one.
+        :param user_conversations_dir: Optional directory for user-imported
+            conversation YAMLs. Defaults to ``<db_dir>/conversations/imported`` but
+            can point to the Home Assistant config folder so imports survive
+            deployments.
         """
         self._db_dir = db_dir or _DB_DIR
         self._device_types: dict[str, DeviceTypeEntry] = {}
         self._conversations: dict[str, Conversation] = {}
+        default_import_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS / "imported"
+        self._user_conversations_dir = user_conversations_dir or default_import_dir
+
+    def _import_directories(self) -> list[Path]:
+        """Return all directories that may contain user-provided conversations."""
+
+        dirs: list[Path] = []
+        seen: set[str] = set()
+        for candidate in (
+            self._db_dir / DB_SUBDIR_CONVERSATIONS / "imported",
+            self._user_conversations_dir,
+        ):
+            key = str(candidate)
+            if key in seen:
+                continue
+            dirs.append(candidate)
+            seen.add(key)
+        return dirs
 
     def load_all(self) -> None:
         """Load all YAML files from the database directory."""
@@ -206,12 +418,24 @@ class DeviceDatabase:
 
         conv_path = self._db_dir / DB_SUBDIR_CONVERSATIONS
         if conv_path.exists():
-            for yaml_file in conv_path.glob("*.yaml"):
+            for yaml_file in sorted(conv_path.glob("*.yaml")):
                 try:
                     with open(yaml_file, encoding="utf-8") as f:
                         data = yaml.safe_load(f)
                     self._parse_conversations(data)
                 except Exception as err:
+                    LOGGER.warning(
+                        "Failed to load conversation %s: %s", yaml_file.name, err
+                    )
+        for import_dir in self._import_directories():
+            if not import_dir.exists():
+                continue
+            for yaml_file in sorted(import_dir.glob("*.yaml")):
+                try:
+                    with open(yaml_file, encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                    self._parse_conversations(data)
+                except Exception as err:  # noqa: BLE001
                     LOGGER.warning(
                         "Failed to load conversation %s: %s", yaml_file.name, err
                     )
@@ -406,15 +630,321 @@ class DeviceDatabase:
 
         If scheme is given, prefers conversations with matching scheme.
 
-        :param ref: Conversation reference key.
+        :param ref: Conversation reference key or conversation ID.
         :param scheme: Optional scheme filter (e.g. 'itho').
         """
+        # Try direct lookup by full key first (peers/id)
         conv = self._conversations.get(ref.lower())
+        if conv is None:
+            # Try lookup by conversation ID only (search all conversations)
+            ref_lower = ref.lower()
+            for c in self._conversations.values():
+                if c.id.lower() == ref_lower:
+                    conv = c
+                    break
         if conv is None:
             return None
         if scheme and conv.scheme and conv.scheme != scheme:
             return None
         return conv
+
+    async def import_user_log(
+        self,
+        path: str | None,
+        name: str,
+        content: str | None = None,
+        save_yaml: bool = True,
+    ) -> bool:
+        """Import a user's ramses log and convert to a replayable conversation.
+
+        Supports multiple log formats (see :func:`parse_ramses_log`). Entries may be
+        spread across multiple lines or concatenated on a single line with tab
+        separators; the parser splits by detected timestamps. Frames are sorted
+        chronologically before being stored so out-of-order log dumps still replay
+        correctly.
+
+        :param path: Path to a log file (optional if ``content`` is provided).
+        :param name: Name used for the generated conversation id.
+        :param content: Raw log content (optional if ``path`` is provided).
+        :param save_yaml: When True (default) persist a reusable YAML conversation
+            under the configured user conversation directory (defaults to
+            ``device_db/conversations/imported``) so imports survive restarts and
+            deployments.
+        :return: True if import succeeded, False otherwise.
+        """
+        from pathlib import Path
+
+        if content is None:
+            if not path:
+                LOGGER.error("Either path or content must be provided")
+                return False
+
+            log_path = Path(path)
+            if not log_path.exists():
+                LOGGER.error("Log file not found: %s", path)
+                return False
+
+            def _read_file() -> str:
+                with open(log_path, encoding="utf-8", errors="ignore") as f:
+                    return f.read()
+
+            content = await asyncio.to_thread(_read_file)
+
+        if not content:
+            LOGGER.error("No log content to import")
+            return False
+
+        try:
+            frames, peers_set = parse_ramses_log(content)
+        except Exception as err:
+            LOGGER.error("Failed to parse log: %s", err)
+            return False
+
+        if not frames:
+            LOGGER.error("No valid frames found in log")
+            return False
+
+        # Create conversation
+        peers = sorted(peers_set)
+        conv_id = name.lower().replace(" ", "_")
+        source = Path(path).name if path else "pasted content"
+        conv = Conversation(
+            id=conv_id,
+            peers=peers,
+            description=f"Imported from {source}",
+            scheme=None,
+            frames=frames,
+        )
+
+        # Store in runtime conversations
+        key = f"{'+'.join(peers).lower()}/{conv.id}"
+        self._conversations[key] = conv
+        # Also index by bare id for easy lookup from UI
+        self._conversations[conv.id] = conv
+
+        # Optionally persist as YAML for reuse across restarts
+        if save_yaml:
+            try:
+                await asyncio.to_thread(self._save_conversation_yaml, conv)
+            except Exception as err:
+                LOGGER.warning("Imported but failed to save YAML: %s", err)
+
+        LOGGER.info(
+            "Imported conversation '%s' from %s (%d frames, %d peers: %s)",
+            name,
+            source,
+            len(frames),
+            len(peers),
+            ", ".join(peers),
+        )
+        return True
+
+    async def async_list_saved_playbacks(self) -> list[dict[str, Any]]:
+        """List conversations available for playback.
+
+        Includes both built-in conversations (``conversations/*.yaml``, marked
+        ``builtin: True``) and user-imported ones (``conversations/imported/
+        *.yaml``, ``builtin: False``). Built-ins are always present in the
+        dropdown so there is at least one default playback and cannot be
+        deleted. Sorted with built-ins first, then alphabetical.
+        """
+        import asyncio
+
+        import yaml
+
+        conv_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS
+
+        def _collect_sync(directory: Path, builtin: bool) -> list[dict[str, Any]]:
+            items: list[dict[str, Any]] = []
+            for fp in sorted(directory.glob("*.yaml")):
+                try:
+                    with open(fp, encoding="utf-8") as fh:
+                        data = yaml.safe_load(fh) or {}
+                    peers = data.get("peers") or []
+                    convs = data.get("conversations") or []
+                    for conv in convs:
+                        items.append(
+                            {
+                                "id": conv.get("id", fp.stem),
+                                "file": fp.name,
+                                "peers": peers,
+                                "frames": len(conv.get("frames") or []),
+                                "description": conv.get("description"),
+                                "builtin": builtin,
+                            }
+                        )
+                except Exception as err:  # noqa: BLE001
+                    LOGGER.warning("Failed to read playback %s: %s", fp, err)
+            return items
+
+        builtins: list[dict[str, Any]] = []
+        if conv_dir.exists():
+            builtins = await asyncio.to_thread(_collect_sync, conv_dir, True)
+        imported: list[dict[str, Any]] = []
+        for import_dir in self._import_directories():
+            if import_dir.exists():
+                imported.extend(
+                    await asyncio.to_thread(_collect_sync, import_dir, False)
+                )
+        return builtins + imported
+
+    def delete_saved_playback(self, identifier: str) -> bool:
+        """Delete a saved playback by conversation id or YAML filename.
+
+        Also removes the in-memory conversation entries so the dropdown stays
+        in sync without requiring a full DB reload.
+
+        :param identifier: Either the conversation ``id`` or the bare filename.
+        :return: True if something was removed.
+        """
+
+        def _resolve_candidate(directory: Path) -> Path | None:
+            target_file = directory / identifier
+            if not target_file.exists() and not identifier.endswith(".yaml"):
+                target_file = directory / f"{identifier}.yaml"
+            if target_file.exists():
+                return target_file
+            # Last resort: search by id inside each file
+            for fp in directory.glob("*.yaml"):
+                try:
+                    import yaml
+
+                    with open(fp, encoding="utf-8") as fh:
+                        data = yaml.safe_load(fh) or {}
+                    convs = data.get("conversations") or []
+                    if any(c.get("id") == identifier for c in convs):
+                        return fp
+                except Exception:  # noqa: BLE001
+                    continue
+            return None
+
+        target_file: Path | None = None
+        for import_dir in self._import_directories():
+            if not import_dir.exists():
+                continue
+            target_file = _resolve_candidate(import_dir)
+            if target_file is not None:
+                break
+
+        if target_file is None:
+            LOGGER.warning("Saved playback '%s' not found", identifier)
+            return False
+
+        removed_ids: list[str] = []
+        try:
+            import yaml
+
+            with open(target_file, encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            for c in data.get("conversations") or []:
+                cid = c.get("id")
+                if cid:
+                    removed_ids.append(cid)
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            target_file.unlink()
+        except Exception as err:  # noqa: BLE001
+            LOGGER.error("Failed to delete %s: %s", target_file, err)
+            return False
+
+        for cid in removed_ids:
+            self._conversations.pop(cid, None)
+            for key in list(self._conversations):
+                if key.endswith(f"/{cid}"):
+                    self._conversations.pop(key, None)
+
+        LOGGER.info("Deleted saved playback %s (%s)", target_file.name, removed_ids)
+        return True
+
+    def get_playback_log_text(self, identifier: str) -> str | None:
+        """Serialize a saved playback back to a ramses.log-style text blob.
+
+        The produced text is round-trippable through :func:`parse_ramses_log`
+        *for imported logs* (where ``src``/``dst`` are real device IDs like
+        ``32:155617``). Built-in conversations that use peer slugs (e.g.
+        ``FAN``, ``REM``) will still render, but re-importing the edited text
+        requires replacing the slugs with actual device IDs first.
+
+        Uses an arbitrary base timestamp of ``2025-01-01T00:00:00.000000`` so
+        relative frame times are preserved verbatim.
+
+        :param identifier: Conversation ``id`` or YAML filename.
+        :return: Tab-separated log text (one line per frame) or ``None`` if
+            the conversation cannot be located.
+        """
+        from datetime import datetime, timedelta
+
+        conv = self._conversations.get(identifier.lower()) or next(
+            (
+                c
+                for c in self._conversations.values()
+                if c.id.lower() == identifier.lower()
+            ),
+            None,
+        )
+        if conv is None:
+            return None
+
+        base = datetime(2025, 1, 1, 0, 0, 0)
+        lines: list[str] = []
+        for frame in conv.frames:
+            ts = base + timedelta(seconds=float(frame.t))
+            ts_str = ts.strftime("%Y-%m-%dT%H:%M:%S.%f")
+            # Length prefix is byte count = len(payload)//2, zero-padded to 3
+            try:
+                length = f"{len(frame.payload) // 2:03d}"
+            except Exception:  # noqa: BLE001
+                length = "000"
+            lines.append(
+                "\t".join(
+                    [
+                        ts_str,
+                        frame.verb,
+                        frame.code,
+                        frame.src,
+                        frame.dst,
+                        length,
+                        frame.payload,
+                    ]
+                )
+            )
+        return "\n".join(lines)
+
+    def _save_conversation_yaml(self, conv: Conversation) -> Path:
+        """Write an imported conversation to device_db/conversations/imported/."""
+        import yaml
+
+        target_dir = self._user_conversations_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_file = target_dir / f"{conv.id}.yaml"
+
+        data = {
+            "peers": conv.peers,
+            "conversations": [
+                {
+                    "id": conv.id,
+                    "description": conv.description,
+                    "scheme": conv.scheme,
+                    "frames": [
+                        {
+                            "t": round(f.t, 6),
+                            "src": f.src,
+                            "dst": f.dst,
+                            "code": f.code,
+                            "verb": f.verb,
+                            "payload": f.payload,
+                        }
+                        for f in conv.frames
+                    ],
+                }
+            ],
+        }
+        with open(target_file, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(data, fh, sort_keys=False)
+        LOGGER.info("Saved imported conversation YAML → %s", target_file)
+        return target_file
 
     def get_fingerprint_payload(self, fingerprint: str) -> str | None:
         """Return the 10E0 RP payload for a given hardware fingerprint.
