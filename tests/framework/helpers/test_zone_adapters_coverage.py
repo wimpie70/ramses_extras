@@ -9,6 +9,7 @@ from custom_components.ramses_extras.framework.helpers.zone_adapters import (
     OrconNativeZoneAdapter,
     PairedValvesZoneAdapter,
     ZoneAdapterConfig,
+    ZoneAdapterFactory,
     ZoneAdapterRegistry,
     ZonePosition,
 )
@@ -646,3 +647,171 @@ class TestZoneAdapterRegistryCoverage:
             # Should default to custom_valve
             _call_config = mock_create.call_args[0][1]
             assert _call_config.source_type == "custom_valve"
+
+
+class TestOrconNativeZoneAdapterCoverage:
+    """Additional tests for OrconNativeZoneAdapter."""
+
+    def test_init_with_zone_index(self):
+        """Test init with zone_index."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="orcon_native",
+            extra_config={"zone_index": "zone_1"},
+        )
+        adapter = OrconNativeZoneAdapter(hass, config)
+        assert adapter._zone_index == "zone_1"
+
+    def test_init_without_zone_index(self):
+        """Test init without zone_index."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="orcon_native",
+            extra_config=None,
+        )
+        adapter = OrconNativeZoneAdapter(hass, config)
+        assert adapter._zone_index is None
+
+    @pytest.mark.asyncio
+    async def test_set_position_no_zone_index(self):
+        """Test set_position when no zone_index."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="orcon_native",
+            extra_config=None,
+        )
+        adapter = OrconNativeZoneAdapter(hass, config)
+
+        result = await adapter.async_set_position(50)
+        # OrconNative always returns True (logs the command)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_set_position_with_zone_index(self):
+        """Test set_position with zone_index."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="orcon_native",
+            extra_config={"zone_index": "zone_1"},
+        )
+        adapter = OrconNativeZoneAdapter(hass, config)
+
+        result = await adapter.async_set_position(80)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_get_position_no_zone_index(self):
+        """Test get_position when no zone_index."""
+        hass = MagicMock()
+        # Mock hass.data to make device unavailable
+        hass.data = {}
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="orcon_native",
+            extra_config=None,
+        )
+        adapter = OrconNativeZoneAdapter(hass, config)
+
+        pos = await adapter.async_get_position()
+        assert pos.position == 50
+        assert pos.is_available is False
+
+    @pytest.mark.asyncio
+    async def test_get_position_with_device_available(self):
+        """Test get_position when device is available."""
+        hass = MagicMock()
+        # Mock hass.data to make device available
+        hass.data = {"ramses_extras": {"devices": {"32:123456": {}}}}
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="orcon_native",
+            extra_config={"zone_index": "zone_1"},
+        )
+        adapter = OrconNativeZoneAdapter(hass, config)
+
+        pos = await adapter.async_get_position()
+        # OrconNative always returns 50 (unknown) for position
+        assert pos.position == 50
+        # Don't assert is_available since it depends on DOMAIN constant
+
+
+class TestZoneAdapterFactoryCoverage:
+    """Additional tests for ZoneAdapterFactory."""
+
+    def test_create_adapter_custom_valve(self):
+        """Test creating custom_valve adapter."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="custom_valve",
+            entity_id="cover.test",
+        )
+
+        adapter = ZoneAdapterFactory.create_adapter(hass, config)
+        assert isinstance(adapter, CustomValveZoneAdapter)
+
+    def test_create_adapter_paired_valves(self):
+        """Test creating paired_valves adapter."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+            },
+        )
+
+        adapter = ZoneAdapterFactory.create_adapter(hass, config)
+        assert isinstance(adapter, PairedValvesZoneAdapter)
+
+    def test_create_adapter_orcon_native(self):
+        """Test creating orcon_native adapter."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="orcon_native",
+            extra_config={"zone_index": "zone_1"},
+        )
+
+        adapter = ZoneAdapterFactory.create_adapter(hass, config)
+        assert isinstance(adapter, OrconNativeZoneAdapter)
+
+    def test_create_adapter_unknown_type(self):
+        """Test creating adapter with unknown type."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="unknown_type",
+            entity_id="cover.test",
+        )
+
+        adapter = ZoneAdapterFactory.create_adapter(hass, config)
+        assert adapter is None
+
+    def test_create_adapter_empty_type(self):
+        """Test creating adapter with empty type."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="",
+            entity_id="cover.test",
+        )
+
+        adapter = ZoneAdapterFactory.create_adapter(hass, config)
+        assert adapter is None

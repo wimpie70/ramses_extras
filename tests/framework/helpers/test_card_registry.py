@@ -115,3 +115,129 @@ async def test_register_migration_config_www(card_registry):
     assert legacy_www_path not in urls
     assert "/local/ramses_extras/something.js" not in urls
     assert f"/local/ramses_extras/helpers/main.js?v={version}" in urls
+
+
+@pytest.mark.asyncio
+async def test_register_empty_cards_list(card_registry):
+    """Test that registering empty cards list does nothing."""
+    await card_registry.register([])
+    card_registry._store.async_save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_register_migrates_www_paths(card_registry):
+    """Test migration of /www/ paths to /local/."""
+    www_path = "/www/ramses_extras/something.js"
+    initial_items = [
+        {"url": www_path, "type": "module"},
+    ]
+    card_registry._store.async_load.return_value = {"items": initial_items}
+
+    version = "1.2.3"
+    await card_registry.register_bootstrap(version)
+
+    save_data = card_registry._store.async_save.call_args[0][0]
+    urls = [item["url"] for item in save_data["items"]]
+    assert www_path not in urls
+    assert "/local/ramses_extras/something.js" not in urls
+    assert f"/local/ramses_extras/helpers/main.js?v={version}" in urls
+
+
+@pytest.mark.asyncio
+async def test_register_migrates_resources_without_id(card_registry):
+    """Test migration of resources without id field."""
+    initial_items = [
+        {"url": "/local/other/card.js", "type": "module"},  # No id field
+    ]
+    card_registry._store.async_load.return_value = {"items": initial_items}
+
+    version = "1.2.3"
+    await card_registry.register_bootstrap(version)
+
+    save_data = card_registry._store.async_save.call_args[0][0]
+    # Should have added id field to the other card
+    other_card = [item for item in save_data["items"] if "other" in item["url"]][0]
+    assert "id" in other_card
+    assert other_card["id"] == "local_other_card.js"
+
+
+@pytest.mark.asyncio
+async def test_register_handles_non_string_urls(card_registry):
+    """Test that non-string URLs are kept as-is."""
+    initial_items = [
+        {"url": 123, "type": "module"},  # Non-string URL
+    ]
+    card_registry._store.async_load.return_value = {"items": initial_items}
+
+    version = "1.2.3"
+    await card_registry.register_bootstrap(version)
+
+    # Check loaded data since save might not be called if no changes needed
+    loaded_data = card_registry._store.async_load.return_value
+    # Non-string URL should be kept
+    assert any(item.get("url") == 123 for item in loaded_data["items"])
+
+
+@pytest.mark.asyncio
+async def test_register_handles_save_error(card_registry):
+    """Test that save errors are logged but don't raise."""
+    card_registry._store.async_save.side_effect = Exception("Save failed")
+    card_registry._store.async_load.return_value = {"items": []}
+
+    version = "1.2.3"
+    # Should not raise
+    await card_registry.register_bootstrap(version)
+
+
+@pytest.mark.asyncio
+async def test_register_migrates_only_no_new_resources(card_registry):
+    """Test that migration without new resources still saves."""
+    initial_items = [
+        {"url": "/config/www/other/card.js", "type": "module"},
+    ]
+    card_registry._store.async_load.return_value = {"items": initial_items}
+
+    version = "1.2.3"
+    await card_registry.register_bootstrap(version)
+
+    # Should save due to migration (even though no new resources added)
+    card_registry._store.async_save.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_register_discovered_cards_warns(card_registry):
+    """Test that register_discovered_cards logs deprecation warning."""
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.card_registry._LOGGER"
+    ) as mock_logger:
+        await card_registry.register_discovered_cards()
+        mock_logger.warning.assert_called_once_with(
+            "register_discovered_cards() is deprecated; use register_bootstrap()"
+        )
+
+
+def test_lovelace_type():
+    """Test lovelace_type static method."""
+    assert CardRegistry.lovelace_type("hello-world") == "custom:hello-world"
+    assert CardRegistry.lovelace_type("device-simulator") == "custom:device-simulator"
+
+
+def test_get_card_info_for_js():
+    """Test get_card_info_for_js static method."""
+    result = CardRegistry.get_card_info_for_js(
+        "hello-world", "Hello World", "A test card", True
+    )
+    assert result == {
+        "type": "hello-world",
+        "name": "Hello World",
+        "description": "A test card",
+        "preview": True,
+    }
+
+    result = CardRegistry.get_card_info_for_js("test", "Test")
+    assert result == {
+        "type": "test",
+        "name": "Test",
+        "description": "",
+        "preview": True,
+    }

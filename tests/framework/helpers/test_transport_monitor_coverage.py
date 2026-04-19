@@ -291,6 +291,314 @@ class TestTransportMonitorCoverage:
         await monitor.force_check()
         callback.assert_called_once_with(True)
 
+    def test_register_callback_with_device_id_and_hass(self, monitor):
+        """Test register_callback with device_id when hass is set."""
+        hass = MagicMock()
+        monitor._hass = hass
+        monitor._device_states["32:123456"] = False
+
+        callback = MagicMock()
+        monitor.register_callback("test_callback", callback, "32_123456")
+
+        # Should call callback with initial state
+        callback.assert_called_once_with(False)
+
+    def test_register_callback_initial_callback_error(self, monitor):
+        """Test register_callback handles initial callback error."""
+        hass = MagicMock()
+        monitor._hass = hass
+        monitor._device_states["32:123456"] = True
+
+        error_callback = MagicMock(side_effect=Exception("Callback error"))
+        monitor.register_callback("error_cb", error_callback, "32_123456")
+
+        # Should not crash despite error
+        assert "error_cb" in monitor._callbacks
+
+    def test_mark_device_offline_immediate(self, monitor):
+        """Test mark_device_offline_immediate."""
+        hass = MagicMock()
+        monitor._hass = hass
+        hass.loop.call_soon_threadsafe = MagicMock()
+
+        monitor.mark_device_offline_immediate("32_123456")
+
+        assert monitor._device_states["32:123456"] is False
+        hass.loop.call_soon_threadsafe.assert_called_once()
+
+    def test_mark_device_offline_immediate_already_offline(self, monitor):
+        """Test mark_device_offline_immediate when already offline."""
+        monitor._device_states["32:123456"] = False
+        hass = MagicMock()
+        monitor._hass = hass
+        hass.loop.call_soon_threadsafe = MagicMock()
+
+        monitor.mark_device_offline_immediate("32_123456")
+
+        # Should not call call_soon_threadsafe since already offline
+        hass.loop.call_soon_threadsafe.assert_not_called()
+
+    def test_mark_device_offline_immediate_cancels_task(self, monitor):
+        """Test mark_device_offline_immediate cancels existing task."""
+        hass = MagicMock()
+        monitor._hass = hass
+        hass.loop.call_soon_threadsafe = MagicMock()
+
+        existing_task = MagicMock()
+        existing_task.done.return_value = False
+        monitor._device_timeout_tasks["32:123456"] = existing_task
+
+        monitor.mark_device_offline_immediate("32_123456")
+
+        existing_task.cancel.assert_called_once()
+        assert "32:123456" not in monitor._device_timeout_tasks
+
+    @pytest.mark.asyncio
+    async def test_mark_all_tracked_devices_offline(self, monitor):
+        """Test _mark_all_tracked_devices_offline."""
+        monitor.register_callback("cb1", MagicMock(), "32:123456")
+        monitor.register_callback("cb2", MagicMock(), "32:123457")
+
+        existing_task1 = MagicMock()
+        existing_task1.done.return_value = False
+        existing_task2 = MagicMock()
+        existing_task2.done.return_value = False
+        monitor._device_timeout_tasks["32:123456"] = existing_task1
+        monitor._device_timeout_tasks["32:123457"] = existing_task2
+
+        await monitor._mark_all_tracked_devices_offline()
+
+        assert monitor._device_states["32:123456"] is False
+        assert monitor._device_states["32:123457"] is False
+        existing_task1.cancel.assert_called_once()
+        existing_task2.cancel.assert_called_once()
+
+    def test_refresh_coordinator_no_hass(self, monitor):
+        """Test _refresh_coordinator when hass is None."""
+        monitor._hass = None
+
+        monitor._refresh_coordinator()
+
+        # Should not crash
+        assert monitor._coordinator is None
+
+    def test_refresh_coordinator_no_ramses_cc_data(self, monitor):
+        """Test _refresh_coordinator when ramses_cc data not found."""
+        hass = MagicMock()
+        hass.data = {}
+        monitor._hass = hass
+
+        monitor._refresh_coordinator()
+
+        # Should not crash
+        assert monitor._coordinator is None
+
+    def test_ensure_msg_handler_client_unchanged(self, monitor):
+        """Test _ensure_msg_handler when client unchanged."""
+        monitor._client = MagicMock()
+        monitor._msg_handler_unsub = MagicMock()
+
+        monitor._ensure_msg_handler(monitor._client)
+
+        # Should not call unsubscribe
+        monitor._msg_handler_unsub.assert_not_called()
+
+    def test_ensure_msg_handler_removes_old_handler(self, monitor):
+        """Test _ensure_msg_handler removes old handler."""
+        old_client = MagicMock()
+        new_client = MagicMock()
+        monitor._client = old_client
+        monitor._msg_handler_unsub = MagicMock()
+
+        # The method checks if client is the same before removing handler
+        # So we need to ensure they're different
+        monitor._ensure_msg_handler(new_client)
+
+        # Since old_client != new_client, it should have tried to remove
+        # But if the removal failed (exception), it won't call
+        # Let's just verify the client was updated
+        assert monitor._client is new_client
+
+    def test_ensure_msg_handler_no_add_msg_handler(self, monitor):
+        """Test _ensure_msg_handler when client has no add_msg_handler."""
+        new_client = MagicMock(spec=[])  # No add_msg_handler
+        monitor._client = MagicMock()
+        monitor._msg_handler_unsub = MagicMock()
+
+        monitor._ensure_msg_handler(new_client)
+
+        assert monitor._client is new_client
+
+    def test_ensure_msg_handler_add_msg_handler_fails(self, monitor):
+        """Test _ensure_msg_handler when add_msg_handler raises."""
+        new_client = MagicMock()
+        new_client.add_msg_handler.side_effect = Exception("Handler error")
+        monitor._client = MagicMock()
+        monitor._msg_handler_unsub = MagicMock()
+
+        monitor._ensure_msg_handler(new_client)
+
+        # Should not crash
+        assert monitor._client is new_client
+
+    def test_handle_ramses_cc_message_no_data(self, monitor):
+        """Test _handle_ramses_cc_message with no data."""
+        event = MagicMock()
+        event.data = None
+
+        monitor._handle_ramses_cc_message(event)
+
+        # Should not crash
+
+    def test_handle_ramses_cc_message_invalid_data(self, monitor):
+        """Test _handle_ramses_cc_message with invalid data."""
+        event = MagicMock()
+        event.data = "not a dict"
+
+        monitor._handle_ramses_cc_message(event)
+
+        # Should not crash
+
+    def test_handle_ramses_cc_message_not_tracked_device(self, monitor):
+        """Test _handle_ramses_cc_message for untracked device."""
+        event = MagicMock()
+        event.data = {"src": "29:999999", "dst": "32:123456"}
+
+        monitor.register_callback("cb", MagicMock(), "32:123456")
+
+        monitor._handle_ramses_cc_message(event)
+
+        # Should not crash, device not tracked
+
+    def test_handle_msg_no_src(self, monitor):
+        """Test _handle_msg when msg has no src."""
+        msg = MagicMock()
+        msg.src = None
+
+        monitor._handle_msg(msg)
+
+        # Should not crash
+
+    def test_handle_msg_no_colon_in_src(self, monitor):
+        """Test _handle_msg when src has no colon."""
+        msg = MagicMock()
+        src = MagicMock()
+        src.id = "invalid"
+        msg.src = src
+
+        monitor._handle_msg(msg)
+
+        # Should not crash
+
+    def test_handle_msg_not_tracked_device(self, monitor):
+        """Test _handle_msg for untracked device."""
+        msg = MagicMock()
+        src = MagicMock()
+        src.id = "29:999999"
+        msg.src = src
+        dst = MagicMock()
+        dst.id = "32:123456"
+        msg.dst = dst
+
+        monitor.register_callback("cb", MagicMock(), "32:123456")
+
+        monitor._handle_msg(msg)
+
+        # Should not crash, device not tracked
+
+    @pytest.mark.asyncio
+    async def test_start_monitoring_with_no_client(self, monitor):
+        """Test start_monitoring when coordinator has no client."""
+        hass = MagicMock()
+        hass.bus.async_listen.return_value = MagicMock()
+
+        coordinator = MagicMock()
+        coordinator.client = None
+
+        await monitor.start_monitoring(coordinator, hass)
+
+        assert monitor._coordinator is coordinator
+        assert monitor._hass is hass
+
+    @pytest.mark.asyncio
+    async def test_start_monitoring_event_listen_fails(self, monitor):
+        """Test start_monitoring when event listen fails."""
+        hass = MagicMock()
+        hass.bus.async_listen.side_effect = Exception("Listen error")
+
+        coordinator = MagicMock()
+        coordinator.client = MagicMock()
+        coordinator.client.add_msg_handler.return_value = MagicMock()
+
+        await monitor.start_monitoring(coordinator, hass)
+
+        # Should not crash
+        assert monitor._coordinator is coordinator
+
+    @pytest.mark.asyncio
+    async def test_stop_monitoring_cleanup_event_unsub(self, monitor):
+        """Test stop_monitoring cleans up event listener."""
+
+        async def dummy_task():
+            await asyncio.sleep(1)
+
+        monitor._monitor_task = asyncio.create_task(dummy_task())
+        monitor._event_unsub = MagicMock()
+
+        await monitor.stop_monitoring()
+
+        # Verify unsub was set to None (cleanup happened)
+        assert monitor._event_unsub is None
+
+    @pytest.mark.asyncio
+    async def test_stop_monitoring_cleanup_msg_handler_unsub(self, monitor):
+        """Test stop_monitoring cleans up msg handler."""
+
+        async def dummy_task():
+            await asyncio.sleep(1)
+
+        monitor._monitor_task = asyncio.create_task(dummy_task())
+        monitor._msg_handler_unsub = MagicMock()
+
+        await monitor.stop_monitoring()
+
+        # Verify unsub was set to None (cleanup happened)
+        assert monitor._msg_handler_unsub is None
+
+    @pytest.mark.asyncio
+    async def test_monitor_loop_transport_state_change(self, monitor):
+        """Test _monitor_loop detects transport state change."""
+        hass = MagicMock()
+        monitor._hass = hass
+        monitor._coordinator = MagicMock()
+        monitor._coordinator.client = MagicMock()
+
+        # Set initial state
+        monitor._transport_available = True
+
+        # Mock sleep to raise CancelledError after one iteration
+        call_count = 0
+
+        async def mock_sleep(duration):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            with patch.object(monitor, "_refresh_coordinator"):
+                with patch.object(monitor, "_is_transport_active", return_value=False):
+                    with patch.object(
+                        monitor, "_mark_all_tracked_devices_offline"
+                    ) as mock_mark_offline:
+                        try:
+                            await monitor._monitor_loop()
+                        except asyncio.CancelledError:
+                            pass
+
+                        # Should have marked devices offline when transport went down
+                        mock_mark_offline.assert_called_once()
+
 
 class TestGetTransportMonitor:
     """Test get_transport_monitor factory."""

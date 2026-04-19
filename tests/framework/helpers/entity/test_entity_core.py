@@ -7,6 +7,8 @@ from homeassistant.core import HomeAssistant, State
 
 from custom_components.ramses_extras.framework.helpers.entity.core import (
     EntityHelpers,
+    build_entity_mapping_templates,
+    build_frontend_entity_mapping_templates,
     filter_entities_by_patterns,
     generate_entity_from_template,
     generate_entity_patterns_for_feature,
@@ -146,6 +148,93 @@ class TestEntityHelpers:
             EntityHelpers.generate_entity_name_from_template(
                 "invalid_type", "template", device_id="32_153289"
             )
+
+
+class TestBuildEntityMappingTemplates:
+    """Tests for build_entity_mapping_templates."""
+
+    def test_valid_entity_mappings(self):
+        """Test building entity mappings from valid feature definition."""
+        feature_def = {
+            "entity_mappings": {
+                "indoor_temp": "sensor.indoor_temp_{device_id}",
+                "outdoor_temp": "sensor.outdoor_temp_{device_id}",
+            }
+        }
+        result = build_entity_mapping_templates(feature_def)
+        assert result == feature_def["entity_mappings"]
+
+    def test_no_entity_mappings(self):
+        """Test when entity_mappings is not present."""
+        feature_def = {}
+        result = build_entity_mapping_templates(feature_def)
+        assert result == {}
+
+    def test_entity_mappings_not_dict(self):
+        """Test when entity_mappings is not a dict."""
+        feature_def = {"entity_mappings": "invalid"}
+        result = build_entity_mapping_templates(feature_def)
+        assert result == {}
+
+    def test_entity_mappings_mixed_types(self):
+        """Test entity_mappings with mixed key/value types."""
+        feature_def = {
+            "entity_mappings": {
+                "valid_key": "valid_value",
+                123: "invalid_key",
+                "another_valid": "another_value",
+            }
+        }
+        result = build_entity_mapping_templates(feature_def)
+        assert result == {"valid_key": "valid_value", "another_valid": "another_value"}
+
+
+class TestBuildFrontendEntityMappingTemplates:
+    """Tests for build_frontend_entity_mapping_templates."""
+
+    def test_build_with_switch_configs(self):
+        """Test building with switch configs."""
+        feature_def = {
+            "switch_configs": {"test_switch": {"entity_template": "test_{device_id}"}}
+        }
+        result = build_frontend_entity_mapping_templates(feature_def)
+        assert "test_switch_state" in result
+
+    def test_build_with_sensor_configs(self):
+        """Test building with sensor configs."""
+        feature_def = {
+            "sensor_configs": {"test_sensor": {"entity_template": "test_{device_id}"}}
+        }
+        result = build_frontend_entity_mapping_templates(feature_def)
+        assert "test_sensor_state" in result
+
+    def test_build_with_binary_sensor_configs(self):
+        """Test building with binary_sensor configs."""
+        feature_def = {
+            "boolean_configs": {"test_binary": {"entity_template": "test_{device_id}"}}
+        }
+        result = build_frontend_entity_mapping_templates(feature_def)
+        assert "test_binary_state" in result
+
+    def test_build_with_number_configs(self):
+        """Test building with number configs."""
+        feature_def = {
+            "number_configs": {"test_number": {"entity_template": "test_{device_id}"}}
+        }
+        result = build_frontend_entity_mapping_templates(feature_def)
+        assert "test_number_state" in result
+
+    def test_build_configs_not_dict(self):
+        """Test when configs are not a dict."""
+        feature_def = {"sensor_configs": "invalid"}
+        result = build_frontend_entity_mapping_templates(feature_def)
+        assert result == {}
+
+    def test_build_config_item_not_dict(self):
+        """Test when config item is not a dict."""
+        feature_def = {"sensor_configs": {"test_sensor": "invalid"}}
+        result = build_frontend_entity_mapping_templates(feature_def)
+        assert result == {}
 
     def test_generate_entity_name_from_template_missing_placeholder(self):
         """Test generating entity name with missing placeholder."""

@@ -345,3 +345,119 @@ class TestGetZoneDemandRegistry:
 
         assert DOMAIN in hass.data
         assert "zone_demand_registry" in hass.data[DOMAIN]
+
+    def test_schedule_zone_actuation_empty_fan_id(self, registry):
+        """Test _schedule_zone_actuation with empty fan_id."""
+        # Should return early without error
+        registry._schedule_zone_actuation("")
+
+    def test_schedule_zone_actuation_no_hass_loop(self, registry):
+        """Test _schedule_zone_actuation when hass has no loop."""
+        registry._hass.loop = None
+
+        # Should return early without error
+        registry._schedule_zone_actuation("18:000730")
+
+    def test_schedule_zone_actuation_missing_methods(self, registry):
+        """Test _schedule_zone_actuation when hass methods are missing."""
+        registry._hass.loop = MagicMock()
+        registry._hass.loop.call_later = None  # Not callable
+
+        # Should return early without error
+        registry._schedule_zone_actuation("18:000730")
+
+    def test_clear_demand_unknown_zone(self, registry):
+        """Test clear_demand for unknown zone."""
+        # Should return early without error
+        registry.clear_demand("18:000730", "unknown")
+
+    def test_clear_demand_specific_source_empty_dict(self, registry):
+        """Test clear_demand for specific source when dict becomes empty."""
+        registry.set_demand(
+            fan_id="18:000730",
+            zone_id="office",
+            source=DemandSource.HUMIDITY,
+            has_demand=True,
+        )
+
+        # Clear the only source - should delete the key
+        registry.clear_demand("18:000730", "office", DemandSource.HUMIDITY)
+
+        assert registry.has_demand("18:000730", "office") is False
+
+    def test_get_demand_sources_unknown_zone(self, registry):
+        """Test get_demand_sources for unknown zone."""
+        sources = registry.get_demand_sources("18:000730", "unknown")
+        assert sources == []
+
+    def test_set_demand_with_metadata(self, registry):
+        """Test set_demand with metadata."""
+        metadata = {"threshold": 60, "current": 65}
+        registry.set_demand(
+            fan_id="18:000730",
+            zone_id="office",
+            source=DemandSource.HUMIDITY,
+            has_demand=True,
+            metadata=metadata,
+        )
+
+        breakdown = registry.get_demand_breakdown("18:000730", "office")
+        assert breakdown[DemandSource.HUMIDITY] is True
+
+    def test_set_demand_without_bus(self, registry):
+        """Test set_demand when hass has no bus."""
+        registry._hass.bus = None
+
+        # Should not raise
+        registry.set_demand(
+            fan_id="18:000730",
+            zone_id="office",
+            source=DemandSource.HUMIDITY,
+            has_demand=True,
+        )
+
+        assert registry.has_demand("18:000730", "office") is True
+
+    def test_clear_demand_without_bus(self, registry):
+        """Test clear_demand when hass has no bus."""
+        registry.set_demand(
+            fan_id="18:000730",
+            zone_id="office",
+            source=DemandSource.HUMIDITY,
+            has_demand=True,
+        )
+        registry._hass.bus = None
+
+        # Should not raise
+        registry.clear_demand("18:000730", "office", DemandSource.HUMIDITY)
+
+    def test_schedule_actuation_with_existing_handle(self, registry):
+        """Test that existing handle is cancelled when scheduling new actuation."""
+        import asyncio
+
+        # Mock the event loop
+        loop = MagicMock()
+        call_later = MagicMock()
+        async_create_task = MagicMock()
+        bus = MagicMock()
+        fire_event = MagicMock()
+
+        registry._hass.loop = loop
+        loop.call_later = call_later
+        registry._hass.async_create_task = async_create_task
+        registry._hass.bus = bus
+        bus.fire = fire_event
+
+        # Set up existing handle
+        existing_handle = MagicMock()
+        registry._actuation_debounce_handles["18:000730"] = existing_handle
+
+        registry.set_demand(
+            fan_id="18:000730",
+            zone_id="office",
+            source=DemandSource.HUMIDITY,
+            has_demand=True,
+        )
+
+        # Existing handle should have been cancelled
+        existing_handle.cancel.assert_called_once()
