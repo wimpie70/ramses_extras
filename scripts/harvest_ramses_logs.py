@@ -325,7 +325,7 @@ def harvest_logs(
     return harvested
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Harvest RAMSES RF logs for simulator")
     parser.add_argument(
         "--ramses-rf-dir",

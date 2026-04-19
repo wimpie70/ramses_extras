@@ -88,6 +88,23 @@ class TestRemoteBindingRegistry:
             # Should return the first enabled binding
             assert result == mock_bindings[1]
 
+    def test_get_binding_for_fan_all_disabled(self, registry, hass):
+        """Test get_binding_for_fan returns None when all bindings disabled."""
+        mock_bindings = [
+            {"rem_id": "37:111111", "enabled": False},
+            {"rem_id": "37:654321", "enabled": False},
+        ]
+
+        with patch.object(registry, "_get_config_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.get_fan_remote_bindings.return_value = mock_bindings
+            mock_get_manager.return_value = mock_manager
+
+            result = registry.get_binding_for_fan("32:123456")
+
+            # Should return None when all are disabled
+            assert result is None
+
     def test_get_rem_id_for_fan(self, registry, hass):
         """Test get_rem_id_for_fan extracts REM ID."""
         mock_binding = {
@@ -610,3 +627,52 @@ class TestBindingSuggestions:
 
         suggestion = result["suggestions_by_fan"]["32:123456"][0]
         assert suggestion["confidence"] == 1.0  # capped at 1.0
+
+
+class TestGetLastActivityForFan:
+    """Test get_last_activity_for_fan method."""
+
+    def test_get_last_activity_empty_fan_id(self, registry, hass):
+        """Test get_last_activity_for_fan with empty fan_id."""
+        result = registry.get_last_activity_for_fan("")
+        assert result is None
+
+    def test_get_last_activity_whitespace_fan_id(self, registry, hass):
+        """Test get_last_activity_for_fan with whitespace-only fan_id."""
+        result = registry.get_last_activity_for_fan("   ")
+        assert result is None
+
+    def test_get_last_activity_no_activity(self, registry, hass):
+        """Test get_last_activity_for_fan when no activity recorded."""
+        result = registry.get_last_activity_for_fan("32:123456")
+        assert result is None
+
+    def test_get_last_activity_with_activity(self, registry, hass):
+        """Test get_last_activity_for_fan returns recorded activity."""
+        registry.record_remote_activity(
+            rem_id="37:654321",
+            fan_id="32:123456",
+            command="fan_auto",
+            matched=True,
+        )
+
+        result = registry.get_last_activity_for_fan("32:123456")
+
+        assert result is not None
+        assert result["rem_id"] == "37:654321"
+        assert result["command"] == "fan_auto"
+
+    def test_get_last_activity_normalized_underscore(self, registry, hass):
+        """Test get_last_activity_for_fan normalizes underscore format."""
+        registry.record_remote_activity(
+            rem_id="37:654321",
+            fan_id="32:123456",
+            command="fan_auto",
+            matched=True,
+        )
+
+        # Use underscore format
+        result = registry.get_last_activity_for_fan("32_123456")
+
+        assert result is not None
+        assert result["rem_id"] == "37:654321"

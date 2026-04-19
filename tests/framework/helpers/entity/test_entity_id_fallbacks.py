@@ -3,9 +3,34 @@
 import pytest
 
 from custom_components.ramses_extras.framework.helpers.entity.entity_id_fallbacks import (  # noqa: E501
+    _unique_in_order,
     iter_ramses_cc_entity_id_fallbacks,
     iter_ramses_cc_entity_ids,
 )
+
+
+class TestUniqueInOrder:
+    """Test cases for _unique_in_order helper."""
+
+    def test_removes_duplicates(self):
+        """Test that duplicate items are removed."""
+        result = _unique_in_order(["a", "b", "a", "c", "b"])
+        assert result == ["a", "b", "c"]
+
+    def test_preserves_order(self):
+        """Test that order of first occurrences is preserved."""
+        result = _unique_in_order(["c", "a", "b", "a", "c"])
+        assert result == ["c", "a", "b"]
+
+    def test_empty_list(self):
+        """Test with empty list."""
+        result = _unique_in_order([])
+        assert result == []
+
+    def test_no_duplicates(self):
+        """Test with list that has no duplicates."""
+        result = _unique_in_order(["a", "b", "c"])
+        assert result == ["a", "b", "c"]
 
 
 class TestIterRamsesccEntityIds:

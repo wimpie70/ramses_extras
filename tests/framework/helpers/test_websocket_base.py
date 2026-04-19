@@ -556,3 +556,80 @@ def test_parse_all_entity_templates_invalid_entity_template(hass):
     entities = {"sensor": {"t": {"entity_template": 123}}}  # Invalid entity template
     result = command._parse_all_entity_templates(entities, "32:1")
     assert result["sensor"] == {}
+
+
+class TestAsyncApplyEntityIdFallbacks:
+    """Test _async_apply_entity_id_fallbacks method."""
+
+    @patch("homeassistant.helpers.entity_registry.async_get")
+    @pytest.mark.asyncio
+    async def test_async_apply_entity_id_fallbacks_registry_exception(
+        self, mock_async_get, hass
+    ):
+        """Test exception handling when getting entity registry."""
+        mock_async_get.side_effect = Exception("Registry error")
+        command = GetEntityMappingsCommand(hass, "test_feature")
+        entity_mappings = {"temp": "sensor.temp_32_153289"}
+        device_id = "32:153289"
+        result = await command._async_apply_entity_id_fallbacks(
+            entity_mappings, device_id
+        )
+        assert result == entity_mappings  # Should return original on exception
+
+    @patch("homeassistant.helpers.entity_registry.async_get")
+    @pytest.mark.asyncio
+    async def test_async_apply_entity_id_fallbacks_invalid_entity_id(
+        self, mock_async_get, hass
+    ):
+        """Test skipping invalid entity_id (not string or empty)."""
+        mock_registry = MagicMock()
+        mock_registry.async_get.return_value = None
+        mock_async_get.return_value = mock_registry
+        command = GetEntityMappingsCommand(hass, "test_feature")
+        entity_mappings = {"temp": 123, "humidity": ""}
+        device_id = "32:153289"
+        result = await command._async_apply_entity_id_fallbacks(
+            entity_mappings, device_id
+        )
+        # Invalid entries are preserved but not processed for fallbacks
+        assert result == entity_mappings
+
+
+class TestGetAllFeatureEntitiesCommandErrorHandling:
+    """Test error handling in GetAllFeatureEntitiesCommand."""
+
+    @pytest.mark.asyncio
+    async def test_execute_no_entities_found(self, hass):
+        """Test execution when no entities are found."""
+        command = GetAllFeatureEntitiesCommand(hass, "test_feature")
+        mock_connection = MagicMock()
+        msg = {"id": 1, "type": "get_all_feature_entities", "device_id": "32:1"}
+        mock_entities = {}  # Empty entities
+        with (
+            patch.object(
+                command, "_get_all_entities_from_feature", return_value=mock_entities
+            ),
+            patch.object(
+                command, "_parse_all_entity_templates", return_value={"sensor": {}}
+            ),
+        ):
+            await command.execute(mock_connection, msg)
+            mock_connection.send_error.assert_called_once_with(
+                1, "no_entities_found", ANY
+            )
+
+    @pytest.mark.asyncio
+    async def test_execute_exception_handling(self, hass):
+        """Test exception handling in execute method."""
+        command = GetAllFeatureEntitiesCommand(hass, "test_feature")
+        mock_connection = MagicMock()
+        msg = {"id": 1, "type": "get_all_feature_entities", "device_id": "32:1"}
+        with patch.object(
+            command,
+            "_get_all_entities_from_feature",
+            side_effect=Exception("Test error"),
+        ):
+            await command.execute(mock_connection, msg)
+            mock_connection.send_error.assert_called_once_with(
+                1, "get_all_feature_entities_failed", "Test error"
+            )

@@ -9,7 +9,7 @@ import argparse
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -190,7 +190,7 @@ def merge_response_pairs(
         if not device_file.exists():
             print(f"Device type file not found: {device_file}")
             # Create new device type file
-            device_data = {
+            device_data: dict[str, Any] = {
                 "device_type": device_type,
                 "domain": domain,
                 "broadcast_safe": False,
@@ -206,8 +206,17 @@ def merge_response_pairs(
         if "responses" not in device_data:
             device_data["responses"] = []
 
+        # Ensure responses is always a list
+        responses_list = device_data["responses"]
+        if not isinstance(responses_list, list):
+            device_data["responses"] = []
+            responses_list = device_data["responses"]
+
+        # Cast to list for mypy
+        responses_list = cast(list[dict[str, Any]], responses_list)
+
         # Build a map of existing responses by code
-        existing_responses = {r["code"]: r for r in device_data["responses"]}
+        existing_responses = {r["code"]: r for r in responses_list}
 
         for code, payloads in code_payloads.items():
             payloads_list = sorted(payloads)
@@ -250,7 +259,7 @@ def merge_response_pairs(
     return updated
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Extract response pairs from conversations"
     )
