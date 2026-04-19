@@ -36,6 +36,7 @@ from .const import (
     SCENARIO_PROFILE_EMISSIONS,
     SCENARIO_REGISTRY,
     SCENARIO_STATE_IDLE,
+    SCENARIOS_CHANGED_EVENT,
     VERB_I,
     VERB_RP,
     VERB_RQ,
@@ -178,15 +179,33 @@ class ScenarioEngine:
 
         return scenario_id in self._running_scenarios
 
+    def _notify_scenario_event(
+        self,
+        scenario_id: str,
+        action: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit a bus event so the UI can refresh scenario state."""
+
+        payload: dict[str, Any] = {
+            "scenario_id": scenario_id,
+            "action": action,
+        }
+        if metadata:
+            payload["metadata"] = metadata
+        self.hass.bus.async_fire(SCENARIOS_CHANGED_EVENT, payload)
+
     def set_running_metadata(self, scenario_id: str, metadata: dict[str, Any]) -> None:
         """Store metadata describing a running scenario."""
 
         self._running_scenarios[scenario_id] = metadata
+        self._notify_scenario_event(scenario_id, "updated", metadata)
 
     def clear_running_metadata(self, scenario_id: str) -> None:
         """Clear metadata for a scenario id if present."""
 
-        self._running_scenarios.pop(scenario_id, None)
+        metadata = self._running_scenarios.pop(scenario_id, None)
+        self._notify_scenario_event(scenario_id, "cleared", metadata)
 
     async def async_teardown(self) -> None:
         """Stop all emitters and disconnect."""
@@ -1209,6 +1228,7 @@ class ScenarioEngine:
         meta = self._running_scenarios.get(scenario_id)
         if meta is not None:
             meta["paused"] = True
+            self._notify_scenario_event(scenario_id, "paused", meta)
         LOGGER.info("Scenario '%s' paused", scenario_id)
         return True
 
@@ -1224,6 +1244,7 @@ class ScenarioEngine:
         meta = self._running_scenarios.get(scenario_id)
         if meta is not None:
             meta["paused"] = False
+            self._notify_scenario_event(scenario_id, "resumed", meta)
         LOGGER.info("Scenario '%s' resumed", scenario_id)
         return True
 

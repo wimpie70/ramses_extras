@@ -493,7 +493,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             return {"success": False, "error": "Device database not available"}
 
         # Import the log file (from path or content)
-        success = db.import_user_log(path, name, content, save_yaml=save_yaml)
+        success = await db.import_user_log(path, name, content, save_yaml=save_yaml)
         if success:
             return {
                 "success": True,

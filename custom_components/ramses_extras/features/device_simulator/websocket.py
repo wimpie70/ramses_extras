@@ -34,6 +34,7 @@ from .const import (
     SCENARIO_PARAM_SCHEMAS,
     SCENARIO_PROFILE_EMISSIONS,
     SCENARIO_REGISTRY,
+    SCENARIOS_CHANGED_EVENT,
 )
 from .scenario_engine import MESSAGE_EVENT, ScenarioEngine
 
@@ -133,6 +134,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_pause_scenario)
     websocket_api.async_register_command(hass, ws_resume_scenario)
     websocket_api.async_register_command(hass, ws_subscribe_devices)
+    websocket_api.async_register_command(hass, ws_subscribe_scenarios)
     websocket_api.async_register_command(hass, ws_subscribe_messages)
     websocket_api.async_register_command(hass, ws_delete_profile)
     websocket_api.async_register_command(hass, ws_get_device_messages)
@@ -964,7 +966,7 @@ async def ws_import_user_log(
     content = msg.get("content")
     save_yaml = msg.get("save_yaml", False)
 
-    success = db.import_user_log(path, name, content, save_yaml=save_yaml)
+    success = await db.import_user_log(path, name, content, save_yaml=save_yaml)
     if success:
         connection.send_result(
             msg["id"],
@@ -992,7 +994,7 @@ async def ws_list_saved_playbacks(
     if not engine or not engine.device_db:
         connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
         return
-    playbacks = engine.device_db.list_saved_playbacks()
+    playbacks = await engine.device_db.async_list_saved_playbacks()
     connection.send_result(msg["id"], {"success": True, "playbacks": playbacks})
 
 
@@ -1714,6 +1716,51 @@ def ws_subscribe_devices(
     )
 
     # Store unsubscribe function to clean up when connection closes
+    connection.subscriptions[msg["id"]] = unsubscribe
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/subscribe_scenarios",
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_subscribe_scenarios(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to running scenario metadata changes."""
+
+    @callback  # type: ignore[untyped-decorator]
+    def _on_scenario_changed(event: dict[str, Any]) -> None:
+        payload = getattr(event, "data", {}) or {}
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "event_type": "scenarios_changed",
+                    "data": payload,
+                },
+            )
+        )
+
+    unsubscribe = hass.bus.async_listen(
+        SCENARIOS_CHANGED_EVENT,
+        _on_scenario_changed,
+    )
+
+    engine = _get_engine(hass)
+    running_metadata = engine.get_running_metadata() if engine else {}
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "running_metadata": running_metadata,
+        },
+    )
+
     connection.subscriptions[msg["id"]] = unsubscribe
 
 

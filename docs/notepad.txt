@@ -78,23 +78,16 @@ Log errors if not configured.
 ### Ramses Packet Log explorer: auto mode seem to be broken
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 
-
+### base-card: we need to hit ctr-shft-R after restarts. we shouldn't need to do that
 ---
 
 - simulator:
 ### check loading time takes long
 
-### test scenarios: device_unavailability and hvac_device_loss
-### import msg logs and playback
-### indicate what scenarios are implemented
-
-
 ### it seems like we are sending hvac msgs to heat devices, and heat msgs to hvac devices.
 Shouldn't we filter this ? we know from our database what belongs to what
 
-
 ### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
-
 
 test: ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
@@ -107,8 +100,18 @@ we should be able to import (edit field and/or pick from (dedicated) folder) ram
 --- next to do:
 
 ### device_playback == conversation playback + Import msg logs and playback
+- save imported msg logs and persist them after reloads
+- limit the number of lines on the found conversations (scrollbar)
+- refactor device-simulator-card in smaller files:
+  - tab files:
+    - with sub-components
+- remove the 2nd Conversation Playback (it's still there but not used) Keep the 1st one !!!
 
 -- other:
+
+_cc:
+- We still don't see all the msg that are sent from RF, even with the Log all MQTT topics enabled
+- we don't discover devices while we DO SEE msgs sent by them...why not ???
 
 _cc PR:
 ## Summary

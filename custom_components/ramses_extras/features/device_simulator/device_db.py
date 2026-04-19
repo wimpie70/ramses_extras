@@ -20,6 +20,7 @@ Each device type YAML has:
 
 from __future__ import annotations
 
+import asyncio
 import re as _re
 from dataclasses import dataclass, field
 from datetime import datetime as _datetime
@@ -192,16 +193,18 @@ def parse_ramses_log(
 ) -> tuple[list[ConversationFrame], set[str]]:
     """Parse a ramses log blob into chronologically sorted frames.
 
-    Accepts two styles (fields may be tab- or space-separated, in any order of lines):
+    Accepts three styles (fields may be tab- or space-separated):
 
     * **Classic ramses.log**: ``timestamp RSSI verb src dst code payload``
       e.g. ``2024-01-01 12:00:00.123 082 I 20:123456 --:------ 31DA 0001020304``
     * **Newer tab-separated dumps**: ``timestamp verb code src dst length payload``
       e.g. ``2026-04-18T18:51:46.915588\tRP\t2349\t01:150000\t18:000730\t013 0807C0...``
+    * **Device-name format**: ``timestamp verb code_hex device_slug target``
+      ``length payload``
+      e.g. ``2025-01-01T00:00:00.000000\tI\t31E0\tCO2\tALL\t007\t6400CD03E803E8``
 
-    Multiple records may be concatenated on a single line (with tabs). The parser
-    splits the input by detected timestamps, tokenises each record, and identifies
-    the verb/code/src/dst positions dynamically so it tolerates both orderings.
+    The parser splits input by detected timestamps, tokenises each record, and
+    identifies verb/code/src/dst positions dynamically to tolerate various orderings.
 
     Returns ``(frames, peers_set)`` where frames are sorted chronologically and
     peer device_ids (excluding broadcast ``--:------``) are collected.
@@ -239,37 +242,79 @@ def parse_ramses_log(
             continue
         verb = tokens[verb_idx]
 
-        # Find two device-id tokens (src, dst) — in that order
+        # Try to find two device-id tokens (src, dst) — in that order
         dev_idxs = [i for i, t in enumerate(tokens) if _DEVICE_ID.fullmatch(t)]
+
+        # If we don't have 2 device IDs, try alternate format:
+        # timestamp verb code_hex device_name broadcast_flag length payload
         if len(dev_idxs) < 2:
-            continue
-        src = tokens[dev_idxs[0]]
-        dst = tokens[dev_idxs[1]]
+            # Look for a 4-hex code right after verb
+            code_candidates = [
+                (i, t)
+                for i, t in enumerate(tokens)
+                if i > verb_idx
+                and len(t) == 4
+                and all(c in "0123456789ABCDEFabcdef" for c in t)
+            ]
+            if not code_candidates:
+                continue
+            code_idx, code = code_candidates[0]
+            # In this format, src/dst are slugs immediately following the code
+            src_idx = code_idx + 1
+            dst_idx = code_idx + 2
+            src = tokens[src_idx].upper() if src_idx < len(tokens) else "UNKNOWN"
+            dst = tokens[dst_idx].upper() if dst_idx < len(tokens) else "ALL"
+            # Payload is the last hex token (skip length prefix if present)
+            hex_tokens = [
+                (i, t)
+                for i, t in enumerate(tokens)
+                if i > code_idx and all(c in "0123456789ABCDEFabcdef" for c in t)
+            ]
+            if not hex_tokens:
+                continue
+            # Skip 3-digit length prefix if present
+            if len(hex_tokens) > 1 and len(hex_tokens[0][1]) == 3:
+                payload = hex_tokens[-1][1].upper()
+            elif len(hex_tokens) == 1 and len(hex_tokens[0][1]) == 3:
+                continue
+            else:
+                payload = hex_tokens[-1][1].upper()
+        else:
+            # Standard format with device IDs
+            if len(dev_idxs) < 2:
+                continue
+            src = tokens[dev_idxs[0]]
+            dst = tokens[dev_idxs[1]]
 
-        # Find the 4-hex-digit code (appears once, separate from payload)
-        code_candidates = [
-            (i, t)
-            for i, t in enumerate(tokens)
-            if len(t) == 4
-            and all(c in "0123456789ABCDEFabcdef" for c in t)
-            and i != verb_idx
-            and i not in dev_idxs
-        ]
-        if not code_candidates:
-            continue
-        code_idx, code = code_candidates[0]
+            # Find the 4-hex-digit code (appears once, separate from payload)
+            code_candidates = [
+                (i, t)
+                for i, t in enumerate(tokens)
+                if len(t) == 4
+                and all(c in "0123456789ABCDEFabcdef" for c in t)
+                and i != verb_idx
+                and i not in dev_idxs
+            ]
+            if not code_candidates:
+                continue
+            code_idx, code = code_candidates[0]
 
-        # Payload = last long hex token (skip length prefix)
-        hex_tokens = [
-            (i, t)
-            for i, t in enumerate(tokens)
-            if i > max(verb_idx, code_idx, *dev_idxs)
-            and len(t) >= 4
-            and all(c in "0123456789ABCDEFabcdef" for c in t)
-        ]
-        if not hex_tokens:
-            continue
-        payload = hex_tokens[-1][1].upper()
+            # Payload = last long hex token after code (skip length prefix if present).
+            hex_tokens = [
+                (i, t)
+                for i, t in enumerate(tokens)
+                if i > max(verb_idx, code_idx, *dev_idxs)
+                and all(c in "0123456789ABCDEFabcdef" for c in t)
+            ]
+            if not hex_tokens:
+                continue
+            # If the first hex token is 3 digits, it's likely a length prefix
+            if len(hex_tokens) > 1 and len(hex_tokens[0][1]) == 3:
+                payload = hex_tokens[-1][1].upper()
+            elif len(hex_tokens) == 1 and len(hex_tokens[0][1]) == 3:
+                continue
+            else:
+                payload = hex_tokens[-1][1].upper()
 
         frame_src = src
         frame_dst = dst
@@ -569,7 +614,7 @@ class DeviceDatabase:
             return None
         return conv
 
-    def import_user_log(
+    async def import_user_log(
         self,
         path: str | None,
         name: str,
@@ -603,8 +648,11 @@ class DeviceDatabase:
                 LOGGER.error("Log file not found: %s", path)
                 return False
 
-            with open(log_path, encoding="utf-8", errors="ignore") as f:
-                content = f.read()
+            def _read_file() -> str:
+                with open(log_path, encoding="utf-8", errors="ignore") as f:
+                    return f.read()
+
+            content = await asyncio.to_thread(_read_file)
 
         if not content:
             LOGGER.error("No log content to import")
@@ -641,7 +689,7 @@ class DeviceDatabase:
         # Optionally persist as YAML for reuse across restarts
         if save_yaml:
             try:
-                self._save_conversation_yaml(conv)
+                await asyncio.to_thread(self._save_conversation_yaml, conv)
             except Exception as err:
                 LOGGER.warning("Imported but failed to save YAML: %s", err)
 
@@ -655,7 +703,7 @@ class DeviceDatabase:
         )
         return True
 
-    def list_saved_playbacks(self) -> list[dict[str, Any]]:
+    async def async_list_saved_playbacks(self) -> list[dict[str, Any]]:
         """List conversations available for playback.
 
         Includes both built-in conversations (``conversations/*.yaml``, marked
@@ -664,13 +712,15 @@ class DeviceDatabase:
         dropdown so there is at least one default playback and cannot be
         deleted. Sorted with built-ins first, then alphabetical.
         """
+        import asyncio
+
         import yaml
 
         conv_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS
         if not conv_dir.exists():
             return []
 
-        def _collect(directory: Path, builtin: bool) -> list[dict[str, Any]]:
+        def _collect_sync(directory: Path, builtin: bool) -> list[dict[str, Any]]:
             items: list[dict[str, Any]] = []
             for fp in sorted(directory.glob("*.yaml")):
                 try:
@@ -693,10 +743,12 @@ class DeviceDatabase:
                     LOGGER.warning("Failed to read playback %s: %s", fp, err)
             return items
 
-        builtins = _collect(conv_dir, builtin=True)
+        builtins = await asyncio.to_thread(_collect_sync, conv_dir, True)
         imported_dir = conv_dir / "imported"
         imported = (
-            _collect(imported_dir, builtin=False) if imported_dir.exists() else []
+            await asyncio.to_thread(_collect_sync, imported_dir, False)
+            if imported_dir.exists()
+            else []
         )
         return builtins + imported
 

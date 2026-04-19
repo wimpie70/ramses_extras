@@ -19,6 +19,9 @@ SIMULATOR_HGI_ID = "18:001234"
 # Simulator topic namespace for MQTT isolation
 SIMULATOR_TOPIC_NS = "RAMSES/GATEWAY_SIM"
 
+# Event names for frontend subscriptions
+SCENARIOS_CHANGED_EVENT = "ramses_extras_simulator_scenarios_changed"
+
 # Sensor configs for simulator status sensors
 DEVICE_SIMULATOR_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
     "simulator_status": {

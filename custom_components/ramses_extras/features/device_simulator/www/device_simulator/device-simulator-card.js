@@ -155,6 +155,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._playbackSaving = false;
     this._playbackInterMsgDelay = "";
     this._playbackSkipAnswers = false;
+    this._scenarioSubscription = null;
 
     this._loadLoaderDraft();
   }
@@ -307,6 +308,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   _onConnected() {
     this._fetchData();
     this._subscribeToDevices();
+    this._subscribeToScenarios();
     if (this._tab === "devices") {
       void this._subscribeToMessageEvents();
     }
@@ -331,6 +333,16 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         console.warn("Device Simulator: failed to unsubscribe from message events", err);
       }
       this._msgSubscription = null;
+    }
+
+    if (this._scenarioSubscription) {
+      try {
+        this._scenarioSubscription();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("Device Simulator: failed to unsubscribe from scenario events", err);
+      }
+      this._scenarioSubscription = null;
     }
   }
 
@@ -634,6 +646,26 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       // eslint-disable-next-line no-console
       console.error("DeviceSimulatorCard: failed to subscribe to message events", err);
       this._msgSubscription = null;
+    }
+  }
+
+  async _subscribeToScenarios() {
+    if (!this._hass || this._scenarioSubscription) return;
+    if (!this._hass.connection) return;
+
+    try {
+      this._scenarioSubscription = await this._hass.connection.subscribeMessage(
+        (event) => {
+          if (event?.event_type === "scenarios_changed") {
+            void this._fetchData();
+          }
+        },
+        { type: "ramses_extras/device_simulator/subscribe_scenarios" },
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Device Simulator: failed to subscribe to scenario updates", err);
+      this._scenarioSubscription = null;
     }
   }
 
@@ -1757,9 +1789,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   _buildPlaybackConversationCard() {
     const playbacks = this._savedPlaybacks || [];
-    const isRunning = (this._runningScenarios || []).includes("device_playback");
-    const runMeta = (this._runningMetadata || {})["device_playback"] || {};
-    const isPaused = Boolean(runMeta.paused);
+    const runMeta = (this._runningMetadata || {})["device_playback"] || null;
+    const isRunning = Boolean(runMeta);
+    const isPaused = Boolean(runMeta && runMeta.paused);
     const selection = this._playbackSelection || (playbacks[0] && playbacks[0].id) || "";
     const params = this._scenarioParams?.device_playback || {};
     const loopsValue = params.loops ?? 1;
@@ -1769,8 +1801,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       : `<option value="" disabled selected>No saved playbacks</option>`;
 
     const statusBadge = isRunning
-      ? `<span class="chip" style="background:${isPaused ? "var(--warning-color,#ff9800)" : "var(--success-color,#4caf50)"}; color:white;">${isPaused ? "paused" : "playing"}</span>`
-      : `<span class="chip muted">idle</span>`;
+      ? `<span class="chip" style="background:${isPaused ? "var(--warning-color,#ff9800)" : "var(--success-color,#4caf50)"}; color:white;">
+          ${isPaused ? "Paused" : "Playing"}${runMeta?.conversation ? ` · ${runMeta.conversation}` : ""}
+        </span>`
+      : `<span class="chip muted" title="No playback is running">Idle</span>`;
 
     const playDisabled = !selection || isRunning ? " disabled" : "";
     const pauseDisabled = !isRunning || isPaused ? " disabled" : "";
@@ -2078,11 +2112,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         && id !== SCENARIO_LOAD_PROFILE
         && id !== SCENARIO_PROFILE_EMISSIONS
         && id !== "device_suite"
+        && id !== "device_playback"
       )
       .map((id) => {
-        if (id === "device_playback") {
-          return this._buildConversationPlaybackSettingsCard();
-        }
         const meta = registry[id];
         const isRunning = (this._runningScenarios || []).includes(id);
         const runningMeta = (this._runningMetadata || {})[id] || {};
@@ -2123,7 +2155,8 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           </div>`;
       }).join("");
 
-    return `<div class="grid">${aaCard}${scenarioCards}</div>`;
+    const playbackCard = this._buildConversationPlaybackSettingsCard();
+    return `<div class="grid">${aaCard}${playbackCard}${scenarioCards}</div>`;
   }
 
   _buildSavedPlaybacksPanel() {
