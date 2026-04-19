@@ -50,7 +50,10 @@ autonomous:
   payloads:
   - 00EF007FFF3A3004C404D804A904B768000003C8C80000EFEF208A208A00
   - 00EF007FFF392F04CE04D804B3049F680000011E1E0000EFEF208A208A00
-  notes: Real captured payloads from Orcon VMD device (32:153289). Sentinel bytes (EF/FF) indicate unavailable sensors.
+  notes: 'Real captured payloads from Orcon VMD device (32:153289). Sentinel bytes
+    (EF/FF) indicate unavailable sensors.. REMARK: Sentinel bytes present (FF (unavailable
+    (single-byte generic))) but remaining fields decode OK — verify device has those
+    sensors.'
 - code: 22F7
   verb: I
   trigger: periodic
@@ -68,7 +71,9 @@ autonomous:
   interval_seconds: 60.0
   payloads:
   - 00FF00FFFFFF0000000000FFFFFFFFFF00FFFFFF0000000000FFFFFFFFFFFFFFFF000000000000000140
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FF
+    (unavailable (single-byte generic))) but remaining fields decode OK — verify device
+    has those sensors.'
 - code: 2E10
   verb: I
   trigger: periodic
@@ -82,7 +87,9 @@ autonomous:
   - 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
   - 000001001B2E1901FEFFFFFFFFFF1D0B07E14356452D52460000000000000000000000000000
   - 0000010028080101FEFFFFFFFFFF1D0407E3564D532D31324333390000000000000000000000
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FF
+    (unavailable (single-byte generic)), EF (unavailable (single-byte humidity)))
+    but remaining fields decode OK — verify device has those sensors.'
 - code: 12A0
   verb: I
   trigger: periodic
@@ -175,6 +182,8 @@ responses:
   - 0000881510000002BC000001900000076C000000018A33
   description: Fan parameter responses — real captured payloads from Orcon VMD/MVS
     device
+  notes: 'REMARK: Sentinel bytes present (FF (unavailable (single-byte generic)))
+    but remaining fields decode OK — verify device has those sensors.'
 protocol_notes:
 - FAN devices support speed control via 22F1 with payload 01/02/03
 - FAN devices provide periodic status via 31DA (system status)

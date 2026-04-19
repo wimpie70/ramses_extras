@@ -15,7 +15,9 @@ autonomous:
   - 0031D982041D0031DA82041D
   - 0031D9825FE10031DA825FE1
   - 0022F1832EF46C10E0832EF4001FC9832EF4
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (EF
+    (unavailable (single-byte humidity))) but remaining fields decode OK — verify
+    device has those sensors.'
 - code: '3120'
   verb: I
   trigger: periodic
@@ -49,7 +51,11 @@ autonomous:
   - 000001C8510D0167FEFFFFFFFFFF0B0207E3564D532D3135434D313700000000000000000000
   - 000001C8A2050367FEFFFFFFFFFF1D0807E6564D442D3135524D5338362D3200000000000000
   - 000001C85E0B0567FFFFFFFFFFFFFFFFFFFF564D442D3135525053373500
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FF
+    (unavailable (single-byte generic)), EF (unavailable (single-byte humidity)))
+    but remaining fields decode OK — verify device has those sensors.. REMARK: Sentinel
+    bytes present (7FFF (unavailable (temperature/numeric)), FF (unavailable (single-byte
+    generic))) but remaining fields decode OK — verify device has those sensors.'
 responses:
 - code: 22F1
   rq_verb: RQ
@@ -80,3 +86,5 @@ responses:
   delay_ms: 100
   payloads:
   - 00EF007FFF2B27060E0848089605F9F000445800000000EFEF02D2154400
+  notes: 'REMARK: Sentinel bytes present (FF (unavailable (single-byte generic)))
+    but remaining fields decode OK — verify device has those sensors.'

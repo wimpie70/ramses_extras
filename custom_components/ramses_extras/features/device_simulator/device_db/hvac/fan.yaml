@@ -1,0 +1,15 @@
+device_type: FAN
+domain: hvac
+broadcast_safe: false
+variants: []
+autonomous: []
+responses:
+- code: 1FC9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0031D996568A00230996568A
+  - A
+  notes: Extracted from harvested conversations
+conversation_refs: []

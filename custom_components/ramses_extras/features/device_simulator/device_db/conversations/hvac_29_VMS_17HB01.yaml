@@ -1,0 +1,12 @@
+id: hvac_29_VMS_17HB01
+description: 'Harvested from ramses_rf: fingerprints/hvac/29_VMS-17HB01.log'
+peers:
+- 29:146052
+- 63:262142
+frames:
+- t: 0.0
+  src: 29:146052
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C825050266FFFFFFFFFFFF130407E1564D532D31374842303100000000000000000000

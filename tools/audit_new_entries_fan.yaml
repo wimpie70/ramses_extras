@@ -1,0 +1,491 @@
+- device: FAN
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0031E096599B00129896599B002E1096599B0110E096599B001FC996599B
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '31E0', '37:154011'], ['00', '1298', '37:154011'],
+          ['00', '2E10', '37:154011'], ['01', '10E0', '37:154011'], ['00',
+          '1FC9', '37:154011']]"
+      audit: Y
+    - payload: 0022F1965FE10022F3965FE16710E0965FE1001FC9965FE1
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '22F1', '37:155617'], ['00', '22F3', '37:155617'],
+          ['67', '10E0', '37:155617'], ['00', '1FC9', '37:155617']]"
+      audit: Y
+- device: FAN
+  section: autonomous
+  code: 12C8
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00A740
+      quality: ok
+      parsed:
+        air_quality: 0.835
+        air_quality_basis: rel_humidity
+      audit: Y
+    - payload: 007A40
+      quality: ok
+      parsed:
+        air_quality: 0.61
+        air_quality_basis: rel_humidity
+      audit: Y
+    - payload: 009540
+      quality: ok
+      parsed:
+        air_quality: 0.745
+        air_quality_basis: rel_humidity
+      audit: Y
+- device: FAN
+  section: autonomous
+  code: '2411'
+  verb: I
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: 0000312610000000B400000000000007080000001E70
+      quality: ok
+      parsed:
+        parameter: '31'
+        description: Time to change filter (days)
+        value: 180
+        _value_06: '2610'
+        min_value: 0
+        max_value: 1800
+        precision: 30
+        _value_42: '70'
+      audit: Y
+    - payload: 0000312E100000009600000000000007080000001EA62C
+      quality: ok
+      parsed:
+        parameter: '31'
+        description: Time to change filter (days)
+        value: 150
+        _value_06: 2E10
+        min_value: 0
+        max_value: 1800
+        precision: 30
+        _value_42: A62C
+      audit: Y
+    - payload: 0000312E10000000B400000000000007080000001EA62C
+      quality: ok
+      parsed:
+        parameter: '31'
+        description: Time to change filter (days)
+        value: 180
+        _value_06: 2E10
+        min_value: 0
+        max_value: 1800
+        precision: 30
+        _value_42: A62C
+      audit: Y
+- device: FAN
+  section: autonomous
+  code: 31DA
+  verb: I
+  notes: Real captured payloads from Orcon VMD device (32:153289). Sentinel bytes
+    (EF/FF) indicate unavailable sensors.
+  payloads:
+    - payload: 00EF007FFF3A3004C404D804A904B768000003C8C80000EFEF208A208A00
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        hvac_id: '00'
+        exhaust_fan_speed: 1.0
+        fan_info: speed 3, high
+        _unknown_fan_info_flags: '[0, 0, 0]'
+        air_quality: null
+        co2_level: null
+        indoor_humidity: 0.58
+        outdoor_humidity: 0.48
+        exhaust_temp: 12.2
+        supply_temp: 12.4
+        indoor_temp: 11.93
+        outdoor_temp: 12.07
+        speed_capabilities: "['low_med_high', 'timer', 'auto']"
+        bypass_position: 0.0
+        supply_fan_speed: 1.0
+        remaining_mins: 0
+        post_heat: null
+        pre_heat: null
+        supply_flow: 83.3
+        exhaust_flow: 83.3
+        _extra: '00'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 00EF007FFF392F04CE04D804B3049F680000011E1E0000EFEF208A208A00
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        hvac_id: '00'
+        exhaust_fan_speed: 0.15
+        fan_info: speed 1, low
+        _unknown_fan_info_flags: '[0, 0, 0]'
+        air_quality: null
+        co2_level: null
+        indoor_humidity: 0.57
+        outdoor_humidity: 0.47
+        exhaust_temp: 12.3
+        supply_temp: 12.4
+        indoor_temp: 12.03
+        outdoor_temp: 11.83
+        speed_capabilities: "['low_med_high', 'timer', 'auto']"
+        bypass_position: 0.0
+        supply_fan_speed: 0.15
+        remaining_mins: 0
+        post_heat: null
+        pre_heat: null
+        supply_flow: 83.3
+        exhaust_flow: 83.3
+        _extra: '00'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: FAN
+  section: autonomous
+  code: '2210'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00FF00FFFFFF0000000000FFFFFFFFFF00FFFFFF0000000000FFFFFFFFFFFFFFFF000000000000000140
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        exhaust_fan_speed: null
+        req_reason: IDL
+        unknown_78: '00'
+        unknown_80: '01'
+        unknown_82: '40'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: FAN
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '01'
+        manufacturer_sub_id: '00'
+        product_id: 1B
+        date_1: '2019-04-11'
+        date_2: '0000-00-00'
+        description: CVE-RF
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001001B2E1901FEFFFFFFFFFF1D0B07E14356452D52460000000000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '01'
+        manufacturer_sub_id: '00'
+        product_id: 1B
+        date_1: '2017-11-29'
+        date_2: '0000-00-00'
+        description: CVE-RF
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 0000010028080101FEFFFFFFFFFF1D0407E3564D532D31324333390000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '01'
+        manufacturer_sub_id: '00'
+        product_id: '28'
+        date_1: '2019-04-29'
+        date_2: '0000-00-00'
+        description: VMS-12C39
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: FAN
+  section: autonomous
+  code: 22F4
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: '00403000000000000000000000'
+      quality: ok
+      parsed:
+        fan_mode: auto
+        fan_rate: speed 0
+      audit: Y
+    - payload: 000000000060C9000000000000
+      quality: ok
+      parsed:
+        fan_mode: manual
+        fan_rate: speed 1
+      audit: Y
+    - payload: 000000000060CA000000000000
+      quality: ok
+      parsed:
+        fan_mode: manual
+        fan_rate: speed 2
+      audit: Y
+- device: FAN
+  section: autonomous
+  code: '1298'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000280
+      quality: ok
+      parsed:
+        co2_level: 640
+      audit: Y
+    - payload: 0001C6
+      quality: ok
+      parsed:
+        co2_level: 454
+      audit: Y
+- device: FAN
+  section: responses
+  code: 22F1
+  verb: RP
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: '000107'
+      quality: ok
+      parsed:
+        fan_mode: low
+        _scheme: orcon
+        _mode_idx: '01'
+        _mode_max: '07'
+      audit: Y
+    - payload: '000307'
+      quality: ok
+      parsed:
+        fan_mode: high
+        _scheme: orcon
+        _mode_idx: '03'
+        _mode_max: '07'
+      audit: Y
+- device: FAN
+  section: responses
+  code: '2411'
+  verb: RP
+  notes: Fan parameter responses — real captured payloads from Orcon VMD/MVS device
+  payloads:
+    - payload: 00000100000000003200000000000000FF0000000120
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        parameter: '01'
+        description: Support
+        value: 50
+        _value_06: '0000'
+        min_value: 0
+        max_value: 255
+        precision: 1
+        _value_42: '20'
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 0000312E100000009600000000000007080000001EA62C
+      quality: ok
+      parsed:
+        parameter: '31'
+        description: Time to change filter (days)
+        value: 150
+        _value_06: 2E10
+        min_value: 0
+        max_value: 1800
+        precision: 30
+        _value_42: A62C
+      audit: Y
+    - payload: 00003D370F00000018000000000000005000000001A632
+      quality: ok
+      parsed:
+        parameter: 3D
+        description: Away mode Supply fan rate (%)
+        value: 0.12
+        _value_06: 370F
+        min_value: 0.0
+        max_value: 0.4
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 00003E380F00000014000000000000005000000001A632
+      quality: ok
+      parsed:
+        parameter: 3E
+        description: Away mode Exhaust fan rate (%)
+        value: 0.1
+        _value_06: 380F
+        min_value: 0.0
+        max_value: 0.4
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 00003F390F0000004600000000000000A000000001A632
+      quality: ok
+      parsed:
+        parameter: 3F
+        description: Low mode Supply fan rate (%)
+        value: 0.35
+        _value_06: 390F
+        min_value: 0.0
+        max_value: 0.8
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000403A0F0000003400000000000000A000000001A632
+      quality: ok
+      parsed:
+        parameter: '40'
+        description: Low mode Exhaust fan rate (%)
+        value: 0.26
+        _value_06: 3A0F
+        min_value: 0.0
+        max_value: 0.8
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000413B0F0000008C00000000000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '41'
+        description: Medium mode Supply fan rate (%)
+        value: 0.7
+        _value_06: 3B0F
+        min_value: 0.0
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000423C0F0000007800000014000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '42'
+        description: Medium mode Exhaust fan rate (%)
+        value: 0.6
+        _value_06: 3C0F
+        min_value: 0.1
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000433D0F0000009600000000000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '43'
+        description: High mode Supply fan rate (%)
+        value: 0.75
+        _value_06: 3D0F
+        min_value: 0.0
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000443E0F0000009600000014000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '44'
+        description: High mode Exhaust fan rate (%)
+        value: 0.75
+        _value_06: 3E0F
+        min_value: 0.1
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 00004B39000000000000000000000000020000000170
+      quality: ok
+      parsed:
+        parameter: 4B
+        description: (Test) Bypass Valve (0=auto, 1=open, 2=closed)
+        value: 0
+        _value_06: '3900'
+        min_value: 0
+        max_value: 2
+        precision: 1
+        _value_42: '70'
+      audit: Y
+    - payload: 00004E460000000000000000000000000100000001A600
+      quality: ok
+      parsed:
+        parameter: 4E
+        description: Moisture scenario position (0=medium, 1=high)
+        value: 0
+        _value_06: '4600'
+        min_value: 0
+        max_value: 1
+        precision: 1
+        _value_42: A600
+      audit: Y
+    - payload: 0000524A010000001400000000000000FA00000001A632
+      quality: ok
+      parsed:
+        parameter: '52'
+        description: Sensor sensitivity (%)
+        value: 2.0
+        _value_06: 4A01
+        min_value: 0.0
+        max_value: 25.0
+        precision: 0.1
+        _value_42: A632
+      audit: Y
+    - payload: 0000544C00000000140000000F0000003C00000001A62A
+      quality: ok
+      parsed:
+        parameter: '54'
+        description: Moisture sensor overrun time (mins)
+        value: 20
+        _value_06: 4C00
+        min_value: 15
+        max_value: 60
+        precision: 1
+        _value_42: A62A
+      audit: Y
+    - payload: 0000755892000008200000000000000BB800000001A601
+      quality: ok
+      parsed:
+        parameter: '75'
+        description: Comfort temperature (°C)
+        value: 20.8
+        _value_06: '5892'
+        min_value: 0.0
+        max_value: 30.0
+        precision: 0.01
+        _value_42: A601
+      audit: Y
+    - payload: 0000953F0F000000BE00000000000000C800000001A632
+      quality: ok
+      parsed:
+        parameter: '95'
+        description: Boost mode Supply/exhaust fan rate (%)
+        value: 0.95
+        _value_06: 3F0F
+        min_value: 0.0
+        max_value: 1.0
+        precision: 0.005
+        _value_42: A632
+      audit: Y
+    - payload: 0000881510000002BC000001900000076C000000018A33
+      quality: ok
+      parsed:
+        parameter: '88'
+        description: Unknown
+        value: 700
+        _value_06: '1510'
+        min_value: 400
+        max_value: 1900
+        precision: 1
+        _value_42: 8A33
+      audit: Y

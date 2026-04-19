@@ -1,0 +1,12 @@
+id: hvac_29_VMN_07LM01
+description: 'Harvested from ramses_rf: fingerprints/hvac/29_VMN-07LM01.log'
+peers:
+- 29:123150
+- 63:262142
+frames:
+- t: 0.0
+  src: 29:123150
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C8410D0165FFFFFFFFFFFF0D0407DF564D4E2D30374C4D303100

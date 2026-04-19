@@ -1,0 +1,26 @@
+id: hvac_99_VMS_17C01
+description: 'Harvested from ramses_rf: fingerprints/hvac/99_VMS-17C01.log'
+peers:
+- 29:136571
+- 37:004841
+- 37:117647
+- 63:262142
+frames:
+- t: 0.0
+  src: 37:004841
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C822060166FEFFFFFFFFFF160C07E0564D532D31374330310000000000000000000000
+- t: 38661473.840035
+  src: 29:136571
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: 000001C822030166FEFFFFFFFFFF070507DF564D532D31374330310000000000000000000000
+- t: 90385979.774484
+  src: 37:117647
+  dst: 63:262142
+  code: 10E0
+  verb: I
+  payload: '1'

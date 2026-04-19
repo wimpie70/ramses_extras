@@ -1,0 +1,142 @@
+- device: REM
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0023098968530030C9896853000008896853001FC9896853
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '2309', '34:092243'], ['00', '30C9', '34:092243'],
+          ['00', '0008', '34:092243'], ['00', '1FC9', '34:092243']]"
+      audit: Y
+    - payload: 072309896853
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['07', '2309', '34:092243']]"
+      audit: Y
+- device: REM
+  section: autonomous
+  code: '1060'
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00FF01
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        battery_low: false
+        battery_level: null
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: REM
+  section: autonomous
+  code: 042F
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 00000000230023F5
+      quality: ok
+      parsed:
+        counter_1: '0x0000'
+        counter_3: '0x0023'
+        counter_5: '0x0023'
+        unknown_7: '0xF5'
+      audit: Y
+    - payload: 00000000240024F5
+      quality: ok
+      parsed:
+        counter_1: '0x0000'
+        counter_3: '0x0024'
+        counter_5: '0x0024'
+        unknown_7: '0xF5'
+      audit: Y
+    - payload: 00000000250025F5
+      quality: ok
+      parsed:
+        counter_1: '0x0000'
+        counter_3: '0x0025'
+        counter_5: '0x0025'
+        unknown_7: '0xF5'
+      audit: Y
+- device: REM
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000001C8380F0100F1FF1D0807E2030507E15438375246323032350000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '00'
+        manufacturer_sub_id: C8
+        product_id: '38'
+        date_1: '2017-05-03'
+        date_2: '2018-08-29'
+        description: T87RF2025
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001C8380F0100F1FF0D0C07E2030507E15438375246323032350000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '00'
+        manufacturer_sub_id: C8
+        product_id: '38'
+        date_1: '2017-05-03'
+        date_2: '2018-12-13'
+        description: T87RF2025
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+    - payload: 000001C8380F0100F1FF1B0507E3030507E15438375246323032350000000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '00'
+        manufacturer_sub_id: C8
+        product_id: '38'
+        date_1: '2017-05-03'
+        date_2: '2019-05-27'
+        description: T87RF2025
+      remark: some sentinel bytes — check if fields make sense
+      audit: Remark
+- device: REM
+  section: responses
+  code: '0001'
+  verb: RP
+  notes: Real captured payloads from log (score=100)
+  payloads:
+    - payload: 00200000003D0100
+      quality: ok
+      parsed:
+        payload: 00200000003D0100
+        slot_num: '00'
+        param_num: 3D
+        next_slot_num: '01'
+        boolean_14: false
+      audit: Y
+    - payload: 00200001003E0200
+      quality: ok
+      parsed:
+        payload: 00200001003E0200
+        slot_num: '01'
+        param_num: 3E
+        next_slot_num: '02'
+        boolean_14: false
+      audit: Y
+    - payload: 00200002003F0300
+      quality: ok
+      parsed:
+        payload: 00200002003F0300
+        slot_num: '02'
+        param_num: 3F
+        next_slot_num: '03'
+        boolean_14: false
+      audit: Y

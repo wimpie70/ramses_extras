@@ -1,0 +1,119 @@
+- device: CO2
+  section: autonomous
+  code: 1FC9
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 0031D982041D0031DA82041D
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '31D9', '32:132125'], ['00', '31DA', '32:132125']]"
+      audit: Y
+      remark: null
+    - payload: 0031D9825FE10031DA825FE1
+      quality: ok
+      parsed:
+        phase: offer
+        bindings: "[['00', '31D9', '32:155617'], ['00', '31DA', '32:155617']]"
+      audit: Y
+      remark: null
+    - payload: 0022F1832EF46C10E0832EF4001FC9832EF4
+      quality: ok
+      sentinels:
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        phase: offer
+        bindings: "[['00', '22F1', '32:208628'], ['6C', '10E0', '32:208628'],
+          ['00', '1FC9', '32:208628']]"
+      remark: Sentinel bytes present (EF (unavailable (single-byte humidity))) but remaining
+        fields decode OK — verify device has those sensors.
+      audit: Remark
+- device: CO2
+  section: autonomous
+  code: 10E0
+  verb: I
+  notes: Example payloads from regression file
+  payloads:
+    - payload: 000001C8510D0167FEFFFFFFFFFF0B0207E3564D532D3135434D313700000000000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '67'
+        manufacturer_sub_id: C8
+        product_id: '51'
+        date_1: '2019-02-11'
+        date_2: '0000-00-00'
+        description: VMS-15CM17
+      remark: Sentinel bytes present (FF (unavailable (single-byte generic)), EF (unavailable
+        (single-byte humidity))) but remaining fields decode OK — verify device has
+        those sensors.
+      audit: Remark
+    - payload: 000001C8A2050367FEFFFFFFFFFF1D0807E6564D442D3135524D5338362D3200000000000000
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+        - EF (unavailable (single-byte humidity))
+      parsed:
+        oem_code: '67'
+        manufacturer_sub_id: C8
+        product_id: A2
+        date_1: '2022-08-29'
+        date_2: '0000-00-00'
+        description: VMD-15RMS86-2
+      remark: Sentinel bytes present (FF (unavailable (single-byte generic)), EF (unavailable
+        (single-byte humidity))) but remaining fields decode OK — verify device has
+        those sensors.
+      audit: Remark
+    - payload: 000001C85E0B0567FFFFFFFFFFFFFFFFFFFF564D442D3135525053373500
+      quality: ok
+      sentinels:
+        - 7FFF (unavailable (temperature/numeric))
+        - FF (unavailable (single-byte generic))
+      parsed:
+        oem_code: '67'
+        manufacturer_sub_id: C8
+        product_id: 5E
+        date_1: '0000-00-00'
+        date_2: '0000-00-00'
+        description: VMD-15RPS75
+      remark: Sentinel bytes present (7FFF (unavailable (temperature/numeric)), FF (unavailable
+        (single-byte generic))) but remaining fields decode OK — verify device has those
+        sensors.
+      audit: Remark
+- device: CO2
+  section: responses
+  code: 31DA
+  verb: RP
+  payloads:
+    - payload: 00EF007FFF2B27060E0848089605F9F000445800000000EFEF02D2154400
+      quality: ok
+      sentinels:
+        - FF (unavailable (single-byte generic))
+      parsed:
+        hvac_id: '00'
+        exhaust_fan_speed: 0.0
+        fan_info: auto
+        _unknown_fan_info_flags: '[0, 1, 0]'
+        air_quality: null
+        co2_level: null
+        indoor_humidity: 0.43
+        outdoor_humidity: 0.39
+        exhaust_temp: 15.5
+        supply_temp: 21.2
+        indoor_temp: 21.98
+        outdoor_temp: 15.29
+        speed_capabilities: "['off', 'low_med_high', 'timer', 'boost']"
+        bypass_position: 0.34
+        supply_fan_speed: 0.0
+        remaining_mins: 0
+        post_heat: null
+        pre_heat: null
+        supply_flow: 7.22
+        exhaust_flow: 54.44
+        _extra: '00'
+      remark: Sentinel bytes present (FF (unavailable (single-byte generic))) but remaining
+        fields decode OK — verify device has those sensors.
+      audit: Remark

@@ -1,0 +1,42 @@
+id: hvac_20
+description: 'Harvested from ramses_rf: fingerprints/hvac/20.log'
+peers:
+- 18:000730
+- 18:073736
+- 18:200214
+- 20:001397
+- 20:018860
+- 20:024743
+- 20:026866
+- 20:032436
+frames:
+- t: 0.0
+  src: 20:026866
+  dst: 18:000730
+  code: 10E0
+  verb: RP
+  payload: 00000100140C06010000FFFFFFFFFFFFFFFF00
+- t: 1948930.238447
+  src: 20:018860
+  dst: 18:073736
+  code: 10E0
+  verb: RP
+  payload: 000001001B190B010000FFFFFFFFFFFFFFFF00
+- t: 20359085.2564
+  src: 20:032436
+  dst: 18:000730
+  code: 10E0
+  verb: RP
+  payload: 000001001B190B010000FFFFFFFFFFFFFFFF00
+- t: 28385535.549794
+  src: 20:024743
+  dst: 18:200214
+  code: 10E0
+  verb: RP
+  payload: 000001001B190B010000FFFFFFFFFFFFFFFF00
+- t: 29413989.5511
+  src: 20:001397
+  dst: 18:000730
+  code: 10E0
+  verb: RP
+  payload: 00000100140D06130000FFFFFFFFFFFFFFFF00

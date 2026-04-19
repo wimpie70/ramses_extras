@@ -7,7 +7,6 @@ Provides real-time control and monitoring:
   - device_simulator/activate: Start a device
   - device_simulator/silence: Stop a device
   - device_simulator/conversations: List conversation files
-  - device_simulator/run_conversation: Execute conversation
   - device_simulator/messages: Get recent message log
 """
 
@@ -114,7 +113,6 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_activate_device)
     websocket_api.async_register_command(hass, ws_silence_device)
     websocket_api.async_register_command(hass, ws_get_conversations)
-    websocket_api.async_register_command(hass, ws_run_conversation)
     websocket_api.async_register_command(hass, ws_get_messages)
     # UI card handlers
     websocket_api.async_register_command(hass, ws_get_ui_status)
@@ -512,42 +510,6 @@ def ws_get_conversations(
         )
 
     connection.send_result(msg["id"], {"conversations": result})
-
-
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
-    {
-        vol.Required("type"): "device_simulator/run_conversation",
-        vol.Required("ref"): str,
-        vol.Required("device_map"): dict,
-        vol.Optional("speed", default=1.0): vol.Coerce(float),
-    }
-)
-async def ws_run_conversation(
-    hass: HomeAssistant,
-    connection: ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Run a conversation."""
-    engine = _get_engine(hass)
-    if not engine:
-        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
-        return
-
-    result = await engine.async_play_conversation(
-        ref=msg["ref"],
-        device_map=msg["device_map"],
-        speed=msg.get("speed", 1.0),
-    )
-
-    connection.send_result(
-        msg["id"],
-        {
-            "success": result.success,
-            "messages_sent": result.messages_sent,
-            "duration_seconds": result.duration_seconds,
-            "errors": result.errors,
-        },
-    )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

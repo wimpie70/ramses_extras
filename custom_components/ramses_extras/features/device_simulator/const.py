@@ -48,7 +48,6 @@ DEVICE_SIMULATOR_WEBSOCKET_COMMANDS = {
     "list_simulator_devices": "ramses_extras/device_simulator/list_devices",
     "activate_simulator_device": "ramses_extras/device_simulator/activate_device",
     "silence_simulator_device": "ramses_extras/device_simulator/silence_device",
-    "run_conversation": "ramses_extras/device_simulator/run_conversation",
     "get_messages": "ramses_extras/device_simulator/get_messages",
 }
 
@@ -76,7 +75,6 @@ SCENARIO_TIMEOUT_TEST = "timeout_test"
 SCENARIO_FLOODING_TEST = "flooding_test"
 SCENARIO_DEVICE_UNAVAILABILITY = "device_unavailability"
 SCENARIO_HVAC_DEVICE_LOSS = "hvac_device_loss"
-SCENARIO_RUN_CONVERSATION = "run_conversation"
 SCENARIO_MANUAL_DEVICE_INJECTION = "autonomous_emissions"
 # Legacy alias
 SCENARIO_AUTONOMOUS_EMISSIONS = (
@@ -366,7 +364,6 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
             SCENARIO_AUTO_ANSWER,
             SCENARIO_DEVICE_UNAVAILABILITY,
             SCENARIO_HVAC_DEVICE_LOSS,
-            SCENARIO_RUN_CONVERSATION,
             SCENARIO_PROFILE_EMISSIONS,
         ],
     },
@@ -390,16 +387,6 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "HVAC Device Loss",
         "description": "Drop one HVAC device mid-run and optionally restore it",
         "toggleable": True,
-        "can_run_with": [
-            SCENARIO_MANUAL_DEVICE_INJECTION,
-            SCENARIO_PROFILE_EMISSIONS,
-            SCENARIO_AUTO_ANSWER,
-        ],
-    },
-    SCENARIO_RUN_CONVERSATION: {
-        "label": "Conversation Playback",
-        "description": "Replay a captured conversation block end-to-end",
-        "toggleable": False,
         "can_run_with": [
             SCENARIO_MANUAL_DEVICE_INJECTION,
             SCENARIO_PROFILE_EMISSIONS,

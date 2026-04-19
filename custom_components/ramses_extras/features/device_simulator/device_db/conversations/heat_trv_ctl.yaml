@@ -1,0 +1,55 @@
+id: heat_trv_ctl
+description: 'Harvested from ramses_rf: bindings/heat/trv_ctl.log'
+peers:
+- 01:220768
+- 04:045072
+- 63:262142
+frames:
+- t: 0.0
+  src: 01:220768
+  dst: --:------
+  code: 10E0
+  verb: I
+  payload: 000002FF0163FFFFFFFF0B0807E4010807DD45766F20436F6C6F720000000000000000000000
+- t: 28510816.479136
+  src: 04:045072
+  dst: --:------
+  code: 10E0
+  verb: I
+  payload: 000002FF050BFFFFFFFF050B07E4070307E148523931205261646961746F72204374726C2E00
+- t: 28519415.2972
+  src: 04:045072
+  dst: 63:262142
+  code: 1FC9
+  verb: I
+  payload: 0030C910B010
+- t: 28519415.320117
+  src: 01:220768
+  dst: --:------
+  code: 1FC9
+  verb: I
+  payload: 062309075E600630C9075E60061FC9075E60
+- t: 28519417.620443
+  src: 04:045072
+  dst: 01:220768
+  code: 1FC9
+  verb: W
+  payload: 0030C910B010
+- t: 28519417.63508
+  src: 01:220768
+  dst: 04:045072
+  code: 1FC9
+  verb: I
+  payload: A
+- t: 28519424.325414
+  src: 01:220768
+  dst: --:------
+  code: '0004'
+  verb: I
+  payload: 060048616C6C00000000000000000000000000000000
+- t: 28519424.336964
+  src: 01:220768
+  dst: --:------
+  code: 1F09
+  verb: W
+  payload: F80028

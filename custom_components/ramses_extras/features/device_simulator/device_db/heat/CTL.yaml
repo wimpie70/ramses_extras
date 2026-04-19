@@ -8,7 +8,6 @@ autonomous:
   interval_seconds: 150.1
   payloads:
   - 0005DC0101F40205DC
-  - '030514'
   - 01070802079E03073A
   notes: Example payloads from regression file
 - code: 1FC9
@@ -24,10 +23,7 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 63.2
-  payloads:
-  - FA00
-  - '0204'
-  - F914
+  payloads: []
   notes: Example payloads from regression file
 - code: 1F09
   verb: I
@@ -37,21 +33,27 @@ autonomous:
   - FF091A
   - FF04B5
   - FF086B
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FF
+    (unavailable (single-byte generic))) but remaining fields decode OK — verify device
+    has those sensors.'
 - code: 1F41
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads:
   - 000000FFFFFF
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FFFF
+    (unavailable (generic)), FF (unavailable (single-byte generic))) but remaining
+    fields decode OK — verify device has those sensors.'
 - code: 0009
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads:
   - FC00FFF900FF
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FF
+    (unavailable (single-byte generic))) but remaining fields decode OK — verify device
+    has those sensors.'
 - code: 10A0
   verb: I
   trigger: periodic
@@ -68,8 +70,7 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 349.1
-  payloads:
-  - FCC8
+  payloads: []
   notes: Example payloads from regression file
 - code: '2349'
   verb: I
@@ -77,9 +78,9 @@ autonomous:
   interval_seconds: 60.0
   payloads:
   - 0007D000FFFFFF
-  - 01079E00FFFFFF
-  - 03073A00FFFFFF
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FFFF
+    (unavailable (generic)), FF (unavailable (single-byte generic))) but remaining
+    fields decode OK — verify device has those sensors.'
 - code: '2209'
   verb: I
   trigger: periodic
@@ -93,7 +94,9 @@ autonomous:
   - 0000FF01
   - 0004FF01
   - 00080400
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FF
+    (unavailable (single-byte generic))) but remaining fields decode OK — verify device
+    has those sensors.'
 - code: 2D49
   verb: I
   trigger: periodic
@@ -107,7 +110,9 @@ autonomous:
   - 000000B0060402000000BC955AB2FFFFFF70020F131A
   - 004000B0060402000000BC95717AFFFFFF70020F131A
   - 004006B0061C04000000C39500CDFFFFFF700037F3CD
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (FFFF
+    (unavailable (generic)), FF (unavailable (single-byte generic))) but remaining
+    fields decode OK — verify device has those sensors.'
 - code: 2E04
   verb: I
   trigger: periodic
@@ -122,8 +127,6 @@ autonomous:
   trigger: periodic
   interval_seconds: 1.0
   payloads:
-  - 011001F40DAC
-  - 021001F40DAC
   - 001001F40DAC
   notes: Example payloads from regression file
 - code: '1030'
@@ -138,15 +141,15 @@ autonomous:
   payloads:
   - FC180400007FFF01
   - FC0C1400007FFF01
-  notes: Example payloads from regression file
+  notes: 'Example payloads from regression file. REMARK: Sentinel bytes present (7FFF
+    (unavailable (temperature/numeric)), FF (unavailable (single-byte generic))) but
+    remaining fields decode OK — verify device has those sensors.'
 - code: 30C9
   verb: I
   trigger: periodic
   interval_seconds: 218.0
   payloads:
   - 0007BB
-  - 0107DC
-  - 0307B2
   notes: Example payloads from regression file
 - code: '2249'
   verb: I
@@ -159,8 +162,6 @@ autonomous:
   interval_seconds: 60.0
   payloads:
   - 0000434850204F666669636500000000000000000000
-  - 01004C6F756E67650000000000000000000000000000
-  - 020048616C6C77617900000000000000000000000000
   notes: Example payloads from regression file
 - code: 12B0
   verb: I
@@ -168,8 +169,6 @@ autonomous:
   interval_seconds: 0.1
   payloads:
   - '000000'
-  - '010000'
-  - '030000'
   notes: Example payloads from regression file
 - code: 313F
   verb: I
@@ -187,10 +186,7 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 124.1
-  payloads:
-  - FC0A
-  - FC14
-  - FCC8
+  payloads: []
   notes: Example payloads from regression file
 - code: '0404'
   verb: I
@@ -245,6 +241,9 @@ responses:
   payloads:
   - 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
   description: Device capabilities
+  notes: 'REMARK: Sentinel bytes present (FF (unavailable (single-byte generic)),
+    EF (unavailable (single-byte humidity))) but remaining fields decode OK — verify
+    device has those sensors.'
 - code: 22D9
   rq_verb: RQ
   rp_verb: RP
