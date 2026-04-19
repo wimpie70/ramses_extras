@@ -149,6 +149,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._deviceMsgPreviews = {};
     this._profileZoneMembership = {};
     this._msgSubscription = null;
+    this._savedPlaybacks = [];
+    this._playbackSelection = null;
+    this._playbackImportDraft = { log_content: "", name: "" };
+    this._playbackSaving = false;
+    this._playbackInterMsgDelay = "";
 
     this._loadLoaderDraft();
   }
@@ -406,6 +411,145 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       }
     } catch {
       // Silently handle fetch errors
+    }
+
+    // Fetch saved playbacks separately (non-fatal on failure)
+    try {
+      const pb = await this._hass.callWS({
+        type: "ramses_extras/device_simulator/list_saved_playbacks",
+      });
+      this._savedPlaybacks = pb?.playbacks || [];
+      this._scheduleRender();
+    } catch {
+      // leave previous list intact
+    }
+  }
+
+  async _deleteSavedPlayback(identifier) {
+    if (!this._hass || !identifier) return;
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/delete_saved_playback",
+        identifier,
+      });
+      this._savedPlaybacks = this._savedPlaybacks.filter(
+        (p) => p.id !== identifier && p.file !== identifier,
+      );
+      this._scheduleRender();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: delete_saved_playback failed", err);
+    }
+  }
+
+  async _pauseScenario(scenarioId) {
+    if (!this._hass) return;
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/pause_scenario",
+        scenario: scenarioId,
+      });
+      await this._fetchData();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: pause_scenario failed", err);
+    }
+  }
+
+  async _resumeScenario(scenarioId) {
+    if (!this._hass) return;
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/resume_scenario",
+        scenario: scenarioId,
+      });
+      await this._fetchData();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: resume_scenario failed", err);
+    }
+  }
+
+  async _startSavedPlayback(identifier) {
+    if (!this._hass || !identifier) return;
+    const params = this._scenarioParams?.device_playback || {};
+    const loops = Number(params.loops) || 1;
+    const payload = {
+      type: "ramses_extras/device_simulator/start_scenario",
+      scenario: "device_playback",
+      params: {
+        conversation: identifier,
+        loops,
+      },
+    };
+    if (this._playbackInterMsgDelay !== "" && this._playbackInterMsgDelay !== null) {
+      const parsed = Number(this._playbackInterMsgDelay);
+      if (!Number.isNaN(parsed)) {
+        payload.params.inter_message_delay = parsed;
+      }
+    }
+    try {
+      await this._hass.callWS(payload);
+      await this._fetchData();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: start_saved_playback failed", err);
+    }
+  }
+
+  async _savePlaybackImport() {
+    if (!this._hass) return;
+    const draft = this._playbackImportDraft || {};
+    const content = (draft.log_content || "").trim();
+    if (!content) return;
+    this._playbackSaving = true;
+    this._scheduleRender();
+    try {
+      const result = await this._hass.callWS({
+        type: "ramses_extras/device_simulator/import_user_log",
+        content,
+        name: draft.name || undefined,
+        save_yaml: true,
+      });
+      // Reset draft, refresh list
+      this._playbackImportDraft = { log_content: "", name: "" };
+      // Pre-select the new one so it appears as the default in the Devices tab
+      if (result?.conversation_name) {
+        this._playbackSelection = result.conversation_name;
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: save playback import failed", err);
+    } finally {
+      this._playbackSaving = false;
+      await this._fetchData();
+    }
+  }
+
+  _clearPlaybackImport() {
+    this._playbackImportDraft = { log_content: "", name: "" };
+    this._scheduleRender();
+  }
+
+  async _toggleScenario(scenarioId, enable) {
+    if (!this._hass) return;
+    const type = enable
+      ? "ramses_extras/device_simulator/start_scenario"
+      : "ramses_extras/device_simulator/stop_scenario";
+    const payload = { type, scenario: scenarioId };
+    if (enable) {
+      const params = this._scenarioParams?.[scenarioId];
+      if (params && Object.keys(params).length) {
+        payload.params = this._prepareScenarioParams(scenarioId);
+      }
+    }
+    try {
+      await this._hass.callWS(payload);
+      await this._fetchData();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`DeviceSimulatorCard: toggle_scenario ${scenarioId} failed`, err);
+      await this._fetchData();
     }
   }
 
@@ -671,19 +815,19 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
         <div class="tabs">
           <div class="tab ${this._tab === "profiles" ? "active" : ""}" data-tab="profiles">Profiles</div>
-          <div class="tab ${this._tab === "devices" ? "active" : ""}" data-tab="devices">Devices</div>
           <div class="tab ${this._tab === "scenarios" ? "active" : ""}" data-tab="scenarios">Scenarios</div>
+          <div class="tab ${this._tab === "devices" ? "active" : ""}" data-tab="devices">Devices</div>
           <div class="tab ${this._tab === "events" ? "active" : ""}" data-tab="events">Events</div>
         </div>
 
         <div class="content ${this._tab === "profiles" ? "active" : ""}" data-content="profiles">
           ${this._buildProfiles()}
         </div>
-        <div class="content ${this._tab === "devices" ? "active" : ""}" data-content="devices">
-          ${this._buildDevices()}
-        </div>
         <div class="content ${this._tab === "scenarios" ? "active" : ""}" data-content="scenarios">
           ${this._buildScenarios()}
+        </div>
+        <div class="content ${this._tab === "devices" ? "active" : ""}" data-content="devices">
+          ${this._buildDevices()}
         </div>
         <div class="content ${this._tab === "events" ? "active" : ""}" data-content="events">
           ${this._buildEvents()}
@@ -746,6 +890,74 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     root.querySelectorAll("[data-action='stop-scenario']").forEach(btn => {
       btn.addEventListener("click", () => this._stopScenario(btn.dataset.scenarioId));
     });
+
+    root.querySelectorAll("[data-action='pause-scenario']").forEach(btn => {
+      btn.addEventListener("click", () => this._pauseScenario(btn.dataset.scenarioId));
+    });
+
+    root.querySelectorAll("[data-action='resume-scenario']").forEach(btn => {
+      btn.addEventListener("click", () => this._resumeScenario(btn.dataset.scenarioId));
+    });
+
+    root.querySelectorAll("[data-action='delete-saved-playback']").forEach(btn => {
+      btn.addEventListener("click", () => this._deleteSavedPlayback(btn.dataset.identifier));
+    });
+
+    root.querySelectorAll("[data-action='start-saved-playback']").forEach(btn => {
+      btn.addEventListener("click", () => this._startSavedPlayback(btn.dataset.identifier));
+    });
+
+    const playbackSelect = root.querySelector("[data-action='playback-select']");
+    if (playbackSelect) {
+      playbackSelect.addEventListener("change", (e) => {
+        this._playbackSelection = e.target.value;
+        this._scheduleRender();
+      });
+    }
+
+    root.querySelectorAll("[data-action='playback-import-field']").forEach((input) => {
+      input.addEventListener("input", (e) => {
+        const field = e.target.dataset.field;
+        this._playbackImportDraft = {
+          ...(this._playbackImportDraft || {}),
+          [field]: e.target.value,
+        };
+        // Toggle Save disabled live without re-rendering the textarea (lose focus)
+        const saveBtn = root.querySelector("[data-action='save-playback-import']");
+        if (saveBtn) {
+          saveBtn.disabled = !(this._playbackImportDraft.log_content || "").trim();
+        }
+        const clearBtn = root.querySelector("[data-action='clear-playback-import']");
+        if (clearBtn) {
+          clearBtn.disabled = !(
+            (this._playbackImportDraft.log_content || "").trim()
+            || (this._playbackImportDraft.name || "").trim()
+          );
+        }
+      });
+    });
+
+    const saveBtn = root.querySelector("[data-action='save-playback-import']");
+    if (saveBtn) {
+      saveBtn.addEventListener("click", () => this._savePlaybackImport());
+    }
+    const clearImportBtn = root.querySelector("[data-action='clear-playback-import']");
+    if (clearImportBtn) {
+      clearImportBtn.addEventListener("click", () => this._clearPlaybackImport());
+    }
+
+    root.querySelectorAll("[data-action='toggle-scenario']").forEach((el) => {
+      el.addEventListener("change", (e) => {
+        this._toggleScenario(el.dataset.scenarioId, Boolean(e.target.checked));
+      });
+    });
+
+    const imdInput = root.querySelector("[data-action='playback-inter-msg-delay']");
+    if (imdInput) {
+      imdInput.addEventListener("input", (e) => {
+        this._playbackInterMsgDelay = e.target.value;
+      });
+    }
 
     const aaToggle = root.querySelector("[data-action='toggle-auto-answer']");
     if (aaToggle) aaToggle.addEventListener("change", (e) => this._setAutoAnswer(e.target.checked));
@@ -1339,6 +1551,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       <div class="grid device-controls">
         ${this._buildManualInjectionCard()}
         ${this._buildProfileEmissionsCard()}
+        ${this._buildPlaybackConversationCard()}
         ${this._buildAutonomousSpeedCard()}
       </div>`;
 
@@ -1501,6 +1714,67 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const slower = 1 / value;
     const text = slower >= 10 ? slower.toFixed(0) : slower.toFixed(1);
     return `${text}× slower`;
+  }
+
+  _buildPlaybackConversationCard() {
+    const playbacks = this._savedPlaybacks || [];
+    const isRunning = (this._runningScenarios || []).includes("device_playback");
+    const runMeta = (this._runningMetadata || {})["device_playback"] || {};
+    const isPaused = Boolean(runMeta.paused);
+    const selection = this._playbackSelection || (playbacks[0] && playbacks[0].id) || "";
+    const params = this._scenarioParams?.device_playback || {};
+    const loopsValue = params.loops ?? 1;
+
+    const optionList = playbacks.length
+      ? playbacks.map((p) => `<option value="${p.id}"${p.id === selection ? " selected" : ""}>${p.id} (${p.frames} frames)</option>`).join("")
+      : `<option value="" disabled selected>No saved playbacks</option>`;
+
+    const statusBadge = isRunning
+      ? `<span class="chip" style="background:${isPaused ? "var(--warning-color,#ff9800)" : "var(--success-color,#4caf50)"}; color:white;">${isPaused ? "paused" : "playing"}</span>`
+      : `<span class="chip muted">idle</span>`;
+
+    const playDisabled = !selection || isRunning ? " disabled" : "";
+    const pauseDisabled = !isRunning || isPaused ? " disabled" : "";
+    const resumeDisabled = !isRunning || !isPaused ? " disabled" : "";
+    const stopDisabled = !isRunning ? " disabled" : "";
+
+    return `
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <strong>Playback conversation</strong>
+          ${statusBadge}
+        </div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">
+          Replay a saved conversation. Speed follows the slider below (live).
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
+          <label style="display:flex; flex-direction:column; gap:2px; font-size:0.75em;">
+            <span>Conversation</span>
+            <select data-action="playback-select">${optionList}</select>
+          </label>
+          <label style="display:flex; flex-direction:column; gap:2px; font-size:0.75em;">
+            <span>Loops</span>
+            <input type="number" min="1" step="1" value="${loopsValue}"
+                   data-action="scenario-param"
+                   data-scenario-id="device_playback"
+                   data-field="loops"
+                   data-type="number" />
+          </label>
+          <label style="display:flex; flex-direction:column; gap:2px; font-size:0.75em;">
+            <span>Fixed gap between frames (s)</span>
+            <input type="number" min="0" step="0.01"
+                   value="${this._playbackInterMsgDelay ?? ""}"
+                   placeholder="Leave blank to use recorded timing"
+                   data-action="playback-inter-msg-delay" />
+          </label>
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+          <button class="btn btn-primary" data-action="start-saved-playback" data-identifier="${selection}"${playDisabled}>▶ Play</button>
+          <button class="btn btn-secondary" data-action="pause-scenario" data-scenario-id="device_playback"${pauseDisabled}>⏸ Pause</button>
+          <button class="btn btn-secondary" data-action="resume-scenario" data-scenario-id="device_playback"${resumeDisabled}>▶ Resume</button>
+          <button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="device_playback"${stopDisabled}>⏹ Stop</button>
+        </div>
+      </div>`;
   }
 
   _buildAutonomousSpeedCard() {
@@ -1752,34 +2026,134 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       </div>`;
 
     const scenarioCards = ids
-      .filter(id => id !== "auto_answer" && id !== SCENARIO_MANUAL_DEVICE && id !== SCENARIO_LOAD_PROFILE && id !== SCENARIO_PROFILE_EMISSIONS)
+      .filter(id =>
+        id !== "auto_answer"
+        && id !== SCENARIO_MANUAL_DEVICE
+        && id !== SCENARIO_LOAD_PROFILE
+        && id !== SCENARIO_PROFILE_EMISSIONS
+        && id !== "device_suite"
+      )
       .map((id) => {
+        if (id === "device_playback") {
+          return this._buildConversationPlaybackSettingsCard();
+        }
         const meta = registry[id];
         const isRunning = (this._runningScenarios || []).includes(id);
+        const runningMeta = (this._runningMetadata || {})[id] || {};
+        const isPaused = Boolean(runningMeta.paused);
         const conflicts = this._scenarioConflicts(id);
         const conflictWarn = conflicts.length
           ? `<div style="font-size: 0.75em; color: var(--warning-color, #ff9800); margin-top: 4px;">&#9888; Conflicts with: ${conflicts.join(", ")}</div>`
           : "";
         const disabledAttr = conflicts.length ? " disabled" : "";
-        const actionBtns = meta.toggleable
-          ? (isRunning
-            ? `<button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${id}">Stop</button>`
-            : `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${id}"${disabledAttr}>Start</button>`)
-          : `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${id}"${disabledAttr}>Run</button>`;
+        let actionBtns;
+        if (meta.toggleable) {
+          // Toggleable scenarios render as a switch (like auto_answer), no Run button.
+          const checked = isRunning ? " checked" : "";
+          const disSwitch = (!isRunning && conflicts.length) ? " disabled" : "";
+          actionBtns = `
+            <label class="toggle" style="display:flex; align-items:center; gap:6px;">
+              <ha-switch data-action="toggle-scenario" data-scenario-id="${id}"${checked}${disSwitch}></ha-switch>
+              <span style="font-size:0.75em; color:var(--secondary-text-color);">${isRunning ? "enabled" : "disabled"}</span>
+            </label>`;
+        } else if (isRunning) {
+          actionBtns = `<button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${id}">Stop</button>`;
+        } else {
+          actionBtns = `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${id}"${disabledAttr}>Run</button>`;
+        }
+        const runningBadge = isRunning
+          ? `<span style="font-size:0.75em; padding:2px 8px; border-radius:10px; background:${isPaused ? "var(--warning-color,#ff9800)" : "var(--success-color,#4caf50)"}; color:white;">${isPaused ? "paused" : "active"}</span>`
+          : "";
         return `
           <div class="card ${isRunning ? "active" : ""}">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <strong>${meta.label || id}</strong>
-              ${isRunning ? `<span style="font-size:0.75em; padding:2px 8px; border-radius:10px; background:var(--success-color,#4caf50); color:white;">running</span>` : ""}
+              ${runningBadge}
             </div>
             <div class="scenario-description">${meta.description || "No description"}</div>
             ${conflictWarn}
             ${this._buildScenarioParamsById(id)}
-            <div style="margin-top: 8px; display: flex; gap: 8px;">${actionBtns}</div>
+            <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">${actionBtns}</div>
           </div>`;
       }).join("");
 
     return `<div class="grid">${aaCard}${scenarioCards}</div>`;
+  }
+
+  _buildSavedPlaybacksPanel() {
+    const list = this._savedPlaybacks || [];
+    const builtinCount = list.filter((p) => p.builtin).length;
+    const userCount = list.length - builtinCount;
+    const header = `
+      <div style="margin-top:8px; font-size:0.85em; color:var(--secondary-text-color);">
+        <strong>Saved playbacks</strong>
+        <span style="margin-left:6px;">(${builtinCount} built-in, ${userCount} imported)</span>
+      </div>`;
+    if (!list.length) {
+      return `${header}
+        <div style="font-size:0.8em; color:var(--secondary-text-color); padding:4px 0;">
+          None yet. Paste a log above and click <em>Save</em> to keep it.
+        </div>`;
+    }
+    const rows = list.map((p) => {
+      const builtinTag = p.builtin
+        ? `<span class="chip muted" style="font-size:0.65em;">built-in</span>`
+        : "";
+      const deleteBtn = p.builtin
+        ? ""
+        : `<button class="btn btn-danger" style="padding:2px 8px; font-size:0.75em;"
+                   data-action="delete-saved-playback" data-identifier="${p.id}">Delete</button>`;
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-top:1px solid var(--divider-color,#eee); gap:6px;">
+          <div style="display:flex; flex-direction:column; font-size:0.8em; flex:1;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <strong>${p.id}</strong>${builtinTag}
+            </div>
+            <span style="color:var(--secondary-text-color);">
+              ${p.frames} frame${p.frames === 1 ? "" : "s"} · ${(p.peers || []).join(", ") || "no peers"}
+            </span>
+          </div>
+          ${deleteBtn}
+        </div>`;
+    }).join("");
+    return `${header}<div style="margin-top:4px;">${rows}</div>`;
+  }
+
+  _buildConversationPlaybackSettingsCard() {
+    const draft = this._playbackImportDraft || {};
+    const logContent = draft.log_content || "";
+    const nameValue = draft.name || "";
+    const canSave = Boolean(logContent.trim());
+    const savingState = this._playbackSaving
+      ? `<span class="chip muted" style="margin-left:6px;">Saving…</span>`
+      : "";
+    return `
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong>Conversation Playback</strong>
+          ${savingState}
+        </div>
+        <div class="scenario-description">
+          Import a ramses.log and save it as a reusable conversation. Run/pause/stop playback from the <em>Devices</em> tab.
+        </div>
+        <div class="scenario-field">
+          <label for="playback-log-content">Log content (paste ramses.log)</label>
+          <textarea id="playback-log-content"
+                    data-action="playback-import-field" data-field="log_content"
+                    rows="6" placeholder="Paste ramses.log content here...">${logContent}</textarea>
+        </div>
+        <div class="scenario-field">
+          <label for="playback-name">Save as name</label>
+          <input id="playback-name" type="text"
+                 data-action="playback-import-field" data-field="name"
+                 placeholder="my_playback" value="${nameValue}" />
+        </div>
+        ${this._buildSavedPlaybacksPanel()}
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-primary" data-action="save-playback-import" ${canSave ? "" : "disabled"}>Save</button>
+          <button class="btn btn-secondary" data-action="clear-playback-import" ${canSave || nameValue ? "" : "disabled"}>Clear</button>
+        </div>
+      </div>`;
   }
 
   _buildEvents() {

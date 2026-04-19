@@ -346,7 +346,12 @@ class DeviceDatabase:
 
         conv_path = self._db_dir / DB_SUBDIR_CONVERSATIONS
         if conv_path.exists():
-            for yaml_file in conv_path.glob("*.yaml"):
+            # Load top-level built-in conversations + imported/*.yaml saved by users
+            yaml_files = list(conv_path.glob("*.yaml"))
+            imported_dir = conv_path / "imported"
+            if imported_dir.exists():
+                yaml_files.extend(imported_dir.glob("*.yaml"))
+            for yaml_file in yaml_files:
                 try:
                     with open(yaml_file, encoding="utf-8") as f:
                         data = yaml.safe_load(f)
@@ -640,6 +645,117 @@ class DeviceDatabase:
             len(peers),
             ", ".join(peers),
         )
+        return True
+
+    def list_saved_playbacks(self) -> list[dict[str, Any]]:
+        """List conversations available for playback.
+
+        Includes both built-in conversations (``conversations/*.yaml``, marked
+        ``builtin: True``) and user-imported ones (``conversations/imported/
+        *.yaml``, ``builtin: False``). Built-ins are always present in the
+        dropdown so there is at least one default playback and cannot be
+        deleted. Sorted with built-ins first, then alphabetical.
+        """
+        import yaml
+
+        conv_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS
+        if not conv_dir.exists():
+            return []
+
+        def _collect(directory: Path, builtin: bool) -> list[dict[str, Any]]:
+            items: list[dict[str, Any]] = []
+            for fp in sorted(directory.glob("*.yaml")):
+                try:
+                    with open(fp, encoding="utf-8") as fh:
+                        data = yaml.safe_load(fh) or {}
+                    peers = data.get("peers") or []
+                    convs = data.get("conversations") or []
+                    for conv in convs:
+                        items.append(
+                            {
+                                "id": conv.get("id", fp.stem),
+                                "file": fp.name,
+                                "peers": peers,
+                                "frames": len(conv.get("frames") or []),
+                                "description": conv.get("description"),
+                                "builtin": builtin,
+                            }
+                        )
+                except Exception as err:  # noqa: BLE001
+                    LOGGER.warning("Failed to read playback %s: %s", fp, err)
+            return items
+
+        builtins = _collect(conv_dir, builtin=True)
+        imported_dir = conv_dir / "imported"
+        imported = (
+            _collect(imported_dir, builtin=False) if imported_dir.exists() else []
+        )
+        return builtins + imported
+
+    def delete_saved_playback(self, identifier: str) -> bool:
+        """Delete a saved playback by conversation id or YAML filename.
+
+        Also removes the in-memory conversation entries so the dropdown stays
+        in sync without requiring a full DB reload.
+
+        :param identifier: Either the conversation ``id`` or the bare filename.
+        :return: True if something was removed.
+        """
+        target_dir = self._db_dir / DB_SUBDIR_CONVERSATIONS / "imported"
+        if not target_dir.exists():
+            return False
+
+        # Resolve the file
+        target_file = target_dir / identifier
+        if not target_file.exists() and not identifier.endswith(".yaml"):
+            target_file = target_dir / f"{identifier}.yaml"
+        if not target_file.exists():
+            # Last resort: search by id inside each file
+            for fp in target_dir.glob("*.yaml"):
+                try:
+                    import yaml
+
+                    with open(fp, encoding="utf-8") as fh:
+                        data = yaml.safe_load(fh) or {}
+                    convs = data.get("conversations") or []
+                    if any(c.get("id") == identifier for c in convs):
+                        target_file = fp
+                        break
+                except Exception:  # noqa: BLE001
+                    continue
+
+        if not target_file.exists():
+            LOGGER.warning("Saved playback '%s' not found", identifier)
+            return False
+
+        # Collect ids to purge from in-memory store before removing file
+        removed_ids: list[str] = []
+        try:
+            import yaml
+
+            with open(target_file, encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            for c in data.get("conversations") or []:
+                cid = c.get("id")
+                if cid:
+                    removed_ids.append(cid)
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            target_file.unlink()
+        except Exception as err:  # noqa: BLE001
+            LOGGER.error("Failed to delete %s: %s", target_file, err)
+            return False
+
+        # Purge from runtime store (both bare id and peer-keyed forms)
+        for cid in removed_ids:
+            self._conversations.pop(cid, None)
+            for key in list(self._conversations):
+                if key.endswith(f"/{cid}"):
+                    self._conversations.pop(key, None)
+
+        LOGGER.info("Deleted saved playback %s (%s)", target_file.name, removed_ids)
         return True
 
     def _save_conversation_yaml(self, conv: Conversation) -> Path:

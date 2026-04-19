@@ -115,6 +115,8 @@ class ScenarioEngine:
         self._emitter_tasks: dict[str, asyncio.Task] = {}
         self._running_scenarios: dict[str, dict[str, Any]] = {}
         self._scenario_tasks: dict[str, asyncio.Task] = {}
+        # Per-scenario pause gates. Event is *set* → running; *cleared* → paused.
+        self._scenario_pause_events: dict[str, asyncio.Event] = {}
         self._state: str = SCENARIO_STATE_IDLE
         self._messages_sent = 0
         self._messages_received = 0
@@ -510,14 +512,24 @@ class ScenarioEngine:
         ref: str,
         device_map: dict[str, str],
         scheme: str | None = None,
-        speed: float = 1.0,
+        speed: float | None = None,
+        pause_event: asyncio.Event | None = None,
+        inter_message_delay: float | None = None,
     ) -> ScenarioResult:
         """Play back a conversation block by ref.
 
         :param ref: Conversation ref (e.g. 'fan+co2/dcv_reaction').
         :param device_map: Slug → device_id mapping (e.g. {'FAN': '20:123456'}).
         :param scheme: Optional scheme filter.
-        :param speed: Playback speed multiplier.
+        :param speed: Playback speed multiplier. ``None`` means follow the
+            engine's global ``autonomous_speed`` so the Devices tab speed
+            control affects playback live.
+        :param pause_event: Optional asyncio.Event. When provided, playback
+            awaits this event before each frame (``set()`` = running,
+            ``clear()`` = paused). Cancellation of the surrounding task stops
+            playback immediately.
+        :param inter_message_delay: Optional fixed gap (seconds) between every
+            frame, overriding the conversation's recorded timing.
         """
         conv = self._db.get_conversation(ref, scheme)
         if not conv:
@@ -533,7 +545,18 @@ class ScenarioEngine:
 
         prev_t = 0.0
         for frame in conv.frames:
-            delay = (frame.t - prev_t) / speed
+            # Honour pause gate before computing delay
+            if pause_event is not None and not pause_event.is_set():
+                await pause_event.wait()
+
+            # Effective speed: explicit > global autonomous
+            eff_speed = speed if speed is not None else self._autonomous_speed
+            eff_speed = max(0.01, float(eff_speed))
+
+            if inter_message_delay is not None:
+                delay = max(0.0, float(inter_message_delay))
+            else:
+                delay = (frame.t - prev_t) / eff_speed
             if delay > 0:
                 await asyncio.sleep(delay)
             prev_t = frame.t
@@ -1135,6 +1158,10 @@ class ScenarioEngine:
         :param scenario_id: The scenario type id to cancel.
         """
         task = self._scenario_tasks.pop(scenario_id, None)
+        # Ensure a paused scenario wakes up so cancellation propagates.
+        ev = self._scenario_pause_events.pop(scenario_id, None)
+        if ev is not None and not ev.is_set():
+            ev.set()
         if task and not task.done():
             task.cancel()
             try:
@@ -1143,6 +1170,55 @@ class ScenarioEngine:
                 pass
         self.clear_running_metadata(scenario_id)
         LOGGER.info("Scenario '%s' cancelled", scenario_id)
+
+    def get_pause_event(self, scenario_id: str) -> asyncio.Event:
+        """Return (creating if needed) the pause gate for ``scenario_id``.
+
+        The event starts in the *set* state (running). Pass this into scenario
+        ``run`` implementations (typically via ``ScenarioContext``) so they can
+        block on it each iteration.
+        """
+        ev = self._scenario_pause_events.get(scenario_id)
+        if ev is None:
+            ev = asyncio.Event()
+            ev.set()
+            self._scenario_pause_events[scenario_id] = ev
+        return ev
+
+    def pause_scenario(self, scenario_id: str) -> bool:
+        """Pause a running scenario that cooperates with its pause event.
+
+        :return: True if a pause gate existed and was cleared, False otherwise.
+        """
+        ev = self._scenario_pause_events.get(scenario_id)
+        if ev is None:
+            return False
+        ev.clear()
+        meta = self._running_scenarios.get(scenario_id)
+        if meta is not None:
+            meta["paused"] = True
+        LOGGER.info("Scenario '%s' paused", scenario_id)
+        return True
+
+    def resume_scenario(self, scenario_id: str) -> bool:
+        """Resume a previously paused scenario.
+
+        :return: True if a pause gate existed and was set, False otherwise.
+        """
+        ev = self._scenario_pause_events.get(scenario_id)
+        if ev is None:
+            return False
+        ev.set()
+        meta = self._running_scenarios.get(scenario_id)
+        if meta is not None:
+            meta["paused"] = False
+        LOGGER.info("Scenario '%s' resumed", scenario_id)
+        return True
+
+    def is_scenario_paused(self, scenario_id: str) -> bool:
+        """Return True if the scenario's pause gate is currently cleared."""
+        ev = self._scenario_pause_events.get(scenario_id)
+        return ev is not None and not ev.is_set()
 
     async def async_run_unavailability_test(
         self,

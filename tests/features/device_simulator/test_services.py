@@ -13,7 +13,6 @@ from homeassistant.core import ServiceCall
 
 from custom_components.ramses_extras.features.device_simulator.const import (
     SCENARIO_DEVICE_PLAYBACK,
-    SCENARIO_DEVICE_SUITE,
     SCENARIO_DISCOVERY_TEST,
     SCENARIO_FLOODING_TEST,
     SCENARIO_HVAC_DEVICE_LOSS,

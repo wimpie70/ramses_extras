@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from ..const import SCENARIO_AUTO_ANSWER, SCENARIO_DEVICE_PLAYBACK
@@ -66,24 +67,56 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
             ],
         )
 
-    speed = float(params.get("speed", 1.0))
+    # speed=None → engine uses global autonomous_speed (Devices-tab slider)
+    raw_speed = params.get("speed")
+    speed: float | None = float(raw_speed) if raw_speed is not None else None
     loops = max(1, int(params.get("loops", 1)))
+    raw_imd = params.get("inter_message_delay")
+    inter_message_delay: float | None = (
+        float(raw_imd)
+        if raw_imd not in (None, "") and isinstance(raw_imd, (int, float, str))
+        else None
+    )
     total_messages = 0
     total_duration = 0.0
     run_errors: list[str] = []
 
-    for _ in range(loops):
-        playback = await context.engine.async_play_conversation(
-            ref=conversation,
-            device_map=device_map,
-            scheme=scheme,
-            speed=speed,
-        )
-        if not playback.success:
-            run_errors.extend(playback.errors)
-            break
-        total_messages += playback.messages_sent
-        total_duration += playback.duration_seconds
+    # Register this run so the UI can pause/resume/stop it.
+    engine = context.engine
+    pause_event = engine.get_pause_event(SCENARIO_DEVICE_PLAYBACK)
+    pause_event.set()
+    engine.set_running_metadata(
+        SCENARIO_DEVICE_PLAYBACK,
+        {
+            "conversation": conversation,
+            "loops": loops,
+            "speed": speed,
+            "paused": False,
+        },
+    )
+    current_task = asyncio.current_task()
+    if current_task is not None:
+        engine._scenario_tasks[SCENARIO_DEVICE_PLAYBACK] = current_task
+
+    try:
+        for _ in range(loops):
+            playback = await engine.async_play_conversation(
+                ref=conversation,
+                device_map=device_map,
+                scheme=scheme,
+                speed=speed,
+                pause_event=pause_event,
+                inter_message_delay=inter_message_delay,
+            )
+            if not playback.success:
+                run_errors.extend(playback.errors)
+                break
+            total_messages += playback.messages_sent
+            total_duration += playback.duration_seconds
+    finally:
+        engine._scenario_tasks.pop(SCENARIO_DEVICE_PLAYBACK, None)
+        engine._scenario_pause_events.pop(SCENARIO_DEVICE_PLAYBACK, None)
+        engine.clear_running_metadata(SCENARIO_DEVICE_PLAYBACK)
 
     if run_errors:
         return ScenarioResult(

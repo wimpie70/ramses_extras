@@ -68,7 +68,6 @@ SCENARIO_STATE_ERROR = "error"
 
 # Scenario types
 SCENARIO_DEVICE_PLAYBACK = "device_playback"
-SCENARIO_DEVICE_SUITE = "device_suite"
 SCENARIO_DISCOVERY_TEST = "discovery_test"
 SCENARIO_TIMEOUT_TEST = "timeout_test"
 SCENARIO_FLOODING_TEST = "flooding_test"
@@ -113,11 +112,9 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
         },
     ],
     SCENARIO_DEVICE_PLAYBACK: [
-        {
-            "key": "conversation",
-            "label": "Conversation",
-            "type": "text",
-        },
+        # Save-import form: paste a ramses.log and give it a name. Playback
+        # itself is driven from the Devices tab (dropdown + play/pause/stop)
+        # and honours the Autonomous Emission Speed slider.
         {
             "key": "log_content",
             "label": "Log content (paste ramses.log)",
@@ -126,56 +123,9 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
         },
         {
             "key": "name",
-            "label": "Imported log name",
+            "label": "Save as name",
             "type": "text",
-            "placeholder": "Auto-generated if using log_content",
-        },
-        {
-            "key": "save_yaml",
-            "label": "Save as reusable YAML conversation",
-            "type": "checkbox",
-            "default": False,
-        },
-        {
-            "key": "scheme",
-            "label": "Scheme",
-            "type": "text",
-        },
-        {
-            "key": "speed",
-            "label": "Speed (×)",
-            "type": "number",
-            "default": 1.0,
-            "step": 0.1,
-            "min": 0.1,
-        },
-        {
-            "key": "loops",
-            "label": "Loops",
-            "type": "number",
-            "default": 1,
-            "min": 1,
-        },
-    ],
-    SCENARIO_DEVICE_SUITE: [
-        {
-            "key": "slugs",
-            "label": "Device slugs",
-            "type": "csv",
-            "default": "FAN, CO2, REM",
-        },
-        {
-            "key": "duration",
-            "label": "Duration (s)",
-            "type": "number",
-            "default": 300,
-            "min": 0,
-        },
-        {
-            "key": "auto_stop",
-            "label": "Auto stop",
-            "type": "checkbox",
-            "default": True,
+            "placeholder": "my_playback",
         },
     ],
     SCENARIO_DEVICE_UNAVAILABILITY: [
@@ -462,7 +412,7 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
     SCENARIO_TIMEOUT_TEST: {
         "label": "Timeout Test",
         "description": "Delay or drop responses to reproduce timeout handling",
-        "toggleable": False,
+        "toggleable": True,
         "can_run_with": [],  # exclusive
     },
     SCENARIO_FLOODING_TEST: {
@@ -472,14 +422,11 @@ SCENARIO_REGISTRY: dict[str, dict[str, Any]] = {
         "can_run_with": [],  # exclusive
     },
     SCENARIO_DEVICE_PLAYBACK: {
-        "label": "Device Playback",
-        "description": "Replay captured device traffic with inferred mapping",
-        "toggleable": False,
-        "can_run_with": [SCENARIO_AUTO_ANSWER],
-    },
-    SCENARIO_DEVICE_SUITE: {
-        "label": "Device Suite",
-        "description": "Activate a curated set of devices for mixed testing",
+        "label": "Conversation Playback",
+        "description": (
+            "Replay captured conversations (built-in or imported user logs) "
+            "with pause/resume/stop controls"
+        ),
         "toggleable": False,
         "can_run_with": [SCENARIO_AUTO_ANSWER],
     },
