@@ -1,31 +1,32 @@
-id: heat_dts_ctl_sensor
-description: 'Harvested from ramses_rf: bindings/heat/dts_ctl_sensor.log'
 peers:
 - 01:145038
 - 18:140805
 - 22:140285
-frames:
-- t: 0.0
-  src: 01:145038
-  dst: 18:140805
-  code: 10E0
-  verb: RP
-  payload: 000002FF0163FFFFFFFF0B0807E4010807DD45766F20436F6C6F720000000000000000000000
-- t: 92270182.639781
-  src: 22:140285
-  dst: --:------
-  code: 1FC9
-  verb: I
-  payload: 0023095A23FD0030C95A23FD0000085A23FD001FC95A23FD
-- t: 92270182.656065
-  src: 01:145038
-  dst: 22:140285
-  code: 1FC9
-  verb: W
-  payload: 04230906368E
-- t: 92270187.869282
-  src: 22:140285
-  dst: --:------
-  code: 30C9
-  verb: I
-  payload: 00076E
+conversations:
+- id: heat_dts_ctl_sensor
+  description: 'Harvested from ramses_rf: bindings/heat/dts_ctl_sensor.log'
+  frames:
+  - t: 0.0
+    src: 01:145038
+    dst: 18:140805
+    code: 10E0
+    verb: RP
+    payload: 000002FF0163FFFFFFFF0B0807E4010807DD45766F20436F6C6F720000000000000000000000
+  - t: 92270182.639781
+    src: 22:140285
+    dst: --:------
+    code: 1FC9
+    verb: I
+    payload: 0023095A23FD0030C95A23FD0000085A23FD001FC95A23FD
+  - t: 92270182.656065
+    src: 01:145038
+    dst: 22:140285
+    code: 1FC9
+    verb: W
+    payload: 04230906368E
+  - t: 92270187.869282
+    src: 22:140285
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 00076E

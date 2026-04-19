@@ -1,12 +1,13 @@
-id: hvac_32_VMC_15RPS34
-description: 'Harvested from ramses_rf: fingerprints/hvac/32_VMC-15RPS34.log'
 peers:
 - 32:236773
 - 63:262142
-frames:
-- t: 0.0
-  src: 32:236773
-  dst: 63:262142
-  code: 10E0
-  verb: I
-  payload: 000001C85F0E0267FFFFFFFFFFFFFFFFFFFF564D432D3135525053333400
+conversations:
+- id: hvac_32_VMC_15RPS34
+  description: 'Harvested from ramses_rf: fingerprints/hvac/32_VMC-15RPS34.log'
+  frames:
+  - t: 0.0
+    src: 32:236773
+    dst: 63:262142
+    code: 10E0
+    verb: I
+    payload: 000001C85F0E0267FFFFFFFFFFFFFFFFFFFF564D432D3135525053333400

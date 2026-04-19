@@ -1,12 +1,13 @@
-id: hvac_32_VMN_23LM33
-description: 'Harvested from ramses_rf: fingerprints/hvac/32_VMN-23LM33.log'
 peers:
 - 32:172522
 - 63:262142
-frames:
-- t: 0.0
-  src: 32:172522
-  dst: 63:262142
-  code: 10E0
-  verb: I
-  payload: 000001C85901016CFFFFFFFFFFFF1F0507E0564D4E2D32334C4D333300
+conversations:
+- id: hvac_32_VMN_23LM33
+  description: 'Harvested from ramses_rf: fingerprints/hvac/32_VMN-23LM33.log'
+  frames:
+  - t: 0.0
+    src: 32:172522
+    dst: 63:262142
+    code: 10E0
+    verb: I
+    payload: 000001C85901016CFFFFFFFFFFFF1F0507E0564D4E2D32334C4D333300

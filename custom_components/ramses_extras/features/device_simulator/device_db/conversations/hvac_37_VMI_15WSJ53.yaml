@@ -1,12 +1,13 @@
-id: hvac_37_VMI_15WSJ53
-description: 'Harvested from ramses_rf: fingerprints/hvac/37_VMI-15WSJ53.log'
 peers:
 - 37:171871
 - 63:262142
-frames:
-- t: 0.0
-  src: 37:171871
-  dst: 63:262142
-  code: 10E0
-  verb: I
-  payload: 000001C894030167FFFFFFFFFFFF1B0807E4564D492D313557534A3533000000000000000000
+conversations:
+- id: hvac_37_VMI_15WSJ53
+  description: 'Harvested from ramses_rf: fingerprints/hvac/37_VMI-15WSJ53.log'
+  frames:
+  - t: 0.0
+    src: 37:171871
+    dst: 63:262142
+    code: 10E0
+    verb: I
+    payload: 000001C894030167FFFFFFFFFFFF1B0807E4564D492D313557534A3533000000000000000000

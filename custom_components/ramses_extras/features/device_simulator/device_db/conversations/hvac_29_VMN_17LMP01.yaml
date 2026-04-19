@@ -1,12 +1,13 @@
-id: hvac_29_VMN_17LMP01
-description: 'Harvested from ramses_rf: fingerprints/hvac/29_VMN-17LMP01.log'
 peers:
 - 29:091138
 - 63:262142
-frames:
-- t: 0.0
-  src: 29:091138
-  dst: 63:262142
-  code: 10E0
-  verb: I
-  payload: 000001C8400F0166FFFFFFFFFFFF0E0207E3564D4E2D31374C4D503031000000000000000000
+conversations:
+- id: hvac_29_VMN_17LMP01
+  description: 'Harvested from ramses_rf: fingerprints/hvac/29_VMN-17LMP01.log'
+  frames:
+  - t: 0.0
+    src: 29:091138
+    dst: 63:262142
+    code: 10E0
+    verb: I
+    payload: 000001C8400F0166FFFFFFFFFFFF0E0207E3564D4E2D31374C4D503031000000000000000000

@@ -1,217 +1,218 @@
-id: hvac_dis_fan_orcon
-description: 'Harvested from ramses_rf: bindings/hvac/dis_fan_orcon.log'
 peers:
 - 32:155617
 - 37:171871
 - 63:262142
-frames:
-- t: 0.0
-  src: 37:171871
-  dst: 63:262142
-  code: 10E0
-  verb: I
-  payload: 000001C894030167FFFFFFFFFFFF1B0807E4564D492D313557534A3533000000000000000000
-- t: 722.103443
-  src: 32:155617
-  dst: 37:171871
-  code: 10E0
-  verb: RP
-  payload: 000001C895050567FEFFFFFFFFFF010707E4564D442D3135524D533836000000000000000000
-- t: 59736.20183
-  src: 37:171871
-  dst: --:------
-  code: 1FC9
-  verb: I
-  payload: 0022F1969F5F0022F3969F5F6710E0969F5F001FC9969F5F
-- t: 59736.216499
-  src: 32:155617
-  dst: 37:171871
-  code: 1FC9
-  verb: W
-  payload: 0031D9825FE10031DA825FE1
-- t: 59736.223206
-  src: 37:171871
-  dst: 32:155617
-  code: 1FC9
-  verb: I
-  payload: A
-- t: 59737.082541
-  src: 37:171871
-  dst: 63:262142
-  code: 10E0
-  verb: I
-  payload: '0001'
-- t: 59737.185437
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: 00800000FF
-- t: 59737.213545
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 00800000200001
-- t: 59737.354791
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: 00A00002FF
-- t: 59737.52391
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: 00A00001FF
-- t: 59737.694117
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: '0020000004'
-- t: 59737.71145
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 00200000003D0100
-- t: 59737.862815
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: '0020000104'
-- t: 59737.889793
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 00200001003E0200
-- t: 59738.031876
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: '0020000204'
-- t: 59738.055929
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 00200002003F0300
-- t: 59738.202167
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: '0020000304'
-- t: 59738.229579
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: '0020000300400400'
-- t: 59738.542441
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: '0020000504'
-- t: 59738.5588
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: '0020000500420600'
-- t: 59738.711512
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: '0020000604'
-- t: 59738.72908
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: '0020000600430700'
-- t: 59738.881535
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: '0020000704'
-- t: 59738.910752
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 0020000700440800
-- t: 59739.050499
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: 0020000804
-- t: 59739.075898
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 0020000800950900
-- t: 59739.391449
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: 0020000A04
-- t: 59739.41885
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 0020000A004E0B00
-- t: 59739.581738
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 0020000B00520C00
-- t: 59739.729241
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: 0020000C04
-- t: 59739.75629
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 0020000C00540D00
-- t: 59739.899365
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: 0020000D04
-- t: 59739.928099
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 0020000D00750E01
-- t: 59740.068704
-  src: 37:171871
-  dst: 32:155617
-  code: '0001'
-  verb: RQ
-  payload: 0020000E04
-- t: 59740.086514
-  src: 32:155617
-  dst: 37:171871
-  code: '0001'
-  verb: RP
-  payload: 0020000E00000000
+conversations:
+- id: hvac_dis_fan_orcon
+  description: 'Harvested from ramses_rf: bindings/hvac/dis_fan_orcon.log'
+  frames:
+  - t: 0.0
+    src: 37:171871
+    dst: 63:262142
+    code: 10E0
+    verb: I
+    payload: 000001C894030167FFFFFFFFFFFF1B0807E4564D492D313557534A3533000000000000000000
+  - t: 722.103443
+    src: 32:155617
+    dst: 37:171871
+    code: 10E0
+    verb: RP
+    payload: 000001C895050567FEFFFFFFFFFF010707E4564D442D3135524D533836000000000000000000
+  - t: 59736.20183
+    src: 37:171871
+    dst: --:------
+    code: 1FC9
+    verb: I
+    payload: 0022F1969F5F0022F3969F5F6710E0969F5F001FC9969F5F
+  - t: 59736.216499
+    src: 32:155617
+    dst: 37:171871
+    code: 1FC9
+    verb: W
+    payload: 0031D9825FE10031DA825FE1
+  - t: 59736.223206
+    src: 37:171871
+    dst: 32:155617
+    code: 1FC9
+    verb: I
+    payload: A
+  - t: 59737.082541
+    src: 37:171871
+    dst: 63:262142
+    code: 10E0
+    verb: I
+    payload: '0001'
+  - t: 59737.185437
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: 00800000FF
+  - t: 59737.213545
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 00800000200001
+  - t: 59737.354791
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: 00A00002FF
+  - t: 59737.52391
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: 00A00001FF
+  - t: 59737.694117
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: '0020000004'
+  - t: 59737.71145
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 00200000003D0100
+  - t: 59737.862815
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: '0020000104'
+  - t: 59737.889793
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 00200001003E0200
+  - t: 59738.031876
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: '0020000204'
+  - t: 59738.055929
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 00200002003F0300
+  - t: 59738.202167
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: '0020000304'
+  - t: 59738.229579
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: '0020000300400400'
+  - t: 59738.542441
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: '0020000504'
+  - t: 59738.5588
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: '0020000500420600'
+  - t: 59738.711512
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: '0020000604'
+  - t: 59738.72908
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: '0020000600430700'
+  - t: 59738.881535
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: '0020000704'
+  - t: 59738.910752
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 0020000700440800
+  - t: 59739.050499
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: 0020000804
+  - t: 59739.075898
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 0020000800950900
+  - t: 59739.391449
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: 0020000A04
+  - t: 59739.41885
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 0020000A004E0B00
+  - t: 59739.581738
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 0020000B00520C00
+  - t: 59739.729241
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: 0020000C04
+  - t: 59739.75629
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 0020000C00540D00
+  - t: 59739.899365
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: 0020000D04
+  - t: 59739.928099
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 0020000D00750E01
+  - t: 59740.068704
+    src: 37:171871
+    dst: 32:155617
+    code: '0001'
+    verb: RQ
+    payload: 0020000E04
+  - t: 59740.086514
+    src: 32:155617
+    dst: 37:171871
+    code: '0001'
+    verb: RP
+    payload: 0020000E00000000

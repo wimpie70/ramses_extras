@@ -1,12 +1,13 @@
-id: heat_01_IONA_RAI_Prototype
-description: 'Harvested from ramses_rf: fingerprints/heat/01_IONA_RAI_Prototype.log'
 peers:
 - 01:024170
 - 18:000730
-frames:
-- t: 0.0
-  src: 01:024170
-  dst: 18:000730
-  code: 10E0
-  verb: RP
-  payload: 000002FFFF17FFFFFFFFFFFFFFFF0B0507DC494F4E41205241492050726F746F747970650000
+conversations:
+- id: heat_01_IONA_RAI_Prototype
+  description: 'Harvested from ramses_rf: fingerprints/heat/01_IONA_RAI_Prototype.log'
+  frames:
+  - t: 0.0
+    src: 01:024170
+    dst: 18:000730
+    code: 10E0
+    verb: RP
+    payload: 000002FFFF17FFFFFFFFFFFFFFFF0B0507DC494F4E41205241492050726F746F747970650000

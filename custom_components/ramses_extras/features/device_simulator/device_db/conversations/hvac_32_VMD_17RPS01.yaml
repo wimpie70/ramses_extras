@@ -1,19 +1,20 @@
-id: hvac_32_VMD_17RPS01
-description: 'Harvested from ramses_rf: fingerprints/hvac/32_VMD-17RPS01.log'
 peers:
 - 32:022222
 - 32:023459
 - 63:262142
-frames:
-- t: 0.0
-  src: 32:023459
-  dst: 63:262142
-  code: 10E0
-  verb: I
-  payload: 000001C83A0F0866FFFFFFFFFFFFFFFFFFFF564D442D3137525053303100
-- t: 92671131.3519
-  src: 32:022222
-  dst: 63:262142
-  code: 10E0
-  verb: I
-  payload: 000001C83A190F66FFFFFFFFFFFFFFFFFFFF564D442D3137525053303100
+conversations:
+- id: hvac_32_VMD_17RPS01
+  description: 'Harvested from ramses_rf: fingerprints/hvac/32_VMD-17RPS01.log'
+  frames:
+  - t: 0.0
+    src: 32:023459
+    dst: 63:262142
+    code: 10E0
+    verb: I
+    payload: 000001C83A0F0866FFFFFFFFFFFFFFFFFFFF564D442D3137525053303100
+  - t: 92671131.3519
+    src: 32:022222
+    dst: 63:262142
+    code: 10E0
+    verb: I
+    payload: 000001C83A190F66FFFFFFFFFFFFFFFFFFFF564D442D3137525053303100

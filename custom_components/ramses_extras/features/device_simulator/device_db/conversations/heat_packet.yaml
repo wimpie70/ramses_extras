@@ -1,5 +1,3 @@
-id: heat_packet
-description: 'Harvested from ramses_rf: eavesdrop_schema/trv_actuators/packet.log'
 peers:
 - 04:111111
 - 04:222222
@@ -13,76 +11,79 @@ peers:
 - 04:888888
 - 04:919191
 - 04:999999
-frames:
-- t: 0.0
-  src: 04:111111
-  dst: --:------
-  code: '1060'
-  verb: I
-  payload: 01FF01
-- t: 1.001111
-  src: 04:222222
-  dst: --:------
-  code: 12B0
-  verb: I
-  payload: '020000'
-- t: 2.002222
-  src: 04:333333
-  dst: --:------
-  code: '2309'
-  verb: I
-  payload: 03076C
-- t: 3.003333
-  src: 04:444444
-  dst: --:------
-  code: '3150'
-  verb: I
-  payload: 043C
-- t: 65.0
-  src: 04:666666
-  dst: --:------
-  code: '1060'
-  verb: I
-  payload: 00FF01
-- t: 66.001111
-  src: 04:777777
-  dst: --:------
-  code: 12B0
-  verb: I
-  payload: '070000'
-- t: 67.002222
-  src: 04:888888
-  dst: --:------
-  code: '2309'
-  verb: I
-  payload: 08076C
-- t: 68.003333
-  src: 04:999999
-  dst: --:------
-  code: '3150'
-  verb: I
-  payload: 093C
-- t: 125.005555
-  src: 04:616161
-  dst: --:------
-  code: '1060'
-  verb: I
-  payload: 00FF01
-- t: 126.006666
-  src: 04:717171
-  dst: --:------
-  code: 12B0
-  verb: I
-  payload: '070000'
-- t: 127.007777
-  src: 04:818181
-  dst: --:------
-  code: '2309'
-  verb: I
-  payload: 08076C
-- t: 128.008888
-  src: 04:919191
-  dst: --:------
-  code: '3150'
-  verb: I
-  payload: 093C
+conversations:
+- id: heat_packet
+  description: 'Harvested from ramses_rf: eavesdrop_schema/trv_actuators/packet.log'
+  frames:
+  - t: 0.0
+    src: 04:111111
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 01FF01
+  - t: 1.001111
+    src: 04:222222
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '020000'
+  - t: 2.002222
+    src: 04:333333
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 03076C
+  - t: 3.003333
+    src: 04:444444
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 043C
+  - t: 65.0
+    src: 04:666666
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 00FF01
+  - t: 66.001111
+    src: 04:777777
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '070000'
+  - t: 67.002222
+    src: 04:888888
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 08076C
+  - t: 68.003333
+    src: 04:999999
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 093C
+  - t: 125.005555
+    src: 04:616161
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 00FF01
+  - t: 126.006666
+    src: 04:717171
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '070000'
+  - t: 127.007777
+    src: 04:818181
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 08076C
+  - t: 128.008888
+    src: 04:919191
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 093C

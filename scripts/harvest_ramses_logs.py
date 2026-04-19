@@ -295,13 +295,17 @@ def harvest_logs(
                 peers_list = sorted(peers)
 
                 conversation = {
-                    "id": conv_id,
-                    "description": (
-                        f"Harvested from ramses_rf: "
-                        f"{log_file.relative_to(ramses_rf_dir)}"
-                    ),
                     "peers": peers_list,
-                    "frames": frames_dict,
+                    "conversations": [
+                        {
+                            "id": conv_id,
+                            "description": (
+                                f"Harvested from ramses_rf: "
+                                f"{log_file.relative_to(ramses_rf_dir)}"
+                            ),
+                            "frames": frames_dict,
+                        }
+                    ],
                 }
 
                 # Write YAML file
