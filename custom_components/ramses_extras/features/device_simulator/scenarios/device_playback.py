@@ -79,6 +79,43 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         )
     LOGGER.debug("device_map: %s", device_map)
 
+    # Auto-activate devices from device_map if not already active
+    auto_activate = params.get("auto_activate_devices", True)
+    auto_start_emitter = params.get("auto_start_emitter", False)
+    if auto_activate:
+        from ..scenario_engine import ActiveDevice
+
+        engine = context.engine
+        activated_ids: list[str] = []
+        for peer_slug, device_id in device_map.items():
+            if engine.is_device_active(device_id):
+                continue
+            # Infer device type from device ID prefix (e.g., 32: -> FAN, 37: -> FAN)
+            device_type = context.device_db.infer_device_type_from_id(device_id)
+            if not device_type:
+                # Fallback to peer_slug if inference fails
+                device_type = peer_slug
+            device = ActiveDevice(
+                device_id=device_id,
+                slug=device_type,
+                variant_id=None,
+                origin="device_playback",
+            )
+            await engine.async_activate_device(device, start_emitter=auto_start_emitter)
+            activated_ids.append(device_id)
+            LOGGER.info(
+                "Auto-activated device %s as %s (emitter=%s)",
+                device_id,
+                device_type,
+                auto_start_emitter,
+            )
+        if activated_ids:
+            LOGGER.info(
+                "Auto-activated %d devices for playback: %s",
+                len(activated_ids),
+                activated_ids,
+            )
+
     # speed=None → engine uses global autonomous_speed (Devices-tab slider)
     raw_speed = params.get("speed")
     speed: float | None = float(raw_speed) if raw_speed is not None else None

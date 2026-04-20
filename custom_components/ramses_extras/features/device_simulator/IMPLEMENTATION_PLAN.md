@@ -492,7 +492,7 @@ Drop-response mode: just don't reply → ramses_rf times out naturally.
 | --- | --- | --- |
 | `device_unavailability.py` | ✅ | Implements silence/resume timing, uses `ScenarioContext` helpers. |
 | `hvac_device_loss.py` | ✅ | Single-device loss + optional restore; shares the same context helpers. |
-| `device_playback.py` | ✅ | Conversation playback + log import. Accepts `conversation` ref OR pasted `log_content` (see [Log Import Formats](#log-import-formats)). Optional `save_yaml: true` persists the parsed log to `device_db/conversations/imported/<name>.yaml` for reuse. |
+| `device_playback.py` | ✅ | Conversation playback + log import. Accepts `conversation` ref OR pasted `log_content` (see [Log Import Formats](#log-import-formats)). Optional `save_yaml: true` persists the parsed log to `device_db/conversations/imported/<name>.yaml` for reuse. **Auto-activates devices from device_map** (controlled by `auto_activate_devices` param, default true). **Controls emitter startup** via `auto_start_emitter` param (default false). |
 | `device_suite.py` | ⚠️ stub | Accepts slug list/duration; will later activate emitters + conversations. |
 | `discovery_test.py` | ⚠️ stub | Placeholder for 10E0 burst; returns success immediately. |
 | `timeout_test.py` | ⚠️ stub | Captures delay parameter; future work will hook into response suppression. |
@@ -521,6 +521,43 @@ Parser behaviour:
 - Collects peer device IDs (excluding `--:------`) for the generated conversation.
 
 When `save_yaml=true` is passed (service/WS) or checked in the UI, the parsed conversation is written to `device_db/conversations/imported/<name>.yaml` in the same layer-3 schema as built-in conversations, so imported logs become reusable across restarts and can be renamed, edited, or grouped like any other conversation.
+
+#### device_playback scenario parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `conversation` | string | required | Conversation ID to play (or legacy `log_file`) |
+| `log_content` | string | null | Pasted ramses.log content to import and play |
+| `name` | string | "imported_log" | Name for imported log when using `log_content` |
+| `save_yaml` | boolean | true | Persist imported conversation to YAML for reuse |
+| `device_map` | dict | auto-inferred | Map peer slugs to device IDs (e.g., `{"FAN": "32:150000", "REM": "37:170000"}`) |
+| `device_map_overrides` | dict | {} | Override specific peer mappings |
+| `speed` | float | null | Playback speed multiplier (null = use global autonomous_speed) |
+| `loops` | int | 1 | Number of times to repeat the conversation |
+| `inter_message_delay` | float | null | Fixed delay between messages (overrides conversation timing) |
+| `skip_verbs` | list | null | Verbs to skip (e.g., `["RP"]` to skip recorded responses) |
+| `skip_answers` | boolean | false | Shorthand for `skip_verbs: ["RP"]` - let auto-answer respond instead |
+| `auto_activate_devices` | boolean | true | Automatically activate devices from device_map before playback |
+| `auto_start_emitter` | boolean | false | Start periodic emitter for auto-activated devices |
+
+**Playback behavior with auto-answer**:
+
+When `skip_answers=true` (or `skip_verbs=["RP"]`), the simulator skips recorded RP frames from the conversation and instead relies on the **auto-answer** toggle to generate responses dynamically. This allows testing the simulator's response engine with real RQ frames while using device database payloads for responses.
+
+**Device activation flow**:
+
+1. If `auto_activate_devices=true` (default), the scenario iterates through the `device_map`
+2. For each device not already active in the simulator:
+   - Device type is inferred from device ID prefix (e.g., `32:` → FAN, `37:` → FAN)
+   - Device is activated via `async_activate_device`
+   - If `auto_start_emitter=false` (default), the device is activated **without** starting its periodic emitter
+   - If `auto_start_emitter=true`, the device's periodic emitter task is started
+3. Activated devices can respond to RQ frames via auto-answer
+4. After playback completes, devices remain active (use Devices tab to silence them)
+
+**answer_unknown_devices toggle**:
+
+When enabled, the simulator will respond to RQ frames for devices that are not in its active device list. The device type is inferred from the device ID prefix using the device database's `infer_device_type_from_id` method. This is useful for playback scenarios where devices are discovered dynamically.
 
 ### Reworking autonomous emissions (new plan)
 

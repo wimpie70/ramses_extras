@@ -91,15 +91,9 @@ Shouldn't we filter this ? we know from our database what belongs to what
 test: ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
 
-### scenarios: autonomous emissions -> let devices emit messages autonomously,
-from a list of possible messages, eg, change temperature, etc....
-we should be able to import (edit field and/or pick from (dedicated) folder) ramses.log style files
-
 
 --- next to do:
 
-### device_playback == conversation playback + Import msg logs and playback
-- save imported msg logs and persist them after reloads
 - refactor device-simulator-card in smaller files:
   - tab files:
     - with sub-components

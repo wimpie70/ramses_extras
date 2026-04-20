@@ -123,6 +123,9 @@ class ConfigProfileStore:
         "heat_only": "Heat devices only (CTL, TRV, DHW)",
         "mixed": "Mixed heat + HVAC environment",
         "fresh_start": "Clean slate, re-discover all devices",
+        "fresh_start_allow_unknown_devices": (
+            "Clean slate with unknown device support (enforce_known_list disabled)"
+        ),
     }
 
     def __init__(self, config_dir: Path | None = None) -> None:
@@ -316,6 +319,19 @@ class ConfigProfileStore:
             device_configs={
                 "_known_list": _HGI_ENTRY,
                 "_enforce_known_list": {"enabled": True},
+            },
+            remove_database=True,
+        )
+
+        self._profiles["fresh_start_allow_unknown_devices"] = SystemConfigProfile(
+            name="fresh_start_allow_unknown_devices",
+            description=(
+                "Clean slate with unknown device support (enforce_known_list disabled)"
+            ),
+            timeout_scale=1.0,
+            device_configs={
+                "_known_list": _HGI_ENTRY,
+                "_enforce_known_list": {"enabled": False},
             },
             remove_database=True,
         )
