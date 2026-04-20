@@ -86,13 +86,14 @@ Log errors if not configured.
 ### it seems like we are sending hvac msgs to heat devices, and heat msgs to hvac devices.
 Shouldn't we filter this ? we know from our database what belongs to what
 
-### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
-
 test: ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
 
 
 --- next to do:
+
+### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
+
 
 - refactor device-simulator-card in smaller files:
   - tab files:

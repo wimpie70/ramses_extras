@@ -464,7 +464,7 @@ class ScenarioEngine:
                 self._periodic_emitter(device, periodic)
             )
 
-        if device.slug == "FAN":
+        if device.slug == "FAN" and emit_startup_burst:
             await self._prime_fan_params(device)
 
     async def async_silence_device(self, device_id: str) -> None:

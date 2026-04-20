@@ -101,7 +101,9 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
                 variant_id=None,
                 origin="device_playback",
             )
-            await engine.async_activate_device(device, start_emitter=auto_start_emitter)
+            await engine.async_activate_device(
+                device, start_emitter=auto_start_emitter, emit_startup_burst=False
+            )
             activated_ids.append(device_id)
             LOGGER.info(
                 "Auto-activated device %s as %s (emitter=%s)",
