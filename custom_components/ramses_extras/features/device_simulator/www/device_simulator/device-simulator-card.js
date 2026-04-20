@@ -8,6 +8,7 @@ import { RamsesBaseCard } from '../../helpers/ramses-base-card.js';
 const SCENARIO_MANUAL_DEVICE = "autonomous_emissions";
 const SCENARIO_PROFILE_EMISSIONS = "profile_emissions";
 const SCENARIO_LOAD_PROFILE = "load_profile_yaml";
+const SCENARIO_DEVICE_PLAYBACK = "device_playback";
 const LOADER_DRAFT_KEY = "ramsesExtras.deviceSimulator.loaderDraft";
 const MESSAGE_HISTORY_LIMIT = 80;
 
@@ -133,6 +134,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._profilePreloadSchema = {};
     this._profileResetCache = {};
     this._profileSkipHydrate = {};
+    this._profileClearLog = {};
     this._profileNotice = null;
     this._scenarioParams = {};
     this._deviceSubscription = null;
@@ -384,6 +386,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._devices = mergedDevices;
       this._scenarioRegistry = result.scenario_registry || {};
       this._scenarioSchemas = result.scenario_param_schemas || {};
+      // eslint-disable-next-line no-console
+      console.debug(
+        "DeviceSimulatorCard: scenario schemas",
+        Object.keys(this._scenarioSchemas),
+        this._scenarioSchemas
+      );
       this._runningScenarios = result.running_scenarios || [];
       this._runningMetadata = result.running_metadata || {};
       this._autoAnswer = result.auto_answer !== false;
@@ -491,11 +499,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   async _startSavedPlayback(identifier) {
     if (!this._hass || !identifier) return;
-    const params = this._scenarioParams?.device_playback || {};
+    const params = this._scenarioParams?.[SCENARIO_DEVICE_PLAYBACK] || {};
     const loops = Number(params.loops) || 1;
     const payload = {
       type: "ramses_extras/device_simulator/start_scenario",
-      scenario: "device_playback",
+      scenario: SCENARIO_DEVICE_PLAYBACK,
       params: {
         conversation: identifier,
         loops,
@@ -587,6 +595,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       const params = this._scenarioParams?.[scenarioId];
       if (params && Object.keys(params).length) {
         payload.params = this._prepareScenarioParams(scenarioId);
+        // Extract clear_message_log from params and send as top-level parameter
+        if (payload.params.clear_message_log !== undefined) {
+          payload.clear_message_log = payload.params.clear_message_log;
+          delete payload.params.clear_message_log;
+        }
       }
     }
     try {
@@ -691,6 +704,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const preloadSchema = this._profilePreloadSchema[name] ?? true;
     const resetCache = this._profileResetCache[name] ?? false;
     const skipHydrate = this._profileSkipHydrate[name] ?? false;
+    const clearLog = this._profileClearLog[name] ?? false;
     const result = await this._hass.callWS({
       type: "ramses_extras/device_simulator/load_profile",
       profile: name,
@@ -698,6 +712,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       preload_schema: preloadSchema,
       reset_rf_cache: resetCache,
       remove_database: skipHydrate,
+      clear_message_log: clearLog,
     });
     this._activeProfile = name;
     this._scenarioState = "idle";
@@ -736,12 +751,18 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   async _startScenario(scenarioId) {
     const params = this._prepareScenarioParams(scenarioId);
+    const payload = {
+      type: "ramses_extras/device_simulator/start_scenario",
+      scenario: scenarioId,
+      params,
+    };
+    // Extract clear_message_log from params and send as top-level parameter
+    if (params.clear_message_log !== undefined) {
+      payload.clear_message_log = params.clear_message_log;
+      delete params.clear_message_log;
+    }
     try {
-      await this._hass.callWS({
-        type: "ramses_extras/device_simulator/start_scenario",
-        scenario: scenarioId,
-        params,
-      });
+      await this._hass.callWS(payload);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("DeviceSimulatorCard: failed to start scenario", error);
@@ -1122,6 +1143,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       });
     });
 
+    root.querySelectorAll("[data-action='clear-log-check']").forEach(chk => {
+      chk.addEventListener("change", (e) => {
+        this._profileClearLog = { ...this._profileClearLog, [chk.dataset.profile]: e.target.checked };
+      });
+    });
+
     root.querySelectorAll("[data-action='scenario-param']").forEach((input) => {
       const handler = () => this._handleScenarioParamInput(input);
       const dataType = (input.dataset.type || input.type || "text").toLowerCase();
@@ -1377,6 +1404,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           const preloadChecked = (this._profilePreloadSchema[p.name] ?? true) ? " checked" : "";
           const resetCacheChecked = (this._profileResetCache[p.name] ?? false) ? " checked" : "";
           const skipHydrateChecked = (this._profileSkipHydrate[p.name] ?? false) ? " checked" : "";
+          const clearLogChecked = (this._profileClearLog[p.name] ?? false) ? " checked" : "";
           const deleteButton = p.can_delete
             ? `<button class="btn btn-secondary" data-action="delete-profile" data-profile="${p.name}" style="margin-left:auto;">Delete</button>`
             : "";
@@ -1410,6 +1438,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
                   <input type="checkbox" data-action="skip-hydrate-check" data-profile="${p.name}"${skipHydrateChecked} />
                   Remove database file
                 </label>
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                  <input type="checkbox" data-action="clear-log-check" data-profile="${p.name}"${clearLogChecked} />
+                  Clear message log
+                </label>
                 <button class="btn btn-primary" data-action="load-profile" data-profile="${p.name}">Load</button>
               </div>
             </div>`;
@@ -1437,6 +1469,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const preloadField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "preload_schema");
     const resetField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "reset_rf_cache");
     const skipHydrateField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "remove_database");
+    const clearLogField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "clear_message_log");
 
     const profileName = (params.profile_name ?? this._activeProfile ?? nameField?.default ?? "").trim();
     const yamlValue = params.profile_yaml ?? this._activeProfileYaml ?? "";
@@ -1445,6 +1478,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const preloadValue = params.preload_schema ?? preloadField?.default ?? true;
     const resetValue = params.reset_rf_cache ?? resetField?.default ?? false;
     const skipHydrateValue = params.remove_database ?? skipHydrateField?.default ?? false;
+    const clearLogValue = params.clear_message_log ?? clearLogField?.default ?? false;
 
     const profileNameInput = `
       <div class="scenario-field">
@@ -1482,6 +1516,17 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         ${skipHydrateField?.label || "Remove database file"}
       </label>`;
 
+    const clearLogToggle = clearLogField
+      ? `
+        <label style="font-size: 0.8em; display:flex; align-items:center; gap:4px; cursor:pointer;">
+          <input type="checkbox" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="clear_message_log" data-type="checkbox" ${clearLogValue ? "checked" : ""} />
+          ${clearLogField.label || "Clear message log"}
+        </label>
+        <div style="font-size:0.7em; color:var(--secondary-text-color); margin-top:-4px;">
+          ${clearLogField.description || "Clear the device simulator UI log before applying the profile."}
+        </div>`
+      : "";
+
     return `
       <div class="card" style="margin-bottom: 16px;" data-card="profile-loader">
         <div style="display:flex; justify-content: space-between; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -1496,11 +1541,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         ${this._buildProfileDevicesStatus()}
         ${profileNameInput}
         ${yamlInput}
-        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <div style="display:flex; flex-direction:column; gap:6px; font-size:0.8em;">
           ${reloadToggle}
           ${preloadToggle}
           ${resetToggle}
           ${skipHydrateToggle}
+          ${clearLogToggle}
         </div>
         <div style="margin-top: 8px; display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_LOAD_PROFILE}" ${!hasYaml || conflicts.length ? "disabled" : ""}>Load</button>
@@ -1823,11 +1869,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   _buildPlaybackConversationCard() {
     const playbacks = this._savedPlaybacks || [];
-    const runMeta = (this._runningMetadata || {})["device_playback"] || null;
+    const runMeta = (this._runningMetadata || {})[SCENARIO_DEVICE_PLAYBACK] || null;
     const isRunning = Boolean(runMeta);
     const isPaused = Boolean(runMeta && runMeta.paused);
     const selection = this._playbackSelection || (playbacks[0] && playbacks[0].id) || "";
-    const params = this._scenarioParams?.device_playback || {};
+    const params = this._scenarioParams?.[SCENARIO_DEVICE_PLAYBACK] || {};
     const loopsValue = params.loops ?? 1;
 
     const optionList = playbacks.length
@@ -1863,7 +1909,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
             <span>Loops</span>
             <input type="number" min="1" step="1" value="${loopsValue}"
                    data-action="scenario-param"
-                   data-scenario-id="device_playback"
+                   data-scenario-id="${SCENARIO_DEVICE_PLAYBACK}"
                    data-field="loops"
                    data-type="number" />
           </label>
@@ -1884,9 +1930,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
           <button class="btn btn-primary" data-action="start-saved-playback" data-identifier="${selection}"${playDisabled}>▶ Play</button>
-          <button class="btn btn-secondary" data-action="pause-scenario" data-scenario-id="device_playback"${pauseDisabled}>⏸ Pause</button>
-          <button class="btn btn-secondary" data-action="resume-scenario" data-scenario-id="device_playback"${resumeDisabled}>▶ Resume</button>
-          <button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="device_playback"${stopDisabled}>⏹ Stop</button>
+          <button class="btn btn-secondary" data-action="pause-scenario" data-scenario-id="${SCENARIO_DEVICE_PLAYBACK}"${pauseDisabled}>⏸ Pause</button>
+          <button class="btn btn-secondary" data-action="resume-scenario" data-scenario-id="${SCENARIO_DEVICE_PLAYBACK}"${resumeDisabled}>▶ Resume</button>
+          <button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${SCENARIO_DEVICE_PLAYBACK}"${stopDisabled}>⏹ Stop</button>
         </div>
       </div>`;
   }
@@ -2170,7 +2216,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         && id !== SCENARIO_LOAD_PROFILE
         && id !== SCENARIO_PROFILE_EMISSIONS
         && id !== "device_suite"
-        && id !== "device_playback"
+        && id !== SCENARIO_DEVICE_PLAYBACK
       )
       .map((id) => {
         const meta = registry[id];

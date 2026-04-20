@@ -71,7 +71,7 @@ const _ensureOptionsUpdatesSubscribed = (hass) => {
       .catch(() => {});
 
     // Subscribe to card refresh event for hard reload on HA restart
-    const refreshUnsubPromise = this._hass.connection.subscribeMessage(() => {
+    const refreshUnsubPromise = hass.connection.subscribeMessage(() => {
       logger.info('ramses_extras: received card refresh signal, reloading page');
       window.location.reload();
     }, { type: 'ramses_extras_card_refresh' });

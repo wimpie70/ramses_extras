@@ -89,6 +89,10 @@ Shouldn't we filter this ? we know from our database what belongs to what
 test: ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
 
+### add colors to the msg logs in devices. different colors for: sent by sim, sent by rf, auto answered, auto emitted
+
+need a page reload to show the new device logs (only the first play, after that the device logs are updated, (why?))
+
 
 --- next to do:
 
@@ -113,3 +117,31 @@ _cc PR:
 
 ## Testing
 - source ~/venvs/_cc/bin/activate && cd /home/willem/dev/ramses_cc && pytest tests/tests_new/test_services.py -k known_list
+
+
+----
+
+
+ 🧹 DeviceSimulatorCard: Cleaning up component logger.js:38:13
+13:51:25.614 DeviceSimulatorCard: Calling get_cards_enabled to confirm backend ready logger.js:38:13
+13:51:25.614 [ramses_extras] WS →
+Object { type: "ramses_extras/default/get_cards_enabled" }
+logger.js:38:13
+13:51:25.617 🔗 DeviceSimulatorCard: Component connected to DOM logger.js:38:13
+13:51:25.632 Uncaught (in promise)
+Object { code: "unknown_command", message: "Unknown command." }
+​
+code: "unknown_command"
+​
+message: "Unknown command."
+​
+<prototype>: Object { … }
+
+13:51:25.632 Uncaught (in promise)
+Object { code: "unknown_command", message: "Unknown command." }
+
+13:51:25.632 Uncaught (in promise)
+Object { code: "not_found", message: "Subscription not found." }
+
+13:51:25.637 [ramses_extras] WS ✕ ramses_extras/default/get_cards_enabled (not_available)
+Object { code: "unknown_command", message: "Unknown command." }

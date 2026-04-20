@@ -85,6 +85,16 @@ SCENARIO_LOAD_PROFILE_YAML = "load_profile_yaml"
 SCENARIO_AUTO_ANSWER = "auto_answer"  # Global RQ→RP response toggle
 
 # Parameter schemas for scenario configuration UI
+COMMON_SCENARIO_PARAMS: list[dict[str, Any]] = [
+    {
+        "key": "clear_message_log",
+        "label": "Clear message log",
+        "type": "checkbox",
+        "default": False,
+        "description": "Clear the in-memory message log before starting the scenario",
+    },
+]
+
 SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
     SCENARIO_MANUAL_DEVICE_INJECTION: [
         {
@@ -111,7 +121,8 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "type": "csv",
             "default": "1FC9",
         },
-    ],
+    ]
+    + COMMON_SCENARIO_PARAMS,
     SCENARIO_DEVICE_PLAYBACK: [
         # Save-import form: paste a ramses.log and give it a name. Playback
         # itself is driven from the Devices tab (dropdown + play/pause/stop)
@@ -128,8 +139,9 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "type": "text",
             "placeholder": "my_playback",
         },
-    ],
-    SCENARIO_DEVICE_UNAVAILABILITY: [
+    ]
+    + COMMON_SCENARIO_PARAMS,
+    SCENARIO_DEVICE_UNAVAILABILITY: [  # type: ignore[dict-item]
         {
             "key": "device_id",
             "label": "Specific device ID",
@@ -156,7 +168,8 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "default": 60.0,
             "min": 0,
         },
-    ],
+    ]
+    + COMMON_SCENARIO_PARAMS,
     SCENARIO_HVAC_DEVICE_LOSS: [
         {
             "key": "device_id",
@@ -177,7 +190,8 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "type": "number",
             "min": 0,
         },
-    ],
+    ]
+    + COMMON_SCENARIO_PARAMS,
     SCENARIO_DISCOVERY_TEST: [
         {
             "key": "slug",
@@ -221,7 +235,8 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "type": "checkbox",
             "default": True,
         },
-    ],
+    ]
+    + COMMON_SCENARIO_PARAMS,  # type: ignore[dict-item]
     SCENARIO_TIMEOUT_TEST: [
         {
             "key": "device_id",
@@ -255,7 +270,8 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "type": "checkbox",
             "default": False,
         },
-    ],
+    ]
+    + COMMON_SCENARIO_PARAMS,  # type: ignore[dict-item]
     SCENARIO_FLOODING_TEST: [
         {
             "key": "slug",
@@ -296,7 +312,8 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "default": 0,
             "min": 0,
         },
-    ],
+    ]
+    + COMMON_SCENARIO_PARAMS,  # type: ignore[dict-item]
     SCENARIO_PROFILE_EMISSIONS: [],
     SCENARIO_LOAD_PROFILE_YAML: [
         {
@@ -348,7 +365,8 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "default": False,
             "helper": "Removes the ramses database file for a clean start.",
         },
-    ],
+    ]
+    + COMMON_SCENARIO_PARAMS,  # type: ignore[dict-item]
 }
 
 # Scenario registry: metadata for each scenario type.

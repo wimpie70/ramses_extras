@@ -812,6 +812,7 @@ async def ws_activate_profile_device(
         vol.Optional("preload_schema", default=True): bool,
         vol.Optional("reset_rf_cache", default=False): bool,
         vol.Optional("remove_database", default=False): bool,
+        vol.Optional("clear_message_log", default=False): bool,
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -835,7 +836,14 @@ async def ws_load_profile(
         )
         return
 
+    clear_log = msg.get("clear_message_log", False)
+
     try:
+        if clear_log:
+            engine = _get_engine(hass)
+            if engine:
+                engine.message_log.clear()
+
         # Use profile's remove_database setting, but allow override from UI
         remove_database = msg.get("remove_database")
         if remove_database is None:
@@ -1086,6 +1094,7 @@ async def ws_resume_scenario(
         vol.Required("type"): "ramses_extras/device_simulator/start_scenario",
         vol.Required("scenario"): str,
         vol.Optional("params", default={}): dict,
+        vol.Optional("clear_message_log", default=False): bool,
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -1103,6 +1112,9 @@ async def ws_start_scenario(
 
     scenario_id = msg["scenario"]
     params = msg.get("params", {})
+
+    if msg.get("clear_message_log"):
+        engine.message_log.clear()
 
     if scenario_id == SCENARIO_AUTO_ANSWER:
         connection.send_error(

@@ -76,6 +76,7 @@ def build_profile_from_payload(
             "_enforce_known_list",
             "timeout_scale",
             "description",
+            "clear_message_log",
         }:
             continue
         if isinstance(key, str) and ":" in key:
@@ -91,11 +92,14 @@ def build_profile_from_payload(
         description or payload.get("description") or "Imported profile"
     )
 
+    clear_message_log = bool(payload.get("clear_message_log", False))
+
     return SystemConfigProfile(
         name=name,
         description=profile_description,
         timeout_scale=timeout_scale,
         device_configs=device_configs,
+        clear_message_log=clear_message_log,
     )
 
 
@@ -142,6 +146,9 @@ def profile_to_yaml(profile: SystemConfigProfile) -> str:
     if profile.timeout_scale not in (None, 1.0):
         payload["timeout_scale"] = profile.timeout_scale
 
+    if profile.clear_message_log:
+        payload["clear_message_log"] = True
+
     yaml_text = str(yaml.safe_dump(payload, sort_keys=False))
     profile.source_yaml = yaml_text
     return yaml_text
@@ -187,6 +194,10 @@ async def async_apply_profile(
     if engine:
         await engine.async_stop_all()
         actions.append("stopped_devices")
+
+    if profile.clear_message_log and engine:
+        engine.message_log.clear()
+        actions.append("cleared_message_log")
 
     known_list = profile.device_configs.get("_known_list")
     schema = profile.device_configs.get("_schema")

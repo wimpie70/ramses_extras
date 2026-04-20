@@ -88,6 +88,8 @@ class SystemConfigProfile:
     :param device_configs: Per-device configuration overrides
     :param scenario_hooks: Actions to take at scenario stages
     :param remove_database: Remove database file on profile activation
+    :param clear_message_log: Clear in-memory message log ring buffer on profile
+                             activation
     """
 
     name: str
@@ -98,6 +100,7 @@ class SystemConfigProfile:
     scenario_hooks: dict[str, list[str]] = field(default_factory=dict)
     source_yaml: str | None = None
     remove_database: bool = False
+    clear_message_log: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert profile to dictionary."""
@@ -321,6 +324,7 @@ class ConfigProfileStore:
                 "_enforce_known_list": {"enabled": True},
             },
             remove_database=True,
+            clear_message_log=True,
         )
 
         self._profiles["fresh_start_allow_unknown_devices"] = SystemConfigProfile(
@@ -334,6 +338,7 @@ class ConfigProfileStore:
                 "_enforce_known_list": {"enabled": False},
             },
             remove_database=True,
+            clear_message_log=True,
         )
 
         LOGGER.debug(
