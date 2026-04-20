@@ -64,6 +64,10 @@ A developer tool that simulates RAMSES devices by sitting at the **communication
 - Parser functions and validation regexes per `(code, verb)`
 - Used to generate valid synthetic payloads when no real example is available
 
+> **10E0 fallback note (Apr 20, 2026)**
+>
+> Discovery polls via `DeviceInfo._setup_discovery_cmds()` hit every simulator slug once per day with `RQ 10E0 00`. The parser at `ramses_tx/parsers.py::parser_10e0()` already accepts a payload of `00` (it returns an empty dict for HVAC devices that do this in the wild). Until we curate brand/model-specific `10E0` payloads per fingerprint, every device type will advertise a minimal response — just `payload: 00` — to keep discovery moving. Later enrichment can lift real signatures/descriptions from `ramses_tx/fingerprints.py` so `parser_10e0()` surfaces meaningful `_info` data for the UI.
+
 ### Source 5: User-submitted packet logs
 
 - Additional `.log` / `.txt` files for reproducing specific user bugs

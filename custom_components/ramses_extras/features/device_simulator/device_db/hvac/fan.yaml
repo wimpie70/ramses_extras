@@ -19,4 +19,11 @@ responses:
   payloads:
   - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
   notes: Derived from hvac_discover_rem_fan_co2 conversation
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00'
+  notes: Minimal fallback payload until per-variant device_info data is curated
 conversation_refs: []

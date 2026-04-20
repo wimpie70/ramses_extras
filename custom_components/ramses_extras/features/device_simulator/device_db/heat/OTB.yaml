@@ -41,3 +41,11 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
+responses:
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00'
+  notes: Minimal fallback payload until per-variant device_info data is curated

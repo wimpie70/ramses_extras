@@ -25,4 +25,11 @@ responses:
   payloads:
   - 05060E
   notes: Extracted from harvested conversations
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00'
+  notes: Minimal fallback payload until per-variant device_info data is curated
 conversation_refs: []

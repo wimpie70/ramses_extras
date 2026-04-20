@@ -72,3 +72,15 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads: []
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00'
+  notes: Minimal fallback payload until per-variant device_info data is curated
+- code: 31DA
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads: []
