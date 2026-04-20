@@ -25,4 +25,25 @@ responses:
   payloads:
   - '00'
   notes: Minimal fallback payload until per-variant device_info data is curated
+- code: 22F1
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 000307
+  notes: Stub fan_mode response (orcon scheme placeholder)
+- code: 22F3
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00023C03040000
+  notes: Stub boost-timer response matching sample capture
+- code: 22F8
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 000000
+  notes: Stub flow/air-quality response until discovery data exists
 conversation_refs: []
