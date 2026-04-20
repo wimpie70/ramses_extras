@@ -70,7 +70,7 @@ repos:
           - --skip="./.*,*.csv,*.json,*.ambr,docs/notepad.txt"
           - --quiet-level=2
         exclude_types: [csv, json, html]
-        exclude: ^(docs/notepad\.txt|tests/.+/fixtures|tests/.+/snapshots)/
+        exclude: ^(docs/notepad\.txt|tests/.+/fixtures|tests/.+/snapshots)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

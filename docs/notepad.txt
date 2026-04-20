@@ -89,7 +89,47 @@ Shouldn't we filter this ? we know from our database what belongs to what
 test: ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
 
-### audit discovery auto-answer coverage using src/ramses_rf/device/* to ensure every discovery RQ (22F1, 10E0, 2411, etc.) has a matching simulator response
+---
+### audit discovery auto-answer coverage using src/ramses_rf/device/* to
+ ensure every discovery RQ (22F1, 10E0, 2411, etc.) has a matching simulator response
+Auto Answer needs to cover every discovery poll listed in src/ramses_rf/device/*, especially the ones scheduled in DeviceInfo._setup_discovery_cmds() and HvacVentilator._setup_discovery_cmds():
+
+Shared device info – Code._10E0 is polled for every device type via DeviceInfo @ramses_rf/src/ramses_rf/device/base.py#298-324. Our simulator only replies for FAN/REM/CO2; any other device (e.g., HUM, DIS) currently times out.
+FAN/HVAC discovery codes – the ventilator class schedules these RQs @ramses_rf/src/ramses_rf/device/hvac.py#739-775:
+22F1 (fan mode), 22F3 (timers), 2411 (params), plus the secondary list: 2210, 22E0, 22E5, 22E9, 22F2, 22F4, 22F8, 313E, 3222.
+Auto Answer only has responses for 31DA (FAN/REM) and 31E0 (CO2). Everything above still lacks simulator payloads.
+Other HVAC actors – Remotes (22F1/22F3), displays, humidity sensors (12A0), etc., will also issue discovery RQs (see binding tables @ramses_rf/src/ramses_rf/device/hvac.py#1364-1438). Missing responses there prevent them from completing their own discovery loops.
+Heat-domain discovery – the heat devices add 0008, 2E04, various 000x/2309/000C, OT codes, etc. via DeviceHeat subclasses @ramses_rf/src/ramses_rf/device/heat.py (multiple self.discovery.add_cmd entries). If we simulate any heat devices those RQs also need replies.
+Next steps I’d suggest:
+
+Extract the list of discovery RQs per device type (e.g., by grepping self.discovery.add_cmd in device/heat.py and device/hvac.py) and turn it into a checklist of required simulator responses per slug.
+For each slug (FAN, REM, CO2, HUM, DIS, etc.), extend the relevant YAML under device_db/hvac/ (and heat/ when needed) with responses: entries for every code above, using payloads from captured logs or derived constants.
+Ensure Auto Answer is on when testing, but keep “Skip recorded answers” enabled so we verify the new ResponseEntries instead of the playback data.
+
+
+### Discovery RQ inventory + implications (2026-04-20)
+
+- **All devices (DeviceInfo base)**: `RQ 10E0 00` every 24h. Every simulator slug must answer `_10E0` to avoid timeouts.
+- **Filter change sensor (FILT)**: `RQ 10D0 00` daily. Need payload covering `remaining_days`/`remaining_percent`.
+- **Ventilator (FAN)**: `22F1`, `2411/00003F`, `2210`, `22E0`, `22E5`, `22E9`, `22F2`, `22F4`, `22F8`, `313E`, `3222`. Only 31DA exists today; add responses for these discovery polls.
+- **Remote/Display (REM/DIS)**: Expect queries for `22F1`, `22F3`, `22F8` during binding/discovery; supply payloads even though not explicitly scheduled.
+- **CO2 sensor (CO2)**: Already handles `31E0`, but binding also mentions `1298`/`2E10`; confirm simulator answers if FAN/CTL probes them.
+- **Humidity sensor (HUM)**: FAN queries `_12A0` lists (indoor/outdoor RH & temps); add canned payload.
+- **Controllers (CTL/PRG)**: `RQ 2E04 00` hourly to fetch schema/system mode – simulator CTL must answer.
+- **UFH controller (UFC)**: `0005`, `000C` per circuit, plus zone config/setpoint helpers (`000A`/`2309`). Need consistent responses per UFH index.
+- **Relay-demand parents (Actuator base/BDR)**: `_0008` polling every 15 min – add default relay demand sample.
+- **BDR switch (BDR)**: `1100` (TPI params) every 6 h and `3EF1 00` status every 1–5 min. Docs say they also RP to `0016`, `1FC9`, `0008`; plan responses accordingly.
+- **Opentherm bridge (OTB)**: native OT polls via `get_opentherm_data` + fallbacks to `3EF0`/`2401`. Need stub OT payloads (IDs `3220/3EF0`).
+
+Implications for simulator work:
+1. Seed `_10E0` responses for **every** slug under `device_db/*` before tackling per-device codes.
+2. Extend `device_db/hvac/fan.yaml` (and REM/DIS/HUM) with payloads for the eleven FAN-specific discovery polls plus remote codes.
+3. Audit sensor YAMLs (CO2/HUM/DIS) for `_12A0`, `_1298`, `_2E10`, etc., ensuring Auto Answer has replies.
+4. Mirror heat-domain discovery (`2E04`, `_0008`, `_0005/_000C/_000A/_2309`, `_1100`, `_3EF1`, OT IDs) in `device_db/heat/*` so simulated CH hardware survives schema/params discovery.
+
+> NOTE: leave the OT/OTB abbreviations in this notepad as-is; codespell can ignore `/docs/notepad.txt` (otherwise `prek run -a` fails on “OT”).
+
+
 
 --- next to do:
 
@@ -114,31 +154,3 @@ _cc PR:
 
 ## Testing
 - source ~/venvs/_cc/bin/activate && cd /home/willem/dev/ramses_cc && pytest tests/tests_new/test_services.py -k known_list
-
-
-----
-
-
- 🧹 DeviceSimulatorCard: Cleaning up component logger.js:38:13
-13:51:25.614 DeviceSimulatorCard: Calling get_cards_enabled to confirm backend ready logger.js:38:13
-13:51:25.614 [ramses_extras] WS →
-Object { type: "ramses_extras/default/get_cards_enabled" }
-logger.js:38:13
-13:51:25.617 🔗 DeviceSimulatorCard: Component connected to DOM logger.js:38:13
-13:51:25.632 Uncaught (in promise)
-Object { code: "unknown_command", message: "Unknown command." }
-​
-code: "unknown_command"
-​
-message: "Unknown command."
-​
-<prototype>: Object { … }
-
-13:51:25.632 Uncaught (in promise)
-Object { code: "unknown_command", message: "Unknown command." }
-
-13:51:25.632 Uncaught (in promise)
-Object { code: "not_found", message: "Subscription not found." }
-
-13:51:25.637 [ramses_extras] WS ✕ ramses_extras/default/get_cards_enabled (not_available)
-Object { code: "unknown_command", message: "Unknown command." }
