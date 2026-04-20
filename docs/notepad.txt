@@ -109,6 +109,13 @@ Extract the list of discovery RQs per device type (e.g., by grepping self.discov
 For each slug (FAN, REM, CO2, HUM, DIS, etc.), extend the relevant YAML under device_db/hvac/ (and heat/ when needed) with responses: entries for every code above, using payloads from captured logs or derived constants.
 Ensure Auto Answer is on when testing, but keep “Skip recorded answers” enabled so we verify the new ResponseEntries instead of the playback data.
 
+Recent coverage work:
+- FAN: 2411 catalog pulled from `code_2411_wip.log`, so every param ID 31/3D–95 now has at least one payload.
+- REM/DIS: 22F1/22F3/22F8 replies plus a legacy 2411 “unsupported” RP keep 4-way switches and wall displays from timing out during discovery.
+- CO2/HUM: added 31DA telemetry frames (and a fallback 2411 RP for CO2) so sensors answer the HRU’s periodic polls.
+- RFS gateway: 31D9 + 31DA responses derived from `regression_packets_sorted.txt` allow the Spider gateway slug to stay bound.
+Next up: replicate the same exercise for the remaining HVAC slugs (HGI bridge variants) and then move on to the heat-domain YAMLs (BDR/UFC/CTL/etc.).
+
 
 > NOTE: leave the OT/OTB abbreviations in this notepad as-is; codespell can ignore `/docs/notepad.txt` (otherwise `prek run -a` fails on “OT”).
 

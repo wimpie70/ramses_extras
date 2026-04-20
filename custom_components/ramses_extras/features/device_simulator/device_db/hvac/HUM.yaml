@@ -41,7 +41,9 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+  notes: Taken from hvac_discover_rem_fan_co2 conversation (REM/HUM telemetry)
 - code: 10E0
   rq_verb: RQ
   rp_verb: RP

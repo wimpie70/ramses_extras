@@ -66,12 +66,16 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 2100FF0000000000000000000000000000
+  notes: Sample Spider gateway speed frame from regression_packets_sorted.txt
 - code: 31DA
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+  notes: Shared HVAC telemetry block reused for discovery replies
 - code: 10E0
   rq_verb: RQ
   rp_verb: RP
@@ -79,8 +83,3 @@ responses:
   payloads:
   - '00'
   notes: Minimal fallback payload until per-variant device_info data is curated
-- code: 31DA
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads: []

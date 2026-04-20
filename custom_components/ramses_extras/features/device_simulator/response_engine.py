@@ -291,15 +291,14 @@ class ResponseEngine:
         # For 2411 (fan parameters), find matching payload from database
         # RQ payload: 000001 (parameter ID), RP payload includes param ID + value
         if parsed["code"] == "2411" and parsed["payload"]:
-            param_id_rq = parsed["payload"][
-                :6
-            ]  # First 3 bytes = parameter ID (e.g., "000001")
+            raw_param = parsed["payload"][:6]
+            param_id_rq = raw_param.upper()
             param_hex = param_id_rq[4:6].upper()  # Extract "01" from "000001"
 
             # Find matching payload from database (payloads start with param ID)
             payload = None
             for p in response.payloads:
-                if p.startswith(param_id_rq):
+                if p.upper().startswith(param_id_rq):
                     payload = p
                     break
 

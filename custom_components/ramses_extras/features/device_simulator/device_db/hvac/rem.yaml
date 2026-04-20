@@ -46,4 +46,11 @@ responses:
   payloads:
   - 000000
   notes: Stub flow/air-quality response until discovery data exists
+- code: '2411'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00000100000000003200000000000000FF0000000120
+  notes: Legacy "not supported" response observed in code_2411_wip.log
 conversation_refs: []
