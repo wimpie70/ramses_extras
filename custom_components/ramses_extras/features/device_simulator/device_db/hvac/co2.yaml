@@ -30,4 +30,11 @@ responses:
   payloads:
   - A
   notes: Extracted from harvested conversations
+- code: 31E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '6400CD03E803E8'
+  notes: Derived from hvac_discover_rem_fan_co2 conversation
 conversation_refs: []

@@ -626,6 +626,26 @@ class ScenarioEngine:
                 self._log_and_emit("outbound", packet)
             except Exception as err:
                 errors.append(str(err))
+                continue
+
+            should_auto_answer = (
+                "RP" in skip_set
+                and self._auto_answer_enabled
+                and frame.verb.upper() == VERB_RQ
+                and dst_id
+                and dst_id != "--:------"
+                and ":" in dst_id
+            )
+            if should_auto_answer:
+                try:
+                    await self._respond_to_rq(src_id, dst_id, frame.code, frame.payload)
+                except Exception as err:  # noqa: BLE001
+                    LOGGER.warning(
+                        "Auto-answer replay failed for %s/%s: %s",
+                        dst_id,
+                        frame.code,
+                        err,
+                    )
 
         return ScenarioResult(
             scenario_id=ref,
