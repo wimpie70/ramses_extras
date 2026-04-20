@@ -26,4 +26,81 @@ responses:
   payloads:
   - '00'
   notes: Minimal fallback payload until per-variant device_info data is curated
+- code: 22F1
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0004
+  notes: Stub discovery response; replace with per-scheme payload
+- code: 2411
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 120
+  payloads:
+  - 00000000
+  notes: Stub parameter block until 2411 catalog is filled
+- code: 2210
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00FFFFFF0000000000FFFFFFFFFF00FFFFFF0000000000FFFFFFFFFFFFFFFF000000000000000140
+  notes: Reuses sample AQ frame from regression payloads
+- code: 22E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0000
+  notes: Stub bypass position response
+- code: 22E5
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0000
+  notes: Stub remaining-minutes response
+- code: 22E9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0000
+  notes: Stub speed-cap response
+- code: 22F2
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0000
+  notes: Stub post-heat response
+- code: 22F4
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 000000000060C9000000000000
+  notes: Reuses sample pre-heat payload (needs per-device tuning)
+- code: 22F8
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0000
+  notes: Stub air-quality-base response
+- code: 313E
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 150
+  payloads:
+  - 00
+  notes: Placeholder structured-data response
+- code: 3222
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 150
+  payloads:
+  - 00
+  notes: Placeholder structured-data response
 conversation_refs: []

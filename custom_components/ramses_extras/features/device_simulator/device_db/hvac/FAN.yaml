@@ -6,14 +6,21 @@ device_type: FAN
 domain: hvac
 broadcast_safe: false
 autonomous:
-- code: '2210'
+- code: '3200'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
+  payloads: []
+- code: 1FC9
+  verb: I
+  trigger: periodic
+  interval_seconds: 5.4
   payloads:
-  - 00FF00FFFFFF0000000000FFFFFFFFFF00FFFFFF0000000000FFFFFFFFFFFFFFFF000000000000000140
+  - 0031E096599B00129896599B002E1096599B0110E096599B001FC996599B
+  - '00'
+  - 0022F1965FE10022F3965FE16710E0965FE1001FC9965FE1
   notes: Example payloads from regression file
-- code: 313F
+- code: '3120'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
@@ -27,21 +34,58 @@ autonomous:
   - 007A40
   - 009540
   notes: Example payloads from regression file
+- code: '2411'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 1F09
+  verb: I
+  trigger: periodic
+  interval_seconds: 120.5
+  payloads: []
+- code: 31DA
+  verb: I
+  trigger: periodic
+  interval_seconds: 1459.7
+  payloads:
+  - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+  - 000010018B0000F830F060E890CE00000000000000000000000000000000
+  - 00EF007FFF2CEF80007FFF7FFF7FFFF800EF0128000000EFEF7FFF7FFF00
+  notes: Example payloads from regression file
+- code: 22F7
+  verb: I
+  trigger: periodic
+  interval_seconds: 0.0
+  payloads:
+  - '00'
+  - 0000EF
+  - 00C8EF
+  notes: Example payloads from regression file
 - code: 31D9
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
-- code: 22F2
+- code: '2210'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads: []
+  payloads:
+  - 00FF00FFFFFF0000000000FFFFFFFFFF00FFFFFF0000000000FFFFFFFFFFFFFFFF000000000000000140
+  notes: Example payloads from regression file
 - code: 2E10
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
+- code: 31E0
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads:
+  - '00000000'
+  notes: Example payloads from regression file
 - code: 10E0
   verb: I
   trigger: periodic
@@ -56,64 +100,6 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
-- code: 042F
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: 31E0
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads:
-  - '00000000'
-  notes: Example payloads from regression file
-- code: 10D0
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: '3200'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: '3120'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: 1F09
-  verb: I
-  trigger: periodic
-  interval_seconds: 120.5
-  payloads: []
-- code: 1FC9
-  verb: I
-  trigger: periodic
-  interval_seconds: 5.4
-  payloads:
-  - 0031E096599B00129896599B002E1096599B0110E096599B001FC996599B
-  - '00'
-  - 0022F1965FE10022F3965FE16710E0965FE1001FC9965FE1
-  notes: Example payloads from regression file
-- code: '1298'
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
-  payloads:
-  - 000280
-  - 0001C6
-  notes: Example payloads from regression file
-- code: 31DA
-  verb: I
-  trigger: periodic
-  interval_seconds: 1459.7
-  payloads:
-  - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
-  - 000010018B0000F830F060E890CE00000000000000000000000000000000
-  - 00EF007FFF2CEF80007FFF7FFF7FFFF800EF0128000000EFEF7FFF7FFF00
-  notes: Example payloads from regression file
 - code: 22F4
   verb: I
   trigger: periodic
@@ -123,21 +109,35 @@ autonomous:
   - 000000000060C9000000000000
   - 000000000060CA000000000000
   notes: Example payloads from regression file
+- code: 042F
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: 22F2
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
+- code: '1298'
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads:
+  - 000280
+  - 0001C6
+  notes: Example payloads from regression file
+- code: 313F
+  verb: I
+  trigger: periodic
+  interval_seconds: 60.0
+  payloads: []
 - code: '3150'
   verb: I
   trigger: periodic
   interval_seconds: 124.1
   payloads: []
-- code: 22F7
-  verb: I
-  trigger: periodic
-  interval_seconds: 0.0
-  payloads:
-  - '00'
-  - 0000EF
-  - 00C8EF
-  notes: Example payloads from regression file
-- code: '2411'
+- code: 10D0
   verb: I
   trigger: periodic
   interval_seconds: 60.0
