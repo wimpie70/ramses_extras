@@ -43,7 +43,11 @@ from .const import (
     VERB_W,
 )
 from .device_db import AutonomousEntry, DeviceDatabase, ResponseEntry
-from .message_log import DeviceMessageLog, PacketDirection
+from .message_log import (
+    DeviceMessageLog,
+    MessageOrigin,
+    PacketDirection,
+)
 from .response_templates import build_dynamic_response
 from .scenarios import discover_scenarios
 from .scenarios.base import ScenarioContext, ScenarioDefinition, ScenarioResult
@@ -128,7 +132,7 @@ class ScenarioEngine:
         self._manual_device_ids: set[str] = set()
         self._primed_fans: set[str] = set()
         self._autonomous_speed: float = 1.0
-        self._recent_frames: dict[tuple[PacketDirection, str], float] = {}
+        self._recent_frames: dict[tuple[PacketDirection, str, str], float] = {}
         # Global RQ→RP auto-answer toggle (default on).
         # When False the engine receives RQs but never replies — simulates a
         # device that is powered off or unreachable (e.g. broken ESP).
@@ -154,10 +158,17 @@ class ScenarioEngine:
         LOGGER.info("ScenarioEngine ready. DB: %s", self._db.stats())
 
     def _log_and_emit(
-        self, direction: PacketDirection, frame: str, timestamp: float | None = None
+        self,
+        direction: PacketDirection,
+        frame: str,
+        timestamp: float | None = None,
+        *,
+        origin: MessageOrigin | None = None,
     ) -> None:
+        if origin is None:
+            origin = "rf" if direction == "inbound" else "sim"
         now = time.monotonic()
-        key = (direction, frame)
+        key = (direction, frame, origin)
         last_seen = self._recent_frames.get(key)
         if last_seen is not None and now - last_seen < 0.25:
             return
@@ -168,7 +179,7 @@ class ScenarioEngine:
             for recent_key, recent_ts in self._recent_frames.items()
             if recent_ts >= cutoff
         }
-        entry = self.message_log.log(direction, frame, timestamp)
+        entry = self.message_log.log(direction, frame, timestamp, origin=origin)
         if not entry:
             return
         self.hass.bus.async_fire(
@@ -177,7 +188,7 @@ class ScenarioEngine:
         )
 
     def log_processed_frame(self, frame: str, timestamp: float | None = None) -> None:
-        self._log_and_emit("outbound", frame, timestamp)
+        self._log_and_emit("outbound", frame, timestamp, origin="rf")
 
     def is_scenario_running(self, scenario_id: str) -> bool:
         """Return True if the scenario id is currently marked as running."""
@@ -623,7 +634,7 @@ class ScenarioEngine:
                 # Keep log size bounded
                 if len(self._message_log) > 1000:
                     self._message_log = self._message_log[-500:]
-                self._log_and_emit("outbound", packet)
+                self._log_and_emit("outbound", packet, origin="sim")
             except Exception as err:
                 errors.append(str(err))
                 continue
@@ -695,7 +706,7 @@ class ScenarioEngine:
                 )
                 if len(self._message_log) > 1000:
                     self._message_log = self._message_log[-500:]
-                self._log_and_emit("outbound", packet)
+                self._log_and_emit("outbound", packet, origin="auto_emit")
                 if inter_packet_delay > 0:
                     await asyncio.sleep(inter_packet_delay)
             except Exception as err:
@@ -774,7 +785,7 @@ class ScenarioEngine:
                     )
                     if len(self._message_log) > 1000:
                         self._message_log = self._message_log[-500:]
-                    self._log_and_emit("outbound", packet)
+                    self._log_and_emit("outbound", packet, origin="auto_emit")
                 except Exception as err:
                     LOGGER.warning(
                         "Emitter send error for %s/%s: %s",
@@ -1007,7 +1018,7 @@ class ScenarioEngine:
             # Keep log size bounded
             if len(self._message_log) > 1000:
                 self._message_log = self._message_log[-500:]
-            self._log_and_emit("outbound", packet)
+            self._log_and_emit("outbound", packet, origin="auto_answer")
             LOGGER.debug("Responded %s RP/%s → %s", dst, code, src)
         except Exception as err:
             LOGGER.warning("Failed to send RP for %s/%s: %s", dst, code, err)
@@ -1048,7 +1059,7 @@ class ScenarioEngine:
             )
             if len(self._message_log) > 1000:
                 self._message_log = self._message_log[-500:]
-            self._log_and_emit("outbound", packet)
+            self._log_and_emit("outbound", packet, origin="sim")
             LOGGER.debug(
                 "Primed FAN %s with 2411/3E request from %s", device.device_id, rem_id
             )

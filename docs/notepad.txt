@@ -89,8 +89,6 @@ Shouldn't we filter this ? we know from our database what belongs to what
 test: ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
 
-### add colors to the msg logs in devices. different colors for: sent by sim, sent by rf, auto answered, auto emitted
-
 ### audit discovery auto-answer coverage using src/ramses_rf/device/* to ensure every discovery RQ (22F1, 10E0, 2411, etc.) has a matching simulator response
 
 --- next to do:

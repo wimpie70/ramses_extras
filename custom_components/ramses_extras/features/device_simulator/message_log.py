@@ -14,6 +14,13 @@ from time import time
 from typing import Any, Literal
 
 PacketDirection = Literal["inbound", "outbound"]
+MessageOrigin = Literal["rf", "sim", "auto_answer", "auto_emit"]
+MESSAGE_ORIGINS: tuple[MessageOrigin, ...] = (
+    "rf",
+    "sim",
+    "auto_answer",
+    "auto_emit",
+)
 
 _ADDR = r"(?:[0-9]{2}:[0-9]{6}|--:------)"
 
@@ -45,6 +52,7 @@ class LoggedMessage:
     payload: str
     raw: str
     device_id: str | None
+    origin: MessageOrigin = "sim"
 
 
 _SILENT_LOGGERS = (
@@ -123,7 +131,12 @@ class DeviceMessageLog:
         self._lock = Lock()
 
     def log(
-        self, direction: PacketDirection, frame: str, timestamp: float | None = None
+        self,
+        direction: PacketDirection,
+        frame: str,
+        timestamp: float | None = None,
+        *,
+        origin: MessageOrigin = "sim",
     ) -> LoggedMessage | None:
         """Parse *frame* and append it to the global and per-device buffers.
 
@@ -147,6 +160,7 @@ class DeviceMessageLog:
             device_id=src
             if src and src != "--:------"
             else (dst if dst and dst != "--:------" else None),
+            origin=origin,
         )
         with self._lock:
             self._global.append(entry)
@@ -247,4 +261,5 @@ class DeviceMessageLog:
             "decoded_payload": decoded,
             "device_id": msg.device_id,
             "device_ids": device_ids,
+            "origin": msg.origin,
         }

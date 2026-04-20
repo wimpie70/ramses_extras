@@ -99,6 +99,16 @@ const CARD_STYLE = `
   .msg-log-table tbody tr:last-child td { border-bottom: none; }
   .msg-log-table tbody tr.in td { background: rgba(var(--rgb-success-color, 76,175,80), 0.07); }
   .msg-log-table tbody tr.out td { background: rgba(var(--rgb-info-color, 3,169,244), 0.07); }
+  /* Origin-based row tinting (overrides direction tint where applicable). */
+  .msg-log-table tbody tr.origin-rf         td { background: rgba(76, 175, 80, 0.10); }
+  .msg-log-table tbody tr.origin-sim        td { background: rgba(3, 169, 244, 0.10); }
+  .msg-log-table tbody tr.origin-auto_answer td { background: rgba(255, 152, 0, 0.14); }
+  .msg-log-table tbody tr.origin-auto_emit  td { background: rgba(156, 39, 176, 0.12); }
+  .msg-origin { font-weight: 600; font-size: 0.72em; text-transform: uppercase; padding: 1px 6px; border-radius: 8px; letter-spacing: 0.02em; white-space: nowrap; }
+  .msg-origin.origin-rf         { background: rgba(76, 175, 80, 0.20); color: #2e7d32; }
+  .msg-origin.origin-sim        { background: rgba(3, 169, 244, 0.20); color: #01579b; }
+  .msg-origin.origin-auto_answer { background: rgba(255, 152, 0, 0.25); color: #e65100; }
+  .msg-origin.origin-auto_emit  { background: rgba(156, 39, 176, 0.22); color: #6a1b9a; }
   .msg-dir { font-weight: 700; font-size: 0.8em; text-transform: uppercase; }
   .msg-dir.in { color: var(--success-color, #4caf50); }
   .msg-dir.out { color: var(--info-color, #0288d1); }
@@ -1667,6 +1677,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         <tr>
           <th>Time</th>
           <th>Dir</th>
+          <th>Source</th>
           <th>Verb</th>
           <th>Code</th>
           <th>Src</th>
@@ -1675,17 +1686,26 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           <th>Payload</th>
         </tr>
       </thead>`;
+    const originLabels = {
+      rf: "RF",
+      sim: "SIM",
+      auto_answer: "AUTO-RP",
+      auto_emit: "AUTO-I",
+    };
     const rows = messages.slice().sort((a, b) => b.ts - a.ts).map((m) => {
       const dir = m.direction === "inbound" ? "in" : "out";
+      const origin = m.origin || (dir === "in" ? "rf" : "sim");
+      const originLabel = originLabels[origin] || origin.toUpperCase();
       const ts = new Date(m.ts * 1000).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 });
       const hexPayload = this._fmtHex(m.payload);
       const decoded = this._fmtDecoded(m.decoded_payload);
       const payloadDisplay = decoded ?? hexPayload;
       const payloadTitle = decoded ? `${decoded}\n\nraw: ${hexPayload}` : hexPayload;
       const bcast = m.broadcast || "--:------";
-      return `<tr class="${dir}">
+      return `<tr class="${dir} origin-${origin}">
         <td class="msg-ts">${ts}</td>
         <td class="msg-dir ${dir}">${dir === "in" ? "RX" : "TX"}</td>
+        <td><span class="msg-origin origin-${origin}" title="Frame origin: ${origin}">${originLabel}</span></td>
         <td class="msg-verb">${m.verb}</td>
         <td class="msg-code">${m.code}</td>
         <td class="msg-addr" title="${m.src}">${m.src}</td>

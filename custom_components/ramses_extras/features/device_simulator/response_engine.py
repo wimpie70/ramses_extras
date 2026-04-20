@@ -368,7 +368,7 @@ class ResponseEngine:
         if self._endpoint.is_connected:
             await self._endpoint.send_packet(frame)
             if self._engine:
-                self._engine._log_and_emit("outbound", frame)
+                self._engine._log_and_emit("outbound", frame, origin="auto_answer")
             LOGGER.debug("ResponseEngine: sent response: %s", frame[:70])
         else:
             LOGGER.warning("ResponseEngine: endpoint disconnected, dropped response")
