@@ -23,6 +23,7 @@ from .const import LOGGER, SIMULATOR_HGI_ID
 # Canonical simulated device IDs used across profiles.
 # IDs are chosen to be clearly fake/sim-only (not real hardware).
 SIM_DEVICES: dict[str, dict[str, str]] = {
+    "HGI": {"id": SIMULATOR_HGI_ID, "class": "HGI"},
     # HVAC (dev_type prefixes from ramses_tx fingerprints)
     "FAN": {"id": "32:150000", "class": "FAN"},  # 32: Orcon MVS/VMD series
     "CO2": {"id": "37:120000", "class": "CO2"},  # 37: VMS-12C39 / VMS-17C01

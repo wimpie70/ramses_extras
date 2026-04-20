@@ -3,50 +3,50 @@
 # 1m delay between RQs, 0.1s delay for answers
 ---
 peers:
-  - CTL
+  - HGI
   - REM
   - FAN
   - CO2
 conversations:
-  - id: discover_rem_fan_co2
+  - id: hvac_discover_rem_fan_co2
     description: Sequential discovery of REM, FAN, and CO2 devices with 1m intervals between RQs
     frames:
       # REM discovery
       - t: 0.0
-        src: CTL
+        src: HGI
         dst: REM
         code: '31DA'
         verb: RQ
         payload: '00'
       - t: 0.1
         src: REM
-        dst: CTL
+        dst: HGI
         code: '31DA'
         verb: RP
         payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
       # FAN discovery (1m after REM RQ)
       - t: 60.0
-        src: CTL
+        src: HGI
         dst: FAN
         code: '31DA'
         verb: RQ
         payload: '00'
       - t: 60.1
         src: FAN
-        dst: CTL
+        dst: HGI
         code: '31DA'
         verb: RP
         payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
       # CO2 discovery (1m after FAN RQ)
       - t: 120.0
-        src: CTL
+        src: HGI
         dst: CO2
         code: '31E0'
         verb: RQ
         payload: '00'
       - t: 120.1
         src: CO2
-        dst: CTL
+        dst: HGI
         code: '31E0'
         verb: RP
         payload: '6400CD03E803E8'  # CO2 100ppm, RH 50%, temp 20°C
