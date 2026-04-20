@@ -91,6 +91,9 @@ or to a saved one that we replaced in the first place
 
 ### add colors to the msg logs in devices. different colors for: sent by sim, sent by rf, auto answered, auto emitted
 
+## add a conversation that can be used to detect a REM (with reply) and then a FAN (with reply)
+ with 1 m delay between the RQ's and a 0.1 s delay on the answers
+
 
 --- next to do:
 
