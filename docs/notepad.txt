@@ -114,6 +114,7 @@ Recent coverage work:
 - REM/DIS: 22F1/22F3/22F8 replies plus a legacy 2411 “unsupported” RP keep 4-way switches and wall displays from timing out during discovery.
 - CO2/HUM: added 31DA telemetry frames (and a fallback 2411 RP for CO2) so sensors answer the HRU’s periodic polls.
 - RFS gateway: 31D9 + 31DA responses derived from `regression_packets_sorted.txt` allow the Spider gateway slug to stay bound.
+- REM/CO2 follow-up (Apr 20): populated the remaining discovery codes (313F/1470/0001/22F7 for REM, 22F1 for CO₂) and re-ran the `payloads == []` audit script so no HVAC YAML responses are empty anymore.
 Next up: replicate the same exercise for the remaining HVAC slugs (HGI bridge variants) and then move on to the heat-domain YAMLs (BDR/UFC/CTL/etc.).
 
 
