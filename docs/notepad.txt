@@ -91,42 +91,17 @@ or to a saved one that we replaced in the first place
 
 ### after play, we should be able to enable auto emission again (with the now found devices)
 
+### RND/T87RF (Apr 21 AM): added 3EF1 actuator-cycle and 2349 mode payloads reused from the controller logs so Round thermostats can answer Auto Answer.
+- THM wall stat (Apr 21 AM): reused the same 2349/3EF1/1090/3EF0 payloads plus binding ACKs so the Round/T87 thermostats mirror CTL/RND behavior.
+- RFG gateway (Apr 21 AM): populated every missing discovery response (10A0/0006/…/30C9) from regression captures so the internet gateway slug no longer falls back to dynamic responses.
+- New conversations: added `hvac_discover_all` and `heat_discover_all` so Device Playback can fire RQs at every curated slug (run with skip_answers=True to let Auto Answer respond with the YAML payloads).
 
 ---
-### audit discovery auto-answer coverage using src/ramses_rf/device/* to
- ensure every discovery RQ (22F1, 10E0, 2411, etc.) has a matching simulator response
-Auto Answer needs to cover every discovery poll listed in src/ramses_rf/device/*, especially the ones scheduled in DeviceInfo._setup_discovery_cmds() and HvacVentilator._setup_discovery_cmds():
 
-Shared device info – Code._10E0 is polled for every device type via DeviceInfo @ramses_rf/src/ramses_rf/device/base.py#298-324. Our simulator only replies for FAN/REM/CO2; any other device (e.g., HUM, DIS) currently times out.
-FAN/HVAC discovery codes – the ventilator class schedules these RQs @ramses_rf/src/ramses_rf/device/hvac.py#739-775:
-22F1 (fan mode), 22F3 (timers), 2411 (params), plus the secondary list: 2210, 22E0, 22E5, 22E9, 22F2, 22F4, 22F8, 313E, 3222.
-Auto Answer only has responses for 31DA (FAN/REM) and 31E0 (CO2). Everything above still lacks simulator payloads.
-Other HVAC actors – Remotes (22F1/22F3), displays, humidity sensors (12A0), etc., will also issue discovery RQs (see binding tables @ramses_rf/src/ramses_rf/device/hvac.py#1364-1438). Missing responses there prevent them from completing their own discovery loops.
-Heat-domain discovery – the heat devices add 0008, 2E04, various 000x/2309/000C, OT codes, etc. via DeviceHeat subclasses @ramses_rf/src/ramses_rf/device/heat.py (multiple self.discovery.add_cmd entries). If we simulate any heat devices those RQs also need replies.
-Next steps I’d suggest:
+### wiki: how to run the discovery conversations
 
-Extract the list of discovery RQs per device type (e.g., by grepping self.discovery.add_cmd in device/heat.py and device/hvac.py) and turn it into a checklist of required simulator responses per slug.
-For each slug (FAN, REM, CO2, HUM, DIS, etc.), extend the relevant YAML under device_db/hvac/ (and heat/ when needed) with responses: entries for every code above, using payloads from captured logs or derived constants.
-Ensure Auto Answer is on when testing, but keep “Skip recorded answers” enabled so we verify the new ResponseEntries instead of the playback data.
-
-Recent coverage work:
-- FAN: 2411 catalog pulled from `code_2411_wip.log`, so every param ID 31/3D–95 now has at least one payload.
-- REM/DIS: 22F1/22F3/22F8 replies plus a legacy 2411 “unsupported” RP keep 4-way switches and wall displays from timing out during discovery.
-- CO2/HUM: added 31DA telemetry frames (and a fallback 2411 RP for CO2) so sensors answer the HRU’s periodic polls.
-- RFS gateway: 31D9 + 31DA responses derived from `regression_packets_sorted.txt` allow the Spider gateway slug to stay bound.
-- REM/CO2 follow-up (Apr 20): populated the remaining discovery codes (313F/1470/0001/22F7 for REM, 22F1 for CO₂) and re-ran the `payloads == []` audit script so no HVAC YAML responses are empty anymore.
-- CTL kick-off (Apr 20 late): controller 0016 + 3220 replies now come straight from regression logs, so the first heat-domain slug can complete its binding/diagnostic polls again. Working down the rest of heat (DHW/TRV/etc.) next.
-- DHW sensor (Apr 21 AM): filled 10A0 and 0016 responses with real setpoint/binding frames so hot-water sensors answer Auto Answer immediately.
-- DTS wall stat (Apr 21 AM): wired in 1090/2349/0016/3EF1 payloads (from parser refs + logs) so room thermostats no longer TOUT on discovery.
-- TRV valves (Apr 21 AM): added 1F09/313F/0100/0016/0004 replies (clock, locale, zone names) so radiator heads stay responsive to controller polls.
-- RND/T87RF (Apr 21 AM): added 3EF1 actuator-cycle and 2349 mode payloads reused from the controller logs so Round thermostats can answer Auto Answer.
-- THM wall stat (Apr 21 AM): reused the same 2349/3EF1/1090/3EF0 payloads plus binding ACKs so the Round/T87 thermostats mirror CTL/RND behavior.
-Next up: replicate the same exercise for the remaining HVAC slugs (HGI bridge variants) and then move on to the heat-domain YAMLs (BDR/UFC/CTL/etc.).
-
-
-> NOTE: leave the OT/OTB abbreviations in this notepad as-is; codespell can ignore `/docs/notepad.txt` (otherwise `prek run -a` fails on “OT”).
-
-
+### can we discover multiple TRV's or REM's at the same time? maybe we should use REM_1, REM_2, etc
+ in the dbase to add multiple devices of the same type
 
 --- next to do:
 
