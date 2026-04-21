@@ -94,8 +94,6 @@ or to a saved one that we replaced in the first place
 
 ---
 
-### wiki: how to run the discovery conversations
-
 ### can we discover multiple TRV's or REM's at the same time? maybe we should use REM_1, REM_2, etc
  in the dbase to add multiple devices of the same type
 
