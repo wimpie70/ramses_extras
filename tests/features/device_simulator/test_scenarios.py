@@ -499,6 +499,7 @@ class TestDevicePlayback:
 
         conv_mock = MagicMock()
         conv_mock.peers = ["FAN"]
+        conv_mock.device_map = {"FAN": "32:150000"}
         context.device_db.get_conversation = MagicMock(return_value=conv_mock)
 
         engine.get_pause_event = MagicMock(return_value=MagicMock())
