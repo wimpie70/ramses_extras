@@ -404,7 +404,9 @@ class TestResponseEngineDelayedSend:
 
         await engine._send_immediate(frame)
 
-        scenario_engine._log_and_emit.assert_called_once_with("outbound", frame)
+        scenario_engine._log_and_emit.assert_called_once_with(
+            "outbound", frame, origin="auto_answer"
+        )
 
     @pytest.mark.asyncio
     async def test_delayed_send_when_disconnected(self, engine: ResponseEngine) -> None:
