@@ -26,4 +26,7 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - '0000'
+  - '0052'
+  notes: Relay demand snapshots from regression_packets_sorted.txt#585-2641

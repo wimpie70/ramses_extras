@@ -26,9 +26,16 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - '001770'
+  - 0013880003E8
+  - 000FA0
+  notes: DHW setpoint snapshots lifted from regression_packets_sorted.txt#1381-1386,1549-1552,2323-2607
 - code: '0016'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 001F
+  - '0029'
+  notes: Binding acknowledgements shared across heat devices (regression_packets_sorted.txt#297-358)

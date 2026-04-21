@@ -39,3 +39,11 @@ autonomous:
   - 00180404007FFF01
   - 000C1400007FFF01
   notes: Example payloads from regression file
+responses:
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00'
+  notes: Minimal fallback payload until per-variant device_info data is curated

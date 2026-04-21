@@ -1,0 +1,164 @@
+# Aggregate heat discovery loop touching every slug with curated responses.
+# Works best with Device Playback (skip_answers=True) so Auto Answer emits
+# fresh payloads, but includes representative replies for offline playback.
+---
+peers:
+  - HGI
+  - CTL
+  - DHW
+  - DTS
+  - TRV
+  - RND
+  - THM
+  - RFG
+  - JIM
+  - JST
+  - BDR
+  - UFC
+conversations:
+  - id: heat_discover_all
+    description: Sequential discovery of CTL/DHW/DTS/TRV/RND/THM/RFG/JIM/JST/BDR/UFC
+    frames:
+      # CTL discovery (0016 binding ack)
+      - t: 0.0
+        src: HGI
+        dst: CTL
+        code: '0016'
+        verb: RQ
+        payload: '00'
+      - t: 0.1
+        src: CTL
+        dst: HGI
+        code: '0016'
+        verb: RP
+        payload: 001F
+      # DHW discovery (10A0 DHW setpoint)
+      - t: 5.0
+        src: HGI
+        dst: DHW
+        code: '10A0'
+        verb: RQ
+        payload: '00'
+      - t: 5.1
+        src: DHW
+        dst: HGI
+        code: '10A0'
+        verb: RP
+        payload: 001770
+      # DTS discovery (1090 twin temperature)
+      - t: 10.0
+        src: HGI
+        dst: DTS
+        code: '1090'
+        verb: RQ
+        payload: '00'
+      - t: 10.1
+        src: DTS
+        dst: HGI
+        code: '1090'
+        verb: RP
+        payload: 007FFF01F4
+      # TRV discovery (313F clock/programme)
+      - t: 15.0
+        src: HGI
+        dst: TRV
+        code: '313F'
+        verb: RQ
+        payload: '00'
+      - t: 15.1
+        src: TRV
+        dst: HGI
+        code: '313F'
+        verb: RP
+        payload: 00FC081CCF0D0307E6
+      # RND discovery (3EF1 actuator cycle)
+      - t: 20.0
+        src: HGI
+        dst: RND
+        code: '3EF1'
+        verb: RQ
+        payload: '00'
+      - t: 20.1
+        src: RND
+        dst: HGI
+        code: '3EF1'
+        verb: RP
+        payload: 000215021500FF
+      # THM discovery (3EF0 relay demand)
+      - t: 25.0
+        src: HGI
+        dst: THM
+        code: '3EF0'
+        verb: RQ
+        payload: '00'
+      - t: 25.1
+        src: THM
+        dst: HGI
+        code: '3EF0'
+        verb: RP
+        payload: 001B100A0000
+      # RFG discovery (313F clock snapshot)
+      - t: 30.0
+        src: HGI
+        dst: RFG
+        code: '313F'
+        verb: RQ
+        payload: '00'
+      - t: 30.1
+        src: RFG
+        dst: HGI
+        code: '313F'
+        verb: RP
+        payload: 00FC081CCF0D0307E6
+      # JIM discovery (0008 relay demand)
+      - t: 35.0
+        src: HGI
+        dst: JIM
+        code: '0008'
+        verb: RQ
+        payload: '00'
+      - t: 35.1
+        src: JIM
+        dst: HGI
+        code: '0008'
+        verb: RP
+        payload: 0052
+      # JST discovery (3EF1 actuator cycle)
+      - t: 40.0
+        src: HGI
+        dst: JST
+        code: '3EF1'
+        verb: RQ
+        payload: '00'
+      - t: 40.1
+        src: JST
+        dst: HGI
+        code: '3EF1'
+        verb: RP
+        payload: 007FFF003C0010
+      # BDR discovery (10E0 device info)
+      - t: 45.0
+        src: HGI
+        dst: BDR
+        code: '10E0'
+        verb: RQ
+        payload: '00'
+      - t: 45.1
+        src: BDR
+        dst: HGI
+        code: '10E0'
+        verb: RP
+        payload: '00'
+      # UFC discovery (10E0 device info)
+      - t: 50.0
+        src: HGI
+        dst: UFC
+        code: '10E0'
+        verb: RQ
+        payload: '00'
+      - t: 50.1
+        src: UFC
+        dst: HGI
+        code: '10E0'
+        verb: RP
+        payload: '00'

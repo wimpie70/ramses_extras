@@ -1,25 +1,15 @@
 # Auto-generated from ramses_rf sources
-# Device type: OTB (domain: heat)
+# Device type: RFS (domain: heat)
 # Manual review recommended before committing
 ---
-device_type: OTB
+device_type: RFS
 domain: heat
 broadcast_safe: false
 autonomous:
-- code: '3150'
+- code: 313F
   verb: I
   trigger: periodic
-  interval_seconds: 124.1
-  payloads: []
-- code: 1FC9
-  verb: I
-  trigger: periodic
-  interval_seconds: 5.4
-  payloads: []
-- code: 1FD4
-  verb: I
-  trigger: periodic
-  interval_seconds: 110.0
+  interval_seconds: 60.0
   payloads: []
 - code: 3EF0
   verb: I
@@ -31,17 +21,20 @@ autonomous:
   trigger: periodic
   interval_seconds: 61.7
   payloads: []
-- code: 042F
+- code: 30C9
   verb: I
   trigger: periodic
-  interval_seconds: 60.0
-  payloads: []
-- code: 0009
-  verb: I
-  trigger: periodic
-  interval_seconds: 60.0
+  interval_seconds: 218.0
   payloads: []
 responses:
+- code: 313F
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FC081CCF0D0307E6
+  - 00FC380BAA130207E6
+  notes: Clock/programme frames from regression_packets_sorted.txt (shared with CTL/TRV)
 - code: 10E0
   rq_verb: RQ
   rp_verb: RP

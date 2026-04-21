@@ -91,9 +91,17 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 007FFF003C0010
+  - 000215021500FF
+  - 000141014100FF
+  notes: Actuator cycle samples from regression_packets_sorted.txt#657-2640 (parser warning on len expected during discovery)
 - code: '2349'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 0606D600FFFFFF
+  - 007FFF00FFFFFFFFFFFFFFFFFF
+  - 0106400300003C
+  notes: Zone mode/setpoint captures shared with CTL/DTS (see regression_packets_sorted.txt#258-272)

@@ -41,29 +41,69 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00FCAF00C4110A07E5
+  notes: Example clock sync payload from regression_packets_sorted.txt
 - code: '1470'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00B30E60802A0108
+  notes: Programme scheme (7-day, 3 setpoints) matching parser_1470 asserts
 - code: '0001'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - '00800000200001'
+  notes: Menu index response also used by CO2 discovery
 - code: 22F7
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 0000EF
+  notes: Bypass state snapshot (auto/off)
 - code: 31DA
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+  notes: Shared HVAC telemetry block reused for discovery replies
 - code: '2411'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00000100000000003200000000000000FF0000000120
+  notes: Legacy "not supported" response observed in code_2411_wip.log
+- code: 22F1
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '000307'
+  notes: Stub fan_mode response (orcon scheme placeholder)
+- code: 22F3
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00023C03040000
+  notes: Stub boost-timer response matching sample capture
+- code: 22F8
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '000000'
+  notes: Stub flow/air-quality response until discovery data exists
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00'
+  notes: Minimal fallback payload until per-variant device_info data is curated
