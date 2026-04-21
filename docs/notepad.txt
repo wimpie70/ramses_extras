@@ -91,10 +91,6 @@ or to a saved one that we replaced in the first place
 
 ### after play, we should be able to enable auto emission again (with the now found devices)
 
-### RND/T87RF (Apr 21 AM): added 3EF1 actuator-cycle and 2349 mode payloads reused from the controller logs so Round thermostats can answer Auto Answer.
-- THM wall stat (Apr 21 AM): reused the same 2349/3EF1/1090/3EF0 payloads plus binding ACKs so the Round/T87 thermostats mirror CTL/RND behavior.
-- RFG gateway (Apr 21 AM): populated every missing discovery response (10A0/0006/…/30C9) from regression captures so the internet gateway slug no longer falls back to dynamic responses.
-- New conversations: added `hvac_discover_all` and `heat_discover_all` so Device Playback can fire RQs at every curated slug (run with skip_answers=True to let Auto Answer respond with the YAML payloads).
 
 ---
 

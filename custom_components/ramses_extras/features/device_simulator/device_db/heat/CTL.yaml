@@ -43,7 +43,7 @@ autonomous:
   payloads:
   - 0000FF01
   - 0004FF01
-  - 00080400
+  - '00080400'
   notes: Example payloads from regression file
 - code: 2E04
   verb: I
@@ -228,7 +228,7 @@ responses:
   delay_ms: 100
   payloads:
   - 001F
-  - 0029
+  - '0029'
   notes: Sample binding acknowledgements from regression_packets_sorted.txt#297-304
 - code: '3220'
   rq_verb: RQ
@@ -244,3 +244,10 @@ responses:
   delay_ms: 100
   payloads:
   - '00'
+- code: 2E04
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FFFFFFFFFFFF00
+  notes: System mode discovery response from regression_packets_sorted.txt#1095-1096,1147-1148

@@ -89,7 +89,7 @@ responses:
   delay_ms: 100
   payloads:
   - 001F
-  - 0029
+  - '0029'
   notes: Shared binding acknowledgements (see CTL/DHW captures)
 - code: 3EF1
   rq_verb: RQ

@@ -12,7 +12,7 @@ autonomous:
   interval_seconds: 5.4
   payloads:
   - 0023098968530030C9896853000008896853001FC9896853
-  - 072309896853
+  - '072309896853'
   notes: Example payloads from regression file
 - code: 31E0
   verb: I
@@ -74,7 +74,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 00800000200001
+  - '00800000200001'
   notes: Menu index response also used by CO2 discovery
 - code: 22F7
   rq_verb: RQ

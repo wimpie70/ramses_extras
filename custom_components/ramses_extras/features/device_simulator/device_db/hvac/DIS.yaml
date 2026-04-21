@@ -56,7 +56,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 00800000200001
+  - '00800000200001'
   notes: Menu index response also used by CO2 discovery
 - code: 22F7
   rq_verb: RQ
@@ -84,7 +84,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 000307
+  - '000307'
   notes: Stub fan_mode response (orcon scheme placeholder)
 - code: 22F3
   rq_verb: RQ
@@ -98,7 +98,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 000000
+  - '000000'
   notes: Stub flow/air-quality response until discovery data exists
 - code: 10E0
   rq_verb: RQ

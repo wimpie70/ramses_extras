@@ -58,7 +58,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 000204
+  - '000204'
   notes: Fan mode sample lifted from regression_packets_sorted.txt (nuaire scheme)
 - code: 31DA
   rq_verb: RQ

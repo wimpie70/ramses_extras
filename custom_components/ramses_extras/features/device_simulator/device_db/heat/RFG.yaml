@@ -55,7 +55,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 001770
+  - '001770'
   - 0013880003E8
   - 000FA0
   notes: DHW setpoint frames from regression_packets_sorted.txt#1381-2333
@@ -64,8 +64,8 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 00050000
-  - 00050003
+  - '00050000'
+  - '00050003'
   notes: Change counter samples (same as CTL)
 - code: 22D9
   rq_verb: RQ
@@ -175,14 +175,14 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 00120005
-  - 00180005
+  - '00120005'
+  - '00180005'
   notes: Outdoor temperature samples
 - code: 30C9
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 000785
-  - 000838
+  - '000785'
+  - '000838'
   notes: Indoor temperature frames

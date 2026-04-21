@@ -65,7 +65,7 @@ autonomous:
   payloads:
   - 0007C3
   - 0006B1
-  - 000849
+  - '000849'
   notes: Example payloads from regression file
 responses:
 - code: 1F09
@@ -97,7 +97,7 @@ responses:
   delay_ms: 100
   payloads:
   - 001F
-  - 0029
+  - '0029'
   notes: Binding acknowledgements shared with other heat devices (#297-358)
 - code: '0004'
   rq_verb: RQ

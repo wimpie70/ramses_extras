@@ -32,7 +32,7 @@ autonomous:
   payloads:
   - 00A740
   - 007A40
-  - 009540
+  - '009540'
   notes: Example payloads from regression file
 - code: '2411'
   verb: I
@@ -124,7 +124,7 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads:
-  - 000280
+  - '000280'
   - 0001C6
   notes: Example payloads from regression file
 - code: 313F

@@ -136,7 +136,7 @@ responses:
   delay_ms: 100
   payloads:
   - 001F
-  - 0029
+  - '0029'
   notes: Binding acknowledgements reused across heat slugs (#297-358)
 - code: '1090'
   rq_verb: RQ

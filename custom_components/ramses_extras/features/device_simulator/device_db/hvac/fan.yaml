@@ -31,7 +31,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 0004
+  - '0004'
   notes: Stub discovery response; replace with per-scheme payload
 - code: 2411
   rq_verb: RQ
@@ -52,7 +52,7 @@ responses:
   - 00004E460000000001000000000000000100000001A600
   - 0000524A010000000A00000000000000FA00000001A632
   - 0000544C000000000F0000000F0000003C00000001A62A
-  - 0000755892000007D00000000000000BB800000001A601
+  - 000075589200007D00000000000000BB800000001A601
   - 0000953F0F000000C800000000000000C800000001A632
   notes: Derived from ramses_rf tests/tests/parsers/code_2411_wip.log (Orcon & legacy variants)
 - code: 2210
@@ -67,55 +67,55 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 0000
+  - '0000'
   notes: Stub bypass position response
 - code: 22E5
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 0000
+  - '0000'
   notes: Stub remaining-minutes response
 - code: 22E9
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 0000
+  - '0000'
   notes: Stub speed-cap response
 - code: 22F2
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 0000
+  - '0000'
   notes: Stub post-heat response
 - code: 22F4
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 000000000060C9000000000000
+  - 0000000060C9000000000000
   notes: Reuses sample pre-heat payload (needs per-device tuning)
 - code: 22F8
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 0000
+  - '0000'
   notes: Stub air-quality-base response
 - code: 313E
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 150
   payloads:
-  - 00
+  - '00'
   notes: Placeholder structured-data response
 - code: 3222
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 150
   payloads:
-  - 00
+  - '00'
   notes: Placeholder structured-data response
 conversation_refs: []
