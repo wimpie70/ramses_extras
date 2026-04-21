@@ -226,12 +226,18 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 001F
+  - 0029
+  notes: Sample binding acknowledgements from regression_packets_sorted.txt#297-304
 - code: '3220'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00401200F8
+  - 00C07300CB
+  notes: OEM diagnostic / CH pressure replies from regression_packets_sorted.txt#13-16,535-536
 - code: 3EF0
   rq_verb: RQ
   rp_verb: RP

@@ -72,24 +72,38 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 0003BB
+  notes: Controller sync snapshot from regression_packets_sorted.txt#305-307
 - code: 313F
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00FC081CCF0D0307E6
+  - 00FC0501AB050207E6
+  notes: Clock/programme frames captured in regression_packets_sorted.txt#2453-2460
 - code: '0100'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 00656EFFFF
+  - 006E6CFFFF
+  notes: Locale replies seen in regression_packets_sorted.txt#620-621,1458-1461
 - code: '0016'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 001F
+  - 0029
+  notes: Binding acknowledgements shared with other heat devices (#297-358)
 - code: '0004'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 0000436C6F616B726F6F6D0000000000000000000000
+  - 07004C616E64696E6700000000000000000000000000
+  notes: Zone-name responses from regression_packets_sorted.txt#2456,2494-2498

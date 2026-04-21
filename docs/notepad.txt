@@ -115,6 +115,11 @@ Recent coverage work:
 - CO2/HUM: added 31DA telemetry frames (and a fallback 2411 RP for CO2) so sensors answer the HRU’s periodic polls.
 - RFS gateway: 31D9 + 31DA responses derived from `regression_packets_sorted.txt` allow the Spider gateway slug to stay bound.
 - REM/CO2 follow-up (Apr 20): populated the remaining discovery codes (313F/1470/0001/22F7 for REM, 22F1 for CO₂) and re-ran the `payloads == []` audit script so no HVAC YAML responses are empty anymore.
+- CTL kick-off (Apr 20 late): controller 0016 + 3220 replies now come straight from regression logs, so the first heat-domain slug can complete its binding/diagnostic polls again. Working down the rest of heat (DHW/TRV/etc.) next.
+- DHW sensor (Apr 21 AM): filled 10A0 and 0016 responses with real setpoint/binding frames so hot-water sensors answer Auto Answer immediately.
+- DTS wall stat (Apr 21 AM): wired in 1090/2349/0016/3EF1 payloads (from parser refs + logs) so room thermostats no longer TOUT on discovery.
+- TRV valves (Apr 21 AM): added 1F09/313F/0100/0016/0004 replies (clock, locale, zone names) so radiator heads stay responsive to controller polls.
+- RND/T87RF (Apr 21 AM): added 3EF1 actuator-cycle and 2349 mode payloads reused from the controller logs so Round thermostats can answer Auto Answer.
 Next up: replicate the same exercise for the remaining HVAC slugs (HGI bridge variants) and then move on to the heat-domain YAMLs (BDR/UFC/CTL/etc.).
 
 
