@@ -21,4 +21,7 @@ responses:
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
-  payloads: []
+  payloads:
+  - 007FFF003C0010
+  - 000215021500FF
+  notes: Actuator cycle payloads shared with other thermostats (regression_packets_sorted.txt#657-1150)

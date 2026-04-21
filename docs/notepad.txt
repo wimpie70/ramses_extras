@@ -120,6 +120,7 @@ Recent coverage work:
 - DTS wall stat (Apr 21 AM): wired in 1090/2349/0016/3EF1 payloads (from parser refs + logs) so room thermostats no longer TOUT on discovery.
 - TRV valves (Apr 21 AM): added 1F09/313F/0100/0016/0004 replies (clock, locale, zone names) so radiator heads stay responsive to controller polls.
 - RND/T87RF (Apr 21 AM): added 3EF1 actuator-cycle and 2349 mode payloads reused from the controller logs so Round thermostats can answer Auto Answer.
+- THM wall stat (Apr 21 AM): reused the same 2349/3EF1/1090/3EF0 payloads plus binding ACKs so the Round/T87 thermostats mirror CTL/RND behavior.
 Next up: replicate the same exercise for the remaining HVAC slugs (HGI bridge variants) and then move on to the heat-domain YAMLs (BDR/UFC/CTL/etc.).
 
 
