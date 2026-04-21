@@ -21,7 +21,7 @@ homeassistant = ">=2026.3.0"
 optional = true
 
 [tool.poetry.group.test.dependencies]
- pytest-homeassistant-custom-component = "0.13.300"
+ pytest-homeassistant-custom-component = "0.13.316"
  pytest-cov = "^7.0.0"
 
 [build-system]
