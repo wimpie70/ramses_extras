@@ -1,10 +1,10 @@
-# Ramses Extras 0.19.2 Release Notes
+# Ramses Extras 0.19.3 Release Notes
 
 **Release Date:** April 18, 2026
 
 ## Overview
 
-Version 0.19.2 is a major pre-release featuring the complete implementation of the Device Simulator (Phase 8), including full UI cards, profile management, response engine, and real-time message monitoring. This release also includes extensive test infrastructure fixes, deployment improvements, and documentation enhancements.
+Version 0.19.3 is a major pre-release featuring the complete implementation of the Device Simulator (Phase 8), including full UI cards, profile management, response engine, and real-time message monitoring. This release also includes extensive test infrastructure fixes, deployment improvements, and documentation enhancements.
 
 ---
 
@@ -140,7 +140,7 @@ Version 0.19.2 is a major pre-release featuring the complete implementation of t
 
 ## Full Changelog
 
-See the [full commit history](https://github.com/wimpie70/ramses_extras/compare/0.19.0...0.19.2) for detailed changes.
+See the [full commit history](https://github.com/wimpie70/ramses_extras/compare/0.19.0...0.19.3) for detailed changes.
 
 ---
 
