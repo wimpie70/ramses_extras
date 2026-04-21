@@ -92,10 +92,10 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 007FFF003C001000000000000
-  - 000215021500FF0000000000
-  - 000141014100FF0000000000
-  notes: Actuator cycle samples padded to 12 bytes (parser expects len 12, regression has 7-byte payloads)
+  - 007FFF003C0010
+  - 000215021500FF
+  - 000141014100FF
+  notes: Actuator cycle samples from regression_packets_sorted.txt#657-2640 (parser warning on len expected during discovery)
 - code: '2349'
   rq_verb: RQ
   rp_verb: RP

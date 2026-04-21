@@ -24,4 +24,4 @@ responses:
   payloads:
   - 007FFF003C0010
   - 000215021500FF
-  notes: Actuator cycle payloads shared with other thermostats (regression_packets_sorted.txt#657-1150)
+  notes: Actuator cycle payloads from regression_packets_sorted.txt (parser warning on len expected during discovery)
