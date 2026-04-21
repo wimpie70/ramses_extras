@@ -19,7 +19,22 @@ peers:
   - OTB
 conversations:
   - id: heat_discover_all
-    description: Sequential discovery of CTL/DHW/DTS/TRV_1/TRV_2/RND/THM/RFG/JIM/JST/BDR/UFC/OTB with binding handshakes
+    description: Sequential discovery of CTL/DHW/DTS/TRV_1/TRV_2/RND/THM/RFG/JIM/JST/BDR/UFC/OTB (binding handshakes not supported in MQTT mode)
+    device_map:
+      HGI: "18:001234"
+      CTL: "01:145038"
+      DHW: "07:150000"
+      DTS: "12:150000"
+      TRV_1: "04:150000"
+      TRV_2: "04:150001"
+      RND: "34:150000"
+      THM: "22:150000"
+      RFG: "30:160000"
+      JIM: "08:150000"
+      JST: "31:150000"
+      BDR: "13:150000"
+      UFC: "02:150000"
+      OTB: "10:150000"
     frames:
       # CTL discovery (0016 binding ack)
       - t: 0.0
@@ -60,51 +75,27 @@ conversations:
         code: '1090'
         verb: RP
         payload: 007FFF01F4
-      # TRV_1 discovery with binding handshake
+      # TRV_1 discovery (313F clock/programme)
       - t: 15.0
-        src: CTL
-        dst: TRV_1
-        code: 1FC9
-        verb: I
-        payload: 072309054E29
-      - t: 15.1
-        src: TRV_1
-        dst: CTL
-        code: 3150
-        verb: I
-        payload: FC0A
-      - t: 15.5
         src: HGI
         dst: TRV_1
         code: '313F'
         verb: RQ
         payload: '00'
-      - t: 15.6
+      - t: 15.1
         src: TRV_1
         dst: HGI
         code: '313F'
         verb: RP
         payload: 00FC081CCF0D0307E6
-      # TRV_2 discovery with binding handshake
+      # TRV_2 discovery (313F clock/programme)
       - t: 20.0
-        src: CTL
-        dst: TRV_2
-        code: 1FC9
-        verb: I
-        payload: 08230906368E
-      - t: 20.1
-        src: TRV_2
-        dst: CTL
-        code: 3150
-        verb: I
-        payload: FC14
-      - t: 20.5
         src: HGI
         dst: TRV_2
         code: '313F'
         verb: RQ
         payload: '00'
-      - t: 20.6
+      - t: 20.1
         src: TRV_2
         dst: HGI
         code: '313F'
@@ -201,26 +192,14 @@ conversations:
         code: '10E0'
         verb: RP
         payload: '00'
-      # OTB discovery with binding handshake
+      # OTB discovery (10E0 device info)
       - t: 60.0
-        src: CTL
-        dst: OTB
-        code: 1FC9
-        verb: I
-        payload: 0010A006368E
-      - t: 60.1
-        src: OTB
-        dst: CTL
-        code: 3150
-        verb: I
-        payload: FCC8
-      - t: 60.5
         src: HGI
         dst: OTB
         code: '10E0'
         verb: RQ
         payload: '00'
-      - t: 60.6
+      - t: 60.1
         src: OTB
         dst: HGI
         code: '10E0'

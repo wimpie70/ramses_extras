@@ -109,6 +109,7 @@ class Conversation:
     :param peers: List of device type slugs involved.
     :param description: Human-readable description.
     :param scheme: Optional scheme name (e.g. 'itho', 'orcon') for code semantics.
+    :param device_map: Optional mapping of peer slugs to device IDs.
     :param frames: Ordered list of frames with relative timestamps.
     """
 
@@ -116,6 +117,7 @@ class Conversation:
     peers: list[str]
     description: str = ""
     scheme: str | None = None
+    device_map: dict[str, str] = field(default_factory=dict)
     frames: list[ConversationFrame] = field(default_factory=list)
 
 
@@ -516,6 +518,7 @@ class DeviceDatabase:
                 peers=list(peers),
                 description=conv.get("description", ""),
                 scheme=conv.get("scheme"),
+                device_map=conv.get("device_map") or {},
                 frames=frames,
             )
             key = f"{'+'.join(peers).lower()}/{c.id}"

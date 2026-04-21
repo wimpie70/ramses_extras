@@ -64,9 +64,14 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         device_map = {slug.upper(): did for slug, did in raw_device_map.items()}
         missing: list[str] = []
     else:
-        overrides = params.get("device_map_overrides")
-        overrides = {k.upper(): v for k, v in (overrides or {}).items()}
-        device_map, missing = _infer_device_map(context, conv.peers, overrides)
+        # Use conversation's device_map as fallback
+        if conv.device_map:
+            device_map = {slug.upper(): did for slug, did in conv.device_map.items()}
+            missing = [p for p in conv.peers if p.upper() not in device_map]
+        else:
+            overrides = params.get("device_map_overrides")
+            overrides = {k.upper(): v for k, v in (overrides or {}).items()}
+            device_map, missing = _infer_device_map(context, conv.peers, overrides)
 
     if missing:
         LOGGER.error("Unable to map conversation peers: %s", missing)
