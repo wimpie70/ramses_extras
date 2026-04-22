@@ -352,6 +352,38 @@ async def create_device_simulator_feature(
         # Apply default timeout scaling (can be overridden by loaded profile)
         apply_timeout_scale(1.0)
 
+        # Clean restart: when preserve_state is False, force-switch to
+        # fresh_start_allow_unknown_devices so we boot with a clean known_list
+        # and schema (any device that appears is eavesdropped, not pre-known).
+        if not config_store.get_preserve_state():
+            clean_profile_name = "fresh_start_allow_unknown_devices"
+            clean_profile = config_store.get_profile(clean_profile_name)
+            if clean_profile is not None:
+                _LOGGER.info(
+                    "Device Simulator: preserve_state=False, switching active "
+                    "profile to '%s' for clean restart",
+                    clean_profile_name,
+                )
+                config_store.set_active_profile(clean_profile_name)
+                await config_store.async_save_state()
+                await _pre_clear_ramses_cc_schema(hass, clean_profile_name)
+                # Also write the clean profile's known_list/schema to the
+                # ramses_cc config entry so _enforce_simulator_isolation reloads
+                # with the fresh options.
+                from .profile_loader import _update_known_list_and_reload
+
+                known_list = clean_profile.device_configs.get("_known_list")
+                schema = clean_profile.device_configs.get("_schema")
+                if known_list is not None:
+                    schema_payload = dict(schema) if isinstance(schema, dict) else None
+                    await _update_known_list_and_reload(
+                        hass,
+                        dict(known_list),
+                        clean_profile.device_configs.get("_enforce_known_list", False),
+                        reload_ramses_cc=False,
+                        schema=schema_payload,
+                    )
+
         # Pre-clear ramses_cc store schema if last active profile enforced known_list.
         # This ensures that when _enforce_simulator_isolation triggers a ramses_cc
         # reload below, ramses_cc starts with a clean schema instead of the stale

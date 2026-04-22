@@ -137,16 +137,24 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._runningScenarios = [];
     this._autoAnswer = true;
     this._answerUnknownDevices = false;
+    this._preserveState = true;
     this._rfEnforceKnownList = false;
     this._rfKnownListEnabled = false;
     this._emissionsActive = false;
     this._events = [];
     this._stats = { rx: 0, tx: 0, devices: 0, active: 0 };
+    this._profileReload = {};
+    this._profilePreloadSchema = {};
+    this._profileResetCache = {};
+    this._profileEavesdrop = {};
+    this._profileSkipHydrate = {};
+    this._profileClearLog = {};
     this._tab = "profiles";
     this._newCodeInput = {};
     this._profileReload = {};
     this._profilePreloadSchema = {};
     this._profileResetCache = {};
+    this._profileEavesdrop = {};
     this._profileSkipHydrate = {};
     this._profileClearLog = {};
     this._profileNotice = null;
@@ -410,6 +418,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._runningMetadata = result.running_metadata || {};
       this._autoAnswer = result.auto_answer !== false;
       this._answerUnknownDevices = result.answer_unknown_devices === true;
+      this._preserveState = result.preserve_state === true;
       this._emissionsActive = result.autonomous_emissions_active === true;
       this._stats = result.stats || this._stats;
       const previousActive = this._activeProfile;
@@ -717,16 +726,22 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const reloadRf = this._profileReload[name] ?? true;
     const preloadSchema = this._profilePreloadSchema[name] ?? true;
     const resetCache = this._profileResetCache[name] ?? false;
+    const eavesdrop = this._profileEavesdrop[name] ?? false;
     const skipHydrate = this._profileSkipHydrate[name] ?? false;
     const clearLog = this._profileClearLog[name] ?? false;
+    // Get checkbox value from DOM
+    const checkbox = this.shadowRoot.querySelector(`[data-action='auto-answer-check'][data-profile='${name}']`);
+    const autoAnswer = checkbox ? checkbox.checked : true;
     const result = await this._hass.callWS({
       type: "ramses_extras/device_simulator/load_profile",
       profile: name,
       reload_ramses_cc: reloadRf,
       preload_schema: preloadSchema,
       reset_rf_cache: resetCache,
+      enable_eavesdrop: eavesdrop,
       remove_database: skipHydrate,
       clear_message_log: clearLog,
+      enable_auto_answer: autoAnswer,
     });
     this._activeProfile = name;
     this._scenarioState = "idle";
@@ -926,6 +941,17 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       enabled,
     });
     this._autoAnswer = enabled;
+    this._scheduleRender();
+    await new Promise((r) => setTimeout(r, 300));
+    await this._fetchData();
+  }
+
+  async _setPreserveState(enabled) {
+    await this._hass.callWS({
+      type: "ramses_extras/device_simulator/set_preserve_state",
+      enabled,
+    });
+    this._preserveState = enabled;
     this._scheduleRender();
     await new Promise((r) => setTimeout(r, 300));
     await this._fetchData();
@@ -1202,6 +1228,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const auToggle = root.querySelector("[data-action='toggle-answer-unknown']");
     if (auToggle) auToggle.addEventListener("change", (e) => this._setAnswerUnknownDevices(e.target.checked));
 
+    const psToggle = root.querySelector("[data-action='toggle-preserve-state']");
+    if (psToggle) psToggle.addEventListener("change", (e) => this._setPreserveState(e.target.checked));
+
     root.querySelectorAll("[data-action='toggle-device']").forEach(el => {
       el.addEventListener("change", () => {
         const d = this._devices.find(d => d.id === el.dataset.deviceId);
@@ -1248,6 +1277,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     root.querySelectorAll("[data-action='reset-cache-check']").forEach(chk => {
       chk.addEventListener("change", (e) => {
         this._profileResetCache = { ...this._profileResetCache, [chk.dataset.profile]: e.target.checked };
+      });
+    });
+
+    root.querySelectorAll("[data-action='eavesdrop-check']").forEach(chk => {
+      chk.addEventListener("change", (e) => {
+        this._profileEavesdrop = { ...this._profileEavesdrop, [chk.dataset.profile]: e.target.checked };
       });
     });
 
@@ -1517,8 +1552,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           const reloadChecked = (this._profileReload[p.name] ?? true) ? " checked" : "";
           const preloadChecked = (this._profilePreloadSchema[p.name] ?? true) ? " checked" : "";
           const resetCacheChecked = (this._profileResetCache[p.name] ?? false) ? " checked" : "";
+          const eavesdropChecked = (this._profileEavesdrop[p.name] ?? false) ? " checked" : "";
           const skipHydrateChecked = (this._profileSkipHydrate[p.name] ?? false) ? " checked" : "";
           const clearLogChecked = (this._profileClearLog[p.name] ?? false) ? " checked" : "";
+          const autoAnswerChecked = (p.enable_auto_answer ?? true) ? " checked" : "";
           const deleteButton = p.can_delete
             ? `<button class="btn btn-secondary" data-action="delete-profile" data-profile="${p.name}" style="margin-left:auto;">Delete</button>`
             : "";
@@ -1548,6 +1585,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
                   <input type="checkbox" data-action="reset-cache-check" data-profile="${p.name}"${resetCacheChecked} />
                   Reset cache
                 </label>
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Enable ramses_rf eavesdrop so HVAC devices are promoted (FAN/REM/CO2/HUM) from observed traffic.">
+                  <input type="checkbox" data-action="eavesdrop-check" data-profile="${p.name}"${eavesdropChecked} />
+                  Enable eavesdrop
+                </label>
                 <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
                   <input type="checkbox" data-action="skip-hydrate-check" data-profile="${p.name}"${skipHydrateChecked} />
                   Remove database file
@@ -1555,6 +1596,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
                 <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
                   <input type="checkbox" data-action="clear-log-check" data-profile="${p.name}"${clearLogChecked} />
                   Clear message log
+                </label>
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Enable auto-answer when this profile is loaded.">
+                  <input type="checkbox" data-action="auto-answer-check" data-profile="${p.name}"${autoAnswerChecked} />
+                  Enable auto answer
                 </label>
                 <button class="btn btn-primary" data-action="load-profile" data-profile="${p.name}">Load</button>
               </div>
@@ -1582,6 +1627,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const reloadField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "reload_ramses");
     const preloadField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "preload_schema");
     const resetField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "reset_rf_cache");
+    const eavesdropField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "enable_eavesdrop");
     const skipHydrateField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "remove_database");
     const clearLogField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "clear_message_log");
 
@@ -1591,6 +1637,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const reloadValue = params.reload_ramses ?? reloadField?.default ?? true;
     const preloadValue = params.preload_schema ?? preloadField?.default ?? true;
     const resetValue = params.reset_rf_cache ?? resetField?.default ?? false;
+    const eavesdropValue = params.enable_eavesdrop ?? eavesdropField?.default ?? false;
     const skipHydrateValue = params.remove_database ?? skipHydrateField?.default ?? false;
     const clearLogValue = params.clear_message_log ?? clearLogField?.default ?? false;
 
@@ -1622,6 +1669,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       <label style="font-size: 0.8em; display:flex; align-items:center; gap:4px; cursor:pointer;">
         <input type="checkbox" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="reset_rf_cache" data-type="checkbox" ${resetValue ? "checked" : ""} />
         ${resetField?.label || "Reset RF cache"}
+      </label>`;
+
+    const eavesdropToggle = `
+      <label style="font-size: 0.8em; display:flex; align-items:center; gap:4px; cursor:pointer;" title="Enable ramses_rf eavesdrop so HVAC devices are promoted (FAN/REM/CO2/HUM) from observed traffic.">
+        <input type="checkbox" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="enable_eavesdrop" data-type="checkbox" ${eavesdropValue ? "checked" : ""} />
+        ${eavesdropField?.label || "Enable eavesdrop"}
       </label>`;
 
     const skipHydrateToggle = `
@@ -1659,6 +1712,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           ${reloadToggle}
           ${preloadToggle}
           ${resetToggle}
+          ${eavesdropToggle}
           ${skipHydrateToggle}
           ${clearLogToggle}
         </div>
@@ -2369,6 +2423,18 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const ids = Object.keys(registry);
     if (!ids.length) return `<div style="color: var(--secondary-text-color); padding: 8px 0;">No scenarios available.</div>`;
 
+    const psChecked = this._preserveState ? " checked" : "";
+    const psCard = `
+      <div class="card ${this._preserveState ? "active" : ""}">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div><strong>Preserve state on reload / Clean restart</strong></div>
+          <label class="toggle">
+            <ha-switch data-action="toggle-preserve-state"${psChecked}></ha-switch>
+          </label>
+        </div>
+        <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-top: 4px;">When on: simulator state (auto-answer, answer unknown devices) persists across reloads. When off (Clean restart): state is reset on reload (auto-answer disabled, clean known list).</div>
+      </div>`;
+
     const aaChecked = this._autoAnswer ? " checked" : "";
     const aaCard = `
       <div class="card ${this._autoAnswer ? "active" : ""}">
@@ -2456,7 +2522,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       }).join("");
 
     const playbackCard = this._buildConversationPlaybackSettingsCard();
-    return `<div class="grid">${aaCard}${auCard}${rfCard}${playbackCard}${scenarioCards}</div>`;
+    return `<div class="grid">${psCard}${aaCard}${auCard}${rfCard}${playbackCard}${scenarioCards}</div>`;
   }
 
   _buildSavedPlaybacksPanel() {

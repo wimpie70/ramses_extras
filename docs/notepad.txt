@@ -90,19 +90,22 @@ test: ### disable simulator -> we need to set back the gateway topic to RAMSES/G
 or to a saved one that we replaced in the first place
 -> mqtt://slimmemeter:j@diebla@@192.168.40.11:1883/RAMSES/GATEWAY/18:001234
 
-### after play, we should be able to enable auto emission again (with the now found devices)
-
-### emitting random msgs: We have a Start all profile devices (devices tab). This will start emitting random msgs ? Then we should have a better caption for it.
+### emitting random msgs: We have a Start all profile devices (devices tab).
+This will start emitting random msgs ? Then we should have a better caption for it.
 
 ### add a switch to profiles to enable/disable persistence of the profile data... we need to be able to disable
 to avoid long loading times on problematic profiles
+
+### add a search field to the conversation selector
+
 
 ---
 
 
 --- next to do:
 
-### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
+### scenario: rotate log files: we get reports of crashes or losing devices.
+we should be able to simulate and test this
 
 
 - refactor device-simulator-card in smaller files:
