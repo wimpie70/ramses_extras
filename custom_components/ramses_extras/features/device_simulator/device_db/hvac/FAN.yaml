@@ -147,3 +147,23 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads: []
+responses:
+- code: '31DA'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+  - 000010018B0000F830F060E890CE00000000000000000000000000000000
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
+- code: '2411'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00000100000000003200000000000000FF0000000120

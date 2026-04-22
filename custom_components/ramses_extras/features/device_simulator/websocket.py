@@ -112,6 +112,9 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_active_devices)
     websocket_api.async_register_command(hass, ws_activate_device)
     websocket_api.async_register_command(hass, ws_silence_device)
+    websocket_api.async_register_command(hass, ws_resume_devices)
+    websocket_api.async_register_command(hass, ws_silence_devices)
+    websocket_api.async_register_command(hass, ws_discover_capabilities)
     websocket_api.async_register_command(hass, ws_get_conversations)
     websocket_api.async_register_command(hass, ws_get_messages)
     # UI card handlers
@@ -444,6 +447,7 @@ def ws_get_active_devices(
         vol.Optional("variant_id"): str,
     }
 )
+@websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_activate_device(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -476,6 +480,7 @@ async def ws_activate_device(
         vol.Required("device_id"): str,
     }
 )
+@websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_silence_device(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -489,6 +494,152 @@ async def ws_silence_device(
 
     await engine.async_silence_device(msg["device_id"])
     connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/resume_devices",
+        vol.Optional("device_ids", default=[]): [str],
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_resume_devices(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Resume autonomous emission for one or more active devices."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    device_ids = [
+        device_id.upper() for device_id in msg.get("device_ids", []) if device_id
+    ]
+
+    if device_ids:
+        for device_id in device_ids:
+            await engine.async_resume_device(device_id)
+        connection.send_result(msg["id"], {"success": True, "resumed": device_ids})
+        return
+
+    await engine.async_resume_all()
+    connection.send_result(msg["id"], {"success": True, "resumed": "all"})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/silence_devices",
+        vol.Optional("device_ids", default=[]): [str],
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_silence_devices(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Silence autonomous emission for one or more active devices."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    device_ids = [
+        device_id.upper() for device_id in msg.get("device_ids", []) if device_id
+    ]
+
+    if device_ids:
+        for device_id in device_ids:
+            await engine.async_silence_device(device_id)
+        connection.send_result(msg["id"], {"success": True, "silenced": device_ids})
+        return
+
+    await engine.async_silence_all()
+    connection.send_result(msg["id"], {"success": True, "silenced": "all"})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/discover_capabilities",
+        vol.Optional("device_ids", default=[]): [str],
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_discover_capabilities(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Trigger capability discovery by delegating to ramses_cc devices."""
+
+    from ...framework.helpers.ramses_commands import RamsesCommands
+
+    # Access the simulator (optional, only used to provide defaults)
+    engine = _get_engine(hass)
+
+    commands = RamsesCommands(hass)
+    coordinator = await commands._get_ramses_cc_coordinator()
+    if not coordinator:
+        connection.send_error(
+            msg["id"], "not_ready", "ramses_cc coordinator not available"
+        )
+        return
+
+    gateway = getattr(coordinator, "client", None)
+    if not gateway:
+        connection.send_error(msg["id"], "not_ready", "ramses_cc gateway not available")
+        return
+
+    registry = getattr(gateway, "device_registry", None)
+    if not registry:
+        connection.send_error(
+            msg["id"], "not_ready", "Gateway device registry unavailable"
+        )
+        return
+
+    device_ids = [
+        device_id.upper() for device_id in msg.get("device_ids", []) if device_id
+    ]
+    if not device_ids and engine:
+        device_ids = list(engine.active_device_ids)
+    if not device_ids:
+        connection.send_error(msg["id"], "no_devices", "No devices specified")
+        return
+
+    triggered = 0
+    errors: list[str] = []
+
+    for device_id in device_ids:
+        device = registry.device_by_id.get(device_id)
+        if not device:
+            errors.append(f"{device_id}: not found in ramses_cc registry")
+            continue
+
+        discovery = getattr(device, "discovery", None)
+        if not discovery:
+            errors.append(f"{device_id}: no discovery service")
+            continue
+
+        try:
+            # Run an immediate discovery pass for the device
+            await discovery.discover()
+            discovery.start_poller()
+            triggered += 1
+        except Exception as err:  # noqa: BLE001
+            errors.append(f"{device_id}: {err}")
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "triggered": triggered,
+            "errors": errors,
+        },
+    )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -651,6 +802,7 @@ def ws_get_ui_status(
                 "source": device.origin,
                 "owned_by_profile": engine.is_profile_device(device.device_id),
                 "zones": zone_membership.get(device.device_id, []),
+                "emitting": device.device_id in engine._emitter_tasks,
             }
             for device in engine._active_devices.values()
         ]

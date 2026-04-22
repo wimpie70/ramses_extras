@@ -45,6 +45,7 @@ const CARD_STYLE = `
   .event-type.tx { background: var(--info-color-light); color: var(--info-color); }
   .event-type.unavailable { background: var(--error-color-light); color: var(--error-color); }
   .device-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+  .device-emitter { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 0.8em; }
   .toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85em; }
   .codes-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
   .code-chip { display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; background: var(--secondary-background-color); border: 1px solid var(--divider-color); }
@@ -70,6 +71,9 @@ const CARD_STYLE = `
   .chip.disabled { background: var(--divider-color); color: var(--secondary-text-color); }
   .chip.muted { background: var(--divider-color); color: var(--secondary-text-color); }
   .chip.source { background: var(--secondary-background-color); color: var(--secondary-text-color); }
+  .chip.emitting { background: var(--success-color, #388e3c); color: #fff; }
+  .chip.idle { background: var(--warning-color, #ffa000); color: #000; }
+  .chip.silenced { background: var(--error-color, #f44336); color: #fff; }
   .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
   .scenario-form { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
   .scenario-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; }
@@ -742,6 +746,84 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     await this._fetchData();
   }
 
+  async _resumeAllDevices() {
+    await this._resumeDevices();
+  }
+
+  async _resumeDevice(deviceId) {
+    if (!deviceId) {
+      return;
+    }
+    await this._resumeDevices([deviceId]);
+  }
+
+  async _resumeDevices(deviceIds) {
+    if (!this._hass) {
+      return;
+    }
+    const payload = {
+      type: "ramses_extras/device_simulator/resume_devices",
+    };
+    if (Array.isArray(deviceIds) && deviceIds.length) {
+      payload.device_ids = deviceIds;
+    }
+    try {
+      await this._hass.callWS(payload);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: resume_devices failed", error);
+    }
+    await this._fetchData();
+  }
+
+  async _silenceAllDevices() {
+    await this._silenceDevices();
+  }
+
+  async _silenceDevices(deviceIds) {
+    if (!this._hass) {
+      return;
+    }
+    const payload = {
+      type: "ramses_extras/device_simulator/silence_devices",
+    };
+    if (Array.isArray(deviceIds) && deviceIds.length) {
+      payload.device_ids = deviceIds;
+    }
+    try {
+      await this._hass.callWS(payload);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: silence_devices failed", error);
+    }
+    await this._fetchData();
+  }
+
+  async _discoverCapabilities(deviceIds) {
+    if (!this._hass) {
+      return;
+    }
+    const payload = {
+      type: "ramses_extras/device_simulator/discover_capabilities",
+    };
+    if (Array.isArray(deviceIds) && deviceIds.length) {
+      payload.device_ids = deviceIds;
+    }
+    try {
+      const result = await this._hass.callWS(payload);
+      // eslint-disable-next-line no-console
+      console.log("DeviceSimulatorCard: discover_capabilities result", result);
+      if (result.errors && result.errors.length) {
+        // eslint-disable-next-line no-console
+        console.warn("DeviceSimulatorCard: discovery errors", result.errors);
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: discover_capabilities failed", error);
+    }
+    await this._fetchData();
+  }
+
   async _activateProfileDevice(deviceId) {
     if (!deviceId || !this._hass) {
       return;
@@ -981,6 +1063,28 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     root.querySelectorAll("[data-action='activate-profile-device']").forEach((btn) => {
       btn.addEventListener("click", () => this._activateProfileDevice(btn.dataset.deviceId));
     });
+
+    root.querySelectorAll("[data-action='resume-device']").forEach((btn) => {
+      btn.addEventListener("click", () => this._resumeDevice(btn.dataset.deviceId));
+    });
+
+    root.querySelectorAll("[data-action='silence-device']").forEach((btn) => {
+      btn.addEventListener("click", () => this._silenceDevices([btn.dataset.deviceId]));
+    });
+
+    root.querySelectorAll("[data-action='discover-device']").forEach((btn) => {
+      btn.addEventListener("click", () => this._discoverCapabilities([btn.dataset.deviceId]));
+    });
+
+    const resumeAll = root.querySelector("[data-action='resume-all-devices']");
+    if (resumeAll) {
+      resumeAll.addEventListener("click", () => this._resumeAllDevices());
+    }
+
+    const silenceAll = root.querySelector("[data-action='silence-all-devices']");
+    if (silenceAll) {
+      silenceAll.addEventListener("click", () => this._silenceAllDevices());
+    }
 
     const speedSlider = root.querySelector("[data-action='speed-slider']");
     if (speedSlider) {
@@ -1722,16 +1826,29 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       <div class="grid device-controls">
         ${this._buildManualInjectionCard()}
         ${this._buildProfileEmissionsCard()}
+        ${this._buildResumeEmittersCard()}
         ${this._buildPlaybackConversationCard()}
         ${this._buildAutonomousSpeedCard()}
       </div>`;
 
     if (this._devices.length === 0) {
-      return `${controls}<div class="device-list-empty">No active devices. Use Manual Device Injection or Start all profile devices above to start emitters.</div>`;
+      return `${controls}<div class="device-list-empty">No active devices. Use Manual Device Injection or start the profile emitters above to populate the simulator.</div>`;
     }
 
     const knownList = this._knownList();
     const deviceCards = this._devices.map((d) => {
+      const isEmitting = d.emitting === true;
+      const isSilenced = d.suppress_autonomous;
+      const emitterLabel = isEmitting
+        ? "Emitter running"
+        : isSilenced
+          ? "Silenced"
+          : "Emitter idle";
+      const emitterChipClass = isEmitting
+        ? "chip emitting"
+        : isSilenced
+          ? "chip silenced"
+          : "chip idle";
       const ownershipChip = d.owned_by_profile
         ? `<span class="chip profile" title="Defined by the active profile">Profile</span>`
         : `<span class="chip manual" title="Manually injected device">Manual</span>`;
@@ -1746,6 +1863,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       ).join("");
       const checkedAttr = d.enabled ? " checked" : "";
       const zoneMarkup = this._renderDeviceZones(d);
+      const emitterButton = isEmitting
+        ? `<button class="btn btn-secondary" data-action="silence-device" data-device-id="${d.id}">Stop emission</button>`
+        : `<button class="btn btn-secondary" data-action="resume-device" data-device-id="${d.id}">${isSilenced ? "Unsilence & resume" : "Resume emission"}</button>`;
       return `
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -1757,6 +1877,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
               <ha-switch data-action="toggle-device" data-device-id="${d.id}"${checkedAttr}></ha-switch>
               <span>${d.enabled ? "Enabled" : "Disabled"}</span>
             </label>
+          </div>
+          <div class="device-emitter" title="Autonomous emitter state">
+            <span class="${emitterChipClass}">${emitterLabel}</span>
+            ${emitterButton}
+            <button class="btn btn-secondary" data-action="discover-device" data-device-id="${d.id}">Discover capabilities</button>
           </div>
           <div style="font-size: 0.8em; color: var(--secondary-text-color); margin-top: 8px;">Excluded codes:</div>
           <div class="codes-row">${chipsMarkup || `<span class="chip muted">none</span>`}</div>
@@ -1837,8 +1962,8 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const stopDisabled = profileCount === 0;
     const summaryText = stateMeta.description;
 
-    const startButton = `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}" ${startDisabled ? "disabled" : ""}>Start all profile devices</button>`;
-    const stopButton = `<button class="btn btn-secondary" data-action="stop-profile-devices" ${stopDisabled ? "disabled" : ""}>Stop all profile devices</button>`;
+    const startButton = `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}" ${startDisabled ? "disabled" : ""}>Start profile emitters</button>`;
+    const stopButton = `<button class="btn btn-secondary" data-action="stop-profile-devices" ${stopDisabled ? "disabled" : ""}>Stop profile emitters</button>`;
     const buttonRow = `${startButton}${stopButton}`;
 
     const missingDevices = summary.filter((entry) => !entry.active);
@@ -1863,13 +1988,64 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     return `
       <div class="card">
         <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-          <strong>Start all profile devices</strong>
+          <strong>Profile emitters</strong>
           ${statusChip}
         </div>
-        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${summaryText}</div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${summaryText} These devices emit their periodic "random" frames directly from the active profile.</div>
         ${conflictWarn}
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">${buttonRow}</div>
         ${missingMarkup}
+      </div>`;
+  }
+
+  _buildResumeEmittersCard() {
+    const devices = this._devices || [];
+    // Resume should work on any active device whose emitter is idle, including
+    // devices that arrived disabled via playback/discovery or were silenced.
+    // The backend `async_resume_device` re-enables and unsilences the device.
+    const resumeCandidates = devices.filter((d) => !d.emitting);
+    const silencedCount = devices.filter((d) => d.suppress_autonomous).length;
+    const emittingCount = devices.filter((d) => d.emitting).length;
+    const chipClass = resumeCandidates.length
+      ? "chip reply"
+      : devices.length
+        ? "chip emitting"
+        : "chip muted";
+    const chipLabel = resumeCandidates.length
+      ? `${resumeCandidates.length} idle`
+      : devices.length
+        ? "All emitting"
+        : "No active devices";
+    const desc = resumeCandidates.length
+      ? "Start autonomous emissions for the devices you just activated via playback or discovery."
+      : devices.length
+        ? "Every active device already has its emitter running."
+        : "Activate devices first (via playback, manual injection, or profiles) to resume their emitters.";
+    const sampleList = resumeCandidates.slice(0, 4)
+      .map((d) => `<span class="chip muted">${d.id}</span>`)
+      .join("");
+    const extraCount = resumeCandidates.length > 4
+      ? `<span class="chip muted">+${resumeCandidates.length - 4} more</span>`
+      : "";
+    const silencedNote = silencedCount
+      ? `<div class="profile-missing" style="margin-top:8px;">
+          <strong>${silencedCount} device${silencedCount === 1 ? " is" : "s are"} silenced</strong>
+          <span>Use the per-device "Unsilence & resume" button to re-enable them.</span>
+        </div>`
+      : "";
+    return `
+      <div class="card">
+        <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <strong>Resume emitters for active devices</strong>
+          <span class="${chipClass}">${chipLabel}</span>
+        </div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${desc}</div>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-secondary" data-action="resume-all-devices" ${resumeCandidates.length ? "" : "disabled"}>Start emitters for active devices</button>
+          <button class="btn btn-secondary" data-action="silence-all-devices" ${emittingCount ? "" : "disabled"}>Stop emitters for active devices</button>
+        </div>
+        ${resumeCandidates.length ? `<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">${sampleList}${extraCount}</div>` : ""}
+        ${silencedNote}
       </div>`;
   }
 

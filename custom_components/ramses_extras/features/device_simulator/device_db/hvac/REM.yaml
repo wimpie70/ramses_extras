@@ -90,6 +90,12 @@ responses:
   payloads:
   - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
   notes: Shared HVAC telemetry block reused for discovery replies
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 000001C8380F0100F1FF1D0807E2030507E15438375246323032350000000000000000000000
 - code: '2411'
   rq_verb: RQ
   rp_verb: RP

@@ -88,14 +88,17 @@ Shouldn't we filter this ? we know from our database what belongs to what
 
 test: ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
 or to a saved one that we replaced in the first place
+-> mqtt://slimmemeter:j@diebla@@192.168.40.11:1883/RAMSES/GATEWAY/18:001234
 
 ### after play, we should be able to enable auto emission again (with the now found devices)
 
+### emitting random msgs: We have a Start all profile devices (devices tab). This will start emitting random msgs ? Then we should have a better caption for it.
+
+### add a switch to profiles to enable/disable persistence of the profile data... we need to be able to disable
+to avoid long loading times on problematic profiles
 
 ---
 
-### can we discover multiple TRV's or REM's at the same time? maybe we should use REM_1, REM_2, etc
- in the dbase to add multiple devices of the same type
 
 --- next to do:
 

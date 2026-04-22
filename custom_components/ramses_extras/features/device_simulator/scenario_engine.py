@@ -507,6 +507,79 @@ class ScenarioEngine:
         self._manual_device_ids.discard(device_id)
         LOGGER.info("Device %s silenced", device_id)
 
+    async def async_resume_device(self, device_id: str) -> None:
+        """Resume a device's autonomous emission (simulate coming back online).
+
+        :param device_id: Device to resume.
+        """
+        device = self._active_devices.get(device_id)
+        if not device:
+            LOGGER.warning("Cannot resume unknown device: %s", device_id)
+            return
+
+        # If emitter is already running, nothing to do
+        if device_id in self._emitter_tasks:
+            LOGGER.debug("Device %s already has emitter running", device_id)
+            return
+
+        # Enable autonomous emission (also re-enable the device itself so the
+        # emitter loop doesn't exit immediately for devices that were disabled
+        # during playback/discovery).
+        device.suppress_autonomous = False
+        device.enabled = True
+
+        # Get periodic entries for the device
+        periodic = self._db.get_periodic(device.slug, device.variant_id)
+
+        # Start the emitter task
+        LOGGER.debug("Starting emitter task for %s", device_id)
+        self._emitter_tasks[device_id] = asyncio.create_task(
+            self._periodic_emitter(device, periodic)
+        )
+
+        # Fire event to notify UI that devices have changed
+        self.hass.bus.async_fire(
+            "ramses_extras_simulator_devices_changed",
+            {
+                "device_id": device_id,
+                "action": "resumed",
+                "count": len(self._active_devices),
+                "source": device.origin,
+            },
+        )
+        LOGGER.info("Device %s resumed (emitter started)", device_id)
+
+    async def async_resume_all(self) -> None:
+        """Resume autonomous emission for all active devices.
+
+        Devices that are silenced (``suppress_autonomous=True``) are also
+        resumed; :meth:`async_resume_device` clears that flag.
+        """
+        resumed_count = 0
+        for device_id in list(self._active_devices.keys()):
+            # Skip devices whose emitter task is already running.
+            if device_id in self._emitter_tasks:
+                continue
+            await self.async_resume_device(device_id)
+            resumed_count += 1
+        LOGGER.info("Resumed %d devices", resumed_count)
+
+    async def async_silence_all(self) -> None:
+        """Silence autonomous emission for all active devices.
+
+        Counterpart of :meth:`async_resume_all` – keeps the devices in the
+        active set but stops their periodic emitter tasks.
+        """
+        silenced_count = 0
+        for device_id in list(self._active_devices.keys()):
+            if (
+                device_id in self._emitter_tasks
+                or not self._active_devices[device_id].suppress_autonomous
+            ):
+                await self.async_silence_device(device_id)
+                silenced_count += 1
+        LOGGER.info("Silenced %d devices", silenced_count)
+
     async def async_stop_all(self) -> None:
         """Stop all active emitters and clear state."""
         for task in list(self._emitter_tasks.values()):

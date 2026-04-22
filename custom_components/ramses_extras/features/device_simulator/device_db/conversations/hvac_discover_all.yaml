@@ -27,6 +27,12 @@ conversations:
         code: '31DA'
         verb: RP
         payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+      - t: 0.2
+        src: REM
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: 000001C8380F0100F1FF1D0807E2030507E15438375246323032350000000000000000000000
       # FAN discovery
       - t: 5.0
         src: HGI
@@ -40,6 +46,12 @@ conversations:
         code: '31DA'
         verb: RP
         payload: 000010018B0000F830F060E890CE00000000000000000000000000000000
+      - t: 5.2
+        src: FAN
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
       # DIS discovery
       - t: 10.0
         src: HGI
@@ -53,19 +65,31 @@ conversations:
         code: '31DA'
         verb: RP
         payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+      - t: 10.2
+        src: DIS
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: '00'
       # CO2 discovery
       - t: 15.0
         src: HGI
         dst: CO2
-        code: '31DA'
+        code: '31E0'
         verb: RQ
         payload: '00'
       - t: 15.1
         src: CO2
         dst: HGI
-        code: '31DA'
+        code: '31E0'
         verb: RP
-        payload: 00EF007FFF2B27060E0848089605F9F000445800000000EFEF02D2154400
+        payload: 6400CD03E803E8
+      - t: 15.2
+        src: CO2
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: 000001C8510D0167FEFFFFFFFFFF0B0207E3564D532D3135434D313700000000000000000000
       # HUM discovery
       - t: 20.0
         src: HGI
@@ -79,6 +103,12 @@ conversations:
         code: '31DA'
         verb: RP
         payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+      - t: 20.2
+        src: HUM
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: '00'
       # RFS discovery
       - t: 25.0
         src: HGI
@@ -92,3 +122,9 @@ conversations:
         code: '31DA'
         verb: RP
         payload: 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+      - t: 25.2
+        src: RFS
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: '00'

@@ -60,6 +60,12 @@ responses:
   payloads:
   - '000204'
   notes: Fan mode sample lifted from regression_packets_sorted.txt (nuaire scheme)
+- code: '31E0'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 6400CD03E803E8
 - code: 31DA
   rq_verb: RQ
   rp_verb: RP
