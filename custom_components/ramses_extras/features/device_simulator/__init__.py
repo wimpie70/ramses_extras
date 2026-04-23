@@ -366,12 +366,31 @@ async def create_device_simulator_feature(
                 )
                 config_store.set_active_profile(clean_profile_name)
                 await config_store.async_save_state()
-                await _pre_clear_ramses_cc_schema(hass, clean_profile_name)
-                # Also write the clean profile's known_list/schema to the
-                # ramses_cc config entry so _enforce_simulator_isolation reloads
-                # with the fresh options.
-                from .profile_loader import _update_known_list_and_reload
 
+                # Clear RF cache and database before profile loading for clean slate
+                from .profile_loader import (
+                    _clear_ramses_rf_cache,
+                    _reload_ramses_cc,
+                    _update_known_list_and_reload,
+                )
+
+                try:
+                    await _clear_ramses_rf_cache(hass)
+                    _LOGGER.info("Device Simulator: cleared RF cache for clean restart")
+                except Exception as e:
+                    _LOGGER.warning("Device Simulator: failed to clear RF cache: %s", e)
+
+                try:
+                    await _remove_ramses_database(hass)
+                    _LOGGER.info("Device Simulator: removed database for clean restart")
+                except Exception as e:
+                    _LOGGER.warning(
+                        "Device Simulator: failed to remove database: %s", e
+                    )
+                await _pre_clear_ramses_cc_schema(hass, clean_profile_name)
+
+                # Write the clean profile's known_list/schema to the ramses_cc
+                # config entry so the reload below picks up the fresh options.
                 known_list = clean_profile.device_configs.get("_known_list")
                 schema = clean_profile.device_configs.get("_schema")
                 if known_list is not None:
@@ -384,22 +403,35 @@ async def create_device_simulator_feature(
                         schema=schema_payload,
                     )
 
-        # Pre-clear ramses_cc store schema if last active profile enforced known_list.
-        # This ensures that when _enforce_simulator_isolation triggers a ramses_cc
-        # reload below, ramses_cc starts with a clean schema instead of the stale
-        # schema from the previous session's sim devices.
-        last_profile_name = config_store.get_active_profile()
-        if last_profile_name:
-            last_profile = config_store.get_profile(last_profile_name)
-            if last_profile is not None:
-                _ekl = last_profile.device_configs.get("_enforce_known_list", False)
-                enforce = (
-                    bool(_ekl.get("enabled", False))
-                    if isinstance(_ekl, dict)
-                    else bool(_ekl)
-                )
-                if enforce:
-                    await _pre_clear_ramses_cc_schema(hass, last_profile_name)
+                # Reload ramses_cc to ensure it starts with clean state.
+                #
+                # This fixes the load order issue during container restart:
+                # - When HA restarts, ramses_cc loads BEFORE ramses_extras
+                # - ramses_cc hydrates from stale disk state (schema, known_list, db)
+                # - Then ramses_extras starts and cleans the state, but it's too late
+                # - Devices are already announced from the stale state
+                #
+                # Use _reload_ramses_cc (same helper as the manual fresh_start
+                # profile load) so the HA device registry is also wiped.
+                # A plain hass.config_entries.async_reload() keeps stale HA
+                # devices around, which then re-hydrate through ramses_cc.
+                ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
+                if ramses_cc_entries:
+                    try:
+                        await _reload_ramses_cc(
+                            hass,
+                            ramses_cc_entries[0].entry_id,
+                            wipe_schema=True,
+                            auto_start_on_reload=False,
+                            profile_devices={},
+                        )
+                        _LOGGER.info(
+                            "Device Simulator: reloaded ramses_cc for clean restart"
+                        )
+                    except Exception as e:
+                        _LOGGER.warning(
+                            "Device Simulator: failed to reload ramses_cc: %s", e
+                        )
 
     registry = hass.data["ramses_extras"]
 
