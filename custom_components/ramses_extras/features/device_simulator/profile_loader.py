@@ -202,9 +202,10 @@ async def async_apply_profile(
 
     # Set auto_answer based on profile's enable_auto_answer
     config_store = ra.get("device_simulator_config_store")
+    state_needs_save = False
     if config_store:
         config_store.set_auto_answer(profile.enable_auto_answer)
-        await config_store.async_save_state()
+        state_needs_save = True
     if engine:
         engine.set_auto_answer(profile.enable_auto_answer)
     actions.append(
@@ -222,10 +223,14 @@ async def async_apply_profile(
         config_store = ra.get("device_simulator_config_store")
         if config_store:
             config_store.set_remove_database(skip_rf_hydrate)
-            await config_store.async_save_state()
+            state_needs_save = True
             actions.append(
                 f"remove_database={'enabled' if skip_rf_hydrate else 'disabled'}"
             )
+
+    # Save state once if any config changes were made
+    if state_needs_save and config_store:
+        await config_store.async_save_state()
 
     if known_list is not None:
         actions.extend(

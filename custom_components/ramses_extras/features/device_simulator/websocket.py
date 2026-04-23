@@ -449,8 +449,8 @@ def ws_get_active_devices(
         vol.Optional("variant_id"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_activate_device(
+@callback  # type: ignore[untyped-decorator]
+def ws_activate_device(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
@@ -468,7 +468,7 @@ async def ws_activate_device(
         slug=msg["slug"],
         variant_id=msg.get("variant_id"),
     )
-    await engine.async_activate_device(device)
+    hass.async_create_task(engine.async_activate_device(device))
 
     connection.send_result(
         msg["id"],
@@ -482,8 +482,8 @@ async def ws_activate_device(
         vol.Required("device_id"): str,
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_silence_device(
+@callback  # type: ignore[untyped-decorator]
+def ws_silence_device(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
@@ -494,7 +494,7 @@ async def ws_silence_device(
         connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
         return
 
-    await engine.async_silence_device(msg["device_id"])
+    hass.async_create_task(engine.async_silence_device(msg["device_id"]))
     connection.send_result(msg["id"], {"success": True})
 
 
@@ -504,8 +504,8 @@ async def ws_silence_device(
         vol.Optional("device_ids", default=[]): [str],
     }
 )
-@websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_resume_devices(
+@callback  # type: ignore[untyped-decorator]
+def ws_resume_devices(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
@@ -523,11 +523,11 @@ async def ws_resume_devices(
 
     if device_ids:
         for device_id in device_ids:
-            await engine.async_resume_device(device_id)
+            hass.async_create_task(engine.async_resume_device(device_id))
         connection.send_result(msg["id"], {"success": True, "resumed": device_ids})
         return
 
-    await engine.async_resume_all()
+    hass.async_create_task(engine.async_resume_all())
     connection.send_result(msg["id"], {"success": True, "resumed": "all"})
 
 

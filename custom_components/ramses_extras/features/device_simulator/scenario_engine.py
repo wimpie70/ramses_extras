@@ -1064,6 +1064,42 @@ class ScenarioEngine:
         resp: ResponseEntry | None = self._db.find_response(slug, code, variant_id)
         payload: str | None = None
         delay_ms = 0
+
+        # Special handling for 2411 (fan parameters) - use shared helper
+        if code == "2411" and rq_payload:
+            from .response_engine import build_2411_payload
+
+            payload = build_2411_payload(rq_payload, resp.payloads if resp else None)
+            if payload:
+                param_hex = rq_payload[4:6].upper() if len(rq_payload) >= 6 else "??"
+                LOGGER.debug(
+                    "ScenarioEngine: 2411 response for param %s: %s...",
+                    param_hex,
+                    payload[:30],
+                )
+                # Send the constructed payload directly
+                if delay_ms > 0:
+                    await asyncio.sleep(delay_ms / 1000.0)
+
+                packet = self._build_packet(dst, src, VERB_RP, code, payload)
+                try:
+                    await self._endpoint.send_packet(packet)
+                    self._messages_sent += 1
+                    self._message_log.append(
+                        f"[{asyncio.get_event_loop().time():.3f}] {packet[:60]}..."
+                    )
+                    if len(self._message_log) > 1000:
+                        self._message_log = self._message_log[-500:]
+                    self._log_and_emit("outbound", packet, origin="auto_answer")
+                    LOGGER.debug("Responded %s RP/%s → %s", dst, code, src)
+                except Exception as err:
+                    LOGGER.warning("Failed to send RP for %s/%s: %s", dst, code, err)
+                return
+            LOGGER.debug(
+                "ScenarioEngine: unable to build 2411 payload for %s", rq_payload
+            )
+
+        # Standard response handling for non-2411 codes
         if resp and resp.payloads:
             key = (slug, code)
             idx = self._response_index.get(key, 0) % len(resp.payloads)

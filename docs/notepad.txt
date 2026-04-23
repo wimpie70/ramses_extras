@@ -90,17 +90,9 @@ test: ### disable simulator -> we need to set back the gateway topic to RAMSES/G
 or to a saved one that we replaced in the first place
 -> mqtt://slimmemeter:j@diebla@@192.168.40.11:1883/RAMSES/GATEWAY/18:001234
 
-### emitting random msgs: We have a Start all profile devices (devices tab).
-This will start emitting random msgs ? Then we should have a better caption for it.
-
-### add a switch to profiles to enable/disable persistence of the profile data... we need to be able to disable
-to avoid long loading times on problematic profiles
-
 ### add a search field to the conversation selector
 
-
----
-
+### when a fan replies to a REM, then it must be bound....-> we should mark it bound, maybe even add it to _rf as bound ?
 
 --- next to do:
 

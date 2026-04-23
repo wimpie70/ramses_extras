@@ -183,6 +183,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._playbackInterMsgDelay = "";
     this._playbackSkipAnswers = false;
     this._scenarioSubscription = null;
+    this._playbackSearchQuery = "";
 
     this._loadLoaderDraft();
   }
@@ -1219,6 +1220,14 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     if (skipAnswers) {
       skipAnswers.addEventListener("change", (e) => {
         this._playbackSkipAnswers = Boolean(e.target.checked);
+      });
+    }
+
+    const searchInput = root.querySelector("[data-action='playback-search']");
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        this._playbackSearchQuery = e.target.value;
+        this._scheduleRender();
       });
     }
 
@@ -2527,12 +2536,23 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   _buildSavedPlaybacksPanel() {
     const list = this._savedPlaybacks || [];
+    const query = (this._playbackSearchQuery || "").toLowerCase().trim();
+    const filteredList = query
+      ? list.filter((p) => p.id.toLowerCase().includes(query))
+      : list;
     const builtinCount = list.filter((p) => p.builtin).length;
     const userCount = list.length - builtinCount;
     const header = `
       <div style="margin-top:8px; font-size:0.85em; color:var(--secondary-text-color);">
         <strong>Saved playbacks</strong>
         <span style="margin-left:6px;">(${builtinCount} built-in, ${userCount} imported)</span>
+      </div>
+      <div style="margin-top:4px;">
+        <input type="text"
+               placeholder="Search conversations..."
+               value="${this._playbackSearchQuery || ""}"
+               data-action="playback-search"
+               style="width:100%; padding:4px 8px; border:1px solid var(--divider-color,#eee); border-radius:4px; background:var(--card-background-color); color:var(--primary-text-color); font-size:0.8em;" />
       </div>`;
     if (!list.length) {
       return `${header}
@@ -2540,7 +2560,13 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           None yet. Paste a log above and click <em>Save</em> to keep it.
         </div>`;
     }
-    const rows = list.map((p) => {
+    if (!filteredList.length) {
+      return `${header}
+        <div style="font-size:0.8em; color:var(--secondary-text-color); padding:4px 0;">
+          No matching conversations.
+        </div>`;
+    }
+    const rows = filteredList.map((p) => {
       const builtinTag = p.builtin
         ? `<span class="chip muted" style="font-size:0.65em;">built-in</span>`
         : "";
