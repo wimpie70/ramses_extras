@@ -515,18 +515,32 @@ export class RamsesBaseCard extends HTMLElement {
 
   _confirmBackendReady() {
     if (this._hassLoaded) {
-      return;
+      return Promise.resolve();
+    }
+    if (this._backendReadyPromise) {
+      return this._backendReadyPromise;
     }
     if (!this._isHomeAssistantRunning()) {
       logger.debug(`${this.constructor.name}: HA not running yet`);
-      return;
+      // Retry instead of resolving immediately
+      this._backendReadyPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          this._backendReadyPromise = null;
+          resolve(this._confirmBackendReady());
+        }, 1000);
+      });
+      return this._backendReadyPromise;
     }
     if (!this._hass?.connection) {
       logger.debug(`${this.constructor.name}: No connection yet`);
-      return;
-    }
-    if (this._backendReadyPromise) {
-      return;
+      // Retry instead of resolving immediately
+      this._backendReadyPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          this._backendReadyPromise = null;
+          resolve(this._confirmBackendReady());
+        }, 1000);
+      });
+      return this._backendReadyPromise;
     }
 
     logger.debug(`${this.constructor.name}: Calling get_cards_enabled to confirm backend ready`);
@@ -550,8 +564,15 @@ export class RamsesBaseCard extends HTMLElement {
       .catch((error) => {
         logger.warn(`${this.constructor.name}: Backend ready check failed, will retry:`, error);
         this._backendReadyPromise = null;
-        setTimeout(() => this._confirmBackendReady(), 1000);
+        // Return a new promise that will retry, so the original promise never rejects
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve(this._confirmBackendReady());
+          }, 1000);
+        });
       });
+
+    return this._backendReadyPromise;
   }
 
   /**
@@ -800,7 +821,10 @@ export class RamsesBaseCard extends HTMLElement {
       // Listen for the HASS ready event to mark when HASS is fully loaded.
       // Do this whenever we need the latch, not only on connectionChanged.
       if (needsReadyLatch && hass && hass.connection && !this._hassReadyListener) {
-        this._hassReadyListener = hass.connection.addEventListener('ready', () => {
+        this._hassReadyListener = hass.connection.addEventListener('ready', async () => {
+          // Wait for backend to be ready before proceeding
+          await this._confirmBackendReady();
+
           this._hassLoaded = true;
 
           if (typeof this._hassReadyListener === 'function') {
@@ -836,8 +860,11 @@ export class RamsesBaseCard extends HTMLElement {
 
       // Fallback timeout in case ready event doesn't fire
       if (needsReadyLatch && !this._hassLoadTimeout) {
-        this._hassLoadTimeout = setTimeout(() => {
+        this._hassLoadTimeout = setTimeout(async () => {
           if (!this._hassLoaded) {
+            // Wait for backend to be ready before proceeding
+            await this._confirmBackendReady();
+
             this._hassLoaded = true;
             debugLog(
               `⚠️ ${this.constructor.name}: HASS ready timeout reached after 2 minutes, assuming HASS is loaded`
@@ -1184,11 +1211,14 @@ export class RamsesBaseCard extends HTMLElement {
   /**
    * Connected callback - setup message broker and lifecycle
    */
-  connectedCallback() {
+  async connectedCallback() {
     debugLog(`🔗 ${this.constructor.name}: Component connected to DOM`);
 
     // Setup message broker integration
     this._setupMessageBroker();
+
+    // Wait for backend to be ready before calling _onConnected
+    await this._confirmBackendReady();
 
     try {
       this._onConnected();
