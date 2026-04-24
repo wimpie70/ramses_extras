@@ -49,6 +49,8 @@ SERVICE_RUN_SCENARIO = "device_simulator_run_scenario"
 SERVICE_STOP_SCENARIO = "device_simulator_stop_scenario"
 SERVICE_ACTIVATE_DEVICE = "device_simulator_activate_device"
 SERVICE_SILENCE_DEVICE = "device_simulator_silence_device"
+SERVICE_RESUME_DEVICE = "device_simulator_resume_device"
+SERVICE_RESUME_ALL = "device_simulator_resume_all"
 SERVICE_IMPORT_USER_CONFIG = "device_simulator_import_user_config"
 SERVICE_IMPORT_USER_LOG = "device_simulator_import_user_log"
 
@@ -105,6 +107,14 @@ SCHEMA_SILENCE_DEVICE = vol.Schema(
         vol.Required("device_id"): str,
     }
 )
+
+SCHEMA_RESUME_DEVICE = vol.Schema(
+    {
+        vol.Required("device_id"): str,
+    }
+)
+
+SCHEMA_RESUME_ALL = vol.Schema({})
 
 SCHEMA_IMPORT_USER_CONFIG = vol.Schema(
     {
@@ -374,6 +384,24 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await engine.async_silence_device(call.data["device_id"])
         return {"success": True}
 
+    async def handle_resume_device(call: ServiceCall) -> dict[str, Any]:
+        """Resume a device (start autonomous emission)."""
+        engine = _get_engine(hass)
+        if not engine:
+            return {"success": False, "error": "Engine not available"}
+
+        await engine.async_resume_device(call.data["device_id"])
+        return {"success": True}
+
+    async def handle_resume_all(call: ServiceCall) -> dict[str, Any]:
+        """Resume all active devices (start autonomous emission)."""
+        engine = _get_engine(hass)
+        if not engine:
+            return {"success": False, "error": "Engine not available"}
+
+        await engine.async_resume_all()
+        return {"success": True}
+
     async def handle_import_user_config(call: ServiceCall) -> dict[str, Any]:
         """Import a user's ramses_cc config + packet log as a profile."""
         from pathlib import Path
@@ -505,6 +533,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         INTEGRATION_DOMAIN,
+        SERVICE_RESUME_DEVICE,
+        handle_resume_device,
+        schema=SCHEMA_RESUME_DEVICE,
+    )
+    hass.services.async_register(
+        INTEGRATION_DOMAIN,
+        SERVICE_RESUME_ALL,
+        handle_resume_all,
+        schema=SCHEMA_RESUME_ALL,
+    )
+    hass.services.async_register(
+        INTEGRATION_DOMAIN,
         SERVICE_IMPORT_USER_CONFIG,
         handle_import_user_config,
         schema=SCHEMA_IMPORT_USER_CONFIG,
@@ -527,6 +567,8 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_STOP_SCENARIO,
         SERVICE_ACTIVATE_DEVICE,
         SERVICE_SILENCE_DEVICE,
+        SERVICE_RESUME_DEVICE,
+        SERVICE_RESUME_ALL,
         SERVICE_IMPORT_USER_CONFIG,
         SERVICE_IMPORT_USER_LOG,
     ):

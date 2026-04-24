@@ -42,3 +42,9 @@ responses:
   payloads:
   - '00'
   notes: Minimal fallback payload until per-variant device_info data is curated
+- code: 31DA
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00

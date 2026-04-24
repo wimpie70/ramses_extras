@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import defaultdict
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -112,6 +113,9 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_active_devices)
     websocket_api.async_register_command(hass, ws_activate_device)
     websocket_api.async_register_command(hass, ws_silence_device)
+    websocket_api.async_register_command(hass, ws_resume_devices)
+    websocket_api.async_register_command(hass, ws_silence_devices)
+    websocket_api.async_register_command(hass, ws_discover_capabilities)
     websocket_api.async_register_command(hass, ws_get_conversations)
     websocket_api.async_register_command(hass, ws_get_messages)
     # UI card handlers
@@ -125,6 +129,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_clear_ramses_cache)
     websocket_api.async_register_command(hass, ws_set_auto_answer)
     websocket_api.async_register_command(hass, ws_set_answer_unknown_devices)
+    websocket_api.async_register_command(hass, ws_set_preserve_state)
     websocket_api.async_register_command(hass, ws_get_rf_config)
     websocket_api.async_register_command(hass, ws_set_autonomous_speed)
     websocket_api.async_register_command(hass, ws_import_user_log)
@@ -444,7 +449,8 @@ def ws_get_active_devices(
         vol.Optional("variant_id"): str,
     }
 )
-async def ws_activate_device(
+@callback  # type: ignore[untyped-decorator]
+def ws_activate_device(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
@@ -462,7 +468,7 @@ async def ws_activate_device(
         slug=msg["slug"],
         variant_id=msg.get("variant_id"),
     )
-    await engine.async_activate_device(device)
+    hass.async_create_task(engine.async_activate_device(device))
 
     connection.send_result(
         msg["id"],
@@ -476,7 +482,8 @@ async def ws_activate_device(
         vol.Required("device_id"): str,
     }
 )
-async def ws_silence_device(
+@callback  # type: ignore[untyped-decorator]
+def ws_silence_device(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
@@ -487,8 +494,186 @@ async def ws_silence_device(
         connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
         return
 
-    await engine.async_silence_device(msg["device_id"])
+    hass.async_create_task(engine.async_silence_device(msg["device_id"]))
     connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/resume_devices",
+        vol.Optional("device_ids", default=[]): [str],
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_resume_devices(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Resume autonomous emission for one or more active devices."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    device_ids = [
+        device_id.upper() for device_id in msg.get("device_ids", []) if device_id
+    ]
+
+    if device_ids:
+        for device_id in device_ids:
+            hass.async_create_task(engine.async_resume_device(device_id))
+        connection.send_result(msg["id"], {"success": True, "resumed": device_ids})
+        return
+
+    hass.async_create_task(engine.async_resume_all())
+    connection.send_result(msg["id"], {"success": True, "resumed": "all"})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/silence_devices",
+        vol.Optional("device_ids", default=[]): [str],
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_silence_devices(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Silence autonomous emission for one or more active devices."""
+
+    engine = _get_engine(hass)
+    if not engine:
+        connection.send_error(msg["id"], "not_ready", "Simulator not initialized")
+        return
+
+    device_ids = [
+        device_id.upper() for device_id in msg.get("device_ids", []) if device_id
+    ]
+
+    if device_ids:
+        for device_id in device_ids:
+            await engine.async_silence_device(device_id)
+        connection.send_result(msg["id"], {"success": True, "silenced": device_ids})
+        return
+
+    await engine.async_silence_all()
+    connection.send_result(msg["id"], {"success": True, "silenced": "all"})
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/discover_capabilities",
+        vol.Optional("device_ids", default=[]): [str],
+    }
+)
+@websocket_api.async_response  # type: ignore[untyped-decorator]
+async def ws_discover_capabilities(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Trigger capability discovery by delegating to ramses_cc devices."""
+
+    from ...framework.helpers.ramses_commands import RamsesCommands
+
+    LOGGER.info("discover_capabilities: invoked with msg=%s", msg)
+
+    # Access the simulator (optional, only used to provide defaults)
+    engine = _get_engine(hass)
+
+    commands = RamsesCommands(hass)
+    coordinator = await commands._get_ramses_cc_coordinator()
+    if not coordinator:
+        connection.send_error(
+            msg["id"], "not_ready", "ramses_cc coordinator not available"
+        )
+        return
+
+    gateway = getattr(coordinator, "client", None)
+    if not gateway:
+        connection.send_error(msg["id"], "not_ready", "ramses_cc gateway not available")
+        return
+
+    registry = getattr(gateway, "device_registry", None)
+    if not registry:
+        connection.send_error(
+            msg["id"], "not_ready", "Gateway device registry unavailable"
+        )
+        return
+
+    device_ids = [
+        device_id.upper() for device_id in msg.get("device_ids", []) if device_id
+    ]
+    if not device_ids and engine:
+        device_ids = list(engine.active_device_ids)
+    if not device_ids:
+        connection.send_error(msg["id"], "no_devices", "No devices specified")
+        return
+
+    LOGGER.info("discover_capabilities: running for device_ids=%s", device_ids)
+
+    triggered = 0
+    errors: list[str] = []
+
+    now = datetime.now()
+
+    for device_id in device_ids:
+        device = registry.device_by_id.get(device_id)
+        if not device:
+            errors.append(f"{device_id}: not found in ramses_cc registry")
+            LOGGER.warning(
+                "discover_capabilities: %s not in gateway registry (known=%s)",
+                device_id,
+                list(registry.device_by_id.keys()),
+            )
+            continue
+
+        discovery = getattr(device, "discovery", None)
+        if not discovery:
+            errors.append(f"{device_id}: no discovery service")
+            LOGGER.warning(
+                "discover_capabilities: %s has no discovery service", device_id
+            )
+            continue
+
+        cmds = getattr(discovery, "cmds", None) or {}
+        LOGGER.info(
+            "discover_capabilities: %s has %d discovery cmds: %s",
+            device_id,
+            len(cmds),
+            list(cmds.keys()),
+        )
+        if not cmds:
+            errors.append(f"{device_id}: no discovery commands scheduled")
+            continue
+
+        try:
+            # Force all outstanding commands to be due immediately so discover()
+            # actually emits packets instead of waiting for the next poll window.
+            for task in cmds.values():
+                if isinstance(task, dict):
+                    task["next_due"] = now - timedelta(seconds=1)
+
+            await discovery.discover()
+            discovery.start_poller()
+            triggered += 1
+            LOGGER.info("discover_capabilities: %s discover() completed", device_id)
+        except Exception as err:  # noqa: BLE001
+            errors.append(f"{device_id}: {err}")
+            LOGGER.exception("discover_capabilities: %s failed", device_id)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "triggered": triggered,
+            "errors": errors,
+        },
+    )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
@@ -621,6 +806,7 @@ def ws_get_ui_status(
                     "can_delete": not is_builtin,
                     "is_active": name == active_profile,
                     "schema": schema or None,
+                    "enable_auto_answer": p.enable_auto_answer,
                 }
             )
             if name == active_profile:
@@ -651,6 +837,7 @@ def ws_get_ui_status(
                 "source": device.origin,
                 "owned_by_profile": engine.is_profile_device(device.device_id),
                 "zones": zone_membership.get(device.device_id, []),
+                "emitting": device.device_id in engine._emitter_tasks,
             }
             for device in engine._active_devices.values()
         ]
@@ -693,6 +880,7 @@ def ws_get_ui_status(
         if engine
         else (config_store.get_answer_unknown_devices() if config_store else False)
     )
+    preserve_state = config_store.get_preserve_state() if config_store else True
     running_scenarios = engine.get_running_scenario_ids() if engine else []
     running_metadata = engine.get_running_metadata() if engine else {}
     emissions_active = engine.autonomous_emissions_active if engine else False
@@ -728,6 +916,7 @@ def ws_get_ui_status(
             "active_profile_zones": active_profile_zones,
             "auto_answer": auto_answer,
             "answer_unknown_devices": answer_unknown_devices,
+            "preserve_state": preserve_state,
             "autonomous_speed": autonomous_speed,
             "running_scenarios": running_scenarios,
             "running_metadata": running_metadata,
@@ -811,8 +1000,10 @@ async def ws_activate_profile_device(
         vol.Optional("reload_ramses_cc", default=True): bool,
         vol.Optional("preload_schema", default=True): bool,
         vol.Optional("reset_rf_cache", default=False): bool,
+        vol.Optional("enable_eavesdrop", default=False): bool,
         vol.Optional("remove_database", default=False): bool,
         vol.Optional("clear_message_log", default=False): bool,
+        vol.Optional("enable_auto_answer", default=True): bool,
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -837,6 +1028,7 @@ async def ws_load_profile(
         return
 
     clear_log = msg.get("clear_message_log", False)
+    enable_auto_answer = msg.get("enable_auto_answer", True)
 
     try:
         if clear_log:
@@ -849,6 +1041,9 @@ async def ws_load_profile(
         if remove_database is None:
             remove_database = getattr(profile, "remove_database", False)
 
+        # Override profile's enable_auto_answer with UI setting
+        profile.enable_auto_answer = enable_auto_answer
+
         result = await async_apply_profile(
             hass,
             profile_name=profile.name,
@@ -858,6 +1053,7 @@ async def ws_load_profile(
             preload_schema=msg.get("preload_schema", True),
             reset_rf_cache=msg.get("reset_rf_cache", False),
             skip_rf_hydrate=remove_database,
+            enable_eavesdrop=msg.get("enable_eavesdrop", False),
         )
     except Exception as err:  # noqa: BLE001
         connection.send_error(msg["id"], "error", str(err))
@@ -1369,6 +1565,7 @@ async def _start_load_profile_yaml(
         preload_schema=params.get("preload_schema", True),
         reset_rf_cache=params.get("reset_rf_cache", False),
         skip_rf_hydrate=params.get("remove_database"),
+        enable_eavesdrop=params.get("enable_eavesdrop", False),
     )
     result.setdefault("scenario_id", SCENARIO_LOAD_PROFILE_YAML)
     result.setdefault(
@@ -1680,6 +1877,45 @@ def ws_set_answer_unknown_devices(
         {
             "success": True,
             "answer_unknown_devices": enabled,
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required("type"): "ramses_extras/device_simulator/set_preserve_state",
+        vol.Required("enabled"): bool,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_set_preserve_state(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Enable or disable preserve state on reload.
+
+    When enabled, simulator state (auto-answer, answer unknown devices) persists
+    across reloads. When disabled (Clean restart), state is reset on reload.
+    """
+    ra = hass.data.get("ramses_extras", {})
+    config_store = ra.get("device_simulator_config_store")
+    if not config_store:
+        connection.send_error(msg["id"], "not_ready", "Config store not initialized")
+        return
+
+    enabled: bool = msg["enabled"]
+    config_store.set_preserve_state(enabled)
+    hass.async_create_background_task(
+        config_store.async_save_state(),
+        "ramses_extras.device_simulator.save_state",
+    )
+
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "preserve_state": enabled,
         },
     )
 

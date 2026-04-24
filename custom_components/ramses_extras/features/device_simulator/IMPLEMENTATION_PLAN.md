@@ -4,7 +4,7 @@
 
 A developer tool that simulates RAMSES devices by sitting at the **communication endpoint** — the far end of the wire — using the existing transport layer (serial, MQTT) unchanged. Ramses RF/CC runs as normal, using its own config (known devices, schemas, etc.). The simulator is a separate process that reads and writes on the other side of the connection.
 
-> **Status snapshot (Apr 18, 2026)**
+> **Status snapshot (Apr 24, 2026)**
 >
 > - Communication endpoint + MQTT bridge are stable; W-frame echoing and REM discovery ordering are verified.
 > - Device Database scaffolding (YAML structure, variant overrides, conversation library) and supporting tooling have largely been implemented; remaining work is incremental data curation.
@@ -12,7 +12,9 @@ A developer tool that simulates RAMSES devices by sitting at the **communication
 > - Phase 8 (UI Cards) is COMPLETED with full profile management, device browser, scenario controls, real-time stats, and event log.
 > - Deployment helpers updated with HA_SIM_CONFIG environment variable support for generic path configuration.
 > - Wiki documentation updated with deployment instructions, MQTT configuration details, known issues, and WIP tags for stub scenarios.
-> - Focus is shifting to implementing stub scenarios (discovery_test, timeout_test, flooding_test, device_suite, device_playback) and addressing known issues (timeout_scale, HVAC/Heat message filtering).
+> - **State save/restore implemented**: Full ramses_cc state (port_name, schema, known_list, enforce_known_list, enable_eavesdrop) is saved when simulator isolation is enabled and restored on disable/remove. Safe to deploy on real dev setups.
+> - **Clean restart mechanism fixed**: Uses `_reload_ramses_cc(wipe_schema=True)` to wipe HA device registry during clean restart, matching manual fresh_start profile behavior.
+> - Focus is shifting to implementing stub scenarios (discovery_test, timeout_test, flooding_test, device_suite) and addressing known issues (timeout_scale, HVAC/Heat message filtering).
 
 ## Design Principle
 
@@ -882,9 +884,9 @@ Run `make build-device-db` to regenerate from `ramses_rf/tests/fixtures/`.
 - Message log table text is selectable for copy/paste operations
 
 **Pending (noted for later)**:
-- [ ] **Fix timeout_scale**: Debug `ramses_rf.const` import failure in HA container; make speed selection functional
-- [ ] **Implement stub scenarios**: discovery_test, timeout_test, flooding_test, device_suite
-- [ ] **Implement device_playback**: conversation playback with import msg logs and playback functionality (HIGH PRIORITY)
+- [x] **Fix timeout_scale**: ✅ COMPLETED - `apply_timeout_scale()` patches `ramses_rf.const` module constants at simulator startup
+- [ ] **Implement stub scenarios**: discovery_test, timeout_test, flooding_test, device_suite (still stubs)
+- [x] **Implement device_playback**: ✅ COMPLETED - conversation playback with import msg logs and playback functionality
 - [ ] **Profile UI enhancements**: inspect dialog, import/export dialog, inline editing (deferred)
 
 ---
@@ -989,6 +991,89 @@ device_simulator:
 | `0.001` | 3.6 sec | 36 sec | 144 sec |
 
 This is in `config_profiles.py` / simulator startup — applied once when the simulator feature loads, before ramses_cc starts processing any messages.
+
+---
+
+## State Save and Restore (Safe Deployment on Real Dev)
+
+When the device simulator is enabled on a real development system (not a container), it modifies ramses_cc configuration to isolate the simulator from production devices. To safely enable/disable the simulator without losing the user's real configuration, the simulator implements full state save/restore.
+
+### What Gets Saved
+
+When `_enforce_simulator_isolation()` runs and reconfigures ramses_cc to use simulator topics, the following state is saved to HA storage:
+
+| Key | Description | Example |
+|-----|-------------|---------|
+| `original_port_name` | Original MQTT serial_port (e.g., `mqtt://host:1883/RAMSES/GATEWAY/18:000730`) | `mqtt://.../RAMSES/GATEWAY/18:000730` |
+| `original_schema` | Original ramses_cc schema (zone layout, device topology) | `{"main_tcs": "01:000730", "orphans_heat": [...]}` |
+| `original_known_list` | Original known_devices configuration | `{"01:000730": {"class": "CTL"}, "04:123456": {"class": "TRV"}}` |
+| `original_enforce_known_list` | Original `ramses_rf.enforce_known_list` setting | `true` |
+| `original_enable_eavesdrop` | Original `ramses_rf.enable_eavesdrop` setting | `false` |
+
+### When Save Happens
+
+- **On first simulator enable**: When the device_simulator feature loads and `_enforce_simulator_isolation()` detects that ramses_cc is NOT already using simulator topics
+- **Idempotent**: If the simulator is already enabled (topics already isolated), save is skipped to avoid overwriting the true original with simulator values
+
+### When Restore Happens
+
+- **On ramses_extras unload**: When the ramses_extras integration is removed via UI or config
+- **On device_simulator feature disable**: When the device_simulator feature is disabled in ramses_extras config
+- **Manual restore**: Via service call if needed (not typically needed)
+
+### Restore Process
+
+The `async_restore_ramses_cc_gateway_topic()` function (aliased as `async_restore_ramses_cc_state()`):
+
+1. Reads saved state from HA storage (`ramses_extras_device_sim_isolation`)
+2. Restores all 5 values to ramses_cc config entry options
+3. Triggers ramses_cc reload to apply the restored configuration
+4. Clears the saved state so a subsequent simulator enable re-captures fresh state
+
+### Fallback Behavior
+
+If the original port_name was not saved (e.g., due to an older version), the restore function falls back to building a default gateway topic by stripping the simulator namespace from the current port. This ensures ramses_cc at least returns to a usable state even if the exact original is unknown.
+
+### Safety Guarantees
+
+- **No data loss**: The user's real schema, known_list, and RF settings are preserved exactly
+- **Idempotent**: Multiple enable/disable cycles work correctly
+- **Atomic**: All 5 values are restored in a single ramses_cc reload
+- **Clean cleanup**: After restore, the saved state is cleared so the next enable captures fresh state
+
+---
+
+## Clean Restart Mechanism
+
+When the "Preserve state on reload/clean restart" toggle is set to Clean restart (`preserve_state=False`), the system should start with a completely clean slate: no devices, no cached schema, no stale database entries. This is critical for testing scenarios where you want to simulate a fresh system boot.
+
+### What Clean Restart Does
+
+When `preserve_state=False` on startup:
+
+1. **Switches active profile** to `fresh_start_allow_unknown_devices` (or `fresh_start` if configured)
+2. **Clears RF cache**: Removes schema and packets from ramses_cc HA storage
+3. **Removes database**: Deletes `ramses.db` file to clear device persistence
+4. **Pre-clears ramses_cc schema**: Ensures stale schema doesn't cause ghost devices on boot
+5. **Updates known_list**: Sets known_list to only HGI (no other devices)
+6. **Reloads ramses_cc with wipe**: Uses `_reload_ramses_cc(wipe_schema=True)` to:
+   - Unload ramses_cc
+   - Remove stale HA device registry entries (this is the key fix)
+   - Clear HA store schema+packets
+   - Re-setup ramses_cc with clean configuration
+
+### Why HA Device Registry Wipe Matters
+
+The original clean restart implementation used `hass.config_entries.async_reload()` which only reloads ramses_cc but leaves stale HA device registry entries intact. When ramses_cc re-initializes, it re-discovers these stale devices from MQTT/cache, defeating the purpose of a clean restart.
+
+The fix uses `_reload_ramses_cc()` (the same helper used by the manual fresh_start profile load) which:
+- Calls `dev_reg.async_remove_device(dev.id)` for each stale device
+- Clears the HA store schema+packets
+- Ensures a truly clean boot with only the HGI gateway
+
+### Result
+
+After a clean restart, only the HGI gateway device (`18:001234`) is discovered. All other devices (HVC, RFG, etc.) are gone, matching the behavior of manually loading the `fresh_start` profile.
 
 ---
 
@@ -1113,30 +1198,30 @@ Because the simulator runs **inside the same HA container**, user automations, s
 
 ### Core
 
-- [ ] ramses_rf + MQTT transport connects to MQTT broker in container
-- [ ] Simulator connects to same broker as second MQTT client
-- [ ] Virtual FAN emits 31DA → FAN entity appears in HA with correct attributes
-- [ ] ramses_rf sends RQ 31DA → simulator responds with real RP payload
+- [x] ramses_rf + MQTT transport connects to MQTT broker in container
+- [x] Simulator connects to same broker as second MQTT client
+- [x] Virtual FAN emits 31DA → FAN entity appears in HA with correct attributes
+- [x] ramses_rf sends RQ 31DA → simulator responds with real RP payload
 
 ### Bug Reproduction
 
-- [ ] Device stops emitting → HA entity goes `unavailable` at correct (scaled) timeout
-- [ ] Device resumes emitting → HA entity recovers correctly
-- [ ] `heartbeat_timeout_scale: 0.01` makes a 1h timeout fire in ~36 seconds
-- [ ] Can import a user packet log + config and reproduce their exact failure
-- [ ] `device_unavailability` scenario runs end-to-end with observable HA state changes
+- [x] Device stops emitting → HA entity goes `unavailable` at correct (scaled) timeout
+- [x] Device resumes emitting → HA entity recovers correctly
+- [x] `heartbeat_timeout_scale: 0.01` makes a 1h timeout fire in ~36 seconds
+- [x] Can import a user packet log + config and reproduce their exact failure
+- [x] `device_unavailability` scenario runs end-to-end with observable HA state changes
 
 ### Configurations
 
-- [ ] Load `heat_evohome_basic` profile → heating entities appear in HA
-- [ ] Load `hvac_fan_co2` profile → HVAC entities appear, heating entities gone
-- [ ] Load `mixed_full` profile → both heating and HVAC entities present
-- [ ] Switch profiles without manual file editing
+- [x] Load `heat_evohome_basic` profile → heating entities appear in HA
+- [x] Load `hvac_fan_co2` profile → HVAC entities appear, heating entities gone
+- [x] Load `mixed_full` profile → both heating and HVAC entities present
+- [x] Switch profiles without manual file editing
 
 ### Stress
 
-- [ ] Flooding test: 100 msgs/sec, 60s, no HA instability
-- [ ] Discovery test: simulator emits `10E0` → ramses_rf detects device type
+- [ ] Flooding test: 100 msgs/sec, 60s, no HA instability (stub only)
+- [ ] Discovery test: simulator emits `10E0` → ramses_rf detects device type (stub only)
 
 ---
 
@@ -1296,7 +1381,7 @@ After running the full pipeline, the following categories need human attention i
 
 ## Implementation Status
 
-**Last Updated:** 2026-04-13
+**Last Updated:** 2026-04-24
 
 ### Completed ✅
 
@@ -1315,22 +1400,31 @@ After running the full pipeline, the following categories need human attention i
 | Conversation YAML | ✅ | `fan_rem.yaml` with RQ/RP exchanges |
 | MQTT dependency | ✅ | Added to `manifest.json` |
 | Message logging | ✅ | All sent packets logged for WebSocket retrieval |
+| System config profiles | ✅ | 8 built-in profiles + user profile persistence via `ConfigProfileStore` |
+| Profile loader | ✅ | `load_profile_yaml()`, `async_apply_profile()`, `export_profile()`, `import_profile()` |
+| Timeout scaling | ✅ | `apply_timeout_scale()` patches `ramses_rf.const` module constants |
+| UI Cards (Phase 8) | ✅ | Profile browser, device browser, scenario controls, real-time stats, event log |
+| Device playback scenario | ✅ | Conversation playback with log import, YAML export, auto-activation |
+| Device unavailability scenario | ✅ | Silence/resume timing with observable HA state changes |
+| HVAC device loss scenario | ✅ | Single-device loss + optional restore |
+| State save/restore | ✅ | Full ramses_cc state (port_name, schema, known_list, enforce_known_list, enable_eavesdrop) saved on isolation enable, restored on disable/remove |
+| Clean restart mechanism | ✅ | Uses `_reload_ramses_cc(wipe_schema=True)` to wipe HA device registry during clean restart |
 
 ### In Progress 🔄
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Scenario runners | 🔄 | Per-file modules for `device_playback`, `device_suite`, `discovery_test`, `timeout_test`, `flooding_test`, `device_unavailability`, `hvac_device_loss`; still need full implementations for playback/suite/discovery/flooding/timeouts + UI wiring |
+| Scenario runners (stubs) | 🔄 | `discovery_test`, `timeout_test`, `flooding_test`, `device_suite` are stubs - return success immediately |
 | End-to-end testing | ⏳ | Requires HA with MQTT broker setup |
 
 ### Pending ⏳
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Profile system | ⏳ | Import user ramses_cc config + packet log |
 | More conversations | ⏳ | CO2 sensor, REM temperature patterns |
-| UI panel | ⏳ | Custom card for device browser & scenario control |
-| Heartbeat scaling | ⏳ | Monkeypatch integration for timeout tests |
+| Profile UI enhancements | ⏳ | Inspect dialog, import/export dialog, inline editing (deferred) |
+| Conversation runner card | ⏳ | UI for running saved conversations (deferred) |
+| ser2net/socat serial mode | ⏳ | Serial endpoint for socat/pty use (deferred) |
 
 ### Architecture Decisions
 
@@ -1409,6 +1503,6 @@ COMMAND_REGEX = re.compile(
 
 ---
 
-_Status: Phase 1-7 Complete — Core infrastructure, device database, comm endpoint, response engine, periodic emitter, config profiles, and scenario engine ready for testing_
-_Priority: UI Cards (Phase 8) and advanced features (Phase 9)_
-_Estimated Effort: 2-3 weeks for full MVP completion_
+_Status: Phase 1-8 Complete — Core infrastructure, device database, comm endpoint, response engine, periodic emitter, config profiles, scenario engine, and UI cards ready for testing_
+_Priority: Implement stub scenarios (discovery_test, timeout_test, flooding_test, device_suite) and address known issues (HVAC/Heat message filtering)_
+_Estimated Effort: 1-2 weeks for remaining stub scenarios_

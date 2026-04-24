@@ -359,6 +359,16 @@ SCENARIO_PARAM_SCHEMAS: dict[str, list[dict[str, Any]]] = {
             "default": False,
         },
         {
+            "key": "enable_eavesdrop",
+            "label": "Enable RF eavesdrop (promote HVAC devices)",
+            "type": "checkbox",
+            "default": False,
+            "helper": (
+                "Sets ramses_rf enable_eavesdrop so HVAC devices "
+                "are promoted (FAN/REM/CO2/HUM) from observed traffic."
+            ),
+        },
+        {
             "key": "remove_database",
             "label": "Remove database file",
             "type": "checkbox",

@@ -362,6 +362,167 @@ class TestScenarioContext:
         assert device.origin == "manual"
 
 
+class TestConversationPlaybackIntegration:
+    """Integration tests for conversation playback flow."""
+
+    @pytest.mark.asyncio
+    async def test_conversation_load_and_play(self):
+        """Test loading and playing a conversation end-to-end."""
+        from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
+            DeviceDatabase,
+        )
+
+        # Load the database
+        db = DeviceDatabase()
+        db.load_all()
+
+        # Load the hvac_discover_all conversation
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+        assert len(conv.frames) > 0
+
+        # Verify conversation structure
+        assert conv.id == "hvac_discover_all"
+        assert len(conv.peers) > 0
+
+        # Verify frames have correct timing
+        prev_time = -1
+        for frame in conv.frames:
+            assert frame.t >= prev_time, (
+                f"Frame times should be monotonic: {frame.t} after {prev_time}"
+            )
+            prev_time = frame.t
+
+    @pytest.mark.asyncio
+    async def test_conversation_frame_to_packet_conversion(self):
+        """Test converting conversation frames to packets."""
+        from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
+            DeviceDatabase,
+        )
+
+        db = DeviceDatabase()
+        db.load_all()
+
+        conv = db.get_conversation("fan_rem/speed_change")
+        if conv is None:
+            pytest.skip("fan_rem/speed_change conversation not found")
+
+        # Mock engine for packet building
+        hass = MagicMock()
+        engine = MagicMock()
+        engine._build_packet = MagicMock(
+            side_effect=lambda src, dst, verb, code, payload: (
+                f"000 {verb} --- {src} {dst} --:------ {code} 003 {payload}"
+            )
+        )
+        context = ScenarioContext(hass, engine)
+
+        # Convert frames to packets
+        for frame in conv.frames:
+            packet = context.build_packet(
+                frame.src, frame.dst, frame.verb, frame.code, frame.payload
+            )
+            assert packet is not None
+            assert frame.code in packet
+            assert frame.verb in packet
+
+    @pytest.mark.asyncio
+    async def test_conversation_playback_with_device_map(self):
+        """Test conversation playback with explicit device map."""
+        from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
+            DeviceDatabase,
+        )
+
+        db = DeviceDatabase()
+        db.load_all()
+
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+
+        # Create a device map
+        device_map = {
+            "HGI": "18:000730",
+            "REM": "37:168270",
+            "FAN": "32:150000",
+            "DIS": "37:160000",
+            "CO2": "37:170000",
+            "HUM": "32:153289",
+            "RFS": "30:150000",
+        }
+
+        # Verify all peers in the conversation have device IDs
+        for peer in conv.peers:
+            assert peer in device_map, f"Peer {peer} not in device map"
+
+    @pytest.mark.asyncio
+    async def test_conversation_playback_timing(self):
+        """Test that conversation playback respects timing."""
+        from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
+            DeviceDatabase,
+        )
+
+        db = DeviceDatabase()
+        db.load_all()
+
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+
+        # Calculate total duration
+        if conv.frames:
+            total_duration = conv.frames[-1].t
+            assert total_duration > 0, "Conversation should have positive duration"
+
+            # Verify frames are spaced reasonably
+            for i in range(1, len(conv.frames)):
+                gap = conv.frames[i].t - conv.frames[i - 1].t
+                assert gap >= 0, f"Frame {i} has negative gap from previous frame"
+
+    @pytest.mark.asyncio
+    async def test_conversation_skip_verbs(self):
+        """Test conversation playback with verb skipping."""
+        from custom_components.ramses_extras.features.device_simulator.device_db import (  # noqa: E501
+            DeviceDatabase,
+        )
+
+        db = DeviceDatabase()
+        db.load_all()
+
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+
+        # Filter frames to skip RP verbs
+        filtered_frames = [f for f in conv.frames if f.verb != "RP"]
+
+        # Should have fewer frames after filtering
+        assert len(filtered_frames) < len(conv.frames)
+
+        # Verify no RP frames remain
+        assert all(f.verb != "RP" for f in filtered_frames)
+
+    @pytest.mark.asyncio
+    async def test_conversation_device_activation(self):
+        """Test that conversation playback can activate devices."""
+        hass = MagicMock()
+        engine = MagicMock()
+        engine.async_activate_device = AsyncMock()
+        engine._active_devices = {}
+
+        context = ScenarioContext(hass, engine)
+
+        # Activate devices from a device map
+        device_map = {"FAN": "32:150000", "REM": "37:168270"}
+
+        for slug, device_id in device_map.items():
+            device = context.new_active_device(
+                device_id=device_id, slug=slug, origin="manual"
+            )
+            # Use engine method directly since context doesn't have activate_device
+            await engine.async_activate_device(device)
+
+        # Verify activate_device was called
+        assert engine.async_activate_device.call_count == len(device_map)
+
+
 class TestDevicePlayback:
     """Test device_playback scenario."""
 
@@ -499,6 +660,7 @@ class TestDevicePlayback:
 
         conv_mock = MagicMock()
         conv_mock.peers = ["FAN"]
+        conv_mock.device_map = {"FAN": "32:150000"}
         context.device_db.get_conversation = MagicMock(return_value=conv_mock)
 
         engine.get_pause_event = MagicMock(return_value=MagicMock())

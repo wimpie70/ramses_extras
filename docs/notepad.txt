@@ -79,35 +79,30 @@ Log errors if not configured.
 ### make card loading dynamic (non feature specific) in custom_components/ramses_extras/framework/www/main.js
 
 ---
-
+ mqtt://slimmemeter:j@diebla@@192.168.40.11:1883
 - simulator:
 ### check loading time takes long
+
+test ### can we now safe deploy the sim on a normal dev ?
+- we need to save the full state and set it back on
+ disable sim/remove _extras (schema, topics, known devices, settings that we change on the sim)
 
 ### it seems like we are sending hvac msgs to heat devices, and heat msgs to hvac devices.
 Shouldn't we filter this ? we know from our database what belongs to what
 
-test: ### disable simulator -> we need to set back the gateway topic to RAMSES/GATEWAY,
-or to a saved one that we replaced in the first place
 
-### after play, we should be able to enable auto emission again (with the now found devices)
-
-
----
-
-### wiki: how to run the discovery conversations
-
-### can we discover multiple TRV's or REM's at the same time? maybe we should use REM_1, REM_2, etc
- in the dbase to add multiple devices of the same type
+### when a fan replies to a REM, then it must be bound....
+-> we should mark it bound, maybe even add it to _rf as bound ?
 
 --- next to do:
 
-### scenario: rotate log files: we get reports of crashes or losing devices. we should be able to simulate and test this
+### scenario: rotate log files: we get reports of crashes or losing devices.
+we should be able to simulate and test this
 
 
 - refactor device-simulator-card in smaller files:
   - tab files:
     - with sub-components
-- remove the 2nd Conversation Playback (it's still there but not used) Keep the 1st one !!!
 
 -- other:
 
@@ -115,10 +110,13 @@ _cc:
 - We still don't see all the msg that are sent from RF, even with the Log all MQTT topics enabled
 - we don't discover devices while we DO SEE msgs sent by them...why not ???
 
-_cc PR:
-## Summary
-- Fix fan parameter services to use `known_list` bindings when the REM isn’t yet discovered, avoiding “No valid source device” errors during profile loads.
-- Add (skipped for now) regression test ensuring [_get_device_and_from_id](cci:1://file:///home/willem/dev/ramses_cc/custom_components/ramses_cc/services.py:4:4-21:62) pulls the REM from config options when necessary.
+---------------
 
-## Testing
-- source ~/venvs/_cc/bin/activate && cd /home/willem/dev/ramses_cc && pytest tests/tests_new/test_services.py -k known_list
+To test on a real dev:
+
+Note current schema + known_list in ramses_cc options
+Enable device_simulator feature
+Verify logs: Saved original ramses_cc state for simulator cleanup (port=... schema_keys=... known_list_count=...)
+Disable device_simulator or remove ramses_extras
+Verify logs: Restored ramses_cc schema/known_list/ramses_rf to pre-simulator state and Restored ramses_cc MQTT serial_port to <original>
+Check ramses_cc options match step 1

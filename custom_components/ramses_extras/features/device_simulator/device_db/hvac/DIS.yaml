@@ -106,4 +106,5 @@ responses:
   delay_ms: 100
   payloads:
   - '00'
+  - 00000100000000003200000000000000FF0000000120
   notes: Minimal fallback payload until per-variant device_info data is curated

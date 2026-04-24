@@ -45,6 +45,7 @@ const CARD_STYLE = `
   .event-type.tx { background: var(--info-color-light); color: var(--info-color); }
   .event-type.unavailable { background: var(--error-color-light); color: var(--error-color); }
   .device-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+  .device-emitter { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 0.8em; }
   .toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85em; }
   .codes-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
   .code-chip { display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; background: var(--secondary-background-color); border: 1px solid var(--divider-color); }
@@ -70,6 +71,9 @@ const CARD_STYLE = `
   .chip.disabled { background: var(--divider-color); color: var(--secondary-text-color); }
   .chip.muted { background: var(--divider-color); color: var(--secondary-text-color); }
   .chip.source { background: var(--secondary-background-color); color: var(--secondary-text-color); }
+  .chip.emitting { background: var(--success-color, #388e3c); color: #fff; }
+  .chip.idle { background: var(--warning-color, #ffa000); color: #000; }
+  .chip.silenced { background: var(--error-color, #f44336); color: #fff; }
   .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
   .scenario-form { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
   .scenario-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; }
@@ -133,16 +137,24 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._runningScenarios = [];
     this._autoAnswer = true;
     this._answerUnknownDevices = false;
+    this._preserveState = true;
     this._rfEnforceKnownList = false;
     this._rfKnownListEnabled = false;
     this._emissionsActive = false;
     this._events = [];
     this._stats = { rx: 0, tx: 0, devices: 0, active: 0 };
+    this._profileReload = {};
+    this._profilePreloadSchema = {};
+    this._profileResetCache = {};
+    this._profileEavesdrop = {};
+    this._profileSkipHydrate = {};
+    this._profileClearLog = {};
     this._tab = "profiles";
     this._newCodeInput = {};
     this._profileReload = {};
     this._profilePreloadSchema = {};
     this._profileResetCache = {};
+    this._profileEavesdrop = {};
     this._profileSkipHydrate = {};
     this._profileClearLog = {};
     this._profileNotice = null;
@@ -171,6 +183,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._playbackInterMsgDelay = "";
     this._playbackSkipAnswers = false;
     this._scenarioSubscription = null;
+    this._playbackSearchQuery = "";
 
     this._loadLoaderDraft();
   }
@@ -406,6 +419,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._runningMetadata = result.running_metadata || {};
       this._autoAnswer = result.auto_answer !== false;
       this._answerUnknownDevices = result.answer_unknown_devices === true;
+      this._preserveState = result.preserve_state === true;
       this._emissionsActive = result.autonomous_emissions_active === true;
       this._stats = result.stats || this._stats;
       const previousActive = this._activeProfile;
@@ -713,16 +727,22 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const reloadRf = this._profileReload[name] ?? true;
     const preloadSchema = this._profilePreloadSchema[name] ?? true;
     const resetCache = this._profileResetCache[name] ?? false;
+    const eavesdrop = this._profileEavesdrop[name] ?? false;
     const skipHydrate = this._profileSkipHydrate[name] ?? false;
     const clearLog = this._profileClearLog[name] ?? false;
+    // Get checkbox value from DOM
+    const checkbox = this.shadowRoot.querySelector(`[data-action='auto-answer-check'][data-profile='${name}']`);
+    const autoAnswer = checkbox ? checkbox.checked : true;
     const result = await this._hass.callWS({
       type: "ramses_extras/device_simulator/load_profile",
       profile: name,
       reload_ramses_cc: reloadRf,
       preload_schema: preloadSchema,
       reset_rf_cache: resetCache,
+      enable_eavesdrop: eavesdrop,
       remove_database: skipHydrate,
       clear_message_log: clearLog,
+      enable_auto_answer: autoAnswer,
     });
     this._activeProfile = name;
     this._scenarioState = "idle";
@@ -739,6 +759,84 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   async _stopProfileDevices() {
     await this._stopScenario("profile_emissions");
+    await this._fetchData();
+  }
+
+  async _resumeAllDevices() {
+    await this._resumeDevices();
+  }
+
+  async _resumeDevice(deviceId) {
+    if (!deviceId) {
+      return;
+    }
+    await this._resumeDevices([deviceId]);
+  }
+
+  async _resumeDevices(deviceIds) {
+    if (!this._hass) {
+      return;
+    }
+    const payload = {
+      type: "ramses_extras/device_simulator/resume_devices",
+    };
+    if (Array.isArray(deviceIds) && deviceIds.length) {
+      payload.device_ids = deviceIds;
+    }
+    try {
+      await this._hass.callWS(payload);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: resume_devices failed", error);
+    }
+    await this._fetchData();
+  }
+
+  async _silenceAllDevices() {
+    await this._silenceDevices();
+  }
+
+  async _silenceDevices(deviceIds) {
+    if (!this._hass) {
+      return;
+    }
+    const payload = {
+      type: "ramses_extras/device_simulator/silence_devices",
+    };
+    if (Array.isArray(deviceIds) && deviceIds.length) {
+      payload.device_ids = deviceIds;
+    }
+    try {
+      await this._hass.callWS(payload);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: silence_devices failed", error);
+    }
+    await this._fetchData();
+  }
+
+  async _discoverCapabilities(deviceIds) {
+    if (!this._hass) {
+      return;
+    }
+    const payload = {
+      type: "ramses_extras/device_simulator/discover_capabilities",
+    };
+    if (Array.isArray(deviceIds) && deviceIds.length) {
+      payload.device_ids = deviceIds;
+    }
+    try {
+      const result = await this._hass.callWS(payload);
+      // eslint-disable-next-line no-console
+      console.log("DeviceSimulatorCard: discover_capabilities result", result);
+      if (result.errors && result.errors.length) {
+        // eslint-disable-next-line no-console
+        console.warn("DeviceSimulatorCard: discovery errors", result.errors);
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: discover_capabilities failed", error);
+    }
     await this._fetchData();
   }
 
@@ -844,6 +942,17 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       enabled,
     });
     this._autoAnswer = enabled;
+    this._scheduleRender();
+    await new Promise((r) => setTimeout(r, 300));
+    await this._fetchData();
+  }
+
+  async _setPreserveState(enabled) {
+    await this._hass.callWS({
+      type: "ramses_extras/device_simulator/set_preserve_state",
+      enabled,
+    });
+    this._preserveState = enabled;
     this._scheduleRender();
     await new Promise((r) => setTimeout(r, 300));
     await this._fetchData();
@@ -982,6 +1091,28 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       btn.addEventListener("click", () => this._activateProfileDevice(btn.dataset.deviceId));
     });
 
+    root.querySelectorAll("[data-action='resume-device']").forEach((btn) => {
+      btn.addEventListener("click", () => this._resumeDevice(btn.dataset.deviceId));
+    });
+
+    root.querySelectorAll("[data-action='silence-device']").forEach((btn) => {
+      btn.addEventListener("click", () => this._silenceDevices([btn.dataset.deviceId]));
+    });
+
+    root.querySelectorAll("[data-action='discover-device']").forEach((btn) => {
+      btn.addEventListener("click", () => this._discoverCapabilities([btn.dataset.deviceId]));
+    });
+
+    const resumeAll = root.querySelector("[data-action='resume-all-devices']");
+    if (resumeAll) {
+      resumeAll.addEventListener("click", () => this._resumeAllDevices());
+    }
+
+    const silenceAll = root.querySelector("[data-action='silence-all-devices']");
+    if (silenceAll) {
+      silenceAll.addEventListener("click", () => this._silenceAllDevices());
+    }
+
     const speedSlider = root.querySelector("[data-action='speed-slider']");
     if (speedSlider) {
       speedSlider.addEventListener("input", (e) => {
@@ -1092,11 +1223,22 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       });
     }
 
+    const searchInput = root.querySelector("[data-action='playback-search']");
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        this._playbackSearchQuery = e.target.value;
+        this._scheduleRender();
+      });
+    }
+
     const aaToggle = root.querySelector("[data-action='toggle-auto-answer']");
     if (aaToggle) aaToggle.addEventListener("change", (e) => this._setAutoAnswer(e.target.checked));
 
     const auToggle = root.querySelector("[data-action='toggle-answer-unknown']");
     if (auToggle) auToggle.addEventListener("change", (e) => this._setAnswerUnknownDevices(e.target.checked));
+
+    const psToggle = root.querySelector("[data-action='toggle-preserve-state']");
+    if (psToggle) psToggle.addEventListener("change", (e) => this._setPreserveState(e.target.checked));
 
     root.querySelectorAll("[data-action='toggle-device']").forEach(el => {
       el.addEventListener("change", () => {
@@ -1144,6 +1286,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     root.querySelectorAll("[data-action='reset-cache-check']").forEach(chk => {
       chk.addEventListener("change", (e) => {
         this._profileResetCache = { ...this._profileResetCache, [chk.dataset.profile]: e.target.checked };
+      });
+    });
+
+    root.querySelectorAll("[data-action='eavesdrop-check']").forEach(chk => {
+      chk.addEventListener("change", (e) => {
+        this._profileEavesdrop = { ...this._profileEavesdrop, [chk.dataset.profile]: e.target.checked };
       });
     });
 
@@ -1413,8 +1561,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           const reloadChecked = (this._profileReload[p.name] ?? true) ? " checked" : "";
           const preloadChecked = (this._profilePreloadSchema[p.name] ?? true) ? " checked" : "";
           const resetCacheChecked = (this._profileResetCache[p.name] ?? false) ? " checked" : "";
+          const eavesdropChecked = (this._profileEavesdrop[p.name] ?? false) ? " checked" : "";
           const skipHydrateChecked = (this._profileSkipHydrate[p.name] ?? false) ? " checked" : "";
           const clearLogChecked = (this._profileClearLog[p.name] ?? false) ? " checked" : "";
+          const autoAnswerChecked = (p.enable_auto_answer ?? true) ? " checked" : "";
           const deleteButton = p.can_delete
             ? `<button class="btn btn-secondary" data-action="delete-profile" data-profile="${p.name}" style="margin-left:auto;">Delete</button>`
             : "";
@@ -1444,6 +1594,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
                   <input type="checkbox" data-action="reset-cache-check" data-profile="${p.name}"${resetCacheChecked} />
                   Reset cache
                 </label>
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Enable ramses_rf eavesdrop so HVAC devices are promoted (FAN/REM/CO2/HUM) from observed traffic.">
+                  <input type="checkbox" data-action="eavesdrop-check" data-profile="${p.name}"${eavesdropChecked} />
+                  Enable eavesdrop
+                </label>
                 <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
                   <input type="checkbox" data-action="skip-hydrate-check" data-profile="${p.name}"${skipHydrateChecked} />
                   Remove database file
@@ -1451,6 +1605,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
                 <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
                   <input type="checkbox" data-action="clear-log-check" data-profile="${p.name}"${clearLogChecked} />
                   Clear message log
+                </label>
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Enable auto-answer when this profile is loaded.">
+                  <input type="checkbox" data-action="auto-answer-check" data-profile="${p.name}"${autoAnswerChecked} />
+                  Enable auto answer
                 </label>
                 <button class="btn btn-primary" data-action="load-profile" data-profile="${p.name}">Load</button>
               </div>
@@ -1478,6 +1636,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const reloadField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "reload_ramses");
     const preloadField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "preload_schema");
     const resetField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "reset_rf_cache");
+    const eavesdropField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "enable_eavesdrop");
     const skipHydrateField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "remove_database");
     const clearLogField = this._getScenarioFieldMeta(SCENARIO_LOAD_PROFILE, "clear_message_log");
 
@@ -1487,6 +1646,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const reloadValue = params.reload_ramses ?? reloadField?.default ?? true;
     const preloadValue = params.preload_schema ?? preloadField?.default ?? true;
     const resetValue = params.reset_rf_cache ?? resetField?.default ?? false;
+    const eavesdropValue = params.enable_eavesdrop ?? eavesdropField?.default ?? false;
     const skipHydrateValue = params.remove_database ?? skipHydrateField?.default ?? false;
     const clearLogValue = params.clear_message_log ?? clearLogField?.default ?? false;
 
@@ -1518,6 +1678,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       <label style="font-size: 0.8em; display:flex; align-items:center; gap:4px; cursor:pointer;">
         <input type="checkbox" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="reset_rf_cache" data-type="checkbox" ${resetValue ? "checked" : ""} />
         ${resetField?.label || "Reset RF cache"}
+      </label>`;
+
+    const eavesdropToggle = `
+      <label style="font-size: 0.8em; display:flex; align-items:center; gap:4px; cursor:pointer;" title="Enable ramses_rf eavesdrop so HVAC devices are promoted (FAN/REM/CO2/HUM) from observed traffic.">
+        <input type="checkbox" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="enable_eavesdrop" data-type="checkbox" ${eavesdropValue ? "checked" : ""} />
+        ${eavesdropField?.label || "Enable eavesdrop"}
       </label>`;
 
     const skipHydrateToggle = `
@@ -1555,6 +1721,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           ${reloadToggle}
           ${preloadToggle}
           ${resetToggle}
+          ${eavesdropToggle}
           ${skipHydrateToggle}
           ${clearLogToggle}
         </div>
@@ -1722,16 +1889,29 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       <div class="grid device-controls">
         ${this._buildManualInjectionCard()}
         ${this._buildProfileEmissionsCard()}
+        ${this._buildResumeEmittersCard()}
         ${this._buildPlaybackConversationCard()}
         ${this._buildAutonomousSpeedCard()}
       </div>`;
 
     if (this._devices.length === 0) {
-      return `${controls}<div class="device-list-empty">No active devices. Use Manual Device Injection or Start all profile devices above to start emitters.</div>`;
+      return `${controls}<div class="device-list-empty">No active devices. Use Manual Device Injection or start the profile emitters above to populate the simulator.</div>`;
     }
 
     const knownList = this._knownList();
     const deviceCards = this._devices.map((d) => {
+      const isEmitting = d.emitting === true;
+      const isSilenced = d.suppress_autonomous;
+      const emitterLabel = isEmitting
+        ? "Emitter running"
+        : isSilenced
+          ? "Silenced"
+          : "Emitter idle";
+      const emitterChipClass = isEmitting
+        ? "chip emitting"
+        : isSilenced
+          ? "chip silenced"
+          : "chip idle";
       const ownershipChip = d.owned_by_profile
         ? `<span class="chip profile" title="Defined by the active profile">Profile</span>`
         : `<span class="chip manual" title="Manually injected device">Manual</span>`;
@@ -1746,6 +1926,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       ).join("");
       const checkedAttr = d.enabled ? " checked" : "";
       const zoneMarkup = this._renderDeviceZones(d);
+      const emitterButton = isEmitting
+        ? `<button class="btn btn-secondary" data-action="silence-device" data-device-id="${d.id}">Stop emission</button>`
+        : `<button class="btn btn-secondary" data-action="resume-device" data-device-id="${d.id}">${isSilenced ? "Unsilence & resume" : "Resume emission"}</button>`;
       return `
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -1757,6 +1940,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
               <ha-switch data-action="toggle-device" data-device-id="${d.id}"${checkedAttr}></ha-switch>
               <span>${d.enabled ? "Enabled" : "Disabled"}</span>
             </label>
+          </div>
+          <div class="device-emitter" title="Autonomous emitter state">
+            <span class="${emitterChipClass}">${emitterLabel}</span>
+            ${emitterButton}
+            <button class="btn btn-secondary" data-action="discover-device" data-device-id="${d.id}">Discover capabilities</button>
           </div>
           <div style="font-size: 0.8em; color: var(--secondary-text-color); margin-top: 8px;">Excluded codes:</div>
           <div class="codes-row">${chipsMarkup || `<span class="chip muted">none</span>`}</div>
@@ -1837,8 +2025,8 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const stopDisabled = profileCount === 0;
     const summaryText = stateMeta.description;
 
-    const startButton = `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}" ${startDisabled ? "disabled" : ""}>Start all profile devices</button>`;
-    const stopButton = `<button class="btn btn-secondary" data-action="stop-profile-devices" ${stopDisabled ? "disabled" : ""}>Stop all profile devices</button>`;
+    const startButton = `<button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_PROFILE_EMISSIONS}" ${startDisabled ? "disabled" : ""}>Start profile emitters</button>`;
+    const stopButton = `<button class="btn btn-secondary" data-action="stop-profile-devices" ${stopDisabled ? "disabled" : ""}>Stop profile emitters</button>`;
     const buttonRow = `${startButton}${stopButton}`;
 
     const missingDevices = summary.filter((entry) => !entry.active);
@@ -1863,13 +2051,64 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     return `
       <div class="card">
         <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-          <strong>Start all profile devices</strong>
+          <strong>Profile emitters</strong>
           ${statusChip}
         </div>
-        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${summaryText}</div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${summaryText} These devices emit their periodic "random" frames directly from the active profile.</div>
         ${conflictWarn}
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">${buttonRow}</div>
         ${missingMarkup}
+      </div>`;
+  }
+
+  _buildResumeEmittersCard() {
+    const devices = this._devices || [];
+    // Resume should work on any active device whose emitter is idle, including
+    // devices that arrived disabled via playback/discovery or were silenced.
+    // The backend `async_resume_device` re-enables and unsilences the device.
+    const resumeCandidates = devices.filter((d) => !d.emitting);
+    const silencedCount = devices.filter((d) => d.suppress_autonomous).length;
+    const emittingCount = devices.filter((d) => d.emitting).length;
+    const chipClass = resumeCandidates.length
+      ? "chip reply"
+      : devices.length
+        ? "chip emitting"
+        : "chip muted";
+    const chipLabel = resumeCandidates.length
+      ? `${resumeCandidates.length} idle`
+      : devices.length
+        ? "All emitting"
+        : "No active devices";
+    const desc = resumeCandidates.length
+      ? "Start autonomous emissions for the devices you just activated via playback or discovery."
+      : devices.length
+        ? "Every active device already has its emitter running."
+        : "Activate devices first (via playback, manual injection, or profiles) to resume their emitters.";
+    const sampleList = resumeCandidates.slice(0, 4)
+      .map((d) => `<span class="chip muted">${d.id}</span>`)
+      .join("");
+    const extraCount = resumeCandidates.length > 4
+      ? `<span class="chip muted">+${resumeCandidates.length - 4} more</span>`
+      : "";
+    const silencedNote = silencedCount
+      ? `<div class="profile-missing" style="margin-top:8px;">
+          <strong>${silencedCount} device${silencedCount === 1 ? " is" : "s are"} silenced</strong>
+          <span>Use the per-device "Unsilence & resume" button to re-enable them.</span>
+        </div>`
+      : "";
+    return `
+      <div class="card">
+        <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <strong>Resume emitters for active devices</strong>
+          <span class="${chipClass}">${chipLabel}</span>
+        </div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${desc}</div>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-secondary" data-action="resume-all-devices" ${resumeCandidates.length ? "" : "disabled"}>Start emitters for active devices</button>
+          <button class="btn btn-secondary" data-action="silence-all-devices" ${emittingCount ? "" : "disabled"}>Stop emitters for active devices</button>
+        </div>
+        ${resumeCandidates.length ? `<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">${sampleList}${extraCount}</div>` : ""}
+        ${silencedNote}
       </div>`;
   }
 
@@ -2193,6 +2432,18 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const ids = Object.keys(registry);
     if (!ids.length) return `<div style="color: var(--secondary-text-color); padding: 8px 0;">No scenarios available.</div>`;
 
+    const psChecked = this._preserveState ? " checked" : "";
+    const psCard = `
+      <div class="card ${this._preserveState ? "active" : ""}">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div><strong>Preserve state on reload / Clean restart</strong></div>
+          <label class="toggle">
+            <ha-switch data-action="toggle-preserve-state"${psChecked}></ha-switch>
+          </label>
+        </div>
+        <div style="font-size: 0.85em; color: var(--secondary-text-color); margin-top: 4px;">When on: simulator state (auto-answer, answer unknown devices) persists across reloads. When off (Clean restart): state is reset on reload (auto-answer disabled, clean known list).</div>
+      </div>`;
+
     const aaChecked = this._autoAnswer ? " checked" : "";
     const aaCard = `
       <div class="card ${this._autoAnswer ? "active" : ""}">
@@ -2280,17 +2531,28 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       }).join("");
 
     const playbackCard = this._buildConversationPlaybackSettingsCard();
-    return `<div class="grid">${aaCard}${auCard}${rfCard}${playbackCard}${scenarioCards}</div>`;
+    return `<div class="grid">${psCard}${aaCard}${auCard}${rfCard}${playbackCard}${scenarioCards}</div>`;
   }
 
   _buildSavedPlaybacksPanel() {
     const list = this._savedPlaybacks || [];
+    const query = (this._playbackSearchQuery || "").toLowerCase().trim();
+    const filteredList = query
+      ? list.filter((p) => p.id.toLowerCase().includes(query))
+      : list;
     const builtinCount = list.filter((p) => p.builtin).length;
     const userCount = list.length - builtinCount;
     const header = `
       <div style="margin-top:8px; font-size:0.85em; color:var(--secondary-text-color);">
         <strong>Saved playbacks</strong>
         <span style="margin-left:6px;">(${builtinCount} built-in, ${userCount} imported)</span>
+      </div>
+      <div style="margin-top:4px;">
+        <input type="text"
+               placeholder="Search conversations..."
+               value="${this._playbackSearchQuery || ""}"
+               data-action="playback-search"
+               style="width:100%; padding:4px 8px; border:1px solid var(--divider-color,#eee); border-radius:4px; background:var(--card-background-color); color:var(--primary-text-color); font-size:0.8em;" />
       </div>`;
     if (!list.length) {
       return `${header}
@@ -2298,7 +2560,13 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           None yet. Paste a log above and click <em>Save</em> to keep it.
         </div>`;
     }
-    const rows = list.map((p) => {
+    if (!filteredList.length) {
+      return `${header}
+        <div style="font-size:0.8em; color:var(--secondary-text-color); padding:4px 0;">
+          No matching conversations.
+        </div>`;
+    }
+    const rows = filteredList.map((p) => {
       const builtinTag = p.builtin
         ? `<span class="chip muted" style="font-size:0.65em;">built-in</span>`
         : "";

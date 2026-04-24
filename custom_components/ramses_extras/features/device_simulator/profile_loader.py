@@ -184,6 +184,7 @@ async def async_apply_profile(
     preload_schema: bool = True,
     reset_rf_cache: bool = False,
     skip_rf_hydrate: bool | None = None,
+    enable_eavesdrop: bool = False,
 ) -> dict[str, Any]:
     """Apply a profile: stop devices, update known_list, reload, set timeouts."""
 
@@ -199,6 +200,18 @@ async def async_apply_profile(
         engine.message_log.clear()
         actions.append("cleared_message_log")
 
+    # Set auto_answer based on profile's enable_auto_answer
+    config_store = ra.get("device_simulator_config_store")
+    state_needs_save = False
+    if config_store:
+        config_store.set_auto_answer(profile.enable_auto_answer)
+        state_needs_save = True
+    if engine:
+        engine.set_auto_answer(profile.enable_auto_answer)
+    actions.append(
+        f"auto_answer={'enabled' if profile.enable_auto_answer else 'disabled'}"
+    )
+
     known_list = profile.device_configs.get("_known_list")
     schema = profile.device_configs.get("_schema")
     schema_payload = (
@@ -210,10 +223,14 @@ async def async_apply_profile(
         config_store = ra.get("device_simulator_config_store")
         if config_store:
             config_store.set_remove_database(skip_rf_hydrate)
-            await config_store.async_save_state()
+            state_needs_save = True
             actions.append(
                 f"remove_database={'enabled' if skip_rf_hydrate else 'disabled'}"
             )
+
+    # Save state once if any config changes were made
+    if state_needs_save and config_store:
+        await config_store.async_save_state()
 
     if known_list is not None:
         actions.extend(
@@ -224,6 +241,7 @@ async def async_apply_profile(
                 reload_ramses_cc,
                 auto_start_on_reload=auto_start_devices,
                 schema=schema_payload,
+                enable_eavesdrop=enable_eavesdrop,
             )
         )
 
@@ -254,6 +272,7 @@ async def _update_known_list_and_reload(
     *,
     auto_start_on_reload: bool = True,
     schema: dict[str, Any] | None = None,
+    enable_eavesdrop: bool = False,
 ) -> list[str]:
     """Persist known_list to ramses_cc options and optionally reload the entry."""
 
@@ -274,6 +293,7 @@ async def _update_known_list_and_reload(
     )
     ramses_rf_opts = dict(new_options.get("ramses_rf", {}))
     ramses_rf_opts["enforce_known_list"] = enforce
+    ramses_rf_opts["enable_eavesdrop"] = bool(enable_eavesdrop)
     new_options["ramses_rf"] = ramses_rf_opts
 
     if schema is not None:

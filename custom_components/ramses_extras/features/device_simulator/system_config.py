@@ -91,6 +91,7 @@ class SystemConfigProfile:
     :param remove_database: Remove database file on profile activation
     :param clear_message_log: Clear in-memory message log ring buffer on profile
                              activation
+    :param enable_auto_answer: Enable auto_answer when profile is loaded
     """
 
     name: str
@@ -102,6 +103,7 @@ class SystemConfigProfile:
     source_yaml: str | None = None
     remove_database: bool = False
     clear_message_log: bool = False
+    enable_auto_answer: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         """Convert profile to dictionary."""
@@ -146,6 +148,7 @@ class ConfigProfileStore:
         self._autonomous_speed: float = 1.0
         self._remove_database: bool = False
         self._answer_unknown_devices: bool = False
+        self._preserve_state: bool = True
 
         # Ensure config directory exists
         self._config_dir.mkdir(parents=True, exist_ok=True)
@@ -382,7 +385,12 @@ class ConfigProfileStore:
             with open(self._state_path, encoding="utf-8") as f:
                 data = json.load(f)
             self._active_profile = data.get("active_profile")
-            self._auto_answer = data.get("auto_answer", True)
+            self._preserve_state = data.get("preserve_state", True)
+            # When preserve_state is False (Clean restart), reset auto_answer to False
+            if self._preserve_state:
+                self._auto_answer = data.get("auto_answer", True)
+            else:
+                self._auto_answer = False
             self._remove_database = data.get("remove_database", False)
             self._answer_unknown_devices = data.get("answer_unknown_devices", False)
             speed_value = data.get("autonomous_speed", 1.0)
@@ -392,12 +400,13 @@ class ConfigProfileStore:
                 self._autonomous_speed = 1.0
             LOGGER.debug(
                 "ConfigProfileStore: state loaded profile=%s auto_answer=%s "
-                "speed=%s remove_db=%s answer_unknown=%s",
+                "speed=%s remove_db=%s answer_unknown=%s preserve_state=%s",
                 self._active_profile,
                 self._auto_answer,
                 self._autonomous_speed,
                 self._remove_database,
                 self._answer_unknown_devices,
+                self._preserve_state,
             )
         except (json.JSONDecodeError, OSError):
             LOGGER.warning("ConfigProfileStore: failed to load simulator state")
@@ -412,6 +421,8 @@ class ConfigProfileStore:
                         "auto_answer": self._auto_answer,
                         "autonomous_speed": self._autonomous_speed,
                         "remove_database": self._remove_database,
+                        "answer_unknown_devices": self._answer_unknown_devices,
+                        "preserve_state": self._preserve_state,
                     },
                     f,
                 )
@@ -510,6 +521,7 @@ class ConfigProfileStore:
         autonomous_speed = self._autonomous_speed
         remove_database = self._remove_database
         answer_unknown_devices = self._answer_unknown_devices
+        preserve_state = self._preserve_state
         state_path = self._state_path
 
         def _write() -> None:
@@ -522,6 +534,7 @@ class ConfigProfileStore:
                             "autonomous_speed": autonomous_speed,
                             "remove_database": remove_database,
                             "answer_unknown_devices": answer_unknown_devices,
+                            "preserve_state": preserve_state,
                         },
                         f,
                     )
@@ -550,6 +563,14 @@ class ConfigProfileStore:
     def set_remove_database(self, enabled: bool) -> None:
         """Set remove_database flag in memory; call async_save_state to persist."""
         self._remove_database = enabled
+
+    def get_preserve_state(self) -> bool:
+        """Return persisted preserve_state flag."""
+        return self._preserve_state
+
+    def set_preserve_state(self, enabled: bool) -> None:
+        """Set preserve_state flag in memory; call async_save_state to persist."""
+        self._preserve_state = enabled
 
     def list_profiles(self) -> list[str]:
         """List all available profile names.

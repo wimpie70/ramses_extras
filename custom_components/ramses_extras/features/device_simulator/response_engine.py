@@ -27,6 +27,31 @@ if TYPE_CHECKING:
 SUPPORTED_WRITE_CODES: Final[set[str]] = {"2411"}
 
 
+def build_2411_payload(
+    request_payload: str,
+    response_payloads: list[str] | None,
+) -> str | None:
+    """Build a 2411 RP payload with appropriate parameter value.
+
+    :param request_payload: RQ payload (e.g., "000095" for param 95)
+    :param response_payloads: Available payloads from device database
+    :return: Constructed RP payload or None if unable to build
+    """
+    if len(request_payload) < 6 or not response_payloads:
+        return None
+
+    param_id_rq = request_payload[:6].upper()
+
+    # Find matching payload from database (payloads start with param ID)
+    for p in response_payloads:
+        if p.upper().startswith(param_id_rq):
+            return p
+
+    # Fallback: use first available payload and replace param ID
+    base_payload = response_payloads[0]
+    return f"{param_id_rq}{base_payload[6:]}"
+
+
 class ResponseEngine:
     """Handles incoming RQ frames and sends RP responses.
 
@@ -288,31 +313,22 @@ class ResponseEngine:
             LOGGER.debug("ResponseEngine: no payloads for response")
             return
 
-        # For 2411 (fan parameters), find matching payload from database
-        # RQ payload: 000001 (parameter ID), RP payload includes param ID + value
+        # For 2411 (fan parameters), use shared helper to build appropriate payload
         if parsed["code"] == "2411" and parsed["payload"]:
-            raw_param = parsed["payload"][:6]
-            param_id_rq = raw_param.upper()
-            param_hex = param_id_rq[4:6].upper()  # Extract "01" from "000001"
-
-            # Find matching payload from database (payloads start with param ID)
-            payload = None
-            for p in response.payloads:
-                if p.upper().startswith(param_id_rq):
-                    payload = p
-                    break
-
-            if not payload:
-                # Fallback: use first available payload and replace param ID
-                base_payload = response.payloads[0]
-                payload = f"{param_id_rq}{base_payload[6:]}"
-                LOGGER.debug("ResponseEngine: adapting payload for param %s", param_hex)
-
-            LOGGER.debug(
-                "ResponseEngine: 2411 response for param %s: %s...",
-                param_hex,
-                payload[:30],
-            )
+            payload = build_2411_payload(parsed["payload"], response.payloads)
+            if payload:
+                param_hex = parsed["payload"][4:6].upper()
+                LOGGER.debug(
+                    "ResponseEngine: 2411 response for param %s: %s...",
+                    param_hex,
+                    payload[:30],
+                )
+            else:
+                LOGGER.debug(
+                    "ResponseEngine: unable to build 2411 payload for %s",
+                    parsed["payload"],
+                )
+                return
         else:
             # Use first available payload
             payload = response.payloads[0]

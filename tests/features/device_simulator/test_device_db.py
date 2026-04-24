@@ -867,3 +867,149 @@ async def test_import_user_log_persistent_dir(tmp_path: Path) -> None:
 
     assert db.delete_saved_playback("co2_periodic") is True
     assert not saved_file.exists()
+
+
+class TestConversationPayloadValidation:
+    """Tests for conversation payload validation."""
+
+    def test_hvac_discover_all_conversation_loads(self) -> None:
+        """Test that hvac_discover_all conversation can be loaded."""
+        db = DeviceDatabase()
+        db.load_all()
+
+        # Try lookup by conversation ID (fallback mechanism)
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+        assert conv.id == "hvac_discover_all"
+        assert len(conv.frames) > 0
+
+    def test_hvac_discover_all_frame_format(self) -> None:
+        """Test that hvac_discover_all frames have correct format."""
+        db = DeviceDatabase()
+        db.load_all()
+
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+
+        # Verify all frames have required fields
+        for frame in conv.frames:
+            assert frame.t >= 0
+            assert frame.src in ["HGI", "REM", "FAN", "DIS", "CO2", "HUM", "RFS"]
+            assert frame.dst in ["ALL", "HGI", "FAN"]
+            assert len(frame.code) == 4
+            assert frame.verb in ["I", "RQ", "RP"]
+            assert len(frame.payload) > 0 or frame.payload == "00"
+
+    def test_hvac_discover_all_payload_hex_validation(self) -> None:
+        """Test that hvac_discover_all payloads are valid hex strings."""
+        db = DeviceDatabase()
+        db.load_all()
+
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+
+        for frame in conv.frames:
+            # All payloads should be valid hex strings
+            try:
+                int(frame.payload, 16)
+            except ValueError as e:
+                pytest.fail(
+                    f"Frame {frame.src} -> {frame.dst} {frame.code} "
+                    f"has invalid hex payload: {frame.payload}: {e}"
+                )
+
+    def test_hvac_discover_all_10e0_payload_lengths(self) -> None:
+        """Test that 10E0 payloads in hvac_discover_all have correct lengths."""
+        db = DeviceDatabase()
+        db.load_all()
+
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+
+        # 10E0 payloads should be 38 hex chars (76 bytes) for device_info
+        for frame in conv.frames:
+            if frame.code == "10E0":
+                payload_len = len(frame.payload)
+                # 10E0 device_info payloads are typically 76 bytes (38 hex chars)
+                # Allow some flexibility for different device types
+                assert payload_len >= 36, (
+                    f"10E0 payload too short: {payload_len} chars for {frame.src}"
+                )
+                assert payload_len <= 80, (
+                    f"10E0 payload too long: {payload_len} chars for {frame.src}"
+                )
+
+    def test_hvac_discover_all_31e0_payload_lengths(self) -> None:
+        """Test that 31E0 payloads in hvac_discover_all have correct lengths."""
+        db = DeviceDatabase()
+        db.load_all()
+
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+
+        # 31E0 payloads should be 4 hex chars (2 bytes) or 8 hex chars (4 bytes)
+        for frame in conv.frames:
+            if frame.code == "31E0":
+                payload_len = len(frame.payload)
+                assert payload_len in [4, 8], (
+                    f"31E0 payload should be 4 or 8 hex chars, "
+                    f"got {payload_len} for {frame.src}"
+                )
+
+    def test_hvac_discover_all_no_invalid_rp_31da_for_non_fan(self) -> None:
+        """Test that non-FAN devices do not reply to 31DA in hvac_discover_all."""
+        db = DeviceDatabase()
+        db.load_all()
+
+        conv = db.get_conversation("hvac_discover_all")
+        assert conv is not None
+
+        # REM, CO2, HUM should not have RP 31DA (only FAN responds)
+        for frame in conv.frames:
+            if frame.code == "31DA" and frame.verb == "RP":
+                assert frame.src == "FAN", (
+                    f"Only FAN should reply to 31DA, got {frame.src}"
+                )
+
+    def test_all_conversations_have_valid_structure(self) -> None:
+        """Test that all loaded conversations have valid structure."""
+        db = DeviceDatabase()
+        db.load_all()
+
+        # Get all conversation IDs
+        stats = db.stats()
+        conv_count = stats["conversations"]
+        assert conv_count > 0
+
+        # Check each conversation
+        for conv_key in db._conversations:
+            conv = db._conversations[conv_key]
+            assert conv.id is not None
+            assert len(conv.frames) > 0
+            assert conv.peers is not None
+
+            # Check each frame
+            for frame in conv.frames:
+                assert frame.t >= 0
+                assert frame.src is not None
+                assert frame.dst is not None
+                assert frame.code is not None
+                assert frame.verb is not None
+                assert frame.payload is not None
+
+    def test_conversation_scheme_filtering(self) -> None:
+        """Test that scheme filtering works for conversations."""
+        db = DeviceDatabase()
+        db.load_all()
+
+        # Find a conversation with a scheme
+        fan_rem_conv = db.get_conversation("fan_rem/speed_change")
+        if fan_rem_conv:
+            # Should return with matching scheme
+            matching = db.get_conversation("fan_rem/speed_change", scheme="itho")
+            assert matching is not None
+
+            # Should return None with wrong scheme
+            wrong_scheme = db.get_conversation("fan_rem/speed_change", scheme="orcon")
+            if fan_rem_conv.scheme == "itho":
+                assert wrong_scheme is None

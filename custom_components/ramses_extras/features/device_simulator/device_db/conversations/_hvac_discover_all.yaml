@@ -1,0 +1,138 @@
+# Device discovery conversation hitting every HVAC slug we currently curate.
+# Designed for Device Playback + skip_answers=True so Auto Answer can respond,
+# but includes recorded RPs so it can also be replayed offline.
+---
+peers:
+  - HGI
+  - REM
+  - FAN
+  - DIS
+  - CO2
+  - HUM
+  - RFS
+conversations:
+  - id: hvac_discover_all
+    description: Sequential discovery of all HVAC slugs (REM/FAN/DIS/CO2/HUM/RFS)
+    frames:
+      # REM: spontaneous I-frames only. REMs do NOT reply to RQ|31DA
+      # (ramses_rf tables: REM has only {31DA: RQ}). Emitting RP|31DA would
+      # mispromote to FAN via eavesdrop.
+      - t: 0.0
+        src: REM
+        dst: ALL
+        code: '22F1'
+        verb: I
+        payload: '000204'
+      - t: 0.1
+        src: REM
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: 000001C8380F0100F1FF1D0807E2030507E15438375246323032350000000000000000000000
+      # FAN discovery
+      - t: 5.0
+        src: HGI
+        dst: FAN
+        code: '31DA'
+        verb: RQ
+        payload: '00'
+      - t: 5.1
+        src: FAN
+        dst: HGI
+        code: '31DA'
+        verb: RP
+        payload: 000010018B0000F830F060E890CE00000000000000000000000000000000
+      - t: 5.2
+        src: FAN
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
+      # DIS discovery
+      #
+      # NOTE: DIS is NOT in ramses_rf's eavesdrop promotion map
+      # (only CO2/FAN/HUM/REM are). To get a device identified as DIS,
+      # add an explicit known_list entry, e.g.:
+      #
+      #     known_list:
+      #       37:160000:
+      #         class: DIS
+      #
+      # Without that, the best eavesdrop can do is promote to REM
+      # (DIS is a REM-with-display superset), so we emit the REM
+      # signature 22F1 + 22F3 here. This avoids mis-promotion to FAN
+      # that would otherwise happen on RP|31DA.
+      - t: 9.8
+        src: DIS
+        dst: ALL
+        code: '22F1'
+        verb: I
+        payload: '000204'
+      - t: 9.9
+        src: DIS
+        dst: ALL
+        code: '22F3'
+        verb: I
+        payload: '000A05'
+      - t: 10.0
+        src: DIS
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: 000001C894030167FFFF0B0807E4030507E3564D492D313557534A3533000000000000000000
+      # CO2: spontaneous I-frames only. CO2 has {31E0: I} and {1298: I};
+      # it does not reply to RQ|31E0 (no RP entry in ramses_rf tables).
+      - t: 14.8
+        src: CO2
+        dst: ALL
+        code: '1298'
+        verb: I
+        payload: '0002A0'
+      - t: 14.9
+        src: CO2
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '00000100'
+      - t: 15.0
+        src: CO2
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: 000001C8510D0167FEFFFFFFFFFF0B0207E3564D532D3135434D313700000000000000000000
+      # HUM: spontaneous I-frames only. HUM has {12A0: I, 31E0: I} and
+      # does NOT reply to RQ|31DA.
+      - t: 19.8
+        src: HUM
+        dst: ALL
+        code: '12A0'
+        verb: I
+        payload: '003208A00BB8'
+      - t: 19.9
+        src: HUM
+        dst: ALL
+        code: '31E0'
+        verb: I
+        payload: '00000100'
+      - t: 20.0
+        src: HUM
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: 000001C85201016CFEFFFFFFFFFF0B0307E3564D532D31374842303100000000000000000000
+      # RFS (Itho spIDer gateway): no eavesdrop promotion signature exists
+      # for RFS in ramses_rf (_HVAC_VC_PAIR_BY_CLASS). RFS does NOT reply
+      # to RQ|31DA (only sends RQ). It will remain as HVC unless the
+      # profile declares it explicitly in known_list:
+      #
+      #     known_list:
+      #       30:150000:
+      #         class: RFS
+      #
+      # We just emit its real 10E0 identity frame here.
+      - t: 25.0
+        src: RFS
+        dst: ALL
+        code: '10E0'
+        verb: I
+        payload: 000002FF1E03FFFFFFFF0F0107DE150407E1496E7465726E6574204761746577617900000000

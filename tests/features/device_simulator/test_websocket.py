@@ -22,6 +22,7 @@ from custom_components.ramses_extras.features.device_simulator.websocket import 
     ws_get_status,
     ws_get_ui_status,
     ws_load_profile,
+    ws_resume_devices,
     ws_set_auto_answer,
     ws_set_device_enabled,
     ws_set_device_excluded_codes,
@@ -238,7 +239,7 @@ class TestWsActivateDevice:
             "device_id": "37:168270",
             "slug": "FAN",
         }
-        await ws_activate_device(hass, connection, msg)
+        ws_activate_device(hass, connection, msg)
         connection.send_result.assert_called_once()
 
     @pytest.mark.asyncio
@@ -250,7 +251,7 @@ class TestWsActivateDevice:
             "device_id": "37:168270",
             "slug": "FAN",
         }
-        await ws_activate_device(hass, connection, msg)
+        ws_activate_device(hass, connection, msg)
         connection.send_error.assert_called_once()
 
 
@@ -260,14 +261,55 @@ class TestWsSilenceDevice:
         engine.async_silence_device = AsyncMock()
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
         msg = {"id": 1, "type": "device_simulator/silence", "device_id": "37:168270"}
-        await ws_silence_device(hass, connection, msg)
+        ws_silence_device(hass, connection, msg)
         connection.send_result.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ws_silence_device_not_ready(self, hass, connection):
         hass.data = {}
         msg = {"id": 1, "type": "device_simulator/silence", "device_id": "37:168270"}
-        await ws_silence_device(hass, connection, msg)
+        ws_silence_device(hass, connection, msg)
+        connection.send_error.assert_called_once()
+
+
+class TestWsResumeDevices:
+    @pytest.mark.asyncio
+    async def test_ws_resume_devices_specific(self, hass, connection, engine):
+        engine.async_resume_device = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/device_simulator/resume_devices",
+            "device_ids": ["37:168270"],
+        }
+        ws_resume_devices(hass, connection, msg)
+        engine.async_resume_device.assert_called_once_with("37:168270")
+        connection.send_result.assert_called_once_with(
+            1, {"success": True, "resumed": ["37:168270"]}
+        )
+
+    @pytest.mark.asyncio
+    async def test_ws_resume_devices_all(self, hass, connection, engine):
+        engine.async_resume_all = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        msg = {
+            "id": 2,
+            "type": "ramses_extras/device_simulator/resume_devices",
+        }
+        ws_resume_devices(hass, connection, msg)
+        engine.async_resume_all.assert_called_once()
+        connection.send_result.assert_called_once_with(
+            2, {"success": True, "resumed": "all"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_ws_resume_devices_not_ready(self, hass, connection):
+        hass.data = {}
+        msg = {
+            "id": 3,
+            "type": "ramses_extras/device_simulator/resume_devices",
+        }
+        ws_resume_devices(hass, connection, msg)
         connection.send_error.assert_called_once()
 
 
