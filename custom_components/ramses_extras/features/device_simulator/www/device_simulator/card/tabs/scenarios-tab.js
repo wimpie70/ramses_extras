@@ -123,11 +123,32 @@ function buildSelectChip(card, scenarioId) {
 
 function buildSelectButton(card, scenarioId, conflicts) {
   const selected = card._selectedScenarioId === scenarioId;
-  const disabled = conflicts.length ? " disabled" : "";
-  if (selected) {
-    return `<button class="btn btn-secondary" data-action="clear-selected-scenario" title="Unselect this scenario">✕ Unselect</button>`;
+  const isRunning = (card._runningScenarios || []).includes(scenarioId);
+  const buttons = [];
+
+  // If this scenario is running, allow stopping it directly from here so
+  // conflicts with other scenarios can be cleared.
+  if (isRunning) {
+    buttons.push(
+      `<button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${scenarioId}" title="Stop this running scenario">⏹ Stop</button>`
+    );
   }
-  return `<button class="btn btn-primary" data-action="select-scenario" data-scenario-id="${scenarioId}"${disabled}>Select</button>`;
+
+  if (selected) {
+    buttons.push(
+      `<button class="btn btn-secondary" data-action="clear-selected-scenario" title="Unselect this scenario">✕ Unselect</button>`
+    );
+  } else {
+    const disabled = conflicts.length ? " disabled" : "";
+    const title = conflicts.length
+      ? ` title="Conflicts with: ${conflicts.join(", ")} – stop those first"`
+      : "";
+    buttons.push(
+      `<button class="btn btn-primary" data-action="select-scenario" data-scenario-id="${scenarioId}"${disabled}${title}>Select</button>`
+    );
+  }
+
+  return buttons.join("");
 }
 
 function buildManualInjectionScenarioCard(card) {

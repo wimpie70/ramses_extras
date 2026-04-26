@@ -659,12 +659,13 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     await this._silenceDevices();
   }
 
-  async _silenceDevices(deviceIds) {
+  async _silenceDevices(deviceIds, { setSuppress = true } = {}) {
     if (!this._hass) {
       return;
     }
     const payload = {
       type: "ramses_extras/device_simulator/silence_devices",
+      set_suppress: Boolean(setSuppress),
     };
     if (Array.isArray(deviceIds) && deviceIds.length) {
       payload.device_ids = deviceIds;
@@ -989,7 +990,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     });
 
     root.querySelectorAll("[data-action='silence-device']").forEach((btn) => {
-      btn.addEventListener("click", () => this._silenceDevices([btn.dataset.deviceId]));
+      // Per-device "Stop emission" pauses the emitter without silencing the
+      // device — leaves it in the idle state so it can be resumed normally.
+      btn.addEventListener("click", () => this._silenceDevices(
+        [btn.dataset.deviceId],
+        { setSuppress: false },
+      ));
     });
 
     root.querySelectorAll("[data-action='discover-device']").forEach((btn) => {
