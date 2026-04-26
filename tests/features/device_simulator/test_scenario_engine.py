@@ -90,6 +90,16 @@ class TestScenarioEngineInit:
         assert engine._auto_answer_enabled is True
         endpoint.add_inbound_handler.assert_called_once()
 
+    def test_device_db_property(self) -> None:
+        """Test device_db property."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+
+        assert engine.device_db == db
+
 
 class TestScenarioEngineProcessedFrames:
     def test_log_processed_frame_logs_rp_once(self) -> None:
@@ -97,6 +107,34 @@ class TestScenarioEngineProcessedFrames:
         hass.bus.async_fire = MagicMock()
         endpoint = MagicMock()
         db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+        frame = "000 RP --- 37:168270 32:153289 --:------ 1FC9 003 000000"
+
+        engine.log_processed_frame(frame)
+
+        # Should only fire once even if called twice
+        engine.log_processed_frame(frame)
+        engine.log_processed_frame(frame)
+
+        assert hass.bus.async_fire.call_count == 1
+
+    def test_log_processed_frame_no_entry(self) -> None:
+        """Test when message_log.log returns None."""
+        hass = MagicMock()
+        hass.bus.async_fire = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+        engine.message_log.log = MagicMock(return_value=None)
+
+        frame = "000 RP --- 37:168270 32:153289 --:------ 1FC9 003 000000"
+
+        engine.log_processed_frame(frame)
+
+        # Should not fire if log returns None
+        hass.bus.async_fire.assert_not_called()
 
         engine = ScenarioEngine(hass, endpoint, db)
         frame = (
@@ -521,6 +559,42 @@ class TestScenarioEngineBuildProfileDevices:
         assert len(devices) == 1
         assert devices[0].slug == "FAN"  # Default fallback
 
+    def test_build_profile_device_not_found(self) -> None:
+        """Test building device when not in known_list."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+
+        profile = MagicMock()
+        profile.device_configs = {
+            "_known_list": {"32:150000": {}},
+        }
+
+        device = engine.build_profile_device(profile, "37:168270")
+
+        assert device is None
+
+    def test_build_profile_device_success(self) -> None:
+        """Test successful device building."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+
+        profile = MagicMock()
+        profile.device_configs = {
+            "_known_list": {"37:168270": {"class": "FAN"}},
+        }
+
+        device = engine.build_profile_device(profile, "37:168270")
+
+        assert device is not None
+        assert device.device_id == "37:168270"
+        assert device.slug == "FAN"
+
 
 class TestScenarioEngineDeviceTracking:
     """Tests for device tracking methods."""
@@ -575,6 +649,120 @@ class TestScenarioEngineDeviceTracking:
         engine._manual_device_ids.add("37:168270")
 
         assert engine.has_manual_devices() is True
+
+    def test_is_device_active(self) -> None:
+        """Test is_device_active."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+        device = ActiveDevice(device_id="37:168270", slug="FAN")
+        engine._active_devices["37:168270"] = device
+
+        assert engine.is_device_active("37:168270") is True
+        assert engine.is_device_active("32:150000") is False
+
+    def test_get_autonomous_speed(self) -> None:
+        """Test get_autonomous_speed."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+
+        assert engine.get_autonomous_speed() == 1.0
+
+    def test_set_autonomous_speed_valid(self) -> None:
+        """Test set_autonomous_speed with valid value."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+
+        engine.set_autonomous_speed(2.5)
+        assert engine.get_autonomous_speed() == 2.5
+
+    def test_set_autonomous_speed_clamp_min(self) -> None:
+        """Test set_autonomous_speed clamps to minimum."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+
+        engine.set_autonomous_speed(0.001)
+        assert engine.get_autonomous_speed() == 0.01
+
+    def test_set_autonomous_speed_clamp_max(self) -> None:
+        """Test set_autonomous_speed clamps to maximum."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+
+        engine.set_autonomous_speed(200.0)
+        assert engine.get_autonomous_speed() == 100.0
+
+    def test_set_autonomous_speed_invalid_string(self) -> None:
+        """Test set_autonomous_speed with invalid string."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+
+        engine.set_autonomous_speed("invalid")
+        assert engine.get_autonomous_speed() == 1.0
+
+    def test_set_autonomous_speed_none(self) -> None:
+        """Test set_autonomous_speed with None."""
+        hass = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+
+        engine.set_autonomous_speed(None)
+        assert engine.get_autonomous_speed() == 1.0
+
+
+class TestScenarioEngineLogAndEmit:
+    """Tests for _log_and_emit method."""
+
+    def test_log_and_emit_deduplication(self) -> None:
+        """Test that recent frame deduplication works."""
+        hass = MagicMock()
+        hass.bus.async_fire = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+        frame = "000 RP --- 37:168270 32:153289 --:------ 1FC9 003 000000"
+
+        # Call multiple times quickly - should only fire once
+        engine._log_and_emit("outbound", frame)
+        engine._log_and_emit("outbound", frame)
+        engine._log_and_emit("outbound", frame)
+
+        assert hass.bus.async_fire.call_count == 1
+
+    def test_log_and_emit_different_origins(self) -> None:
+        """Test that different origins are tracked separately."""
+        hass = MagicMock()
+        hass.bus.async_fire = MagicMock()
+        endpoint = MagicMock()
+        db = MagicMock()
+
+        engine = ScenarioEngine(hass, endpoint, db)
+        frame = "000 RP --- 37:168270 32:153289 --:------ 1FC9 003 000000"
+
+        engine._log_and_emit("outbound", frame, origin="rf")
+        engine._log_and_emit("outbound", frame, origin="sim")
+
+        assert hass.bus.async_fire.call_count == 2
 
 
 class TestScenarioEngineBuildPacket:

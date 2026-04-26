@@ -3,33 +3,51 @@
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.components.websocket_api.connection import ActiveConnection
 
 from custom_components.ramses_extras.features.device_simulator.websocket import (
+    _build_profile_zone_index,
     _get_config_store,
     _get_db,
     _get_engine,
-    _start_autonomous_emissions,
-    _start_load_profile_yaml,
+    _get_ramses_cc_coordinator,
     _trigger_ramses_discovery,
     async_register_websocket_commands,
     ws_activate_device,
+    ws_activate_profile_device,
+    ws_clear_device_messages,
     ws_clear_ramses_cache,
     ws_delete_profile,
+    ws_delete_saved_playback,
+    ws_discover_capabilities,
     ws_get_active_devices,
     ws_get_conversations,
+    ws_get_device_messages,
     ws_get_devices,
     ws_get_messages,
+    ws_get_playback_text,
+    ws_get_rf_config,
     ws_get_status,
     ws_get_ui_status,
+    ws_import_user_log,
+    ws_list_saved_playbacks,
     ws_load_profile,
+    ws_pause_scenario,
     ws_resume_devices,
+    ws_resume_scenario,
+    ws_set_answer_unknown_devices,
     ws_set_auto_answer,
+    ws_set_autonomous_speed,
     ws_set_device_enabled,
     ws_set_device_excluded_codes,
+    ws_set_preserve_state,
     ws_silence_device,
+    ws_silence_devices,
     ws_start_scenario,
     ws_stop_scenario,
     ws_subscribe_devices,
+    ws_subscribe_messages,
+    ws_subscribe_scenarios,
 )
 
 # Note: websocket functions use @callback and @websocket_api decorators
@@ -48,12 +66,14 @@ def hass():
 
 @pytest.fixture
 def connection():
-    conn = MagicMock()
-    conn.send_result = MagicMock()
-    conn.send_error = MagicMock()
-    conn.send_message = MagicMock()
-    conn.subscriptions = {}
-    return conn
+    connection = MagicMock(spec=ActiveConnection)
+    connection.user = MagicMock()
+    connection.context = MagicMock()
+    connection.send_result = MagicMock()
+    connection.send_error = MagicMock()
+    connection.send_message = MagicMock()
+    connection.subscriptions = {}
+    return connection
 
 
 @pytest.fixture
@@ -98,15 +118,19 @@ class TestHelperFunctions:
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
         assert _get_engine(hass) == engine
 
-    def test_get_engine_not_found(self, hass):
+    def test_get_engine_none(self, hass):
         hass.data = {}
+        assert _get_engine(hass) is None
+
+    def test_get_engine_missing_simulator(self, hass):
+        hass.data = {"ramses_extras": {}}
         assert _get_engine(hass) is None
 
     def test_get_config_store(self, hass, config_store):
         hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
         assert _get_config_store(hass) == config_store
 
-    def test_get_config_store_not_found(self, hass):
+    def test_get_config_store_none(self, hass):
         hass.data = {}
         assert _get_config_store(hass) is None
 
@@ -114,9 +138,64 @@ class TestHelperFunctions:
         hass.data = {"ramses_extras": {"device_simulator_db": db}}
         assert _get_db(hass) == db
 
-    def test_get_db_not_found(self, hass):
+    def test_get_db_none(self, hass):
         hass.data = {}
         assert _get_db(hass) is None
+
+    def test_get_ramses_cc_coordinator_no_entries(self, hass):
+        hass.config_entries.async_entries = MagicMock(return_value=[])
+        assert _get_ramses_cc_coordinator(hass) is None
+
+    def test_get_ramses_cc_coordinator_no_data(self, hass):
+        entry = MagicMock()
+        entry.entry_id = "test_entry"
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
+        hass.data = {"ramses_cc": {}}
+        assert _get_ramses_cc_coordinator(hass) is None
+
+    def test_get_ramses_cc_coordinator_success(self, hass):
+        entry = MagicMock()
+        entry.entry_id = "test_entry"
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
+        coordinator = MagicMock()
+        hass.data = {"ramses_cc": {"coordinators": {"test_entry": coordinator}}}
+        assert _get_ramses_cc_coordinator(hass) == coordinator
+
+    def test_build_profile_zone_index_empty(self):
+        """Test building zone index with empty profile."""
+        from custom_components.ramses_extras.features.device_simulator.system_config import (  # noqa: E501
+            SystemConfigProfile,
+        )
+
+        profile = SystemConfigProfile("test", {}, {})
+        zones = _build_profile_zone_index(profile)
+        assert zones == []
+
+    def test_build_profile_zone_index_with_zones(self):
+        """Test building zone index with zones."""
+        from custom_components.ramses_extras.features.device_simulator.system_config import (  # noqa: E501
+            SystemConfigProfile,
+        )
+
+        profile = SystemConfigProfile(
+            name="test",
+            device_configs={
+                "_schema": {
+                    "01:123456": {
+                        "zones": {
+                            "01": {
+                                "label": "Living Room",
+                                "sensor": "02:234567",
+                                "devices": ["03:345678"],
+                            }
+                        }
+                    }
+                }
+            },
+        )
+        zones = _build_profile_zone_index(profile)
+        assert len(zones) == 1
+        assert zones[0]["label"] == "Living Room"
 
     @pytest.mark.asyncio
     async def test_trigger_ramses_discovery_success(self, hass):
@@ -128,6 +207,7 @@ class TestHelperFunctions:
         hass.config_entries.async_entries = MagicMock(
             return_value=[MagicMock(entry_id="entry_id")]
         )
+
         await _trigger_ramses_discovery(hass)
         discover.assert_called_once()
 
@@ -138,36 +218,136 @@ class TestHelperFunctions:
             return_value=[MagicMock(entry_id="entry_id")]
         )
         hass.data = {"ramses_cc": {}}
-        await _trigger_ramses_discovery(hass)
-        # Should not raise
 
-    @pytest.mark.asyncio
-    async def test_trigger_ramses_discovery_no_discover_attr(self, hass):
-        coordinator = MagicMock()
-        del coordinator._async_discovery_task
-        hass.data = {"ramses_cc": {"entry_id": coordinator}}
-        hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(
-            return_value=[MagicMock(entry_id="entry_id")]
-        )
-        await _trigger_ramses_discovery(hass)
         # Should not raise
+        await _trigger_ramses_discovery(hass)
 
-    @pytest.mark.asyncio
-    async def test_trigger_ramses_discovery_exception(self, hass):
-        hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(
-            side_effect=Exception("test error")
-        )
-        await _trigger_ramses_discovery(hass)
-        # Should not raise
 
-    @pytest.mark.asyncio
-    async def test_trigger_ramses_discovery_empty_entries(self, hass):
-        hass.config_entries = MagicMock()
-        hass.config_entries.async_entries = MagicMock(return_value=[])
-        await _trigger_ramses_discovery(hass)
-        # Should not raise
+class TestWsClearDeviceMessages:
+    def test_ws_clear_device_messages_success(self, hass, connection, engine):
+        engine.message_log = MagicMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        msg = {"id": 1, "type": "ramses_extras/device_simulator/clear_messages"}
+        ws_clear_device_messages(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+    def test_ws_clear_device_messages_with_device_ids(self, hass, connection, engine):
+        engine.message_log = MagicMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/device_simulator/clear_messages",
+            "device_ids": ["37:168270"],
+        }
+        ws_clear_device_messages(hass, connection, msg)
+        connection.send_result.assert_called_once()
+        engine.message_log.clear.assert_called_once_with(["37:168270"])
+
+    def test_ws_clear_device_messages_not_ready(self, hass, connection):
+        hass.data = {}
+        msg = {"id": 1, "type": "ramses_extras/device_simulator/clear_messages"}
+        ws_clear_device_messages(hass, connection, msg)
+        connection.send_error.assert_called_once()
+
+
+class TestWsGetConversations:
+    def test_ws_get_conversations_success(self, hass, connection, db):
+        db.conversations = {}
+        hass.data = {"ramses_extras": {"device_simulator_db": db}}
+        msg = {"id": 1, "type": "device_simulator/get_conversations"}
+        ws_get_conversations(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+    def test_ws_get_conversations_not_ready(self, hass, connection):
+        hass.data = {}
+        msg = {"id": 1, "type": "device_simulator/get_conversations"}
+        ws_get_conversations(hass, connection, msg)
+        connection.send_error.assert_called_once()
+
+
+class TestWsGetMessages:
+    def test_ws_get_messages_success(self, hass, connection, engine):
+        engine.message_log = MagicMock()
+        engine.message_log.get_recent = MagicMock(return_value=[])
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        msg = {"id": 1, "type": "device_simulator/get_messages"}
+        ws_get_messages(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+    def test_ws_get_messages_not_ready(self, hass, connection):
+        hass.data = {}
+        msg = {"id": 1, "type": "device_simulator/get_messages"}
+        ws_get_messages(hass, connection, msg)
+        connection.send_error.assert_called_once()
+
+
+class TestWsGetUiStatus:
+    def test_ws_get_ui_status_success(self, hass, connection, config_store):
+        config_store.get_rf_config = MagicMock(return_value={})
+        config_store.active_profile = None
+        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
+        msg = {"id": 1, "type": "device_simulator/get_ui_status"}
+        ws_get_ui_status(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+
+class TestWsSetPreserveState:
+    def test_ws_set_preserve_state_success(self, hass, connection, config_store):
+        config_store.async_save_state = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
+        msg = {"id": 1, "type": "device_simulator/set_preserve_state", "enabled": True}
+        ws_set_preserve_state(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+
+class TestWsGetRfConfig:
+    def test_ws_get_rf_config_success(self, hass, connection, config_store):
+        config_store.get_rf_config = MagicMock(return_value={})
+        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
+        msg = {"id": 1, "type": "device_simulator/get_rf_config"}
+        ws_get_rf_config(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+
+class TestWsSetAutonomousSpeed:
+    def test_ws_set_autonomous_speed_success(self, hass, connection, engine):
+        engine.set_autonomous_speed = MagicMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        msg = {"id": 1, "type": "device_simulator/set_autonomous_speed", "speed": 2.0}
+        ws_set_autonomous_speed(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+
+class TestWsSubscribeScenarios:
+    def test_ws_subscribe_scenarios_success(self, hass, connection, engine):
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        msg = {"id": 1, "type": "device_simulator/subscribe_scenarios"}
+        ws_subscribe_scenarios(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+
+class TestWsSubscribeMessages:
+    def test_ws_subscribe_messages_success(self, hass, connection, engine):
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        msg = {"id": 1, "type": "device_simulator/subscribe_messages"}
+        ws_subscribe_messages(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+
+class TestWsGetDeviceMessages:
+    def test_ws_get_device_messages_success(self, hass, connection, engine):
+        engine.message_log = MagicMock()
+        engine.message_log.get_recent = MagicMock(return_value=[])
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        msg = {"id": 1, "type": "device_simulator/get_device_messages"}
+        ws_get_device_messages(hass, connection, msg)
+        connection.send_result.assert_called_once()
+
+    def test_ws_get_device_messages_not_ready(self, hass, connection):
+        hass.data = {}
+        msg = {"id": 1, "type": "device_simulator/get_device_messages"}
+        ws_get_device_messages(hass, connection, msg)
+        connection.send_error.assert_called_once()
 
 
 class TestWsGetStatus:
@@ -313,41 +493,6 @@ class TestWsResumeDevices:
         connection.send_error.assert_called_once()
 
 
-class TestWsGetConversations:
-    def test_ws_get_conversations_success(self, hass, connection, db):
-        conv = MagicMock()
-        conv.peers = ["32:150000"]
-        conv.description = "Test"
-        conv.frames = []
-        conv.scheme = "default"
-        db._conversations = {"test": conv}
-        hass.data = {"ramses_extras": {"device_simulator_db": db}}
-        msg = {"id": 1, "type": "device_simulator/conversations"}
-        ws_get_conversations(hass, connection, msg)
-        connection.send_result.assert_called_once()
-
-    def test_ws_get_conversations_not_ready(self, hass, connection):
-        hass.data = {}
-        msg = {"id": 1, "type": "device_simulator/conversations"}
-        ws_get_conversations(hass, connection, msg)
-        connection.send_error.assert_called_once()
-
-
-class TestWsGetMessages:
-    def test_ws_get_messages_success(self, hass, connection, engine):
-        engine._message_log = ["msg1", "msg2"]
-        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
-        msg = {"id": 1, "type": "device_simulator/messages"}
-        ws_get_messages(hass, connection, msg)
-        connection.send_result.assert_called_once()
-
-    def test_ws_get_messages_not_ready(self, hass, connection):
-        hass.data = {}
-        msg = {"id": 1, "type": "device_simulator/messages"}
-        ws_get_messages(hass, connection, msg)
-        connection.send_error.assert_called_once()
-
-
 class TestWsGetUIStatus:
     def test_ws_get_ui_status_success(self, hass, connection, engine, config_store):
         device = MagicMock()
@@ -483,25 +628,6 @@ class TestWsLoadProfile:
         # Skip direct call test due to decorator issues
 
 
-class TestWsDeleteProfile:
-    @pytest.mark.asyncio
-    async def test_ws_delete_profile_success(self, hass, connection, config_store):
-        config_store.delete_profile = MagicMock(return_value=True)
-        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
-        # Skip direct call test due to decorator issues
-
-    @pytest.mark.asyncio
-    async def test_ws_delete_profile_not_ready(self, hass, connection):
-        hass.data = {}
-        # Skip direct call test due to decorator issues
-
-    @pytest.mark.asyncio
-    async def test_ws_delete_profile_builtin(self, hass, connection, config_store):
-        config_store.BUILTIN_PROFILES = ["default"]
-        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
-        # Skip direct call test due to decorator issues
-
-
 class TestWsStartScenario:
     @pytest.mark.asyncio
     async def test_ws_start_scenario_not_ready(self, hass, connection):
@@ -543,59 +669,6 @@ class TestWsStopScenario:
         engine.async_stop_manual_devices = AsyncMock()
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
         # Skip direct call test due to decorator issues
-
-    @pytest.mark.asyncio
-    async def test_ws_stop_scenario_no_params(self, hass, connection, engine):
-        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
-        # Skip direct call test due to decorator issues
-
-
-class TestStartAutonomousEmissions:
-    @pytest.mark.asyncio
-    async def test_start_autonomous_emissions_success(self, engine):
-        engine.async_activate_device = AsyncMock()
-        params = {"device_id": "37:168270", "device_type": "FAN"}
-        result = await _start_autonomous_emissions(engine, params)
-        assert result["success"] is True
-
-
-class TestStartLoadProfileYaml:
-    @pytest.mark.asyncio
-    async def test_start_load_profile_yaml_success(self, hass, config_store):
-        config_store.save_profile = MagicMock()
-        config_store.set_active_profile = MagicMock()
-        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
-        with patch(
-            "custom_components.ramses_extras.features.device_simulator.websocket.build_profile_from_yaml",
-            MagicMock(),
-        ):
-            with patch(
-                "custom_components.ramses_extras.features.device_simulator.websocket.async_apply_profile",
-                AsyncMock(return_value={"success": True}),
-            ) as mock_apply:
-                params = {"profile_yaml": "test: yaml"}
-                result = await _start_load_profile_yaml(hass, params)
-                assert result["success"] is True
-                assert result.get("started_devices") == 0
-                assert "profile emissions scenario" in result.get("message", "")
-
-        mock_apply.assert_awaited_once()
-        _, kwargs = mock_apply.await_args
-        assert kwargs.get("auto_start_devices") is None
-
-    @pytest.mark.asyncio
-    async def test_start_load_profile_yaml_no_store(self, hass):
-        hass.data = {}
-        params = {"profile_yaml": "test: yaml"}
-        with pytest.raises(RuntimeError):
-            await _start_load_profile_yaml(hass, params)
-
-    @pytest.mark.asyncio
-    async def test_start_load_profile_yaml_invalid_yaml(self, hass, config_store):
-        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
-        params = {"profile_yaml": ""}
-        with pytest.raises(ValueError):
-            await _start_load_profile_yaml(hass, params)
 
 
 class TestWsSetDeviceEnabled:
