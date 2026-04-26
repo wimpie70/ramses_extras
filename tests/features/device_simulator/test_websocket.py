@@ -592,42 +592,6 @@ class TestWsGetUIStatus:
         connection.send_result.assert_called_once()
 
 
-class TestWsLoadProfile:
-    @pytest.mark.asyncio
-    async def test_ws_load_profile_success(self, hass, connection, config_store):
-        profile = MagicMock()
-        profile.name = "test"
-        config_store.get_profile = MagicMock(return_value=profile)
-        config_store.set_active_profile = MagicMock()
-        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
-        with patch(
-            "custom_components.ramses_extras.features.device_simulator.websocket.async_apply_profile",
-            AsyncMock(return_value={"success": True}),
-        ):
-            # ws_load_profile uses @websocket_api.async_response decorator
-            # We'll test the registration instead
-            with patch(
-                "homeassistant.components.websocket_api.async_register_command"
-            ) as mock_register:
-                from custom_components.ramses_extras.features.device_simulator import (
-                    websocket as ws_module,
-                )
-
-                ws_module.ws_load_profile = ws_load_profile
-                mock_register.assert_not_called()  # Placeholder
-
-    @pytest.mark.asyncio
-    async def test_ws_load_profile_not_ready(self, hass, connection):
-        hass.data = {}
-        # Skip direct call test due to decorator issues
-
-    @pytest.mark.asyncio
-    async def test_ws_load_profile_not_found(self, hass, connection, config_store):
-        config_store.get_profile = MagicMock(return_value=None)
-        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
-        # Skip direct call test due to decorator issues
-
-
 class TestWsStartScenario:
     @pytest.mark.asyncio
     async def test_ws_start_scenario_not_ready(self, hass, connection):
@@ -833,16 +797,351 @@ class TestWsSubscribeDevices:
         assert len(event_handler_called) > 0
 
 
-class TestWsClearRamsesCache:
+# ---------------------------------------------------------------------------
+# Tests for async-decorated websocket handlers.
+#
+# Handlers wrapped with ``@websocket_api.async_response`` are scheduled as
+# background tasks by the decorator; we reach the underlying coroutine via
+# ``__wrapped__`` (preserved by ``functools.wraps``) and await it directly.
+# ---------------------------------------------------------------------------
+
+
+def _unwrap(handler):
+    """Return the raw coroutine behind an @async_response handler."""
+    return handler.__wrapped__
+
+
+class TestWsSilenceDevices:
     @pytest.mark.asyncio
-    async def test_ws_clear_ramses_cache_success(self, hass, connection):
-        # Skip due to Store import inside function and decorator issues
-        pass
+    async def test_specific_default_sets_suppress(self, hass, connection, engine):
+        engine.async_silence_device = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_silence_devices)(
+            hass,
+            connection,
+            {"id": 1, "type": "x", "device_ids": ["37:168270"]},
+        )
+        engine.async_silence_device.assert_awaited_once_with(
+            "37:168270", set_suppress=True
+        )
+        connection.send_result.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_ws_clear_ramses_cache_exception(self, hass, connection):
-        # Skip due to Store import inside function and decorator issues
-        pass
+    async def test_specific_pause_mode(self, hass, connection, engine):
+        engine.async_silence_device = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_silence_devices)(
+            hass,
+            connection,
+            {
+                "id": 1,
+                "type": "x",
+                "device_ids": ["37:168270"],
+                "set_suppress": False,
+            },
+        )
+        engine.async_silence_device.assert_awaited_once_with(
+            "37:168270", set_suppress=False
+        )
+        payload = connection.send_result.call_args.args[1]
+        assert payload["set_suppress"] is False
+
+    @pytest.mark.asyncio
+    async def test_all_silence(self, hass, connection, engine):
+        engine.async_silence_all = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_silence_devices)(hass, connection, {"id": 1, "type": "x"})
+        engine.async_silence_all.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_pause_all(self, hass, connection, engine):
+        engine.active_device_ids = ["A:001", "B:002"]
+        engine.async_silence_device = AsyncMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_silence_devices)(
+            hass, connection, {"id": 1, "type": "x", "set_suppress": False}
+        )
+        assert engine.async_silence_device.await_count == 2
+        payload = connection.send_result.call_args.args[1]
+        assert set(payload["paused"]) == {"A:001", "B:002"}
+
+    @pytest.mark.asyncio
+    async def test_not_ready(self, hass, connection):
+        hass.data = {}
+        await _unwrap(ws_silence_devices)(hass, connection, {"id": 1, "type": "x"})
+        connection.send_error.assert_called_once()
+
+
+class TestWsActivateProfileDevice:
+    @pytest.mark.asyncio
+    async def test_success(self, hass, connection, engine, config_store):
+        config_store.get_active_profile = MagicMock(return_value="test_profile")
+        profile = MagicMock()
+        config_store.get_profile = MagicMock(return_value=profile)
+        engine.is_device_active = MagicMock(return_value=False)
+        engine.build_profile_device = MagicMock(return_value=MagicMock())
+        engine.async_activate_device = AsyncMock()
+        hass.data = {
+            "ramses_extras": {
+                "device_simulator_engine": engine,
+                "device_simulator_config_store": config_store,
+            }
+        }
+        await _unwrap(ws_activate_profile_device)(
+            hass, connection, {"id": 1, "type": "x", "device_id": "37:168270"}
+        )
+        engine.async_activate_device.assert_awaited_once()
+        connection.send_result.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_not_ready_engine(self, hass, connection):
+        hass.data = {}
+        await _unwrap(ws_activate_profile_device)(
+            hass, connection, {"id": 1, "type": "x", "device_id": "37:168270"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_ready", ANY)
+
+    @pytest.mark.asyncio
+    async def test_no_active_profile(self, hass, connection, engine, config_store):
+        config_store.get_active_profile = MagicMock(return_value=None)
+        hass.data = {
+            "ramses_extras": {
+                "device_simulator_engine": engine,
+                "device_simulator_config_store": config_store,
+            }
+        }
+        await _unwrap(ws_activate_profile_device)(
+            hass, connection, {"id": 1, "type": "x", "device_id": "37:168270"}
+        )
+        connection.send_error.assert_called_once_with(1, "no_active_profile", ANY)
+
+    @pytest.mark.asyncio
+    async def test_already_active(self, hass, connection, engine, config_store):
+        config_store.get_active_profile = MagicMock(return_value="test_profile")
+        profile = MagicMock()
+        config_store.get_profile = MagicMock(return_value=profile)
+        engine.is_device_active = MagicMock(return_value=True)
+        hass.data = {
+            "ramses_extras": {
+                "device_simulator_engine": engine,
+                "device_simulator_config_store": config_store,
+            }
+        }
+        await _unwrap(ws_activate_profile_device)(
+            hass, connection, {"id": 1, "type": "x", "device_id": "37:168270"}
+        )
+        connection.send_error.assert_called_once_with(1, "already_active", ANY)
+
+
+class TestWsLoadProfile:
+    @pytest.mark.asyncio
+    async def test_success(self, hass, connection, engine, config_store):
+        profile = MagicMock()
+        profile.name = "test_profile"
+        config_store.get_profile = MagicMock(return_value=profile)
+        config_store.set_active_profile = MagicMock()
+        config_store.async_save_state = AsyncMock()
+        with patch(
+            "custom_components.ramses_extras.features.device_simulator.websocket.async_apply_profile",
+            new=AsyncMock(return_value={}),
+        ) as mock_apply:
+            hass.data = {
+                "ramses_extras": {
+                    "device_simulator_engine": engine,
+                    "device_simulator_config_store": config_store,
+                }
+            }
+            await _unwrap(ws_load_profile)(
+                hass, connection, {"id": 1, "type": "x", "profile": "test_profile"}
+            )
+            mock_apply.assert_awaited_once()
+            connection.send_result.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_not_ready_config_store(self, hass, connection, engine):
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_load_profile)(
+            hass, connection, {"id": 1, "type": "x", "profile": "test_profile"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_ready", ANY)
+
+    @pytest.mark.asyncio
+    async def test_profile_not_found(self, hass, connection, engine, config_store):
+        config_store.get_profile = MagicMock(return_value=None)
+        hass.data = {
+            "ramses_extras": {
+                "device_simulator_engine": engine,
+                "device_simulator_config_store": config_store,
+            }
+        }
+        await _unwrap(ws_load_profile)(
+            hass, connection, {"id": 1, "type": "x", "profile": "test_profile"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_found", ANY)
+
+
+class TestWsDeleteProfile:
+    @pytest.mark.asyncio
+    async def test_success(self, hass, connection, config_store):
+        config_store.BUILTIN_PROFILES = ["default"]
+        config_store.delete_profile = MagicMock(return_value=True)
+        config_store.async_save_state = AsyncMock()
+        config_store.set_active_profile = MagicMock()
+        hass.data = {
+            "ramses_extras": {
+                "device_simulator_config_store": config_store,
+                "device_simulator_active_profile": "test_profile",
+            }
+        }
+        await _unwrap(ws_delete_profile)(
+            hass, connection, {"id": 1, "type": "x", "profile": "test_profile"}
+        )
+        config_store.async_save_state.assert_awaited_once()
+        connection.send_result.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_builtin(self, hass, connection, config_store):
+        config_store.BUILTIN_PROFILES = ["default"]
+        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
+        await _unwrap(ws_delete_profile)(
+            hass, connection, {"id": 1, "type": "x", "profile": "default"}
+        )
+        connection.send_error.assert_called_once_with(1, "cannot_delete_builtin", ANY)
+
+    @pytest.mark.asyncio
+    async def test_not_found(self, hass, connection, config_store):
+        config_store.BUILTIN_PROFILES = ["default"]
+        config_store.delete_profile = MagicMock(return_value=False)
+        hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
+        await _unwrap(ws_delete_profile)(
+            hass, connection, {"id": 1, "type": "x", "profile": "test_profile"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_found", ANY)
+
+    @pytest.mark.asyncio
+    async def test_not_ready(self, hass, connection):
+        hass.data = {}
+        await _unwrap(ws_delete_profile)(
+            hass, connection, {"id": 1, "type": "x", "profile": "test_profile"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_ready", ANY)
+
+
+class TestWsImportUserLog:
+    @pytest.mark.asyncio
+    async def test_success(self, hass, connection, engine, db):
+        engine.device_db = db
+        db.import_user_log = AsyncMock(return_value=True)
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_import_user_log)(
+            hass, connection, {"id": 1, "type": "x", "name": "test_log"}
+        )
+        db.import_user_log.assert_awaited_once()
+        connection.send_result.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_not_ready(self, hass, connection):
+        hass.data = {}
+        await _unwrap(ws_import_user_log)(
+            hass, connection, {"id": 1, "type": "x", "name": "test_log"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_ready", ANY)
+
+
+class TestWsListSavedPlaybacks:
+    @pytest.mark.asyncio
+    async def test_success(self, hass, connection, engine, db):
+        engine.device_db = db
+        db.async_list_saved_playbacks = AsyncMock(return_value=["log1", "log2"])
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_list_saved_playbacks)(hass, connection, {"id": 1, "type": "x"})
+        db.async_list_saved_playbacks.assert_awaited_once()
+        connection.send_result.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_not_ready(self, hass, connection):
+        hass.data = {}
+        await _unwrap(ws_list_saved_playbacks)(hass, connection, {"id": 1, "type": "x"})
+        connection.send_error.assert_called_once_with(1, "not_ready", ANY)
+
+
+class TestWsGetPlaybackText:
+    @pytest.mark.asyncio
+    async def test_success(self, hass, connection, engine, db):
+        engine.device_db = db
+        db.get_playback_log_text = MagicMock(return_value="log content")
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_get_playback_text)(
+            hass, connection, {"id": 1, "type": "x", "identifier": "test_log"}
+        )
+        connection.send_result.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_not_ready(self, hass, connection):
+        hass.data = {}
+        await _unwrap(ws_get_playback_text)(
+            hass, connection, {"id": 1, "type": "x", "identifier": "test_log"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_ready", ANY)
+
+
+class TestWsDeleteSavedPlayback:
+    @pytest.mark.asyncio
+    async def test_success(self, hass, connection, engine, db):
+        engine.device_db = db
+        db.delete_saved_playback = MagicMock()
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_delete_saved_playback)(
+            hass, connection, {"id": 1, "type": "x", "identifier": "test_log"}
+        )
+        connection.send_result.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_not_ready(self, hass, connection):
+        hass.data = {}
+        await _unwrap(ws_delete_saved_playback)(
+            hass, connection, {"id": 1, "type": "x", "identifier": "test_log"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_ready", ANY)
+
+
+class TestWsPauseScenario:
+    @pytest.mark.asyncio
+    async def test_success(self, hass, connection, engine):
+        engine.pause_scenario = MagicMock(return_value=True)
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_pause_scenario)(
+            hass, connection, {"id": 1, "type": "x", "scenario": "test_scenario"}
+        )
+        engine.pause_scenario.assert_called_once_with("test_scenario")
+        connection.send_result.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_not_ready(self, hass, connection):
+        hass.data = {}
+        await _unwrap(ws_pause_scenario)(
+            hass, connection, {"id": 1, "type": "x", "scenario": "test_scenario"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_ready", ANY)
+
+
+class TestWsResumeScenario:
+    @pytest.mark.asyncio
+    async def test_success(self, hass, connection, engine):
+        engine.resume_scenario = MagicMock(return_value=True)
+        hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
+        await _unwrap(ws_resume_scenario)(
+            hass, connection, {"id": 1, "type": "x", "scenario": "test_scenario"}
+        )
+        connection.send_result.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_not_ready(self, hass, connection):
+        hass.data = {}
+        await _unwrap(ws_resume_scenario)(
+            hass, connection, {"id": 1, "type": "x", "scenario": "test_scenario"}
+        )
+        connection.send_error.assert_called_once_with(1, "not_ready", ANY)
 
 
 class TestAsyncRegisterWebsocketCommands:
