@@ -291,6 +291,117 @@ export function buildResumeEmittersCard(card) {
     </div>`;
 }
 
+export function buildRunConsoleCard(card) {
+  // Combined Playback + Autonomous Speed control card.
+  const playbacks = card._savedPlaybacks || [];
+  const runMeta = (card._runningMetadata || {})[SCENARIO_DEVICE_PLAYBACK] || null;
+  const isRunning = Boolean(runMeta);
+  const isPaused = Boolean(runMeta && runMeta.paused);
+  const selection = card._playbackSelection || (playbacks[0] && playbacks[0].id) || "";
+  const params = card._scenarioParams?.[SCENARIO_DEVICE_PLAYBACK] || {};
+  const loopsValue = params.loops ?? 1;
+
+  const optionList = playbacks.length
+    ? playbacks.map((p) => `<option value="${p.id}"${p.id === selection ? " selected" : ""}>${p.id} (${p.frames} frames)</option>`).join("")
+    : `<option value="" disabled selected>No saved playbacks</option>`;
+
+  const playbackBadge = isRunning
+    ? `<span class="chip" style="background:${isPaused ? "var(--warning-color,#ff9800)" : "var(--success-color,#4caf50)"}; color:white;">
+        ${isPaused ? "Paused" : "Playing"}${runMeta?.conversation ? ` · ${runMeta.conversation}` : ""}
+      </span>`
+    : `<span class="chip muted" title="No playback is running">Idle</span>`;
+
+  const playDisabled = !selection || isRunning ? " disabled" : "";
+  const pauseDisabled = !isRunning || isPaused ? " disabled" : "";
+  const resumeDisabled = !isRunning || !isPaused ? " disabled" : "";
+  const stopDisabled = !isRunning ? " disabled" : "";
+
+  // Speed sub-block
+  const currentSpeed = Number(card._autonomousSpeed) || 1;
+  const pendingSpeed = Number.isFinite(card._pendingSpeed) ? card._pendingSpeed : currentSpeed;
+  const sliderValue = Math.min(1, Math.max(0.01, pendingSpeed || 1));
+  const presetValues = [2, 1, 0.5, 0.25, 0.1, 0.05, 0.02];
+  const speedBadge = card._speedSaving
+    ? '<span class="chip muted">Saving…</span>'
+    : `<span class="chip profile">${formatAutonomousSpeedLabel(currentSpeed)}</span>`;
+  const presetButtons = presetValues
+    .map((value) => {
+      const active = Math.abs(currentSpeed - value) < 0.001 ? "btn-primary" : "btn-secondary";
+      return `<button class="btn ${active}" data-action="speed-preset" data-speed="${value}">${formatAutonomousSpeedLabel(value)}</button>`;
+    })
+    .join("");
+
+  return `
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <strong>Run Console</strong>
+        ${playbackBadge}
+      </div>
+      <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">
+        Replay a saved conversation and tune emitter speed. Configure defaults on <em>Scenarios</em>.
+      </div>
+
+      <div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--divider-color);">
+        <div style="font-size:0.78em; font-weight:600; color:var(--secondary-text-color); margin-bottom:6px;">Conversation playback</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <label style="display:flex; flex-direction:column; gap:2px; font-size:0.75em;">
+            <span>Conversation</span>
+            <select data-action="playback-select">${optionList}</select>
+          </label>
+          <label style="display:flex; flex-direction:column; gap:2px; font-size:0.75em;">
+            <span>Loops</span>
+            <input type="number" min="1" step="1" value="${loopsValue}"
+                   data-action="scenario-param"
+                   data-scenario-id="${SCENARIO_DEVICE_PLAYBACK}"
+                   data-field="loops"
+                   data-type="number" />
+          </label>
+          <label style="display:flex; flex-direction:column; gap:2px; font-size:0.75em;">
+            <span>Fixed gap between frames (s)</span>
+            <input type="number" min="0" step="0.01"
+                   value="${card._playbackInterMsgDelay ?? ""}"
+                   placeholder="Leave blank to use recorded timing"
+                   data-action="playback-inter-msg-delay" />
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.75em; cursor:pointer;"
+                 title="Skip recorded RP frames so Auto Answer (if enabled) replies instead.">
+            <input type="checkbox"
+                   data-action="playback-skip-answers"
+                   ${card._playbackSkipAnswers ? "checked" : ""} />
+            <span>Skip recorded answers (let Auto Answer reply)</span>
+          </label>
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+          <button class="btn btn-primary" data-action="start-saved-playback" data-identifier="${selection}"${playDisabled}>▶ Play</button>
+          <button class="btn btn-secondary" data-action="pause-scenario" data-scenario-id="${SCENARIO_DEVICE_PLAYBACK}"${pauseDisabled}>⏸ Pause</button>
+          <button class="btn btn-secondary" data-action="resume-scenario" data-scenario-id="${SCENARIO_DEVICE_PLAYBACK}"${resumeDisabled}>▶ Resume</button>
+          <button class="btn btn-danger" data-action="stop-scenario" data-scenario-id="${SCENARIO_DEVICE_PLAYBACK}"${stopDisabled}>⏹ Stop</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px; padding-top:8px; border-top:1px dashed var(--divider-color);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
+          <div style="font-size:0.78em; font-weight:600; color:var(--secondary-text-color);">Autonomous emission speed</div>
+          ${speedBadge}
+        </div>
+        <div class="speed-controls">
+          <label style="display:flex; flex-direction:column; gap:4px; font-size:0.75em;">
+            <span>Slowdown (0.01–1×)</span>
+            <input type="range" min="0.01" max="1" step="0.01" value="${sliderValue}" data-action="speed-slider" />
+          </label>
+          <label style="display:flex; flex-direction:column; gap:4px; font-size:0.75em;">
+            <span>Exact multiplier</span>
+            <input type="number" min="0.01" max="100" step="0.01" value="${pendingSpeed}" data-action="speed-input" />
+          </label>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
+          ${presetButtons}
+        </div>
+      </div>
+    </div>`;
+}
+
+// Kept for backward compatibility with any external imports.
 export function buildPlaybackConversationCard(card) {
   const playbacks = card._savedPlaybacks || [];
   const runMeta = (card._runningMetadata || {})[SCENARIO_DEVICE_PLAYBACK] || null;
@@ -403,19 +514,86 @@ export function buildAutonomousSpeedCard(card) {
     </div>`;
 }
 
-export function buildDevices(card) {
-  const controls = `
-    <div class="grid device-controls">
-      ${buildManualInjectionCard(card)}
-      ${buildProfileEmissionsCard(card)}
-      ${buildResumeEmittersCard(card)}
-      ${buildPlaybackConversationCard(card)}
-      ${buildAutonomousSpeedCard(card)}
+function buildSelectedScenarioConsole(card) {
+  const id = card._selectedScenarioId;
+  const meta = id ? card._scenarioRegistry[id] : null;
+  const isRunning = id ? (card._runningScenarios || []).includes(id) : false;
+  const runMeta = id ? (card._runningMetadata || {})[id] : null;
+  const isPaused = Boolean(runMeta && runMeta.paused);
+
+  if (!id) {
+    return `
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+          <strong>Run Console</strong>
+          <span class="chip muted">No scenario armed</span>
+        </div>
+        <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">
+          Pick a scenario on the <em>Scenarios</em> tab, then run it from here. Global options live on the <em>Options</em> tab.
+        </div>
+        <div style="margin-top:8px; font-size:0.85em; color:var(--secondary-text-color);">
+          Active devices below continue to emit their periodic frames automatically (random emitters).
+          Use the toolbar to pause or resume them.
+        </div>
+      </div>`;
+  }
+
+  const stateChip = isRunning
+    ? `<span class="chip" style="background:${isPaused ? "var(--warning-color,#ff9800)" : "var(--success-color,#4caf50)"}; color:white;">${isPaused ? "Paused" : "Running"}</span>`
+    : `<span class="chip profile">Armed</span>`;
+
+  let extraInfo = "";
+  if (id === SCENARIO_DEVICE_PLAYBACK) {
+    const conv = card._playbackSelection
+      || (card._savedPlaybacks && card._savedPlaybacks[0] && card._savedPlaybacks[0].id)
+      || "(none)";
+    extraInfo = `<div style="font-size:0.8em; color:var(--secondary-text-color); margin-top:4px;">Conversation: <strong>${conv}</strong></div>`;
+  }
+
+  const runDisabled = isRunning ? " disabled" : "";
+  const pauseDisabled = !isRunning || isPaused ? " disabled" : "";
+  const resumeDisabled = !isRunning || !isPaused ? " disabled" : "";
+  const stopDisabled = !isRunning ? " disabled" : "";
+
+  return `
+    <div class="card active">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <strong>Run Console — ${meta?.label || id}</strong>
+        ${stateChip}
+      </div>
+      <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${meta?.description || ""}</div>
+      ${extraInfo}
+      <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="btn btn-primary" data-action="run-selected"${runDisabled}>▶ Run</button>
+        <button class="btn btn-secondary" data-action="pause-selected"${pauseDisabled}>⏸ Pause</button>
+        <button class="btn btn-secondary" data-action="resume-selected"${resumeDisabled}>▶ Resume</button>
+        <button class="btn btn-danger" data-action="stop-selected"${stopDisabled}>⏹ Stop</button>
+      </div>
     </div>`;
+}
+
+export function buildDevices(card) {
+  const runConsole = buildSelectedScenarioConsole(card);
 
   if (card._devices.length === 0) {
-    return `${controls}<div class="device-list-empty">No active devices. Use Manual Device Injection or start the profile emitters above to populate the simulator.</div>`;
+    return `${runConsole}<div class="device-list-empty">No active devices. Load a profile or select <em>Manual Device Injection</em> on Scenarios to populate the simulator.</div>`;
   }
+
+  // Random-emitters toolbar
+  const devices = card._devices;
+  const idleCount = devices.filter((d) => !d.emitting).length;
+  const emittingCount = devices.filter((d) => d.emitting).length;
+  const silencedCount = devices.filter((d) => d.suppress_autonomous).length;
+  const toolbar = `
+    <div class="device-grid-toolbar"
+         style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:12px 0 8px; padding:8px 12px; border:1px solid var(--divider-color); border-radius:6px; background:var(--secondary-background-color);">
+      <span style="font-size:0.8em; color:var(--secondary-text-color);">
+        Random emitters: <strong>${devices.length}</strong> active · ${emittingCount} emitting · ${idleCount} idle${silencedCount ? ` · ${silencedCount} silenced` : ""}
+      </span>
+      <span style="flex:1;"></span>
+      <button class="btn btn-secondary" data-action="resume-all-devices" ${idleCount ? "" : "disabled"}>Resume all idle</button>
+      <button class="btn btn-secondary" data-action="silence-all-devices" ${emittingCount ? "" : "disabled"}>Silence all</button>
+    </div>`;
 
   const knownList = card._knownList();
   const deviceCards = card._devices.map((d) => {
@@ -481,5 +659,5 @@ export function buildDevices(card) {
       </div>`;
   }).join("");
 
-  return `${controls}<div class="grid devices-grid">${deviceCards}</div>`;
+  return `${runConsole}${toolbar}<div class="grid devices-grid">${deviceCards}</div>`;
 }

@@ -17,6 +17,7 @@ import { buildProfiles } from './card/tabs/profiles-tab.js';
 import { buildScenarios } from './card/tabs/scenarios-tab.js';
 import { buildDevices } from './card/tabs/devices-tab.js';
 import { buildEvents } from './card/tabs/events-tab.js';
+import { buildOptions } from './card/tabs/options-tab.js';
 
 
 class DeviceSimulatorCard extends RamsesBaseCard {
@@ -76,8 +77,67 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._playbackSkipAnswers = false;
     this._scenarioSubscription = null;
     this._playbackSearchQuery = "";
+    this._selectedScenarioId = null;
 
     this._loadLoaderDraft();
+    this._loadSelectedScenario();
+  }
+
+  _loadSelectedScenario() {
+    try {
+      const stored = window.localStorage.getItem("ramsesExtras.deviceSimulator.selectedScenario");
+      if (stored) {
+        this._selectedScenarioId = stored;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  _setSelectedScenario(scenarioId) {
+    this._selectedScenarioId = scenarioId || null;
+    try {
+      if (scenarioId) {
+        window.localStorage.setItem("ramsesExtras.deviceSimulator.selectedScenario", scenarioId);
+      } else {
+        window.localStorage.removeItem("ramsesExtras.deviceSimulator.selectedScenario");
+      }
+    } catch {
+      // ignore
+    }
+    this._scheduleRender();
+  }
+
+  _runSelectedScenario() {
+    const id = this._selectedScenarioId;
+    if (!id) return;
+    if (id === SCENARIO_DEVICE_PLAYBACK) {
+      const conv = this._playbackSelection
+        || (this._savedPlaybacks && this._savedPlaybacks[0] && this._savedPlaybacks[0].id)
+        || null;
+      if (!conv) return;
+      void this._startSavedPlayback(conv);
+      return;
+    }
+    void this._startScenario(id);
+  }
+
+  _pauseSelectedScenario() {
+    const id = this._selectedScenarioId;
+    if (!id) return;
+    void this._pauseScenario(id);
+  }
+
+  _resumeSelectedScenario() {
+    const id = this._selectedScenarioId;
+    if (!id) return;
+    void this._resumeScenario(id);
+  }
+
+  _stopSelectedScenario() {
+    const id = this._selectedScenarioId;
+    if (!id) return;
+    void this._stopScenario(id);
   }
 
   _getScenarioFieldMeta(scenarioId, key) {
@@ -850,6 +910,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         <div class="tabs">
           <div class="tab ${this._tab === "profiles" ? "active" : ""}" data-tab="profiles">Profiles</div>
           <div class="tab ${this._tab === "scenarios" ? "active" : ""}" data-tab="scenarios">Scenarios</div>
+          <div class="tab ${this._tab === "options" ? "active" : ""}" data-tab="options">Options</div>
           <div class="tab ${this._tab === "devices" ? "active" : ""}" data-tab="devices">Devices</div>
           <div class="tab ${this._tab === "events" ? "active" : ""}" data-tab="events">Events</div>
         </div>
@@ -859,6 +920,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         </div>
         <div class="content ${this._tab === "scenarios" ? "active" : ""}" data-content="scenarios">
           ${buildScenarios(this)}
+        </div>
+        <div class="content ${this._tab === "options" ? "active" : ""}" data-content="options">
+          ${buildOptions(this)}
         </div>
         <div class="content ${this._tab === "devices" ? "active" : ""}" data-content="devices">
           ${buildDevices(this)}
@@ -885,6 +949,32 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     root.querySelectorAll("[data-action='start-scenario']").forEach(btn => {
       btn.addEventListener("click", () => this._startScenario(btn.dataset.scenarioId));
     });
+
+    root.querySelectorAll("[data-action='select-scenario']").forEach(btn => {
+      btn.addEventListener("click", () => this._setSelectedScenario(btn.dataset.scenarioId));
+    });
+
+    const clearSelected = root.querySelector("[data-action='clear-selected-scenario']");
+    if (clearSelected) {
+      clearSelected.addEventListener("click", () => this._setSelectedScenario(null));
+    }
+
+    const runSelected = root.querySelector("[data-action='run-selected']");
+    if (runSelected) {
+      runSelected.addEventListener("click", () => this._runSelectedScenario());
+    }
+    const pauseSelected = root.querySelector("[data-action='pause-selected']");
+    if (pauseSelected) {
+      pauseSelected.addEventListener("click", () => this._pauseSelectedScenario());
+    }
+    const resumeSelected = root.querySelector("[data-action='resume-selected']");
+    if (resumeSelected) {
+      resumeSelected.addEventListener("click", () => this._resumeSelectedScenario());
+    }
+    const stopSelected = root.querySelector("[data-action='stop-selected']");
+    if (stopSelected) {
+      stopSelected.addEventListener("click", () => this._stopSelectedScenario());
+    }
 
     root.querySelectorAll("[data-action='stop-profile-devices']").forEach((btn) => {
       btn.addEventListener("click", () => this._stopProfileDevices());
