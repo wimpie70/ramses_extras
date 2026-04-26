@@ -100,6 +100,43 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     return [];
   }
 
+  getCardSize() {
+    return 6;
+  }
+
+  getFeatureName() {
+    return "device_simulator";
+  }
+
+  hasValidConfig() {
+    return true;
+  }
+
+  static getCardInfo() {
+    return {
+      type: "device-simulator-card",
+      name: "Device Simulator",
+      description: "Control and monitor the Ramses device simulator",
+      preview: true,
+      documentationURL: "https://github.com/wimpie70/ramses_extras",
+    };
+  }
+
+  static getStubConfig() {
+    return {
+      type: `custom:${this.getTagName()}`,
+      layout_options: {
+        grid_columns: 200,
+        rows: 1,
+      },
+    };
+  }
+
+  async _loadInitialState() {
+    await this._fetchData();
+    await this._fetchRfConfig();
+  }
+
   _onConnected() {
     this._fetchData();
     this._subscribeToDevices();
