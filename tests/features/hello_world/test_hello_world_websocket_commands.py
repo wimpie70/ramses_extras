@@ -176,3 +176,249 @@ def test_get_entities_manager(hass):
         mock_instance = MagicMock()
         mock_class.return_value = mock_instance
         assert _get_entities_manager(hass) == mock_instance
+
+
+def test_get_entities_manager_exception(hass):
+    """Test _get_entities_manager handles exceptions."""
+    hass.data = {}
+    with patch(
+        "custom_components.ramses_extras.features.hello_world.websocket_commands.SimpleEntityManager",
+        side_effect=Exception("test error"),
+    ):
+        result = _get_entities_manager(hass)
+        assert result is None
+
+
+@pytest.mark.asyncio
+async def test_ws_toggle_switch_state_none(hass) -> None:
+    """State parameter None should return state_required error."""
+    conn = _FakeConnection()
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/hello_world/toggle_switch",
+        "device_id": "18:149488",
+        "state": None,
+    }
+
+    mock_states = MagicMock()
+    mock_entity = MagicMock()
+    mock_entity.state = "on"
+    mock_states.get.return_value = mock_entity
+
+    original_states = hass.states
+    hass.states = mock_states
+
+    try:
+        await ws_toggle_switch(hass, conn, msg)
+    finally:
+        hass.states = original_states
+
+    assert conn.errors == [(1, "state_required", "State parameter is required")]
+    assert not conn.results
+
+
+@pytest.mark.asyncio
+async def test_ws_toggle_switch_entity_registry_exception(hass) -> None:
+    """Entity registry exception should assume entity exists."""
+    conn = _FakeConnection()
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/hello_world/toggle_switch",
+        "device_id": "18:149488",
+        "state": True,
+    }
+
+    mock_states = MagicMock()
+    mock_entity = MagicMock()
+    mock_entity.state = "on"
+    mock_states.get.return_value = mock_entity
+
+    mock_services = MagicMock()
+    mock_services.async_call = AsyncMock(return_value=None)
+
+    original_states = hass.states
+    original_services = hass.services
+    hass.states = mock_states
+    hass.services = mock_services
+
+    try:
+        with patch(
+            "homeassistant.helpers.entity_registry.async_get",
+            side_effect=Exception("registry error"),
+        ):
+            await ws_toggle_switch(hass, conn, msg)
+    finally:
+        hass.states = original_states
+        hass.services = original_services
+
+    assert conn.results
+    assert not conn.errors
+
+
+@pytest.mark.asyncio
+async def test_ws_toggle_switch_entity_unavailable(hass) -> None:
+    """Unavailable entity should return entity_not_available error."""
+    conn = _FakeConnection()
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/hello_world/toggle_switch",
+        "device_id": "18:149488",
+        "state": True,
+    }
+
+    mock_states = MagicMock()
+    mock_entity = MagicMock()
+    mock_entity.state = "unavailable"
+    mock_states.get.return_value = mock_entity
+
+    mock_ent_reg = MagicMock()
+    mock_registry_entry = MagicMock()
+    mock_ent_reg.async_get.return_value = mock_registry_entry
+
+    original_states = hass.states
+    hass.states = mock_states
+
+    try:
+        with patch(
+            "homeassistant.helpers.entity_registry.async_get", return_value=mock_ent_reg
+        ):
+            await ws_toggle_switch(hass, conn, msg)
+    finally:
+        hass.states = original_states
+
+    assert conn.errors == [
+        (
+            1,
+            "entity_not_available",
+            "Switch entity switch.hello_world_switch_18_149488 not available",
+        )
+    ]
+    assert not conn.results
+
+
+@pytest.mark.asyncio
+async def test_ws_toggle_switch_turn_on(hass) -> None:
+    """State True should call turn_on service."""
+    conn = _FakeConnection()
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/hello_world/toggle_switch",
+        "device_id": "18:149488",
+        "state": True,
+    }
+
+    mock_states = MagicMock()
+    mock_entity = MagicMock()
+    mock_entity.state = "off"
+    mock_states.get.return_value = mock_entity
+
+    mock_services = MagicMock()
+    mock_services.async_call = AsyncMock(return_value=None)
+
+    mock_ent_reg = MagicMock()
+    mock_registry_entry = MagicMock()
+    mock_ent_reg.async_get.return_value = mock_registry_entry
+
+    original_states = hass.states
+    original_services = hass.services
+    hass.states = mock_states
+    hass.services = mock_services
+
+    try:
+        with patch(
+            "homeassistant.helpers.entity_registry.async_get", return_value=mock_ent_reg
+        ):
+            await ws_toggle_switch(hass, conn, msg)
+            mock_services.async_call.assert_awaited_once_with(
+                "switch",
+                "turn_on",
+                {"entity_id": "switch.hello_world_switch_18_149488"},
+            )
+    finally:
+        hass.states = original_states
+        hass.services = original_services
+
+    assert conn.results
+    assert not conn.errors
+
+
+@pytest.mark.asyncio
+async def test_ws_toggle_switch_service_call_failed(hass) -> None:
+    """Service call failure should return service_call_failed error."""
+    conn = _FakeConnection()
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/hello_world/toggle_switch",
+        "device_id": "18:149488",
+        "state": True,
+    }
+
+    mock_states = MagicMock()
+    mock_entity = MagicMock()
+    mock_entity.state = "on"
+    mock_states.get.return_value = mock_entity
+
+    mock_services = MagicMock()
+    mock_services.async_call = AsyncMock(side_effect=Exception("service error"))
+
+    mock_ent_reg = MagicMock()
+    mock_registry_entry = MagicMock()
+    mock_ent_reg.async_get.return_value = mock_registry_entry
+
+    original_states = hass.states
+    original_services = hass.services
+    hass.states = mock_states
+    hass.services = mock_services
+
+    try:
+        with patch(
+            "homeassistant.helpers.entity_registry.async_get", return_value=mock_ent_reg
+        ):
+            await ws_toggle_switch(hass, conn, msg)
+    finally:
+        hass.states = original_states
+        hass.services = original_services
+
+    assert conn.errors[0][1] == "service_call_failed"
+    assert not conn.results
+
+
+@pytest.mark.asyncio
+async def test_ws_toggle_switch_outer_exception(hass) -> None:
+    """Outer exception should return toggle_failed error."""
+    conn = _FakeConnection()
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/hello_world/toggle_switch",
+        "device_id": "18:149488",
+        "state": True,
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.hello_world.websocket_commands.EntityHelpers.generate_entity_name_from_template",
+        side_effect=Exception("generate error"),
+    ):
+        await ws_toggle_switch(hass, conn, msg)
+
+    assert conn.errors[0][1] == "toggle_failed"
+    assert not conn.results
+
+
+@pytest.mark.asyncio
+async def test_ws_get_switch_state_exception(hass) -> None:
+    """Exception in ws_get_switch_state should return get_state_failed error."""
+    conn = _FakeConnection()
+    msg = {
+        "id": 1,
+        "type": "ramses_extras/hello_world/get_switch_state",
+        "device_id": "18:149488",
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.hello_world.websocket_commands.EntityHelpers.generate_entity_name_from_template",
+        side_effect=Exception("generate error"),
+    ):
+        await ws_get_switch_state(hass, conn, msg)
+
+    assert conn.errors[0][1] == "get_state_failed"
+    assert not conn.results
