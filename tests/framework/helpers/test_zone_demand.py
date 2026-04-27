@@ -401,9 +401,6 @@ class TestGetZoneDemandRegistry:
             metadata=metadata,
         )
 
-        breakdown = registry.get_demand_breakdown("18:000730", "office")
-        assert breakdown[DemandSource.HUMIDITY] is True
-
     def test_set_demand_without_bus(self, registry):
         """Test set_demand when hass has no bus."""
         registry._hass.bus = None

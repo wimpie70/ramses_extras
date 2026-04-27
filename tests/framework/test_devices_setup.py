@@ -461,3 +461,53 @@ async def test_cleanup_orphaned_devices_exception_in_values(hass) -> None:
     )
 
     # Should handle exception gracefully
+
+
+def test_extract_ramses_device_id_from_registry_entry_device_id() -> None:
+    """Test device ID extraction from device_id attribute."""
+    entity = MagicMock()
+    entity.device_id = "32:123456"
+
+    result = devices._extract_ramses_device_id_from_registry_entry(entity)
+
+    assert result == "32:123456"
+
+
+def test_extract_ramses_device_id_from_registry_entry_unique_id_underscore() -> None:
+    """Test device ID extraction from unique_id with underscore format."""
+    entity = MagicMock()
+    entity.unique_id = "32_123456_param"
+
+    result = devices._extract_ramses_device_id_from_registry_entry(entity)
+
+    assert result == "32:123456"
+
+
+def test_extract_ramses_device_id_from_registry_entry_embedded() -> None:
+    """Test device ID extraction from embedded pattern."""
+    entity = MagicMock()
+    entity.entity_id = "sensor.32_123456_temperature"
+
+    result = devices._extract_ramses_device_id_from_registry_entry(entity)
+
+    assert result == "32:123456"
+
+
+def test_extract_ramses_device_id_from_registry_entry_no_match() -> None:
+    """Test device ID extraction when no pattern matches."""
+    entity = MagicMock()
+    entity.device_id = "invalid_device"
+
+    result = devices._extract_ramses_device_id_from_registry_entry(entity)
+
+    assert result is None
+
+
+def test_extract_ramses_device_id_from_registry_entry_value_not_string() -> None:
+    """Test device ID extraction when value is not a string."""
+    entity = MagicMock()
+    entity.device_id = 123
+
+    result = devices._extract_ramses_device_id_from_registry_entry(entity)
+
+    assert result is None

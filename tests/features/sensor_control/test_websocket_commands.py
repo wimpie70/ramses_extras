@@ -115,3 +115,41 @@ async def test_ws_get_sensor_control_device_config_resolver_failure(hass, connec
     assert args[0] == 40
     assert args[1] == "get_device_config_failed"
     assert "boom" in args[2]
+
+
+async def test_ws_get_sensor_control_device_config_dict_device(hass, connection):
+    """Test with device as dict (covers lines 55-56)."""
+    hass.data[DOMAIN]["devices"] = [{"device_id": "32:123456", "type": "FAN"}]
+    msg = {"id": 50, "device_id": "32:123456"}
+
+    with patch.object(
+        websocket, "SensorControlResolver", autospec=True
+    ) as mock_resolver_cls:
+        mock_resolver = mock_resolver_cls.return_value
+        mock_resolver.resolve_entity_mappings = AsyncMock(
+            return_value={"mappings": {"indoor_temperature": "sensor.temp"}}
+        )
+
+        await ws_get_sensor_control_device_config(hass, connection, msg)
+
+    connection.send_result.assert_called_once()
+
+
+async def test_ws_get_sensor_control_device_config_device_without_id(hass, connection):
+    """Test with device that has no id attribute (covers line 63)."""
+
+    class Device:
+        type = "FAN"
+
+    hass.data[DOMAIN]["devices"] = [Device()]
+    msg = {"id": 60, "device_id": "32:999999"}
+
+    with patch.object(
+        websocket, "SensorControlResolver", autospec=True
+    ) as mock_resolver_cls:
+        mock_resolver = mock_resolver_cls.return_value
+        mock_resolver.resolve_entity_mappings = AsyncMock(return_value={"mappings": {}})
+
+        await ws_get_sensor_control_device_config(hass, connection, msg)
+
+    connection.send_error.assert_called_once()

@@ -80,6 +80,136 @@ class TestCO2Config:
         assert is_valid is False
         assert len(errors) >= 2
 
+    def test_max_runtime_minutes(self):
+        """Test max_runtime_minutes property (covers line 72)."""
+        hass = Mock()
+        config = CO2Config(hass, "32:153289", {"max_runtime_minutes": 60})
+
+        assert config.max_runtime_minutes == 60
+
+    def test_cooldown_period_minutes(self):
+        """Test cooldown_period_minutes property (covers line 77)."""
+        hass = Mock()
+        config = CO2Config(hass, "32:153289", {"cooldown_period_minutes": 30})
+
+        assert config.cooldown_period_minutes == 30
+
+    def test_priority_over_humidity(self):
+        """Test priority_over_humidity property (covers line 82)."""
+        hass = Mock()
+        config = CO2Config(hass, "32:153289", {"priority_over_humidity": False})
+
+        assert config.priority_over_humidity is False
+
+    def test_get_zone_config(self):
+        """Test get_zone_config method (covers lines 90-93)."""
+        hass = Mock()
+        config = CO2Config(
+            hass,
+            "32:153289",
+            {
+                "zones": [
+                    {
+                        "zone_id": "zone_1",
+                        "zone_name": "Living Room",
+                        "sensor_entity": "sensor.living_room_co2",
+                        "threshold": 1000,
+                    }
+                ]
+            },
+        )
+
+        zone_config = config.get_zone_config("zone_1")
+        assert zone_config is not None
+        assert zone_config["zone_id"] == "zone_1"
+
+    def test_get_zone_config_not_found(self):
+        """Test get_zone_config when zone not found (covers lines 90-93)."""
+        hass = Mock()
+        config = CO2Config(hass, "32:153289", {"zones": []})
+
+        zone_config = config.get_zone_config("zone_1")
+        assert zone_config is None
+
+    @pytest.mark.asyncio
+    async def test_async_load(self):
+        """Test async_load method (covers line 105)."""
+        hass = Mock()
+        config = CO2Config(hass, "32:153289", {})
+
+        result = await config.async_load()
+        assert result is True
+
+    def test_validate_duplicate_zone_id(self):
+        """Test validation with duplicate zone_id (covers lines 134-136)."""
+        hass = Mock()
+        config = CO2Config(
+            hass,
+            "32:153289",
+            {
+                "zones": [
+                    {
+                        "zone_id": "zone_1",
+                        "sensor_entity": "sensor.co2_1",
+                    },
+                    {
+                        "zone_id": "zone_1",
+                        "sensor_entity": "sensor.co2_2",
+                    },
+                ]
+            },
+        )
+
+        is_valid, errors = config.validate()
+        assert is_valid is False
+        assert any("Duplicate zone_id" in error for error in errors)
+
+    def test_validate_zone_missing_sensor_entity(self):
+        """Test validation with zone missing sensor_entity (covers lines 138-139)."""
+        hass = Mock()
+        config = CO2Config(
+            hass,
+            "32:153289",
+            {
+                "zones": [
+                    {
+                        "zone_id": "zone_1",
+                    }
+                ]
+            },
+        )
+
+        is_valid, errors = config.validate()
+        assert is_valid is False
+        assert any("missing sensor_entity" in error for error in errors)
+
+    def test_validate_zone_missing_zone_id(self):
+        """Test validation with zone missing zone_id (covers lines 131-132)."""
+        hass = Mock()
+        config = CO2Config(
+            hass,
+            "32:153289",
+            {
+                "zones": [
+                    {
+                        "sensor_entity": "sensor.co2_1",
+                    }
+                ]
+            },
+        )
+
+        is_valid, errors = config.validate()
+        assert is_valid is False
+        assert any("Zone missing zone_id" in error for error in errors)
+
+    def test_to_dict(self):
+        """Test to_dict method (covers line 148)."""
+        hass = Mock()
+        config = CO2Config(hass, "32:153289", {"enabled": False})
+
+        config_dict = config.to_dict()
+        assert config_dict["enabled"] is False
+
 
 class TestCO2Zone:
     """Test CO2Zone dataclass."""
@@ -334,3 +464,70 @@ class TestCO2ZoneManager:
         assert result is True
         assert manager.zones["zone_1"].threshold == 1200
         assert manager.zones["zone_1"].zone_name == "Main Living Room"
+
+    @pytest.mark.asyncio
+    async def test_update_zone_co2_unknown_zone(self):
+        """Test updating CO2 for unknown zone (covers lines 79-80)."""
+        hass = Mock()
+        config = {"zones": []}
+
+        manager = CO2ZoneManager(hass, "32:153289", config)
+        # Should not raise, just log warning
+        await manager.update_zone_co2("unknown_zone", 1200)
+
+        assert len(manager.zones) == 0
+
+    @pytest.mark.asyncio
+    async def test_check_zone_triggers_disabled_zone(self):
+        """Test zone triggers with disabled zone (covers lines 107-114)."""
+        hass = Mock()
+        config = {
+            "zones": [
+                {
+                    "zone_id": "zone_1",
+                    "zone_name": "Living Room",
+                    "sensor_entity": "sensor.living_room_co2",
+                    "threshold": 1000,
+                    "enabled": False,
+                }
+            ]
+        }
+
+        manager = CO2ZoneManager(hass, "32:153289", config)
+        await manager.update_zone_co2("zone_1", 1200)
+        # Set triggered state initially
+        manager.zones["zone_1"].is_triggered = True
+
+        triggered = await manager.check_zone_triggers(
+            activation_hysteresis=100, deactivation_hysteresis=-100
+        )
+
+        assert len(triggered) == 0
+        assert manager.zones["zone_1"].is_triggered is False
+
+    @pytest.mark.asyncio
+    async def test_check_zone_triggers_no_data(self):
+        """Test zone triggers with no CO2 data (covers lines 107-114)."""
+        hass = Mock()
+        config = {
+            "zones": [
+                {
+                    "zone_id": "zone_1",
+                    "zone_name": "Living Room",
+                    "sensor_entity": "sensor.living_room_co2",
+                    "threshold": 1000,
+                    "enabled": True,
+                }
+            ]
+        }
+
+        manager = CO2ZoneManager(hass, "32:153289", config)
+        # Set triggered state initially
+        manager.zones["zone_1"].is_triggered = True
+
+        triggered = await manager.check_zone_triggers(
+            activation_hysteresis=100, deactivation_hysteresis=-100
+        )
+
+        assert len(triggered) == 0
+        assert manager.zones["zone_1"].is_triggered is False

@@ -265,6 +265,22 @@ class TestGetAllDeviceIds:
         result = get_all_device_ids(self.hass)
         assert result == []
 
+    def test_get_all_device_ids_device_without_id(self):
+        """Test getting device IDs when device has no id attribute (covers lines 157-159)."""  # noqa: E501
+        mock_device = MagicMock()
+        # Remove id attribute to trigger exception handling
+        del mock_device.id
+
+        mock_broker = MagicMock()
+        mock_broker._devices = [mock_device]
+
+        self.hass.data = {"ramses_cc": {"entry1": mock_broker}}
+        self.hass.config_entries.async_entries = MagicMock(return_value=[MagicMock()])
+
+        result = get_all_device_ids(self.hass)
+        # Should skip the device without id
+        assert result == []
+
 
 class TestEnsureRamsesCcLoaded:
     """Test cases for ensure_ramses_cc_loaded function."""
@@ -412,3 +428,33 @@ class TestGetBrokerForEntry:
 
         result = await _get_broker_for_entry(self.hass)
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_broker_for_entry_broker_data_with_broker_attr(self):
+        """Test getting broker when broker_data has broker attribute (covers lines 255-256)."""  # noqa: E501
+        mock_broker = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "entry1"
+
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+        self.hass.data = {"ramses_cc": {"entry1": MagicMock(broker=mock_broker)}}
+
+        result = await _get_broker_for_entry(self.hass)
+        assert result == mock_broker
+
+    @pytest.mark.asyncio
+    async def test_get_broker_for_entry_exception(self):
+        """Test getting broker with exception (covers lines 293-295)."""
+        mock_entry = MagicMock()
+        mock_entry.entry_id = "entry1"
+
+        self.hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
+        # Make the entry.broker attribute access raise an exception
+        mock_entry.broker = None
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.device.core.find_ramses_device",
+            side_effect=Exception("test error"),
+        ):
+            result = await _get_broker_for_entry(self.hass)
+            assert result is None

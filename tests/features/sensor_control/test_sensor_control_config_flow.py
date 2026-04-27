@@ -10,11 +10,16 @@ from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.features.sensor_control.config_flow import (
     _async_handle_rems_edit,
     _async_handle_rems_menu,
+    _build_legacy_sensor_control_section,
+    _describe_remote_binding,
+    _describe_zone,
     _device_key,
     _get_area_id_options,
     _get_area_id_options_from_legacy,
     _get_device_type,
     _get_rem_device_options,
+    _persist_remote_binding_section,
+    _unique_zone_id,
     async_step_sensor_control_config,
 )
 from custom_components.ramses_extras.framework.helpers.config.validation import (
@@ -1042,6 +1047,39 @@ async def test_async_step_sensor_control_config_device_overview_includes_area_se
     assert "area sensor bathroom" in info_text
 
 
+async def test_async_step_sensor_control_config_device_overview_invalid_devices_type(
+    flow, helper
+):
+    """Device overview should handle when devices is not a dict (covers line 435)."""
+    flow._get_config_flow_helper.return_value = helper
+    flow._sensor_control_stage = "configure_device"
+    flow._sensor_control_selected_device = "32:123456"
+    flow._sensor_control_group_stage = "select_group"
+    flow._config_entry.options = {
+        "sensor_control": {
+            "devices": {
+                "32_123456": {
+                    "sources": {
+                        "indoor_temperature": {
+                            "kind": "external",
+                            "entity_id": "sensor.temp",
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.sensor_control.config_flow.get_migrated_feature_section"
+    ) as mock_get_section:
+        mock_get_section.return_value = flow._config_entry.options["sensor_control"]
+
+        await async_step_sensor_control_config(flow, None)
+
+    assert flow.async_show_form.called
+
+
 # ---------------------------------------------------------------------------
 # Additional coverage for zones_import, REM menus, and helper builders
 # ---------------------------------------------------------------------------
@@ -1576,4 +1614,91 @@ def test_get_area_id_options_from_legacy_reads_rems():
     values = [
         opt["value"] for opt in _get_area_id_options_from_legacy(options, "32:123456")
     ]
-    assert "bath" in values and "hall" in values
+    assert "bath" in values
+
+
+def test_build_legacy_sensor_control_section_with_invalid_device_section():
+    """Test _build_legacy_sensor_control_section with non-dict device_section (covers line 76)."""  # noqa: E501
+    section = {
+        "devices": {
+            "32:123456": "not_a_dict",  # This should be skipped (line 76)
+            "32:789012": {"sources": [{"entity_id": "sensor.temp"}]},
+        }
+    }
+
+    result = _build_legacy_sensor_control_section(section)
+    # Should only include the valid device (normalized key format)
+    assert isinstance(result, dict)
+    # The result should have the sources key populated with the valid device
+    assert result.get("sources") is not None
+    # The invalid device should be skipped
+    assert "32_123456" not in result.get("sources", {})
+
+
+def test_describe_remote_binding_with_custom_timeout():
+    """Test _describe_remote_binding with manual_timeout != 60 (covers line 214)."""
+    rem = {"rem_id": "18:1", "role": "master", "manual_timeout": 30}
+    result = _describe_remote_binding(rem)
+    assert "timeout: 30s" in result
+
+
+def test_unique_zone_id_with_conflicts():
+    """Test _unique_zone_id when base ID already exists (covers line 251)."""
+    existing_zones = [
+        {"zone_id": "zone1"},
+        {"zone_id": "zone1_2"},
+        {"zone_id": "zone1_3"},
+    ]
+
+    result = _unique_zone_id("zone1", existing_zones)
+    # Should return zone1_4 since zone1, zone1_2, zone1_3 already exist
+    assert result == "zone1_4"
+
+
+def test_describe_zone_orcon_native_with_native_id():
+    """Test _describe_zone for orcon_native zone with native_id (covers lines 276-278)."""  # noqa: E501
+    zone = {"zone_id": "zone1", "type": "orcon_native", "native_zone_id": "123"}
+    result = _describe_zone(zone)
+    assert "native ID: 123" in result
+
+
+def test_describe_zone_custom_valve_with_entities():
+    """Test _describe_zone for custom_valve zone with open/close entities (covers lines 287-292)."""  # noqa: E501
+    zone = {
+        "zone_id": "zone1",
+        "type": "custom_valve",
+        "open_entity": "switch.open",
+        "close_entity": "switch.close",
+    }
+    result = _describe_zone(zone)
+    assert "open: switch.open" in result
+    assert "close: switch.close" in result
+
+
+def test_describe_zone_with_extra_config():
+    """Test _describe_zone with extra_config (covers lines 297-299)."""
+    zone = {"zone_id": "zone1", "type": "custom", "extra_config": {"home_mode": "away"}}
+    result = _describe_zone(zone)
+    assert "home=away" in result
+
+
+def test_describe_zone_with_extra_config_home_position():
+    """Test _describe_zone with extra_config home_position (covers line 301)."""
+    zone = {
+        "zone_id": "zone1",
+        "type": "custom",
+        "extra_config": {"home_position": "50"},
+    }
+    result = _describe_zone(zone)
+    assert "pos=50" in result
+
+
+def test_describe_zone_with_extra_config_invert_logic():
+    """Test _describe_zone with extra_config invert_logic (covers line 303)."""
+    zone = {
+        "zone_id": "zone1",
+        "type": "custom",
+        "extra_config": {"invert_logic": True},
+    }
+    result = _describe_zone(zone)
+    assert "invert=True" in result

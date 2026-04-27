@@ -81,6 +81,88 @@ async def test_async_setup_entry_success(hass):
 
 
 @pytest.mark.asyncio
+async def test_async_setup_entry_import_error_without_websocket_commands(hass):
+    """Test setup when ImportError doesn't contain 'websocket_commands'."""
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.data = {"enabled_features": {"bad_feature": True}}
+    config_entry.options = {}
+
+    hass.data = {
+        "ramses_extras": {
+            "config_entry": config_entry,
+            "enabled_features": {"bad_feature": True},
+            "features": {"default": MagicMock(), "bad_feature": MagicMock()},
+        }
+    }
+
+    def fake_import(feature_name):
+        if feature_name == "bad_feature":
+            raise ImportError("No module named 'boom'")
+        return MagicMock()
+
+    with (
+        patch.object(
+            extras_registry,
+            "get_all_websocket_commands",
+            return_value={"bad_feature": {"some_command": "test"}},
+        ),
+        patch.object(
+            extras_registry,
+            "get_features_with_websocket_commands",
+            return_value=["bad_feature"],
+        ),
+        patch.object(
+            websocket_integration,
+            "_import_websocket_module",
+            side_effect=fake_import,
+        ),
+    ):
+        await websocket_integration.async_setup_entry(hass, config_entry)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_exception_on_import(hass):
+    """Test setup when an exception occurs during import."""
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.data = {"enabled_features": {"bad_feature": True}}
+    config_entry.options = {}
+
+    hass.data = {
+        "ramses_extras": {
+            "config_entry": config_entry,
+            "enabled_features": {"bad_feature": True},
+            "features": {"default": MagicMock(), "bad_feature": MagicMock()},
+        }
+    }
+
+    def fake_import(feature_name):
+        if feature_name == "bad_feature":
+            raise RuntimeError("boom")
+        return MagicMock()
+
+    with (
+        patch.object(
+            extras_registry,
+            "get_all_websocket_commands",
+            return_value={"bad_feature": {"some_command": "test"}},
+        ),
+        patch.object(
+            extras_registry,
+            "get_features_with_websocket_commands",
+            return_value=["bad_feature"],
+        ),
+        patch.object(
+            websocket_integration,
+            "_import_websocket_module",
+            side_effect=fake_import,
+        ),
+    ):
+        await websocket_integration.async_setup_entry(hass, config_entry)
+
+
+@pytest.mark.asyncio
 async def test_async_setup_entry_with_missing_modules(hass):
     """Test setup when some websocket modules are missing."""
     # Mock config entry

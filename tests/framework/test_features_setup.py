@@ -168,3 +168,68 @@ async def test_create_and_start_feature_instances_logs_warning_on_error(
     assert any(
         "Failed to create feature instance" in msg for msg in caplog.text.splitlines()
     )
+
+
+@pytest.mark.asyncio
+async def test_create_and_start_feature_import_error_device_simulator(hass) -> None:
+    """Test ImportError when device_simulator import fails."""
+    hass.data.setdefault(DOMAIN, {})
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.features.get_enabled_feature_names",
+        return_value=[],
+    ):
+        with patch(
+            "custom_components.ramses_extras.features.device_simulator.async_restore_ramses_cc_gateway_topic",
+            side_effect=ImportError("test error"),
+        ):
+            await features.create_and_start_feature_instances(hass, MagicMock())
+
+
+@pytest.mark.asyncio
+async def test_on_feature_ready_invalid_feature_id(hass) -> None:
+    """Test _on_feature_ready returns early when feature_id is not a string."""
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN]["cards_pending_features"] = {"foo"}
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.features.get_enabled_feature_names",
+        return_value=[],
+    ):
+        await features.create_and_start_feature_instances(hass, MagicMock())
+
+    # Fire event with invalid feature_id
+    hass.bus.async_fire("ramses_extras_feature_ready", {"feature_id": 123})
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_on_feature_ready_pending_not_set(hass) -> None:
+    """Test _on_feature_ready returns early when pending is not a set."""
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN]["cards_pending_features"] = "not_a_set"
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.features.get_enabled_feature_names",
+        return_value=[],
+    ):
+        await features.create_and_start_feature_instances(hass, MagicMock())
+
+    hass.bus.async_fire("ramses_extras_feature_ready", {"feature_id": "foo"})
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_on_feature_ready_feature_not_pending(hass) -> None:
+    """Test _on_feature_ready returns early when feature_id not in pending."""
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN]["cards_pending_features"] = {"bar"}
+
+    with patch(
+        "custom_components.ramses_extras.framework.setup.features.get_enabled_feature_names",
+        return_value=[],
+    ):
+        await features.create_and_start_feature_instances(hass, MagicMock())
+
+    hass.bus.async_fire("ramses_extras_feature_ready", {"feature_id": "foo"})
+    await asyncio.sleep(0)

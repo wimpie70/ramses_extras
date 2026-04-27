@@ -16,6 +16,7 @@ from custom_components.ramses_extras.features.device_simulator.device_db import 
 )
 from custom_components.ramses_extras.features.device_simulator.response_engine import (
     ResponseEngine,
+    build_2411_payload,
 )
 from custom_components.ramses_extras.features.device_simulator.response_templates import (  # noqa: E501
     build_dynamic_response,
@@ -472,6 +473,120 @@ class TestResponseTemplates:
         assert build_dynamic_response("TRV", "30C9", "01") is None
 
 
+class TestBuild2411Payload:
+    """Tests for build_2411_payload function."""
+
+    def test_build_2411_payload_short_request(self) -> None:
+        """Test build_2411_payload with short request payload (covers line 41)."""
+        result = build_2411_payload("0000", ["000001value1"])
+        assert result is None
+
+    def test_build_2411_payload_empty_response_payloads(self) -> None:
+        """Test build_2411_payload with empty response_payloads (covers line 41)."""
+        result = build_2411_payload("000001", None)
+        assert result is None
+
+    def test_build_2411_payload_matching_param(self) -> None:
+        """Test build_2411_payload with matching parameter."""
+        result = build_2411_payload("000001", ["000001value1", "000002value2"])
+        assert result == "000001value1"
+
+    def test_build_2411_payload_fallback(self) -> None:
+        """Test build_2411_payload with fallback."""
+        result = build_2411_payload("000003", ["000001value1", "000002value2"])
+        assert result == "000003value1"
+
+
+class TestResponseEngineLookupProfileDeviceType:
+    """Tests for _lookup_profile_device_type method."""
+
+    @pytest.fixture
+    def engine(self) -> ResponseEngine:
+        """Create a ResponseEngine with mocked dependencies."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        return ResponseEngine(mock_db, mock_endpoint)
+
+    def test_lookup_profile_device_type_no_config_store(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test _lookup_profile_device_type with no config_store (covers line 234)."""
+        engine._config_store = None
+        result = engine._lookup_profile_device_type("32:123456")
+        assert result is None
+
+    def test_lookup_profile_device_type_no_active_profile(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test _lookup_profile_device_type with no active profile (covers line 238)."""
+        config_store = MagicMock()
+        config_store.get_active_profile.return_value = None
+        engine._config_store = config_store
+        result = engine._lookup_profile_device_type("32:123456")
+        assert result is None
+
+    def test_lookup_profile_device_type_no_profile(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test _lookup_profile_device_type when profile is None (covers line 241)."""
+        config_store = MagicMock()
+        config_store.get_active_profile.return_value = "normal"
+        config_store.get_profile.return_value = None
+        engine._config_store = config_store
+        result = engine._lookup_profile_device_type("32:123456")
+        assert result is None
+
+    def test_lookup_profile_device_type_no_device_class(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test _lookup_profile_device_type when device_class is missing (covers line 248)."""  # noqa: E501
+        config_store = MagicMock()
+        profile = MagicMock()
+        profile.device_configs = {
+            "_known_list": {"32:123456": "not_a_dict"},
+        }
+        config_store.get_active_profile.return_value = "normal"
+        config_store.get_profile.return_value = profile
+        engine._config_store = config_store
+        result = engine._lookup_profile_device_type("32:123456")
+        assert result is None
+
+
+class TestResponseEngineBuildWriteAckPayload:
+    """Tests for _build_write_ack_payload method."""
+
+    @pytest.fixture
+    def engine(self) -> ResponseEngine:
+        """Create a ResponseEngine with mocked dependencies."""
+        mock_db = MagicMock()
+        mock_endpoint = MagicMock()
+        return ResponseEngine(mock_db, mock_endpoint)
+
+    def test_build_write_ack_unsupported_code(self, engine: ResponseEngine) -> None:
+        """Test _build_write_ack_payload with unsupported code (covers line 291)."""
+        parsed = {"code": "9999", "payload": "000001"}
+        result = engine._build_write_ack_payload(parsed, None)
+        assert result is None
+
+    def test_build_write_ack_empty_payload(self, engine: ResponseEngine) -> None:
+        """Test _build_write_ack_payload with empty payload (covers line 295)."""
+        parsed = {"code": "2411", "payload": ""}
+        result = engine._build_write_ack_payload(parsed, None)
+        assert result is None
+
+    def test_build_write_ack_with_padding(self, engine: ResponseEngine) -> None:
+        """Test _build_write_ack_payload with padding (covers line 302)."""
+        parsed = {"code": "2411", "payload": "000001"}
+        response = ResponseEntry(
+            code="2411",
+            delay_ms=0,
+            payloads=["00000100000000000000000000000000000000000000"],
+        )
+        result = engine._build_write_ack_payload(parsed, response)
+        assert result is not None
+        assert len(result) == len(response.payloads[0])
+
+
 class TestResponseEngine2411ParameterHandling:
     """Tests for 2411 parameter code handling."""
 
@@ -482,6 +597,32 @@ class TestResponseEngine2411ParameterHandling:
         mock_endpoint = MagicMock()
         mock_endpoint.is_connected = True
         return ResponseEngine(mock_db, mock_endpoint)
+
+    @pytest.mark.asyncio
+    async def test_send_response_2411_unable_to_build(
+        self, engine: ResponseEngine
+    ) -> None:
+        """Test _send_response when unable to build 2411 payload (covers lines 327-331)."""  # noqa: E501
+        parsed = {
+            "verb": "RQ",
+            "rssi": "037",
+            "src": "37:168270",
+            "dst": "32:153289",
+            "code": "2411",
+            "len": 3,
+            "payload": "000001",
+        }
+        response = ResponseEntry(
+            code="2411",
+            delay_ms=100,
+            payloads=[],  # Empty payloads will cause build_2411_payload to fail
+        )
+
+        initial_tasks = len(engine._pending_tasks)
+        await engine._send_response(parsed, response)
+
+        # Should not have created any new tasks
+        assert len(engine._pending_tasks) == initial_tasks
 
     @pytest.mark.asyncio
     async def test_send_response_2411_param_matching(

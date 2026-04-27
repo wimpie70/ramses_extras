@@ -290,3 +290,58 @@ async def test_async_create_and_add_platform_entities_factory_error(hass):
 
         # Verify no entities were added due to error
         async_add_entities.assert_not_called()
+
+
+def test_get_filtered_devices_uses_config_opts_when_data_empty(hass):
+    """Should use config_opts when config_data is empty."""
+    config_entry = MagicMock()
+    config_entry.data = {}
+    config_entry.options = {"enabled_features": {"hello_world": True}}
+
+    devices = ["32:123456"]
+    result = platform.PlatformSetup.get_filtered_devices_for_feature(
+        hass=hass,
+        feature_id="hello_world",
+        config_entry=config_entry,
+        devices=devices,
+    )
+
+    assert result == ["32:123456"]
+
+
+def test_get_filtered_devices_matrix_state_not_mapping(hass):
+    """Should skip device when matrix_state is not a Mapping."""
+    config_entry = MagicMock()
+    config_entry.data = {
+        "enabled_features": {"hello_world": False},  # Feature disabled
+        "device_feature_matrix": "invalid",  # Not a Mapping
+    }
+
+    devices = ["32:123456"]
+    result = platform.PlatformSetup.get_filtered_devices_for_feature(
+        hass=hass,
+        feature_id="hello_world",
+        config_entry=config_entry,
+        devices=devices,
+    )
+
+    assert result == []
+
+
+def test_get_filtered_devices_no_matrix_entry_uses_global_enablement(hass):
+    """Should include device when no matrix entry and feature globally enabled."""
+    config_entry = MagicMock()
+    config_entry.data = {
+        "enabled_features": {"hello_world": True},
+        "device_feature_matrix": {},  # Empty matrix
+    }
+
+    devices = ["32:123456"]
+    result = platform.PlatformSetup.get_filtered_devices_for_feature(
+        hass=hass,
+        feature_id="hello_world",
+        config_entry=config_entry,
+        devices=devices,
+    )
+
+    assert result == ["32:123456"]

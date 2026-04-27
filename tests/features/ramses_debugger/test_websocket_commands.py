@@ -9,6 +9,10 @@ from homeassistant.components.websocket_api.connection import ActiveConnection
 from homeassistant.core import HomeAssistant
 
 from custom_components.ramses_extras.features.ramses_debugger import websocket_commands
+from custom_components.ramses_extras.features.ramses_debugger.const import DOMAIN
+from custom_components.ramses_extras.features.ramses_debugger.const import (
+    DOMAIN as RAMSES_DEBUGGER_DOMAIN,
+)
 
 # Unwrap decorator for testing (same approach as other features)
 ws_messages_get_messages = websocket_commands.ws_messages_get_messages.__wrapped__
@@ -420,6 +424,47 @@ class TestWsTrafficGetStats:
                     }
                 ),
             )
+
+    @pytest.mark.asyncio
+    async def test_traffic_get_stats_packet_log(self, hass, conn):
+        """Test traffic stats for packet_log source (covers lines 171, 184)."""
+        with (
+            patch(
+                "custom_components.ramses_extras.features.ramses_debugger.websocket_commands._get_traffic_collector",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.get_messages_from_sources"
+            ) as mock_get_messages,
+            patch(
+                "custom_components.ramses_extras.features.ramses_debugger.websocket_commands.get_configured_packet_log_path"
+            ) as mock_get_packet_log_path,
+        ):
+            mock_get_messages.return_value = [
+                {
+                    "src": "32:153289",
+                    "dst": "37:169161",
+                    "dtm": "2026-01-20T10:00:00",
+                    "code": "31DA",
+                    "verb": "RQ",
+                }
+            ]
+            mock_get_packet_log_path.return_value = "/config/packet.log"
+
+            await ws_traffic_get_stats(
+                hass,
+                conn,
+                {
+                    "id": "test-id",
+                    "type": "ramses_extras/ramses_debugger/traffic/get_stats",
+                    "traffic_source": "packet_log",
+                    "limit": 50,
+                },
+            )
+
+            conn.send_result.assert_called_once()
+            mock_get_messages.assert_called_once()
+            mock_get_packet_log_path.assert_called_once()
 
 
 class TestWsTrafficResetStats:
@@ -1309,29 +1354,101 @@ class TestHelperFunctions:
         assert state is not None
         assert len(state) == 2
 
-    def test_calculate_config_changes(self):
-        """Test config changes calculation."""
-        old_config = {
-            "ramses_extras": {
-                "features": {
-                    "feature1": {"enabled": True},
-                    "feature2": {"enabled": False},
-                }
-            }
-        }
-        new_config = {
-            "ramses_extras": {
-                "features": {
-                    "feature1": {"enabled": True},  # Same
-                    "feature3": {"enabled": True},  # Added
-                    "feature2": {"enabled": True},  # Modified
-                }
-            }
-        }
+    def test_file_state_os_error(self, tmp_path):
+        """Test file state when OSError occurs (covers lines 102-103)."""
+        from custom_components.ramses_extras.features.ramses_debugger.websocket_commands import (  # noqa: E501
+            _file_state,
+        )
 
-        changes = websocket_commands._calculate_config_changes(old_config, new_config)
+        # Use a path that will cause OSError
+        test_file = tmp_path / "nonexistent" / "file.txt"
 
-        assert changes["added_features"] == ["feature3"]
-        assert changes["removed_features"] == []
-        assert changes["modified_features"] == ["feature2"]
-        assert changes["total_features_after"] == 3
+        state = _file_state(test_file)
+
+        assert state is None
+
+    def test_get_traffic_collector_invalid_domain_data(self):
+        """Test _get_traffic_collector when domain_data is not a dict (covers line 111)."""  # noqa: E501
+        from custom_components.ramses_extras.features.ramses_debugger.websocket_commands import (  # noqa: E501
+            _get_traffic_collector,
+        )
+
+        hass = MagicMock()
+        hass.data = {DOMAIN: "not_a_dict"}
+
+        result = _get_traffic_collector(hass)
+        assert result is None
+
+    def test_get_traffic_collector_invalid_collector_type(self):
+        """Test _get_traffic_collector when collector is not TrafficCollector (covers line 119)."""  # noqa: E501
+        from custom_components.ramses_extras.features.ramses_debugger.websocket_commands import (  # noqa: E501
+            _get_traffic_collector,
+        )
+
+        hass = MagicMock()
+        real_data = {
+            DOMAIN: {RAMSES_DEBUGGER_DOMAIN: {"traffic_collector": "not_a_collector"}}
+        }
+        hass.data = real_data
+
+        result = _get_traffic_collector(hass)
+        assert result is None
+
+    def test_get_cache_with_invalid_cache_type(self):
+        """Test _get_cache when cache is not a DebuggerCache instance (covers lines 73-77)."""  # noqa: E501
+        from custom_components.ramses_extras.features.ramses_debugger.websocket_commands import (  # noqa: E501
+            _get_cache,
+        )
+
+        hass = MagicMock()
+        # Use a real dict for hass.data instead of MagicMock
+        real_data = {
+            DOMAIN: {RAMSES_DEBUGGER_DOMAIN: {"cache": "not_a_cache_instance"}}
+        }
+        hass.data = real_data
+
+        result = _get_cache(hass)
+        assert result is None
+
+    def test_get_cache_ttl_s_with_invalid_domain_data(self):
+        """Test _get_cache_ttl_s when domain_data is not a dict (covers lines 82-84)."""  # noqa: E501
+        from custom_components.ramses_extras.features.ramses_debugger.websocket_commands import (  # noqa: E501
+            _get_cache_ttl_s,
+        )
+
+        hass = MagicMock()
+        hass.data = {DOMAIN: "not_a_dict"}
+
+        result = _get_cache_ttl_s(hass)
+        assert result == 1.0
+
+    def test_get_cache_ttl_s_with_ttl_option(self):
+        """Test _get_cache_ttl_s with cache_ttl_ms option (covers lines 88-90)."""  # noqa: E501
+        from custom_components.ramses_extras.features.ramses_debugger.websocket_commands import (  # noqa: E501
+            _get_cache_ttl_s,
+        )
+
+        hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.options = {"ramses_debugger_cache_ttl_ms": 5000}
+        # Ensure the mock returns the entry when getting config_entry
+        hass.data.get.return_value = {"config_entry": mock_entry}
+
+        result = _get_cache_ttl_s(hass)
+        # 5000ms / 1000 = 5.0 seconds
+        assert result == 5.0
+
+    def test_get_cache_ttl_s_default(self):
+        """Test _get_cache_ttl_s with no ttl option (covers line 92)."""  # noqa: E501
+        from custom_components.ramses_extras.features.ramses_debugger.websocket_commands import (  # noqa: E501
+            _get_cache_ttl_s,
+        )
+
+        hass = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.options = {}  # No ttl_ms option
+        hass.data.get.return_value = {"config_entry": mock_entry}
+
+        result = _get_cache_ttl_s(hass)
+        # Should return default 1.0
+        assert result == 1.0

@@ -333,6 +333,30 @@ def test_handle_update_zone_config_empty_updates(hass, connection, msg):
     mock_zone_manager.update_zone_config.assert_called_once_with("living_room", {})
 
 
+def test_handle_update_zone_config_exception(hass, connection, msg):
+    """Test zone config update with exception (covers lines 174-176)."""
+    # Setup mock zone manager that raises exception
+    mock_zone_manager = MagicMock()
+    mock_zone_manager.update_zone_config.side_effect = Exception("Test error")
+
+    # Setup mock automation
+    mock_automation = MagicMock()
+    mock_automation._zone_managers = {"test_device": mock_zone_manager}
+    hass.data["ramses_extras"]["co2_automation"] = mock_automation
+
+    msg["device_id"] = "test_device"
+    msg["zone_id"] = "living_room"
+    msg["updates"] = {"threshold": 1200}
+
+    handle_update_zone_config(hass, connection, msg)
+
+    # Check error was sent
+    connection.send_error.assert_called_once_with(
+        msg["id"], "unknown_error", "Test error"
+    )
+    connection.send_result.assert_not_called()
+
+
 def test_handle_get_co2_history_success(hass, connection, msg):
     """Test successful CO2 history retrieval."""
     msg["device_id"] = "test_device"

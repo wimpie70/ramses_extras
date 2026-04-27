@@ -1,7 +1,7 @@
 # tests/framework/base_classes/test_platform_entities.py
 """Test platform entity base classes."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -11,6 +11,8 @@ from custom_components.ramses_extras.framework.base_classes.platform_entities im
     ExtrasPlatformEntity,
     ExtrasSensorEntity,
     ExtrasSwitchEntity,
+    filter_devices_by_config,
+    generic_platform_setup,
 )
 
 
@@ -108,6 +110,34 @@ class TestExtrasPlatformEntity:
             "device_id": "32:153289",
         }
         assert attributes == expected
+
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.ramses_extras.framework.base_classes.platform_entities.EntityHelpers"
+    )
+    async def test_async_added_to_hass(self, mock_entity_helpers, hass):
+        """Test async_added_to_hass method."""
+        mock_entity_helpers.generate_entity_name_from_template.return_value = (
+            "sensor.test_32_153289"
+        )
+
+        entity = ExtrasPlatformEntity(hass, "32:153289", "sensor", {}, "sensor")
+        await entity.async_added_to_hass()
+
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.ramses_extras.framework.base_classes.platform_entities.EntityHelpers"
+    )
+    async def test_handle_update(self, mock_entity_helpers, hass):
+        """Test _handle_update method."""
+        mock_entity_helpers.generate_entity_name_from_template.return_value = (
+            "sensor.test_32_153289"
+        )
+
+        entity = ExtrasPlatformEntity(hass, "32:153289", "sensor", {}, "sensor")
+        entity.async_write_ha_state = MagicMock()
+        await entity._handle_update()
+        entity.async_write_ha_state.assert_called_once()
 
 
 class TestExtrasSwitchEntity:
@@ -221,6 +251,86 @@ class TestExtrasNumberEntity:
 
         assert entity._native_value == 25.0
 
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.ramses_extras.framework.base_classes.platform_entities.EntityHelpers"
+    )
+    async def test_async_set_native_value_with_config_entry(
+        self, mock_entity_helpers, hass
+    ):
+        """Test async_set_native_value with config entry saves value."""
+        mock_entity_helpers.generate_entity_name_from_template.return_value = (
+            "number.temp_setpoint_32_153289"
+        )
+
+        config_entry = MagicMock()
+        config_entry.options = {}
+        config_entry.entry_id = "test_entry"
+        hass.config_entries.async_update_entry = AsyncMock()
+
+        entity = ExtrasNumberEntity(
+            hass,
+            "32:153289",
+            "temp_setpoint",
+            {"feature_id": "test_feature"},
+            config_entry,
+        )
+
+        await entity.async_set_native_value(25.0)
+
+        assert entity._native_value == 25.0
+        hass.config_entries.async_update_entry.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.ramses_extras.framework.base_classes.platform_entities.EntityHelpers"
+    )
+    async def test_save_value_to_config(self, mock_entity_helpers, hass):
+        """Test _save_value_to_config method."""
+        mock_entity_helpers.generate_entity_name_from_template.return_value = (
+            "number.temp_setpoint_32_153289"
+        )
+
+        config_entry = MagicMock()
+        config_entry.options = {}
+        config_entry.entry_id = "test_entry"
+        hass.config_entries.async_update_entry = AsyncMock()
+
+        entity = ExtrasNumberEntity(
+            hass,
+            "32:153289",
+            "temp_setpoint",
+            {"feature_id": "test_feature"},
+            config_entry,
+        )
+
+        await entity._save_value_to_config(25.0)
+
+        hass.config_entries.async_update_entry.assert_awaited_once()
+        call_args = hass.config_entries.async_update_entry.call_args[1]
+        assert "test_feature" in call_args["options"]
+        assert "32_153289" in call_args["options"]["test_feature"]
+        assert (
+            call_args["options"]["test_feature"]["32_153289"]["temp_setpoint"] == 25.0
+        )
+
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.ramses_extras.framework.base_classes.platform_entities.EntityHelpers"
+    )
+    async def test_save_value_to_config_no_config_entry(
+        self, mock_entity_helpers, hass
+    ):
+        """Test _save_value_to_config with no config entry returns early."""
+        mock_entity_helpers.generate_entity_name_from_template.return_value = (
+            "number.temp_setpoint_32_153289"
+        )
+
+        entity = ExtrasNumberEntity(hass, "32:153289", "temp_setpoint", {})
+
+        # Should not raise an error
+        await entity._save_value_to_config(25.0)
+
     @patch(
         "custom_components.ramses_extras.framework.base_classes.platform_entities.EntityHelpers"
     )
@@ -315,6 +425,37 @@ class TestExtrasBinarySensorEntity:
         entity.set_state(False)
         assert entity._is_on is False
 
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.ramses_extras.framework.base_classes.platform_entities.EntityHelpers"
+    )
+    async def test_async_turn_on_binary_sensor(self, mock_entity_helpers, hass):
+        """Test async_turn_on method for binary sensor."""
+        mock_entity_helpers.generate_entity_name_from_template.return_value = (
+            "binary_sensor.motion_sensor_32_153289"
+        )
+
+        entity = ExtrasBinarySensorEntity(hass, "32:153289", "motion_sensor", {})
+
+        await entity.async_turn_on()
+        assert entity._is_on is True
+
+    @pytest.mark.asyncio
+    @patch(
+        "custom_components.ramses_extras.framework.base_classes.platform_entities.EntityHelpers"
+    )
+    async def test_async_turn_off_binary_sensor(self, mock_entity_helpers, hass):
+        """Test async_turn_off method for binary sensor."""
+        mock_entity_helpers.generate_entity_name_from_template.return_value = (
+            "binary_sensor.motion_sensor_32_153289"
+        )
+
+        entity = ExtrasBinarySensorEntity(hass, "32:153289", "motion_sensor", {})
+        entity._is_on = True
+
+        await entity.async_turn_off()
+        assert entity._is_on is False
+
     @patch(
         "custom_components.ramses_extras.framework.base_classes.platform_entities.EntityHelpers"
     )
@@ -385,3 +526,91 @@ class TestExtrasSensorEntity:
         # Test with native value set
         entity._attr_native_value = 25.5
         assert entity.state == 25.5
+
+
+class TestGenericPlatformSetup:
+    """Test generic_platform_setup function."""
+
+    @pytest.mark.asyncio
+    async def test_generic_platform_setup_no_devices(self, hass):
+        """Test generic_platform_setup with no devices."""
+        async_add_entities = MagicMock()
+        config_entry = MagicMock()
+        hass.data = {}
+
+        await generic_platform_setup(
+            hass,
+            config_entry,
+            async_add_entities,
+            "test_feature",
+            {},
+            lambda h, d, c: [],
+            "sensor",
+        )
+
+        async_add_entities.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_generic_platform_setup_with_devices(self, hass):
+        """Test generic_platform_setup with devices."""
+        async_add_entities = MagicMock()
+        config_entry = MagicMock()
+
+        async def entity_factory(hass, device_id, config_entry):
+            return [MagicMock(device_id=device_id)]
+
+        hass.data = {"ramses_extras": {"devices": ["32:153289", "37:170000"]}}
+
+        await generic_platform_setup(
+            hass,
+            config_entry,
+            async_add_entities,
+            "test_feature",
+            {},
+            entity_factory,
+            "sensor",
+        )
+
+        async_add_entities.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_generic_platform_setup_with_exception(self, hass):
+        """Test generic_platform_setup handles exceptions."""
+        async_add_entities = MagicMock()
+        config_entry = MagicMock()
+
+        async def entity_factory(hass, device_id, config_entry):
+            raise Exception("Test error")
+
+        hass.data = {"ramses_extras": {"devices": ["32:153289"]}}
+
+        await generic_platform_setup(
+            hass,
+            config_entry,
+            async_add_entities,
+            "test_feature",
+            {},
+            entity_factory,
+            "sensor",
+        )
+
+        # Should not raise exception, just log error
+        async_add_entities.assert_not_called()
+
+
+class TestFilterDevicesByConfig:
+    """Test filter_devices_by_config function."""
+
+    def test_filter_devices_no_supported_types(self, hass):
+        """Test filter with no supported types returns all devices."""
+        devices = ["32:153289", "37:170000"]
+        config = {}
+        result = filter_devices_by_config(devices, config)
+        assert result == devices
+
+    def test_filter_devices_with_supported_types(self, hass):
+        """Test filter with supported types filters devices."""
+        devices = ["32:153289", "37:170000", "18:123456"]
+        config = {"supported_device_types": ["32", "37"]}
+        result = filter_devices_by_config(devices, config)
+        assert result == ["32:153289", "37:170000"]

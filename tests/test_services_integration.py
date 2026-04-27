@@ -102,6 +102,40 @@ async def test_register_feature_services_warns_on_import_error_other_than_servic
 
 
 @pytest.mark.asyncio
+async def test_unload_feature_services_skips_import_error():
+    """Test that ImportError in async_unload_feature_services is handled by continue."""
+    hass = _make_hass(enabled_features=["default", "no_services"])
+
+    async def fake_to_thread(fn, feature_name):
+        if feature_name == "no_services":
+            raise ImportError("No module named 'services'")
+        return SimpleNamespace(async_unload_services=AsyncMock())
+
+    with patch(
+        "custom_components.ramses_extras.services_integration.asyncio.to_thread",
+        side_effect=fake_to_thread,
+    ):
+        await async_unload_feature_services(hass)
+
+
+@pytest.mark.asyncio
+async def test_register_feature_services_import_error_with_services_in_message():
+    """Test that ImportError with 'services' in message is logged as debug."""
+    hass = _make_hass(enabled_features=["default", "missing_services"])
+
+    async def fake_to_thread(fn, feature_name):
+        if feature_name == "missing_services":
+            raise ImportError("No module named 'services'")
+        return SimpleNamespace(async_setup_services=AsyncMock())
+
+    with patch(
+        "custom_components.ramses_extras.services_integration.asyncio.to_thread",
+        side_effect=fake_to_thread,
+    ):
+        await async_register_feature_services(hass)
+
+
+@pytest.mark.asyncio
 async def test_register_feature_services_calls_setup_with_one_param():
     hass = _make_hass(enabled_features=["default"])
 

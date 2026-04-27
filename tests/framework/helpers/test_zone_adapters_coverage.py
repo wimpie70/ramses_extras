@@ -1,5 +1,6 @@
 """Additional tests for zone_adapters to improve coverage."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -51,6 +52,30 @@ class TestCustomValveZoneAdapterCoverage:
         assert result is False
 
     @pytest.mark.asyncio
+    async def test_set_position_with_invert_logic(self):
+        """Test set_position with invert logic enabled."""
+        hass = MagicMock()
+        hass.services.async_call = AsyncMock()
+
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="custom_valve",
+            entity_id="cover.test",
+            extra_config={"invert_logic": True},
+        )
+        adapter = CustomValveZoneAdapter(hass, config)
+
+        result = await adapter.async_set_position(80)
+        # 80 should be inverted to 20
+        assert result is True
+
+        # Check that the service was called with inverted position
+        hass.services.async_call.assert_called_once()
+        call_args = hass.services.async_call.call_args
+        assert call_args[0][2]["position"] == 20  # Inverted 80 -> 20
+
+    @pytest.mark.asyncio
     async def test_get_position_from_attributes(self):
         """Test get_position reads current_position from attributes."""
         hass = MagicMock()
@@ -69,6 +94,28 @@ class TestCustomValveZoneAdapterCoverage:
 
         pos = await adapter.async_get_position()
         assert pos.position == 75
+
+    @pytest.mark.asyncio
+    async def test_get_position_with_invert_logic(self):
+        """Test get_position with invert logic enabled."""
+        hass = MagicMock()
+        mock_state = MagicMock()
+        mock_state.state = "open"
+        mock_state.attributes = {"current_position": 30}
+        hass.states.get.return_value = mock_state
+
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="custom_valve",
+            entity_id="cover.test",
+            extra_config={"invert_logic": True},
+        )
+        adapter = CustomValveZoneAdapter(hass, config)
+
+        pos = await adapter.async_get_position()
+        # 30 inverted to 70
+        assert pos.position == 70
 
     @pytest.mark.asyncio
     async def test_get_position_unavailable_state(self):
@@ -173,6 +220,53 @@ class TestCustomValveZoneAdapterCoverage:
         diag = adapter.get_diagnostics()
         assert diag["entity_id"] is None
         assert diag["invert_logic"] is False
+
+    def test_is_available_when_disabled(self):
+        """Test is_available returns False when config is disabled."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="custom_valve",
+            entity_id="cover.test",
+            enabled=False,
+        )
+        adapter = CustomValveZoneAdapter(hass, config)
+
+        assert adapter.is_available is False
+
+    def test_fan_home_lock_creates_lock(self):
+        """Test _fan_home_lock creates and returns a lock."""
+        hass = MagicMock()
+        hass.data = {}
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="custom_valve",
+            entity_id="cover.test",
+        )
+        adapter = CustomValveZoneAdapter(hass, config)
+
+        lock = adapter._fan_home_lock()
+        assert lock is not None
+        # Should be cached for subsequent calls
+        lock2 = adapter._fan_home_lock()
+        assert lock is lock2
+
+    def test_fan_home_lock_with_invalid_locks_raw(self):
+        """Test _fan_home_lock handles non-dict locks_raw."""
+        hass = MagicMock()
+        hass.data = {"ramses_extras": {"_valve_home_locks": "invalid"}}
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="custom_valve",
+            entity_id="cover.test",
+        )
+        adapter = CustomValveZoneAdapter(hass, config)
+
+        lock = adapter._fan_home_lock()
+        assert lock is not None
 
 
 class TestPairedValvesZoneAdapterCoverage:
@@ -407,6 +501,265 @@ class TestPairedValvesZoneAdapterCoverage:
 
         pos = adapter._position_from_state("unknown", {"current_position": 75.5})
         assert pos == 75
+
+    def test_should_home_for_target_always(self):
+        """Test _should_home_for_target with home_mode='always'."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+                "home_mode": "always",
+                "home_position": 0,
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        assert adapter._should_home_for_target(50) is True
+
+    def test_should_home_for_target_once(self):
+        """Test _should_home_for_target with home_mode='once'."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+                "home_mode": "once",
+                "home_position": 0,
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        # Should home before first homing
+        assert adapter._should_home_for_target(50) is True
+        # Should not home after homing
+        adapter._has_homed = True
+        assert adapter._should_home_for_target(50) is False
+
+    def test_should_home_for_target_interval(self):
+        """Test _should_home_for_target with home_mode='interval'."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+                "home_mode": "interval",
+                "home_position": 0,
+                "home_interval_s": 10,
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        # Should home if never homed
+        assert adapter._should_home_for_target(50) is True
+
+        # Should not home if interval not elapsed
+        adapter._last_home_monotonic = time.monotonic()
+        assert adapter._should_home_for_target(50) is False
+
+    def test_should_home_for_target_interval_zero(self):
+        """Test _should_home_for_target with home_mode='interval' and zero interval."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+                "home_mode": "interval",
+                "home_position": 0,
+                "home_interval_s": 0,
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        assert adapter._should_home_for_target(50) is False
+
+    def test_should_home_for_target_unknown_mode(self):
+        """Test _should_home_for_target with unknown home_mode."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+                "home_mode": "unknown",
+                "home_position": 0,
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        assert adapter._should_home_for_target(50) is False
+
+    def test_entity_matches_position(self):
+        """Test _entity_matches_position."""
+        hass = MagicMock()
+        mock_state = MagicMock()
+        mock_state.state = "open"
+        mock_state.attributes = {"current_position": 75}
+        hass.states.get.return_value = mock_state
+
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        assert adapter._entity_matches_position("cover.inlet", 75) is True
+        assert adapter._entity_matches_position("cover.inlet", 50) is False
+
+    def test_entity_matches_position_none_entity(self):
+        """Test _entity_matches_position when entity is None."""
+        hass = MagicMock()
+        hass.states.get.return_value = None
+
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        assert adapter._entity_matches_position("cover.inlet", 75) is False
+
+    def test_entity_matches_position_with_invert(self):
+        """Test _entity_matches_position with invert logic."""
+        hass = MagicMock()
+        mock_state = MagicMock()
+        mock_state.state = "open"
+        mock_state.attributes = {"current_position": 30}
+        hass.states.get.return_value = mock_state
+
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+                "invert_logic": True,
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        # 30 inverted to 70, so should match 70
+        assert adapter._entity_matches_position("cover.inlet", 70) is True
+
+    def test_entity_matches_position_closed_state(self):
+        """Test _entity_matches_position with closed state for target 0."""
+        hass = MagicMock()
+        mock_state = MagicMock()
+        mock_state.state = "closed"
+        mock_state.attributes = {}
+        hass.states.get.return_value = mock_state
+
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        assert adapter._entity_matches_position("cover.inlet", 0) is True
+
+    def test_entity_matches_position_open_state(self):
+        """Test _entity_matches_position with open state for target 100."""
+        hass = MagicMock()
+        mock_state = MagicMock()
+        mock_state.state = "open"
+        mock_state.attributes = {}
+        hass.states.get.return_value = mock_state
+
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        assert adapter._entity_matches_position("cover.inlet", 100) is True
+
+    @pytest.mark.asyncio
+    async def test_wait_until_home_reached_timeout(self):
+        """Test _wait_until_home_reached times out."""
+        hass = MagicMock()
+        mock_state = MagicMock()
+        mock_state.state = "opening"
+        mock_state.attributes = {"current_position": 50}
+        hass.states.get.return_value = mock_state
+
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={
+                "inlet_valve_entity": "cover.inlet",
+                "outlet_valve_entity": "cover.outlet",
+                "home_timeout_s": 0.1,
+                "home_poll_s": 0.05,
+            },
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        result = await adapter._wait_until_home_reached(100)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_wait_until_home_reached_no_entities(self):
+        """Test _wait_until_home_reached with no entities."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={},
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        result = await adapter._wait_until_home_reached(100)
+        assert result is False
+
+    def test_check_availability_no_entities(self):
+        """Test _check_availability with no entities."""
+        hass = MagicMock()
+        config = ZoneAdapterConfig(
+            zone_id="test",
+            fan_id="32:123456",
+            source_type="paired_valves",
+            extra_config={},
+        )
+        adapter = PairedValvesZoneAdapter(hass, config)
+
+        assert adapter._check_availability() is False
 
 
 class TestZoneAdapterRegistryCoverage:

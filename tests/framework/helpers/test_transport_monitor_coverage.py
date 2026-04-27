@@ -198,6 +198,40 @@ class TestTransportMonitorCoverage:
             mock_notify.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_start_monitoring_coordinator_without_client_attr(self, monitor):
+        """Test start_monitoring when coordinator lacks client attribute."""
+        hass = MagicMock()
+        hass.data = {"ramses_cc": {"mock_coordinator": MagicMock(spec=[])}}
+
+        await monitor.start_monitoring(None, hass)
+
+        assert monitor._coordinator is None
+
+    @pytest.mark.asyncio
+    async def test_start_monitoring_coordinator_client_none(self, monitor):
+        """Test start_monitoring when coordinator.client is None."""
+        hass = MagicMock()
+        coordinator = MagicMock()
+        coordinator.client = None
+        hass.data = {"ramses_cc": {"mock_coordinator": coordinator}}
+
+        await monitor.start_monitoring(None, hass)
+
+        assert monitor._coordinator is None
+
+    @pytest.mark.asyncio
+    async def test_ensure_msg_handler_exception_handling(self, monitor):
+        """Test _ensure_msg_handler handles unsubscribe exceptions."""
+        mock_unsub = MagicMock(side_effect=RuntimeError("test error"))
+        monitor._msg_handler_unsub = mock_unsub
+        monitor._client = MagicMock()
+
+        # Should not raise, just log error
+        monitor._ensure_msg_handler(None)
+
+        assert monitor._msg_handler_unsub is None
+
+    @pytest.mark.asyncio
     async def test__mark_device_online_already_online(self, monitor):
         """Test _mark_device_online when already online."""
         monitor._device_states["32:123456"] = True

@@ -50,6 +50,55 @@ async def test_discover_card_features_no_features_dir(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_discover_card_features_skips_non_directory(tmp_path) -> None:
+    """Test discover_card_features skips non-directory entries."""
+    original_dir = cards.INTEGRATION_DIR
+    features_dir = tmp_path / "features"
+    features_dir.mkdir()
+    (features_dir / "file.txt").write_text("test")
+    cards.INTEGRATION_DIR = tmp_path
+    try:
+        features = await cards.discover_card_features()
+    finally:
+        cards.INTEGRATION_DIR = original_dir
+    assert features == []
+
+
+@pytest.mark.asyncio
+async def test_discover_card_features_skips_missing_www_dir(tmp_path) -> None:
+    """Test discover_card_features skips features without www directory."""
+    original_dir = cards.INTEGRATION_DIR
+    features_dir = tmp_path / "features"
+    features_dir.mkdir()
+    feature_dir = features_dir / "test_feature"
+    feature_dir.mkdir()
+    cards.INTEGRATION_DIR = tmp_path
+    try:
+        features = await cards.discover_card_features()
+    finally:
+        cards.INTEGRATION_DIR = original_dir
+    assert features == []
+
+
+@pytest.mark.asyncio
+async def test_discover_card_features_skips_empty_www_dir(tmp_path) -> None:
+    """Test discover_card_features skips features with empty www directory."""
+    original_dir = cards.INTEGRATION_DIR
+    features_dir = tmp_path / "features"
+    features_dir.mkdir()
+    feature_dir = features_dir / "test_feature"
+    feature_dir.mkdir()
+    www_dir = feature_dir / "www" / "test_feature"
+    www_dir.mkdir(parents=True)
+    cards.INTEGRATION_DIR = tmp_path
+    try:
+        features = await cards.discover_card_features()
+    finally:
+        cards.INTEGRATION_DIR = original_dir
+    assert features == []
+
+
+@pytest.mark.asyncio
 async def test_cleanup_old_card_deployments_missing_root(hass, tmp_path) -> None:
     hass.config.config_dir = tmp_path
     # ensure no exception when www/ramses_extras missing
@@ -70,6 +119,20 @@ async def test_cleanup_old_card_deployments_removes_old_versions(
 
     # All versioned directories should be removed when using stable paths
     assert not any(p.exists() for p in dirs)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_card_deployments_skips_files(hass, tmp_path) -> None:
+    """Test cleanup skips non-directory entries."""
+    hass.config.config_dir = tmp_path
+    root = Path(tmp_path) / "www" / "ramses_extras"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "file.txt").write_text("test")
+
+    await cards.cleanup_old_card_deployments(hass, "1.0.0", [])
+
+    # File should not be removed
+    assert (root / "file.txt").exists()
 
 
 @pytest.mark.asyncio

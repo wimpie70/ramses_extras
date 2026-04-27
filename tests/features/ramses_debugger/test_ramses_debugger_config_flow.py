@@ -280,3 +280,41 @@ async def test_async_step_ramses_debugger_config_log_path_default_empty(flow):
 
         # Should use hass config path as default
         flow.hass.config.path.assert_called_once_with("home-assistant.log")
+
+
+@pytest.mark.asyncio
+async def test_async_step_ramses_debugger_config_refresh_without_hass():
+    """Test refresh when flow has no hass attribute (covers line 26)."""
+    flow = MagicMock()
+    # Set hass to None initially to test the else branch
+    del flow.hass
+    flow._config_entry = MagicMock()
+    flow._config_entry.options = {"ramses_debugger_log_path": "/existing.log"}
+    flow._refresh_config_entry = MagicMock()
+    flow.async_show_form = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.features.ramses_debugger.config_flow.AVAILABLE_FEATURES",
+        {"ramses_debugger": {"name": "Ramses Debugger"}},
+    ):
+        await async_step_ramses_debugger_config(flow, None)
+
+        # Should refresh config entry without hass
+        flow._refresh_config_entry.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_async_step_ramses_debugger_config_packet_log_default_with_value(flow):
+    """Test packet log default when existing value is present (covers line 88)."""
+    flow._config_entry.options = {
+        "ramses_debugger_packet_log_path": "  /custom/packet.log  "
+    }
+
+    with patch(
+        "custom_components.ramses_extras.features.ramses_debugger.config_flow.AVAILABLE_FEATURES",
+        {"ramses_debugger": {"name": "Ramses Debugger"}},
+    ):
+        await async_step_ramses_debugger_config(flow, None)
+
+        # Should show form
+        flow.async_show_form.assert_called_once()

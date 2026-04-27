@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant, State
 
 from custom_components.ramses_extras.framework.helpers.entity.core import (
     EntityHelpers,
+    _get_required_entities_from_feature,
     build_entity_mapping_templates,
     build_frontend_entity_mapping_templates,
     filter_entities_by_patterns,
@@ -236,6 +237,12 @@ class TestBuildFrontendEntityMappingTemplates:
         result = build_frontend_entity_mapping_templates(feature_def)
         assert result == {}
 
+    def test_build_config_item_template_not_string(self):
+        """Test when entity_template is not a string."""
+        feature_def = {"sensor_configs": {"test_sensor": {"entity_template": 123}}}
+        result = build_frontend_entity_mapping_templates(feature_def)
+        assert result == {}
+
     def test_generate_entity_name_from_template_missing_placeholder(self):
         """Test generating entity name with missing placeholder."""
         with pytest.raises(ValueError, match="Missing required placeholders"):
@@ -376,6 +383,56 @@ class TestBuildFrontendEntityMappingTemplates:
             assert "sensor.temp_*" in result
             assert "switch.fan_*" in result
 
+    @pytest.mark.asyncio
+    async def test_generate_entity_patterns_for_feature_exception(self):
+        """Test generating entity patterns when feature import fails."""
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.entity.core._import_required_entities_sync"
+        ) as mock_import:
+            mock_import.side_effect = Exception("Import failed")
+
+            result = await EntityHelpers.generate_entity_patterns_for_feature(
+                "invalid_feature"
+            )
+
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_generate_entity_patterns_for_feature_empty_required(self):
+        """Test generating entity patterns when required_entities is empty."""
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.entity.core._get_required_entities_from_feature"
+        ) as mock_get:
+            # Return empty dict for required_entities
+            mock_get.return_value = {}
+
+            result = await EntityHelpers.generate_entity_patterns_for_feature(
+                "test_feature"
+            )
+
+            # Should return empty list when no required entities
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_generate_entity_patterns_for_feature_success(self):
+        """Test generating entity patterns with successful import (covers lines 62-63)."""  # noqa: E501
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.entity.core._import_required_entities_sync"
+        ) as mock_import:
+            # Return actual required entities
+            mock_import.return_value = {
+                "sensors": ["temp", "humidity"],
+                "switches": ["fan"],
+            }
+
+            result = await EntityHelpers.generate_entity_patterns_for_feature(
+                "test_feature"
+            )
+
+            assert isinstance(result, list)
+            assert "sensor.temp_*" in result
+            assert "switch.fan_*" in result
+
     def test_get_entities_for_device(self):
         """Test getting entities for a specific device."""
         hass = MagicMock()
@@ -420,6 +477,45 @@ class TestBuildFrontendEntityMappingTemplates:
         # For now, test that it returns a list and handles exceptions gracefully
         result = EntityHelpers.get_all_required_entity_ids_for_device("32_153289")
         assert isinstance(result, list)
+
+
+class TestGetRequiredEntitiesFromFeature:
+    """Test cases for _get_required_entities_from_feature function."""
+
+    @pytest.mark.asyncio
+    async def test_get_required_entities_from_feature_with_required_entities(self):
+        """Test getting required entities when required_entities is defined (covers line 236)."""  # noqa: E501
+        with patch("importlib.import_module") as mock_import:
+            mock_module = MagicMock()
+            mock_module.FEATURE_DEFINITION = {
+                "required_entities": {"sensors": ["temp", "humidity"]}
+            }
+            mock_import.return_value = mock_module
+
+            result = await _get_required_entities_from_feature("test_feature")
+            assert result == {"sensors": ["temp", "humidity"]}
+
+    @pytest.mark.asyncio
+    async def test_get_required_entities_from_feature_derived_required(self):
+        """Test deriving required entities from config sources (covers lines 229-283)."""  # noqa: E501
+        with patch("importlib.import_module") as mock_import:
+            mock_module = MagicMock()
+            mock_module.FEATURE_DEFINITION = {
+                "sensor_configs": {
+                    "temp": {},
+                    "humidity": {"optional": True},  # Should be excluded
+                },
+                "switch_configs": {
+                    "fan": {},
+                },
+            }
+            mock_import.return_value = mock_module
+
+            result = await _get_required_entities_from_feature("test_feature")
+            assert result == {
+                "sensor": ["temp"],
+                "switch": ["fan"],
+            }
 
 
 class TestUtilityFunctions:

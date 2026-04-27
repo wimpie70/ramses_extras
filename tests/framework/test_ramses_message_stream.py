@@ -361,3 +361,33 @@ class TestRamsesMessageStream:
         stream.inject(data)
 
         callback.assert_called_once_with(data)
+
+    def test_parse_frame_returns_none_after_timestamp_filter(self) -> None:
+        """Test _parse_frame returns None when len(parts) < 8 after timestamp filter."""
+        hass = MagicMock()
+        stream = RamsesMessageStream(hass)
+        frame = "2026-04-18 RP --- 32:150000 37:170000"
+        result = stream._packet_fields_from_frame(frame)
+        assert result is None
+
+    def test_parse_frame_returns_none_after_ellipsis_filter(self) -> None:
+        """Test _parse_frame returns None when len(parts) < 7 after ellipsis filter."""
+        hass = MagicMock()
+        stream = RamsesMessageStream(hass)
+        frame = "... RP --- 32:150000 37:170000 --:------"
+        result = stream._packet_fields_from_frame(frame)
+        assert result is None
+
+    def test_get_ramses_message_stream_returns_existing(self) -> None:
+        """Test get_ramses_message_stream returns existing stream."""
+        from custom_components.ramses_extras.framework.helpers.ramses_message_stream import (  # noqa: E501
+            get_ramses_message_stream,
+        )
+
+        hass = MagicMock()
+        existing_stream = RamsesMessageStream(hass)
+        hass.data = {"ramses_extras": {"ramses_message_stream": existing_stream}}
+
+        result = get_ramses_message_stream(hass)
+
+        assert result is existing_stream

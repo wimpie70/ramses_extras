@@ -255,7 +255,9 @@ class ExtrasNumberEntity(ExtrasPlatformEntity, NumberEntity):
             options[feature_id][device_key] = {}
 
         options[feature_id][device_key][self._entity_type] = value
-        self.hass.config_entries.async_update_entry(self.config_entry, options=options)
+        await self.hass.config_entries.async_update_entry(
+            self.config_entry, options=options
+        )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
