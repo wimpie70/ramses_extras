@@ -24,12 +24,17 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads: []
+  payloads:
+  - '0000000001001E00'
+  notes: Captured from parsed_logs.txt (CO2 sensor 37:126776) on 2026-04-27
 - code: '1298'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads: []
+  payloads:
+  - '0001A4'
+  - '0001A6'
+  notes: Captured from parsed_logs.txt (CO2 sensor 37:126776) on 2026-04-27
 - code: 2E10
   verb: I
   trigger: periodic
