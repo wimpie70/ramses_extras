@@ -535,6 +535,7 @@ def ws_resume_devices(
     {
         vol.Required("type"): "ramses_extras/device_simulator/silence_devices",
         vol.Optional("device_ids", default=[]): [str],
+        vol.Optional("set_suppress", default=True): bool,
     }
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
@@ -543,7 +544,12 @@ async def ws_silence_devices(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Silence autonomous emission for one or more active devices."""
+    """Silence autonomous emission for one or more active devices.
+
+    When ``set_suppress`` is False, the emitter task is cancelled but the
+    ``suppress_autonomous`` flag is left untouched, so the device returns to the
+    idle state instead of the silenced/offline state.
+    """
 
     engine = _get_engine(hass)
     if not engine:
@@ -553,15 +559,30 @@ async def ws_silence_devices(
     device_ids = [
         device_id.upper() for device_id in msg.get("device_ids", []) if device_id
     ]
+    set_suppress = bool(msg.get("set_suppress", True))
 
     if device_ids:
         for device_id in device_ids:
-            await engine.async_silence_device(device_id)
-        connection.send_result(msg["id"], {"success": True, "silenced": device_ids})
+            await engine.async_silence_device(device_id, set_suppress=set_suppress)
+        connection.send_result(
+            msg["id"],
+            {"success": True, "silenced": device_ids, "set_suppress": set_suppress},
+        )
         return
 
-    await engine.async_silence_all()
-    connection.send_result(msg["id"], {"success": True, "silenced": "all"})
+    if set_suppress:
+        await engine.async_silence_all()
+        connection.send_result(msg["id"], {"success": True, "silenced": "all"})
+        return
+
+    # Pause-all (no suppress) – cancel emitters for every active device.
+    paused: list[str] = []
+    for device_id in list(engine.active_device_ids):
+        await engine.async_silence_device(device_id, set_suppress=False)
+        paused.append(device_id)
+    connection.send_result(
+        msg["id"], {"success": True, "paused": paused, "set_suppress": False}
+    )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

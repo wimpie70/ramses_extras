@@ -478,10 +478,17 @@ class ScenarioEngine:
         if device.slug == "FAN":
             await self._prime_fan_params(device)
 
-    async def async_silence_device(self, device_id: str) -> None:
-        """Stop a device's autonomous emission (simulate going offline).
+    async def async_silence_device(
+        self, device_id: str, *, set_suppress: bool = True
+    ) -> None:
+        """Stop a device's autonomous emission.
 
         :param device_id: Device to silence.
+        :param set_suppress: When True (default), also set
+            ``suppress_autonomous=True`` so the device is considered offline
+            (won't auto-resume). When False, only the running emitter task is
+            cancelled; the device returns to the idle state and can be resumed
+            normally.
         """
         device = self._active_devices.get(device_id)
         task = self._emitter_tasks.pop(device_id, None)
@@ -492,20 +499,26 @@ class ScenarioEngine:
             except asyncio.CancelledError:
                 pass
         if device_id in self._active_devices:
-            self._active_devices[device_id].suppress_autonomous = True
+            if set_suppress:
+                self._active_devices[device_id].suppress_autonomous = True
             # Fire event to notify UI that devices have changed
             self.hass.bus.async_fire(
                 "ramses_extras_simulator_devices_changed",
                 {
                     "device_id": device_id,
-                    "action": "silenced",
+                    "action": "silenced" if set_suppress else "paused",
                     "count": len(self._active_devices),
                     "source": device.origin if device else None,
                 },
             )
-        self._profile_device_ids.discard(device_id)
-        self._manual_device_ids.discard(device_id)
-        LOGGER.info("Device %s silenced", device_id)
+        if set_suppress:
+            self._profile_device_ids.discard(device_id)
+            self._manual_device_ids.discard(device_id)
+        LOGGER.info(
+            "Device %s %s",
+            device_id,
+            "silenced" if set_suppress else "paused (idle)",
+        )
 
     async def async_resume_device(self, device_id: str) -> None:
         """Resume a device's autonomous emission (simulate coming back online).

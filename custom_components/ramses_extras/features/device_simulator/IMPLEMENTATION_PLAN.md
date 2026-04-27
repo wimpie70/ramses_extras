@@ -994,6 +994,154 @@ This is in `config_profiles.py` / simulator startup — applied once when the si
 
 ---
 
+## UI Reorganization Proposal — Scenarios = Configure, Devices = Run+Observe
+
+### Problem
+
+The current Scenarios and Devices tabs have overlapping responsibilities, which makes the UI confusing:
+
+- **Playback** is split: save/import lives on Scenarios (`_buildConversationPlaybackSettingsCard`), but selection + run controls live on Devices (`_buildPlaybackConversationCard`).
+- **Profile emitters** start/stop lives on Devices, even though it's a scenario-level operation that affects what runs.
+- **Autonomous emission speed** lives on Devices, but it parameterizes scenarios (playback, profile emitters, manual injection).
+- Stub scenario cards (`device_unavailability`, `hvac_device_loss`, etc.) live on Scenarios with their own start/stop buttons, while results are visible on Devices.
+
+This means the user has to switch tabs to start a run and watch it, and the same concept (e.g., playback) is configured in two places.
+
+### Proposed Model
+
+**Scenarios tab = "What will run and how"** — pure configuration. No transport-level run controls.
+
+**Devices tab = "Run it and watch"** — minimal run/pause/stop controls with a summary of the current selection, plus the live device list and message previews.
+
+### Scenarios Tab (after reorganization)
+
+Configuration-only cards:
+
+1. **Toggles** (existing, keep on Scenarios)
+   - Auto Answer
+   - Auto-answer Unknown devices
+   - RF cache controls
+   - Profile-scenario toggle (PS)
+
+2. **Conversation Playback** (merged from current two cards)
+   - Save/import: paste ramses.log, name it, save to `device_db/conversations/imported/<name>.yaml`
+   - Saved playbacks list with search/filter
+   - **Selected playback** (single-select): conversation dropdown
+   - **Run parameters**: loops, fixed inter-message delay, skip-recorded-answers
+   - No play/pause/stop here — only configuration
+a
+3. **Profile Emitters** (moved from Devices)
+   - Start/stop is moved out; this card just shows: "X of Y profile devices configured"
+   - Still surfaces missing-device "Activate" buttons (these are setup, not run)
+   - Conflict warnings stay
+   - Adds a checkbox/setting "Include in next run" so it's clear this scenario is selected
+
+4. **Autonomous Emission Speed** (moved from Devices)
+   - Slider + presets + exact multiplier — scenario-level parameter
+   - Affects all running emitters live (existing behavior preserved)
+
+5. **Manual Device Injection** (stay on Scenarios)
+   - Form for ad-hoc device + Inject button (this is a one-off action, not a run/pause/stop loop, so the button stays here)
+   - Or move the Inject button to Devices tab too if we want strict separation — see Open Questions
+
+6. **Failure-mode scenarios** (stay on Scenarios) — `device_unavailability`, `hvac_device_loss`, stub scenarios
+   - Configuration form per scenario (params)
+   - **Remove** start/stop buttons from scenario cards
+   - Show "Selected" indicator when a scenario is currently armed for run
+
+### Devices Tab (after reorganization)
+
+Top of tab — **Run Console** (new, replaces current control cards):
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ Active scenario: Conversation Playback · my_playback     │
+│ Loops: 1 · Speed: 1× · Skip answers: off                 │
+│ Status: Idle                                             │
+│ [▶ Run] [⏸ Pause] [▶ Resume] [⏹ Stop]                    │
+└──────────────────────────────────────────────────────────┘
+```
+
+- Single console showing what's selected on Scenarios + run controls
+- One scenario can be active at a time (with conflict-aware grouping for multi-scenario runs like profile_emissions + playback)
+- For scenarios that can run concurrently (e.g., profile emitters + playback), show stacked rows with per-scenario controls
+
+Below the console — **Resume Emitters** card stays on Devices (per-device resume is a runtime action, not configuration).
+
+Below — **Active devices grid** with message previews (unchanged).
+
+### Combined Playback Card Details
+
+The current split:
+
+| Aspect | Scenarios card | Devices card |
+|---|---|---|
+| Paste log + save | ✅ | ❌ |
+| Saved playbacks list | ✅ | ❌ |
+| Selection dropdown | ❌ | ✅ |
+| Loops / delay / skip-answers | ❌ | ✅ |
+| Play / Pause / Resume / Stop | ❌ | ✅ |
+
+Merged playback card (Scenarios tab, configuration only):
+
+```
+┌─ Conversation Playback ─────────────────────────────────┐
+│ ── Import ──                                             │
+│ [textarea: paste ramses.log]                             │
+│ Name: [____]   [Save]  [Clear]                           │
+│                                                          │
+│ ── Saved playbacks ──                                    │
+│ Search: [____]                                           │
+│ • my_playback (42 frames)        [Select] [Delete]      │
+│ • fan_speed_test (12 frames)     [Select] [Delete]      │
+│                                                          │
+│ ── Run parameters (for selected: my_playback) ──        │
+│ Loops: [1]                                               │
+│ Fixed gap (s): [____]  (blank = use recorded timing)    │
+│ ☐ Skip recorded answers (let Auto Answer reply)         │
+└──────────────────────────────────────────────────────────┘
+```
+
+The Devices tab Run Console then shows: `Conversation Playback · my_playback (42 frames) · Loops 1 · 1×` and only `▶ ⏸ ▶ ⏹` buttons.
+
+### Resolved Decisions (2026-04-25)
+
+1. **Concurrent runs**: ❌ No stacking — single-active scenario on the Run Console. Conflicts still respected via existing backend checks.
+2. **Manual Device Injection**: Stays on **Devices** tab for now (ad-hoc per-device action keeps fast feedback).
+3. **Selection persistence**: Card state only; no config-store key. Selection resets on card reload.
+4. **Discoverability**: Add a "Configure on Scenarios →" hint on the Devices Run Console when no scenario is selected.
+
+### Implementation Steps
+
+**Phase A — File split** (no behavior change):
+
+- `device-simulator-card.js` (main): class, constructor, state, lifecycle, WS handlers, render shell, listeners dispatch.
+- `card/constants.js`: SCENARIO_* ids, LOADER_DRAFT_KEY, MESSAGE_HISTORY_LIMIT.
+- `card/styles.js`: `CARD_STYLE` template string.
+- `card/tabs/profiles-tab.js`: `buildProfiles(card)`, loader card, profile device stub/status.
+- `card/tabs/scenarios-tab.js`: `buildScenarios(card)`, scenario param renderer, playback settings card.
+- `card/tabs/devices-tab.js`: `buildDevices(card)`, run console, device cards, msg preview.
+- `card/tabs/events-tab.js`: `buildEvents(card)`.
+
+Each tab module exports plain functions taking the card instance; main class delegates `_buildXxx()` to them.
+
+**Phase B — UI reorganization** (after split lands cleanly):
+
+1. Refactor playback: Scenarios card becomes the single config source (selection + loops/delay/skip-answers + save/import); Devices card becomes run-only (status + buttons).
+2. Move `buildProfileEmissionsCard` and `buildAutonomousSpeedCard` to Scenarios tab module. Replace start/stop on profile emitters with "Select for run".
+3. Add `buildRunConsole` to Devices — shows single selected scenario (card state `_selectedScenario`) with ▶/⏸/▶/⏹. Hint "Configure on Scenarios →" when none selected.
+4. Strip start/stop buttons from individual scenario cards; clicking a card selects it (single-active).
+5. Keep Manual Device Injection on Devices tab (ad-hoc action with immediate feedback).
+6. Update listeners + tests.
+
+### Migration / Backward Compatibility
+
+- All websocket commands stay the same; only UI layout changes.
+- Existing saved playbacks, profiles, and config remain valid.
+- No backend changes required for phase 1; phase 2 may add a `selected_scenarios` config-store key for persistence.
+
+---
+
 ## State Save and Restore (Safe Deployment on Real Dev)
 
 When the device simulator is enabled on a real development system (not a container), it modifies ramses_cc configuration to isolate the simulator from production devices. To safely enable/disable the simulator without losing the user's real configuration, the simulator implements full state save/restore.

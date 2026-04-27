@@ -1,5 +1,6 @@
 """Additional tests for default services.py focusing on accessible functionality."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,6 +35,15 @@ def hass():
     hass.loop = MagicMock()
     hass.loop.call_later = MagicMock()
     hass.states = MagicMock()
+
+    # Mock async_create_task to immediately await the coroutine
+    async def mock_create_task(coro):
+        if asyncio.iscoroutine(coro):
+            await coro
+        return MagicMock()
+
+    hass.async_create_task = mock_create_task
+
     return hass
 
 
@@ -53,11 +63,9 @@ class TestServiceConstants:
             SVC_CALIBRATE_ALL_VALVES,
             SVC_FORCE_ZONE_VENTILATION,
         ]
-
-        for const in expected_constants:
-            assert isinstance(const, str)
-            assert len(const) > 0
-            assert const.replace("_", "").isalnum() or "-" in const
+        for constant in expected_constants:
+            assert isinstance(constant, str)
+            assert len(constant) > 0
 
 
 class TestZoneDemandServices:

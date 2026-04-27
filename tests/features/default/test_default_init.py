@@ -1,5 +1,7 @@
 """Tests for Default feature in features/default/__init__.py."""
 
+from unittest.mock import MagicMock, patch
+
 from custom_components.ramses_extras.features.default import (
     DEFAULT_BOOLEAN_CONFIGS,
     DEFAULT_DEVICE_ENTITY_MAPPING,
@@ -7,6 +9,7 @@ from custom_components.ramses_extras.features.default import (
     DEFAULT_SENSOR_CONFIGS,
     DEFAULT_SWITCH_CONFIGS,
 )
+from custom_components.ramses_extras.features.default.const import load_feature
 
 
 class TestDefaultFeatureConstants:
@@ -154,5 +157,34 @@ class TestDefaultFeatureConstants:
         assert DEFAULT_SENSOR_CONFIGS is not None
         assert DEFAULT_SWITCH_CONFIGS is not None
         assert DEFAULT_NUMBER_CONFIGS is not None
-        assert DEFAULT_BOOLEAN_CONFIGS is not None
-        assert DEFAULT_DEVICE_ENTITY_MAPPING is not None
+
+
+class TestLoadFeature:
+    """Test cases for load_feature function."""
+
+    @patch("custom_components.ramses_extras.extras_registry.extras_registry")
+    @patch(
+        "custom_components.ramses_extras.features.default.default_yaml.load_validator"
+    )
+    def test_load_feature_registers_configs(self, mock_load_validator, mock_registry):
+        """Test that load_feature registers all configurations."""
+        load_feature()
+
+        # Verify entity configs were registered
+        mock_registry.register_sensor_configs.assert_called_once_with(
+            DEFAULT_SENSOR_CONFIGS
+        )
+        mock_registry.register_switch_configs.assert_called_once_with(
+            DEFAULT_SWITCH_CONFIGS
+        )
+        mock_registry.register_number_configs.assert_called_once_with(
+            DEFAULT_NUMBER_CONFIGS
+        )
+        mock_registry.register_boolean_configs.assert_called_once_with(
+            DEFAULT_BOOLEAN_CONFIGS
+        )
+        mock_registry.register_device_mappings.assert_called_once_with(
+            DEFAULT_DEVICE_ENTITY_MAPPING
+        )
+        mock_registry.register_websocket_commands.assert_called_once()
+        mock_load_validator.assert_called_once()

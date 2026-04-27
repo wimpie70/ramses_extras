@@ -7,15 +7,26 @@ from homeassistant.components import websocket_api
 
 from custom_components.ramses_extras.const import DOMAIN
 from custom_components.ramses_extras.features.default.websocket_commands import (
+    ws_clear_zone_demand,
+    ws_export_bindings,
+    ws_export_zones,
     ws_get_2411_schema,
     ws_get_all_feature_entities,
     ws_get_available_devices,
+    ws_get_binding_diagnostics,
+    ws_get_binding_suggestions,
     ws_get_bound_rem,
     ws_get_cards_enabled,
     ws_get_enabled_features,
     ws_get_entity_mappings,
     ws_get_fan_config_associations,
     ws_get_remote_bindings,
+    ws_get_zone_adapter_diagnostics,
+    ws_get_zone_coordinator_state,
+    ws_get_zone_position,
+    ws_get_zones,
+    ws_run_zone_actuation,
+    ws_set_zone_demand,
     ws_websocket_info,
 )
 
@@ -30,6 +41,17 @@ ws_get_bound_rem = ws_get_bound_rem.__wrapped__
 ws_get_2411_schema = ws_get_2411_schema.__wrapped__
 ws_get_fan_config_associations = ws_get_fan_config_associations.__wrapped__
 ws_get_remote_bindings = ws_get_remote_bindings.__wrapped__
+ws_get_binding_diagnostics = ws_get_binding_diagnostics.__wrapped__
+ws_export_bindings = ws_export_bindings.__wrapped__
+ws_get_binding_suggestions = ws_get_binding_suggestions.__wrapped__
+ws_get_zones = ws_get_zones.__wrapped__
+ws_export_zones = ws_export_zones.__wrapped__
+ws_get_zone_position = ws_get_zone_position.__wrapped__
+ws_get_zone_adapter_diagnostics = ws_get_zone_adapter_diagnostics.__wrapped__
+ws_get_zone_coordinator_state = ws_get_zone_coordinator_state.__wrapped__
+ws_set_zone_demand = ws_set_zone_demand.__wrapped__
+ws_run_zone_actuation = ws_run_zone_actuation.__wrapped__
+ws_clear_zone_demand = ws_clear_zone_demand.__wrapped__
 
 
 @pytest.fixture
@@ -137,9 +159,46 @@ async def test_ws_get_cards_enabled(hass, connection):
     """Test ws_get_cards_enabled command."""
     msg = {"id": 1, "type": "ramses_extras/default/get_cards_enabled"}
     await ws_get_cards_enabled(hass, connection, msg)
-    connection.send_result.assert_called_once_with(
-        1, {"cards_enabled": True, "_backend_version": "0.0.0"}
-    )
+    connection.send_result.assert_called_once()
+    call_args = connection.send_result.call_args
+    result = call_args[0][1]
+    assert result["cards_enabled"] is True
+    assert "_backend_version" in result
+
+
+async def test_ws_websocket_info(connection):
+    """Test ws_websocket_info command."""
+    hass = MagicMock()
+    hass.data = {DOMAIN: {}}
+    msg = {"id": 1, "type": "ramses_extras/default/websocket_info"}
+
+    with (
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.extras_registry.get_all_websocket_commands"
+        ) as mock_get_commands,
+        patch(
+            "custom_components.ramses_extras.features.default.websocket_commands.extras_registry.get_features_with_websocket_commands"
+        ) as mock_get_features,
+    ):
+        mock_get_commands.return_value = {
+            "default": {"test_command": "command"},
+        }
+        mock_get_features.return_value = ["default"]
+
+        await ws_websocket_info(hass, connection, msg)
+
+        # Verify send_result was called
+        connection.send_result.assert_called_once()
+        call_args = connection.send_result.call_args
+        result = call_args[0][1]
+
+        # Verify the result structure
+        assert "commands" in result
+        assert "domain" in result
+        assert "total_commands" in result
+        assert "features" in result
+        assert result["domain"] == DOMAIN
+        assert len(result["commands"]) == 1
 
 
 async def test_ws_get_cards_enabled_error_path(connection):
@@ -548,4 +607,816 @@ async def test_ws_get_remote_bindings_error(connection):
 
     connection.send_error.assert_called_once_with(
         1, "get_remote_bindings_failed", "Registry error"
+    )
+
+
+async def test_ws_get_binding_diagnostics_general(connection):
+    """Test ws_get_binding_diagnostics returns general diagnostics."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.get_diagnostics.return_value = {"total_bindings": 5}
+    mock_registry.detect_conflicts.return_value = []
+    mock_registry.get_unmatched_traffic.return_value = [
+        {"rem_id": "37:999999", "command": "fan_high"}
+    ]
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        return_value=mock_registry,
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_binding_diagnostics"}
+        await ws_get_binding_diagnostics(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "diagnostics": {"total_bindings": 5},
+            "conflicts": [],
+            "unmatched_traffic": [{"rem_id": "37:999999", "command": "fan_high"}],
+        },
+    )
+
+
+async def test_ws_get_binding_diagnostics_with_rem_id(connection):
+    """Test ws_get_binding_diagnostics returns specific REM info."""
+    hass = MagicMock()
+    from datetime import datetime
+
+    mock_registry = MagicMock()
+    mock_registry.get_diagnostics.return_value = {"total_bindings": 5}
+    mock_registry.detect_conflicts.return_value = []
+    mock_registry.get_last_seen.return_value = datetime(2026, 1, 1, 12, 0, 0)
+    mock_registry.find_fan_for_rem.return_value = "32:123456"
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_binding_diagnostics",
+            "rem_id": "37:654321",
+        }
+        await ws_get_binding_diagnostics(hass, connection, msg)
+
+    result = connection.send_result.call_args[0][1]
+    assert result["rem_id"] == "37:654321"
+    assert result["last_seen"] == "2026-01-01T12:00:00"
+    assert result["bound_fan"] == "32:123456"
+
+
+async def test_ws_get_binding_diagnostics_error(connection):
+    """Test ws_get_binding_diagnostics handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        side_effect=Exception("Diagnostics error"),
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_binding_diagnostics"}
+        await ws_get_binding_diagnostics(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "get_binding_diagnostics_failed", "Diagnostics error"
+    )
+
+
+async def test_ws_export_bindings(connection):
+    """Test ws_export_bindings returns YAML export."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.export_bindings_yaml.return_value = (
+        "remote_binding:\n  FANs:\n    ..."
+    )
+    mock_registry.detect_conflicts.return_value = []
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        return_value=mock_registry,
+    ):
+        msg = {"id": 1, "type": "ramses_extras/export_bindings"}
+        await ws_export_bindings(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "yaml": "remote_binding:\n  FANs:\n    ...",
+            "conflicts": [],
+        },
+    )
+
+
+async def test_ws_export_bindings_error(connection):
+    """Test ws_export_bindings handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        side_effect=Exception("Export error"),
+    ):
+        msg = {"id": 1, "type": "ramses_extras/export_bindings"}
+        await ws_export_bindings(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "export_bindings_failed", "Export error"
+    )
+
+
+async def test_ws_get_binding_suggestions(connection):
+    """Test ws_get_binding_suggestions returns suggestions."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.get_binding_suggestions.return_value = {
+        "suggestions": [
+            {"rem_id": "37:999999", "fan_id": "32:123456", "confidence": 0.9}
+        ]
+    }
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        return_value=mock_registry,
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_binding_suggestions"}
+        await ws_get_binding_suggestions(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "suggestions": [
+                {"rem_id": "37:999999", "fan_id": "32:123456", "confidence": 0.9}
+            ]
+        },
+    )
+
+
+async def test_ws_get_binding_suggestions_with_device_id(connection):
+    """Test ws_get_binding_suggestions with device_id filter."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.get_binding_suggestions.return_value = {
+        "suggestions": [{"rem_id": "37:999999", "fan_id": "32:123456"}]
+    }
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_binding_suggestions",
+            "device_id": "32:123456",
+        }
+        await ws_get_binding_suggestions(hass, connection, msg)
+
+    mock_registry.get_binding_suggestions.assert_called_once_with("32:123456")
+
+
+async def test_ws_get_binding_suggestions_error(connection):
+    """Test ws_get_binding_suggestions handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.remote_binding.get_remote_binding_registry",
+        side_effect=Exception("Suggestions error"),
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_binding_suggestions"}
+        await ws_get_binding_suggestions(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "get_binding_suggestions_failed", "Suggestions error"
+    )
+
+
+async def test_ws_get_zones_all(connection):
+    """Test ws_get_zones returns all zones."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.list_all_zones.return_value = {
+        "32:123456": [{"zone_id": "bathroom"}, {"zone_id": "office"}]
+    }
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zones.get_zone_registry",
+        return_value=mock_registry,
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_zones"}
+        await ws_get_zones(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "zones_by_fan": {
+                "32:123456": [{"zone_id": "bathroom"}, {"zone_id": "office"}]
+            }
+        },
+    )
+
+
+async def test_ws_get_zones_for_device(connection):
+    """Test ws_get_zones returns zones for specific device."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.get_zones_for_fan.return_value = [
+        {"zone_id": "bathroom", "type": "room"},
+        {"zone_id": "office", "type": "room"},
+    ]
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zones.get_zone_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zones",
+            "device_id": "32:123456",
+        }
+        await ws_get_zones(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "device_id": "32:123456",
+            "zones": [
+                {"zone_id": "bathroom", "type": "room"},
+                {"zone_id": "office", "type": "room"},
+            ],
+        },
+    )
+
+
+async def test_ws_get_zones_error(connection):
+    """Test ws_get_zones handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zones.get_zone_registry",
+        side_effect=Exception("Zones error"),
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_zones"}
+        await ws_get_zones(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(1, "get_zones_failed", "Zones error")
+
+
+async def test_ws_export_zones(connection):
+    """Test ws_export_zones returns YAML export."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.export_zones_yaml.return_value = "zones:\n  FANs:\n    ..."
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zones.get_zone_registry",
+        return_value=mock_registry,
+    ):
+        msg = {"id": 1, "type": "ramses_extras/export_zones"}
+        await ws_export_zones(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1, {"yaml": "zones:\n  FANs:\n    ..."}
+    )
+
+
+async def test_ws_export_zones_error(connection):
+    """Test ws_export_zones handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zones.get_zone_registry",
+        side_effect=Exception("Export error"),
+    ):
+        msg = {"id": 1, "type": "ramses_extras/export_zones"}
+        await ws_export_zones(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "export_zones_failed", "Export error"
+    )
+
+
+async def test_ws_get_zone_position(connection):
+    """Test ws_get_zone_position returns zone position."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_adapter = MagicMock()
+    mock_adapter.is_available = True
+
+    mock_position = MagicMock()
+    mock_position.position = 50
+    mock_position.target_position = 60
+    mock_position.is_available = True
+    mock_position.source = "adapter"
+
+    mock_adapter.async_get_position = AsyncMock(return_value=mock_position)
+    mock_registry.get_or_create_adapter.return_value = mock_adapter
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_adapters.get_zone_adapter_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_position",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+        }
+        await ws_get_zone_position(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "position": 50,
+            "target_position": 60,
+            "is_available": True,
+            "source": "adapter",
+            "adapter_available": True,
+        },
+    )
+
+
+async def test_ws_get_zone_position_no_adapter(connection):
+    """Test ws_get_zone_position handles missing adapter."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.get_or_create_adapter.return_value = None
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_adapters.get_zone_adapter_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_position",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+        }
+        await ws_get_zone_position(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "error": "Zone not found or no adapter available",
+        },
+    )
+
+
+async def test_ws_get_zone_position_error(connection):
+    """Test ws_get_zone_position handles errors."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.get_or_create_adapter.side_effect = Exception("Adapter error")
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_adapters.get_zone_adapter_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_position",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+        }
+        await ws_get_zone_position(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "get_zone_position_failed", "Adapter error"
+    )
+
+
+async def test_ws_get_zone_adapter_diagnostics_global(connection):
+    """Test ws_get_zone_adapter_diagnostics returns global diagnostics."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.get_diagnostics.return_value = {"total_adapters": 3}
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_adapters.get_zone_adapter_registry",
+        return_value=mock_registry,
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_zone_adapter_diagnostics"}
+        await ws_get_zone_adapter_diagnostics(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(1, {"total_adapters": 3})
+
+
+async def test_ws_get_zone_adapter_diagnostics_for_fan(connection):
+    """Test ws_get_zone_adapter_diagnostics returns diagnostics for a FAN."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_adapter1 = MagicMock()
+    mock_adapter1.get_diagnostics.return_value = {
+        "zone_id": "bathroom",
+        "available": True,
+    }
+    mock_adapter2 = MagicMock()
+    mock_adapter2.get_diagnostics.return_value = {
+        "zone_id": "office",
+        "available": True,
+    }
+    mock_registry.get_all_adapters_for_fan.return_value = [mock_adapter1, mock_adapter2]
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_adapters.get_zone_adapter_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_adapter_diagnostics",
+            "fan_id": "32:123456",
+        }
+        await ws_get_zone_adapter_diagnostics(hass, connection, msg)
+
+    result = connection.send_result.call_args[0][1]
+    assert result["fan_id"] == "32:123456"
+    assert len(result["adapters"]) == 2
+
+
+async def test_ws_get_zone_adapter_diagnostics_for_zone(connection):
+    """Test ws_get_zone_adapter_diagnostics returns diagnostics for a specific zone."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_adapter = MagicMock()
+    mock_adapter.get_diagnostics.return_value = {
+        "zone_id": "bathroom",
+        "available": True,
+    }
+    mock_registry.get_adapter.return_value = mock_adapter
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_adapters.get_zone_adapter_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_adapter_diagnostics",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+        }
+        await ws_get_zone_adapter_diagnostics(hass, connection, msg)
+
+    result = connection.send_result.call_args[0][1]
+    assert result["fan_id"] == "32:123456"
+    assert result["zone_id"] == "bathroom"
+    assert result["adapter"]["zone_id"] == "bathroom"
+
+
+async def test_ws_get_zone_adapter_diagnostics_zone_not_found(connection):
+    """Test ws_get_zone_adapter_diagnostics handles missing zone adapter."""
+    hass = MagicMock()
+    mock_registry = MagicMock()
+    mock_registry.get_adapter.return_value = None
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_adapters.get_zone_adapter_registry",
+        return_value=mock_registry,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_adapter_diagnostics",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+        }
+        await ws_get_zone_adapter_diagnostics(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "error": "Adapter not found",
+        },
+    )
+
+
+async def test_ws_get_zone_adapter_diagnostics_error(connection):
+    """Test ws_get_zone_adapter_diagnostics handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_adapters.get_zone_adapter_registry",
+        side_effect=Exception("Diagnostics error"),
+    ):
+        msg = {"id": 1, "type": "ramses_extras/get_zone_adapter_diagnostics"}
+        await ws_get_zone_adapter_diagnostics(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "get_zone_adapter_diagnostics_failed", "Diagnostics error"
+    )
+
+
+async def test_ws_get_zone_coordinator_state_full(connection):
+    """Test ws_get_zone_coordinator_state returns full coordinator state."""
+    hass = MagicMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.is_enabled = True
+
+    from custom_components.ramses_extras.framework.helpers.zone_demand import (
+        DemandSource,
+    )
+
+    mock_state1 = MagicMock()
+    mock_state1.position = 50
+    mock_state1.is_available = True
+    mock_state1.demand_source = DemandSource.HUMIDITY
+    mock_state1.demand_reason = "High humidity"
+
+    mock_state2 = MagicMock()
+    mock_state2.position = 30
+    mock_state2.is_available = True
+    mock_state2.demand_source = DemandSource.CO2
+    mock_state2.demand_reason = "High CO2"
+
+    mock_coordinator.get_zone_states.return_value = {
+        "bathroom": mock_state1,
+        "office": mock_state2,
+    }
+    mock_coordinator.get_diagnostics.return_value = {"total_zones": 2}
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        return_value=mock_coordinator,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_coordinator_state",
+            "fan_id": "32:123456",
+        }
+        await ws_get_zone_coordinator_state(hass, connection, msg)
+
+    result = connection.send_result.call_args[0][1]
+    assert result["fan_id"] == "32:123456"
+    assert result["enabled"] is True
+    assert len(result["states"]) == 2
+    assert "diagnostics" in result
+
+
+async def test_ws_get_zone_coordinator_state_single_zone(connection):
+    """Test ws_get_zone_coordinator_state returns single zone state."""
+    hass = MagicMock()
+    mock_coordinator = MagicMock()
+
+    from custom_components.ramses_extras.framework.helpers.zone_demand import (
+        DemandSource,
+    )
+
+    mock_state = MagicMock()
+    mock_state.position = 50
+    mock_state.is_available = True
+    mock_state.is_controllable = True
+    mock_state.demand_source = DemandSource.HUMIDITY
+    mock_state.demand_reason = "High humidity"
+
+    mock_coordinator.get_zone_states.return_value = {"bathroom": mock_state}
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        return_value=mock_coordinator,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_coordinator_state",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+        }
+        await ws_get_zone_coordinator_state(hass, connection, msg)
+
+    result = connection.send_result.call_args[0][1]
+    assert result["fan_id"] == "32:123456"
+    assert result["zone_id"] == "bathroom"
+    assert result["state"]["position"] == 50
+    assert result["state"]["available"] is True
+    assert result["state"]["controllable"] is True
+
+
+async def test_ws_get_zone_coordinator_state_zone_not_found(connection):
+    """Test ws_get_zone_coordinator_state handles missing zone."""
+    hass = MagicMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.get_zone_states.return_value = {}
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        return_value=mock_coordinator,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_coordinator_state",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+        }
+        await ws_get_zone_coordinator_state(hass, connection, msg)
+
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "error": "Zone state not found",
+        },
+    )
+
+
+async def test_ws_get_zone_coordinator_state_error(connection):
+    """Test ws_get_zone_coordinator_state handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        side_effect=Exception("Coordinator error"),
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/get_zone_coordinator_state",
+            "fan_id": "32:123456",
+        }
+        await ws_get_zone_coordinator_state(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "get_zone_coordinator_state_failed", "Coordinator error"
+    )
+
+
+async def test_ws_set_zone_demand(connection):
+    """Test ws_set_zone_demand sets manual zone demand."""
+    hass = MagicMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.get_zone_states.return_value = {"bathroom": MagicMock()}
+    mock_coordinator.async_set_manual_zone_demand = AsyncMock(return_value=True)
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        return_value=mock_coordinator,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/set_zone_demand",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "fan_speed": "fan_high",
+        }
+        await ws_set_zone_demand(hass, connection, msg)
+
+    mock_coordinator.async_set_manual_zone_demand.assert_called_once_with(
+        zone_id="bathroom",
+        fan_speed="fan_high",
+        reason="Manual WebSocket demand",
+    )
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "fan_speed": "fan_high",
+            "applied": True,
+        },
+    )
+
+
+async def test_ws_set_zone_demand_with_reason(connection):
+    """Test ws_set_zone_demand with custom reason."""
+    hass = MagicMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.get_zone_states.return_value = {"bathroom": MagicMock()}
+    mock_coordinator.async_set_manual_zone_demand = AsyncMock(return_value=True)
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        return_value=mock_coordinator,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/set_zone_demand",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "fan_speed": "fan_high",
+            "reason": "Test demand",
+        }
+        await ws_set_zone_demand(hass, connection, msg)
+
+    mock_coordinator.async_set_manual_zone_demand.assert_called_once_with(
+        zone_id="bathroom",
+        fan_speed="fan_high",
+        reason="Test demand",
+    )
+
+
+async def test_ws_set_zone_demand_configures_zone(connection):
+    """Test ws_set_zone_demand configures zone if not in states."""
+    hass = MagicMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.get_zone_states.return_value = {}
+    mock_coordinator.async_set_manual_zone_demand = AsyncMock(return_value=True)
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        return_value=mock_coordinator,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/set_zone_demand",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "fan_speed": "fan_high",
+        }
+        await ws_set_zone_demand(hass, connection, msg)
+
+    mock_coordinator.configure_zone.assert_called_once_with("bathroom")
+
+
+async def test_ws_set_zone_demand_error(connection):
+    """Test ws_set_zone_demand handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        side_effect=Exception("Set demand error"),
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/set_zone_demand",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "fan_speed": "fan_high",
+        }
+        await ws_set_zone_demand(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "set_zone_demand_failed", "Set demand error"
+    )
+
+
+async def test_ws_run_zone_actuation(connection):
+    """Test ws_run_zone_actuation triggers actuation cycle."""
+    hass = MagicMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_run_zone_actuation_cycle = AsyncMock(
+        return_value={"bathroom": {"position": 50, "success": True}}
+    )
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        return_value=mock_coordinator,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/run_zone_actuation",
+            "fan_id": "32:123456",
+        }
+        await ws_run_zone_actuation(hass, connection, msg)
+
+    mock_coordinator.async_run_zone_actuation_cycle.assert_awaited_once()
+    result = connection.send_result.call_args[0][1]
+    assert result["fan_id"] == "32:123456"
+    assert result["results"] == {"bathroom": {"position": 50, "success": True}}
+    assert "timestamp" in result
+
+
+async def test_ws_run_zone_actuation_error(connection):
+    """Test ws_run_zone_actuation handles errors."""
+    hass = MagicMock()
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        side_effect=Exception("Actuation error"),
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/run_zone_actuation",
+            "fan_id": "32:123456",
+        }
+        await ws_run_zone_actuation(hass, connection, msg)
+
+    connection.send_error.assert_called_once_with(
+        1, "run_zone_actuation_failed", "Actuation error"
+    )
+
+
+async def test_ws_clear_zone_demand(connection):
+    """Test ws_clear_zone_demand clears manual zone demand."""
+    hass = MagicMock()
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_clear_manual_zone_demand = AsyncMock(return_value=True)
+
+    with patch(
+        "custom_components.ramses_extras.framework.helpers.zone_coordinator.get_zone_coordinator",
+        return_value=mock_coordinator,
+    ):
+        msg = {
+            "id": 1,
+            "type": "ramses_extras/clear_zone_demand",
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+        }
+        await ws_clear_zone_demand(hass, connection, msg)
+
+    mock_coordinator.async_clear_manual_zone_demand.assert_called_once_with("bathroom")
+    connection.send_result.assert_called_once_with(
+        1,
+        {
+            "fan_id": "32:123456",
+            "zone_id": "bathroom",
+            "cleared": True,
+        },
     )

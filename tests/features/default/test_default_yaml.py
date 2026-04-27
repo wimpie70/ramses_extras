@@ -7,6 +7,7 @@ import pytest
 from custom_components.ramses_extras.features.default.default_yaml import (
     default_validator,
     export_default_to_yaml,
+    load_validator,
     merge_default_config,
     parse_default_yaml,
 )
@@ -81,3 +82,26 @@ def test_merge_default_config_no_entities_in_imported():
     result = merge_default_config(existing, imported)
     # Should keep existing entities
     assert "sensor1" in result["entities"]
+
+
+def test_default_validator_non_dict():
+    """Test default_validator with non-dict input"""
+    result = default_validator("not_a_dict")
+    assert len(result) == 1
+    assert "dictionary" in result[0]
+
+
+def test_default_validator_list():
+    """Test default_validator with list input"""
+    result = default_validator([1, 2, 3])
+    assert len(result) == 1
+    assert "dictionary" in result[0]
+
+
+def test_load_validator():
+    """Test load_validator registers the validator"""
+    with patch(
+        "custom_components.ramses_extras.features.default.default_yaml.register_config_validator"
+    ) as mock_register:
+        load_validator()
+        mock_register.assert_called_once()

@@ -94,15 +94,37 @@ Shouldn't we filter this ? we know from our database what belongs to what
 ### when a fan replies to a REM, then it must be bound....
 -> we should mark it bound, maybe even add it to _rf as bound ?
 
---- next to do:
-
 ### scenario: rotate log files: we get reports of crashes or losing devices.
 we should be able to simulate and test this
 
 
-- refactor device-simulator-card in smaller files:
-  - tab files:
-    - with sub-components
+--- next to do:
+
+I want the flow to be clearer (for the user) 4 tabs:
+1. select and load profiles
+2. select scenario or playback (=scenario)
+3. a new options tab
+4. run/pause/stop scenario (or playback if this was selected) or random emitters + list devices
+so we move and combine playback to scenario tab and select (or 'load') a scenario,
+ with the loop, fixed gap and skip recorded answer options all to the scenario tab.
+ We keep the run/pause/stop buttons on the device tab, but we can control other scenarios with this as well.
+We also move the manual device injection to the scenario tab (with a select button) (and let run
+ on devices actually start it)
+We can remove the Profile emitters (device) but keep the Resume all idle/silence buttons.
+
+So we have all preparations on profile or scenario, and control the run and show the result on the device tab.
+On the scenario tab we need Select buttons instead of the Run buttons. So, we get this flow:
+1. load profile
+2. select scenario
+3. options:
+- editable: speed, auto answer, answer unknown (or only show state ?), preserve state on reload.
+- show state: RF Client: accept only known devices, enable eavesdrop, ...)
+4. run/pause/stop on device tab
+-> see the result on the device tab
+or if we don't run a scenario (or stopped it) we can run random emitters on found + profile devices (if enabled)
+
+for now leave the events tab as is.
+
 
 -- other:
 
