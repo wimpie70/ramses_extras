@@ -1029,7 +1029,7 @@ Configuration-only cards:
    - **Selected playback** (single-select): conversation dropdown
    - **Run parameters**: loops, fixed inter-message delay, skip-recorded-answers
    - No play/pause/stop here — only configuration
-
+a
 3. **Profile Emitters** (moved from Devices)
    - Start/stop is moved out; this card just shows: "X of Y profile devices configured"
    - Still surfaces missing-device "Activate" buttons (these are setup, not run)
