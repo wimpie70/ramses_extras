@@ -28,7 +28,7 @@ autonomous:
 - code: 12C8
   verb: I
   trigger: periodic
-  interval_seconds: 69.6
+  interval_seconds: 12.0
   payloads:
   - 00A740
   - 007A40
@@ -47,7 +47,7 @@ autonomous:
 - code: 31DA
   verb: I
   trigger: periodic
-  interval_seconds: 1459.7
+  interval_seconds: 10.0
   payloads:
   - 00EF007FFF392706FE05B4054F06F2680000011E1E0000EFEF04DF04DF00
   - 00EF007FFF392706FE05B4054F06F1680000011E1E0000EFEF04FB04DF00
@@ -59,16 +59,16 @@ autonomous:
   - 00EF007FFF3927070805B4054E06EF680000011E1E0000EFEF04DF820000
   - 00EF007FFF3927071205AA054E06E8680000011E1E0000EFEF04FB04DF00
   - 00EF007FFF3929071205B4054E06E3680000011E1E0000EFEF04DF04DF00
-  notes: Captured from parsed_logs.txt (Orcon fan 32:153289) on 2026-04-27
+  notes: Captured from parsed_logs.txt (Orcon fan 32:153289) on 2026-04-27 (sim-speed 10s)
 - code: 22F7
   verb: I
-  trigger: periodic
-  interval_seconds: 0.0
+  trigger: state_change
+  interval_seconds: 2.0
   payloads:
   - '00'
   - 0000EF
   - 00C8EF
-  notes: Example payloads from regression file
+  notes: Randomized fan bypass/relay state snapshots (state_change, ~2s base)
 - code: 31D9
   verb: I
   trigger: periodic

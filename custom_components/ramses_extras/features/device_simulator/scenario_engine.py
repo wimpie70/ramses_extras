@@ -15,6 +15,7 @@ Scenarios wire these together with timing, exclusions, and profile loading.
 from __future__ import annotations
 
 import asyncio
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -37,6 +38,7 @@ from .const import (
     SCENARIO_REGISTRY,
     SCENARIO_STATE_IDLE,
     SCENARIOS_CHANGED_EVENT,
+    TRIGGER_STATE_CHANGE,
     VERB_I,
     VERB_RP,
     VERB_RQ,
@@ -777,9 +779,10 @@ class ScenarioEngine:
             if not entry.payloads:
                 continue
 
-            idx = payload_idx[entry.code]
-            payload = entry.payloads[idx % len(entry.payloads)]
-            payload_idx[entry.code] = idx + 1
+            payload, next_idx = self._select_payload(entry, payload_idx[entry.code])
+            if payload is None:
+                continue
+            payload_idx[entry.code] = next_idx
 
             packet = self._build_packet(
                 device.device_id, "--:------", VERB_I, entry.code, payload
@@ -852,9 +855,10 @@ class ScenarioEngine:
                 if now < due:
                     continue
 
-                idx = payload_idx[entry.code]
-                payload = entry.payloads[idx % len(entry.payloads)]
-                payload_idx[entry.code] = idx + 1
+                payload, next_idx = self._select_payload(entry, payload_idx[entry.code])
+                if payload is None:
+                    continue
+                payload_idx[entry.code] = next_idx
 
                 packet = self._build_packet(
                     device.device_id,
@@ -886,12 +890,43 @@ class ScenarioEngine:
                     else self._autonomous_speed,
                     0.01,
                 )
-                interval = interval_cache.get(entry.code, 60.0) / current_speed
+                base_interval = interval_cache.get(entry.code, 60.0)
+                interval = self._next_interval_seconds(
+                    entry,
+                    base_interval,
+                    current_speed,
+                )
                 next_due[entry.code] = time.monotonic() + interval
 
             soonest_due = min(next_due.values(), default=time.monotonic() + 5.0)
             delay = max(soonest_due - time.monotonic(), 0.5)
             await asyncio.sleep(min(delay, 5.0))
+
+    def _select_payload(
+        self,
+        entry: AutonomousEntry,
+        idx: int,
+    ) -> tuple[str | None, int]:
+        if not entry.payloads:
+            return None, idx
+        if entry.trigger == TRIGGER_STATE_CHANGE:
+            return random.choice(entry.payloads), idx
+        return entry.payloads[idx % len(entry.payloads)], idx + 1
+
+    def _next_interval_seconds(
+        self,
+        entry: AutonomousEntry,
+        base_interval: float,
+        current_speed: float,
+    ) -> float:
+        base_interval = max(base_interval, 0.5)
+        if entry.trigger == TRIGGER_STATE_CHANGE:
+            low = max(base_interval * 0.5, 0.2)
+            high = max(base_interval * 1.5, low + 0.1)
+            interval = random.uniform(low, high)
+        else:
+            interval = base_interval
+        return max(interval / current_speed, 0.1)
 
     async def _handle_inbound_frame(self, frame: str) -> None:
         """Handle a frame received from ramses_rf (outbound /tx) or from device
