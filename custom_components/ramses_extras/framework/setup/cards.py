@@ -304,9 +304,6 @@ async def register_cards(hass: HomeAssistant) -> None:
 
         _LOGGER.info("Feature-centric CardRegistry registration complete")
 
-        # Signal frontend to hard refresh the card
-        hass.bus.async_fire("ramses_extras_card_refresh")
-
     except Exception as e:
         _LOGGER.error("CardRegistry registration failed: %s", e)
         _LOGGER.warning("Continuing integration startup without card registration")
@@ -433,6 +430,11 @@ async def setup_card_files_and_config(hass: HomeAssistant, entry: ConfigEntry) -
         await copy_all_card_files(hass, card_features)
 
         await expose_feature_config_to_frontend(hass, entry)
+
+        # Signal frontend to reload only after all card files and features.js
+        # are fully written - prevents the browser from fetching a missing or
+        # stale ramses-extras-features.js and showing "Feature Disabled".
+        hass.bus.async_fire("ramses_extras_card_refresh")
 
         _LOGGER.info("Card files and configuration setup complete")
 
