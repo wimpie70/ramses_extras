@@ -39,3 +39,24 @@ responses:
   - 001F
   - '0029'
   notes: Binding acknowledgements shared across heat devices (regression_packets_sorted.txt#297-358)
+- code: '1060'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 006401
+  notes: DHW temperature response
+- code: '1260'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00
+  notes: DHW setpoint response
+- code: 1FC9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 001260001060
+  notes: Multi-code response

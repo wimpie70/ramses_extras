@@ -45,5 +45,47 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
+  - 000001FF050BFFFFFFFF0E0907E2070307E1424452393141000000000000000000000000
+  notes: Device info response (BDR91A)
+- code: '0008'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - FA00
+  notes: Device status response
+- code: '0016'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 001F
+  notes: Binding acknowledgement
+- code: '1100'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00180400007FFF01
+  notes: Relay demand response
+- code: 1FC9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 001100003EF0
+  notes: Multi-code response
+- code: 3B00
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00C8
+  notes: Boiler fault response
+- code: 3EF1
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
   - '00'
-  notes: Minimal fallback payload until per-variant device_info data is curated
+  notes: Extended device response

@@ -251,3 +251,157 @@ responses:
   payloads:
   - 00FFFFFFFFFFFF00
   notes: System mode discovery response from regression_packets_sorted.txt#1095-1096,1147-1148
+- code: '0002'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00
+  notes: Minimal response for device status
+- code: '0004'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0000434C6F756E67650000000000000000000000000000
+  notes: Zone name response (Lounge)
+- code: '0005'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0000FF01
+  notes: Zone configuration response
+- code: '0006'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00
+  notes: Zone schedule response
+- code: '000A'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 011001F40DAC
+  notes: Zone setpoint response
+- code: '000C'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00
+  notes: Zone mode response
+- code: '0100'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00656EFFFF
+  notes: Locale response (en_GB)
+- code: '0404'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0120000829010368816DCCC91183301005D1D93428200E1C7D720C04402C0442640E82000C851701ADD3AFAED1131151
+  notes: Installation code response
+- code: '0418'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 000000B0060402000000BC955AB2FFFFFF70020F131A
+  notes: Commissioning data response
+- code: 10A0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0013880003E8
+  notes: Outside air temperature response
+- code: '1100'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - FC180400007FFF01
+  notes: Relay demand response
+- code: '1260'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00
+  notes: DHW setpoint response
+- code: '1290'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00
+  notes: DHW mode response
+- code: 12B0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '000000'
+  notes: Heating valve response
+- code: 1F09
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - FF091A
+  notes: Sync interval response
+- code: 1FC9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 072309054E29
+  notes: Multi-code response
+- code: 1F41
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 000000FFFFFF
+  notes: Extended device info response
+- code: '2309'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0005DC0101F40205DC
+  notes: Zone demand response
+- code: '2349'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0007D000FFFFFF
+  notes: Zone setpoint override response
+- code: 30C9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0007BB
+  notes: Zone temperature response
+- code: 313F
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FC081CCF0D0307E6
+  notes: Clock/programme response
+- code: 3B00
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - FCC8
+  notes: Boiler fault response

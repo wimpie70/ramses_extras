@@ -192,3 +192,115 @@ responses:
   - 00007567920000082A0000000000000BB800000001CB01  # Comfort temperature
   - 0000954C0F000000C800000000000000C800000001CB32  # Boost mode fan rate
   notes: Captured from real device traffic (37:168270 Display -> 32:153289 FAN) on 2026-04-22
+- code: '0001'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00800000200001'
+  notes: Menu index response (same format as REM)
+- code: 10D0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '0000B400B4'
+  notes: Filter remaining ~180 days, 180 day lifetime
+- code: '1470'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00B30E60802A0108
+  notes: Programme scheme (7-day, 3 setpoints)
+- code: 1F09
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - FF091A
+  notes: Sync interval (~1200s)
+- code: '2210'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00EF007FFF7FFF0000000000FFFFFFFFFF00FFFFFFFF000000FFFFFFFFFFFFFFFF000000000000000000
+  notes: Air quality / exhaust fan speed (42 bytes matching I format)
+- code: 22E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00000000'
+  notes: Bypass position 0% (RP ^00[0-9A-F]{6}$)
+- code: 22E5
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00000000'
+  notes: Remaining minutes 0 (RP ^00[0-9A-F]{6}$)
+- code: 22E9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00000064'
+  notes: Speed cap 100% (RP ^00[0-9A-F]{6}$)
+- code: 22F1
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '000207'
+  notes: Fan mode low/orcon scheme (RP ^00[0-9A-F]{4}$)
+- code: 22F2
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '000000'
+  notes: Post heat off (RP ^00[0-9A-F]{4}$)
+- code: 22F4
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00403000000000000000000000'
+  notes: Pre heat / fan mode data (matches autonomous 22F4 payload)
+- code: 22F7
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0000EF
+  notes: Bypass mode off (RP same as I format)
+- code: 313E
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '000000000000000000000000'
+  notes: Unknown HVAC code (RP ^00[0-9A-F]{20}$)
+- code: 313F
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FCAF00C4110A07E5
+  notes: Clock/datetime sync response
+- code: 31D9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '000207'
+  notes: Fan state - orcon scheme medium speed (3-byte minimal format)
+- code: '3222'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '000000'
+  notes: Diagnostic (RP ^00[0-9A-F]{4,24}$)
