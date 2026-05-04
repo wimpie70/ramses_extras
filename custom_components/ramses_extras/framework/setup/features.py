@@ -126,9 +126,9 @@ async def load_feature_definitions_and_platforms(
 ) -> None:
     """Load feature definitions and set up platforms.
 
-    Registers default commands, loads enabled features, imports platform
-    modules, discovers devices, sets up platforms, and initializes
-    WebSocket integration.
+    Registers default commands, loads enabled features, initializes
+    WebSocket integration, imports platform modules, discovers devices,
+    and sets up platforms.
 
     :param hass: Home Assistant instance
     :param entry: Configuration entry
@@ -147,6 +147,10 @@ async def load_feature_definitions_and_platforms(
 
     await asyncio.to_thread(extras_registry.load_all_features, enabled_feature_names)
 
+    # Register websocket commands as early as possible after feature metadata
+    # is loaded so startup card probes (get_cards_enabled) can succeed sooner.
+    await setup_websocket_integration(hass)
+
     await import_feature_platform_modules(enabled_feature_names)
 
     await discover_and_store_devices_fn(hass)
@@ -155,8 +159,6 @@ async def load_feature_definitions_and_platforms(
         entry,
         [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.NUMBER],
     )
-
-    await setup_websocket_integration(hass)
 
     sensor_count = len(extras_registry.get_all_sensor_configs())
     switch_count = len(extras_registry.get_all_switch_configs())
