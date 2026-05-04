@@ -7,11 +7,14 @@ from ..const import SCENARIO_AUTO_ANSWER, SCENARIO_DISCOVERY_TEST, VERB_I
 from ..system_config import SIM_DEVICE_ID
 from .base import ScenarioContext, ScenarioDefinition, ScenarioResult
 
+DEFAULT_PAYLOAD = "0000000000000000"
+
 
 async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResult:
     slug = str(params.get("slug", "FAN")) or "FAN"
     slug = slug.upper()
-    device_id = params.get("device_id") or SIM_DEVICE_ID.get(slug)
+
+    device_id = _resolve_device_id(context, slug, params.get("device_id"))
     if not device_id:
         return ScenarioResult(
             scenario_id=SCENARIO_DISCOVERY_TEST,
@@ -19,17 +22,7 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
             errors=[f"No device_id available for slug '{slug}'"],
         )
 
-    fingerprint = params.get("fingerprint")
-    payload = params.get("payload")
-    if not payload:
-        if fingerprint:
-            payload = (
-                context.device_db.get_fingerprint_payload(fingerprint) or fingerprint
-            )
-        else:
-            payload = fingerprint or "0000000000000000"
-
-    payload = str(payload).upper()
+    payload = _resolve_payload(context, slug, device_id, params)
     count = max(1, int(params.get("count", 3)))
     interval = float(params.get("interval", 1.0))
     include_burst = bool(params.get("include_startup_burst", True))
@@ -52,9 +45,11 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         SCENARIO_DISCOVERY_TEST,
         {
             "device_id": device_id,
+            "slug": slug,
             "count": count,
             "interval": interval,
             "payload": payload,
+            "include_startup_burst": include_burst,
         },
     )
 
@@ -64,6 +59,8 @@ async def run(context: ScenarioContext, params: dict[str, Any]) -> ScenarioResul
         details={
             "message": f"Emitting {count} discovery frames from {device_id}",
             "device_id": device_id,
+            "slug": slug,
+            "payload": payload,
             "count": count,
             "interval": interval,
         },
@@ -95,6 +92,51 @@ async def _emit_discovery_frames(
         raise
     finally:
         context.clear_running(SCENARIO_DISCOVERY_TEST)
+
+
+def _resolve_device_id(
+    context: ScenarioContext, slug: str, explicit_id: str | None
+) -> str | None:
+    if explicit_id:
+        return str(explicit_id).upper()
+
+    active = context.active_devices_by_slug(slug)
+    if active:
+        return active[0].device_id
+
+    return SIM_DEVICE_ID.get(slug)
+
+
+def _resolve_payload(
+    context: ScenarioContext,
+    slug: str,
+    device_id: str,
+    params: dict[str, Any],
+) -> str:
+    payload = params.get("payload")
+    if payload:
+        return str(payload).replace(" ", "").upper()
+
+    fingerprint = params.get("fingerprint")
+    if fingerprint:
+        resolved = context.device_db.get_fingerprint_payload(str(fingerprint).upper())
+        if resolved:
+            return resolved.upper()
+        return str(fingerprint).upper()
+
+    active_device = context.get_active_device(device_id)
+    if active_device:
+        response = context.device_db.find_response(
+            active_device.slug, "10E0", active_device.variant_id
+        )
+        if response and response.payloads:
+            return response.payloads[0].upper()
+
+    entry = context.device_db.find_response(slug, "10E0", None)
+    if entry and entry.payloads:
+        return entry.payloads[0].upper()
+
+    return DEFAULT_PAYLOAD
 
 
 SCENARIO_DEFINITION = ScenarioDefinition(

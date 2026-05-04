@@ -137,6 +137,15 @@ class RamsesMessageStream:
             "frame": frame.strip(),
         }
 
+    def _extract_msg_addr(self, msg: Any, attr: str, dto_attr: str) -> str | None:
+        value = getattr(getattr(msg, attr, None), "id", None)
+        if isinstance(value, str) and value:
+            return value
+        dto_value = getattr(msg, dto_attr, None)
+        if isinstance(dto_value, str) and dto_value:
+            return dto_value
+        return None
+
     def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
         data = dict(event.data or {})
         data["time_fired"] = event.time_fired.isoformat(timespec="microseconds")
@@ -158,18 +167,28 @@ class RamsesMessageStream:
             else None
         )
         payload = getattr(pkt, "payload", None)
+        if payload is None:
+            payload = getattr(msg, "payload", None)
         data = parsed or {
-            "src": getattr(getattr(msg, "src", None), "id", None),  # type: ignore[dict-item]
-            "dst": getattr(getattr(msg, "dst", None), "id", None),  # type: ignore[dict-item]
+            "src": self._extract_msg_addr(msg, "src", "addr1"),  # type: ignore[dict-item]
+            "dst": self._extract_msg_addr(msg, "dst", "addr2"),  # type: ignore[dict-item]
             "verb": str(getattr(msg, "verb", "")) or None,  # type: ignore[dict-item]
             "code": str(getattr(msg, "code", "")) or None,  # type: ignore[dict-item]
         }
         data["payload"] = str(payload) if payload is not None else None  # type: ignore[assignment]
+
+        if "frame" not in data:
+            frame = self._frame_from_dict(data)
+            if frame:
+                data["frame"] = frame
+
         if isinstance(packet, str) and packet:
             data["packet"] = packet
             data.setdefault("frame", packet)
 
         dtm = getattr(msg, "dtm", None)
+        if dtm is None:
+            dtm = getattr(msg, "timestamp", None)
         if isinstance(dtm, datetime):
             data["dtm"] = dtm.isoformat(timespec="microseconds")
         elif isinstance(dtm, str):

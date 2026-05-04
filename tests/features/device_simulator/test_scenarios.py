@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1011,6 +1012,65 @@ class TestDiscoveryTest:
 
         assert result.success is True
         assert "37:168270" in result.details["device_id"]
+
+    @pytest.mark.asyncio
+    async def test_run_uses_active_device_when_missing_device_id(self):
+        """Ensure the scenario falls back to the first active device for a slug."""
+        hass = MagicMock()
+        engine = MagicMock()
+        engine.async_cancel_scenario = AsyncMock()
+        engine._active_devices = {
+            "32:150000": ActiveDevice(
+                device_id="32:150000", slug="FAN", variant_id="itho"
+            )
+        }
+        context = ScenarioContext(hass, engine)
+        context.device_db.find_response = MagicMock(return_value=None)
+
+        async def mock_create_task(coro, name):
+            await coro
+            return MagicMock()
+
+        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+
+        result = await discovery_test_run(context, {"slug": "fan"})
+
+        assert result.success is True
+        assert result.details["device_id"] == "32:150000"
+
+    @pytest.mark.asyncio
+    async def test_run_prefers_variant_payload(self):
+        """Payload resolves from the active device variant response if available."""
+        hass = MagicMock()
+        engine = MagicMock()
+        engine.async_cancel_scenario = AsyncMock()
+        engine._active_devices = {
+            "32:150000": ActiveDevice(
+                device_id="32:150000", slug="FAN", variant_id="itho"
+            )
+        }
+        context = ScenarioContext(hass, engine)
+        context.device_db.get_fingerprint_payload = MagicMock(return_value=None)
+
+        variant_response = SimpleNamespace(payloads=["00aabbcc"])
+
+        def _find_response(slug, code, variant):
+            if variant == "itho":
+                return variant_response
+            return None
+
+        context.device_db.find_response = MagicMock(side_effect=_find_response)
+
+        async def mock_create_task(coro, name):
+            await coro
+            return MagicMock()
+
+        hass.async_create_background_task = MagicMock(side_effect=mock_create_task)
+
+        result = await discovery_test_run(context, {"slug": "FAN"})
+
+        assert result.success is True
+        assert result.details["payload"] == "00AABBCC"
 
     @pytest.mark.asyncio
     async def test_run_with_fingerprint(self):

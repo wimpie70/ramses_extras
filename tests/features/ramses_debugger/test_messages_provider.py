@@ -294,6 +294,8 @@ def test_silence_loggers_restores_state() -> None:
 
 def test_decode_message_with_ramses_rf_missing_module(monkeypatch) -> None:
     # Ensure import fails
+    monkeypatch.setitem(sys.modules, "ramses_rf", None)
+    monkeypatch.setitem(sys.modules, "ramses_rf.message", None)
     monkeypatch.setitem(sys.modules, "ramses_tx", None)
     monkeypatch.setitem(sys.modules, "ramses_tx.message", None)
     monkeypatch.setitem(sys.modules, "ramses_tx.packet", None)
@@ -548,6 +550,7 @@ def test_decode_message_with_ramses_rf_validation_returns_none(
 
 
 def test_decode_message_with_ramses_rf_success(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "ramses_rf.message", None)
     mod_packet = types.ModuleType("ramses_tx.packet")
     mod_message = types.ModuleType("ramses_tx.message")
 

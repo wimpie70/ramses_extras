@@ -68,6 +68,36 @@ class TestRamsesMessageStream:
 
         data = callback.call_args.args[0]
         assert data["src"] == "32:150000"
+
+    def test_handle_msg_with_dto_shape(self) -> None:
+        """Test _handle_msg handles PacketDTO-like objects."""
+        hass = MagicMock()
+        stream = RamsesMessageStream(hass)
+        callback = MagicMock()
+        stream.subscribe(callback)
+
+        msg = SimpleNamespace(
+            addr1="32:150000",
+            addr2="37:170000",
+            verb="RP",
+            code="2411",
+            payload="00003E",
+            timestamp=datetime(2026, 4, 18, 9, 0, 0),
+        )
+
+        stream._handle_msg(msg)
+
+        callback.assert_called_once()
+        data = callback.call_args.args[0]
+        assert data["src"] == "32:150000"
+        assert data["dst"] == "37:170000"
+        assert data["verb"] == "RP"
+        assert data["code"] == "2411"
+        assert data["payload"] == "00003E"
+        assert (
+            data["frame"] == "000 RP --- 32:150000 37:170000 --:------ 2411 003 00003E"
+        )
+        assert data["dtm"] == "2026-04-18T09:00:00.000000"
         assert data["dst"] == "37:170000"
 
     def test_event_path_kept_for_requests_when_handler_attached(self) -> None:

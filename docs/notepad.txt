@@ -100,9 +100,6 @@ we should be able to simulate and test this
 
 --- next to do:
 
-### check the profiles (like normal) if they are realistic
-
-### check the profiles if they have unknown entities (like fan) and create proper answers for this
 
 -- other:
 
