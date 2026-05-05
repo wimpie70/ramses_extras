@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -53,19 +54,38 @@ class RamsesMessageStream:
 
         return _unsub
 
+    def _resolve_add_msg_handler(self, coordinator: Any) -> Callable[..., Any] | None:
+        if coordinator is None:
+            return None
+
+        add_msg_handler = getattr(coordinator, "add_msg_handler", None)
+        if callable(add_msg_handler):
+            return add_msg_handler  # type: ignore[no-any-return]
+
+        client = getattr(coordinator, "client", None)
+        add_msg_handler = getattr(client, "add_msg_handler", None)
+        if callable(add_msg_handler):
+            return add_msg_handler  # type: ignore[no-any-return]
+
+        return None
+
     async def _async_attach_client_listener(self) -> None:
         commands = RamsesCommands(self._hass)
-        coordinator = await commands._get_ramses_cc_coordinator()
-        client = (
-            getattr(coordinator, "client", None) if coordinator is not None else None
-        )
-        add_msg_handler = getattr(client, "add_msg_handler", None)
-        if not callable(add_msg_handler) or self._msg_handler_unsub is not None:
-            return
+        max_attempts = 15
 
-        msg_handler_unsub = add_msg_handler(self._handle_msg)
-        if callable(msg_handler_unsub):
-            self._msg_handler_unsub = msg_handler_unsub
+        for _ in range(max_attempts):
+            if self._msg_handler_unsub is not None:
+                return
+
+            coordinator = await commands._get_ramses_cc_coordinator()
+            add_msg_handler = self._resolve_add_msg_handler(coordinator)
+            if callable(add_msg_handler):
+                msg_handler_unsub = add_msg_handler(self._handle_msg)
+                if callable(msg_handler_unsub):
+                    self._msg_handler_unsub = msg_handler_unsub
+                    return
+
+            await asyncio.sleep(1)
 
     def inject(self, data: dict[str, Any]) -> None:
         """Inject a message directly to all subscribers.
