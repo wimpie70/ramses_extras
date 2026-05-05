@@ -31,6 +31,24 @@ async def test_async_setup_platforms_uses_cached_devices(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_setup_platforms_rediscovers_when_cached_empty(hass) -> None:
+    """Empty cached device list should not block a fresh discovery."""
+    hass.config.components.add("ramses_cc")
+    hass.data.setdefault(DOMAIN, {})["devices"] = []
+    hass.data[DOMAIN]["device_discovery_complete"] = True
+
+    discovered = [MagicMock(id="32:000001")]
+    with patch(
+        "custom_components.ramses_extras.framework.setup.devices.discover_ramses_devices",
+        new=AsyncMock(return_value=discovered),
+    ) as discover:
+        await devices.async_setup_platforms(hass)
+
+    discover.assert_awaited_once()
+    assert hass.data[DOMAIN]["devices"] == discovered
+
+
+@pytest.mark.asyncio
 async def test_async_setup_platforms_retries_when_not_loaded(hass) -> None:
     hass.config.components.clear()
 
@@ -340,6 +358,27 @@ async def test_discover_ramses_devices_broker_devices_attr(hass) -> None:
     result = await devices.discover_ramses_devices(hass)
 
     assert [getattr(d, "id", d) for d in result] == ["devices_attr"]
+
+
+@pytest.mark.asyncio
+async def test_discover_ramses_devices_from_coordinator_client(hass) -> None:
+    """Support coordinator-shaped hass.data entries with devices on .client."""
+
+    class Client:
+        def __init__(self) -> None:
+            self.devices = [MagicMock(id="client_device")]
+
+    class Coordinator:
+        def __init__(self) -> None:
+            self.client = Client()
+
+    entry = MagicMock(entry_id="1")
+    hass.config_entries.async_entries = MagicMock(return_value=[entry])
+    hass.data.setdefault("ramses_cc", {})["1"] = Coordinator()
+
+    result = await devices.discover_ramses_devices(hass)
+
+    assert [getattr(d, "id", d) for d in result] == ["client_device"]
 
 
 @pytest.mark.asyncio

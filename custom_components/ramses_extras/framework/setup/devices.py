@@ -83,6 +83,39 @@ _RAMSES_DEVICE_ID_EMBEDDED = re.compile(
 )
 
 
+def _extract_devices_from_candidate(candidate: Any) -> list[Any]:
+    """Extract discovered devices from a coordinator/broker/gateway candidate."""
+    if candidate is None:
+        return []
+
+    # Legacy/new attributes seen across coordinator/gateway revisions.
+    devices = getattr(candidate, "_devices", None)
+    if not devices:
+        devices = getattr(candidate, "devices", None)
+
+    # Some wrappers expose the actual gateway/client under known attributes.
+    if not devices:
+        for nested_attr in ("client", "gateway", "broker"):
+            nested = getattr(candidate, nested_attr, None)
+            if nested is None:
+                continue
+            nested_devices = getattr(nested, "_devices", None)
+            if not nested_devices:
+                nested_devices = getattr(nested, "devices", None)
+            if nested_devices:
+                devices = nested_devices
+                break
+
+    if not devices:
+        return []
+
+    if isinstance(devices, dict):
+        return list(devices.values())
+    if isinstance(devices, (list, set, tuple)):
+        return list(devices)
+    return [devices]
+
+
 async def setup_entity_registry_device_refresh(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -198,11 +231,19 @@ async def async_setup_platforms(hass: HomeAssistant) -> None:
             _LOGGER.debug("Ramses CC is loaded, verifying device discovery...")
 
             device_data = hass.data.setdefault(DOMAIN, {})
-            if "devices" in device_data and "device_discovery_complete" in device_data:
+            cached_devices = device_data.get("devices")
+            cached_complete = "device_discovery_complete" in device_data
+            use_cached = (
+                isinstance(cached_devices, list)
+                and bool(cached_devices)
+                and cached_complete
+            )
+
+            if use_cached:
                 _LOGGER.debug(
                     "Device discovery already completed, using cached results"
                 )
-                devices = device_data["devices"]
+                devices = cached_devices
                 device_ids = [getattr(device, "id", str(device)) for device in devices]
                 _LOGGER.debug("Using cached device IDs: %s", device_ids)
             else:
@@ -263,6 +304,7 @@ async def discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
 
     try:
         broker: Any | None = None
+        devices_list: list[Any] = []
         if "ramses_cc" in hass.data and entry.entry_id in hass.data["ramses_cc"]:
             broker_data = hass.data["ramses_cc"][entry.entry_id]
             if (
@@ -277,6 +319,18 @@ async def discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
             else:
                 broker = broker_data
             _LOGGER.debug("Found broker via hass.data method: %s", broker)
+
+            devices_list = _extract_devices_from_candidate(broker_data)
+            if devices_list:
+                device_ids = [
+                    getattr(device, "id", str(device)) for device in devices_list
+                ]
+                _LOGGER.info(
+                    "Found %d devices from hass.data for config flows: %s",
+                    len(devices_list),
+                    device_ids,
+                )
+                return devices_list
 
         if broker is None and hasattr(entry, "broker"):
             broker = entry.broker
@@ -306,20 +360,10 @@ async def discover_ramses_devices(hass: HomeAssistant) -> list[Any]:
             _LOGGER.warning("Could not find ramses_cc broker via any method")
             return await _discover_devices_from_entity_registry(hass)
 
-        devices = getattr(broker, "_devices", None)
-        if devices is None:
-            devices = getattr(broker, "devices", None)
-
-        if not devices:
+        devices_list = _extract_devices_from_candidate(broker)
+        if not devices_list:
             _LOGGER.debug("No devices found in broker, using entity registry fallback")
             return await _discover_devices_from_entity_registry(hass)
-
-        if isinstance(devices, dict):
-            devices_list = list(devices.values())
-        elif isinstance(devices, (list, set, tuple)):
-            devices_list = list(devices)
-        else:
-            devices_list = [devices]
 
         device_ids = [getattr(device, "id", str(device)) for device in devices_list]
         _LOGGER.info(
