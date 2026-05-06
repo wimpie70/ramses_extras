@@ -117,25 +117,25 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 0606D600FFFFFF
-  - 007FFF00FFFFFFFFFFFFFFFFFF
-  - 0106400300003C
+  - '0606D600FFFFFF'
+  - '007FFF00FFFFFFFFFFFFFFFFFF'
+  - '0106400300003C'
   notes: Zone mode/setpoint captures from regression_packets_sorted.txt#258-272
 - code: 3EF1
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 007FFF003C0010
-  - 000215021500FF
-  - 000141014100FF
+  - '007FFF003C0010'
+  - '000215021500FF'
+  - '000141014100FF'
   notes: Actuator cycle samples shared with CTL/RND (regression log #657-2640)
 - code: '0016'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 001F
+  - '001F'
   - '0029'
   notes: Binding acknowledgements reused across heat slugs (#297-358)
 - code: '1090'
@@ -143,13 +143,13 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 007FFF01F4
+  - '007FFF01F4'
   notes: Parser reference payload for dual temperature response
 - code: 3EF0
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 001B100A0000
-  - 000010020000031A64
+  - '001B100A0000'
+  - '000010020000031A64'
   notes: Radiator demand responses from regression_packets_sorted.txt#588-589,420-421

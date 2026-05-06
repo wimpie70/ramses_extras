@@ -16,14 +16,14 @@ autonomous:
   trigger: periodic
   interval_seconds: 200.7
   payloads:
-  - 0000FF
+  - '0000FF'
   notes: Example payloads from regression file
 - code: 3B00
   verb: I
   trigger: periodic
   interval_seconds: 349.1
   payloads:
-  - 00C8
+  - '00C8'
   notes: Example payloads from regression file
 - code: 2D49
   verb: I
@@ -35,9 +35,9 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads:
-  - 00180400007FFF01
-  - 00180404007FFF01
-  - 000C1400007FFF01
+  - '00180400007FFF01'
+  - '00180404007FFF01'
+  - '000C1400007FFF01'
   notes: Example payloads from regression file
 responses:
 - code: 10E0
@@ -45,42 +45,42 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 000001FF050BFFFFFFFF0E0907E2070307E1424452393141000000000000000000000000
+  - '000001FF050BFFFFFFFF0E0907E2070307E1424452393141000000000000000000000000'
   notes: Device info response (BDR91A)
 - code: '0008'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - FA00
+  - 'FA00'
   notes: Device status response
 - code: '0016'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 001F
+  - '001F'
   notes: Binding acknowledgement
 - code: '1100'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 00180400007FFF01
+  - '00180400007FFF01'
   notes: Relay demand response
 - code: 1FC9
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 001100003EF0
+  - '001100003EF0'
   notes: Multi-code response
 - code: 3B00
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 00C8
+  - '00C8'
   notes: Boiler fault response
 - code: 3EF1
   rq_verb: RQ

@@ -22,6 +22,6 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 007FFF003C0010
-  - 000215021500FF
+  - '007FFF003C0010'
+  - '000215021500FF'
   notes: Actuator cycle payloads from regression_packets_sorted.txt (parser warning on len expected during discovery)

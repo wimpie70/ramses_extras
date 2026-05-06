@@ -28,15 +28,15 @@ responses:
   delay_ms: 100
   payloads:
   - '001770'
-  - 0013880003E8
-  - 000FA0
+  - '0013880003E8'
+  - '000FA0'
   notes: DHW setpoint snapshots lifted from regression_packets_sorted.txt#1381-1386,1549-1552,2323-2607
 - code: '0016'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 001F
+  - '001F'
   - '0029'
   notes: Binding acknowledgements shared across heat devices (regression_packets_sorted.txt#297-358)
 - code: '1060'
@@ -44,19 +44,19 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 006401
+  - '006401'
   notes: DHW temperature response
 - code: '1260'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 00FF00
+  - '00FF00'
   notes: DHW setpoint response
 - code: 1FC9
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 001260001060
+  - '001260001060'
   notes: Multi-code response

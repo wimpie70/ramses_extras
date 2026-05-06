@@ -32,8 +32,8 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 00FC081CCF0D0307E6
-  - 00FC380BAA130207E6
+  - '00FC081CCF0D0307E6'
+  - '00FC380BAA130207E6'
   notes: Clock/programme frames from regression_packets_sorted.txt (shared with CTL/TRV)
 - code: 10E0
   rq_verb: RQ
@@ -47,4 +47,4 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - 00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00
+  - '00EF007FFFEFEF7FFF7FFF7FFF7FFF0000EF00FFFF0000EFEF7FFF7FFF00'
