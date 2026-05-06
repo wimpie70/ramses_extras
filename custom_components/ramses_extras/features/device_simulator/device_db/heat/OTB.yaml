@@ -117,5 +117,5 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '00'
+  - '007FFF003C001012'
   notes: Extended OpenTherm response

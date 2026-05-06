@@ -95,8 +95,8 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '00FC081CCF0D0307E6'
-  - '00FC380BAA130207E6'
+  - '0000000000000000'
+  - '0000000000000000'
   notes: Clock/programme frames captured in controller logs
 - code: '3220'
   rq_verb: RQ

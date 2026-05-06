@@ -291,7 +291,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '00FF00'
+  - '00101234567890ABCDEF1234567890'
   notes: Zone mode response
 - code: '0100'
   rq_verb: RQ
@@ -305,7 +305,7 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '0120000829010368816DCCC91183301005D1D93428200E1C7D720C04402C0442640E82000C851701ADD3AFAED1131151'
+  - '0120082908123456'
   notes: Installation code response
 - code: '0418'
   rq_verb: RQ
