@@ -13,7 +13,7 @@ autonomous:
   payloads:
   - '040000'
   - '000000'
-  - 00C800
+  - '00C800'
   notes: Example payloads from regression file
 - code: '3150'
   verb: I
