@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -53,19 +54,38 @@ class RamsesMessageStream:
 
         return _unsub
 
+    def _resolve_add_msg_handler(self, coordinator: Any) -> Callable[..., Any] | None:
+        if coordinator is None:
+            return None
+
+        add_msg_handler = getattr(coordinator, "add_msg_handler", None)
+        if callable(add_msg_handler):
+            return add_msg_handler  # type: ignore[no-any-return]
+
+        client = getattr(coordinator, "client", None)
+        add_msg_handler = getattr(client, "add_msg_handler", None)
+        if callable(add_msg_handler):
+            return add_msg_handler  # type: ignore[no-any-return]
+
+        return None
+
     async def _async_attach_client_listener(self) -> None:
         commands = RamsesCommands(self._hass)
-        coordinator = await commands._get_ramses_cc_coordinator()
-        client = (
-            getattr(coordinator, "client", None) if coordinator is not None else None
-        )
-        add_msg_handler = getattr(client, "add_msg_handler", None)
-        if not callable(add_msg_handler) or self._msg_handler_unsub is not None:
-            return
+        max_attempts = 15
 
-        msg_handler_unsub = add_msg_handler(self._handle_msg)
-        if callable(msg_handler_unsub):
-            self._msg_handler_unsub = msg_handler_unsub
+        for _ in range(max_attempts):
+            if self._msg_handler_unsub is not None:
+                return
+
+            coordinator = await commands._get_ramses_cc_coordinator()
+            add_msg_handler = self._resolve_add_msg_handler(coordinator)
+            if callable(add_msg_handler):
+                msg_handler_unsub = add_msg_handler(self._handle_msg)
+                if callable(msg_handler_unsub):
+                    self._msg_handler_unsub = msg_handler_unsub
+                    return
+
+            await asyncio.sleep(1)
 
     def inject(self, data: dict[str, Any]) -> None:
         """Inject a message directly to all subscribers.
@@ -137,6 +157,15 @@ class RamsesMessageStream:
             "frame": frame.strip(),
         }
 
+    def _extract_msg_addr(self, msg: Any, attr: str, dto_attr: str) -> str | None:
+        value = getattr(getattr(msg, attr, None), "id", None)
+        if isinstance(value, str) and value:
+            return value
+        dto_value = getattr(msg, dto_attr, None)
+        if isinstance(dto_value, str) and dto_value:
+            return dto_value
+        return None
+
     def _handle_ramses_cc_message(self, event: Event[dict[str, Any]]) -> None:
         data = dict(event.data or {})
         data["time_fired"] = event.time_fired.isoformat(timespec="microseconds")
@@ -158,18 +187,28 @@ class RamsesMessageStream:
             else None
         )
         payload = getattr(pkt, "payload", None)
+        if payload is None:
+            payload = getattr(msg, "payload", None)
         data = parsed or {
-            "src": getattr(getattr(msg, "src", None), "id", None),  # type: ignore[dict-item]
-            "dst": getattr(getattr(msg, "dst", None), "id", None),  # type: ignore[dict-item]
+            "src": self._extract_msg_addr(msg, "src", "addr1"),  # type: ignore[dict-item]
+            "dst": self._extract_msg_addr(msg, "dst", "addr2"),  # type: ignore[dict-item]
             "verb": str(getattr(msg, "verb", "")) or None,  # type: ignore[dict-item]
             "code": str(getattr(msg, "code", "")) or None,  # type: ignore[dict-item]
         }
         data["payload"] = str(payload) if payload is not None else None  # type: ignore[assignment]
+
+        if "frame" not in data:
+            frame = self._frame_from_dict(data)
+            if frame:
+                data["frame"] = frame
+
         if isinstance(packet, str) and packet:
             data["packet"] = packet
             data.setdefault("frame", packet)
 
         dtm = getattr(msg, "dtm", None)
+        if dtm is None:
+            dtm = getattr(msg, "timestamp", None)
         if isinstance(dtm, datetime):
             data["dtm"] = dtm.isoformat(timespec="microseconds")
         elif isinstance(dtm, str):

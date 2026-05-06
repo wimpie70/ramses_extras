@@ -18,6 +18,10 @@ from custom_components.ramses_extras.features.device_simulator import (
     create_device_simulator_feature,
     load_feature,
 )
+from custom_components.ramses_extras.features.device_simulator.const import (
+    SIMULATOR_HGI_ID,
+    SIMULATOR_TOPIC_NS,
+)
 
 
 class TestPreClearRamsesCcSchema:
@@ -176,6 +180,39 @@ class TestEnforceSimulatorIsolation:
                 RuntimeError, match="Failed to enforce simulator isolation"
             ):
                 await _enforce_simulator_isolation(hass)
+
+    @pytest.mark.asyncio
+    async def test_enforce_simulator_isolation_mqtt_ha_updates_topic_and_hgi(self):
+        """mqtt_ha transport should isolate via mqtt_topic/mqtt_hgi_id."""
+        hass = MagicMock()
+        entry = MagicMock()
+        entry.entry_id = "test_entry"
+        entry.options = {
+            "serial_port": {"port_name": "mqtt_ha"},
+            "mqtt_use_ha": True,
+            "mqtt_topic": "RAMSES/GATEWAY",
+            "mqtt_hgi_id": "18:AAAAAA",
+        }
+        hass.config_entries = MagicMock()
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
+        hass.config_entries.async_update_entry = MagicMock()
+        hass.config_entries.async_reload = AsyncMock()
+
+        with patch("homeassistant.helpers.storage.Store") as mock_store_class:
+            mock_store = MagicMock()
+            mock_store.async_load = AsyncMock(return_value={})
+            mock_store.async_save = AsyncMock()
+            mock_store_class.return_value = mock_store
+
+            result = await _enforce_simulator_isolation(hass)
+
+        assert result is True
+        updated_options = hass.config_entries.async_update_entry.call_args.kwargs[
+            "options"
+        ]
+        assert updated_options["mqtt_topic"] == SIMULATOR_TOPIC_NS
+        assert updated_options["mqtt_hgi_id"] == SIMULATOR_HGI_ID
+        hass.config_entries.async_reload.assert_awaited_once()
 
 
 class TestLoadFeature:
@@ -661,3 +698,44 @@ class TestRestoreGatewayTopic:
         assert updated_options["known_list"] == {"device": "class"}
         assert updated_options["ramses_rf"]["enforce_known_list"] is True
         assert updated_options["ramses_rf"]["enable_eavesdrop"] is False
+
+    @pytest.mark.asyncio
+    async def test_restore_gateway_restores_mqtt_ha_topic_and_hgi(self):
+        """Restore mqtt_ha transport metadata from saved state."""
+        hass = MagicMock()
+        entry = MagicMock()
+        entry.entry_id = "test_entry"
+        entry.options = {
+            "serial_port": {"port_name": "mqtt_ha"},
+            "mqtt_use_ha": True,
+            "mqtt_topic": SIMULATOR_TOPIC_NS,
+            "mqtt_hgi_id": SIMULATOR_HGI_ID,
+        }
+        hass.config_entries = MagicMock()
+        hass.config_entries.async_entries = MagicMock(return_value=[entry])
+        hass.config_entries.async_update_entry = MagicMock()
+        hass.config_entries.async_reload = AsyncMock()
+
+        with patch("homeassistant.helpers.storage.Store") as mock_store_class:
+            mock_store = MagicMock()
+            mock_store.async_load = AsyncMock(
+                return_value={
+                    "original_port_name": "mqtt_ha",
+                    "original_mqtt_topic": "RAMSES/GATEWAY",
+                    "original_mqtt_hgi_id": "18:ABCDEF",
+                    "state_saved": True,
+                }
+            )
+            mock_store.async_save = AsyncMock()
+            mock_store_class.return_value = mock_store
+
+            result = await async_restore_ramses_cc_gateway_topic(hass)
+
+        assert result is True
+        updated_options = hass.config_entries.async_update_entry.call_args.kwargs[
+            "options"
+        ]
+        assert updated_options["mqtt_topic"] == "RAMSES/GATEWAY"
+        assert updated_options["mqtt_hgi_id"] == "18:ABCDEF"
+        assert updated_options["serial_port"]["port_name"] == "mqtt_ha"
+        hass.config_entries.async_reload.assert_awaited_once()

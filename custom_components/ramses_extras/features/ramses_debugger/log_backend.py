@@ -98,23 +98,47 @@ def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
     if isinstance(raw_override, str) and raw_override.strip():
         return _resolve_packet_log_base_path(raw_override, "packet_log")
 
+    def _default_packet_log_candidates(prefix: str | None = None) -> list[Path]:
+        chosen_prefix = prefix if isinstance(prefix, str) and prefix else "packet_log"
+        return [
+            Path(hass.config.path(f"{chosen_prefix}.log")),
+            Path(hass.config.path("ramses_rf_logs", f"{chosen_prefix}.log")),
+        ]
+
     try:
         entries = hass.config_entries.async_entries("ramses_cc")
         for cc_entry in entries:
             cc_options = getattr(cc_entry, "options", {})
+            cc_data = getattr(cc_entry, "data", {})
+            merged_config: dict[str, Any] = {}
+            if isinstance(cc_data, dict):
+                merged_config.update(cc_data)
+            if isinstance(cc_options, dict):
+                merged_config.update(cc_options)
 
             # v2 location: packet_log.packet_log_path + packet_log_prefix
-            packet_log = cc_options.get("packet_log")
+            packet_log = merged_config.get("packet_log")
             if isinstance(packet_log, dict):
+                packet_log_path = packet_log.get("packet_log_path") or packet_log.get(
+                    "path"
+                )
+                packet_log_prefix = packet_log.get(
+                    "packet_log_prefix"
+                ) or packet_log.get("prefix")
                 path = _resolve_packet_log_base_path(
-                    packet_log.get("packet_log_path") or packet_log.get("file_name"),
-                    packet_log.get("packet_log_prefix"),
+                    packet_log_path or packet_log.get("file_name"),
+                    packet_log_prefix,
                 )
                 if path:
                     return path
 
+                if not packet_log_path:
+                    for candidate in _default_packet_log_candidates(packet_log_prefix):
+                        if candidate.exists():
+                            return candidate
+
             # v1 fallback: ramses_rf.file_name (migration may not have copied it)
-            ramses_rf = cc_options.get("ramses_rf")
+            ramses_rf = merged_config.get("ramses_rf")
             if isinstance(ramses_rf, dict):
                 path = _resolve_packet_log_base_path(
                     ramses_rf.get("file_name"),
@@ -122,6 +146,10 @@ def get_configured_packet_log_path(hass: HomeAssistant) -> Path | None:
                 )
                 if path:
                     return path
+
+            for candidate in _default_packet_log_candidates():
+                if candidate.exists():
+                    return candidate
     except Exception:
         return None
 

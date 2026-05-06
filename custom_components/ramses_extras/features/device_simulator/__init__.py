@@ -46,8 +46,13 @@ _SZ_ORIGINAL_SCHEMA = "original_schema"
 _SZ_ORIGINAL_KNOWN_LIST = "original_known_list"
 _SZ_ORIGINAL_ENFORCE_KNOWN_LIST = "original_enforce_known_list"
 _SZ_ORIGINAL_ENABLE_EAVESDROP = "original_enable_eavesdrop"
+_SZ_ORIGINAL_MQTT_TOPIC = "original_mqtt_topic"
+_SZ_ORIGINAL_MQTT_HGI_ID = "original_mqtt_hgi_id"
 _SZ_STATE_SAVED = "state_saved"
 _DEFAULT_GATEWAY_TOPIC_NS = "RAMSES/GATEWAY"
+_SZ_MQTT_USE_HA = "mqtt_use_ha"
+_SZ_MQTT_TOPIC = "mqtt_topic"
+_SZ_MQTT_HGI_ID = "mqtt_hgi_id"
 
 
 def _make_isolation_store(hass: HomeAssistant) -> HaStore:
@@ -117,6 +122,8 @@ async def _remember_original_ramses_cc_state(
     known_list: Any,
     enforce_known_list: Any,
     enable_eavesdrop: Any,
+    mqtt_topic: Any = None,
+    mqtt_hgi_id: Any = None,
 ) -> None:
     """Save original ramses_cc options before simulator isolation overwrites them.
 
@@ -140,12 +147,16 @@ async def _remember_original_ramses_cc_state(
     )
     state[_SZ_ORIGINAL_ENFORCE_KNOWN_LIST] = enforce_known_list
     state[_SZ_ORIGINAL_ENABLE_EAVESDROP] = enable_eavesdrop
+    state[_SZ_ORIGINAL_MQTT_TOPIC] = mqtt_topic
+    state[_SZ_ORIGINAL_MQTT_HGI_ID] = mqtt_hgi_id
     state[_SZ_STATE_SAVED] = True
     await store.async_save(state)
     _LOGGER.info(
         "Saved original ramses_cc state for simulator cleanup "
-        "(port=%s schema_keys=%s known_list_count=%s enforce=%s eavesdrop=%s)",
+        "(port=%s topic=%s hgi=%s schema_keys=%s known_list_count=%s enforce=%s eavesdrop=%s)",  # noqa: E501
         port_name,
+        mqtt_topic,
+        mqtt_hgi_id,
         list(schema.keys()) if isinstance(schema, dict) else None,
         len(known_list) if isinstance(known_list, dict) else None,
         enforce_known_list,
@@ -179,15 +190,28 @@ async def async_restore_ramses_cc_gateway_topic(hass: HomeAssistant) -> bool:
     cc_options = dict(cc_entry.options) if cc_entry.options else {}
     serial_port = dict(cc_options.get("serial_port", {}))
     current_port = serial_port.get("port_name")
+    current_mqtt_topic = cc_options.get(_SZ_MQTT_TOPIC)
+    current_mqtt_hgi_id = cc_options.get(_SZ_MQTT_HGI_ID)
 
     store, state = await _load_isolation_state(hass)
     stored_port = state.get(_SZ_ORIGINAL_PORT)
+    stored_mqtt_topic = state.get(_SZ_ORIGINAL_MQTT_TOPIC)
+    stored_mqtt_hgi_id = state.get(_SZ_ORIGINAL_MQTT_HGI_ID)
     state_saved = state.get(_SZ_STATE_SAVED, False)
     isolation_active = isinstance(current_port, str) and (
         SIMULATOR_TOPIC_NS in current_port or SIMULATOR_HGI_ID in current_port
     )
+    isolation_active = isolation_active or (
+        current_mqtt_topic == SIMULATOR_TOPIC_NS
+        and current_mqtt_hgi_id == SIMULATOR_HGI_ID
+    )
 
-    if not stored_port and not isolation_active:
+    if (
+        not stored_port
+        and stored_mqtt_topic is None
+        and stored_mqtt_hgi_id is None
+        and not isolation_active
+    ):
         _LOGGER.debug("Simulator isolation already cleared - nothing to restore")
         if state:
             await store.async_save({})
@@ -196,12 +220,11 @@ async def async_restore_ramses_cc_gateway_topic(hass: HomeAssistant) -> bool:
     # Resolve target port (stored or fallback)
     target_port = stored_port
     used_fallback = False
-    if not target_port:
-        if not isinstance(current_port, str):
-            _LOGGER.warning(
-                "Simulator isolation fallback failed: current ramses_cc port missing",
-            )
-            return False
+    if (
+        not target_port
+        and isinstance(current_port, str)
+        and current_port.startswith("mqtt://")
+    ):
         try:
             target_port = _build_default_gateway_port(current_port)
             used_fallback = True
@@ -216,9 +239,16 @@ async def async_restore_ramses_cc_gateway_topic(hass: HomeAssistant) -> bool:
     # Build restored options
     changed = False
 
-    if target_port != current_port:
+    if target_port and target_port != current_port:
         serial_port["port_name"] = target_port
         cc_options["serial_port"] = serial_port
+        changed = True
+
+    if stored_mqtt_topic is not None and stored_mqtt_topic != current_mqtt_topic:
+        cc_options[_SZ_MQTT_TOPIC] = stored_mqtt_topic
+        changed = True
+    if stored_mqtt_hgi_id is not None and stored_mqtt_hgi_id != current_mqtt_hgi_id:
+        cc_options[_SZ_MQTT_HGI_ID] = stored_mqtt_hgi_id
         changed = True
 
     if state_saved:
@@ -267,7 +297,12 @@ async def async_restore_ramses_cc_gateway_topic(hass: HomeAssistant) -> bool:
     # Clear saved state so a subsequent sim-enable will re-capture
     await store.async_save({})
 
-    _LOGGER.info("Restored ramses_cc MQTT serial_port to %s", target_port)
+    _LOGGER.info(
+        "Restored ramses_cc simulator transport settings (port=%s topic=%s hgi=%s)",
+        target_port or current_port,
+        cc_options.get(_SZ_MQTT_TOPIC),
+        cc_options.get(_SZ_MQTT_HGI_ID),
+    )
     if used_fallback:
         _LOGGER.warning(
             "Simulator restore used fallback topic %s - please verify gateway ID",
@@ -343,6 +378,10 @@ async def _enforce_simulator_isolation(hass: HomeAssistant) -> bool:
     cc_options = dict(cc_entry.options) if cc_entry.options else {}
     serial_port = dict(cc_options.get("serial_port", {}))
     port_name = serial_port.get("port_name", "")
+    mqtt_topic = cc_options.get(_SZ_MQTT_TOPIC)
+    mqtt_hgi_id = cc_options.get(_SZ_MQTT_HGI_ID)
+    mqtt_use_ha = bool(cc_options.get(_SZ_MQTT_USE_HA))
+    using_mqtt_ha = port_name == "mqtt_ha" or mqtt_use_ha
 
     # Capture current ramses_cc state before any modification so we can
     # restore the user's real-device configuration on disable/remove.
@@ -363,12 +402,16 @@ async def _enforce_simulator_isolation(hass: HomeAssistant) -> bool:
     _LOGGER.debug("Checking ramses_cc config: port_name=%s", port_name)
 
     # Check if using MQTT (device_simulator only makes sense with MQTT)
-    if not port_name.startswith("mqtt://"):
+    if not (using_mqtt_ha or port_name.startswith("mqtt://")):
         _LOGGER.info("ramses_cc not using MQTT - simulator isolation not applicable")
         return True
 
     # Check if already using simulator isolation
-    if SIMULATOR_HGI_ID in port_name and SIMULATOR_TOPIC_NS in port_name:
+    if using_mqtt_ha:
+        if mqtt_topic == SIMULATOR_TOPIC_NS and mqtt_hgi_id == SIMULATOR_HGI_ID:
+            _LOGGER.info("ramses_cc already configured for simulator isolation")
+            return True
+    elif SIMULATOR_HGI_ID in port_name and SIMULATOR_TOPIC_NS in port_name:
         _LOGGER.info("ramses_cc already configured for simulator isolation")
         return True
 
@@ -389,29 +432,48 @@ async def _enforce_simulator_isolation(hass: HomeAssistant) -> bool:
             current_known_list,
             current_enforce,
             current_eavesdrop,
+            mqtt_topic,
+            mqtt_hgi_id,
         )
 
-        auth, host_port, _ = _parse_mqtt_port(port_name)
+        changed = False
+        if using_mqtt_ha:
+            if cc_options.get(_SZ_MQTT_TOPIC) != SIMULATOR_TOPIC_NS:
+                cc_options[_SZ_MQTT_TOPIC] = SIMULATOR_TOPIC_NS
+                changed = True
+            if cc_options.get(_SZ_MQTT_HGI_ID) != SIMULATOR_HGI_ID:
+                cc_options[_SZ_MQTT_HGI_ID] = SIMULATOR_HGI_ID
+                changed = True
+            _LOGGER.info(
+                "Updating ramses_cc mqtt_ha transport to topic='%s' hgi='%s'",
+                SIMULATOR_TOPIC_NS,
+                SIMULATOR_HGI_ID,
+            )
+        else:
+            auth, host_port, _ = _parse_mqtt_port(port_name)
 
-        # ramses_rf requires RAMSES/GATEWAY* prefix, SIMULATOR_TOPIC_NS is valid
-        new_port_name = _compose_mqtt_port(
-            auth,
-            host_port,
-            SIMULATOR_TOPIC_NS,
-            SIMULATOR_HGI_ID,
-        )
+            # ramses_rf requires RAMSES/GATEWAY* prefix, SIMULATOR_TOPIC_NS is valid
+            new_port_name = _compose_mqtt_port(
+                auth,
+                host_port,
+                SIMULATOR_TOPIC_NS,
+                SIMULATOR_HGI_ID,
+            )
 
-        _LOGGER.info(
-            "Updating ramses_cc serial_port from '%s' to '%s'", port_name, new_port_name
-        )
-        _LOGGER.info(
-            "Simulator will use HGI %s - completely isolated from production HGI",
-            SIMULATOR_HGI_ID,
-        )
+            _LOGGER.info(
+                "Updating ramses_cc serial_port from '%s' to '%s'",
+                port_name,
+                new_port_name,
+            )
+            serial_port["port_name"] = new_port_name
+            cc_options["serial_port"] = serial_port
+            changed = new_port_name != port_name
 
-        # Update config entry
-        serial_port["port_name"] = new_port_name
-        cc_options["serial_port"] = serial_port
+        if not changed:
+            _LOGGER.info(
+                "Simulator isolation already active, no ramses_cc reload needed"
+            )
+            return True
 
         hass.config_entries.async_update_entry(cc_entry, options=cc_options)
 

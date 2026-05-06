@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from custom_components.ramses_extras.framework.helpers.ramses_message_stream import (
     RamsesMessageStream,
@@ -68,6 +70,36 @@ class TestRamsesMessageStream:
 
         data = callback.call_args.args[0]
         assert data["src"] == "32:150000"
+
+    def test_handle_msg_with_dto_shape(self) -> None:
+        """Test _handle_msg handles PacketDTO-like objects."""
+        hass = MagicMock()
+        stream = RamsesMessageStream(hass)
+        callback = MagicMock()
+        stream.subscribe(callback)
+
+        msg = SimpleNamespace(
+            addr1="32:150000",
+            addr2="37:170000",
+            verb="RP",
+            code="2411",
+            payload="00003E",
+            timestamp=datetime(2026, 4, 18, 9, 0, 0),
+        )
+
+        stream._handle_msg(msg)
+
+        callback.assert_called_once()
+        data = callback.call_args.args[0]
+        assert data["src"] == "32:150000"
+        assert data["dst"] == "37:170000"
+        assert data["verb"] == "RP"
+        assert data["code"] == "2411"
+        assert data["payload"] == "00003E"
+        assert (
+            data["frame"] == "000 RP --- 32:150000 37:170000 --:------ 2411 003 00003E"
+        )
+        assert data["dtm"] == "2026-04-18T09:00:00.000000"
         assert data["dst"] == "37:170000"
 
     def test_event_path_kept_for_requests_when_handler_attached(self) -> None:
@@ -115,6 +147,46 @@ class TestRamsesMessageStream:
         stream._handle_ramses_cc_message(event)
 
         callback.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_attach_client_listener_retries_until_available(self) -> None:
+        """Listener attachment should retry while coordinator/client initializes."""
+        hass = MagicMock()
+        stream = RamsesMessageStream(hass)
+
+        unsub = MagicMock()
+        coordinator = SimpleNamespace(
+            client=SimpleNamespace(add_msg_handler=MagicMock(return_value=unsub))
+        )
+
+        with patch(
+            "custom_components.ramses_extras.framework.helpers.ramses_message_stream.RamsesCommands"
+        ) as mock_commands_cls:
+            mock_commands = mock_commands_cls.return_value
+            mock_commands._get_ramses_cc_coordinator = AsyncMock(
+                side_effect=[None, coordinator]
+            )
+
+            with patch(
+                "custom_components.ramses_extras.framework.helpers.ramses_message_stream.asyncio.sleep",
+                new=AsyncMock(),
+            ) as sleep_mock:
+                await stream._async_attach_client_listener()
+
+        assert stream._msg_handler_unsub is unsub
+        assert sleep_mock.await_count == 1
+
+    def test_resolve_add_msg_handler_prefers_coordinator_when_available(self) -> None:
+        """Support coordinator shapes exposing add_msg_handler directly."""
+        hass = MagicMock()
+        stream = RamsesMessageStream(hass)
+        add_handler = MagicMock()
+        coordinator = MagicMock()
+        coordinator.add_msg_handler = add_handler
+
+        resolved = stream._resolve_add_msg_handler(coordinator)
+
+        assert resolved is add_handler
 
     def test_start_already_started(self) -> None:
         """Test start does nothing if already started."""

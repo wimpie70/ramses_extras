@@ -435,3 +435,69 @@ async def test_get_configured_packet_log_path_v2_preferred_over_v1(
 
     assert result is not None
     assert result == expected_v2_path
+
+
+@pytest.mark.asyncio
+async def test_get_configured_packet_log_path_defaults_when_path_empty(
+    hass, tmp_path: Path
+) -> None:
+    """If packet_log_path is empty, fall back to default packet_log.log locations."""
+    from custom_components.ramses_extras.features.ramses_debugger.log_backend import (
+        get_configured_packet_log_path,
+    )
+
+    expected = tmp_path / "packet_log.log"
+    expected.write_text("default location\n", encoding="utf-8")
+
+    fake_cc_entry = MagicMock()
+    fake_cc_entry.options = {
+        "packet_log": {
+            "packet_log_path": "",
+            "packet_log_prefix": "packet_log",
+        }
+    }
+    fake_cc_entry.data = {}
+
+    hass.config.path = MagicMock(
+        side_effect=lambda *parts: str(tmp_path / Path(*parts))
+    )
+
+    with patch.object(
+        hass.config_entries, "async_entries", return_value=[fake_cc_entry]
+    ):
+        result = get_configured_packet_log_path(hass)
+
+    assert result is not None
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_get_configured_packet_log_path_reads_entry_data(
+    hass, tmp_path: Path
+) -> None:
+    """Use ramses_cc entry.data packet_log when options are empty."""
+    from custom_components.ramses_extras.features.ramses_debugger.log_backend import (
+        get_configured_packet_log_path,
+    )
+
+    packet_dir = tmp_path / "rf_logs"
+    packet_dir.mkdir()
+    expected = packet_dir / "custom_prefix.log"
+    expected.write_text("from data\n", encoding="utf-8")
+
+    fake_cc_entry = MagicMock()
+    fake_cc_entry.options = {}
+    fake_cc_entry.data = {
+        "packet_log": {
+            "path": str(packet_dir),
+            "prefix": "custom_prefix",
+        }
+    }
+
+    with patch.object(
+        hass.config_entries, "async_entries", return_value=[fake_cc_entry]
+    ):
+        result = get_configured_packet_log_path(hass)
+
+    assert result is not None
+    assert result == expected

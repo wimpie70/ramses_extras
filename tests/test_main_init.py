@@ -648,7 +648,7 @@ class TestDiscoverDevices:
         mock_broker = MagicMock()
         mock_device = MagicMock()
         mock_device.id = "32:111111"
-        mock_broker.broker._devices = [mock_device]
+        mock_broker._devices = [mock_device]  # Set _devices directly on broker
 
         hass.config_entries.async_entries = MagicMock(return_value=[mock_entry])
         hass.data["ramses_cc"] = {"test_entry": mock_broker}

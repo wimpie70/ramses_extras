@@ -56,6 +56,7 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
     this._wsUnsubPromise = null;
     this._wsUnsub = null;
     this._pollInterval = null;
+    this._subscriptionRetryTimer = null;
     this._lastError = null;
 
     this._detailsDialogOpen = false;
@@ -203,6 +204,11 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
 
     this._wsUnsub = null;
     this._wsUnsubPromise = null;
+
+    if (this._subscriptionRetryTimer) {
+      clearTimeout(this._subscriptionRetryTimer);
+      this._subscriptionRetryTimer = null;
+    }
   }
 
   _startUpdates() {
@@ -222,6 +228,9 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       return;
     }
 
+    // Prime the table with a one-shot snapshot so temporary WS registration races
+    // don't leave the UI empty forever.
+    void this._refreshStatsOnce();
     this._startSubscription();
   }
 
@@ -346,6 +355,18 @@ class RamsesTrafficAnalyserCard extends RamsesBaseCard {
       .catch((error) => {
         this._lastError = error;
         logger.warn('Traffic subscribe failed, consider enabling polling:', error);
+        void this._refreshStatsOnce();
+
+        if (this._subscriptionRetryTimer) {
+          clearTimeout(this._subscriptionRetryTimer);
+        }
+        this._subscriptionRetryTimer = setTimeout(() => {
+          this._subscriptionRetryTimer = null;
+          if (this._trafficSource === 'live' && this._config?.enable_polling !== true) {
+            this._startSubscription();
+          }
+        }, 3000);
+
         this.render();
       });
   }

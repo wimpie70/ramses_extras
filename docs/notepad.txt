@@ -100,9 +100,6 @@ we should be able to simulate and test this
 
 --- next to do:
 
-### check the profiles (like normal) if they are realistic
-
-### check the profiles if they have unknown entities (like fan) and create proper answers for this
 
 -- other:
 
@@ -120,3 +117,40 @@ Verify logs: Saved original ramses_cc state for simulator cleanup (port=... sche
 Disable device_simulator or remove ramses_extras
 Verify logs: Restored ramses_cc schema/known_list/ramses_rf to pre-simulator state and Restored ramses_cc MQTT serial_port to <original>
 Check ramses_cc options match step 1
+
+
+
+_cc #654:
+
+on _cc when switching on: Log all MQTT traffic, i get the following error:
+2026-05-05 16:04:23.872 INFO (MainThread) [custom_components.ramses_cc.coordinator] Saving the client state cache (packets, schema)
+2026-05-05 16:04:23.874 WARNING (paho-mqtt-client-) [ramses_tx.transport.mqtt] MQTT disconnected: DisconnectFlags(is_disconnect_packet_from_server=False)
+2026-05-05 16:04:23.889 INFO (MainThread) [custom_components.ramses_cc.schemas] Using the cached schema
+2026-05-05 16:04:23.889 ERROR (MainThread) [custom_components.ramses_cc] Unexpected error during setup of entry 01KKP880DFBBWJTQHME175WF5V: Either a port_name or an input_file must be specified
+Traceback (most recent call last):
+  File "/config/custom_components/ramses_cc/__init__.py", line 164, in async_setup_entry
+    await coordinator.async_setup()
+  File "/config/custom_components/ramses_cc/coordinator.py", line 251, in async_setup
+    self.client = self._create_client(merged_schema)
+                  ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/config/custom_components/ramses_cc/coordinator.py", line 411, in _create_client
+    return Gateway(
+        port_name=port_name,
+        config=gwy_config,
+        loop=self.hass.loop,
+    )
+  File "/usr/local/lib/python3.14/site-packages/ramses_rf/gateway.py", line 211, in __init__
+    self._engine = Engine(
+                   ~~~~~~^
+        self._gwy_config.engine,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        loop=loop,
+        ^^^^^^^^^^
+        transport_constructor=transport_constructor,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.14/site-packages/ramses_tx/engine.py", line 80, in __init__
+    raise TypeError("Either a port_name or an input_file must be specified")
+TypeError: Either a port_name or an input_file must be specified
+2026-05-05 16:04:23.891 INFO (MainThread) [homeassistant.config_entries] Config entry 'RAMSES RF' for ramses_cc integration not ready yet: Setup failed: Either a port_name or an input_file must be specified; Retrying in 5 seconds

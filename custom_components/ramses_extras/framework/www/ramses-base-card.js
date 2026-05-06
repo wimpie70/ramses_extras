@@ -543,6 +543,25 @@ export class RamsesBaseCard extends HTMLElement {
       return this._backendReadyPromise;
     }
 
+    window.ramsesExtras = window.ramsesExtras || {};
+    window.ramsesExtras._backendReadyFailCount = window.ramsesExtras._backendReadyFailCount || 0;
+    window.ramsesExtras._backendReadyLastFailTime = window.ramsesExtras._backendReadyLastFailTime || 0;
+
+    const failCount = window.ramsesExtras._backendReadyFailCount;
+    const lastFailTime = window.ramsesExtras._backendReadyLastFailTime;
+    const backoffTime = Math.min(60000, 1000 * Math.pow(2, failCount));
+    const elapsed = Date.now() - lastFailTime;
+    if (failCount >= 3 && elapsed < backoffTime) {
+      const retry_In = Math.max(1000, backoffTime - elapsed);
+      this._backendReadyPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          this._backendReadyPromise = null;
+          resolve(this._confirmBackendReady());
+        }, retry_In);
+      });
+      return this._backendReadyPromise;
+    }
+
     logger.debug(`${this.constructor.name}: Calling get_cards_enabled to confirm backend ready`);
     this._backendReadyPromise = callWebSocket(this._hass, {
       type: 'ramses_extras/default/get_cards_enabled',
@@ -550,6 +569,8 @@ export class RamsesBaseCard extends HTMLElement {
       .then((result) => {
         logger.debug(`${this.constructor.name}: Backend ready confirmed, cards_enabled=${result?.cards_enabled}`);
         this._hassLoaded = true;
+        window.ramsesExtras._backendReadyFailCount = 0;
+        window.ramsesExtras._backendReadyLastFailTime = 0;
         this._backendReadyPromise = null;
 
         // Also set cardsEnabled if the response indicates it's enabled
@@ -562,13 +583,35 @@ export class RamsesBaseCard extends HTMLElement {
         this._scheduleRender();
       })
       .catch((error) => {
-        logger.warn(`${this.constructor.name}: Backend ready check failed, will retry:`, error);
+        window.ramsesExtras._backendReadyFailCount = (window.ramsesExtras._backendReadyFailCount || 0) + 1;
+        window.ramsesExtras._backendReadyLastFailTime = Date.now();
+
+        const errMsg = String(error?.message || '').toLowerCase();
+        const isUnknownCommand =
+          error?.code === 'unknown_command' ||
+          error?.not_available === true ||
+          errMsg.includes('unknown command');
+
+        if (isUnknownCommand) {
+          this._runOnce('backend-ready-unknown-command', () => {
+            logger.warn(
+              `${this.constructor.name}: Backend get_cards_enabled command not available yet; retrying with backoff`
+            );
+          });
+        } else {
+          logger.warn(`${this.constructor.name}: Backend ready check failed, will retry:`, error);
+        }
+
         this._backendReadyPromise = null;
+        const delayMs = Math.min(
+          60000,
+          1000 * Math.pow(2, Math.max(0, window.ramsesExtras._backendReadyFailCount - 1))
+        );
         // Return a new promise that will retry, so the original promise never rejects
         return new Promise((resolve) => {
           setTimeout(() => {
             resolve(this._confirmBackendReady());
-          }, 1000);
+          }, delayMs);
         });
       });
 
