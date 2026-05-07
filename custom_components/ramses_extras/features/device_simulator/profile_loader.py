@@ -530,6 +530,8 @@ async def _reload_ramses_cc(
             await asyncio.sleep(3)
             from .scenario_engine import ActiveDevice
 
+            # Create all device objects first
+            devices_to_activate = []
             for dev_id, dev_cfg in profile_devices.items():
                 slug = (
                     dev_cfg.get("class") or _infer_device_class_from_id(dev_id) or "FAN"
@@ -544,11 +546,20 @@ async def _reload_ramses_cc(
                     enabled=True,
                     origin="profile",
                 )
-                await engine.async_activate_device(
-                    device,
-                    start_emitter=auto_start_on_reload,
-                    emit_startup_burst=False,
+                devices_to_activate.append((device, slug))
+
+            # Activate devices in parallel
+            activation_tasks = []
+            for device, slug in devices_to_activate:
+                activation_tasks.append(
+                    engine.async_activate_device(
+                        device,
+                        start_emitter=auto_start_on_reload,
+                        emit_startup_burst=False,
+                    )
                 )
-                LOGGER.info("Profile load: registered %s (%s)", dev_id, slug)
+                LOGGER.info("Profile load: registering %s (%s)", device.device_id, slug)
+
+            await asyncio.gather(*activation_tasks)
             await asyncio.sleep(1)
             await _trigger_ramses_discovery(hass)
