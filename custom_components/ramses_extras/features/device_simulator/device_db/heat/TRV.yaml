@@ -1,7 +1,3 @@
-# Auto-generated from ramses_rf sources
-# Device type: TRV (domain: heat)
-# Manual review recommended before committing
----
 device_type: TRV
 domain: heat
 broadcast_safe: false
@@ -13,33 +9,29 @@ autonomous:
   payloads:
   - '040000'
   - '000000'
-  - '00C800'
+  - 00C800
   notes: Example payloads from regression file
 - code: '3150'
   verb: I
   trigger: periodic
   interval_seconds: 124.1
   payloads:
-  - '0144'
-  - '0416'
-  - '012C'
-  notes: Example payloads from regression file
+  - '0000'
+  notes: Real captured payloads from log (score=100)
 - code: 1FC9
   verb: I
   trigger: periodic
   interval_seconds: 5.4
   payloads:
-  - '0030C912E294'
+  - 0030C912E294
   notes: Example payloads from regression file
 - code: '2309'
   verb: I
   trigger: periodic
   interval_seconds: 150.1
   payloads:
-  - '0205DC'
-  - '017EFF'
-  - '0401F4'
-  notes: Example payloads from regression file
+  - 000708
+  notes: Real captured payloads from log (score=100)
 - code: '1060'
   verb: I
   trigger: periodic
@@ -47,25 +39,25 @@ autonomous:
   payloads:
   - '006401'
   - '046401'
-  - '00FF01'
+  - 00FF01
   notes: Example payloads from regression file
 - code: 10E0
   verb: I
   trigger: periodic
   interval_seconds: 61.7
   payloads:
-  - '000002FF050BFFFFFFFF0E0907E2070307E148523931205261646961746F72204374726C2E00'
-  - '000002FF0412FFFFFFFF030807E10D0307DE48523932205261646961746F72204374726C2E00'
-  - '000002FF0412FFFFFFFF1B0707E20D0307DE48523932205261646961746F72204374726C2E00'
+  - 000002FF050BFFFFFFFF0E0907E2070307E148523931205261646961746F72204374726C2E00
+  - 000002FF0412FFFFFFFF030807E10D0307DE48523932205261646961746F72204374726C2E00
+  - 000002FF0412FFFFFFFF1B0707E20D0307DE48523932205261646961746F72204374726C2E00
   notes: Example payloads from regression file
 - code: 30C9
   verb: I
   trigger: periodic
   interval_seconds: 218.0
   payloads:
-  - '0007C3'
-  - '0006B1'
-  - '000849'
+  - 0007C3
+  - 0006B1
+  - 000849
   notes: Example payloads from regression file
 responses:
 - code: 1F09
@@ -73,37 +65,37 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '0003BB'
+  - 0003BB
   notes: Controller sync snapshot from regression_packets_sorted.txt#305-307
 - code: 313F
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '00FC081CCF0D0307E6'
-  - '00FC0501AB050207E6'
+  - 00FC081CCF0D0307E6
+  - 00FC0501AB050207E6
   notes: Clock/programme frames captured in regression_packets_sorted.txt#2453-2460
 - code: '0100'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '00656EFFFF'
-  - '006E6CFFFF'
+  - 00656EFFFF
+  - 006E6CFFFF
   notes: Locale replies seen in regression_packets_sorted.txt#620-621,1458-1461
 - code: '0016'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '001F'
-  - '0029'
+  - 001F
+  - 0029
   notes: Binding acknowledgements shared with other heat devices (#297-358)
 - code: '0004'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '0000436C6F616B726F6F6D0000000000000000000000'
-  - '07004C616E64696E6700000000000000000000000000'
+  - 0000436C6F616B726F6F6D0000000000000000000000
+  - 07004C616E64696E6700000000000000000000000000
   notes: Zone-name responses from regression_packets_sorted.txt#2456,2494-2498

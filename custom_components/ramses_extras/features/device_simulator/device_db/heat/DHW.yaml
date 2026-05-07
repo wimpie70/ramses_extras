@@ -1,7 +1,3 @@
-# Auto-generated from ramses_rf sources
-# Device type: DHW (domain: heat)
-# Manual review recommended before committing
----
 device_type: DHW
 domain: heat
 broadcast_safe: false
@@ -10,7 +6,11 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads: []
+  payloads:
+  - '001725'
+  - 00173C
+  - 0016FF
+  notes: Real captured payloads from log (score=100)
 - code: 1FC9
   verb: I
   trigger: periodic
@@ -28,16 +28,16 @@ responses:
   delay_ms: 100
   payloads:
   - '001770'
-  - '0013880003E8'
-  - '000FA0'
+  - 0013880003E8
+  - 000FA0
   notes: DHW setpoint snapshots lifted from regression_packets_sorted.txt#1381-1386,1549-1552,2323-2607
 - code: '0016'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '001F'
-  - '0029'
+  - 001F
+  - 0029
   notes: Binding acknowledgements shared across heat devices (regression_packets_sorted.txt#297-358)
 - code: '1060'
   rq_verb: RQ
@@ -51,8 +51,10 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '00FF00'
-  notes: DHW setpoint response
+  - '001725'
+  - 00173C
+  - 0016FF
+  notes: Real captured payloads from log (score=100)
 - code: 1FC9
   rq_verb: RQ
   rp_verb: RP

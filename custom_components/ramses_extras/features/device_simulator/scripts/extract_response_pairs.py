@@ -19,15 +19,17 @@ CONVERSATIONS_DIR = DEVICE_DB_DIR / "conversations"
 
 # src prefix → device type slug (from build_device_db.py)
 PREFIX_MAP: dict[str, str] = {
-    "37": "FAN",  # HVAC fans
+    "37": "FAN",  # HVAC fans / remotes
     "32": "CO2",  # CO2 sensors
-    "34": "REM",  # Remotes
     "30": "RFG",  # Relay/bridge
     "18": "GWY",  # Gateway
     "01": "CTL",  # Controller
     "04": "TRV",  # TRV
-    "03": "OTB",  # Opentherm bridge
     "13": "BDR",  # Boiler relay
+    "07": "DHW",  # DHW sensor
+    "10": "OTB",  # OpenTherm bridge
+    "34": "RND",  # Round thermostat
+    "22": "THM",  # Digital thermostat
 }
 
 
@@ -63,63 +65,75 @@ def extract_response_pairs(conversations_dir: Path) -> dict[str, dict[str, set[s
             with open(yaml_file, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
 
-            if not data or "frames" not in data:
+            if not data:
                 continue
 
-            frames = data["frames"]
-            print(f"Processing {yaml_file.name}: {len(frames)} frames")
+            frame_blocks: list[list[dict[str, Any]]] = []
+            if "frames" in data:
+                frame_blocks.append(cast(list[dict[str, Any]], data["frames"]))
+            elif isinstance(data.get("conversations"), list):
+                for conv in data["conversations"]:
+                    frames = conv.get("frames")
+                    if isinstance(frames, list) and frames:
+                        frame_blocks.append(frames)
 
-            # Build a lookup by (src, code) to find matching responses
-            # We need to find RQ→RP and I→W pairs where response.src == request.dst
-            for i, frame in enumerate(frames):
-                src = frame.get("src")
-                dst = frame.get("dst")
-                code = frame.get("code")
-                verb = frame.get("verb")
-                payload = frame.get("payload")
+            if not frame_blocks:
+                continue
 
-                if not all([src, dst, code, verb, payload]):
-                    continue
+            for frames in frame_blocks:
+                print(f"Processing {yaml_file.name}: {len(frames)} frames")
 
-                # Skip broadcast destinations for requests
-                if dst in ("--:------", "ALL") and verb in ("RQ", "I"):
-                    continue
+                # Build a lookup by (src, code) to find matching responses
+                # We need to find RQ→RP and I→W pairs where response.src == request.dst
+                for i, frame in enumerate(frames):
+                    src = frame.get("src")
+                    dst = frame.get("dst")
+                    code = frame.get("code")
+                    verb = frame.get("verb")
+                    payload = frame.get("payload")
 
-                # Get device type of the responder (dst for RQ/I)
-                responder_device_type = get_device_type_from_id(dst)
-                if not responder_device_type:
-                    continue
+                    if not all([src, dst, code, verb, payload]):
+                        continue
 
-                # Look for matching response in subsequent frames
-                # Response should have: src == original dst, same code
-                # Valid patterns: RQ→RP, I→W, W→I, W→RP
-                for j in range(
-                    i + 1, min(i + 10, len(frames))
-                ):  # Look ahead up to 10 frames
-                    next_frame = frames[j]
-                    next_src = next_frame.get("src")
-                    next_code = next_frame.get("code")
-                    next_verb = next_frame.get("verb")
-                    next_payload = next_frame.get("payload")
+                    # Skip broadcast destinations for requests
+                    if dst in ("--:------", "ALL") and verb in ("RQ", "I"):
+                        continue
 
-                    # Check if this is a valid response
-                    if (
-                        next_src == dst  # Response comes from request destination
-                        and next_code == code  # Same code
-                        and (
-                            (verb == "RQ" and next_verb == "RP")
-                            or (verb == "I" and next_verb == "W")
-                            or (verb == "W" and next_verb == "I")
-                            or (verb == "W" and next_verb == "RP")
-                        )
-                    ):
-                        # Valid response pair found
-                        response_data[responder_device_type][code].add(next_payload)
-                        print(
-                            f"  Found {verb}→{next_verb} pair: {code} "
-                            f"from {src} → {dst} (payload: {next_payload[:20]}...)"
-                        )
-                        break  # Found the response, stop looking
+                    # Get device type of the responder (dst for RQ/I)
+                    responder_device_type = get_device_type_from_id(cast(str, dst))
+                    if not responder_device_type:
+                        continue
+
+                    # Look for matching response in subsequent frames
+                    # Response should have: src == original dst, same code
+                    # Valid patterns: RQ→RP, I→W, W→I, W→RP
+                    for j in range(
+                        i + 1, min(i + 10, len(frames))
+                    ):  # Look ahead up to 10 frames
+                        next_frame = frames[j]
+                        next_src = next_frame.get("src")
+                        next_code = next_frame.get("code")
+                        next_verb = next_frame.get("verb")
+                        next_payload = next_frame.get("payload")
+
+                        # Check if this is a valid response
+                        if (
+                            next_src == dst  # Response comes from request destination
+                            and next_code == code  # Same code
+                            and (
+                                (verb == "RQ" and next_verb == "RP")
+                                or (verb == "I" and next_verb == "W")
+                                or (verb == "W" and next_verb == "I")
+                                or (verb == "W" and next_verb == "RP")
+                            )
+                        ):
+                            # Valid response pair found
+                            response_data[responder_device_type][code].add(next_payload)  # type: ignore[index, arg-type]
+                            print(
+                                f"  Found {verb}→{next_verb} pair: {code} "
+                                f"from {src} → {dst} (payload: {next_payload[:20]}...)"  # type: ignore[index]
+                            )
+                            break  # Found the response, stop looking
 
         except Exception as e:
             print(f"Error processing {yaml_file.name}: {e}")
@@ -139,6 +153,19 @@ def load_device_type_yaml(yaml_file: Path) -> dict[str, Any]:
     except Exception as e:
         print(f"Error loading {yaml_file}: {e}")
         return {}
+
+
+def _resolve_device_file(device_db_dir: Path, domain: str, slug: str) -> Path:
+    candidates = [slug, slug.upper(), slug.lower()]
+    seen: set[str] = set()
+    for name in candidates:
+        if name in seen:
+            continue
+        seen.add(name)
+        candidate = device_db_dir / domain / f"{name}.yaml"
+        if candidate.exists():
+            return candidate
+    return device_db_dir / domain / f"{slug.upper()}.yaml"
 
 
 def save_device_type_yaml(yaml_file: Path, data: dict[str, Any]) -> None:
@@ -178,7 +205,7 @@ def merge_response_pairs(
         domain = "hvac" if device_type in hvac_types else "heat"
 
         # Find device type YAML file
-        device_file = device_db_dir / domain / f"{device_type.lower()}.yaml"
+        device_file = _resolve_device_file(device_db_dir, domain, device_type)
 
         if not device_file.exists():
             print(f"Device type file not found: {device_file}")
@@ -209,25 +236,29 @@ def merge_response_pairs(
         responses_list = cast(list[dict[str, Any]], responses_list)
 
         # Build a map of existing responses by code
-        existing_responses = {r["code"]: r for r in responses_list}
+        existing_responses = {}
+        for resp in device_data["responses"]:
+            resp["code"] = str(resp.get("code"))
+            existing_responses[resp["code"]] = resp
 
         for code, payloads in code_payloads.items():
+            code_str = str(code)
             payloads_list = sorted(payloads)
 
-            if code in existing_responses:
+            if code_str in existing_responses:
                 # Merge payloads with existing
-                existing = existing_responses[code]
+                existing = existing_responses[code_str]
                 existing_payloads = set(existing.get("payloads", []))
                 merged_payloads = sorted(existing_payloads.union(payloads))
                 existing["payloads"] = merged_payloads
                 print(
                     f"  Merged {len(payloads)} payloads into "
-                    f"existing {code} response for {device_type}"
+                    f"existing {code_str} response for {device_type}"
                 )
             else:
                 # Add new response entry
                 new_response = {
-                    "code": code,
+                    "code": code_str,
                     "rq_verb": "RQ",
                     "rp_verb": "RP",
                     "delay_ms": 100,
@@ -236,7 +267,7 @@ def merge_response_pairs(
                 }
                 device_data["responses"].append(new_response)
                 print(
-                    f"  Added new {code} response for {device_type} "
+                    f"  Added new {code_str} response for {device_type} "
                     f"with {len(payloads_list)} payloads"
                 )
 

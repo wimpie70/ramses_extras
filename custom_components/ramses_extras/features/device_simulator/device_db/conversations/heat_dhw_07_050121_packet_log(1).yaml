@@ -1,0 +1,55 @@
+peers:
+- 01:216136
+- 07:050121
+conversations:
+- id: heat_dhw_07_050121_packet_log(1)
+  description: 'Harvested from packet_log(1).log: device 07:050121 (DHW)'
+  frames:
+  - t: 0.0
+    src: 01:216136
+    dst: 07:050121
+    code: 10A0
+    verb: RP
+    payload: 0016440001F4
+  - t: 0.014112
+    src: 07:050121
+    dst: --:------
+    code: '1260'
+    verb: I
+    payload: 0016FF
+  - t: 0.017113000000000003
+    src: 07:050121
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 00FF01
+  - t: 119.434041
+    src: 07:050121
+    dst: --:------
+    code: '1260'
+    verb: I
+    payload: 00173C
+  - t: 3719.849535
+    src: 07:050121
+    dst: --:------
+    code: '1260'
+    verb: I
+    payload: '001725'
+  - t: 3943.890423
+    src: 07:050121
+    dst: 01:216136
+    code: 10A0
+    verb: RQ
+    payload: 00162D0001F2
+  - t: 3943.891198
+    src: 01:216136
+    dst: 07:050121
+    code: 10A0
+    verb: RP
+    payload: 0016440001F4
+  - t: 7320.262374000001
+    src: 07:050121
+    dst: --:------
+    code: '1260'
+    verb: I
+    payload: 0016FF

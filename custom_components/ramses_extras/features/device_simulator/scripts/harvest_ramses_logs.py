@@ -7,12 +7,45 @@ that can be imported into the device simulator database.
 
 import argparse
 import re
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+# Mapping of simulator slugs to their RAMSES device ID prefixes (first byte)
+DEVICE_TYPE_PREFIX: dict[str, str] = {
+    "HGI": "18",
+    # HVAC
+    "FAN": "32",
+    "CO2": "37",
+    "HUM": "29",
+    "REM": "37",
+    "DIS": "37",
+    "RFS": "30",
+    # Heat
+    "CTL": "01",
+    "TRV": "04",
+    "DHW": "07",
+    "BDR": "13",
+    "OTB": "10",
+    "PRG": "23",
+    "UFC": "02",
+    "OUT": "17",
+    "DTS": "12",
+    "HCW": "03",
+    "RND": "34",
+    "RFG": "30",
+    "THM": "22",
+    "JIM": "08",
+    "JST": "31",
+}
+
+PREFIX_TO_DEVICE_TYPES: dict[str, set[str]] = defaultdict(set)
+for slug, prefix in DEVICE_TYPE_PREFIX.items():
+    PREFIX_TO_DEVICE_TYPES[prefix].add(slug)
 
 
 @dataclass
@@ -217,6 +250,74 @@ def parse_ramses_log(
     return frames, peers_set
 
 
+# ---------------------------------------------------------------------------
+# Helper utilities for device filtering and conversation building
+# ---------------------------------------------------------------------------
+
+
+def _collect_peers(frames: list[ConversationFrame]) -> list[str]:
+    peers: set[str] = set()
+    for frame in frames:
+        for addr in (frame.src, frame.dst):
+            if addr in ("--:------", "ALL"):
+                continue
+            peers.add(addr)
+    return sorted(peers)
+
+
+def _frames_to_dicts(frames: list[ConversationFrame]) -> list[dict[str, Any]]:
+    if not frames:
+        return []
+    base_t = frames[0].t
+    return [
+        {
+            "t": f.t - base_t,
+            "src": f.src,
+            "dst": f.dst,
+            "code": f.code,
+            "verb": f.verb,
+            "payload": f.payload,
+        }
+        for f in frames
+    ]
+
+
+def _device_slugs_for_id(device_id: str, allowed: set[str]) -> set[str]:
+    if not device_id or ":" not in device_id:
+        return set()
+    prefix = device_id.split(":", 1)[0]
+    matches = PREFIX_TO_DEVICE_TYPES.get(prefix, set())
+    if not matches:
+        return set()
+    if not allowed:
+        return matches
+    return {slug for slug in matches if slug in allowed}
+
+
+def _group_frames_by_device(
+    frames: list[ConversationFrame], allowed_slugs: set[str]
+) -> dict[tuple[str, str], list[ConversationFrame]]:
+    groups: dict[tuple[str, str], list[ConversationFrame]] = {}
+    if not allowed_slugs:
+        return groups
+
+    for frame in frames:
+        frame_keys: set[tuple[str, str]] = set()
+        for device_id in (frame.src, frame.dst):
+            for slug in _device_slugs_for_id(device_id, allowed_slugs):
+                key = (slug, device_id)
+                if key in frame_keys:
+                    continue
+                groups.setdefault(key, []).append(frame)
+                frame_keys.add(key)
+    return groups
+
+
+def _sanitize_conv_id(*parts: str) -> str:
+    raw = "_".join(parts)
+    return raw.replace(":", "_").replace(" ", "_").replace("-", "_")
+
+
 # RAMSES RF test directory
 RAMSES_RF_DIR = Path("/home/willem/dev/ramses_rf/tests/tests")
 
@@ -242,6 +343,7 @@ def harvest_logs(
     output_dir: Path,
     category: str,
     patterns: list[str],
+    device_filters: set[str] | None = None,
 ) -> int:
     """Harvest logs from ramses_rf test directory.
 
@@ -268,18 +370,47 @@ def harvest_logs(
                     print(f"Skipping {log_file}: no valid frames")
                     continue
 
+                device_groups = _group_frames_by_device(frames, device_filters or set())
+
+                if device_groups:
+                    for (slug, device_id), subset in device_groups.items():
+                        frames_dict = _frames_to_dicts(subset)
+                        peers_list = _collect_peers(subset)
+                        conv_id = _sanitize_conv_id(
+                            category.lower(), slug.lower(), device_id, log_file.stem
+                        )
+                        conversation = {
+                            "peers": peers_list,
+                            "conversations": [
+                                {
+                                    "id": conv_id,
+                                    "description": (
+                                        f"Harvested from {log_file.name}: "
+                                        f"device {device_id} ({slug})"
+                                    ),
+                                    "frames": frames_dict,
+                                }
+                            ],
+                        }
+
+                        output_file = output_dir / f"{conv_id}.yaml"
+                        with open(output_file, "w", encoding="utf-8") as f:
+                            yaml.dump(
+                                conversation,
+                                f,
+                                default_flow_style=False,
+                                sort_keys=False,
+                            )
+
+                        rel_path = output_file.relative_to(output_dir)
+                        print(
+                            f"Harvested: {log_file.name} ({device_id}/{slug}) -> {rel_path}"  # noqa: E501
+                        )
+                        harvested += 1
+                    continue
+
                 # Convert ConversationFrame objects to dicts for YAML serialization
-                frames_dict = [
-                    {
-                        "t": f.t,
-                        "src": f.src,
-                        "dst": f.dst,
-                        "code": f.code,
-                        "verb": f.verb,
-                        "payload": f.payload,
-                    }
-                    for f in frames
-                ]
+                frames_dict = _frames_to_dicts(frames)
 
                 # Create conversation YAML with category prefix
                 stem = log_file.stem.replace(" ", "_").replace("-", "_")
@@ -326,6 +457,11 @@ def main() -> int:
         help="Path to ramses_rf tests directory",
     )
     parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="Path to a single RAMSES log file (overrides --category patterns)",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=OUTPUT_DIR,
@@ -337,12 +473,49 @@ def main() -> int:
         default="ALL",
         help="Category of logs to harvest",
     )
+    parser.add_argument(
+        "--device-types",
+        nargs="*",
+        help="Filter conversations to specific device types (e.g. RND THM OTB DHW)",
+    )
 
     args = parser.parse_args()
 
     if not args.ramses_rf_dir.exists():
         print(f"Error: ramses_rf directory not found: {args.ramses_rf_dir}")
         return 1
+
+    device_filters: set[str] = set()
+    if args.device_types:
+        for token in args.device_types:
+            for raw in token.split(","):
+                slug = raw.strip().upper()
+                if not slug:
+                    continue
+                if slug not in DEVICE_TYPE_PREFIX:
+                    print(f"Warning: unknown device type '{raw}', skipping")
+                    continue
+                device_filters.add(slug)
+
+    device_filters = device_filters or set()
+
+    if args.log_file:
+        if not args.log_file.exists():
+            print(f"Error: log file not found: {args.log_file}")
+            return 1
+
+        category = args.category if args.category != "ALL" else "custom"
+        log_dir = args.log_file.parent
+        print(f"\nHarvesting {args.log_file} (category={category})...")
+        harvested = harvest_logs(
+            log_dir,
+            args.output_dir,
+            category,
+            [args.log_file.name],
+            device_filters or None,
+        )
+        print(f"\nTotal harvested: {harvested} logs")
+        return 0
 
     total_harvested = 0
 
@@ -353,6 +526,7 @@ def main() -> int:
             args.output_dir,
             "HVAC",
             HVAC_PATTERNS,
+            device_filters or None,
         )
         print(f"Harvested {harvested} HVAC logs")
         total_harvested += harvested
@@ -364,6 +538,7 @@ def main() -> int:
             args.output_dir,
             "HEAT",
             HEAT_PATTERNS,
+            device_filters or None,
         )
         print(f"Harvested {harvested} HEAT logs")
         total_harvested += harvested

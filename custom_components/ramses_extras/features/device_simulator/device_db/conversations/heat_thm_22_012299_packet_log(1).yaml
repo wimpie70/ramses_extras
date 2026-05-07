@@ -1,0 +1,139 @@
+peers:
+- 01:216136
+- 22:012299
+conversations:
+- id: heat_thm_22_012299_packet_log(1)
+  description: 'Harvested from packet_log(1).log: device 22:012299 (THM)'
+  frames:
+  - t: 0.0
+    src: 22:012299
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: '000744'
+  - t: 0.151495
+    src: 22:012299
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: '000001'
+  - t: 495.085958
+    src: 22:012299
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000758
+  - t: 1030.914882
+    src: 22:012299
+    dst: 01:216136
+    code: 22C9
+    verb: W
+    payload: 01076C09F601
+  - t: 1041.18538
+    src: 22:012299
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: '000001'
+  - t: 1620.082544
+    src: 22:012299
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000758
+  - t: 2166.17513
+    src: 22:012299
+    dst: 01:216136
+    code: 22C9
+    verb: W
+    payload: 01076C09F601
+  - t: 2166.175953
+    src: 22:012299
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: '000001'
+  - t: 2745.080663
+    src: 22:012299
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000758
+  - t: 3282.227334
+    src: 22:012299
+    dst: 01:216136
+    code: 22C9
+    verb: W
+    payload: 01076C09F601
+  - t: 3291.171725
+    src: 22:012299
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: '000001'
+  - t: 3870.075891
+    src: 22:012299
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000758
+  - t: 4416.167318000001
+    src: 22:012299
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: '000001'
+  - t: 4995.072104000001
+    src: 22:012299
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000758
+  - t: 5530.160079
+    src: 22:012299
+    dst: 01:216136
+    code: 22C9
+    verb: W
+    payload: 01076C09F601
+  - t: 5541.194635000001
+    src: 22:012299
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: '000001'
+  - t: 6120.0876530000005
+    src: 22:012299
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000758
+  - t: 6655.280478000001
+    src: 22:012299
+    dst: 01:216136
+    code: 22C9
+    verb: W
+    payload: 01076C09F601
+  - t: 6666.159551000001
+    src: 22:012299
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: '000001'
+  - t: 7245.069071000001
+    src: 22:012299
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000758
+  - t: 7783.844949
+    src: 22:012299
+    dst: 01:216136
+    code: 22C9
+    verb: W
+    payload: 01076C09F601
+  - t: 7791.15639
+    src: 22:012299
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: '000001'

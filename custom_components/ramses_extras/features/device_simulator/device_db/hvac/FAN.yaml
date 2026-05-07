@@ -1,7 +1,3 @@
-# Auto-generated from ramses_rf sources
-# Device type: FAN (domain: hvac)
-# Manual review recommended before committing
----
 device_type: FAN
 domain: hvac
 broadcast_safe: false
@@ -32,7 +28,7 @@ autonomous:
   payloads:
   - 00A740
   - 007A40
-  - '009540'
+  - 009540
   notes: Example payloads from regression file
 - code: '2411'
   verb: I
@@ -59,7 +55,8 @@ autonomous:
   - 00EF007FFF3927070805B4054E06EF680000011E1E0000EFEF04DF820000
   - 00EF007FFF3927071205AA054E06E8680000011E1E0000EFEF04FB04DF00
   - 00EF007FFF3929071205B4054E06E3680000011E1E0000EFEF04DF04DF00
-  notes: Captured from parsed_logs.txt (Orcon fan 32:153289) on 2026-04-27 (sim-speed 10s)
+  notes: Captured from parsed_logs.txt (Orcon fan 32:153289) on 2026-04-27 (sim-speed
+    10s)
 - code: 22F7
   verb: I
   trigger: state_change
@@ -127,7 +124,7 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads:
-  - '000280'
+  - 000280
   - 0001C6
   notes: Example payloads from regression file
 - code: 313F
@@ -151,54 +148,26 @@ autonomous:
   interval_seconds: 60.0
   payloads: []
 responses:
-- code: '31DA'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - 00EF007FFF3A2A071205AA054D072F680000011E1E0000EFEF04DF04DF00
-- code: 10E0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
-- code: '2411'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - 0000010020002DCAAF00000000FFFFFFFF00000001CB00  # Support
-  - 0000313B10000000B400000000000007080000001ECB2C  # Time to change filter
-  - 00003D440F00000000000000000000005000000001CB32  # Away mode Supply fan rate
-  - 00003E450F00000000000000000000005000000001CB32  # Away mode Exhaust fan rate
-  - 00003F460F0000001E00000000000000A000000001CB32  # Low mode Supply fan rate
-  - 000040470F0000001E00000000000000A000000001CB32  # Low mode Exhaust fan rate
-  - 000041480F0000006400000000000000C800000001CB32  # Medium mode Supply fan rate
-  - 000042490F0000006400000014000000C800000001CB32  # Medium mode Exhaust fan rate
-  - 0000434A0F000000C800000000000000C800000001CB32  # High mode Supply fan rate
-  - 0000444B0F000000C800000014000000C800000001CB32  # High mode Exhaust fan rate
-  - 00004B1F0000000000000000000000000200000001CB00  # Bypass Valve
-  - 00004E530000000001000000000000000100000001CB00  # Moisture scenario position
-  - 00005257010000009600000000000000FA00000001CB32  # Sensor sensitivity
-  - 00005459000000000F0000000F0000003C00000001CB2A  # Moisture sensor overrun time
-  - 00007567920000082A0000000000000BB800000001CB01  # Comfort temperature
-  - 0000954C0F000000C800000000000000C800000001CB32  # Boost mode fan rate
-  notes: Captured from real device traffic (37:168270 Display -> 32:153289 FAN) on 2026-04-22
 - code: '0001'
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '00800000200001'
+  - 00800000200001
   notes: Menu index response (same format as REM)
 - code: 10D0
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '0000B400B40000'
+  - 0000B400B40000
   notes: Filter remaining ~180 days, 180 day lifetime (8 bytes)
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 000001001B361B01FEFFFFFFFFFF0B0407E34356452D52460000000000000000000000000000
 - code: '1470'
   rq_verb: RQ
   rp_verb: RP
@@ -213,6 +182,14 @@ responses:
   payloads:
   - FF091A
   notes: Sync interval (~1200s)
+- code: 1FC9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0031D996568A00230996568A
+  - A
+  notes: Extracted from harvested conversations
 - code: '2210'
   rq_verb: RQ
   rp_verb: RP
@@ -269,6 +246,29 @@ responses:
   payloads:
   - 0000EF
   notes: Bypass mode off (RP same as I format)
+- code: '2411'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0000010020002DCAAF00000000FFFFFFFF00000001CB00
+  - 0000313B10000000B400000000000007080000001ECB2C
+  - 00003D440F00000000000000000000005000000001CB32
+  - 00003E450F00000000000000000000005000000001CB32
+  - 00003F460F0000001E00000000000000A000000001CB32
+  - 000040470F0000001E00000000000000A000000001CB32
+  - 000041480F0000006400000000000000C800000001CB32
+  - 000042490F0000006400000014000000C800000001CB32
+  - 0000434A0F000000C800000000000000C800000001CB32
+  - 0000444B0F000000C800000014000000C800000001CB32
+  - 00004B1F0000000000000000000000000200000001CB00
+  - 00004E530000000001000000000000000100000001CB00
+  - 00005257010000009600000000000000FA00000001CB32
+  - 00005459000000000F0000000F0000003C00000001CB2A
+  - 00007567920000082A0000000000000BB800000001CB01
+  - 0000954C0F000000C800000000000000C800000001CB32
+  notes: Captured from real device traffic (37:168270 Display -> 32:153289 FAN) on
+    2026-04-22
 - code: 313E
   rq_verb: RQ
   rp_verb: RP
@@ -290,6 +290,12 @@ responses:
   payloads:
   - '000207'
   notes: Fan state - orcon scheme medium speed (3-byte minimal format)
+- code: 31DA
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00EF007FFF3A2A071205AA054D072F680000011E1E0000EFEF04DF04DF00
 - code: '3222'
   rq_verb: RQ
   rp_verb: RP

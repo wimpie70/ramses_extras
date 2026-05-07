@@ -1111,14 +1111,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    db_dir = (
-        _REPO_ROOT
-        / "custom_components"
-        / "ramses_extras"
-        / "features"
-        / "device_simulator"
-        / "device_db"
-    )
+    db_dir = _REPO_ROOT / "device_db"
 
     # --- Mode: extract from logs ---
     if args.extract_from_logs is not None:

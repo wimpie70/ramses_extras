@@ -1,7 +1,3 @@
-# Auto-generated from ramses_rf sources
-# Device type: CO2 (domain: hvac)
-# Manual review recommended before committing
----
 device_type: CO2
 domain: hvac
 broadcast_safe: false
@@ -25,15 +21,15 @@ autonomous:
   trigger: periodic
   interval_seconds: 60.0
   payloads:
-  - '0000000001001E00'
+  - 0000000001001E00
   notes: Captured from parsed_logs.txt (CO2 sensor 37:126776) on 2026-04-27
 - code: '1298'
   verb: I
   trigger: periodic
   interval_seconds: 60.0
   payloads:
-  - '0001A4'
-  - '0001A6'
+  - 0001A4
+  - 0001A6
   notes: Captured from parsed_logs.txt (CO2 sensor 37:126776) on 2026-04-27
 - code: 2E10
   verb: I
@@ -58,6 +54,32 @@ autonomous:
   - 00050E0B0C00111470
   notes: Example payloads from regression file
 responses:
+- code: '0001'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00200000003D0100
+  - 00200001003E0200
+  - 00200002003F0300
+  - '0020000300400400'
+  - '0020000500420600'
+  - '0020000600430700'
+  - 0020000700440800
+  - 0020000800950900
+  - 0020000A004E0B00
+  - 0020000C00540D00
+  - 0020000D00750E01
+  - 0020000E00000000
+  - 00800000200001
+  notes: Extracted from harvested conversations
+- code: 1FC9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - A
+  notes: Extracted from harvested conversations
 - code: 22F1
   rq_verb: RQ
   rp_verb: RP
@@ -65,18 +87,6 @@ responses:
   payloads:
   - '000204'
   notes: Fan mode sample lifted from regression_packets_sorted.txt (nuaire scheme)
-- code: '31E0'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - 6400CD03E803E8
-- code: 31DA
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - 00EF007FFF2B27060E0848089605F9F000445800000000EFEF02D2154400
 - code: '2411'
   rq_verb: RQ
   rp_verb: RP
@@ -84,3 +94,15 @@ responses:
   payloads:
   - 00000100000000003200000000000000FF0000000120
   notes: Legacy "not supported" response observed in code_2411_wip.log
+- code: 31DA
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00EF007FFF2B27060E0848089605F9F000445800000000EFEF02D2154400
+- code: 31E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 6400CD03E803E8

@@ -35,6 +35,42 @@ def _ensure_hgi_entry(
     return known_list
 
 
+def _infer_device_class_from_id(device_id: str) -> str | None:
+    """Infer device class from device ID prefix.
+
+    Maps device ID prefixes (first two digits) to device type slugs.
+    Returns None if the prefix is not recognized.
+
+    :param device_id: Device ID, e.g. '01:216136'.
+    """
+    if not device_id or ":" not in device_id:
+        return None
+    prefix = device_id.split(":")[0]
+    # Mapping of prefixes to device type slugs based on RAMSES device types
+    prefix_to_slug: dict[str, str] = {
+        "01": "CTL",  # Controller
+        "02": "UFC",  # UFH Controller
+        "03": "HCW",  # Analog thermostat
+        "04": "TRV",  # TRV
+        "07": "DHW",  # DHW sensor
+        "08": "JIM",  # Jasper interface
+        "10": "OTB",  # OpenTherm bridge
+        "12": "DTS",  # Digital thermostat
+        "13": "BDR",  # Electrical relay
+        "17": "OUT",  # Outdoor sensor
+        "18": "HGI",  # Home Gateway Interface
+        "22": "THM",  # Digital thermostat DT4
+        "23": "PRG",  # Programmer
+        "29": "HUM",  # Humidity sensor
+        "30": "RFS",  # Internet gateway / RFS
+        "31": "JST",  # Jasper thermostat
+        "32": "FAN",  # FAN
+        "34": "RND",  # Round thermostat T87RF
+        "37": "REM",  # REM (default for 37 prefix, could be CO2/DIS too)
+    }
+    return prefix_to_slug.get(prefix)
+
+
 def parse_profile_yaml(yaml_text: str) -> dict[str, Any]:
     try:
         data = yaml.safe_load(yaml_text)
@@ -43,6 +79,64 @@ def parse_profile_yaml(yaml_text: str) -> dict[str, Any]:
     if not isinstance(data, dict) or not data:
         raise ValueError("Profile YAML must define a mapping of devices")
     return data
+
+
+def _convert_known_devices_schema_to_internal(
+    schema: dict[str, Any], known_list: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Convert known_devices format schema to internal schema format.
+
+    known_devices format: {system, orphans, stored_hotwater, zones}
+    internal format: {device_id: {zones, stored_hotwater, remotes, sensors}}
+    """
+    if not isinstance(schema, dict):
+        return None  # type: ignore[unreachable]
+
+    # Check if this is already in internal format (device IDs as keys)
+    has_device_id_keys = any(isinstance(k, str) and ":" in k for k in schema.keys())
+    if has_device_id_keys:
+        return schema
+
+    # Convert from known_devices format to internal format
+    zones = schema.get("zones", {})
+    stored_hotwater = schema.get("stored_hotwater", {})
+
+    # Find the CTL device from known_list
+    ctl_device_id = None
+    for dev_id, dev_cfg in known_list.items():
+        if dev_cfg.get("class") == "CTL":
+            ctl_device_id = dev_id
+            break
+
+    # If no CTL found, try to use the first 01:* device as CTL (common for controllers)
+    if not ctl_device_id:
+        for dev_id in known_list.keys():
+            if dev_id.startswith("01:"):
+                ctl_device_id = dev_id
+                LOGGER.info(
+                    "Using %s as CTL device (not explicitly marked as class: CTL)",
+                    ctl_device_id,
+                )
+                break
+
+    if not ctl_device_id:
+        LOGGER.warning("Could not find CTL device in known_list for schema conversion")
+        return None
+
+    # Build internal schema
+    internal_schema: dict[str, Any] = {}
+
+    # Add zones under CTL device
+    if zones:
+        internal_schema[ctl_device_id] = {"zones": zones}
+
+    # Add stored_hotwater under CTL device
+    if stored_hotwater:
+        if ctl_device_id not in internal_schema:
+            internal_schema[ctl_device_id] = {}
+        internal_schema[ctl_device_id]["stored_hotwater"] = stored_hotwater
+
+    return internal_schema if internal_schema else None
 
 
 def build_profile_from_payload(
@@ -65,7 +159,17 @@ def build_profile_from_payload(
         device_configs["_enforce_known_list"] = {"enabled": True}
 
     if "_schema" in payload:
-        device_configs["_schema"] = payload["_schema"]
+        schema = payload["_schema"]
+        converted_schema = _convert_known_devices_schema_to_internal(
+            schema, dict(known_list)
+        )
+        if converted_schema:
+            device_configs["_schema"] = converted_schema
+        else:
+            LOGGER.warning(
+                "Profile '%s': could not convert _schema to internal format, excluding from profile",  # noqa: E501
+                name,
+            )
 
     # Copy per-device overrides (keys that look like device IDs)
     for key, value in payload.items():
@@ -427,7 +531,9 @@ async def _reload_ramses_cc(
             from .scenario_engine import ActiveDevice
 
             for dev_id, dev_cfg in profile_devices.items():
-                slug = dev_cfg.get("class", "FAN")
+                slug = (
+                    dev_cfg.get("class") or _infer_device_class_from_id(dev_id) or "FAN"
+                )
                 device = ActiveDevice(
                     device_id=dev_id,
                     slug=slug,

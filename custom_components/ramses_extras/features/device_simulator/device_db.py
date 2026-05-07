@@ -738,7 +738,7 @@ class DeviceDatabase:
             return False
 
         try:
-            frames, peers_set = parse_ramses_log(content)
+            frames, peers_set = await asyncio.to_thread(parse_ramses_log, content)
         except Exception as err:
             LOGGER.error("Failed to parse log: %s", err)
             return False

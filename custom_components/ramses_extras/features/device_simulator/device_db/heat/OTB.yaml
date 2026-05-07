@@ -1,7 +1,3 @@
-# Auto-generated from ramses_rf sources
-# Device type: OTB (domain: heat)
-# Manual review recommended before committing
----
 device_type: OTB
 domain: heat
 broadcast_safe: false
@@ -20,12 +16,18 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 110.0
-  payloads: []
+  payloads:
+  - 001DB6
+  - 001DB7
+  - 001DB8
+  notes: Real captured payloads from log (score=100)
 - code: 3EF0
   verb: I
   trigger: periodic
   interval_seconds: 200.7
-  payloads: []
+  payloads:
+  - 000010000000020A64
+  notes: Real captured payloads from log (score=100)
 - code: 10E0
   verb: I
   trigger: periodic
@@ -40,64 +42,10 @@ autonomous:
   verb: I
   trigger: periodic
   interval_seconds: 60.0
-  payloads: []
+  payloads:
+  - '000000'
+  notes: Real captured payloads from log (score=100)
 responses:
-- code: 10E0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '000001FF050BFFFFFFFF0E0907E2070307E1523838313041000000000000000000000000'
-  notes: Device info response (R8810/R8820)
-- code: 3EF0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '00'
-  notes: OpenTherm status response
-- code: '3220'
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '00401200F8'
-  notes: OpenTherm diagnostic response
-- code: 1FC9
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '003EF00003EF1'
-  notes: Multi-code response
-- code: 10A0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '0013880003E8'
-  notes: Outside air temperature response
-- code: 10B0
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '00FF00'
-  notes: Return water temperature response
-- code: 1260
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '00FF00'
-  notes: Boiler setpoint response
-- code: 1290
-  rq_verb: RQ
-  rp_verb: RP
-  delay_ms: 100
-  payloads:
-  - '00FF00'
-  notes: Boiler mode response
 - code: 042F
   rq_verb: RQ
   rp_verb: RP
@@ -105,17 +53,146 @@ responses:
   payloads:
   - '00000000'
   notes: Minimal device status response
+- code: 10A0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 0013880003E8
+  notes: Outside air temperature response
+- code: 10B0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00
+  notes: Return water temperature response
+- code: 10E0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 000001FF050BFFFFFFFF0E0907E2070307E1523838313041000000000000000000000000
+  notes: Device info response (R8810/R8820)
+- code: '1260'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00
+  notes: Boiler setpoint response
+- code: '1290'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00FF00
+  notes: Boiler mode response
+- code: 1FC9
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 003EF00003EF1
+  notes: Multi-code response
 - code: 22D9
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
   - '00'
+  - 0003E8
   notes: Unknown code response
+- code: '2401'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00000100'
+  notes: Extracted from harvested conversations
+- code: '3220'
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - 00300F0000
+  - '0030710000'
+  - '0030720000'
+  - '0030740000'
+  - '0030770000'
+  - 0030780000
+  - 00307B0000
+  - '0040000200'
+  - 0040010A00
+  - '0040060301'
+  - 00401200F8
+  - '0040130000'
+  - 0040191F19
+  - 0040191F51
+  - 0040191F7A
+  - 0040191FB5
+  - 004019201C
+  - 0040192040
+  - 0040192080
+  - 00401920C2
+  - 0040192121
+  - 00401921E1
+  - 0040192221
+  - 00401922DE
+  - 00401923BA
+  - 00401923F8
+  - 0040192435
+  - 00401924D1
+  - 00401B47AB
+  - 0040315A14
+  - 0040383A00
+  - 00407F0101
+  - '0070730000'
+  - 00B0730000
+  - 00B0750000
+  - 00B0760000
+  - 00B0790000
+  - 00B07A0000
+  - 00C00349AD
+  - 00C0050000
+  - 00C00E6400
+  - 00C0110000
+  - 00C012014A
+  - 00C012014C
+  - 00C0120180
+  - 00C0181400
+  - 00C0191FDE
+  - 00C019201E
+  - 00C01920E1
+  - 00C0192161
+  - 00C01921A1
+  - 00C0192261
+  - 00C01922A1
+  - 00C019231E
+  - 00C019235C
+  - 00C019239C
+  - 00C0192475
+  - 00C019253A
+  - 00C019265C
+  - 00C01A47AB
+  - 00C01C47AB
+  - 00C0304128
+  - 00C0393C00
+  - 00F00F0000
+  notes: OpenTherm diagnostic response
+- code: 3EF0
+  rq_verb: RQ
+  rp_verb: RP
+  delay_ms: 100
+  payloads:
+  - '00'
+  - 000010000000020A64
+  - 000010020000020A64
+  notes: OpenTherm status response
 - code: 3EF1
   rq_verb: RQ
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '007FFF003C001012'
+  - 007FFF003C001012
   notes: Extended OpenTherm response
