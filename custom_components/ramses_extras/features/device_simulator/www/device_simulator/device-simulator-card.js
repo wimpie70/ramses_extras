@@ -625,6 +625,21 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     await this._fetchData();
   }
 
+  async _resumeDiscoveredDevices() {
+    // Use the same filtering logic as the UI to identify discovered devices
+    const discoveredDeviceIds = this._devices
+      .filter((d) => {
+        const isDiscovered = d.source === "scenario" ||
+                           d.owned_by_profile === true ||
+                           (d.id && d.id.includes(":")) ||
+                           (d.device_id && d.device_id.includes(":"));
+        return isDiscovered && !d.emitting;
+      })
+      .map((d) => d.id || d.device_id)
+      .filter((id) => id && typeof id === 'string');
+    await this._resumeDevices(discoveredDeviceIds);
+  }
+
   async _resumeAllDevices() {
     await this._resumeDevices();
   }
@@ -1001,6 +1016,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     root.querySelectorAll("[data-action='discover-device']").forEach((btn) => {
       btn.addEventListener("click", () => this._discoverCapabilities([btn.dataset.deviceId]));
     });
+
+    const resumeDiscovered = root.querySelector("[data-action='resume-discovered-devices']");
+    if (resumeDiscovered) {
+      resumeDiscovered.addEventListener("click", () => this._resumeDiscoveredDevices());
+    }
 
     const resumeAll = root.querySelector("[data-action='resume-all-devices']");
     if (resumeAll) {
