@@ -130,10 +130,10 @@ class TestBuildProfileFromPayload:
         """Test building profile with schema."""
         payload = {
             "known_list": {"32:168270": {"class": "FAN"}},
-            "_schema": {"test": "schema"},
+            "_schema": {"32:168270": {"zones": ["zone1"]}},  # Internal format
         }
         profile = build_profile_from_payload("test_profile", payload)
-        assert profile.device_configs["_schema"]["test"] == "schema"
+        assert profile.device_configs["_schema"]["32:168270"]["zones"] == ["zone1"]
 
     def test_build_profile_from_payload_with_device_overrides(self):
         """Test building profile with device-specific overrides."""
