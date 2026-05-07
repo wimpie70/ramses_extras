@@ -52,15 +52,28 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     :param hass: Home Assistant instance
     :param config: YAML configuration
-
-    :return: True if setup was successful
+    :return: True to indicate successful setup
     """
+    # Check if config entry already exists
+    existing_entries = hass.config_entries.async_entries(DOMAIN)
+    if existing_entries:
+        _LOGGER.info("Ramses Extras config entry already exists, skipping YAML setup")
+        return True
 
-    def _startup_callback(event: Event) -> None:
-        asyncio.run_coroutine_threadsafe(
-            _handle_startup_event(event, hass, config),
-            hass.loop,
-        )
+    # Check if there's actually YAML configuration
+    yaml_config = config.get(DOMAIN, {})
+    if not yaml_config:
+        _LOGGER.info("No Ramses Extras YAML configuration found, skipping YAML setup")
+        return True
+
+    async def _startup_callback(event: Event) -> None:
+        """Callback to run YAML setup after Home Assistant has started.
+
+        :param event: Home Assistant started event
+        """
+        _LOGGER.info("Starting Ramses Extras from YAML configuration")
+
+        await async_setup_yaml_config(hass, config)
 
     hass.bus.async_listen(EVENT_HOMEASSISTANT_STARTED, _startup_callback)
 
@@ -71,13 +84,20 @@ async def async_setup_yaml_config(hass: HomeAssistant, config: ConfigType) -> No
     """Create config flow entry from YAML configuration.
 
     Converts YAML configuration data into a config flow entry with
-    context indicating YAML source.
+    context indicating YAML source. Only creates an entry if one
+    doesn't already exist.
 
     :param hass: Home Assistant instance
-    :param config: YAML configuration dictionary
+    :param config: Configuration dictionary
     """
     yaml_config = config.get(DOMAIN, {})
     if not yaml_config:
+        return
+
+    # Check if config entry already exists
+    existing_entries = hass.config_entries.async_entries(DOMAIN)
+    if existing_entries:
+        _LOGGER.info("Ramses Extras config entry already exists, skipping YAML setup")
         return
 
     try:

@@ -511,7 +511,6 @@ async def create_device_simulator_feature(
     from .scenario_engine import ScenarioEngine
     from .services import async_setup_services
     from .system_config import ConfigProfileStore, apply_timeout_scale
-    from .websocket import async_register_websocket_commands
 
     hass.data.setdefault("ramses_extras", {})
 
@@ -827,9 +826,6 @@ async def create_device_simulator_feature(
     # Set up services
     await async_setup_services(hass)
 
-    # Register websocket commands
-    async_register_websocket_commands(hass)
-
     _LOGGER.debug("Device Simulator feature created")
 
     return {
@@ -884,11 +880,19 @@ def load_feature(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[str, An
     """
     from custom_components.ramses_extras.extras_registry import extras_registry
 
-    from .const import DEVICE_SIMULATOR_CARD_CONFIGS
+    from .const import (
+        DEVICE_SIMULATOR_CARD_CONFIGS,
+        DEVICE_SIMULATOR_WEBSOCKET_COMMANDS,
+    )
 
     # Register each card configuration for feature-centric card management
     for card_config in DEVICE_SIMULATOR_CARD_CONFIGS:
         extras_registry.register_card_config("device_simulator", card_config)
+
+    # Register WebSocket commands
+    extras_registry.register_websocket_commands(
+        "device_simulator", DEVICE_SIMULATOR_WEBSOCKET_COMMANDS
+    )
 
     # Schedule async setup and return immediately
     # The async task will handle the actual feature creation
@@ -898,7 +902,7 @@ def load_feature(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[str, An
     return {
         "feature_name": "device_simulator",
         "services_module": "services",
-        "websocket_commands_module": "websocket",
+        "websocket_commands_module": "websocket_commands",
     }
 
 

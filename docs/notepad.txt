@@ -118,7 +118,11 @@ Disable device_simulator or remove ramses_extras
 Verify logs: Restored ramses_cc schema/known_list/ramses_rf to pre-simulator state and Restored ramses_cc MQTT serial_port to <original>
 Check ramses_cc options match step 1
 
+scenario blocked after emitting
+profiles start with all boxes selected
+playback starting with device discovered ???
 
+add peter nash msgs to the dbase (#652 _cc) and saved on ../dev
 
 _cc #654:
 

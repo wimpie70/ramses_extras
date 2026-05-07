@@ -930,6 +930,7 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
     ) -> dict[str, Any]:
         from .framework.helpers.config.model import (
             CONFIG_DEBUG_LEVELS_KEY,
+            CONFIG_ENABLED_FEATURES_KEY,
             CONFIG_FRAMEWORK_KEY,
             CONFIG_ROOT_KEY,
         )
@@ -940,6 +941,16 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
         root = imported_config.get(CONFIG_ROOT_KEY)
         if not isinstance(root, dict):
             return new_options
+
+        # Sync enabled_features to options.ramses_extras.enabled_features
+        if CONFIG_ENABLED_FEATURES_KEY in root:
+            enabled_features = root.get(CONFIG_ENABLED_FEATURES_KEY)
+            if isinstance(enabled_features, dict):
+                if "ramses_extras" not in new_options:
+                    new_options["ramses_extras"] = {}
+                new_options["ramses_extras"]["enabled_features"] = dict(
+                    enabled_features
+                )
 
         framework = root.get(CONFIG_FRAMEWORK_KEY)
         if not isinstance(framework, dict):
@@ -994,6 +1005,14 @@ class RamsesExtrasOptionsFlowHandler(OptionsFlow):
                 new_data["device_feature_matrix"] = device_feature_matrix
 
                 new_options = dict(self._config_entry.options)
+
+                # Sync enabled_features to options.ramses_extras.enabled_features
+                if "ramses_extras" not in new_options:
+                    new_options["ramses_extras"] = {}
+                new_options["ramses_extras"]["enabled_features"] = (
+                    staged_enabled_features
+                )
+
                 options_matrix = new_options.get("device_feature_matrix")
                 if isinstance(options_matrix, Mapping):
                     cleaned_matrix: dict[str, dict[str, bool]] = {}

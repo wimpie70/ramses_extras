@@ -641,7 +641,8 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   }
 
   async _resumeAllDevices() {
-    await this._resumeDevices();
+    // Resume all devices from the full database (heat + hvac)
+    await this._resumeDevices(null, true);
   }
 
   async _resumeDevice(deviceId) {
@@ -651,14 +652,16 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     await this._resumeDevices([deviceId]);
   }
 
-  async _resumeDevices(deviceIds) {
+  async _resumeDevices(deviceIds, fullDatabase = false) {
     if (!this._hass) {
       return;
     }
     const payload = {
       type: "ramses_extras/device_simulator/resume_devices",
     };
-    if (Array.isArray(deviceIds) && deviceIds.length) {
+    if (fullDatabase) {
+      payload.full_database = true;
+    } else if (Array.isArray(deviceIds) && deviceIds.length) {
       payload.device_ids = deviceIds;
     }
     try {

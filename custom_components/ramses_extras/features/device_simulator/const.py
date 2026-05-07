@@ -44,11 +44,41 @@ DEVICE_SIMULATOR_SENSOR_CONFIGS: dict[str, dict[str, Any]] = {
 
 # WebSocket commands for device simulator
 DEVICE_SIMULATOR_WEBSOCKET_COMMANDS = {
-    "get_simulator_status": "ramses_extras/device_simulator/get_status",
-    "list_simulator_devices": "ramses_extras/device_simulator/list_devices",
-    "activate_simulator_device": "ramses_extras/device_simulator/activate_device",
-    "silence_simulator_device": "ramses_extras/device_simulator/silence_device",
-    "get_messages": "ramses_extras/device_simulator/get_messages",
+    "clear_messages": "ramses_extras/device_simulator/clear_messages",
+    "get_status": "ramses_extras/device_simulator/get_status",
+    "get_devices": "device_simulator/devices",
+    "get_active_devices": "device_simulator/active_devices",
+    "activate_device": "device_simulator/activate",
+    "silence_device": "device_simulator/silence",
+    "resume_devices": "ramses_extras/device_simulator/resume_devices",
+    "silence_devices": "ramses_extras/device_simulator/silence_devices",
+    "discover_capabilities": "ramses_extras/device_simulator/discover_capabilities",
+    "get_conversations": "device_simulator/conversations",
+    "get_messages": "device_simulator/messages",
+    "get_device_messages": "ramses_extras/device_simulator/get_messages",
+    "get_ui_status": "ramses_extras/device_simulator/get_status",
+    "activate_profile_device": "ramses_extras/device_simulator/activate_profile_device",
+    "load_profile": "ramses_extras/device_simulator/load_profile",
+    "delete_profile": "ramses_extras/device_simulator/delete_profile",
+    "import_user_log": "ramses_extras/device_simulator/import_user_log",
+    "list_saved_playbacks": "ramses_extras/device_simulator/list_saved_playbacks",
+    "get_playback_text": "ramses_extras/device_simulator/get_playback_text",
+    "delete_saved_playback": "ramses_extras/device_simulator/delete_saved_playback",
+    "pause_scenario": "ramses_extras/device_simulator/pause_scenario",
+    "resume_scenario": "ramses_extras/device_simulator/resume_scenario",
+    "start_scenario": "ramses_extras/device_simulator/start_scenario",
+    "stop_scenario": "ramses_extras/device_simulator/stop_scenario",
+    "set_device_enabled": "ramses_extras/device_simulator/set_device_enabled",
+    "set_autonomous_speed": "ramses_extras/device_simulator/set_autonomous_speed",
+    "clear_ramses_cache": "ramses_extras/device_simulator/clear_ramses_cache",
+    "set_device_excluded_codes": "ramses_extras/device_simulator/set_device_excluded_codes",  # noqa: E501
+    "set_auto_answer": "ramses_extras/device_simulator/set_auto_answer",
+    "set_answer_unknown_devices": "ramses_extras/device_simulator/set_answer_unknown_devices",  # noqa: E501
+    "set_preserve_state": "ramses_extras/device_simulator/set_preserve_state",
+    "get_rf_config": "ramses_extras/device_simulator/get_rf_config",
+    "subscribe_devices": "ramses_extras/device_simulator/subscribe_devices",
+    "subscribe_scenarios": "ramses_extras/device_simulator/subscribe_scenarios",
+    "subscribe_messages": "ramses_extras/device_simulator/subscribe_messages",
 }
 
 # MQTT topic suffixes for simulator communication
@@ -513,7 +543,8 @@ FEATURE_DEFINITION: dict[str, Any] = {
     "has_binary_sensors": False,
     "has_switches": False,
     "services_module": "services",
-    "websocket_commands_module": "websocket",
+    "websocket_commands_module": "websocket_commands",
+    "websocket_commands": DEVICE_SIMULATOR_WEBSOCKET_COMMANDS,
     # Support both single card_config (backward compat)
     # and card_configs list (multi-card)
     "card_config": DEVICE_SIMULATOR_CARD_CONFIGS[0]

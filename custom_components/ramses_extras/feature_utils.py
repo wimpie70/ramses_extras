@@ -44,6 +44,7 @@ def _get_enabled_features_raw(
     if enabled_features_raw is None and config_entry is not None:
         enabled_features_raw = (
             config_entry.data.get(CONF_ENABLED_FEATURES)
+            or config_entry.options.get("ramses_extras", {}).get(CONF_ENABLED_FEATURES)
             or config_entry.options.get(CONF_ENABLED_FEATURES)
             or {}
         )

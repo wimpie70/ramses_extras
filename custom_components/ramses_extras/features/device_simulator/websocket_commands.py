@@ -105,47 +105,6 @@ def ws_clear_device_messages(
     connection.send_result(msg["id"], {"status": "ok"})
 
 
-@callback  # type: ignore[untyped-decorator]
-def async_register_websocket_commands(hass: HomeAssistant) -> None:
-    """Register Device Simulator WebSocket commands."""
-    websocket_api.async_register_command(hass, ws_get_status)
-    websocket_api.async_register_command(hass, ws_get_devices)
-    websocket_api.async_register_command(hass, ws_get_active_devices)
-    websocket_api.async_register_command(hass, ws_activate_device)
-    websocket_api.async_register_command(hass, ws_silence_device)
-    websocket_api.async_register_command(hass, ws_resume_devices)
-    websocket_api.async_register_command(hass, ws_silence_devices)
-    websocket_api.async_register_command(hass, ws_discover_capabilities)
-    websocket_api.async_register_command(hass, ws_get_conversations)
-    websocket_api.async_register_command(hass, ws_get_messages)
-    # UI card handlers
-    websocket_api.async_register_command(hass, ws_get_ui_status)
-    websocket_api.async_register_command(hass, ws_load_profile)
-    websocket_api.async_register_command(hass, ws_start_scenario)
-    websocket_api.async_register_command(hass, ws_stop_scenario)
-    websocket_api.async_register_command(hass, ws_set_device_enabled)
-    websocket_api.async_register_command(hass, ws_set_device_excluded_codes)
-    websocket_api.async_register_command(hass, ws_activate_profile_device)
-    websocket_api.async_register_command(hass, ws_clear_ramses_cache)
-    websocket_api.async_register_command(hass, ws_set_auto_answer)
-    websocket_api.async_register_command(hass, ws_set_answer_unknown_devices)
-    websocket_api.async_register_command(hass, ws_set_preserve_state)
-    websocket_api.async_register_command(hass, ws_get_rf_config)
-    websocket_api.async_register_command(hass, ws_set_autonomous_speed)
-    websocket_api.async_register_command(hass, ws_import_user_log)
-    websocket_api.async_register_command(hass, ws_list_saved_playbacks)
-    websocket_api.async_register_command(hass, ws_get_playback_text)
-    websocket_api.async_register_command(hass, ws_delete_saved_playback)
-    websocket_api.async_register_command(hass, ws_pause_scenario)
-    websocket_api.async_register_command(hass, ws_resume_scenario)
-    websocket_api.async_register_command(hass, ws_subscribe_devices)
-    websocket_api.async_register_command(hass, ws_subscribe_scenarios)
-    websocket_api.async_register_command(hass, ws_subscribe_messages)
-    websocket_api.async_register_command(hass, ws_delete_profile)
-    websocket_api.async_register_command(hass, ws_get_device_messages)
-    websocket_api.async_register_command(hass, ws_clear_device_messages)
-
-
 def _get_engine(hass: HomeAssistant) -> ScenarioEngine | None:
     """Get scenario engine from hass data."""
     registry = hass.data.get("ramses_extras", {})
@@ -501,7 +460,8 @@ def ws_silence_device(
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
         vol.Required("type"): "ramses_extras/device_simulator/resume_devices",
-        vol.Optional("device_ids", default=[]): [str],
+        vol.Optional("device_ids"): [str],
+        vol.Optional("full_database"): bool,
     }
 )
 @callback  # type: ignore[untyped-decorator]
@@ -510,7 +470,7 @@ def ws_resume_devices(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Resume autonomous emission for one or more active devices."""
+    """Resume autonomous emission for specified device IDs or all devices."""
 
     engine = _get_engine(hass)
     if not engine:
@@ -520,6 +480,12 @@ def ws_resume_devices(
     device_ids = [
         device_id.upper() for device_id in msg.get("device_ids", []) if device_id
     ]
+
+    if msg.get("full_database"):
+        # Load and activate all devices from the database
+        hass.async_create_task(engine.async_activate_all_database_devices())
+        connection.send_result(msg["id"], {"success": True, "resumed": "full_database"})
+        return
 
     if device_ids:
         for device_id in device_ids:

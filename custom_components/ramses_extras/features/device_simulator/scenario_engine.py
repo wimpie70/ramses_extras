@@ -579,6 +579,62 @@ class ScenarioEngine:
             resumed_count += 1
         LOGGER.info("Resumed %d devices", resumed_count)
 
+    async def async_activate_all_database_devices(self) -> None:
+        """Activate all devices from the device database.
+
+        This loads all device types from both heat/ and hvac/ directories
+        and creates active device instances for each device type, then lets them
+        emit naturally so RF can process messages normally including any errors.
+        """
+        from .device_db import DB_SUBDIR_HEAT, DB_SUBDIR_HVAC
+        from .system_config import SIM_DEVICE_ID
+
+        activated_count = 0
+        device_db = self._db
+
+        # Debug: Check if database is loaded
+        LOGGER.info("Device database has %d device types", len(device_db._device_types))
+        LOGGER.info("Available device types: %s", list(device_db._device_types.keys()))
+        LOGGER.info("Current active devices: %s", list(self._active_devices.keys()))
+
+        # Get all device types from the database
+        for device_type, device_entry in device_db._device_types.items():
+            # Use proper RAMSES device ID format from SIM_DEVICE_ID
+            # Fallback to slug-based format if not found
+            device_id = SIM_DEVICE_ID.get(
+                device_entry.device_type.upper(),
+                f"{device_entry.device_type.upper()}:150000",
+            )
+
+            # If already active, resume its emitter instead of skipping
+            if device_id in self._active_devices:
+                LOGGER.debug("Device %s already active, resuming emitter", device_id)
+                await self.async_resume_device(device_id)
+                activated_count += 1
+                continue
+
+            # Create active device
+            device = ActiveDevice(
+                device_id=device_id,
+                slug=device_entry.device_type,
+                origin="database",
+            )
+
+            # Activate the device and start emitter naturally
+            # Let the device emit its normal packets so RF can process them
+            await self.async_activate_device(device, start_emitter=True)
+            activated_count += 1
+            LOGGER.info(
+                "Activated database device: %s (slug: %s)",
+                device_id,
+                device_entry.device_type,
+            )
+
+        LOGGER.info(
+            "Activated %d devices from database - letting them emit naturally",
+            activated_count,
+        )
+
     async def async_silence_all(self) -> None:
         """Silence autonomous emission for all active devices.
 
