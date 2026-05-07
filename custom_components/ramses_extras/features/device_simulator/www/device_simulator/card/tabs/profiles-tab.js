@@ -159,10 +159,10 @@ export function buildProfiles(card) {
     : card._profiles.map((p) => {
         const reloadChecked = (card._profileReload[p.name] ?? true) ? " checked" : "";
         const preloadChecked = (card._profilePreloadSchema[p.name] ?? true) ? " checked" : "";
-        const resetCacheChecked = (card._profileResetCache[p.name] ?? false) ? " checked" : "";
-        const eavesdropChecked = (card._profileEavesdrop[p.name] ?? false) ? " checked" : "";
-        const skipHydrateChecked = (card._profileSkipHydrate[p.name] ?? false) ? " checked" : "";
-        const clearLogChecked = (card._profileClearLog[p.name] ?? false) ? " checked" : "";
+        const resetCacheChecked = (card._profileResetCache[p.name] ?? true) ? " checked" : "";
+        const eavesdropChecked = (card._profileEavesdrop[p.name] ?? true) ? " checked" : "";
+        const skipHydrateChecked = (card._profileSkipHydrate[p.name] ?? true) ? " checked" : "";
+        const clearLogChecked = (card._profileClearLog[p.name] ?? true) ? " checked" : "";
         const autoAnswerChecked = (p.enable_auto_answer ?? true) ? " checked" : "";
         const deleteButton = p.can_delete
           ? `<button class="btn btn-secondary" data-action="delete-profile" data-profile="${p.name}" style="margin-left:auto;">Delete</button>`
