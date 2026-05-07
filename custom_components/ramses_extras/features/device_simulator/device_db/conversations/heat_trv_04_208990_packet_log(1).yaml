@@ -1,0 +1,13 @@
+peers:
+- 01:216136
+- 04:208990
+conversations:
+- id: heat_trv_04_208990_packet_log(1)
+  description: 'Harvested from packet_log(1).log: device 04:208990 (TRV)'
+  frames:
+  - t: 0.0
+    src: 01:216136
+    dst: 04:208990
+    code: '0100'
+    verb: RP
+    payload: 00656EFFFF

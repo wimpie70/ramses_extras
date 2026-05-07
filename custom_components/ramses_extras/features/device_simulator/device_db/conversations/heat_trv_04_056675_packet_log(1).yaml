@@ -1,0 +1,108 @@
+peers:
+- 04:056675
+conversations:
+- id: heat_trv_04_056675_packet_log(1)
+  description: 'Harvested from packet_log(1).log: device 04:056675 (TRV)'
+  frames:
+  - t: 0.0
+    src: 04:056675
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 0007B8
+  - t: 0.17113099999999998
+    src: 04:056675
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '060000'
+  - t: 273.79054399999995
+    src: 04:056675
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0600'
+  - t: 1475.91821
+    src: 04:056675
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0600'
+  - t: 2676.6125589999997
+    src: 04:056675
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0600'
+  - t: 2845.608774
+    src: 04:056675
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000793
+  - t: 3505.5022639999997
+    src: 04:056675
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '060000'
+  - t: 3508.220097
+    src: 04:056675
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '060000'
+  - t: 3519.9787929999998
+    src: 04:056675
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 060708
+  - t: 3875.3305109999997
+    src: 04:056675
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0600'
+  - t: 5073.601989000001
+    src: 04:056675
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0600'
+  - t: 5422.347474
+    src: 04:056675
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 00077F
+  - t: 6275.918141
+    src: 04:056675
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0600'
+  - t: 7107.8123510000005
+    src: 04:056675
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '060000'
+  - t: 7110.426553
+    src: 04:056675
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '060000'
+  - t: 7120.331387
+    src: 04:056675
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 060708
+  - t: 7480.226509
+    src: 04:056675
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0600'

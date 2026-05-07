@@ -1,0 +1,96 @@
+peers:
+- 04:106557
+conversations:
+- id: heat_trv_04_106557_packet_log(1)
+  description: 'Harvested from packet_log(1).log: device 04:106557 (TRV)'
+  frames:
+  - t: 0.0
+    src: 04:106557
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '050000'
+  - t: 528.920751
+    src: 04:106557
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0500'
+  - t: 1629.432947
+    src: 04:106557
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 050708
+  - t: 1729.980454
+    src: 04:106557
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0500'
+  - t: 2379.458156
+    src: 04:106557
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: '000777'
+  - t: 2381.7760890000004
+    src: 04:106557
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '050000'
+  - t: 2384.6921420000003
+    src: 04:106557
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '050000'
+  - t: 4128.635135
+    src: 04:106557
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0500'
+  - t: 5231.280537000001
+    src: 04:106557
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 050708
+  - t: 5329.999524
+    src: 04:106557
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0500'
+  - t: 5980.244603
+    src: 04:106557
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '050000'
+  - t: 5981.2395320000005
+    src: 04:106557
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000779
+  - t: 5981.825941
+    src: 04:106557
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '050000'
+  - t: 6529.887773
+    src: 04:106557
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0500'
+  - t: 7728.352451000001
+    src: 04:106557
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0500'

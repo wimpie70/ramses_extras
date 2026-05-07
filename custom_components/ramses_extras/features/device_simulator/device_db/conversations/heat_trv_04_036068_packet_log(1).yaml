@@ -1,0 +1,156 @@
+peers:
+- 04:036068
+conversations:
+- id: heat_trv_04_036068_packet_log(1)
+  description: 'Harvested from packet_log(1).log: device 04:036068 (TRV)'
+  frames:
+  - t: 0.0
+    src: 04:036068
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '070000'
+  - t: 0.08365600000000001
+    src: 04:036068
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: '000760'
+  - t: 343.723463
+    src: 04:036068
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '070000'
+  - t: 344.715424
+    src: 04:036068
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '070000'
+  - t: 355.792723
+    src: 04:036068
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 070708
+  - t: 837.306947
+    src: 04:036068
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0700'
+  - t: 1305.479916
+    src: 04:036068
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 00074D
+  - t: 2037.284256
+    src: 04:036068
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0700'
+  - t: 3235.638317
+    src: 04:036068
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0700'
+  - t: 3940.404244
+    src: 04:036068
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 07C801
+  - t: 3940.5027489999998
+    src: 04:036068
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 00C801
+  - t: 3940.5039659999998
+    src: 04:036068
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '070000'
+  - t: 3942.241986
+    src: 04:036068
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 07C801
+  - t: 3942.309285
+    src: 04:036068
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 00C801
+  - t: 3942.310281
+    src: 04:036068
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '070000'
+  - t: 3955.422
+    src: 04:036068
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 070708
+  - t: 4435.921423
+    src: 04:036068
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0700'
+  - t: 4546.129785
+    src: 04:036068
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 00073B
+  - t: 5638.132996
+    src: 04:036068
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0700'
+  - t: 6836.789161
+    src: 04:036068
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0700'
+  - t: 7542.982427
+    src: 04:036068
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '070000'
+  - t: 7546.005207
+    src: 04:036068
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: '070000'
+  - t: 7557.895595
+    src: 04:036068
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 070708
+  - t: 8034.839343
+    src: 04:036068
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: '0700'
+  - t: 8146.579854
+    src: 04:036068
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: '000732'

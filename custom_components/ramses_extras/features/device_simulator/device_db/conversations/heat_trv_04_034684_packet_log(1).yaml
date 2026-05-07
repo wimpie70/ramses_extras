@@ -1,0 +1,138 @@
+peers:
+- 04:034684
+conversations:
+- id: heat_trv_04_034684_packet_log(1)
+  description: 'Harvested from packet_log(1).log: device 04:034684 (TRV)'
+  frames:
+  - t: 0.0
+    src: 04:034684
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: 0B0000
+  - t: 547.3240860000001
+    src: 04:034684
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 000638
+  - t: 1110.79941
+    src: 04:034684
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 0B00
+  - t: 1267.593769
+    src: 04:034684
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 0B01F4
+  - t: 1267.634037
+    src: 04:034684
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: 0B0000
+  - t: 1267.891063
+    src: 04:034684
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: 0B0000
+  - t: 1866.691574
+    src: 04:034684
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 00064B
+  - t: 2311.792962
+    src: 04:034684
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 0B00
+  - t: 3510.854567
+    src: 04:034684
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 0B00
+  - t: 4565.321822
+    src: 04:034684
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: 00065E
+  - t: 4710.933453
+    src: 04:034684
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 0B00
+  - t: 4868.641826
+    src: 04:034684
+    dst: --:------
+    code: '2309'
+    verb: I
+    payload: 0B01F4
+  - t: 4868.723542
+    src: 04:034684
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 0BC801
+  - t: 4868.724885
+    src: 04:034684
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 00C801
+  - t: 4868.725647
+    src: 04:034684
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 0BC801
+  - t: 4868.726643
+    src: 04:034684
+    dst: --:------
+    code: '1060'
+    verb: I
+    payload: 00C801
+  - t: 4868.728722
+    src: 04:034684
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: 0B0000
+  - t: 4869.156749
+    src: 04:034684
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: 0B0000
+  - t: 5347.337068
+    src: 04:034684
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: '000672'
+  - t: 5911.117456999999
+    src: 04:034684
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 0B00
+  - t: 7109.2645139999995
+    src: 04:034684
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 0B00
+  - t: 8310.303513
+    src: 04:034684
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 0B00

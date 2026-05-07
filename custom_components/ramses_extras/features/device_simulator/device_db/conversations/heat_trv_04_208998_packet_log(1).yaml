@@ -1,0 +1,30 @@
+peers:
+- 04:208998
+conversations:
+- id: heat_trv_04_208998_packet_log(1)
+  description: 'Harvested from packet_log(1).log: device 04:208998 (TRV)'
+  frames:
+  - t: 0.0
+    src: 04:208998
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: '000755'
+  - t: 95.848582
+    src: 04:208998
+    dst: --:------
+    code: '3150'
+    verb: I
+    payload: 0800
+  - t: 290.641393
+    src: 04:208998
+    dst: --:------
+    code: 30C9
+    verb: I
+    payload: '000741'
+  - t: 413.9133
+    src: 04:208998
+    dst: --:------
+    code: 12B0
+    verb: I
+    payload: 080000
