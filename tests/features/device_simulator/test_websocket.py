@@ -5,14 +5,13 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.components.websocket_api.connection import ActiveConnection
 
-from custom_components.ramses_extras.features.device_simulator.websocket import (
+from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
     _build_profile_zone_index,
     _get_config_store,
     _get_db,
     _get_engine,
     _get_ramses_cc_coordinator,
     _trigger_ramses_discovery,
-    async_register_websocket_commands,
     ws_activate_device,
     ws_activate_profile_device,
     ws_clear_device_messages,
@@ -883,7 +882,7 @@ class TestWsLoadProfile:
         config_store.set_active_profile = MagicMock()
         config_store.async_save_state = AsyncMock()
         with patch(
-            "custom_components.ramses_extras.features.device_simulator.websocket.async_apply_profile",
+            "custom_components.ramses_extras.features.device_simulator.websocket_commands.async_apply_profile",
             new=AsyncMock(return_value={}),
         ) as mock_apply:
             hass.data = {
@@ -1426,7 +1425,7 @@ class TestWsStartScenario:
         engine.is_scenario_running = MagicMock(return_value=False)
         engine.check_scenario_conflicts = MagicMock(return_value=[])
         with patch(
-            "custom_components.ramses_extras.features.device_simulator.websocket._start_profile_emissions",
+            "custom_components.ramses_extras.features.device_simulator.websocket_commands._start_profile_emissions",
             AsyncMock(return_value=["device1"]),
         ):
             hass.data = {
@@ -1633,7 +1632,7 @@ class TestWsStartScenario:
         profile.zones = {"zone1": ["device1"]}
         config_store.get_profile = MagicMock(return_value=profile)
         with patch(
-            "custom_components.ramses_extras.features.device_simulator.websocket._resolve_zone_devices",
+            "custom_components.ramses_extras.features.device_simulator.websocket_commands._resolve_zone_devices",
             return_value=["device1"],
         ):
             hass.data = {
@@ -1740,19 +1739,10 @@ class TestWsStopScenario:
         connection.send_result.assert_called_once()
 
 
-class TestAsyncRegisterWebsocketCommands:
-    def test_async_register_websocket_commands(self, hass):
-        with patch(
-            "homeassistant.components.websocket_api.async_register_command"
-        ) as mock_register:
-            async_register_websocket_commands(hass)
-            assert mock_register.call_count > 0
-
-
 class TestStartLoadProfileYaml:
     @pytest.mark.asyncio
     async def test_not_ready_config_store(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _start_load_profile_yaml,
         )
 
@@ -1762,7 +1752,7 @@ class TestStartLoadProfileYaml:
 
     @pytest.mark.asyncio
     async def test_missing_profile_yaml(self, hass, config_store):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _start_load_profile_yaml,
         )
 
@@ -1772,7 +1762,7 @@ class TestStartLoadProfileYaml:
 
     @pytest.mark.asyncio
     async def test_success(self, hass, config_store):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _start_load_profile_yaml,
         )
 
@@ -1783,11 +1773,11 @@ class TestStartLoadProfileYaml:
         config_store.async_save_state = AsyncMock()
         hass.data = {"ramses_extras": {"device_simulator_config_store": config_store}}
         with patch(
-            "custom_components.ramses_extras.features.device_simulator.websocket.build_profile_from_yaml",
+            "custom_components.ramses_extras.features.device_simulator.websocket_commands.build_profile_from_yaml",
             return_value=profile,
         ):
             with patch(
-                "custom_components.ramses_extras.features.device_simulator.websocket.async_apply_profile",
+                "custom_components.ramses_extras.features.device_simulator.websocket_commands.async_apply_profile",
                 AsyncMock(return_value={}),
             ):
                 result = await _start_load_profile_yaml(
@@ -1798,7 +1788,7 @@ class TestStartLoadProfileYaml:
 
 class TestHelperFunctionsAdditional:
     def test_get_config_store_not_found(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _get_config_store,
         )
 
@@ -1807,7 +1797,7 @@ class TestHelperFunctionsAdditional:
         assert result is None
 
     def test_build_profile_zone_index(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _build_profile_zone_index,
         )
 
@@ -1831,7 +1821,7 @@ class TestHelperFunctionsAdditional:
         assert result[0]["label"] == "Test Zone"
 
     def test_build_zone_membership(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _build_zone_membership,
         )
 
@@ -1850,7 +1840,7 @@ class TestHelperFunctionsAdditional:
         assert "device1" in result
 
     def test_resolve_zone_devices(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _resolve_zone_devices,
         )
 
@@ -1872,7 +1862,7 @@ class TestHelperFunctionsAdditional:
         assert "device2" in result
 
     def test_resolve_zone_devices_not_found(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _resolve_zone_devices,
         )
 
@@ -1886,7 +1876,7 @@ class TestHelperFunctionsAdditional:
         from custom_components.ramses_extras.features.device_simulator.scenario_engine import (  # noqa: E501
             SCENARIO_PROFILE_EMISSIONS,
         )
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _start_profile_emissions,
         )
 
@@ -1900,7 +1890,7 @@ class TestHelperFunctionsAdditional:
         from custom_components.ramses_extras.features.device_simulator.scenario_engine import (  # noqa: E501
             SCENARIO_PROFILE_EMISSIONS,
         )
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _start_profile_emissions,
         )
 
@@ -1916,7 +1906,7 @@ class TestHelperFunctionsAdditional:
         from custom_components.ramses_extras.features.device_simulator.scenario_engine import (  # noqa: E501
             SCENARIO_PROFILE_EMISSIONS,
         )
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _start_profile_emissions,
         )
 
@@ -1929,7 +1919,7 @@ class TestHelperFunctionsAdditional:
 
     @pytest.mark.asyncio
     async def test_start_autonomous_emissions_success(self, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _start_autonomous_emissions,
         )
 
@@ -1939,7 +1929,7 @@ class TestHelperFunctionsAdditional:
         assert "device_id" in result
 
     def test_get_db(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _get_engine,
         )
 
@@ -1949,7 +1939,7 @@ class TestHelperFunctionsAdditional:
         assert result == db
 
     def test_get_db_not_found(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _get_engine,
         )
 
@@ -1958,7 +1948,7 @@ class TestHelperFunctionsAdditional:
         assert result is None
 
     def test_get_ramses_cc_coordinator(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _get_ramses_cc_coordinator,
         )
 
@@ -1972,7 +1962,7 @@ class TestHelperFunctionsAdditional:
         assert result == coordinator
 
     def test_get_ramses_cc_coordinator_no_entries(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _get_ramses_cc_coordinator,
         )
 
@@ -1983,7 +1973,7 @@ class TestHelperFunctionsAdditional:
 
     @pytest.mark.asyncio
     async def test_trigger_ramses_discovery_success(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _trigger_ramses_discovery,
         )
 
@@ -1999,7 +1989,7 @@ class TestHelperFunctionsAdditional:
 
     @pytest.mark.asyncio
     async def test_trigger_ramses_discovery_no_entries(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _trigger_ramses_discovery,
         )
 
@@ -2009,7 +1999,7 @@ class TestHelperFunctionsAdditional:
 
     @pytest.mark.asyncio
     async def test_trigger_ramses_discovery_no_coordinator(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _trigger_ramses_discovery,
         )
 
@@ -2022,7 +2012,7 @@ class TestHelperFunctionsAdditional:
 
     @pytest.mark.asyncio
     async def test_trigger_ramses_discovery_no_discover_task(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _trigger_ramses_discovery,
         )
 
@@ -2037,7 +2027,7 @@ class TestHelperFunctionsAdditional:
 
     @pytest.mark.asyncio
     async def test_trigger_ramses_discovery_exception(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _trigger_ramses_discovery,
         )
 
@@ -2053,7 +2043,7 @@ class TestHelperFunctionsAdditional:
         await _trigger_ramses_discovery(hass)
 
     def test_build_profile_zone_index_non_dict_ctl(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _build_profile_zone_index,
         )
 
@@ -2066,7 +2056,7 @@ class TestHelperFunctionsAdditional:
         assert result == []
 
     def test_build_profile_zone_index_non_dict_zones(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _build_profile_zone_index,
         )
 
@@ -2079,7 +2069,7 @@ class TestHelperFunctionsAdditional:
         assert result == []
 
     def test_build_profile_zone_index_non_dict_zone(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _build_profile_zone_index,
         )
 
@@ -2092,7 +2082,7 @@ class TestHelperFunctionsAdditional:
         assert result == []
 
     def test_build_profile_zone_index_empty_devices(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _build_profile_zone_index,
         )
 
@@ -2115,7 +2105,7 @@ class TestHelperFunctionsAdditional:
         assert result[0]["devices"] == []
 
     def test_build_zone_membership_no_controller(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _build_zone_membership,
         )
 
@@ -2134,7 +2124,7 @@ class TestHelperFunctionsAdditional:
         assert "ctl1" not in result
 
     def test_build_zone_membership_no_device_id(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _build_zone_membership,
         )
 
@@ -2152,7 +2142,7 @@ class TestHelperFunctionsAdditional:
         assert "ctl1" in result
 
     def test_resolve_zone_devices_no_match(self):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _resolve_zone_devices,
         )
 
@@ -2163,7 +2153,7 @@ class TestHelperFunctionsAdditional:
 
     @pytest.mark.asyncio
     async def test_start_profile_emissions_success(self, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             _start_profile_emissions,
         )
 
@@ -2183,7 +2173,7 @@ class TestHelperFunctionsAdditional:
 class TestWsStopScenarioAdditional:
     @pytest.mark.asyncio
     async def test_stop_scenario_auto_answer_unsupported(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_AUTO_ANSWER,
             ws_stop_scenario,
         )
@@ -2199,7 +2189,7 @@ class TestWsStopScenarioAdditional:
 
     @pytest.mark.asyncio
     async def test_stop_scenario_not_manual_device(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_MANUAL_DEVICE_INJECTION,
             ws_stop_scenario,
         )
@@ -2221,7 +2211,7 @@ class TestWsStopScenarioAdditional:
 
     @pytest.mark.asyncio
     async def test_stop_scenario_manual_device_success(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_MANUAL_DEVICE_INJECTION,
             ws_stop_scenario,
         )
@@ -2243,7 +2233,7 @@ class TestWsStopScenarioAdditional:
 
     @pytest.mark.asyncio
     async def test_stop_scenario_profile_emissions(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_PROFILE_EMISSIONS,
             ws_stop_scenario,
         )
@@ -2270,7 +2260,7 @@ class TestWsStopScenarioAdditional:
 class TestWsStartScenarioAdditional:
     @pytest.mark.asyncio
     async def test_start_scenario_profile_missing(self, hass, engine, config_store):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_DEVICE_UNAVAILABILITY,
             ws_start_scenario,
         )
@@ -2298,7 +2288,7 @@ class TestWsStartScenarioAdditional:
 
     @pytest.mark.asyncio
     async def test_start_scenario_invalid_zone(self, hass, engine, config_store):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_DEVICE_UNAVAILABILITY,
             ws_start_scenario,
         )
@@ -2322,7 +2312,7 @@ class TestWsStartScenarioAdditional:
             }
         }
         with patch(
-            "custom_components.ramses_extras.features.device_simulator.websocket._resolve_zone_devices",
+            "custom_components.ramses_extras.features.device_simulator.websocket_commands._resolve_zone_devices",
             return_value=[],
         ):
             await _unwrap(ws_start_scenario)(hass, connection, msg)
@@ -2332,7 +2322,7 @@ class TestWsStartScenarioAdditional:
 
     @pytest.mark.asyncio
     async def test_start_scenario_conflict(self, hass, engine, config_store):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_DEVICE_UNAVAILABILITY,
             ws_start_scenario,
         )
@@ -2362,7 +2352,7 @@ class TestWsStartScenarioAdditional:
 
     @pytest.mark.asyncio
     async def test_start_scenario_registered_success(self, hass, engine, config_store):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_DEVICE_UNAVAILABILITY,
             ws_start_scenario,
         )
@@ -2390,7 +2380,7 @@ class TestWsStartScenarioAdditional:
 
     @pytest.mark.asyncio
     async def test_start_scenario_unknown(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_start_scenario,
         )
 
@@ -2416,7 +2406,7 @@ class TestWsStartScenarioAdditional:
 class TestWsStopScenarioMoreErrorPaths:
     @pytest.mark.asyncio
     async def test_stop_scenario_profile_not_running(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_PROFILE_EMISSIONS,
             ws_stop_scenario,
         )
@@ -2441,7 +2431,7 @@ class TestWsStopScenarioMoreErrorPaths:
 
     @pytest.mark.asyncio
     async def test_stop_scenario_device_only(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_stop_scenario,
         )
 
@@ -2461,7 +2451,7 @@ class TestWsStopScenarioMoreErrorPaths:
 
     @pytest.mark.asyncio
     async def test_stop_scenario_all_manual(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             SCENARIO_MANUAL_DEVICE_INJECTION,
             ws_stop_scenario,
         )
@@ -2481,7 +2471,7 @@ class TestWsStopScenarioMoreErrorPaths:
 
     @pytest.mark.asyncio
     async def test_stop_scenario_unknown(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_stop_scenario,
         )
 
@@ -2546,7 +2536,7 @@ class TestOtherHandlerErrorPaths:
         hass.async_create_background_task.assert_called_once()
 
     def test_ws_subscribe_scenarios_no_engine(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_scenarios,
         )
 
@@ -2563,7 +2553,7 @@ class TestOtherHandlerErrorPaths:
         hass.bus.async_listen.assert_called_once()
 
     def test_ws_subscribe_scenarios_success(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_scenarios,
         )
 
@@ -2580,7 +2570,7 @@ class TestOtherHandlerErrorPaths:
         hass.bus.async_listen.assert_called_once()
 
     def test_ws_subscribe_messages_no_engine(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2595,7 +2585,7 @@ class TestOtherHandlerErrorPaths:
         assert result["success"] is True
 
     def test_ws_subscribe_messages_success(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2611,7 +2601,7 @@ class TestOtherHandlerErrorPaths:
         engine.message_log.get_recent.assert_called_once_with(limit=50)
 
     def test_ws_subscribe_messages_with_device_ids(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2629,7 +2619,7 @@ class TestOtherHandlerErrorPaths:
         )
 
     def test_ws_subscribe_messages_limit_clamp(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2645,7 +2635,7 @@ class TestOtherHandlerErrorPaths:
         engine.message_log.get_recent.assert_called_once_with(limit=200)
 
     def test_ws_subscribe_messages_limit_min(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2661,7 +2651,7 @@ class TestOtherHandlerErrorPaths:
         engine.message_log.get_recent.assert_called_once_with(limit=1)
 
     def test_ws_subscribe_messages_with_initial_messages(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2680,7 +2670,7 @@ class TestOtherHandlerErrorPaths:
         connection.send_message.assert_called()
 
     def test_ws_subscribe_messages_with_device_ids_initial(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2704,7 +2694,7 @@ class TestOtherHandlerErrorPaths:
         connection.send_message.assert_called()
 
     def test_ws_subscribe_messages_empty_initial(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2724,7 +2714,7 @@ class TestOtherHandlerErrorPaths:
         connection.send_message.assert_not_called()
 
     def test_ws_subscribe_messages_event_filter_no_match(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2744,7 +2734,7 @@ class TestOtherHandlerErrorPaths:
         connection.send_message.assert_not_called()
 
     def test_ws_subscribe_messages_event_no_device_ids(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2762,7 +2752,7 @@ class TestOtherHandlerErrorPaths:
         connection.send_message.assert_not_called()
 
     def test_ws_subscribe_messages_event_device_id_attr(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_subscribe_messages,
         )
 
@@ -2783,7 +2773,7 @@ class TestOtherHandlerErrorPaths:
 
     @pytest.mark.asyncio
     async def test_ws_discover_capabilities_no_gateway(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_discover_capabilities,
         )
 
@@ -2806,7 +2796,7 @@ class TestOtherHandlerErrorPaths:
 
     @pytest.mark.asyncio
     async def test_ws_discover_capabilities_no_registry(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_discover_capabilities,
         )
 
@@ -2830,7 +2820,7 @@ class TestOtherHandlerErrorPaths:
 
     @pytest.mark.asyncio
     async def test_ws_clear_ramses_cache_not_ready(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_clear_ramses_cache,
         )
 
@@ -2844,7 +2834,7 @@ class TestOtherHandlerErrorPaths:
         assert args[1] == "error"
 
     def test_ws_get_conversations_with_conversations(self, hass, engine, db):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_get_conversations,
         )
 
@@ -2867,7 +2857,7 @@ class TestOtherHandlerErrorPaths:
         connection.send_result.assert_called_once()
 
     def test_ws_get_conversations_empty(self, hass, engine, db):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_get_conversations,
         )
 
@@ -2887,7 +2877,7 @@ class TestOtherHandlerErrorPaths:
         assert result["conversations"] == []
 
     def test_ws_get_messages_success(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_get_messages,
         )
 
@@ -2900,7 +2890,7 @@ class TestOtherHandlerErrorPaths:
         connection.send_result.assert_called_once()
 
     def test_ws_get_messages_default_limit(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_get_messages,
         )
 
@@ -2915,7 +2905,7 @@ class TestOtherHandlerErrorPaths:
         assert result["messages"] == ["msg1", "msg2"]
 
     def test_ws_get_messages_empty(self, hass, engine):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_get_messages,
         )
 
@@ -2930,7 +2920,7 @@ class TestOtherHandlerErrorPaths:
         assert result["messages"] == []
 
     def test_ws_get_messages_not_ready(self, hass):
-        from custom_components.ramses_extras.features.device_simulator.websocket import (  # noqa: E501
+        from custom_components.ramses_extras.features.device_simulator.websocket_commands import (  # noqa: E501
             ws_get_messages,
         )
 
