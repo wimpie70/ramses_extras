@@ -570,14 +570,21 @@ class ScenarioEngine:
         Devices that are silenced (``suppress_autonomous=True``) are also
         resumed; :meth:`async_resume_device` clears that flag.
         """
-        resumed_count = 0
-        for device_id in list(self._active_devices.keys()):
-            # Skip devices whose emitter task is already running.
-            if device_id in self._emitter_tasks:
-                continue
-            await self.async_resume_device(device_id)
-            resumed_count += 1
-        LOGGER.info("Resumed %d devices", resumed_count)
+        device_ids_to_resume = [
+            device_id
+            for device_id in list(self._active_devices.keys())
+            if device_id not in self._emitter_tasks
+        ]
+        if not device_ids_to_resume:
+            LOGGER.info("No devices to resume (all emitters already running)")
+            return
+
+        # Resume devices in parallel
+        resume_tasks = [
+            self.async_resume_device(device_id) for device_id in device_ids_to_resume
+        ]
+        await asyncio.gather(*resume_tasks)
+        LOGGER.info("Resumed %d devices", len(device_ids_to_resume))
 
     async def async_activate_all_database_devices(self) -> None:
         """Activate all devices from the device database.
@@ -589,7 +596,6 @@ class ScenarioEngine:
         from .device_db import DB_SUBDIR_HEAT, DB_SUBDIR_HVAC
         from .system_config import SIM_DEVICE_ID
 
-        activated_count = 0
         device_db = self._db
 
         # Debug: Check if database is loaded
@@ -597,7 +603,8 @@ class ScenarioEngine:
         LOGGER.info("Available device types: %s", list(device_db._device_types.keys()))
         LOGGER.info("Current active devices: %s", list(self._active_devices.keys()))
 
-        # Get all device types from the database
+        # Prepare activation tasks for all device types
+        activation_tasks = []
         for device_type, device_entry in device_db._device_types.items():
             # Use proper RAMSES device ID format from SIM_DEVICE_ID
             # Fallback to slug-based format if not found
@@ -609,8 +616,7 @@ class ScenarioEngine:
             # If already active, resume its emitter instead of skipping
             if device_id in self._active_devices:
                 LOGGER.debug("Device %s already active, resuming emitter", device_id)
-                await self.async_resume_device(device_id)
-                activated_count += 1
+                activation_tasks.append(self.async_resume_device(device_id))
                 continue
 
             # Create active device
@@ -622,18 +628,22 @@ class ScenarioEngine:
 
             # Activate the device and start emitter naturally
             # Let the device emit its normal packets so RF can process them
-            await self.async_activate_device(device, start_emitter=True)
-            activated_count += 1
+            activation_tasks.append(
+                self.async_activate_device(device, start_emitter=True)
+            )
             LOGGER.info(
-                "Activated database device: %s (slug: %s)",
+                "Activating database device: %s (slug: %s)",
                 device_id,
                 device_entry.device_type,
             )
 
-        LOGGER.info(
-            "Activated %d devices from database - letting them emit naturally",
-            activated_count,
-        )
+        # Execute all activations in parallel
+        if activation_tasks:
+            await asyncio.gather(*activation_tasks)
+            LOGGER.info(
+                "Activated %d devices from database - letting them emit naturally",
+                len(activation_tasks),
+            )
 
     async def async_silence_all(self) -> None:
         """Silence autonomous emission for all active devices.
