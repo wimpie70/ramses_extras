@@ -197,8 +197,8 @@ responses:
   rp_verb: RP
   delay_ms: 100
   payloads:
-  - '0000B400B4'
-  notes: Filter remaining ~180 days, 180 day lifetime
+  - '0000B400B40000'
+  notes: Filter remaining ~180 days, 180 day lifetime (8 bytes)
 - code: '1470'
   rq_verb: RQ
   rp_verb: RP

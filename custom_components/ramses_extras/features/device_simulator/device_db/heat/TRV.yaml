@@ -11,17 +11,19 @@ autonomous:
   trigger: periodic
   interval_seconds: 0.1
   payloads:
+  - '040000'
   - '000000'
   - '00C800'
-  notes: Window state (no zone index prefix for TRV)
+  notes: Example payloads from regression file
 - code: '3150'
   verb: I
   trigger: periodic
   interval_seconds: 124.1
   payloads:
   - '0144'
+  - '0416'
   - '012C'
-  notes: Battery voltage (no zone index prefix for TRV)
+  notes: Example payloads from regression file
 - code: 1FC9
   verb: I
   trigger: periodic
@@ -34,18 +36,19 @@ autonomous:
   trigger: periodic
   interval_seconds: 150.1
   payloads:
-  - '05DC'
-  - '17EFF'
-  - '01F4'
-  notes: Zone demand (no zone index prefix for TRV)
+  - '0205DC'
+  - '017EFF'
+  - '0401F4'
+  notes: Example payloads from regression file
 - code: '1060'
   verb: I
   trigger: periodic
   interval_seconds: 13.5
   payloads:
-  - '6401'
-  - 'FF01'
-  notes: Setpoint (no zone index prefix for TRV)
+  - '006401'
+  - '046401'
+  - '00FF01'
+  notes: Example payloads from regression file
 - code: 10E0
   verb: I
   trigger: periodic
