@@ -59,7 +59,10 @@ async def test_async_setup_registers_startup_listener(hass) -> None:
 
     before = len(hass.bus._listeners.get(EVENT_HOMEASSISTANT_STARTED, []))
 
-    result = await yaml_setup.async_setup(hass, {})
+    # Provide YAML config so the listener is registered
+    result = await yaml_setup.async_setup(  # noqa: E501
+        hass, {DOMAIN: {"enabled_features": {"default": True}}}
+    )
 
     after = len(hass.bus._listeners.get(EVENT_HOMEASSISTANT_STARTED, []))
 

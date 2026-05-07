@@ -228,7 +228,7 @@ class TestLoadFeature:
 
             assert result["feature_name"] == "device_simulator"
             assert result["services_module"] == "services"
-            assert result["websocket_commands_module"] == "websocket"
+            assert result["websocket_commands_module"] == "websocket_commands"
             mock_create_task.assert_called_once()
 
 
