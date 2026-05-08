@@ -145,6 +145,8 @@ class ScenarioEngine:
         # to generate responses for unknown device IDs.
         self._answer_unknown_devices: bool = False
         self.message_log: DeviceMessageLog = DeviceMessageLog()
+        # Ready flag: True when both simulator and ramses_cc are initialized
+        self._ready: bool = False
 
         endpoint.add_inbound_handler(self._handle_inbound_frame)
 
@@ -152,6 +154,15 @@ class ScenarioEngine:
     def device_db(self) -> DeviceDatabase:
         """Expose the device database to external consumers."""
         return self._db
+
+    @property
+    def ready(self) -> bool:
+        """Return True when simulator and ramses_cc are both initialized."""
+        return self._ready
+
+    def set_ready(self, ready: bool) -> None:
+        """Set the ready flag."""
+        self._ready = ready
 
     async def async_setup(self) -> None:
         """Connect the endpoint and load the device DB."""
@@ -575,6 +586,12 @@ class ScenarioEngine:
             for device_id in list(self._active_devices.keys())
             if device_id not in self._emitter_tasks
         ]
+        LOGGER.info(
+            "async_resume_all: active=%d, emitters_running=%d, to_resume=%d",
+            len(self._active_devices),
+            len(self._emitter_tasks),
+            len(device_ids_to_resume),
+        )
         if not device_ids_to_resume:
             LOGGER.info("No devices to resume (all emitters already running)")
             return

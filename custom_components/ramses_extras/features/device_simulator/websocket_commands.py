@@ -260,16 +260,30 @@ async def _start_profile_emissions(
     if not profile_devices:
         raise RuntimeError("Active profile does not define any devices")
 
-    started_ids: list[str] = []
-    for device in profile_devices:
-        await engine.async_activate_device(device)
-        started_ids.append(device.device_id)
-
+    # Mark scenario as running immediately so UI doesn't timeout
     engine.set_running_metadata(
         SCENARIO_PROFILE_EMISSIONS,
-        {"profile": profile_name, "devices": started_ids},
+        {"profile": profile_name, "devices": [], "status": "activating"},
     )
-    return started_ids
+
+    # Activate devices in background task to avoid blocking WebSocket
+    async def _activate_devices_background() -> None:
+        started_ids: list[str] = []
+        for i, device in enumerate(profile_devices):
+            await engine.async_activate_device(device)
+            started_ids.append(device.device_id)
+            # Stagger device activation to prevent message storm with many devices
+            # 0.5s delay between each device to spread out emitter startup
+            if i < len(profile_devices) - 1:
+                await asyncio.sleep(0.5)
+        # Update metadata with completed activation
+        engine.set_running_metadata(
+            SCENARIO_PROFILE_EMISSIONS,
+            {"profile": profile_name, "devices": started_ids, "status": "active"},
+        )
+
+    asyncio.create_task(_activate_devices_background())
+    return []  # Return empty list initially, devices activated in background
 
 
 async def _trigger_ramses_discovery(hass: HomeAssistant) -> None:
@@ -330,6 +344,7 @@ def ws_get_status(
             "auto_answer": engine.auto_answer_enabled,
             "running_scenarios": engine.get_running_scenario_ids(),
             "scenario_registry": SCENARIO_REGISTRY,
+            "ready": engine.ready,
         },
     )
 
@@ -609,49 +624,107 @@ async def ws_discover_capabilities(
     now = datetime.now()
 
     for device_id in device_ids:
+        # First try ramses_cc discovery if device is in registry
         device = registry.device_by_id.get(device_id)
-        if not device:
-            errors.append(f"{device_id}: not found in ramses_cc registry")
-            LOGGER.warning(
-                "discover_capabilities: %s not in gateway registry (known=%s)",
-                device_id,
-                list(registry.device_by_id.keys()),
-            )
-            continue
+        if device:
+            discovery = getattr(device, "discovery", None)
+            if discovery:
+                cmds = getattr(discovery, "cmds", None) or {}
+                LOGGER.info(
+                    "discover_capabilities: %s has %d discovery cmds: %s",
+                    device_id,
+                    len(cmds),
+                    list(cmds.keys()),
+                )
+                if cmds:
+                    try:
+                        # Force all outstanding commands to be due immediately so discover()  # noqa: E501
+                        # actually emits packets instead of waiting for the next poll window.  # noqa: E501
+                        for task in cmds.values():
+                            if isinstance(task, dict):
+                                task["next_due"] = now - timedelta(seconds=1)
 
-        discovery = getattr(device, "discovery", None)
-        if not discovery:
-            errors.append(f"{device_id}: no discovery service")
-            LOGGER.warning(
-                "discover_capabilities: %s has no discovery service", device_id
-            )
-            continue
+                        await discovery.discover()
+                        discovery.start_poller()
+                        triggered += 1
+                        LOGGER.info(
+                            "discover_capabilities: %s discover() completed", device_id
+                        )
+                        continue
+                    except Exception as err:  # noqa: BLE001
+                        errors.append(f"{device_id}: {err}")
+                        LOGGER.exception("discover_capabilities: %s failed", device_id)
+                        continue
+                else:
+                    LOGGER.warning(
+                        "discover_capabilities: %s has no discovery commands scheduled",
+                        device_id,
+                    )
+            else:
+                LOGGER.warning(
+                    "discover_capabilities: %s has no discovery service", device_id
+                )
 
-        cmds = getattr(discovery, "cmds", None) or {}
-        LOGGER.info(
-            "discover_capabilities: %s has %d discovery cmds: %s",
-            device_id,
-            len(cmds),
-            list(cmds.keys()),
-        )
-        if not cmds:
-            errors.append(f"{device_id}: no discovery commands scheduled")
-            continue
+        # If device not in ramses_cc or discovery failed, try simulator discovery
+        # Emit discovery frames directly from the simulator for devices that are active
+        if engine and device_id in engine.active_device_ids:
+            active_device = engine._active_devices.get(device_id)
+            if active_device:
+                # Get the device database to fetch appropriate 10E0 payload for this device type  # noqa: E501
+                db = _get_db(hass)
+                payload = None
+                if db:
+                    device_type = db.infer_device_type_from_id(device_id)
+                    if device_type:
+                        device_entry = db._device_types.get(device_type)
+                        if device_entry:
+                            # Look for 10E0 in autonomous emitters
+                            for emitter in device_entry.autonomous or []:
+                                if emitter.code == "10E0" and emitter.payloads:
+                                    payload = emitter.payloads[0]
+                                    break
 
-        try:
-            # Force all outstanding commands to be due immediately so discover()
-            # actually emits packets instead of waiting for the next poll window.
-            for task in cmds.values():
-                if isinstance(task, dict):
-                    task["next_due"] = now - timedelta(seconds=1)
+                if not payload:
+                    # Fallback to a generic 10E0 payload if device type not found
+                    payload = (  # noqa: E501
+                        "000001001B361B01FEFFFFFFFFFF1D0B07E2030507E1543837524632303235"
+                        "0000000000000000000000000000"
+                    )
 
-            await discovery.discover()
-            discovery.start_poller()
-            triggered += 1
-            LOGGER.info("discover_capabilities: %s discover() completed", device_id)
-        except Exception as err:  # noqa: BLE001
-            errors.append(f"{device_id}: {err}")
-            LOGGER.exception("discover_capabilities: %s failed", device_id)
+                # Emit a 10E0 discovery frame from the simulator
+                try:
+                    packet = engine._build_packet(
+                        device_id, "--:------", "I", "10E0", payload
+                    )
+                    await engine._endpoint.send_packet(packet)
+                    engine._log_and_emit("outbound", packet, origin="sim")
+                    triggered += 1
+                    LOGGER.info(
+                        "discover_capabilities: %s emitted discovery frame from simulator",  # noqa: E501
+                        device_id,
+                    )
+                except Exception as err:  # noqa: BLE001
+                    errors.append(f"{device_id}: simulator discovery failed: {err}")
+                    LOGGER.exception(
+                        "discover_capabilities: %s simulator discovery failed",
+                        device_id,
+                    )
+            else:
+                errors.append(
+                    f"{device_id}: not found in ramses_cc registry and not active in simulator"  # noqa: E501
+                )
+                LOGGER.warning(
+                    "discover_capabilities: %s not in gateway registry or simulator active devices",  # noqa: E501
+                    device_id,
+                )
+        else:
+            if not device:
+                errors.append(f"{device_id}: not found in ramses_cc registry")
+                LOGGER.warning(
+                    "discover_capabilities: %s not in gateway registry (known=%s)",
+                    device_id,
+                    list(registry.device_by_id.keys()),
+                )
 
     connection.send_result(
         msg["id"],
@@ -788,7 +861,8 @@ def ws_get_ui_status(
                     "name": name,
                     "description": p.description,
                     "timeout_scale": p.timeout_scale,
-                    "known_list": p.device_configs.get("_known_list", {}),
+                    # Don't include known_list in general status - too large with many devices  # noqa: E501
+                    # Only needed when viewing/editing specific profile
                     "is_builtin": is_builtin,
                     "can_delete": not is_builtin,
                     "is_active": name == active_profile,
@@ -797,7 +871,9 @@ def ws_get_ui_status(
                 }
             )
             if name == active_profile:
-                active_profile_yaml = profile_to_yaml(p)
+                # Don't serialize to YAML here - it's expensive with large profiles
+                # YAML is only needed when explicitly viewing/editing the profile
+                active_profile_yaml = None
                 active_profile_scale = p.timeout_scale
                 active_profile_known_list = p.device_configs.get("_known_list", {})
                 active_profile_schema = schema or None
@@ -914,6 +990,7 @@ def ws_get_ui_status(
             "profile_device_counts": profile_device_counts,
             "profile_zone_membership": zone_membership,
             "device_message_previews": device_message_previews,
+            "ready": engine.ready if engine else False,
         },
     )
 

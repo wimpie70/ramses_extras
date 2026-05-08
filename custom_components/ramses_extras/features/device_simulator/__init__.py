@@ -826,7 +826,13 @@ async def create_device_simulator_feature(
     # Set up services
     await async_setup_services(hass)
 
-    _LOGGER.debug("Device Simulator feature created")
+    # Mark simulator as ready (ramses_cc readiness will be checked separately)
+    engine = registry.get("device_simulator_engine")
+    if engine:
+        engine.set_ready(True)
+        _LOGGER.info("Device Simulator marked as ready")
+
+    _LOGGER.info("Device Simulator feature created - startup complete")
 
     return {
         "db": registry["device_simulator_db"],
