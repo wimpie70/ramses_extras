@@ -94,6 +94,54 @@ function heartbeatScaleCard(card) {
     </div>`;
 }
 
+function ramsesCcTimeoutScaleCard(card) {
+  const current = Number(card._ramsesCcTimeoutScale) || 1;
+  const pending = Number.isFinite(card._pendingRamsesCcTimeoutScale) ? card._pendingRamsesCcTimeoutScale : current;
+  const sliderValue = Math.min(1, Math.max(0.001, pending || 1));
+  const presetValues = [1, 0.1, 0.01, 0.001];
+
+  const formatRamsesCcScaleLabel = (value) => {
+    if (value === 1) return "1× (real-time)";
+    if (value < 0.01) return `${(value * 1000).toFixed(0)}× faster`;
+    return `${(1 / value).toFixed(0)}× faster`;
+  };
+
+  const badge = card._ramsesCcScaleSaving
+    ? '<span class="chip muted">Saving…</span>'
+    : `<span class="chip profile">${formatRamsesCcScaleLabel(current)}</span>`;
+
+  const presetButtons = presetValues
+    .map((value) => {
+      const active = Math.abs(current - value) < 0.0001 ? "btn-primary" : "btn-secondary";
+      return `<button class="btn ${active}" data-action="ramses-cc-scale-preset" data-scale="${value}">${formatRamsesCcScaleLabel(value)}</button>`;
+    })
+    .join("");
+
+  return `
+    <div class="card speed-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <strong>Ramses CC Timeout Scale</strong>
+        ${badge}
+      </div>
+      <div style="font-size:0.85em; color:var(--secondary-text-color);">
+        Scales ramses_cc availability detection timeout. Lower values make entities go unavailable faster. 60s default becomes ${(60 * current).toFixed(0)}s at current scale.
+      </div>
+      <div class="speed-controls">
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:0.75em;">
+          <span>Scale (0.001–1×)</span>
+          <input type="range" min="0.001" max="1" step="0.001" value="${sliderValue}" data-action="ramses-cc-scale-slider" />
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:0.75em;">
+          <span>Exact multiplier</span>
+          <input type="number" min="0.001" max="10" step="0.001" value="${pending}" data-action="ramses-cc-scale-input" />
+        </label>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;">
+        ${presetButtons}
+      </div>
+    </div>`;
+}
+
 function toggleCard({ title, description, checked, action }) {
   return `
     <div class="card ${checked ? "active" : ""}">
@@ -156,6 +204,7 @@ export function buildOptions(card) {
   const cards = [
     speedCard(card),
     heartbeatScaleCard(card),
+    ramsesCcTimeoutScaleCard(card),
     toggleCard({
       title: "Auto Answer (RQ→RP)",
       description: "When off: simulator receives RQ frames but never replies — simulates broken ESP or powered-off device.",

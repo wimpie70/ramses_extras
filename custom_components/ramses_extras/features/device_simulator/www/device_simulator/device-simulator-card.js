@@ -85,6 +85,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._pendingHeartbeatTimeoutScale = 1.0;
     this._heartbeatScaleSaving = false;
     this._loaderTimeoutScale = 1.0;
+    this._ramsesCcTimeoutScale = 1.0;
+    this._pendingRamsesCcTimeoutScale = 1.0;
+    this._ramsesCcScaleSaving = false;
+    this._loaderRamsesCcTimeoutScale = 1.0;
 
     this._loadLoaderDraft();
     this._loadSelectedScenario();
@@ -370,23 +374,18 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   // ========== DATA FETCHING ==========
 
   async _fetchActiveProfileYaml(profileName) {
-    if (!this._hass) {
-      return;
-    }
+    if (!this._hass) return;
     const targetProfile = profileName || this._activeProfile;
-    if (!targetProfile) {
-      return;
-    }
+    if (!targetProfile) return;
     try {
       const result = await this._hass.callWS({
         type: "ramses_extras/device_simulator/get_profile_yaml",
         profile: targetProfile,
       });
-      if (result?.profile !== this._activeProfile) {
-        return;
-      }
+      if (result?.profile !== this._activeProfile) return;
       const current = this._scenarioParams[SCENARIO_LOAD_PROFILE] || {};
       const nextSpeed = result.timeout_scale ?? this._loaderTimeoutScale ?? 1.0;
+      const nextRamsesCcSpeed = result.ramses_cc_timeout_scale ?? 1.0;
       this._scenarioParams = {
         ...this._scenarioParams,
         [SCENARIO_LOAD_PROFILE]: {
@@ -394,10 +393,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           profile_name: result.profile,
           profile_yaml: result.yaml,
           speed: current.speed ?? nextSpeed,
+          ramses_cc_speed: current.ramses_cc_speed ?? nextRamsesCcSpeed,
         },
       };
       this._activeProfileYaml = result.yaml;
       this._loaderTimeoutScale = current.speed ?? nextSpeed;
+      this._loaderRamsesCcTimeoutScale = current.ramses_cc_speed ?? nextRamsesCcSpeed;
       this._loaderActiveProfileSnapshot = result.profile;
       this._persistLoaderDraft();
       this._scheduleRender();
@@ -479,10 +480,14 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           this._pendingSpeed = result.autonomous_speed;
         }
       }
-      this._heartbeatTimeoutScale = result.active_profile_timeout_scale || 1.0;
+      this._heartbeatTimeoutScale = result.heartbeat_timeout_scale_override || result.active_profile_timeout_scale || 1.0;
       this._loaderTimeoutScale = this._heartbeatTimeoutScale;
       if (!this._heartbeatScaleSaving) {
         this._pendingHeartbeatTimeoutScale = this._heartbeatTimeoutScale;
+      }
+      this._ramsesCcTimeoutScale = result.ramses_cc_timeout_scale_override || 1.0;
+      if (!this._ramsesCcScaleSaving) {
+        this._pendingRamsesCcTimeoutScale = this._ramsesCcTimeoutScale;
       }
 
       let loaderDraftUpdated = false;
@@ -1124,6 +1129,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       await this._hass.callWS({
         type: "ramses_extras/device_simulator/set_heartbeat_timeout_scale",
         scale: numericScale,
+        reload_ramses_cc: true,
       });
       this._heartbeatTimeoutScale = numericScale;
       this._loaderTimeoutScale = numericScale;
@@ -1141,6 +1147,30 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       console.error("DeviceSimulatorCard: failed to set heartbeat timeout scale", error);
     } finally {
       this._heartbeatScaleSaving = false;
+      this._scheduleRender();
+    }
+  }
+
+  async _setRamsesCcTimeoutScale(scale) {
+    const numericScale = Number(scale);
+    if (Number.isNaN(numericScale) || numericScale <= 0) {
+      return;
+    }
+    this._ramsesCcScaleSaving = true;
+    this._pendingRamsesCcTimeoutScale = numericScale;
+    this._scheduleRender();
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/set_ramses_cc_timeout_scale",
+        scale: numericScale,
+        reload_ramses_cc: true,
+      });
+      this._ramsesCcTimeoutScale = numericScale;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to set ramses_cc timeout scale", error);
+    } finally {
+      this._ramsesCcScaleSaving = false;
       this._scheduleRender();
     }
   }
@@ -1390,6 +1420,29 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       });
       heartbeatScaleInput.addEventListener("change", (e) => this._setHeartbeatTimeoutScale(e.target.value));
     }
+
+    const ramsesCcScaleSlider = root.querySelector("[data-action='ramses-cc-scale-slider']");
+    if (ramsesCcScaleSlider) {
+      ramsesCcScaleSlider.addEventListener("input", (e) => {
+        this._pendingRamsesCcTimeoutScale = Number(e.target.value);
+        this._scheduleRender();
+      });
+      ramsesCcScaleSlider.addEventListener("change", (e) => this._setRamsesCcTimeoutScale(e.target.value));
+    }
+
+    const ramsesCcScaleInput = root.querySelector("[data-action='ramses-cc-scale-input']");
+    if (ramsesCcScaleInput) {
+      ramsesCcScaleInput.addEventListener("input", (e) => {
+        this._pendingRamsesCcTimeoutScale = Number(e.target.value);
+        this._scheduleRender();
+      });
+      ramsesCcScaleInput.addEventListener("change", (e) => this._setRamsesCcTimeoutScale(e.target.value));
+    }
+
+    const ramsesCcScalePresets = root.querySelectorAll("[data-action='ramses-cc-scale-preset']");
+    ramsesCcScalePresets.forEach((btn) => {
+      btn.addEventListener("click", () => this._setRamsesCcTimeoutScale(btn.dataset.scale));
+    });
 
     const heartbeatScalePresets = root.querySelectorAll("[data-action='heartbeat-scale-preset']");
     heartbeatScalePresets.forEach((btn) => {
