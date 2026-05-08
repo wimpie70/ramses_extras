@@ -247,7 +247,6 @@ export function buildResumeEmittersCard(card) {
   const devices = card._devices || [];
   const resumeCandidates = devices.filter((d) => !d.emitting);
   const silencedCount = devices.filter((d) => d.suppress_autonomous).length;
-  const emittingCount = devices.filter((d) => d.emitting).length;
   const chipClass = resumeCandidates.length
     ? "chip reply"
     : devices.length
@@ -284,7 +283,7 @@ export function buildResumeEmittersCard(card) {
       <div style="font-size:0.85em; color:var(--secondary-text-color); margin-top:4px;">${desc}</div>
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn btn-secondary" data-action="resume-all-devices" ${resumeCandidates.length ? "" : "disabled"}>Start emitters for active devices</button>
-        <button class="btn btn-secondary" data-action="silence-all-devices" ${emittingCount ? "" : "disabled"}>Stop emitters for active devices</button>
+        <button class="btn btn-secondary" data-action="silence-all-devices" ${resumeCandidates.some(d => d.enabled && !d.suppress_autonomous) ? "" : "disabled"}>Stop emitters for active devices</button>
       </div>
       ${resumeCandidates.length ? `<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">${sampleList}${extraCount}</div>` : ""}
       ${silencedNote}
@@ -582,14 +581,17 @@ export function buildDevices(card) {
   // Random-emitters toolbar
   const devices = card._devices;
 
-  // Debug: log all device sources and IDs to understand the structure
-  console.log("All devices:", devices.map(d => ({
-    id: d.id,
-    device_id: d.device_id,
-    source: d.source,
-    emitting: d.emitting,
-    type: d.type
-  })));
+  // Debug: log all device sources and IDs to understand the structure (only in dev mode)
+  if (window.location.search.includes("debug")) {
+    // eslint-disable-next-line no-console
+    console.log("All devices:", devices.map(d => ({
+      id: d.id,
+      device_id: d.device_id,
+      source: d.source,
+      emitting: d.emitting,
+      type: d.type
+    })));
+  }
 
   // Try multiple approaches to find discovered devices
   const discoveredDevices = devices.filter((d) => {
@@ -604,7 +606,12 @@ export function buildDevices(card) {
   const emittingCount = devices.filter((d) => d.emitting).length;
   const silencedCount = devices.filter((d) => d.suppress_autonomous).length;
 
-  console.log(`Discovered devices: ${discoveredDevices.length}, idle: ${discoveredIdleCount}`);
+  if (window.location.search.includes("debug")) {
+    // eslint-disable-next-line no-console
+    console.log(`Discovered devices: ${discoveredDevices.length}, idle: ${discoveredIdleCount}`);
+  }
+  // Enable silence all if there are devices that could emit (active and not silenced)
+  const canSilence = devices.some((d) => d.enabled && !d.suppress_autonomous);
   const toolbar = `
     <div class="device-grid-toolbar"
          style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:12px 0 8px; padding:8px 12px; border:1px solid var(--divider-color); border-radius:6px; background:var(--secondary-background-color);">
@@ -614,7 +621,7 @@ export function buildDevices(card) {
       <span style="flex:1;"></span>
       <button class="btn btn-primary" data-action="resume-discovered-devices" ${discoveredIdleCount ? "" : "disabled"}>Resume discovered (${discoveredIdleCount})</button>
       <button class="btn btn-secondary" data-action="resume-all-devices">Resume All (full dbase)</button>
-      <button class="btn btn-secondary" data-action="silence-all-devices" ${emittingCount ? "" : "disabled"}>Silence all</button>
+      <button class="btn btn-secondary" data-action="silence-all-devices" ${canSilence ? "" : "disabled"}>Silence all</button>
     </div>`;
 
   const knownList = card._knownList();

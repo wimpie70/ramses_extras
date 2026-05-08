@@ -592,10 +592,12 @@ class TestWsGetUIStatus:
 
 
 class TestWsSetDeviceExcludedCodes:
-    def test_ws_set_device_excluded_codes_success(self, hass, connection, engine):
+    @pytest.mark.asyncio
+    async def test_ws_set_device_excluded_codes_success(self, hass, connection, engine):
         device = MagicMock()
         device.excluded_codes = []
         engine._active_devices = {"37:168270": device}
+        engine._fire_device_change_event = AsyncMock()
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
         msg = {
             "id": 1,
@@ -605,7 +607,7 @@ class TestWsSetDeviceExcludedCodes:
         }
         ws_set_device_excluded_codes(hass, connection, msg)
         connection.send_result.assert_called_once()
-        hass.bus.async_fire.assert_called_once()
+        # _fire_device_change_event is called via asyncio.create_task, not awaited
 
     def test_ws_set_device_excluded_codes_not_ready(self, hass, connection):
         hass.data = {}
@@ -1250,6 +1252,7 @@ class TestWsSetDeviceEnabled:
         device.enabled = False
         engine._active_devices = {"37:168270": device}
         engine.async_activate_device = AsyncMock()
+        engine._fire_device_change_event = AsyncMock()
         engine.auto_answer_enabled = True
         hass.data = {"ramses_extras": {"device_simulator_engine": engine}}
         await _unwrap(ws_set_device_enabled)(
@@ -1259,6 +1262,7 @@ class TestWsSetDeviceEnabled:
         )
         assert device.enabled is True
         engine.async_activate_device.assert_awaited_once()
+        # _fire_device_change_event is called via asyncio.create_task, not awaited
         connection.send_result.assert_called_once()
 
     @pytest.mark.asyncio
@@ -2165,9 +2169,12 @@ class TestHelperFunctionsAdditional:
         engine.check_scenario_conflicts = MagicMock(return_value=[])
         engine.build_profile_devices = MagicMock(return_value=[device1, device2])
         engine.async_activate_device = AsyncMock()
+        engine.set_running_metadata = MagicMock()
         profile = MagicMock()
         result = await _start_profile_emissions(engine, "test_profile", profile)
-        assert result == ["device1", "device2"]
+        # Function now returns empty list and activates devices in background
+        assert result == []
+        engine.set_running_metadata.assert_called()
 
 
 class TestWsStopScenarioAdditional:

@@ -1689,15 +1689,22 @@ async def ws_set_device_enabled(
     device.enabled = msg["enabled"]
     LOGGER.info("Device %s enabled=%s", msg["device_id"], msg["enabled"])
 
-    # Fire event to notify UI that device state has changed
-    hass.bus.async_fire(
-        "ramses_extras_simulator_devices_changed",
-        {"device_id": msg["device_id"], "action": "updated", "enabled": msg["enabled"]},
-    )
+    # Fire event to notify UI that device state has changed (debounced)
+    engine = _get_engine(hass)
+    if engine:
+        asyncio.create_task(
+            engine._fire_device_change_event(
+                {
+                    "device_id": msg["device_id"],
+                    "action": "updated",
+                    "enabled": msg["enabled"],
+                },
+            )
+        )
 
     # Re-activate to restart the emitter with a fresh burst when enabling a
     # previously disabled device, so traffic starts immediately.
-    if msg["enabled"] and not was_enabled:
+    if msg["enabled"] and not was_enabled and engine:
         await engine.async_activate_device(device)
 
     connection.send_result(
@@ -1846,15 +1853,18 @@ def ws_set_device_excluded_codes(
     device.excluded_codes = list(msg["excluded_codes"])
     LOGGER.info("Device %s excluded_codes=%s", msg["device_id"], device.excluded_codes)
 
-    # Fire event to notify UI that device state has changed
-    hass.bus.async_fire(
-        "ramses_extras_simulator_devices_changed",
-        {
-            "device_id": msg["device_id"],
-            "action": "updated",
-            "excluded_codes": list(device.excluded_codes),
-        },
-    )
+    # Fire event to notify UI that device state has changed (debounced)
+    engine = _get_engine(hass)
+    if engine:
+        asyncio.create_task(
+            engine._fire_device_change_event(
+                {
+                    "device_id": msg["device_id"],
+                    "action": "updated",
+                    "excluded_codes": list(device.excluded_codes),
+                },
+            )
+        )
 
     connection.send_result(
         msg["id"],

@@ -247,7 +247,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       const result = await this._hass.callWS({
         type: "ramses_extras/device_simulator/get_status",
       });
-      await this._fetchRfConfig();
+      // Only fetch RF config if not already cached
+      if (this._rfEnforceKnownList === undefined || this._rfKnownListEnabled === undefined) {
+        await this._fetchRfConfig();
+      }
       const profileSummary = Array.isArray(result.profile_device_summary)
         ? result.profile_device_summary
         : [];
@@ -618,8 +621,8 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     } else {
       this._profileNotice = null;
     }
-    await new Promise((r) => setTimeout(r, 300));
-    await this._fetchData();
+    void this._fetchData();
+    this._invalidateRfConfigCache();
   }
 
   async _stopProfileDevices() {
@@ -676,7 +679,16 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   }
 
   async _silenceAllDevices() {
-    await this._silenceDevices();
+    // Prevent rapid successive calls
+    if (this._silencingInProgress) {
+      return;
+    }
+    this._silencingInProgress = true;
+    try {
+      await this._silenceDevices();
+    } finally {
+      setTimeout(() => { this._silencingInProgress = false; }, 1000);
+    }
   }
 
   async _silenceDevices(deviceIds, { setSuppress = true } = {}) {
@@ -692,11 +704,11 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     }
     try {
       await this._hass.callWS(payload);
+      await this._fetchData();
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("DeviceSimulatorCard: silence_devices failed", error);
     }
-    await this._fetchData();
   }
 
   async _discoverCapabilities(deviceIds) {
@@ -737,8 +749,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       // eslint-disable-next-line no-console
       console.error("DeviceSimulatorCard: failed to activate profile device", error);
     }
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await this._fetchData();
+    void this._fetchData();
   }
 
   async _startScenario(scenarioId) {
@@ -759,8 +770,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       // eslint-disable-next-line no-console
       console.error("DeviceSimulatorCard: failed to start scenario", error);
     }
-    await new Promise((r) => setTimeout(r, 500));
-    await this._fetchData();
+    void this._fetchData();
   }
 
   async _confirmDeleteProfile(profileName) {
@@ -798,12 +808,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         this._persistLoaderDraft();
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      await this._fetchData();
+      void this._fetchData();
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("DeviceSimulatorCard: failed to delete profile", error);
     }
+    this._invalidateRfConfigCache();
   }
 
   async _stopScenario(scenarioId) {
@@ -816,8 +826,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       // eslint-disable-next-line no-console
       console.error("DeviceSimulatorCard: failed to stop scenario", error);
     }
-    await new Promise((r) => setTimeout(r, 300));
-    await this._fetchData();
+    void this._fetchData();
   }
 
   async _setAutoAnswer(enabled) {
@@ -827,8 +836,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     });
     this._autoAnswer = enabled;
     this._scheduleRender();
-    await new Promise((r) => setTimeout(r, 300));
-    await this._fetchData();
+    void this._fetchData();
   }
 
   async _setPreserveState(enabled) {
@@ -838,8 +846,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     });
     this._preserveState = enabled;
     this._scheduleRender();
-    await new Promise((r) => setTimeout(r, 300));
-    await this._fetchData();
+    void this._fetchData();
   }
 
   async _fetchRfConfig() {
@@ -850,10 +857,16 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       });
       this._rfEnforceKnownList = result.enforce_known_list === true;
       this._rfKnownListEnabled = result.known_list_enabled === true;
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("DeviceSimulatorCard: failed to fetch RF config", err);
+    } catch {
+      // Silently fail - RF config is optional
+      this._rfEnforceKnownList = false;
+      this._rfKnownListEnabled = false;
     }
+  }
+
+  _invalidateRfConfigCache() {
+    this._rfEnforceKnownList = undefined;
+    this._rfKnownListEnabled = undefined;
   }
 
   async _setAnswerUnknownDevices(enabled) {
@@ -863,8 +876,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     });
     this._answerUnknownDevices = enabled;
     this._scheduleRender();
-    await new Promise((r) => setTimeout(r, 300));
-    await this._fetchData();
+    void this._fetchData();
   }
 
   async _setAutonomousSpeed(value) {
@@ -894,8 +906,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     } finally {
       this._speedSaving = false;
       this._scheduleRender();
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      await this._fetchData();
+      void this._fetchData();
     }
   }
 

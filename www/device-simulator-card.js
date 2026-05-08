@@ -3,6 +3,7 @@
 
 import { LitElement, html, css } from 'https://unpkg.com/lit@2.8.0/index.js?module';
 
+// eslint-disable-next-line no-unused-vars
 const SCENARIO_FORM_SCHEMAS = {
   device_playback: [
     { key: 'conversation', label: 'Conversation', type: 'text', required: true },
@@ -58,6 +59,7 @@ const SCENARIO_FORM_SCHEMAS = {
   ],
 };
 
+// eslint-disable-next-line no-unused-vars
 const SPECIAL_SCENARIOS = new Set(['autonomous_emissions', 'auto_answer']);
 
 class DeviceSimulatorCard extends LitElement {
@@ -147,6 +149,7 @@ class DeviceSimulatorCard extends LitElement {
         this.scenarios = response.scenarios || [];
       })
       .catch((error) => {
+        // eslint-disable-next-line no-console
         console.error('Error loading simulator status:', error);
       });
   }

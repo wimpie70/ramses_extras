@@ -148,6 +148,11 @@ class ScenarioEngine:
         # Ready flag: True when both simulator and ramses_cc are initialized
         self._ready: bool = False
 
+        # Debouncer for device change events to prevent flooding WebSocket
+        self._device_change_pending: bool = False
+        self._pending_device_changes: list[dict[str, Any]] = []
+        self._device_change_task: asyncio.Task | None = None
+
         endpoint.add_inbound_handler(self._handle_inbound_frame)
 
     @property
@@ -163,6 +168,33 @@ class ScenarioEngine:
     def set_ready(self, ready: bool) -> None:
         """Set the ready flag."""
         self._ready = ready
+
+    async def _fire_device_change_event(self, event_data: dict[str, Any]) -> None:
+        """Fire device change event with debouncing to prevent WebSocket flooding.
+
+        Collects rapid successive changes and sends them as a batch after a short delay.
+        """
+        self._pending_device_changes.append(event_data)
+
+        if self._device_change_pending:
+            return
+
+        self._device_change_pending = True
+
+        async def _flush_pending_changes() -> None:
+            await asyncio.sleep(0.2)  # Wait 200ms to collect batched changes
+            if self._pending_device_changes:
+                # Send the most recent change (or could send all as a batch)
+                last_change = self._pending_device_changes[-1]
+                self.hass.bus.async_fire(
+                    "ramses_extras_simulator_devices_changed",
+                    last_change,
+                )
+                self._pending_device_changes.clear()
+            self._device_change_pending = False
+            self._device_change_task = None
+
+        self._device_change_task = asyncio.create_task(_flush_pending_changes())
 
     async def async_setup(self) -> None:
         """Connect the endpoint and load the device DB."""
@@ -452,15 +484,16 @@ class ScenarioEngine:
             self._profile_device_ids.discard(device.device_id)
             self._manual_device_ids.discard(device.device_id)
 
-        # Fire event to notify UI that devices have changed
-        self.hass.bus.async_fire(
-            "ramses_extras_simulator_devices_changed",
-            {
-                "device_id": device.device_id,
-                "action": "activated",
-                "count": len(self._active_devices),
-                "source": device.origin,
-            },
+        # Fire event to notify UI that devices have changed (debounced)
+        asyncio.create_task(
+            self._fire_device_change_event(
+                {
+                    "device_id": device.device_id,
+                    "action": "activated",
+                    "count": len(self._active_devices),
+                    "source": device.origin,
+                },
+            )
         )
 
         periodic: list[AutonomousEntry] = []
@@ -514,15 +547,16 @@ class ScenarioEngine:
         if device_id in self._active_devices:
             if set_suppress:
                 self._active_devices[device_id].suppress_autonomous = True
-            # Fire event to notify UI that devices have changed
-            self.hass.bus.async_fire(
-                "ramses_extras_simulator_devices_changed",
-                {
-                    "device_id": device_id,
-                    "action": "silenced" if set_suppress else "paused",
-                    "count": len(self._active_devices),
-                    "source": device.origin if device else None,
-                },
+            # Fire event to notify UI that devices have changed (debounced)
+            asyncio.create_task(
+                self._fire_device_change_event(
+                    {
+                        "device_id": device_id,
+                        "action": "silenced" if set_suppress else "paused",
+                        "count": len(self._active_devices),
+                        "source": device.origin if device else None,
+                    },
+                )
             )
         if set_suppress:
             self._profile_device_ids.discard(device_id)
@@ -563,15 +597,16 @@ class ScenarioEngine:
             self._periodic_emitter(device, periodic)
         )
 
-        # Fire event to notify UI that devices have changed
-        self.hass.bus.async_fire(
-            "ramses_extras_simulator_devices_changed",
-            {
-                "device_id": device_id,
-                "action": "resumed",
-                "count": len(self._active_devices),
-                "source": device.origin,
-            },
+        # Fire event to notify UI that devices have changed (debounced)
+        asyncio.create_task(
+            self._fire_device_change_event(
+                {
+                    "device_id": device_id,
+                    "action": "resumed",
+                    "count": len(self._active_devices),
+                    "source": device.origin,
+                },
+            )
         )
         LOGGER.info("Device %s resumed (emitter started)", device_id)
 
@@ -692,11 +727,12 @@ class ScenarioEngine:
         self._profile_device_ids.clear()
         self._manual_device_ids.clear()
         self._state = SCENARIO_STATE_IDLE
-        # Fire event to notify UI that all devices have been stopped
+        # Fire event to notify UI that all devices have been stopped (debounced)
         if device_count > 0:
-            self.hass.bus.async_fire(
-                "ramses_extras_simulator_devices_changed",
-                {"action": "stopped_all", "count": 0},
+            asyncio.create_task(
+                self._fire_device_change_event(
+                    {"action": "stopped_all", "count": 0},
+                )
             )
         # Drain any packets that were already queued but not yet published so
         # they don't get sent after the user pressed Stop.
