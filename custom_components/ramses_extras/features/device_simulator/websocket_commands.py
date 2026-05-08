@@ -36,6 +36,7 @@ from .const import (
     SCENARIO_REGISTRY,
     SCENARIOS_CHANGED_EVENT,
 )
+from .entity_helpers import get_device_entities
 from .scenario_engine import MESSAGE_EVENT, ScenarioEngine
 
 try:  # pragma: no cover - legacy fallback for partially updated installs
@@ -835,6 +836,7 @@ def ws_get_ui_status(
     msg: dict[str, Any],
 ) -> None:
     """Return full simulator status for UI card."""
+    LOGGER.info("ws_get_ui_status called")
     ra = hass.data.setdefault("ramses_extras", {})
 
     # Get profiles from config store
@@ -901,9 +903,11 @@ def ws_get_ui_status(
                 "owned_by_profile": engine.is_profile_device(device.device_id),
                 "zones": zone_membership.get(device.device_id, []),
                 "emitting": device.device_id in engine._emitter_tasks,
+                "entities": get_device_entities(hass, device.device_id),
             }
             for device in engine._active_devices.values()
         ]
+    LOGGER.debug("ws_get_ui_status returning %d devices", len(devices))
 
     active_device_ids = {device["id"] for device in devices}
 

@@ -650,6 +650,23 @@ export function buildDevices(card) {
     const chipsMarkup = (d.excluded_codes || []).map((code) =>
       `<span class="code-chip">${code}<button data-action="remove-code" data-device-id="${d.id}" data-code="${code}" title="Remove">✕</button></span>`
     ).join("");
+    // Build entity pills
+    const entityPills = (d.entities || []).map((e) => {
+      const rawName = typeof e.name === "string" && e.name.length
+        ? e.name
+        : (e.entity_id || "entity").split(".").pop();
+      const pillName = rawName || "entity";
+      const truncatedName = pillName.length > 10 ? `${pillName.substring(0, 10)}...` : pillName;
+      const domainColor = _getDomainColor(e.domain);
+      const availabilityColor = e.available ? "var(--success-color, #4caf50)" : "var(--error-color, #f44336)";
+      return `<span class="entity-pill"
+                   data-action="show-entity-data"
+                   data-entity-id="${e.entity_id}"
+                   style="border: 2px solid ${domainColor}; background: ${e.available ? availabilityColor : 'transparent'};"
+                   title="${pillName} (${e.entity_id}) - ${e.state ?? "unknown"}">
+                  ${truncatedName}
+                </span>`;
+    }).join("");
     const checkedAttr = d.enabled ? " checked" : "";
     const zoneMarkup = renderDeviceZones(d);
     const emitterButton = isEmitting
@@ -681,6 +698,7 @@ export function buildDevices(card) {
           <button class="btn btn-primary" data-action="add-code" data-device-id="${d.id}">+ Exclude</button>
         </div>
         ${zoneMarkup}
+        ${entityPills ? `<div style="margin-top:10px;"><div style="font-size:0.75em; color:var(--secondary-text-color); margin-bottom:3px; font-weight:600;">Entities</div><div style="display:flex; gap:4px; flex-wrap:wrap;">${entityPills}</div></div>` : ""}
         <div style="margin-top:10px;">
           <div style="font-size:0.75em; color:var(--secondary-text-color); margin-bottom:3px; font-weight:600;">Recent traffic</div>
           ${buildDeviceMsgPreview(card, d.id)}
@@ -689,4 +707,17 @@ export function buildDevices(card) {
   }).join("");
 
   return `${runConsole}${toolbar}<div class="grid devices-grid">${deviceCards}</div>`;
+}
+
+function _getDomainColor(domain) {
+  const colors = {
+    sensor: "var(--info-color, #2196f3)",
+    binary_sensor: "var(--warning-color, #ff9800)",
+    switch: "var(--success-color, #4caf50)",
+    number: "var(--primary-color, #3f51b5)",
+    climate: "var(--danger-color, #f44336)",
+    fan: "var(--accent-color, #9c27b0)",
+    default: "var(--secondary-text-color, #757575)",
+  };
+  return colors[domain] || colors.default;
 }

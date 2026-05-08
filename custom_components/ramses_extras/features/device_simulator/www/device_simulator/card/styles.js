@@ -69,6 +69,8 @@ export const CARD_STYLE = `
   .chip.emitting { background: var(--success-color, #388e3c); color: #fff; }
   .chip.idle { background: var(--warning-color, #ffa000); color: #000; }
   .chip.silenced { background: var(--error-color, #f44336); color: #fff; }
+  .entity-pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 0.7em; font-weight: 600; cursor: pointer; transition: transform 0.1s, opacity 0.1s; }
+  .entity-pill:hover { transform: scale(1.05); opacity: 0.8; }
   .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
   .scenario-form { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
   .scenario-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; }

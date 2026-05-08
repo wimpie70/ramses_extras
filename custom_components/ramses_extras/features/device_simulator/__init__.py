@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 import logging
 from pathlib import Path
 
+from homeassistant.core import CoreState, callback
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store as HaStore
 
 from ...framework.helpers.ramses_message_stream import get_ramses_message_stream
@@ -29,6 +32,7 @@ from .const import (
     SIMULATOR_HGI_ID,
     SIMULATOR_TOPIC_NS,
 )
+from .entity_helpers import get_device_entities, normalize_ramses_id
 from .scenarios import async_discover_scenarios, discover_scenarios
 
 _LOGGER = logging.getLogger(__name__)
@@ -837,6 +841,8 @@ async def create_device_simulator_feature(
             "Device Simulator: engine not found in registry, cannot set ready"
         )
 
+    _setup_entity_registry_listener(hass)
+
     _LOGGER.info("Device Simulator feature created - startup complete")
 
     return {
@@ -848,6 +854,105 @@ async def create_device_simulator_feature(
         "config_store": hass.data["ramses_extras"]["device_simulator_config_store"],
         "feature_name": "device_simulator",
     }
+
+
+def _setup_entity_registry_listener(hass: HomeAssistant) -> None:
+    """Listen for new ramses_cc entities and update simulator devices."""
+
+    registry = hass.data.setdefault("ramses_extras", {})
+
+    existing = registry.get("device_simulator_entity_listener_unsub")
+    if callable(existing):
+        existing()
+
+    entity_reg = er.async_get(hass)
+    device_reg = dr.async_get(hass)
+
+    pending_entity_ids: set[str] = set()
+    flush_task: asyncio.Task[None] | None = None
+
+    async def _flush_pending_entity_updates() -> None:
+        nonlocal flush_task
+
+        # Aggregate bursts that happen during HA startup.
+        await asyncio.sleep(0.3)
+
+        if not pending_entity_ids:
+            flush_task = None
+            return
+
+        if hass.state != CoreState.running:
+            pending_entity_ids.clear()
+            flush_task = None
+            return
+
+        engine = registry.get("device_simulator_engine")
+        if engine is None:
+            pending_entity_ids.clear()
+            flush_task = None
+            return
+
+        active_count = len(engine.active_device_ids)
+
+        # Copy IDs so we can continue batching if new ones arrive mid-flush.
+        target_ids = list(pending_entity_ids)
+        pending_entity_ids.clear()
+
+        for device_id in target_ids:
+            entities = get_device_entities(hass, device_id)
+            await engine._fire_device_change_event(
+                {
+                    "device_id": device_id,
+                    "action": "entity_update",
+                    "entities": entities,
+                    "count": active_count,
+                }
+            )
+
+        flush_task = None
+
+    def _schedule_flush() -> None:
+        nonlocal flush_task
+        if flush_task is None:
+            flush_task = hass.async_create_task(_flush_pending_entity_updates())
+
+    @callback  # type: ignore[untyped-decorator]
+    def _handle_entity_event(event: Any) -> None:
+        data = getattr(event, "data", {}) or {}
+        if data.get("action") != "create":
+            return
+        entity_id = data.get("entity_id")
+        if not isinstance(entity_id, str):
+            return
+
+        if hass.state != CoreState.running:
+            return
+
+        entry = entity_reg.async_get(entity_id)
+        if entry is None or entry.platform != "ramses_cc" or not entry.device_id:
+            return
+
+        device_entry = device_reg.async_get(entry.device_id)
+        if device_entry is None:
+            return
+
+        ramses_device_id: str | None = None
+        for domain, identifier in device_entry.identifiers:
+            if domain == "ramses_cc":
+                ramses_device_id = identifier
+                break
+
+        normalized_id = normalize_ramses_id(ramses_device_id)
+        if not normalized_id:
+            return
+
+        pending_entity_ids.add(normalized_id)
+        _schedule_flush()
+
+    registry["device_simulator_entity_listener_unsub"] = hass.bus.async_listen(
+        er.EVENT_ENTITY_REGISTRY_UPDATED,
+        _handle_entity_event,
+    )
 
 
 async def _remove_ramses_database(hass: HomeAssistant) -> None:

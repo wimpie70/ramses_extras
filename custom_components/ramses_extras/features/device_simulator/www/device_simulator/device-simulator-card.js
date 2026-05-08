@@ -79,6 +79,8 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._playbackSearchQuery = "";
     this._selectedScenarioId = null;
     this._ready = false;
+    this._silencingInProgress = false;
+    this._simReadyPromise = null;
 
     this._loadLoaderDraft();
     this._loadSelectedScenario();
@@ -93,6 +95,56 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     } catch {
       // ignore
     }
+  }
+
+  _normalizeDeviceId(deviceId) {
+    if (typeof deviceId !== "string") {
+      return deviceId;
+    }
+    const trimmed = deviceId.trim().toUpperCase();
+    if (!trimmed.includes(":")) {
+      return trimmed;
+    }
+    if (!trimmed.includes("_")) {
+      return trimmed;
+    }
+    const [base] = trimmed.split("_");
+    return base && base.includes(":") ? base : trimmed;
+  }
+
+  _updateDeviceEntities(deviceId, entities) {
+    if (!deviceId || !Array.isArray(entities) || !Array.isArray(this._devices)) {
+      return false;
+    }
+
+    const normalizedId = this._normalizeDeviceId(deviceId);
+    let changed = false;
+
+    this._devices = this._devices.map((device) => {
+      const candidateSource =
+        typeof device.id === "string"
+          ? device.id
+          : typeof device.device_id === "string"
+            ? device.device_id
+            : null;
+      const candidateId = this._normalizeDeviceId(candidateSource);
+
+      if (!candidateId || candidateId !== normalizedId) {
+        return device;
+      }
+
+      changed = true;
+      return {
+        ...device,
+        entities,
+      };
+    });
+
+    if (changed) {
+      this._scheduleRender();
+    }
+
+    return changed;
   }
 
   _setSelectedScenario(scenarioId) {
@@ -194,14 +246,24 @@ class DeviceSimulatorCard extends RamsesBaseCard {
   }
 
   async _loadInitialState() {
+    const ready = await this._waitForSimulatorReady();
+    if (!ready) {
+      return;
+    }
     await this._fetchData();
     await this._fetchRfConfig();
   }
 
-  _onConnected() {
+  async _onConnected() {
+    const ready = await this._waitForSimulatorReady();
+    if (!ready) {
+      return;
+    }
+
     this._fetchData();
     this._subscribeToDevices();
     this._subscribeToScenarios();
+    this._subscribeToEntities();
     if (this._tab === "devices") {
       void this._subscribeToMessageEvents();
     }
@@ -233,16 +295,84 @@ class DeviceSimulatorCard extends RamsesBaseCard {
         this._scenarioSubscription();
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.warn("Device Simulator: failed to unsubscribe from scenario events", err);
+        console.warn("Device Simulator: failed to unsubscribe from scenarios", err);
       }
       this._scenarioSubscription = null;
     }
+
+    if (this._entitySubscription) {
+      try {
+        this._entitySubscription();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("Device Simulator: failed to unsubscribe from entities", err);
+      }
+      this._entitySubscription = null;
+    }
+  }
+
+  async _waitForSimulatorReady({ maxWaitMs = 45000, pollIntervalMs = 750 } = {}) {
+    if (this._ready) {
+      return true;
+    }
+
+    if (this._simReadyPromise) {
+      return this._simReadyPromise;
+    }
+
+    this._simReadyPromise = (async () => {
+      const started = Date.now();
+      while (this.isConnected !== false) {
+        if (!this._hass || !this._hass.connection) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
+
+        try {
+          const result = await this._hass.callWS({
+            type: "ramses_extras/device_simulator/get_status",
+          });
+          if (result?.ready) {
+            this._ready = true;
+            this._simReadyPromise = null;
+            return true;
+          }
+        } catch (err) {
+          const code = err?.code || err?.error?.code;
+          const shouldRetry =
+            code === "unknown_command" ||
+            code === "not_found" ||
+            String(err?.message || "").toLowerCase().includes("unknown command");
+          if (!shouldRetry) {
+            // eslint-disable-next-line no-console
+            console.warn("DeviceSimulatorCard: status probe failed", err);
+          }
+        }
+
+        if (maxWaitMs && Date.now() - started >= maxWaitMs) {
+          break;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+
+      this._simReadyPromise = null;
+      return false;
+    })();
+
+    return this._simReadyPromise;
   }
 
   // ========== DATA FETCHING ==========
 
   async _fetchData() {
     if (!this._hass) return;
+    if (!this._ready) {
+      await this._waitForSimulatorReady();
+      if (!this._ready) {
+        return;
+      }
+    }
     try {
       const result = await this._hass.callWS({
         type: "ramses_extras/device_simulator/get_status",
@@ -508,31 +638,58 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     if (!this._hass || this._deviceSubscription) return;
     if (!this._hass.connection) return;
 
-    try {
-      // Subscribe to real-time device updates
-      this._deviceSubscription = await this._hass.connection.subscribeMessage(
-        (event) => {
-          if (event?.event_type === "devices_changed") {
-            const data = event.data || {};
-            const action = data.action || "updated";
-            const deviceId = data.device_id;
-            const count = data.count;
-
-            // eslint-disable-next-line no-console
-            console.log(`Device Simulator: ${action} ${deviceId || 'all devices'} (total: ${count})`);
-
-            this._fetchData();
-          }
-        },
-        { type: "ramses_extras/device_simulator/subscribe_devices" },
-      );
-
-      // eslint-disable-next-line no-console
-      console.log("Device Simulator: subscribed to device updates");
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("Device Simulator: failed to subscribe to device updates", err);
+    const ready = await this._waitForSimulatorReady();
+    if (!ready) {
+      return;
     }
+
+    const attemptSubscription = async (retries = 5) => {
+      try {
+        // Subscribe to real-time device updates
+        this._deviceSubscription = await this._hass.connection.subscribeMessage(
+          (event) => {
+            if (event?.event_type === "devices_changed") {
+              const data = event.data || {};
+              const action = data.action || "updated";
+              const deviceId = data.device_id;
+              const totalCount = Number.isFinite(data.count)
+                ? data.count
+                : (Array.isArray(this._devices) ? this._devices.length : null);
+
+              // eslint-disable-next-line no-console
+              console.log(
+                `Device Simulator: ${action} ${deviceId || 'all devices'} ` +
+                `(total: ${totalCount ?? 'unknown'})`,
+              );
+
+              if (action === "entity_update" && deviceId && Array.isArray(data.entities)) {
+                const updated = this._updateDeviceEntities(deviceId, data.entities);
+                if (!updated) {
+                  void this._fetchData();
+                }
+                return;
+              }
+
+              this._fetchData();
+            }
+          },
+          { type: "ramses_extras/device_simulator/subscribe_devices" },
+        );
+
+        // eslint-disable-next-line no-console
+        console.log("Device Simulator: subscribed to device updates");
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Device Simulator: failed to subscribe to devices", err);
+        this._deviceSubscription = null;
+        if (retries > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await attemptSubscription(retries - 1);
+        }
+      }
+    };
+
+    await attemptSubscription();
   }
 
   async _subscribeToMessageEvents() {
@@ -556,8 +713,54 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("DeviceSimulatorCard: failed to subscribe to message events", err);
-      this._msgSubscription = null;
     }
+  }
+
+  async _subscribeToEntities() {
+    if (!this._hass || this._entitySubscription) return;
+    if (!this._hass.connection) return;
+
+    try {
+      this._entitySubscription = await this._hass.connection.subscribeEvents(
+        (event) => {
+          if (!event?.data || !event?.data?.entity_id) return;
+          this._updateEntityState(event.data.entity_id, event.data.new_state);
+        },
+        "state_changed",
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to subscribe to entity events", err);
+    }
+  }
+
+  _updateEntityState(entityId, newState) {
+    if (!this._devices || !Array.isArray(this._devices)) return;
+    for (const device of this._devices) {
+      if (!device.entities || !Array.isArray(device.entities)) continue;
+      for (const entity of device.entities) {
+        if (entity.entity_id === entityId) {
+          entity.available = newState?.state !== "unavailable";
+          entity.state = newState?.state || "unavailable";
+          this._scheduleRender();
+          return;
+        }
+      }
+    }
+  }
+
+  _showEntityData(entityId) {
+    if (!this._hass) return;
+    const state = this._hass.states[entityId];
+    if (!state) return;
+
+    const attributes = state.attributes || {};
+    const attrString = Object.entries(attributes)
+      .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+      .join("\n");
+
+    // eslint-disable-next-line no-undef
+    alert(`Entity: ${entityId}\n\nState: ${state.state}\n\nAttributes:\n${attrString}`);
   }
 
   async _subscribeToScenarios() {
@@ -1201,6 +1404,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
     root.querySelectorAll("[data-action='add-code']").forEach(btn => {
       btn.addEventListener("click", () => this._addExcludedCode(btn.dataset.deviceId));
+    });
+
+    root.querySelectorAll("[data-action='show-entity-data']").forEach(el => {
+      el.addEventListener("click", () => this._showEntityData(el.dataset.entityId));
     });
 
     root.querySelectorAll("[data-action='code-input']").forEach(input => {
