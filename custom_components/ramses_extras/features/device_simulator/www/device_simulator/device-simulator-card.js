@@ -78,6 +78,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._scenarioSubscription = null;
     this._playbackSearchQuery = "";
     this._selectedScenarioId = null;
+    this._ready = false;
 
     this._loadLoaderDraft();
     this._loadSelectedScenario();
@@ -285,6 +286,7 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       this._preserveState = result.preserve_state === true;
       this._emissionsActive = result.autonomous_emissions_active === true;
       this._stats = result.stats || this._stats;
+      this._ready = result.ready === true;
       const previousActive = this._activeProfile;
       this._activeProfile = result.active_profile || null;
       this._activeProfileYaml = result.active_profile_yaml || null;
@@ -918,6 +920,12 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this.shadowRoot.innerHTML = `
       <style>${CARD_STYLE}</style>
       <ha-card>
+        ${!this._ready ? `
+          <div style="background-color: var(--warning-color); color: var(--warning-color-text); padding: 12px; border-radius: 4px; margin-bottom: 12px; font-size: 0.9em; display: flex; align-items: center; gap: 8px;">
+            <span>⚠️</span>
+            <span><strong>System initializing</strong> — Please wait before using discovery or other buttons</span>
+          </div>
+        ` : ""}
         <div class="header">
           <div style="display: flex; flex-direction: column; gap: 2px;">
             <div class="title">🔌 ${this._config?.title || "Device Simulator"}</div>
