@@ -14,7 +14,7 @@ import logging
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from ramses_tx.const import SZ_ACTUATORS, SZ_NAME
 
@@ -85,8 +85,6 @@ class SystemConfigProfile:
     :param description: Human-readable description
     :param timeout_scale: Multiplier for ramses_rf timeout constants
                            (0.01 = 100x faster)
-    :param ramses_cc_timeout_scale: Multiplier for ramses_cc timeout constants
-                                    (0.01 = 100x faster)
     :param heartbeat_timeout_override_seconds: Optional absolute timeout override
     :param device_configs: Per-device configuration overrides
     :param scenario_hooks: Actions to take at scenario stages
@@ -99,7 +97,6 @@ class SystemConfigProfile:
     name: str
     description: str = ""
     timeout_scale: float = 1.0
-    ramses_cc_timeout_scale: float = 1.0
     heartbeat_timeout_override_seconds: float | None = None
     device_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     scenario_hooks: dict[str, list[str]] = field(default_factory=dict)
@@ -309,6 +306,44 @@ class ConfigProfileStore:
             remove_database=True,
         )
 
+        self._profiles["heat_2"] = SystemConfigProfile(
+            name="heat_2",
+            description="Heat environment with fast heartbeat (100x)",
+            timeout_scale=0.01,
+            device_configs={
+                "_known_list": {
+                    "01:216136": {},
+                    "04:034682": {},
+                    "04:034684": {},
+                    "04:034690": {},
+                    "04:034692": {},
+                    "04:034716": {},
+                    "04:034720": {},
+                    "04:034722": {},
+                    "04:034726": {},
+                    "04:036066": {},
+                    "04:036068": {},
+                    "04:056673": {},
+                    "04:056675": {},
+                    "04:056677": {},
+                    "04:056679": {},
+                    "04:106557": {},
+                    "04:208990": {},
+                    "04:208992": {},
+                    "04:208994": {},
+                    "04:208998": {},
+                    "04:219929": {},
+                    "07:050121": {},
+                    "10:064873": {},
+                    "13:042605": {},
+                    "18:191664": {"class": "HGI"},
+                    "22:012299": {},
+                    "34:058721": {},
+                },
+                "_enforce_known_list": {"enabled": True},
+            },
+        )
+
         self._profiles["mixed"] = SystemConfigProfile(
             name="mixed",
             description="Full HVAC + extended multi-zone heat environment",
@@ -358,7 +393,6 @@ class ConfigProfileStore:
                     "Clean slate with unknown device support and fast heartbeat (100x)"
                 ),
                 timeout_scale=0.01,
-                ramses_cc_timeout_scale=0.01,
                 device_configs={
                     "_known_list": _HGI_ENTRY,
                     "_enforce_known_list": {"enabled": False},
@@ -672,46 +706,28 @@ class ConfigProfileStore:
 
 # Module-level storage for original timeout values
 _original_timeout_values: dict[str, float] | None = None
-_original_ramses_cc_timeout_values: dict[str, int] | None = None
 
 
 # Heartbeat timeout constant names in ramses_rf.const (as of current ramses_rf)
-_HEARTBEAT_CONST_NAMES = [
+_HEARTBEAT_CONST_NAMES: Final = (
     "HEARTBEAT_TIMEOUT_DEFAULT",
     "HEARTBEAT_TIMEOUT_OTB",
-    "HEARTBEAT_TIMEOUT_TRV",
-    "HEARTBEAT_TIMEOUT_REMOTE",
-    "HEARTBEAT_TIMEOUT_SENSOR",
-    "GATEWAY_MESSAGE_TIMEOUT",
-]
+    "HEARTBEAT_TIMEOUT_HGI",
+)
 
-# Consumer modules that import the constants by value (must also be patched)
-_HEARTBEAT_CONSUMER_MODULES = [
+_HEARTBEAT_CONSUMER_MODULES: Final = (
     "ramses_rf.device.base",
-    "ramses_rf.device.heat",
+    "ramses_rf.device.fan",
     "ramses_rf.device.hvac",
-]
-
-# ramses_cc timeout constant names
-_RAMSES_CC_CONST_NAMES = [
-    "DEFAULT_TIMEOUT",
-    "MIN_TIMEOUT",
-    "MAX_TIMEOUT",
-]
-
-# ramses_cc consumer modules
-_RAMSES_CC_CONSUMER_MODULES = [
-    "custom_components.ramses_cc.schemas",
-    "custom_components.ramses_cc.remote",
-]
+    "ramses_rf.device.thermostat",
+)
 
 
 def apply_timeout_scale(scale: float) -> bool:
-    """Apply timeout scaling to ramses_rf and ramses_cc constants.
+    """Apply timeout scaling to ramses_rf constants.
 
     Patches ramses_rf.const module constants and all consumer device modules
-    that import them by value, to scale timeouts. Also patches ramses_cc timeout
-    constants for availability detection.
+    that import them by value, to scale timeouts.
 
     :param scale: Scale factor (0.01 = 100x faster, 1.0 = normal)
     :return: True if applied successfully
@@ -755,41 +771,6 @@ def apply_timeout_scale(scale: float) -> bool:
             for name, orig in _original_timeout_values.items():
                 if hasattr(mod, name):
                     setattr(mod, name, orig * scale)
-
-        # Patch ramses_cc timeout constants
-        try:
-            import custom_components.ramses_cc.schemas as ramses_cc_schemas
-
-            for name in _RAMSES_CC_CONST_NAMES:
-                if hasattr(ramses_cc_schemas, name):
-                    orig = getattr(ramses_cc_schemas, name)
-                    # Apply scale but respect minimum bounds
-                    if name == "MIN_TIMEOUT":
-                        # Don't scale MIN_TIMEOUT below a reasonable minimum
-                        setattr(ramses_cc_schemas, name, max(5, int(orig * scale)))
-                    else:
-                        setattr(ramses_cc_schemas, name, int(orig * scale))
-        except ImportError:
-            LOGGER.warning(
-                "SystemConfig: could not import ramses_cc.schemas for patching"
-            )
-
-        # Patch ramses_cc consumer modules
-        for mod_name in _RAMSES_CC_CONSUMER_MODULES:
-            mod = sys.modules.get(mod_name) or (
-                importlib.import_module(mod_name)
-                if importlib.util.find_spec(mod_name)
-                else None
-            )
-            if mod is None:
-                continue
-            for name in _RAMSES_CC_CONST_NAMES:
-                if hasattr(mod, name):
-                    orig = getattr(mod, name)
-                    if name == "MIN_TIMEOUT":
-                        setattr(mod, name, max(5, int(orig * scale)))
-                    else:
-                        setattr(mod, name, int(orig * scale))
 
         LOGGER.info(
             "SystemConfig: applied timeout scale %.3f (%s)",
@@ -839,71 +820,4 @@ def restore_default_timeouts() -> bool:
 
     except Exception:
         LOGGER.exception("SystemConfig: failed to restore timeouts")
-        return False
-
-
-def apply_ramses_cc_timeout_scale(scale: float) -> bool:
-    """Apply timeout scaling to ramses_cc constants only.
-
-    Patches ramses_cc timeout constants for availability detection.
-
-    :param scale: Scale factor (0.01 = 100x faster, 1.0 = normal)
-    :return: True if applied successfully
-    """
-    global _original_ramses_cc_timeout_values
-
-    try:
-        import importlib
-        import importlib.util
-        import sys
-
-        import custom_components.ramses_cc.schemas as ramses_cc_schemas
-
-        # Store originals once
-        if _original_ramses_cc_timeout_values is None:
-            _original_ramses_cc_timeout_values = {
-                name: getattr(ramses_cc_schemas, name)
-                for name in _RAMSES_CC_CONST_NAMES
-                if hasattr(ramses_cc_schemas, name)
-            }
-
-        if not _original_ramses_cc_timeout_values:
-            LOGGER.warning("SystemConfig: no known ramses_cc timeout constants found")
-            return False
-
-        # Patch ramses_cc schemas module
-        for name, orig in _original_ramses_cc_timeout_values.items():
-            if name == "MIN_TIMEOUT":
-                # Don't scale MIN_TIMEOUT below a reasonable minimum
-                setattr(ramses_cc_schemas, name, max(5, int(orig * scale)))
-            else:
-                setattr(ramses_cc_schemas, name, int(orig * scale))
-
-        # Patch ramses_cc consumer modules
-        for mod_name in _RAMSES_CC_CONSUMER_MODULES:
-            mod = sys.modules.get(mod_name) or (
-                importlib.import_module(mod_name)
-                if importlib.util.find_spec(mod_name)
-                else None
-            )
-            if mod is None:
-                continue
-            for name, orig in _original_ramses_cc_timeout_values.items():
-                if hasattr(mod, name):
-                    if name == "MIN_TIMEOUT":
-                        setattr(mod, name, max(5, int(orig * scale)))
-                    else:
-                        setattr(mod, name, int(orig * scale))
-
-        LOGGER.info(
-            "SystemConfig: applied ramses_cc timeout scale %.3f",
-            scale,
-        )
-        return True
-
-    except ImportError:
-        LOGGER.warning("SystemConfig: could not import ramses_cc.schemas for patching")
-        return False
-    except Exception:
-        LOGGER.exception("SystemConfig: failed to apply ramses_cc timeout scale")
         return False

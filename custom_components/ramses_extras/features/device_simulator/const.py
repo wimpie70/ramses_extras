@@ -76,7 +76,6 @@ DEVICE_SIMULATOR_WEBSOCKET_COMMANDS = {
     "set_answer_unknown_devices": "ramses_extras/device_simulator/set_answer_unknown_devices",  # noqa: E501
     "set_preserve_state": "ramses_extras/device_simulator/set_preserve_state",
     "set_heartbeat_timeout_scale": "ramses_extras/device_simulator/set_heartbeat_timeout_scale",  # noqa: E501
-    "set_ramses_cc_timeout_scale": "ramses_extras/device_simulator/set_ramses_cc_timeout_scale",  # noqa: E501
     "get_rf_config": "ramses_extras/device_simulator/get_rf_config",
     "get_profile_yaml": "ramses_extras/device_simulator/get_profile_yaml",
     "subscribe_devices": "ramses_extras/device_simulator/subscribe_devices",

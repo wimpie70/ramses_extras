@@ -127,15 +127,6 @@ export function buildProfileLoaderCard(card) {
     </label>
   `;
 
-  const currentRamsesCcScale = params.ramses_cc_speed ?? card._loaderRamsesCcTimeoutScale ?? 1.0;
-  const ramsesCcScaleInput = `
-    <label style="display:flex; flex-direction:column; gap:4px; font-size:0.8em;">
-      <span>Ramses CC timeout scale (default: 1.0)</span>
-      <input type="number" min="0.001" max="10" step="0.001" value="${currentRamsesCcScale}" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="ramses_cc_speed" data-type="number" style="width: 100px; padding: 4px 6px; border: 1px solid var(--divider-color); border-radius: 4px;" />
-      <span style="font-size:0.75em; color:var(--secondary-text-color);">Scales ramses_cc availability detection timeout (0.01 = 100× faster)</span>
-    </label>
-  `;
-
   return `
     <div class="card" style="margin-bottom: 16px;" data-card="profile-loader">
       <div style="display:flex; justify-content: space-between; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -158,7 +149,6 @@ export function buildProfileLoaderCard(card) {
         ${skipHydrateToggle}
         ${clearLogToggle}
         ${scaleInput}
-        ${ramsesCcScaleInput}
       </div>
       <div style="margin-top: 8px; display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_LOAD_PROFILE}" ${!hasYaml || conflicts.length ? "disabled" : ""}>Load</button>

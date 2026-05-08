@@ -957,9 +957,6 @@ def ws_get_ui_status(
         else (config_store.get_autonomous_speed() if config_store else 1.0)
     )
     heartbeat_timeout_scale_override = ra.get("device_simulator_timeout_scale_override")
-    ramses_cc_timeout_scale_override = ra.get(
-        "device_simulator_ramses_cc_timeout_scale_override"
-    )
 
     device_message_previews: dict[str, list] = {}
     target_ids: list[str] = [d["id"] for d in devices]
@@ -1000,7 +997,6 @@ def ws_get_ui_status(
             "device_message_previews": device_message_previews,
             "ready": engine.ready if engine else False,
             "heartbeat_timeout_scale_override": heartbeat_timeout_scale_override,
-            "ramses_cc_timeout_scale_override": ramses_cc_timeout_scale_override,
         },
     )
 
@@ -1048,7 +1044,6 @@ def ws_get_profile_yaml(
             "profile": profile.name,
             "yaml": yaml_text,
             "timeout_scale": profile.timeout_scale,
-            "ramses_cc_timeout_scale": profile.ramses_cc_timeout_scale,
             "description": profile.description,
         },
     )
@@ -2138,69 +2133,6 @@ async def ws_set_heartbeat_timeout_scale(
             "exception",
             f"Failed to apply timeout scale: {e}",
         )
-
-
-@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
-    {
-        vol.Required(
-            "type"
-        ): "ramses_extras/device_simulator/set_ramses_cc_timeout_scale",
-        vol.Required("scale"): vol.All(
-            vol.Coerce(float), vol.Range(min=0.001, max=10.0)
-        ),
-        vol.Optional("reload_ramses_cc", default=False): bool,
-    }
-)
-@websocket_api.async_response  # type: ignore[untyped-decorator]
-async def ws_set_ramses_cc_timeout_scale(
-    hass: HomeAssistant,
-    connection: ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Update the ramses_cc timeout scale dynamically.
-
-    Scales ramses_cc timeout constants for availability detection.
-    For example, 0.01 = 100x faster (60s timeout becomes 0.6s).
-    Optionally reloads ramses_cc to apply the change to running devices.
-    """
-    from .system_config import apply_ramses_cc_timeout_scale
-
-    scale: float = msg["scale"]
-    reload_ramses_cc: bool = msg.get("reload_ramses_cc", False)
-
-    if not isinstance(scale, (int, float)) or scale <= 0:
-        connection.send_error(
-            msg["id"], "invalid_value", "Scale must be a positive number"
-        )
-        return
-
-    try:
-        success = apply_ramses_cc_timeout_scale(scale)
-        if success:
-            ra = hass.data.get("ramses_extras", {})
-            ra["device_simulator_ramses_cc_timeout_scale_override"] = scale
-
-            result = {
-                "success": True,
-                "scale": scale,
-            }
-
-            if reload_ramses_cc:
-                ramses_cc_entries = hass.config_entries.async_entries("ramses_cc")
-                if ramses_cc_entries:
-                    entry = ramses_cc_entries[0]
-                    hass.async_create_task(
-                        hass.config_entries.async_reload(entry.entry_id)
-                    )
-                    result["reloading_ramses_cc"] = True
-
-            connection.send_result(msg["id"], result)
-        else:
-            connection.send_error(
-                msg["id"], "apply_failed", "Failed to apply ramses_cc timeout scale"
-            )
-    except Exception as err:  # noqa: BLE001
-        connection.send_error(msg["id"], "exception", str(err))
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

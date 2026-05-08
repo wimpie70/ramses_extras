@@ -179,7 +179,6 @@ def build_profile_from_payload(
             "_schema",
             "_enforce_known_list",
             "timeout_scale",
-            "ramses_cc_timeout_scale",
             "description",
             "clear_message_log",
         }:
@@ -193,12 +192,6 @@ def build_profile_from_payload(
     except (TypeError, ValueError):
         timeout_scale = 1.0
 
-    ramses_cc_timeout_scale = payload.get("ramses_cc_timeout_scale", 1.0)
-    try:
-        ramses_cc_timeout_scale = float(ramses_cc_timeout_scale)
-    except (TypeError, ValueError):
-        ramses_cc_timeout_scale = 1.0
-
     profile_description = (
         description or payload.get("description") or "Imported profile"
     )
@@ -209,7 +202,6 @@ def build_profile_from_payload(
         name=name,
         description=profile_description,
         timeout_scale=timeout_scale,
-        ramses_cc_timeout_scale=ramses_cc_timeout_scale,
         device_configs=device_configs,
         clear_message_log=clear_message_log,
     )
@@ -242,17 +234,14 @@ def profile_to_yaml(profile: SystemConfigProfile) -> str:
         if key == "_known_list":
             payload["known_list"] = value
         elif key == "_schema":
-            payload["schema"] = value
+            payload["_schema"] = value
         elif key == "_enforce_known_list":
-            payload["enforce_known_list"] = value
+            payload["_enforce_known_list"] = value
         else:
             payload[key] = value
 
     if profile.timeout_scale not in (None, 1.0):
         payload["timeout_scale"] = profile.timeout_scale
-
-    if profile.ramses_cc_timeout_scale not in (None, 1.0):
-        payload["ramses_cc_timeout_scale"] = profile.ramses_cc_timeout_scale
 
     if profile.clear_message_log:
         payload["clear_message_log"] = True
@@ -357,15 +346,6 @@ async def async_apply_profile(
     apply_timeout_scale(scale)
     ra["device_simulator_timeout_scale_override"] = scale
     actions.append(f"timeout_scale={scale}")
-
-    # Apply ramses_cc timeout scale separately
-    ramses_cc_scale = profile.ramses_cc_timeout_scale
-    if ramses_cc_scale != 1.0:
-        from .system_config import apply_ramses_cc_timeout_scale
-
-        apply_ramses_cc_timeout_scale(ramses_cc_scale)
-        ra["device_simulator_ramses_cc_timeout_scale_override"] = ramses_cc_scale
-        actions.append(f"ramses_cc_timeout_scale={ramses_cc_scale}")
 
     if reset_rf_cache:
         try:
