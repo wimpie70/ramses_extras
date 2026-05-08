@@ -52,7 +52,16 @@ def get_device_entities(hass: HomeAssistant, device_id: str) -> list[dict[str, A
         return []
 
     matching_device_entry_ids: set[str] = set()
-    for dev in device_reg.devices.values():
+    # Try different API versions for DeviceRegistry
+    devices_iter = None
+    if hasattr(device_reg, "async_get_devices"):
+        devices_iter = device_reg.async_get_devices()
+    elif hasattr(device_reg, "devices"):
+        devices_iter = device_reg.devices.values()
+    else:
+        return []
+
+    for dev in devices_iter:
         for domain, identifier in dev.identifiers:
             if domain != "ramses_cc":
                 continue
