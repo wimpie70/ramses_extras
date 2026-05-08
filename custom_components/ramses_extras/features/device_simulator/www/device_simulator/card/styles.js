@@ -15,10 +15,15 @@ export const CARD_STYLE = `
   .tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
   .content { display: none; }
   .content.active { display: block; }
-  .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+  .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn:active { transform: scale(0.95); opacity: 0.7; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
   .btn-primary { background: var(--primary-color); color: var(--text-primary-color); }
   .btn-secondary { background: var(--secondary-background-color); color: var(--primary-text-color); border: 1px solid var(--divider-color); }
   .btn-danger { background: var(--error-color); color: white; }
+  button { cursor: pointer; transition: transform 0.15s, opacity 0.15s; }
+  button:hover { opacity: 0.85; }
+  button:active { transform: scale(0.95); opacity: 0.7; }
   .grid { display: grid; gap: 12px; }
   .devices-grid { grid-template-columns: repeat(auto-fit, minmax(720px, 1fr)); }
   .card { border: 1px solid var(--divider-color); border-radius: 8px; padding: 16px; }

@@ -828,9 +828,14 @@ async def create_device_simulator_feature(
 
     # Mark simulator as ready (ramses_cc readiness will be checked separately)
     engine = registry.get("device_simulator_engine")
+    _LOGGER.debug("Device Simulator: engine from registry = %s", engine)
     if engine:
         engine.set_ready(True)
         _LOGGER.info("Device Simulator marked as ready")
+    else:
+        _LOGGER.warning(
+            "Device Simulator: engine not found in registry, cannot set ready"
+        )
 
     _LOGGER.info("Device Simulator feature created - startup complete")
 

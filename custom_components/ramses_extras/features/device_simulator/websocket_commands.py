@@ -1093,6 +1093,24 @@ async def ws_load_profile(
 
     clear_log = msg.get("clear_message_log", False)
     enable_auto_answer = msg.get("enable_auto_answer", True)
+    reload_ramses_cc = msg.get("reload_ramses_cc", True)
+
+    # Mark simulator as not ready during profile load (especially when reloading RF)
+    engine = _get_engine(hass)
+    if engine and reload_ramses_cc:
+        engine.set_ready(False)
+        LOGGER.info(
+            "Device Simulator: profile load with RF reload - marked as not ready"
+        )
+
+        # Mark simulator as ready after a short delay to allow ramses_cc to initialize
+        async def mark_ready_after_delay() -> None:
+            await asyncio.sleep(5)  # Give ramses_cc 5 seconds to initialize
+            if engine:
+                engine.set_ready(True)
+                LOGGER.info("Device Simulator: profile load complete - marked as ready")
+
+        asyncio.create_task(mark_ready_after_delay())
 
     try:
         if clear_log:
