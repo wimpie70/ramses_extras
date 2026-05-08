@@ -112,16 +112,20 @@ export function buildProfileLoaderCard(card) {
       ${skipHydrateField?.label || "Remove database file"}
     </label>`;
 
-  const clearLogToggle = clearLogField
-    ? `
-      <label style="font-size: 0.8em; display:flex; align-items:center; gap:4px; cursor:pointer;">
-        <input type="checkbox" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="clear_message_log" data-type="checkbox" ${clearLogValue ? "checked" : ""} />
-        ${clearLogField.label || "Clear message log"}
-      </label>
-      <div style="font-size:0.7em; color:var(--secondary-text-color); margin-top:-4px;">
-        ${clearLogField.description || "Clear the device simulator UI log before applying the profile."}
-      </div>`
-    : "";
+  const clearLogToggle = `
+    <label style="font-size: 0.8em; display:flex; align-items:center; gap:4px; cursor:pointer;">
+      <input type="checkbox" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="clear_message_log" data-type="checkbox" ${clearLogValue ? "checked" : ""} />
+      ${clearLogField?.label || "Clear message log"}
+    </label>`;
+
+  const currentScale = params.speed ?? card._loaderTimeoutScale ?? 1.0;
+  const scaleInput = `
+    <label style="display:flex; flex-direction:column; gap:4px; font-size:0.8em;">
+      <span>Heartbeat timeout scale (default: 1.0)</span>
+      <input type="number" min="0.001" max="10" step="0.001" value="${currentScale}" data-action="scenario-param" data-scenario-id="${SCENARIO_LOAD_PROFILE}" data-field="speed" data-type="number" style="width: 100px; padding: 4px 6px; border: 1px solid var(--divider-color); border-radius: 4px;" />
+      <span style="font-size:0.75em; color:var(--secondary-text-color);">Lower values make devices go unavailable faster (0.01 = 100× faster)</span>
+    </label>
+  `;
 
   return `
     <div class="card" style="margin-bottom: 16px;" data-card="profile-loader">
@@ -144,6 +148,7 @@ export function buildProfileLoaderCard(card) {
         ${eavesdropToggle}
         ${skipHydrateToggle}
         ${clearLogToggle}
+        ${scaleInput}
       </div>
       <div style="margin-top: 8px; display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn btn-primary" data-action="start-scenario" data-scenario-id="${SCENARIO_LOAD_PROFILE}" ${!hasYaml || conflicts.length ? "disabled" : ""}>Load</button>

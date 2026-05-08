@@ -46,6 +46,54 @@ function speedCard(card) {
     </div>`;
 }
 
+function heartbeatScaleCard(card) {
+  const current = Number(card._heartbeatTimeoutScale) || 1;
+  const pending = Number.isFinite(card._pendingHeartbeatTimeoutScale) ? card._pendingHeartbeatTimeoutScale : current;
+  const sliderValue = Math.min(1, Math.max(0.001, pending || 1));
+  const presetValues = [1, 0.1, 0.01, 0.001];
+
+  const formatHeartbeatScaleLabel = (value) => {
+    if (value === 1) return "1× (real-time)";
+    if (value < 0.01) return `${(value * 1000).toFixed(0)}× faster`;
+    return `${(1 / value).toFixed(0)}× faster`;
+  };
+
+  const badge = card._heartbeatScaleSaving
+    ? '<span class="chip muted">Saving…</span>'
+    : `<span class="chip profile">${formatHeartbeatScaleLabel(current)}</span>`;
+
+  const presetButtons = presetValues
+    .map((value) => {
+      const active = Math.abs(current - value) < 0.0001 ? "btn-primary" : "btn-secondary";
+      return `<button class="btn ${active}" data-action="heartbeat-scale-preset" data-scale="${value}">${formatHeartbeatScaleLabel(value)}</button>`;
+    })
+    .join("");
+
+  return `
+    <div class="card speed-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <strong>Heartbeat Timeout Scale</strong>
+        ${badge}
+      </div>
+      <div style="font-size:0.85em; color:var(--secondary-text-color);">
+        Scales all device heartbeat timeouts. Lower values make devices go unavailable faster for testing. 1h default becomes ${(60 * current).toFixed(0)}s at current scale.
+      </div>
+      <div class="speed-controls">
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:0.75em;">
+          <span>Scale (0.001–1×)</span>
+          <input type="range" min="0.001" max="1" step="0.001" value="${sliderValue}" data-action="heartbeat-scale-slider" />
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:0.75em;">
+          <span>Exact multiplier</span>
+          <input type="number" min="0.001" max="10" step="0.001" value="${pending}" data-action="heartbeat-scale-input" />
+        </label>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;">
+        ${presetButtons}
+      </div>
+    </div>`;
+}
+
 function toggleCard({ title, description, checked, action }) {
   return `
     <div class="card ${checked ? "active" : ""}">
@@ -107,6 +155,7 @@ function statusCard(card) {
 export function buildOptions(card) {
   const cards = [
     speedCard(card),
+    heartbeatScaleCard(card),
     toggleCard({
       title: "Auto Answer (RQ→RP)",
       description: "When off: simulator receives RQ frames but never replies — simulates broken ESP or powered-off device.",

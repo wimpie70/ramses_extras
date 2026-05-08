@@ -81,6 +81,10 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     this._ready = false;
     this._silencingInProgress = false;
     this._simReadyPromise = null;
+    this._heartbeatTimeoutScale = 1.0;
+    this._pendingHeartbeatTimeoutScale = 1.0;
+    this._heartbeatScaleSaving = false;
+    this._loaderTimeoutScale = 1.0;
 
     this._loadLoaderDraft();
     this._loadSelectedScenario();
@@ -365,6 +369,45 @@ class DeviceSimulatorCard extends RamsesBaseCard {
 
   // ========== DATA FETCHING ==========
 
+  async _fetchActiveProfileYaml(profileName) {
+    if (!this._hass) {
+      return;
+    }
+    const targetProfile = profileName || this._activeProfile;
+    if (!targetProfile) {
+      return;
+    }
+    try {
+      const result = await this._hass.callWS({
+        type: "ramses_extras/device_simulator/get_profile_yaml",
+        profile: targetProfile,
+      });
+      if (result?.profile !== this._activeProfile) {
+        return;
+      }
+      const current = this._scenarioParams[SCENARIO_LOAD_PROFILE] || {};
+      const nextSpeed = result.timeout_scale ?? this._loaderTimeoutScale ?? 1.0;
+      this._scenarioParams = {
+        ...this._scenarioParams,
+        [SCENARIO_LOAD_PROFILE]: {
+          ...current,
+          profile_name: result.profile,
+          profile_yaml: result.yaml,
+          speed: current.speed ?? nextSpeed,
+        },
+      };
+      this._activeProfileYaml = result.yaml;
+      this._loaderTimeoutScale = current.speed ?? nextSpeed;
+      this._loaderActiveProfileSnapshot = result.profile;
+      this._persistLoaderDraft();
+      this._scheduleRender();
+      this._updateLoaderStatusUI();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn("DeviceSimulatorCard: failed to fetch profile YAML", error);
+    }
+  }
+
   async _fetchData() {
     if (!this._hass) return;
     if (!this._ready) {
@@ -436,27 +479,44 @@ class DeviceSimulatorCard extends RamsesBaseCard {
           this._pendingSpeed = result.autonomous_speed;
         }
       }
-      this._scheduleRender();
-      if (
+      this._heartbeatTimeoutScale = result.active_profile_timeout_scale || 1.0;
+      this._loaderTimeoutScale = this._heartbeatTimeoutScale;
+      if (!this._heartbeatScaleSaving) {
+        this._pendingHeartbeatTimeoutScale = this._heartbeatTimeoutScale;
+      }
+
+      let loaderDraftUpdated = false;
+      const activeProfileChanged =
         this._activeProfile &&
-        this._activeProfileYaml &&
-        this._activeProfile !== this._loaderActiveProfileSnapshot
-      ) {
+        this._activeProfile !== this._loaderActiveProfileSnapshot;
+      if (activeProfileChanged && this._activeProfileYaml) {
         const current = this._scenarioParams[SCENARIO_LOAD_PROFILE] || {};
+        const nextSpeed =
+          current.speed ?? this._activeProfileTimeoutScale ?? 1.0;
         this._scenarioParams = {
           ...this._scenarioParams,
           [SCENARIO_LOAD_PROFILE]: {
             ...current,
             profile_name: this._activeProfile,
             profile_yaml: this._activeProfileYaml,
-            speed:
-              current.speed ?? this._activeProfileTimeoutScale ?? current.speed ?? 1.0,
+            speed: nextSpeed,
           },
         };
+        this._loaderTimeoutScale = nextSpeed;
         this._loaderActiveProfileSnapshot = this._activeProfile;
         this._persistLoaderDraft();
+        loaderDraftUpdated = true;
       } else if (!this._activeProfile && previousActive) {
         this._loaderActiveProfileSnapshot = null;
+      }
+
+      this._scheduleRender();
+      if (loaderDraftUpdated) {
+        this._updateLoaderStatusUI();
+      }
+
+      if (activeProfileChanged && !this._activeProfileYaml) {
+        await this._fetchActiveProfileYaml();
       }
     } catch {
       // Silently handle fetch errors
@@ -1052,6 +1112,39 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     void this._fetchData();
   }
 
+  async _setHeartbeatTimeoutScale(scale) {
+    const numericScale = Number(scale);
+    if (Number.isNaN(numericScale) || numericScale <= 0) {
+      return;
+    }
+    this._heartbeatScaleSaving = true;
+    this._pendingHeartbeatTimeoutScale = numericScale;
+    this._scheduleRender();
+    try {
+      await this._hass.callWS({
+        type: "ramses_extras/device_simulator/set_heartbeat_timeout_scale",
+        scale: numericScale,
+      });
+      this._heartbeatTimeoutScale = numericScale;
+      this._loaderTimeoutScale = numericScale;
+      const current = this._scenarioParams[SCENARIO_LOAD_PROFILE] || {};
+      this._scenarioParams = {
+        ...this._scenarioParams,
+        [SCENARIO_LOAD_PROFILE]: {
+          ...current,
+          speed: numericScale,
+        },
+      };
+      this._persistLoaderDraft();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("DeviceSimulatorCard: failed to set heartbeat timeout scale", error);
+    } finally {
+      this._heartbeatScaleSaving = false;
+      this._scheduleRender();
+    }
+  }
+
   async _fetchRfConfig() {
     if (!this._hass) return;
     try {
@@ -1278,6 +1371,29 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     const speedPresets = root.querySelectorAll("[data-action='speed-preset']");
     speedPresets.forEach((btn) => {
       btn.addEventListener("click", () => this._setAutonomousSpeed(btn.dataset.speed));
+    });
+
+    const heartbeatScaleSlider = root.querySelector("[data-action='heartbeat-scale-slider']");
+    if (heartbeatScaleSlider) {
+      heartbeatScaleSlider.addEventListener("input", (e) => {
+        this._pendingHeartbeatTimeoutScale = Number(e.target.value);
+        this._scheduleRender();
+      });
+      heartbeatScaleSlider.addEventListener("change", (e) => this._setHeartbeatTimeoutScale(e.target.value));
+    }
+
+    const heartbeatScaleInput = root.querySelector("[data-action='heartbeat-scale-input']");
+    if (heartbeatScaleInput) {
+      heartbeatScaleInput.addEventListener("input", (e) => {
+        this._pendingHeartbeatTimeoutScale = Number(e.target.value);
+        this._scheduleRender();
+      });
+      heartbeatScaleInput.addEventListener("change", (e) => this._setHeartbeatTimeoutScale(e.target.value));
+    }
+
+    const heartbeatScalePresets = root.querySelectorAll("[data-action='heartbeat-scale-preset']");
+    heartbeatScalePresets.forEach((btn) => {
+      btn.addEventListener("click", () => this._setHeartbeatTimeoutScale(btn.dataset.scale));
     });
 
     root.querySelectorAll("[data-action='delete-profile']").forEach(btn => {
@@ -1799,6 +1915,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
     };
 
     if (scenarioId === SCENARIO_LOAD_PROFILE) {
+      if (field === "speed" && typeof value === "number" && value) {
+        this._loaderTimeoutScale = value;
+      }
       this._updateLoaderStatusUI();
       this._persistLoaderDraft();
     }
@@ -1947,6 +2066,9 @@ class DeviceSimulatorCard extends RamsesBaseCard {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === "object") {
         this._scenarioParams[SCENARIO_LOAD_PROFILE] = parsed;
+        if (typeof parsed.speed === "number" && parsed.speed > 0) {
+          this._loaderTimeoutScale = parsed.speed;
+        }
       }
     } catch (error) {
       // eslint-disable-next-line no-console

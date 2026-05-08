@@ -1001,6 +1001,54 @@ def ws_get_ui_status(
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]
     {
+        vol.Required("type"): "ramses_extras/device_simulator/get_profile_yaml",
+        vol.Optional("profile"): str,
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_get_profile_yaml(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return rendered YAML for the requested (or active) profile."""
+
+    config_store = _get_config_store(hass)
+    if not config_store:
+        connection.send_error(msg["id"], "not_ready", "Config store not initialized")
+        return
+
+    profile_name = (
+        msg.get("profile") or config_store.get_active_profile() or ""
+    ).strip()
+    if not profile_name:
+        connection.send_error(msg["id"], "no_profile", "No active profile to export")
+        return
+
+    profile = config_store.get_profile(profile_name)
+    if not profile:
+        connection.send_error(
+            msg["id"],
+            "not_found",
+            f"Profile '{profile_name}' not found",
+        )
+        return
+
+    yaml_text = profile_to_yaml(profile)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "profile": profile_name,
+            "yaml": yaml_text,
+            "timeout_scale": profile.timeout_scale,
+            "description": profile.description,
+        },
+    )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
         vol.Required("type"): "ramses_extras/device_simulator/activate_profile_device",
         vol.Required("device_id"): str,
     }
@@ -2014,6 +2062,61 @@ def ws_set_preserve_state(
             "preserve_state": enabled,
         },
     )
+
+
+@websocket_api.websocket_command(  # type: ignore[untyped-decorator]
+    {
+        vol.Required(
+            "type"
+        ): "ramses_extras/device_simulator/set_heartbeat_timeout_scale",
+        vol.Required("scale"): vol.All(
+            vol.Coerce(float), vol.Range(min=0.001, max=10.0)
+        ),
+    }
+)
+@callback  # type: ignore[untyped-decorator]
+def ws_set_heartbeat_timeout_scale(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Update the heartbeat timeout scale dynamically.
+
+    Scales all ramses_rf heartbeat timeouts by the given factor.
+    For example, 0.01 = 100x faster (1h timeout becomes 36 seconds).
+    """
+    from .system_config import apply_timeout_scale
+
+    scale: float = msg["scale"]
+
+    if not isinstance(scale, (int, float)) or scale <= 0:
+        connection.send_error(
+            msg["id"], "invalid_value", "Scale must be a positive number"
+        )
+        return
+
+    try:
+        success = apply_timeout_scale(scale)
+        if success:
+            connection.send_result(
+                msg["id"],
+                {
+                    "success": True,
+                    "scale": scale,
+                },
+            )
+        else:
+            connection.send_error(
+                msg["id"],
+                "apply_failed",
+                "Failed to apply timeout scale (ramses_rf not available)",
+            )
+    except Exception as e:  # pragma: no cover
+        connection.send_error(
+            msg["id"],
+            "exception",
+            f"Failed to apply timeout scale: {e}",
+        )
 
 
 @websocket_api.websocket_command(  # type: ignore[untyped-decorator]

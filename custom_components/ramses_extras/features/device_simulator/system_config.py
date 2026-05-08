@@ -132,6 +132,9 @@ class ConfigProfileStore:
         "fresh_start_allow_unknown_devices": (
             "Clean slate with unknown device support (enforce_known_list disabled)"
         ),
+        "fresh_start_allow_unknown_devices_fast_heartbeat": (
+            "Clean slate with unknown device support and fast heartbeat (100x)"
+        ),
     }
 
     def __init__(self, config_dir: Path | None = None) -> None:
@@ -343,6 +346,22 @@ class ConfigProfileStore:
             },
             remove_database=True,
             clear_message_log=True,
+        )
+
+        self._profiles["fresh_start_allow_unknown_devices_fast_heartbeat"] = (
+            SystemConfigProfile(
+                name="fresh_start_allow_unknown_devices_fast_heartbeat",
+                description=(
+                    "Clean slate with unknown device support and fast heartbeat (100x)"
+                ),
+                timeout_scale=0.01,
+                device_configs={
+                    "_known_list": _HGI_ENTRY,
+                    "_enforce_known_list": {"enabled": False},
+                },
+                remove_database=True,
+                clear_message_log=True,
+            )
         )
 
         LOGGER.debug(
