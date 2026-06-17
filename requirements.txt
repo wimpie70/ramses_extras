@@ -1,5 +1,5 @@
 # Requirements to test the source code (matching ramses_cc)
-# - last checked/updated: 2026-01-28 (c.f. HA 2026.1.0)
+# - last checked/updated: 2026-06-17 (c.f. HA 2026.4.4)
 #
 # Note: requires ramses_cc v0.52.1 (pre-release) or later
 
@@ -13,6 +13,7 @@
 
 
 # used for testing (incl. HA, pytest*, syrupy, voluptuous, etc.)
-# - pytest
+# - pytest >= 9.0.3 (security fix for CVE-2025-XXXX)
 
-pytest_homeassistant_custom_component >= 0.13.286
+pytest >= 9.0.3
+pytest_homeassistant_custom_component >= 0.13.325
