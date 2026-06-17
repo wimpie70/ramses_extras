@@ -12,6 +12,17 @@ HA_CONTAINER ?= homeassistant
 # Source directory
 SOURCE_DIR ?= .
 
+# Known targets - catch typos like "make install ha-sim" (should be "make install-sim")
+KNOWN_TARGETS := help install install-sim install-deps restart-ha clean status check-ha \
+	dev-install full-setup env env-test env-full lint type-check type-check-clean \
+	format fix-imports qa ruff-version ruff-install local-ci test-python test-frontend \
+	test-all build-device-db source
+
+UNKNOWN_TARGETS := $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
+ifneq ($(UNKNOWN_TARGETS),)
+$(error Unknown target(s): $(UNKNOWN_TARGETS). Did you mean: install-sim, restart-ha? Run 'make help' for available targets)
+endif
+
 .PHONY: help install install-sim install-deps restart-ha clean status check-ha dev-install full-setup env env-test env-full lint type-check type-check-clean format fix-imports qa
 
 help:
@@ -50,25 +61,24 @@ install:
 		echo "Error: HA config directory $(HA_CONFIG_DIR) not found!"; \
 		exit 1; \
 	fi
-	@# Remove existing integration (excluding __pycache__ to avoid permission issues)
-	@find $(HA_CONFIG_DIR)/custom_components/ramses_extras -type f -name "*.py" -delete 2>/dev/null || true
-	@find $(HA_CONFIG_DIR)/custom_components/ramses_extras -type d -empty -delete 2>/dev/null || true
-	@# Copy without __pycache__ directories
-	@sudo rsync -av --exclude='__pycache__' $(SOURCE_DIR)/custom_components $(HA_CONFIG_DIR)/
-	@echo "✅ Integration installed successfully"
-	@echo "💡 Don't forget to restart Home Assistant to load the new integration"
+	@# Sync integration files (rsync --delete removes stale files safely)
+	@sudo rsync -av --delete \
+		--exclude='__pycache__' \
+		--exclude='*.pyc' \
+		$(SOURCE_DIR)/custom_components/ramses_extras/ \
+		$(HA_CONFIG_DIR)/custom_components/ramses_extras/
+	@echo "Integration installed successfully"
+	@echo "Don't forget to restart Home Assistant to load the new integration"
 
 install-sim:
 	@echo "Installing ramses_extras integration to simulator HA..."
-	@if [ ! -d "/home/willem/docker_files/ha-sim/config" ]; then \
+	@if [ ! -d "$(HA_SIM_CONFIG)" ]; then \
 		echo "Error: Simulator HA config directory not found!"; \
-		echo "Run: mkdir -p /home/willem/docker_files/ha-sim/config"; \
+		echo "Run: mkdir -p $(HA_SIM_CONFIG)"; \
 		exit 1; \
 	fi
-	@# Remove existing integration (excluding __pycache__ to avoid permission issues)
-	@find /home/willem/docker_files/ha-sim/config/custom_components/ramses_extras -type f -name "*.py" -delete 2>/dev/null || true
-	@find /home/willem/docker_files/ha-sim/config/custom_components/ramses_extras -type d -empty -delete 2>/dev/null || true
-	@# Copy without __pycache__ directories
+	@mkdir -p $(HA_SIM_CONFIG)/custom_components/ramses_extras
+	@# Sync integration files (rsync --delete removes stale files safely)
 	@sudo rsync -av --delete \
 		--exclude='.git' \
 		--exclude='__pycache__' \
@@ -83,10 +93,15 @@ install-sim:
 		--exclude='.github' \
 		custom_components/ramses_extras/ \
 		$(HA_SIM_CONFIG)/custom_components/ramses_extras/
+	@# Verify deployment has __init__.py
+	@if [ ! -f "$(HA_SIM_CONFIG)/custom_components/ramses_extras/__init__.py" ]; then \
+		echo "ERROR: Deployment failed - __init__.py missing!"; \
+		exit 1; \
+	fi
 	@# Clear Python cache inside container to ensure fresh code is loaded
 	@docker exec ha-sim sh -c "find /config/custom_components/ramses_extras -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; echo 'Cache cleared'" || true
-	@echo "✅ Integration installed to ha-sim successfully"
-	@echo "💡 Don't forget to restart ha-sim to load the integration"
+	@echo "Integration installed to ha-sim successfully"
+	@echo "Don't forget to restart ha-sim to load the integration"
 
 install-deps:
 	@echo "Checking for Python dependencies..."
