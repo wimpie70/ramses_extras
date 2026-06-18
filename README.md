@@ -7,7 +7,7 @@
 [![HACS](https://github.com/wimpie70/ramses_extras/actions/workflows/hacs-validate.yml/badge.svg)](https://github.com/wimpie70/ramses_extras/actions/workflows/hacs-validate.yml)
 [![CodeQL](https://github.com/wimpie70/ramses_extras/workflows/CodeQL/badge.svg)](https://github.com/wimpie70/ramses_extras/security/code-scanning)
 [![codecov](https://codecov.io/gh/wimpie70/ramses_extras/graph/badge.svg?token=3O1T9U8H49)](https://codecov.io/gh/wimpie70/ramses_extras)
-[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
+[![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://python.org)
 [![Home Assistant >=2026.3.0](https://img.shields.io/badge/home%20assistant-%3E%3D2026.3.0-green.svg)](https://home-assistant.io)
 
 ## ⚠️ **Disclaimer**
@@ -298,7 +298,7 @@ Ramses Extras uses a **feature-centric architecture** built on a **framework fou
 
 - **Home Assistant**: >=2026.3.0 or later
 - **Ramses RF** (ramses_cc): v0.52.1 (pre-release) or later: https://github.com/ramses-rf/ramses_cc
-- **Python**: 3.13
+- **Python**: 3.14
 
 ## 🤝 **Contributing**
 

@@ -83,7 +83,7 @@ def generate_synthetic_yaml_entries() -> dict[str, dict]:
     return entries
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     entries = generate_synthetic_yaml_entries()
 

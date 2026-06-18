@@ -5,7 +5,7 @@ description = "Extra features for Ramses CC integration"
 authors = ["Willem (wimpie70)"]
 
 [tool.poetry.dependencies]
-python = ">=3.13.2,<4.0"
+python = ">=3.14,<4.0"
 homeassistant = ">=2026.3.0"
 
 [tool.poetry.group.dev.dependencies]
@@ -80,7 +80,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.ruff]
 line-length = 88
-target-version = "py313"
+target-version = "py314"
 exclude = [
     "setup.py",
     "MagicMock",

@@ -20,8 +20,7 @@
   pytest-cov >= 7.0.0
   pytest_homeassistant_custom_component >= 0.13.325
 
-# Python 3.13 compatibility constraints
-# Fixes aiodns/pycares compatibility issue in Python 3.13
+# Python 3.14 compatibility constraints
 # Note: aiodns version must match HA requirements (4.0.0 for HA 2026.3+)
 aiodns==4.0.0
 pycares==5.0.1
