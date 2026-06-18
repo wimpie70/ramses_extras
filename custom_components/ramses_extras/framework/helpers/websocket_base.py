@@ -33,7 +33,7 @@ class BaseWebSocketCommand:
         self.feature_name = feature_name
         self._logger = logging.getLogger(f"{__name__}.{feature_name}")
 
-    async def execute(self, connection: "WebSocket", msg: dict[str, Any]) -> None:
+    async def execute(self, connection: WebSocket, msg: dict[str, Any]) -> None:
         """Execute the WebSocket command.
 
         :param connection: WebSocket connection
@@ -41,7 +41,7 @@ class BaseWebSocketCommand:
         """
         raise NotImplementedError("Subclasses must implement execute()")
 
-    def _send_success(self, connection: "WebSocket", msg_id: Any, result: Any) -> None:
+    def _send_success(self, connection: WebSocket, msg_id: Any, result: Any) -> None:
         """Send successful response with backend version injected.
 
         :param connection: WebSocket connection
@@ -59,7 +59,7 @@ class BaseWebSocketCommand:
         connection.send_result(msg_id, result)
 
     def _send_error(
-        self, connection: "WebSocket", msg_id: Any, error_code: str, error_message: str
+        self, connection: WebSocket, msg_id: Any, error_code: str, error_message: str
     ) -> None:
         """Send error response.
 
@@ -142,7 +142,7 @@ class GetEntityMappingsCommand(BaseWebSocketCommand):
         self.feature_identifier = feature_identifier
         self._overlay_provider = overlay_provider
 
-    async def execute(self, connection: "WebSocket", msg: dict[str, Any]) -> None:
+    async def execute(self, connection: WebSocket, msg: dict[str, Any]) -> None:
         """Execute the get_entity_mappings command.
 
         :param connection: WebSocket connection
@@ -335,7 +335,7 @@ class GetAllFeatureEntitiesCommand(BaseWebSocketCommand):
         super().__init__(hass, feature_identifier)
         self.feature_identifier = feature_identifier
 
-    async def execute(self, connection: "WebSocket", msg: dict[str, Any]) -> None:
+    async def execute(self, connection: WebSocket, msg: dict[str, Any]) -> None:
         """Execute the get_all_feature_entities command.
 
         :param connection: WebSocket connection

@@ -76,16 +76,8 @@ def _decode_payload(
     import logging
 
     try:
-        from ramses_rf.message import Message
-    except (ModuleNotFoundError, ImportError):
-        try:
-            from ramses_tx.message import Message
-        except (ModuleNotFoundError, ImportError):
-            return None
-
-    try:
-        from ramses_tx.packet import Packet
-    except (ModuleNotFoundError, ImportError):
+        from ramses_rf import Message, Packet
+    except ModuleNotFoundError, ImportError:
         return None
 
     via = (

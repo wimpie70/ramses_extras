@@ -37,7 +37,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Card manager removed - CardRegistry handles all card registration
 def create_hello_world_feature(
-    hass: "HomeAssistant",
+    hass: HomeAssistant,
     config_entry: ConfigEntry,
     skip_automation_setup: bool = False,
 ) -> dict[str, Any]:

@@ -218,16 +218,8 @@ def decode_message_with_ramses_rf(msg: dict[str, Any]) -> dict[str, Any] | None:
     """
 
     try:
-        from ramses_rf.message import Message
-    except (ModuleNotFoundError, ImportError):
-        try:
-            from ramses_tx.message import Message
-        except (ModuleNotFoundError, ImportError):
-            return None
-
-    try:
-        from ramses_tx.packet import Packet
-    except (ModuleNotFoundError, ImportError):
+        from ramses_rf import Message, Packet
+    except ModuleNotFoundError, ImportError:
         return None
 
     dtm_raw = msg.get("dtm")

@@ -138,7 +138,7 @@ def _get_traffic_collector(hass: HomeAssistant) -> TrafficCollector | None:
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_traffic_get_stats(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     """Return traffic statistics for live or log-backed sources."""
@@ -316,7 +316,7 @@ async def ws_traffic_get_stats(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_traffic_reset_stats(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     collector = _get_traffic_collector(hass)
@@ -350,7 +350,7 @@ async def ws_traffic_reset_stats(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_traffic_subscribe_stats(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     collector = _get_traffic_collector(hass)
@@ -435,7 +435,7 @@ async def ws_traffic_subscribe_stats(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_log_list_files(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     base = get_configured_log_path(hass)
@@ -467,7 +467,7 @@ async def ws_log_list_files(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_packet_log_list_files(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     base = get_configured_packet_log_path(hass)
@@ -513,7 +513,7 @@ async def ws_packet_log_list_files(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_packet_log_get_messages(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     file_id = msg.get("file_id")
@@ -619,7 +619,7 @@ async def ws_packet_log_get_messages(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_log_get_tail(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     file_id = msg.get("file_id")
@@ -733,7 +733,7 @@ async def ws_log_get_tail(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_messages_get_messages(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     sources = msg.get("sources", ["traffic_buffer", "packet_log", "ha_log"])
@@ -796,7 +796,7 @@ async def ws_messages_get_messages(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_log_search(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     file_id = msg.get("file_id")
@@ -890,7 +890,7 @@ async def ws_log_search(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_log_get_lines(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     """Fetch specific line range from a log file."""
@@ -940,7 +940,7 @@ async def ws_log_get_lines(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_cache_get_stats(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     cache = _get_cache(hass)
@@ -977,7 +977,7 @@ async def ws_cache_get_stats(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_cache_clear(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     cache = _get_cache(hass)
@@ -1000,7 +1000,7 @@ async def ws_cache_clear(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_config_export(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     """Export the full structured canonical config as YAML.
@@ -1089,7 +1089,7 @@ async def ws_config_export(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_config_diagnostics(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     """Return diagnostics comparing discovered vs explicit config.
@@ -1226,7 +1226,7 @@ async def ws_config_diagnostics(
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_config_import(
     hass: HomeAssistant,
-    connection: "WebSocket",
+    connection: WebSocket,
     msg: dict[str, Any],
 ) -> None:
     """Import full ramses_extras configuration from YAML.

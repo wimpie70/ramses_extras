@@ -433,7 +433,7 @@ class ScenarioEngine:
 
         try:
             value = float(speed)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             value = 1.0
         self._autonomous_speed = max(0.01, min(value, 100.0))
 

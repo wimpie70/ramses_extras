@@ -294,11 +294,10 @@ def _parse_frame(frame: str) -> tuple[dict | None, str | None]:
         lg.propagate = False
 
     try:
-        from ramses_tx.message import Message  # noqa: PLC0415
-        from ramses_tx.packet import Packet  # noqa: PLC0415
+        from ramses_rf import Message, Packet  # noqa: PLC0415
 
         pkt = Packet(dt.now(), frame)
-        msg = Message(pkt)
+        msg = Message._from_pkt(pkt)
         result = msg.payload
         if isinstance(result, list):
             result = result[0] if result else {}

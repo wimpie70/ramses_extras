@@ -332,7 +332,7 @@ def read_file_lines(path: Path, start_line: int, end_line: int) -> list[str]:
                     break
                 if current_line >= start_line:
                     lines.append(line.rstrip("\n\r"))
-    except (OSError, UnicodeDecodeError):
+    except OSError, UnicodeDecodeError:
         return []
 
     return lines

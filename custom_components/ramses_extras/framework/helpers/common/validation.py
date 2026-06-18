@@ -266,7 +266,7 @@ class ValidationContext:
         self.validation_name = validation_name
         self.errors: list[str] = []
 
-    def __enter__(self) -> "ValidationContext":
+    def __enter__(self) -> ValidationContext:
         """Enter validation context."""
         return self
 

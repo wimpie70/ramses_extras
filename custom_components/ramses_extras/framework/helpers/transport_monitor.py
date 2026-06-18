@@ -269,7 +269,7 @@ class TransportMonitor:
         )
 
     async def start_monitoring(
-        self, coordinator: "RamsesCoordinator", hass: HomeAssistant
+        self, coordinator: RamsesCoordinator, hass: HomeAssistant
     ) -> None:
         """Start monitoring the transport state.
 

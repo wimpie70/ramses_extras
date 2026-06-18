@@ -35,7 +35,7 @@ class DeviceCommandManager:
     """Manages command queuing and execution per device to prevent
     overwhelming the communication layer."""
 
-    def __init__(self, ramses_commands: "RamsesCommands"):
+    def __init__(self, ramses_commands: RamsesCommands):
         # Reference to RamsesCommands for actual command execution
         self._ramses_commands = ramses_commands
         # Per-device queues: {device_id: asyncio.Queue}
@@ -625,7 +625,7 @@ class RamsesCommands:
             # Clear all failures - useful for global reset or maintenance
             self._failed_commands.clear()
 
-    async def _get_ramses_cc_coordinator(self) -> "RamsesCoordinator | None":
+    async def _get_ramses_cc_coordinator(self) -> RamsesCoordinator | None:
         """Get the ramses_cc coordinator instance.
 
         :return: RamsesCoordinator instance or None if not found

@@ -31,7 +31,7 @@ _LOGGER = logging.getLogger(__name__)
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_enabled_features(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return enabled_features for the Ramses Extras config entry.
 
@@ -83,7 +83,7 @@ async def ws_get_enabled_features(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_cards_enabled(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     try:
         cards_enabled = hass.data.get(DOMAIN, {}).get("cards_enabled") is True
@@ -104,7 +104,7 @@ async def ws_get_cards_enabled(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_websocket_info(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return information about available WebSocket commands.
 
@@ -155,7 +155,7 @@ async def ws_websocket_info(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_entity_mappings(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Default feature WebSocket command to get entity mappings.
 
@@ -305,7 +305,7 @@ async def ws_get_entity_mappings(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_all_feature_entities(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """WebSocket command to retrieve all entities from a feature with device_id support.
 
@@ -353,7 +353,7 @@ async def ws_get_all_feature_entities(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_available_devices(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return available Ramses devices for card editors.
 
@@ -418,7 +418,7 @@ async def ws_get_available_devices(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_bound_rem(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return the bound REM/DIS device for a FAN device, if any.
 
@@ -458,7 +458,7 @@ async def ws_get_bound_rem(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_fan_config_associations(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return config-based zone and REM associations for a FAN device.
 
@@ -592,7 +592,7 @@ async def ws_get_fan_config_associations(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_remote_bindings(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return remote binding registry state.
 
@@ -635,7 +635,7 @@ async def ws_get_remote_bindings(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_binding_diagnostics(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return binding diagnostics including last-seen timestamps and unmatched."""
     from ...framework.helpers.remote_binding import get_remote_binding_registry
@@ -674,7 +674,7 @@ async def ws_get_binding_diagnostics(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_export_bindings(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Export bindings as strict YAML for support/debugging."""
     from ...framework.helpers.remote_binding import get_remote_binding_registry
@@ -701,7 +701,7 @@ async def ws_export_bindings(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_2411_schema(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return a lightweight 2411 parameter schema for a device.
 
@@ -745,7 +745,7 @@ async def ws_get_2411_schema(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_binding_suggestions(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return binding suggestions from observed unmatched traffic."""
     from ...framework.helpers.remote_binding import get_remote_binding_registry
@@ -770,7 +770,7 @@ async def ws_get_binding_suggestions(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_zones(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return zone configuration for FAN devices."""
     from ...framework.helpers.zones import get_zone_registry
@@ -802,7 +802,7 @@ async def ws_get_zones(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_export_zones(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Export zones as strict YAML for support/debugging."""
     from ...framework.helpers.zones import get_zone_registry
@@ -829,7 +829,7 @@ async def ws_export_zones(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_zone_position(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return current zone position from its adapter."""
     from ...framework.helpers.zone_adapters import get_zone_adapter_registry
@@ -879,7 +879,7 @@ async def ws_get_zone_position(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_zone_adapter_diagnostics(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return zone adapter diagnostics."""
     from ...framework.helpers.zone_adapters import get_zone_adapter_registry
@@ -932,7 +932,7 @@ async def ws_get_zone_adapter_diagnostics(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_zone_coordinator_state(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Return zone coordinator state for a FAN."""
     from ...framework.helpers.zone_coordinator import (
@@ -1000,7 +1000,7 @@ async def ws_get_zone_coordinator_state(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_set_zone_demand(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Set a manual zone demand."""
     from ...framework.helpers.zone_coordinator import (
@@ -1046,7 +1046,7 @@ async def ws_set_zone_demand(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_run_zone_actuation(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Trigger zone actuation cycle for a FAN.
 
@@ -1085,7 +1085,7 @@ async def ws_run_zone_actuation(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_clear_zone_demand(
-    hass: "HomeAssistant", connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Clear a manual zone demand."""
     from ...framework.helpers.zone_coordinator import (

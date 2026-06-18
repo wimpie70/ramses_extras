@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 async def async_setup_entry(
-    hass: "HomeAssistant",
+    hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
@@ -55,7 +55,7 @@ async def async_setup_entry(
 
 
 async def create_hello_world_binary_sensor(
-    hass: "HomeAssistant",
+    hass: HomeAssistant,
     device_id: str,
     entity_configs: dict[str, Any],
     config_entry: ConfigEntry | None = None,

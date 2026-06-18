@@ -38,7 +38,7 @@ def _get_feature_translations_sync(
 
     try:
         raw = json.loads(translations_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, Exception):
+    except FileNotFoundError, json.JSONDecodeError, Exception:
         return {}
 
     if not isinstance(raw, dict):

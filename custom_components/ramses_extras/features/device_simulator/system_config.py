@@ -67,7 +67,7 @@ def _normalize_device_id(device_id: str) -> str:
     try:
         base_value = int(match.group("body"))
         increment = int(delta)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return device_id
     normalized = base_value + increment
     return f"{match.group('prefix')}:{normalized:06d}"
@@ -428,7 +428,7 @@ class ConfigProfileStore:
                 "ConfigProfileStore: loaded %d user profiles",
                 len(data.get("profiles", {})),
             )
-        except (json.JSONDecodeError, OSError, TypeError):
+        except json.JSONDecodeError, OSError, TypeError:
             LOGGER.warning(
                 "ConfigProfileStore: failed to load user profiles from %s",
                 self._user_profiles_path,
@@ -453,7 +453,7 @@ class ConfigProfileStore:
             speed_value = data.get("autonomous_speed", 1.0)
             try:
                 self._autonomous_speed = float(speed_value)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 self._autonomous_speed = 1.0
             LOGGER.debug(
                 "ConfigProfileStore: state loaded profile=%s auto_answer=%s "
@@ -465,7 +465,7 @@ class ConfigProfileStore:
                 self._answer_unknown_devices,
                 self._preserve_state,
             )
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             LOGGER.warning("ConfigProfileStore: failed to load simulator state")
 
     def _save_state(self) -> None:
@@ -563,7 +563,7 @@ class ConfigProfileStore:
 
         try:
             value = float(speed)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             value = 1.0
         self._autonomous_speed = max(0.01, min(value, 100.0))
 
@@ -699,7 +699,7 @@ class ConfigProfileStore:
             if name:
                 profile.name = name
             return self.save_profile(profile)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             LOGGER.warning("ConfigProfileStore: failed to import profile")
             return False
 

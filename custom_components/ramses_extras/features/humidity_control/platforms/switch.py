@@ -33,9 +33,9 @@ def is_supported_humidity_device(hass: object, device_id: str) -> bool:
 
 
 async def async_setup_entry(
-    hass: "HomeAssistant",
+    hass: HomeAssistant,
     config_entry: ConfigEntry,
-    async_add_entities: "AddEntitiesCallback",
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidity control switch platform."""
     from custom_components.ramses_extras.framework.helpers import platform
@@ -79,7 +79,7 @@ async def async_setup_entry(
 
 
 async def create_humidity_switch(
-    hass: "HomeAssistant", device_id: str, config_entry: ConfigEntry | None = None
+    hass: HomeAssistant, device_id: str, config_entry: ConfigEntry | None = None
 ) -> list[ExtrasSwitchEntity]:
     """Initialize humidity switch.
 
@@ -110,7 +110,7 @@ class HumidityControlSwitch(ExtrasSwitchEntity, RestoreEntity):
 
     def __init__(
         self,
-        hass: "HomeAssistant",
+        hass: HomeAssistant,
         device_id: str,
         switch_type: str,
         config: dict[str, Any],

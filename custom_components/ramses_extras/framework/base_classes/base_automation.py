@@ -644,7 +644,7 @@ class ExtrasBaseAutomation(ABC):
         else:
             try:
                 return float(state_value)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 # If numeric conversion fails, treat as boolean
                 return state_value.lower() in ["on", "true", "1", "yes"]
 

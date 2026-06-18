@@ -321,7 +321,7 @@ def validate_model_config(config: dict[str, Any]) -> bool:
         if field in config:
             try:
                 float(config[field])
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 _LOGGER.error(
                     f"Invalid numeric value for field '{field}': {config[field]}"
                 )

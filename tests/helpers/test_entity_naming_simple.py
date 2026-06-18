@@ -205,7 +205,7 @@ def parse_entity_id(entity_id: str) -> tuple[str, str, str] | None:
 
         return None
 
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 

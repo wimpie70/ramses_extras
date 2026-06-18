@@ -78,7 +78,7 @@ def _get_feature_details_from_module(feature_key: str) -> dict[str, Any]:
 
 
 async def _manage_cards_config_flow(
-    hass: "HomeAssistant", enabled_features: dict[str, bool]
+    hass: HomeAssistant, enabled_features: dict[str, bool]
 ) -> None:
     """Install or remove custom cards based on enabled features (for config flow)."""
     # Use the new /local/ramses_extras path structure instead of www/community
@@ -123,7 +123,7 @@ async def _manage_cards_config_flow(
 
 
 async def _install_card_config_flow(
-    hass: "HomeAssistant", source_path: Path, dest_path: Path
+    hass: HomeAssistant, source_path: Path, dest_path: Path
 ) -> None:
     """Install a custom card by copying files (for config flow)."""
     try:
@@ -157,7 +157,7 @@ def _copy_card_files_config_flow(source_path: Path, dest_path: Path) -> None:
             shutil.copy2(file_path, dest_file_path)
 
 
-async def _remove_card_config_flow(hass: "HomeAssistant", card_path: Path) -> None:
+async def _remove_card_config_flow(hass: HomeAssistant, card_path: Path) -> None:
     """Remove a custom card (for config flow)."""
     try:
         if card_path.exists():
@@ -203,7 +203,7 @@ class RamsesExtrasConfigFlow(ConfigFlow):
     @classmethod
     def async_get_options_flow(
         cls, config_entry: ConfigEntry
-    ) -> "RamsesExtrasOptionsFlowHandler":
+    ) -> RamsesExtrasOptionsFlowHandler:
         """Return options flow handler for existing config entries."""
         return RamsesExtrasOptionsFlowHandler(config_entry)
 

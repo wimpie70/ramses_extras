@@ -71,7 +71,7 @@ def _get_entities_manager(hass: HomeAssistant) -> Any:
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_toggle_switch(
-    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Toggle Hello World switch state via WebSocket."""
     _LOGGER.info("WebSocket command received: %s", msg)
@@ -216,7 +216,7 @@ async def ws_toggle_switch(
 )
 @websocket_api.async_response  # type: ignore[untyped-decorator]
 async def ws_get_switch_state(
-    hass: HomeAssistant, connection: "WebSocket", msg: dict[str, Any]
+    hass: HomeAssistant, connection: WebSocket, msg: dict[str, Any]
 ) -> None:
     """Get Hello World switch state via WebSocket."""
     device_id = msg["device_id"]

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_devices_ready_for_entities(hass: "HomeAssistant") -> list[str]:
+def _get_devices_ready_for_entities(hass: HomeAssistant) -> list[str]:
     """Get devices that are ready for entity creation.
 
     :param hass: Home Assistant instance
@@ -48,12 +48,12 @@ class PlatformSetup:
     @staticmethod
     async def async_create_and_add_platform_entities(
         platform: str,
-        hass: "HomeAssistant",
+        hass: HomeAssistant,
         config_entry: ConfigEntry,
         async_add_entities: AddEntitiesCallback,
         entity_configs: dict[str, Any],
         entity_factory: Callable[
-            ["HomeAssistant", str, dict[str, Any], ConfigEntry | None],
+            [HomeAssistant, str, dict[str, Any], ConfigEntry | None],
             Awaitable[list[Entity]],
         ],
         store_entities_for_automation: bool = False,
@@ -135,7 +135,7 @@ class PlatformSetup:
 
     @staticmethod
     def _store_entities_for_automation(
-        hass: "HomeAssistant", entities: list[Entity]
+        hass: HomeAssistant, entities: list[Entity]
     ) -> None:
         """Store entities in hass.data for automation access.
 
@@ -161,7 +161,7 @@ class PlatformSetup:
 
     @staticmethod
     def get_filtered_devices_for_feature(
-        hass: "HomeAssistant",
+        hass: HomeAssistant,
         feature_id: str,
         config_entry: ConfigEntry,
         devices: list[str] | None = None,

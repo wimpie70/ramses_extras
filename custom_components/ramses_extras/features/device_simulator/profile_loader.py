@@ -189,7 +189,7 @@ def build_profile_from_payload(
     timeout_scale = payload.get("timeout_scale", 1.0)
     try:
         timeout_scale = float(timeout_scale)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         timeout_scale = 1.0
 
     profile_description = (
