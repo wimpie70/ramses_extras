@@ -58,7 +58,7 @@ input_boolean:
     icon: mdi:auto-fix
     initial: true
 
-# Modern template syntax for binary_sensor (replaces legacy platform: template)
+# Modern template syntax (replaces legacy platform: template)
 template:
   - binary_sensor:
       # Calibration status indicator (read-only, shows when calibration is active)
@@ -66,6 +66,15 @@ template:
         unique_id: ramses_extras_calibrating
         icon: mdi:tape-measure
         state: "{{ states('input_text.ramses_extras_calibration_state') == 'calibrating' }}"
+    sensor:
+      - name: "Zone 1 Demand Status"
+        unique_id: ramses_extras_zone1_demand_status
+        icon: "{% if states('binary_sensor.ramses_extras_zone_1_2_demand') == 'on' %}mdi:valve-open{% else %}mdi:valve-closed{% endif %}"
+        state: "{{ 'DEMAND' if states('binary_sensor.ramses_extras_zone_1_2_demand') == 'on' else 'NO DEMAND' }}"
+      - name: "Zone 2 Demand Status"
+        unique_id: ramses_extras_zone2_demand_status
+        icon: "{% if states('binary_sensor.ramses_extras_zone_3_4_demand') == 'on' %}mdi:valve-open{% else %}mdi:valve-closed{% endif %}"
+        state: "{{ 'DEMAND' if states('binary_sensor.ramses_extras_zone_3_4_demand') == 'on' else 'NO DEMAND' }}"
 
 rest_command:
   # Shelly Gen 2/3 calibration (used by backend service)
@@ -275,19 +284,7 @@ script:
         data:
           device_id: "{{ states('input_text.ramses_extras_test_fan_id') }}"
 
-sensor:
-  # Zone demand status display
-  - platform: template
-    sensors:
-      ramses_extras_zone1_demand_status:
-        friendly_name: "Zone 1 Demand Status"
-        value_template: "{{ 'DEMAND' if states('binary_sensor.ramses_extras_zone_1_2_demand') == 'on' else 'NO DEMAND' }}"
-        icon_template: "{% if states('binary_sensor.ramses_extras_zone_1_2_demand') == 'on' %}mdi:valve-open{% else %}mdi:valve-closed{% endif %}"
 
-      ramses_extras_zone2_demand_status:
-        friendly_name: "Zone 2 Demand Status"
-        value_template: "{{ 'DEMAND' if states('binary_sensor.ramses_extras_zone_3_4_demand') == 'on' else 'NO DEMAND' }}"
-        icon_template: "{% if states('binary_sensor.ramses_extras_zone_3_4_demand') == 'on' %}mdi:valve-open{% else %}mdi:valve-closed{% endif %}"
 
 homeassistant:
   customize:
