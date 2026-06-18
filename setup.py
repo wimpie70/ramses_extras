@@ -14,7 +14,7 @@ setup(
         "custom_components.ramses_extras.framework": "custom_components/ramses_extras/framework",
     },
     install_requires=[
-        "homeassistant>=2025.12.2",
+        "homeassistant>=2026.3.0",
     ],
     extras_require={
         "test": [
@@ -38,5 +38,5 @@ setup(
             "typing-extensions>=4.15.0",
         ],
     },
-    python_requires=">=3.13",
+    python_requires=">=3.14",
 )

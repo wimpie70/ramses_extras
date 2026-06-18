@@ -144,7 +144,7 @@ env:
 	@echo "Setting up development environment..."
 	@if [ ! -d "~/venvs/extras" ]; then \
 		echo "Creating virtual environment..."; \
-		python3.13 -m venv ~/venvs/extras; \
+		python3.14 -m venv ~/venvs/extras; \
 	fi
 	@echo "Activating virtual environment and installing dependencies..."
 	@bash -c "source ~/venvs/extras/bin/activate && \
