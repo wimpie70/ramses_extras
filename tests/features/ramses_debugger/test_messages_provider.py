@@ -446,13 +446,11 @@ def test_decode_message_with_ramses_rf_packet_ctor_failure(monkeypatch) -> None:
         def _from_pkt(pkt: DummyPacket):
             return None
 
-    mod_packet = types.ModuleType("ramses_tx.packet")
-    mod_message = types.ModuleType("ramses_tx.message")
-    mod_packet.__dict__["Packet"] = DummyPacket
-    mod_message.__dict__["Message"] = DummyMessage
+    mod_ramses_rf = types.ModuleType("ramses_rf")
+    mod_ramses_rf.__dict__["Message"] = DummyMessage
+    mod_ramses_rf.__dict__["Packet"] = DummyPacket
 
-    monkeypatch.setitem(sys.modules, "ramses_tx.packet", mod_packet)
-    monkeypatch.setitem(sys.modules, "ramses_tx.message", mod_message)
+    monkeypatch.setitem(sys.modules, "ramses_rf", mod_ramses_rf)
 
     msg = {
         "dtm": "2026-01-20T10:00:00.000000",
@@ -527,9 +525,6 @@ def test_decode_message_with_ramses_rf_validation_returns_none(
     msg,
 ) -> None:
     # Provide minimal modules so the function can get past the import stage.
-    mod_packet = types.ModuleType("ramses_tx.packet")
-    mod_message = types.ModuleType("ramses_tx.message")
-
     class DummyPacket:  # pragma: no cover
         def __init__(self, dtm: datetime, frame: str) -> None:
             self.dtm = dtm
@@ -540,20 +535,16 @@ def test_decode_message_with_ramses_rf_validation_returns_none(
         def _from_pkt(pkt: DummyPacket):
             return None
 
-    mod_packet.__dict__["Packet"] = DummyPacket
-    mod_message.__dict__["Message"] = DummyMessage
+    mod_ramses_rf = types.ModuleType("ramses_rf")
+    mod_ramses_rf.__dict__["Message"] = DummyMessage
+    mod_ramses_rf.__dict__["Packet"] = DummyPacket
 
-    monkeypatch.setitem(sys.modules, "ramses_tx.packet", mod_packet)
-    monkeypatch.setitem(sys.modules, "ramses_tx.message", mod_message)
+    monkeypatch.setitem(sys.modules, "ramses_rf", mod_ramses_rf)
 
     assert decode_message_with_ramses_rf(msg) is None
 
 
 def test_decode_message_with_ramses_rf_success(monkeypatch) -> None:
-    monkeypatch.setitem(sys.modules, "ramses_rf.message", None)
-    mod_packet = types.ModuleType("ramses_tx.packet")
-    mod_message = types.ModuleType("ramses_tx.message")
-
     class DummyPacket:
         def __init__(self, dtm: datetime, frame: str) -> None:
             self.dtm = dtm
@@ -589,11 +580,11 @@ def test_decode_message_with_ramses_rf_success(monkeypatch) -> None:
             code = tokens[6]
             return DummyMessage(dtm=pkt.dtm, src=src, dst=dst, verb=verb, code=code)
 
-    mod_packet.__dict__["Packet"] = DummyPacket
-    mod_message.__dict__["Message"] = DummyMessage
+    mod_ramses_rf = types.ModuleType("ramses_rf")
+    mod_ramses_rf.__dict__["Message"] = DummyMessage
+    mod_ramses_rf.__dict__["Packet"] = DummyPacket
 
-    monkeypatch.setitem(sys.modules, "ramses_tx.packet", mod_packet)
-    monkeypatch.setitem(sys.modules, "ramses_tx.message", mod_message)
+    monkeypatch.setitem(sys.modules, "ramses_rf", mod_ramses_rf)
 
     msg = {
         "dtm": "2026-01-20T10:00:00.000000",
