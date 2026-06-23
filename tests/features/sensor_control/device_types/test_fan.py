@@ -287,8 +287,8 @@ async def test_handle_internal_fan_sensors_saves_config_and_returns_to_menu():
             return_value={"devices": {}},
         ) as mock_get_section,
         patch(
-            "custom_components.ramses_extras.framework.helpers.config.model.set_feature_section"
-        ) as mock_set_section,
+            "custom_components.ramses_extras.features.sensor_control.config_flow._persist_sensor_control_section"
+        ) as mock_persist,
         patch(
             "custom_components.ramses_extras.features.sensor_control.config_flow.async_step_sensor_control_config",
             AsyncMock(return_value={"type": "form"}),
@@ -303,8 +303,7 @@ async def test_handle_internal_fan_sensors_saves_config_and_returns_to_menu():
         )
 
     mock_get_section.assert_called_once()
-    mock_set_section.assert_called_once()
-    flow.hass.config_entries.async_update_entry.assert_called_once()
+    mock_persist.assert_called_once()
     assert flow._sensor_control_group_stage == "select_group"
     mock_async_step.assert_awaited_once()
     assert result == mock_async_step.return_value

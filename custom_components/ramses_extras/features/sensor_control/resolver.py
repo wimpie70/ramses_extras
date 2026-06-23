@@ -361,19 +361,20 @@ class SensorControlResolver:
         self,
         payload: dict[str, Any],
     ) -> dict[str, Any] | None:
-        sensor_control = payload.get("sensor_control")
-        if isinstance(sensor_control, dict):
-            return sensor_control
-
+        # Prefer the canonical section (ramses_extras.features.sensor_control)
+        # over the legacy top-level sensor_control key. The canonical section
+        # is the one that config flows write to; the legacy key is kept for
+        # backward compatibility but may be stale.
         root_section = payload.get("ramses_extras")
-        if not isinstance(root_section, dict):
-            return None
+        if isinstance(root_section, dict):
+            features = root_section.get("features")
+            if isinstance(features, dict):
+                sensor_control = features.get("sensor_control")
+                if isinstance(sensor_control, dict):
+                    return sensor_control
 
-        features = root_section.get("features")
-        if not isinstance(features, dict):
-            return None
-
-        sensor_control = features.get("sensor_control")
+        # Fall back to legacy top-level key
+        sensor_control = payload.get("sensor_control")
         return sensor_control if isinstance(sensor_control, dict) else None
 
     def _get_internal_mappings(

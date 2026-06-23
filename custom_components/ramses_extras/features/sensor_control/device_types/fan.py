@@ -631,7 +631,8 @@ async def handle_internal_fan_sensors(
             ),
         }
 
-        # Update the config
+        # Update the config — persist both canonical and legacy sections
+        # so the resolver (which reads legacy first) sees the updated values.
         from ....framework.helpers.config.migration import (
             get_migrated_feature_section,
         )
@@ -639,10 +640,10 @@ async def handle_internal_fan_sensors(
             SENSOR_CONTROL_ABS_HUMIDITY_INPUTS_KEY,
             SENSOR_CONTROL_SOURCES_KEY,
             normalize_device_id,
-            set_feature_section,
         )
+        from ..config_flow import _persist_sensor_control_section
 
-        options = dict(flow._config_entry.options)
+        options = dict(flow._config_entry.options)  # noqa: SLF001
         sensor_control_section = get_migrated_feature_section(options, "sensor_control")
         devices_config = sensor_control_section.get("devices", {})
         # Use normalize_device_id (colons) to match the migrated section keys
@@ -654,9 +655,7 @@ async def handle_internal_fan_sensors(
         devices_config[norm_device_id] = device_config
         sensor_control_section["devices"] = devices_config
 
-        # Use set_feature_section to update the config
-        set_feature_section(options, "sensor_control", sensor_control_section)
-        flow.hass.config_entries.async_update_entry(flow._config_entry, options=options)
+        _persist_sensor_control_section(flow, options, sensor_control_section)
 
         # Return to group selection
         flow._sensor_control_group_stage = "select_group"
