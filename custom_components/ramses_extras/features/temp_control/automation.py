@@ -634,12 +634,16 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         # their own comfort_temperature_entity.
         global_comfort_entity = f"number.{device_id.replace(':', '_')}_param_75"
         global_comfort_state = self.hass.states.get(global_comfort_entity)
-        global_comfort = (
-            float(global_comfort_state.state)
-            if global_comfort_state
-            and global_comfort_state.state not in (None, "unavailable", "unknown")
-            else None
-        )
+        global_comfort: float | None = None
+        if global_comfort_state and global_comfort_state.state not in (
+            None,
+            "unavailable",
+            "unknown",
+        ):
+            try:
+                global_comfort = float(global_comfort_state.state)
+            except ValueError, TypeError:
+                global_comfort = None
 
         results: list[dict[str, Any]] = []
 
