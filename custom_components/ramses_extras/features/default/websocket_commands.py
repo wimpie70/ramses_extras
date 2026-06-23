@@ -229,6 +229,16 @@ async def ws_get_entity_mappings(
                 return feature_name in enabled_features
             return False
 
+        # Map sensor_control metric names to common card entity keys.
+        # This allows overlays to override the card's internal sensor references.
+        _metric_to_entity_key = {
+            "indoor_temperature": "indoor_temp_entity",
+            "outdoor_temperature": "outdoor_temp_entity",
+            "indoor_humidity": "indoor_humidity_entity",
+            "outdoor_humidity": "outdoor_humidity_entity",
+            "co2": "co2_entity",
+        }
+
         async def _overlay_provider(
             device_id: str,
             base_mappings: dict[str, str],
@@ -250,7 +260,15 @@ async def ws_get_entity_mappings(
                 )
 
                 merged_mappings = base_mappings.copy()
-                merged_mappings.update(sensor_result["mappings"])
+                # Merge sensor_control mappings under both their canonical
+                # metric names (e.g. "indoor_temperature") and the card-facing
+                # entity keys (e.g. "indoor_temp_entity") so that cards using
+                # either naming convention pick up the overrides.
+                for metric, entity_id in sensor_result["mappings"].items():
+                    merged_mappings[metric] = entity_id
+                    card_key = _metric_to_entity_key.get(metric)
+                    if card_key and entity_id:
+                        merged_mappings[card_key] = entity_id
 
                 return {
                     "mappings": merged_mappings,
