@@ -221,7 +221,11 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         comfort_temp = float(entity_states["comfort_temp"])
 
         # Determine desired mode
+        # Treat "disabled" as "idle" — when the switch was off, there is no
+        # hysteresis state to maintain and no min-interval to enforce.
         prev_mode = self._mode.get(device_id, "idle")
+        if prev_mode == "disabled":
+            prev_mode = "idle"
         desired_mode = "idle"
 
         # Heating retention has priority when too cold
@@ -259,6 +263,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             "cooling": "fan_bypass_open",
             "heating_retention": "fan_bypass_close",
             "idle": "fan_bypass_auto",
+            "disabled": "fan_bypass_auto",
         }[desired_mode]
 
         if (
@@ -321,6 +326,10 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
     async def _handle_disabled(self, device_id: str, reason: str) -> None:
         await self._clear_speed_demand(device_id)
         self._mode[device_id] = "disabled"
+        # Reset bypass change timestamp so the first mode change after
+        # re-enabling is not blocked by the min-interval guard.
+        self._last_bypass_change.pop(device_id, None)
+        self._last_bypass_command.pop(device_id, None)
 
         attrs = {"mode": "disabled", "reason": reason}
         self._set_active_indicator(device_id, False, attrs)

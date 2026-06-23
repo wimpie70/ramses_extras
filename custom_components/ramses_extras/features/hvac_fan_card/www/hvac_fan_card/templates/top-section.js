@@ -104,7 +104,7 @@ export function createTopSection(data, t) {
           <div class="r-xtrs-hvac-fan-info-stack">
             <div>🌡️ ${tr('parameters.comfort_temp', 'Comfort Temp')}: ${comfortTemp} °C</div>
             ${tempControlStatus ? `
-            <div class="${tempControlStatus.isCoolingOrHeating ? 'r-xtrs-temp-trigger' : ''}">🌡️ ${tr('controls.temp_control', 'Temp control')}: ${tr(`status.temp_control_${tempControlStatus.state}`, tempControlStatus.state)}${tempControlStatus.isCoolingOrHeating ? ' (controlling bypass)' : ''}</div>
+            <div id="tempControlStatus" class="${tempControlStatus.isCoolingOrHeating ? 'r-xtrs-temp-trigger' : ''}">🌡️ ${tr('controls.temp_control', 'Temp control')}: ${tr(`status.temp_control_${tempControlStatus.state}`, tempControlStatus.state)}${tempControlStatus.isCoolingOrHeating ? ' (controlling bypass)' : ''}</div>
             ` : ''}
           </div>
 

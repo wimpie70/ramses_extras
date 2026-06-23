@@ -1947,9 +1947,10 @@ class HvacFanCard extends RamsesBaseCard {
               if (isTurningOn) {
                 // When turning on, first set bypass to auto
                 await sendFanCommand(this._hass, this.config.device_id, 'fan_bypass_auto');
+                await this._hass.callService('switch', 'turn_on', { entity_id: entityId });
+              } else {
+                await this._hass.callService('switch', 'turn_off', { entity_id: entityId });
               }
-
-              await this._hass.callService('switch', 'toggle', { entity_id: entityId });
               this._prevStates = null;
               setTimeout(() => {
                 if (this._hass && this.config) {

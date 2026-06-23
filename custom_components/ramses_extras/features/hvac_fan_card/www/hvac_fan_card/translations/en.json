@@ -13,7 +13,11 @@
     "active": "Active",
     "auto2": "Auto",
     "boost": "Boost",
-    "disable": "Disabled"
+    "disable": "Disabled",
+    "temp_control_idle": "Idle",
+    "temp_control_disabled": "Disabled",
+    "temp_control_cooling": "Cooling",
+    "temp_control_heating_retention": "Heating retention"
   },
   "controls": {
     "fan_modes": "Fan Modes",
@@ -28,6 +32,8 @@
     "bypass_close": "Bypass Close",
     "filter_reset": "Filter Reset",
     "dehumidify": "Balance",
+    "co2_control": "CO2",
+    "temp_control": "Temp control",
     "activated": "Activated",
     "triggers": "Triggers",
     "tracking_by": "Tracking by",

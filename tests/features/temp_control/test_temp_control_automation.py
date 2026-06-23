@@ -189,6 +189,41 @@ class TestTempControlDecisionLogic:
 
         assert automation_manager._mode["32:153289"] == "heating_retention"
 
+    @pytest.mark.asyncio
+    async def test_transition_from_disabled_to_idle(self, automation_manager):
+        """When previously disabled and switch turns on, go to idle (not KeyError)."""
+        import time
+
+        automation_manager._mode["32:153289"] = "disabled"
+        # Set a recent bypass change time to test that the min-interval
+        # guard doesn't cause desired_mode to become "disabled"
+        automation_manager._last_bypass_change["32:153289"] = time.time() - 10
+
+        states = make_entity_states(
+            indoor_temp=21.0,
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        assert automation_manager._mode["32:153289"] == "idle"
+
+    @pytest.mark.asyncio
+    async def test_transition_from_disabled_to_cooling(self, automation_manager):
+        """When previously disabled and conditions warrant cooling, enter cooling."""
+        automation_manager._mode["32:153289"] = "disabled"
+
+        states = make_entity_states(
+            indoor_temp=24.0,
+            supply_temp=18.0,
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        assert automation_manager._mode["32:153289"] == "cooling"
+        automation_manager.ramses_commands.send_command.assert_called_once_with(
+            "32:153289", "fan_bypass_open"
+        )
+
 
 class TestTempControlHysteresis:
     """Test hysteresis behavior when transitioning between states."""
