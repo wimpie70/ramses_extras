@@ -249,15 +249,39 @@ class SimpleEntityManager:
                         required_entities.extend(entity_ids)
             return required_entities
 
-        # If matrix is NOT empty, always preserve default feature entities for all
-        # devices, then add any explicit matrix-defined feature/device combinations.
+        # Collect feature IDs that are explicitly tracked in the matrix.
+        # Features NOT in the matrix but globally enabled should still generate
+        # entities for all devices (same as the empty-matrix fallback above).
+        # Without this, enabling one feature in the matrix would silently wipe
+        # out entities for every other globally enabled feature.
+        matrix_feature_ids: set[str] = set()
+        for device_features in matrix_state.values():
+            matrix_feature_ids.update(device_features.keys())
+
+        # Always preserve default feature entities for all devices
         for device_id in device_ids:
             entity_ids = await self._generate_entity_ids_for_combination(
                 "default", device_id
             )
             required_entities.extend(entity_ids)
 
-        # For non-default features, use the matrix-defined combinations
+        # For globally enabled features NOT explicitly tracked in the matrix,
+        # generate entities for all devices (same as the empty-matrix fallback).
+        for feature_id in all_features:
+            if feature_id == "default":
+                continue
+            if feature_id in matrix_feature_ids:
+                continue
+            if enabled_features.get(feature_id) is not True:
+                continue
+            for device_id in device_ids:
+                entity_ids = await self._generate_entity_ids_for_combination(
+                    feature_id, device_id
+                )
+                required_entities.extend(entity_ids)
+
+        # For features explicitly tracked in the matrix, use the matrix-defined
+        # combinations (per-device enablement).
         combinations = self.device_feature_matrix.get_all_enabled_combinations()
 
         for device_id, feature_id in combinations:
