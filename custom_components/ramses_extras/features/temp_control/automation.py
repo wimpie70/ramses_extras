@@ -357,7 +357,10 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         state = self.hass.states.get(entity_id)
         if state and state.state in {"low", "medium", "high"}:
             return str(state.state)
-        return "high"
+        # Fall back to the configured default
+        settings = self.config.get_settings()
+        default_speed = getattr(settings, "default_desired_speed", "high")
+        return default_speed if default_speed in {"low", "medium", "high"} else "high"
 
     async def _allow_speed_increase(
         self, device_id: str, entity_states: Mapping[str, float | bool]

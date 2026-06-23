@@ -31,6 +31,7 @@ class TestTempControlConfig:
         assert settings.cooling_delta_deactivate == 0.5
         assert settings.min_outdoor_temp == 10.0
         assert settings.min_bypass_mode_interval_seconds == 180
+        assert settings.default_desired_speed == "high"
 
     def test_get_settings_from_options(self):
         """Test getting settings from config entry options."""
@@ -44,6 +45,7 @@ class TestTempControlConfig:
                         "cooling_delta_deactivate": 1.5,
                         "min_outdoor_temp": 5.0,
                         "min_bypass_mode_interval_seconds": 300,
+                        "default_desired_speed": "medium",
                     }
                 }
             }
@@ -57,6 +59,7 @@ class TestTempControlConfig:
         assert settings.cooling_delta_deactivate == 1.5
         assert settings.min_outdoor_temp == 5.0
         assert settings.min_bypass_mode_interval_seconds == 300
+        assert settings.default_desired_speed == "medium"
 
     def test_get_settings_from_legacy_section(self):
         """Test getting settings from legacy top-level temp_control section."""

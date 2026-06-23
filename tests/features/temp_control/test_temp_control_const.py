@@ -105,6 +105,7 @@ class TestTempControlConst:
         assert TEMP_CONTROL_DEFAULTS["cooling_delta_deactivate"] == 0.5
         assert TEMP_CONTROL_DEFAULTS["min_outdoor_temp"] == 10.0
         assert TEMP_CONTROL_DEFAULTS["min_bypass_mode_interval_seconds"] == 180
+        assert TEMP_CONTROL_DEFAULTS["default_desired_speed"] == "high"
 
     def test_feature_definition_structure(self):
         """Test FEATURE_DEFINITION has all required keys."""

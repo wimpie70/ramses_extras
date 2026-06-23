@@ -29,6 +29,7 @@ def make_settings(**overrides) -> TempControlSettings:
         "cooling_delta_deactivate": 0.5,
         "min_outdoor_temp": 10.0,
         "min_bypass_mode_interval_seconds": 180,
+        "default_desired_speed": "high",
     }
     defaults.update(overrides)
     return TempControlSettings(**defaults)

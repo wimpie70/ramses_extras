@@ -40,6 +40,7 @@ def _get_section_defaults(flow: Any) -> dict[str, Any]:
         "min_bypass_mode_interval_seconds": int(
             section.get("min_bypass_mode_interval_seconds", 180)
         ),
+        "default_desired_speed": str(section.get("default_desired_speed", "high")),
     }
 
 
@@ -127,6 +128,7 @@ async def async_step_temp_control_config(
             "min_bypass_mode_interval_seconds": int(
                 user_input["min_bypass_mode_interval_seconds"]
             ),
+            "default_desired_speed": str(user_input["default_desired_speed"]),
         }
         _persist_temp_control_settings(flow, settings)
 
@@ -167,12 +169,28 @@ async def async_step_temp_control_config(
                 "min_bypass_mode_interval_seconds",
                 default=defaults["min_bypass_mode_interval_seconds"],
             ): vol.Coerce(int),
+            vol.Required(
+                "default_desired_speed",
+                default=defaults["default_desired_speed"],
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="low", label="Low"),
+                        selector.SelectOptionDict(value="medium", label="Medium"),
+                        selector.SelectOptionDict(value="high", label="High"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
         }
     )
 
     info_text = f"🌡️ **{feature_name}**\n\n"
     info_text += "Controls bypass to keep indoor temperature near comfort temp.\n\n"
-    info_text += "Defaults: desired speed = high (config entity).\n"
+    info_text += (
+        "The desired speed is also adjustable per-device via the "
+        "`select.temp_control_desired_speed_*` entity.\n"
+    )
 
     return flow.async_show_form(
         step_id="feature_config",

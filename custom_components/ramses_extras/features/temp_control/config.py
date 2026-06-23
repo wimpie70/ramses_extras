@@ -23,6 +23,7 @@ class TempControlSettings:
     cooling_delta_deactivate: float
     min_outdoor_temp: float
     min_bypass_mode_interval_seconds: int
+    default_desired_speed: str = "high"
 
 
 class TempControlConfig:
@@ -61,6 +62,7 @@ class TempControlConfig:
             min_bypass_mode_interval_seconds=_get_int(
                 "min_bypass_mode_interval_seconds", 180
             ),
+            default_desired_speed=str(section.get("default_desired_speed", "high")),
         )
 
 
