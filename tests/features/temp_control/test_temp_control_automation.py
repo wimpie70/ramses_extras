@@ -25,9 +25,9 @@ def make_settings(**overrides) -> TempControlSettings:
     defaults = {
         "comfort_delta_activate": 1.0,
         "comfort_delta_deactivate": 0.5,
-        "supply_cooler_delta_activate": 1.0,
-        "supply_cooler_delta_deactivate": 0.5,
-        "min_supply_temp": 10.0,
+        "cooling_delta_activate": 1.0,
+        "cooling_delta_deactivate": 0.5,
+        "min_outdoor_temp": 10.0,
         "min_bypass_mode_interval_seconds": 180,
     }
     defaults.update(overrides)
@@ -37,6 +37,7 @@ def make_settings(**overrides) -> TempControlSettings:
 def make_entity_states(
     temp_control=True,
     indoor_temp=22.0,
+    outdoor_temp=18.0,
     supply_temp=18.0,
     comfort_temp=21.0,
     indoor_rh=50.0,
@@ -49,6 +50,7 @@ def make_entity_states(
     return {
         "temp_control": temp_control,
         "indoor_temp": indoor_temp,
+        "outdoor_temp": outdoor_temp,
         "supply_temp": supply_temp,
         "comfort_temp": comfort_temp,
         "indoor_rh": indoor_rh,
@@ -126,10 +128,10 @@ class TestTempControlDecisionLogic:
 
     @pytest.mark.asyncio
     async def test_enter_cooling(self, automation_manager):
-        """When indoor above comfort + delta and supply can cool, enter cooling."""
+        """When indoor above comfort + delta and outdoor can cool, enter cooling."""
         states = make_entity_states(
             indoor_temp=24.0,  # comfort(21) + delta_activate(1) = 22, 24 > 22
-            supply_temp=18.0,  # indoor(24) - supply_cooler_delta(1) = 23, 18 <= 23
+            outdoor_temp=18.0,  # indoor(24) - supply_cooler_delta(1) = 23, 18 <= 23
             comfort_temp=21.0,
         )
         await automation_manager._process_automation_logic("32:153289", states)
@@ -154,11 +156,11 @@ class TestTempControlDecisionLogic:
         )
 
     @pytest.mark.asyncio
-    async def test_no_cooling_when_supply_too_warm(self, automation_manager):
-        """When supply_temp is not cooler than indoor by required delta, stay idle."""
+    async def test_no_cooling_when_outdoor_too_warm(self, automation_manager):
+        """When outdoor_temp is not cooler than indoor by required delta, stay idle."""
         states = make_entity_states(
             indoor_temp=24.0,
-            supply_temp=23.5,  # indoor(24) - delta(1) = 23, 23.5 > 23 → no cooling
+            outdoor_temp=23.5,  # indoor(24) - delta(1) = 23, 23.5 > 23 → no cooling
             comfort_temp=21.0,
         )
         await automation_manager._process_automation_logic("32:153289", states)
@@ -166,11 +168,11 @@ class TestTempControlDecisionLogic:
         assert automation_manager._mode["32:153289"] == "idle"
 
     @pytest.mark.asyncio
-    async def test_no_cooling_when_supply_below_min(self, automation_manager):
-        """When supply_temp is below min_supply_temp safety, stay idle."""
+    async def test_no_cooling_when_outdoor_below_min(self, automation_manager):
+        """When outdoor_temp is below min_supply_temp safety, stay idle."""
         states = make_entity_states(
             indoor_temp=24.0,
-            supply_temp=5.0,  # below min_supply_temp(10)
+            outdoor_temp=5.0,  # below min_supply_temp(10)
             comfort_temp=21.0,
         )
         await automation_manager._process_automation_logic("32:153289", states)
@@ -214,7 +216,7 @@ class TestTempControlDecisionLogic:
 
         states = make_entity_states(
             indoor_temp=24.0,
-            supply_temp=18.0,
+            outdoor_temp=18.0,
             comfort_temp=21.0,
         )
         await automation_manager._process_automation_logic("32:153289", states)
@@ -234,10 +236,10 @@ class TestTempControlHysteresis:
         automation_manager._mode["32:153289"] = "cooling"
 
         # indoor is now 21.6 — above comfort + deactivate(0.5) = 21.5
-        # supply still cooler than indoor - deactivate_delta
+        # outdoor still cooler than indoor - deactivate_delta
         states = make_entity_states(
             indoor_temp=21.6,
-            supply_temp=20.0,  # indoor(21.6) - deactivate(0.5) = 21.1, 20 <= 21.1
+            outdoor_temp=20.0,  # indoor(21.6) - deactivate(0.5) = 21.1, 20 <= 21.1
             comfort_temp=21.0,
         )
         await automation_manager._process_automation_logic("32:153289", states)
@@ -256,7 +258,7 @@ class TestTempControlHysteresis:
         # indoor is now 21.2 — below comfort + deactivate(0.5) = 21.5
         states = make_entity_states(
             indoor_temp=21.2,
-            supply_temp=18.0,
+            outdoor_temp=18.0,
             comfort_temp=21.0,
         )
         await automation_manager._process_automation_logic("32:153289", states)
@@ -350,7 +352,7 @@ class TestTempControlSpeedGating:
 
         states = make_entity_states(
             indoor_temp=24.0,
-            supply_temp=18.0,
+            outdoor_temp=18.0,
             comfort_temp=21.0,
         )
         await automation_manager._process_automation_logic("32:153289", states)
@@ -365,7 +367,7 @@ class TestTempControlSpeedGating:
 
         states = make_entity_states(
             indoor_temp=24.0,
-            supply_temp=18.0,
+            outdoor_temp=18.0,
             comfort_temp=21.0,
         )
         await automation_manager._process_automation_logic("32:153289", states)

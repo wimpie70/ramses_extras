@@ -163,21 +163,23 @@ The automation needs these main temperature values:
 
 - `indoor_temp`
 - `comfort_temp`
-- `supply_temp` (important: this is the temperature the unit actually supplies to the house)
+- `outdoor_temp` (used for the cooling decision — is there cooling potential outside?)
 
-Optional (diagnostics / safety):
+Diagnostics (logged but not used for bypass decision):
 
-- `outdoor_temp` (useful for logging and safety bounds, but note that the unit can warm/cool air internally)
+- `supply_temp` (the temperature the unit actually supplies to the house; depends on bypass state and heat recovery)
 
-Why `supply_temp` matters:
+Why `outdoor_temp` matters (not `supply_temp`):
 
-- In practice the unit can add temperature to “outdoor” air (heat recovery), so **outdoor temp is not always representative of the cooling air you actually get**.
-- We should base the “is cooling beneficial?” check primarily on **supply vs indoor**, and record this nuance for the wiki later.
+- When bypass is **closed** (heat recovery), supply_temp ≈ indoor_temp because the heat exchanger warms the incoming air.
+- This makes `supply_temp <= indoor_temp - delta` almost never true when bypass is closed — circular logic: the automation won’t open bypass because supply is warm, but supply will only cool when bypass is open.
+- `outdoor_temp` represents the actual cooling potential of the outside air. Opening the bypass is what brings supply air closer to outdoor temp.
+- `supply_temp` is still read and logged for diagnostics so users can see the effect of bypass actuation.
 
 Proposed sourcing strategy:
 
-- Prefer 31DA message data for `supply_temp` when available (falls back to a mapped entity).
 - Prefer `sensor_control` mappings for indoor/outdoor temps (so users can point to external sensors if desired).
+- Prefer 31DA message data for `supply_temp` when available (falls back to a mapped entity).
 - Prefer FAN’s comfort temperature from existing parameter entities (if already available) but allow an override.
 
 ### 6.2 Proposed config keys (feature section)
@@ -197,12 +199,12 @@ Thermal logic (simple hysteresis):
 - `comfort_delta_deactivate`: float (°C) — deactivate when indoor returns toward comfort:
   - cooling exit uses `indoor_temp <= comfort_temp + Y` (Y < X)
   - heating_retention exit uses `indoor_temp >= comfort_temp - Y`
-- `supply_cooler_delta_activate`: float (°C) — cooling requires `supply_temp <= indoor_temp - X`
-- `supply_cooler_delta_deactivate`: float (°C) — cooling stops when `supply_temp >= indoor_temp - Y`
+- `cooling_delta_activate`: float (°C) — cooling requires `outdoor_temp <= indoor_temp - X`
+- `cooling_delta_deactivate`: float (°C) — cooling stops when `outdoor_temp >= indoor_temp - Y`
 
 Safety:
 
-- `min_supply_temp`: float (°C) — do not force bypass open if supply air is too cold
+- `min_outdoor_temp`: float (°C) — do not force bypass open if outdoor air is too cold
 
 Stability (required because bypass actuation is slow):
 
@@ -252,8 +254,8 @@ Enter cooling (force bypass open) when all are true:
 
 - `switch.temp_control_*` is on
 - `indoor_temp >= comfort_temp + comfort_delta_activate`
-- `supply_temp <= indoor_temp - supply_cooler_delta_activate`
-- `supply_temp >= min_supply_temp`
+- `outdoor_temp <= indoor_temp - cooling_delta_activate`
+- `outdoor_temp >= min_outdoor_temp`
 
 Enter heating_retention (force bypass close) when all are true:
 
@@ -265,8 +267,8 @@ Exit cooling/heating_retention (return bypass to auto) when any are true:
 - indoor returns into the comfort band:
   - cooling stops when `indoor_temp <= comfort_temp + comfort_delta_deactivate`
   - heating_retention stops when `indoor_temp >= comfort_temp - comfort_delta_deactivate`
-- cooling stops when `supply_temp >= indoor_temp - supply_cooler_delta_deactivate`
-- safety violated (`supply_temp < min_supply_temp`)
+- cooling stops when `outdoor_temp >= indoor_temp - cooling_delta_deactivate`
+- safety violated (`outdoor_temp < min_outdoor_temp`)
 - manual override happened (temp_control switch toggled off)
 
 Command behavior:
@@ -607,7 +609,7 @@ In those cases, temp_control “cooling/heating_retention” decisions need a **
 
 2) Compute an aggregated “cooling demand” / “heating retention demand” across areas:
 
-- For cooling: any(area_temp >= area_comfort + delta_activate) AND supply_temp can cool
+- For cooling: any(area_temp >= area_comfort + delta_activate) AND outdoor_temp can cool
 - For heating retention: any(area_temp <= area_comfort - delta_activate)
 
 3) Decide bypass mode using a simple priority:

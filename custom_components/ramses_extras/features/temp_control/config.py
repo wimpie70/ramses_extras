@@ -19,9 +19,9 @@ from .const import TEMP_CONTROL_DEFAULTS
 class TempControlSettings:
     comfort_delta_activate: float
     comfort_delta_deactivate: float
-    supply_cooler_delta_activate: float
-    supply_cooler_delta_deactivate: float
-    min_supply_temp: float
+    cooling_delta_activate: float
+    cooling_delta_deactivate: float
+    min_outdoor_temp: float
     min_bypass_mode_interval_seconds: int
 
 
@@ -55,13 +55,9 @@ class TempControlConfig:
         return TempControlSettings(
             comfort_delta_activate=_get_float("comfort_delta_activate", 1.0),
             comfort_delta_deactivate=_get_float("comfort_delta_deactivate", 0.5),
-            supply_cooler_delta_activate=_get_float(
-                "supply_cooler_delta_activate", 1.0
-            ),
-            supply_cooler_delta_deactivate=_get_float(
-                "supply_cooler_delta_deactivate", 0.5
-            ),
-            min_supply_temp=_get_float("min_supply_temp", 10.0),
+            cooling_delta_activate=_get_float("cooling_delta_activate", 1.0),
+            cooling_delta_deactivate=_get_float("cooling_delta_deactivate", 0.5),
+            min_outdoor_temp=_get_float("min_outdoor_temp", 10.0),
             min_bypass_mode_interval_seconds=_get_int(
                 "min_bypass_mode_interval_seconds", 180
             ),

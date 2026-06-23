@@ -101,9 +101,9 @@ class TestTempControlConst:
         assert TEMP_CONTROL_DEFAULTS["enabled"] is True
         assert TEMP_CONTROL_DEFAULTS["comfort_delta_activate"] == 1.0
         assert TEMP_CONTROL_DEFAULTS["comfort_delta_deactivate"] == 0.5
-        assert TEMP_CONTROL_DEFAULTS["supply_cooler_delta_activate"] == 1.0
-        assert TEMP_CONTROL_DEFAULTS["supply_cooler_delta_deactivate"] == 0.5
-        assert TEMP_CONTROL_DEFAULTS["min_supply_temp"] == 10.0
+        assert TEMP_CONTROL_DEFAULTS["cooling_delta_activate"] == 1.0
+        assert TEMP_CONTROL_DEFAULTS["cooling_delta_deactivate"] == 0.5
+        assert TEMP_CONTROL_DEFAULTS["min_outdoor_temp"] == 10.0
         assert TEMP_CONTROL_DEFAULTS["min_bypass_mode_interval_seconds"] == 180
 
     def test_feature_definition_structure(self):

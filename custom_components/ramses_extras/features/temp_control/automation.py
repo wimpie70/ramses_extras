@@ -185,6 +185,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
         # Temperatures
         resolved["indoor_temp"] = _as_float(mappings["indoor_temp"])
+        resolved["outdoor_temp"] = _as_float(mappings["outdoor_temp"])
         resolved["supply_temp"] = _as_float(mappings["supply_temp"])
         resolved["comfort_temp"] = _as_float(mappings["comfort_temp"])
 
@@ -217,6 +218,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         now = time.time()
 
         indoor_temp = float(entity_states["indoor_temp"])
+        outdoor_temp = float(entity_states["outdoor_temp"])
         supply_temp = float(entity_states["supply_temp"])
         comfort_temp = float(entity_states["comfort_temp"])
 
@@ -232,18 +234,23 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         if indoor_temp <= comfort_temp - settings.comfort_delta_activate:
             desired_mode = "heating_retention"
         else:
-            # Cooling only if supply can cool and indoor above comfort
+            # Cooling: outdoor air must be cooler than indoor by the
+            # configured delta AND above the safety floor (min_outdoor_temp).
+            # We use outdoor_temp (not supply_temp) because when bypass is
+            # closed, supply_temp ≈ indoor_temp due to heat recovery, making
+            # the condition circular.  Opening the bypass is what brings
+            # supply air closer to outdoor temp.
             if (
                 indoor_temp >= comfort_temp + settings.comfort_delta_activate
-                and supply_temp >= settings.min_supply_temp
-                and supply_temp <= indoor_temp - settings.supply_cooler_delta_activate
+                and outdoor_temp >= settings.min_outdoor_temp
+                and outdoor_temp <= indoor_temp - settings.cooling_delta_activate
             ):
                 desired_mode = "cooling"
 
         # Apply hysteresis based on previous mode
         if prev_mode == "cooling" and desired_mode != "cooling":
             if indoor_temp > comfort_temp + settings.comfort_delta_deactivate and (
-                supply_temp <= indoor_temp - settings.supply_cooler_delta_deactivate
+                outdoor_temp <= indoor_temp - settings.cooling_delta_deactivate
             ):
                 desired_mode = "cooling"
 

@@ -34,13 +34,9 @@ def _get_section_defaults(flow: Any) -> dict[str, Any]:
     return {
         "comfort_delta_activate": float(section.get("comfort_delta_activate", 1.0)),
         "comfort_delta_deactivate": float(section.get("comfort_delta_deactivate", 0.5)),
-        "supply_cooler_delta_activate": float(
-            section.get("supply_cooler_delta_activate", 1.0)
-        ),
-        "supply_cooler_delta_deactivate": float(
-            section.get("supply_cooler_delta_deactivate", 0.5)
-        ),
-        "min_supply_temp": float(section.get("min_supply_temp", 10.0)),
+        "cooling_delta_activate": float(section.get("cooling_delta_activate", 1.0)),
+        "cooling_delta_deactivate": float(section.get("cooling_delta_deactivate", 0.5)),
+        "min_outdoor_temp": float(section.get("min_outdoor_temp", 10.0)),
         "min_bypass_mode_interval_seconds": int(
             section.get("min_bypass_mode_interval_seconds", 180)
         ),
@@ -125,13 +121,9 @@ async def async_step_temp_control_config(
         settings = {
             "comfort_delta_activate": float(user_input["comfort_delta_activate"]),
             "comfort_delta_deactivate": float(user_input["comfort_delta_deactivate"]),
-            "supply_cooler_delta_activate": float(
-                user_input["supply_cooler_delta_activate"]
-            ),
-            "supply_cooler_delta_deactivate": float(
-                user_input["supply_cooler_delta_deactivate"]
-            ),
-            "min_supply_temp": float(user_input["min_supply_temp"]),
+            "cooling_delta_activate": float(user_input["cooling_delta_activate"]),
+            "cooling_delta_deactivate": float(user_input["cooling_delta_deactivate"]),
+            "min_outdoor_temp": float(user_input["min_outdoor_temp"]),
             "min_bypass_mode_interval_seconds": int(
                 user_input["min_bypass_mode_interval_seconds"]
             ),
@@ -161,15 +153,15 @@ async def async_step_temp_control_config(
                 "comfort_delta_deactivate", default=defaults["comfort_delta_deactivate"]
             ): vol.Coerce(float),
             vol.Required(
-                "supply_cooler_delta_activate",
-                default=defaults["supply_cooler_delta_activate"],
+                "cooling_delta_activate",
+                default=defaults["cooling_delta_activate"],
             ): vol.Coerce(float),
             vol.Required(
-                "supply_cooler_delta_deactivate",
-                default=defaults["supply_cooler_delta_deactivate"],
+                "cooling_delta_deactivate",
+                default=defaults["cooling_delta_deactivate"],
             ): vol.Coerce(float),
             vol.Required(
-                "min_supply_temp", default=defaults["min_supply_temp"]
+                "min_outdoor_temp", default=defaults["min_outdoor_temp"]
             ): vol.Coerce(float),
             vol.Required(
                 "min_bypass_mode_interval_seconds",

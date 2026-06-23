@@ -27,9 +27,9 @@ class TestTempControlConfig:
         assert isinstance(settings, TempControlSettings)
         assert settings.comfort_delta_activate == 1.0
         assert settings.comfort_delta_deactivate == 0.5
-        assert settings.supply_cooler_delta_activate == 1.0
-        assert settings.supply_cooler_delta_deactivate == 0.5
-        assert settings.min_supply_temp == 10.0
+        assert settings.cooling_delta_activate == 1.0
+        assert settings.cooling_delta_deactivate == 0.5
+        assert settings.min_outdoor_temp == 10.0
         assert settings.min_bypass_mode_interval_seconds == 180
 
     def test_get_settings_from_options(self):
@@ -40,9 +40,9 @@ class TestTempControlConfig:
                     "temp_control": {
                         "comfort_delta_activate": 2.0,
                         "comfort_delta_deactivate": 1.0,
-                        "supply_cooler_delta_activate": 3.0,
-                        "supply_cooler_delta_deactivate": 1.5,
-                        "min_supply_temp": 5.0,
+                        "cooling_delta_activate": 3.0,
+                        "cooling_delta_deactivate": 1.5,
+                        "min_outdoor_temp": 5.0,
                         "min_bypass_mode_interval_seconds": 300,
                     }
                 }
@@ -53,9 +53,9 @@ class TestTempControlConfig:
 
         assert settings.comfort_delta_activate == 2.0
         assert settings.comfort_delta_deactivate == 1.0
-        assert settings.supply_cooler_delta_activate == 3.0
-        assert settings.supply_cooler_delta_deactivate == 1.5
-        assert settings.min_supply_temp == 5.0
+        assert settings.cooling_delta_activate == 3.0
+        assert settings.cooling_delta_deactivate == 1.5
+        assert settings.min_outdoor_temp == 5.0
         assert settings.min_bypass_mode_interval_seconds == 300
 
     def test_get_settings_from_legacy_section(self):
@@ -63,14 +63,14 @@ class TestTempControlConfig:
         self.config_entry.options = {
             "temp_control": {
                 "comfort_delta_activate": 1.5,
-                "min_supply_temp": 8.0,
+                "min_outdoor_temp": 8.0,
             }
         }
 
         settings = self.config.get_settings()
 
         assert settings.comfort_delta_activate == 1.5
-        assert settings.min_supply_temp == 8.0
+        assert settings.min_outdoor_temp == 8.0
         # Others should be defaults
         assert settings.comfort_delta_deactivate == 0.5
 

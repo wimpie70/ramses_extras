@@ -74,9 +74,9 @@ TEMP_CONTROL_DEFAULTS: dict[str, Any] = {
     "enabled": True,
     "comfort_delta_activate": 1.0,
     "comfort_delta_deactivate": 0.5,
-    "supply_cooler_delta_activate": 1.0,
-    "supply_cooler_delta_deactivate": 0.5,
-    "min_supply_temp": 10.0,
+    "cooling_delta_activate": 1.0,
+    "cooling_delta_deactivate": 0.5,
+    "min_outdoor_temp": 10.0,
     "min_bypass_mode_interval_seconds": 180,
 }
 
@@ -102,6 +102,7 @@ FEATURE_DEFINITION: dict[str, Any] = {
         "temp_control_active": "binary_sensor.temp_control_active_{device_id}",
         # Inputs (provided by ramses_cc / other features)
         "indoor_temp": "sensor.{device_id}_indoor_temp",
+        "outdoor_temp": "sensor.{device_id}_outdoor_temp",
         "supply_temp": "sensor.{device_id}_supply_temp",
         "comfort_temp": "number.{device_id}_param_75",
         "indoor_rh": "sensor.{device_id}_indoor_humidity",
