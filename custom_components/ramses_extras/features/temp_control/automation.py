@@ -54,6 +54,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
         self._automation_active = False
         self._last_bypass_change: dict[str, float] = {}
         self._last_bypass_command: dict[str, str] = {}
+        self._last_bypass_command_time: dict[str, float] = {}
         self._mode: dict[str, str] = {}  # device_id -> idle/cooling/heating_retention
 
     def is_automation_active(self) -> bool:
@@ -76,10 +77,13 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
 
     def _generate_entity_patterns(self) -> list[str]:
         # Track temps + core controls; naming can vary by sensor_control.
+        # Also track bypass position for the state-based manual override
+        # safety net (detect external bypass changes).
         return [
             "switch.temp_control_*",
             "select.temp_control_desired_speed_*",
             "sensor.*_indoor_temp",
+            "sensor.*_outdoor_temp",
             "sensor.*_supply_temp",
             "number.*_param_75",
             "sensor.*_indoor_humidity",
@@ -88,6 +92,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             "binary_sensor.dehumidifying_active_*",
             "binary_sensor.co2_active_*",
             "sensor.co2_zone_status_*",
+            "binary_sensor.*_bypass_position",
         ]
 
     async def start(self) -> None:
@@ -120,6 +125,71 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             except ValueError:
                 continue
             await self._process_automation_logic(device_id, entity_states)
+
+    async def _reconcile_startup_states(self, device_id: str | None = None) -> None:
+        """Re-evaluate automation after manual override is released.
+
+        Called by _async_resume_feature_control when the user presses Auto
+        or when a remote override timeout expires.
+        """
+        if not self._automation_active or not self._is_feature_enabled():
+            return
+
+        if device_id:
+            device_ids = [device_id]
+        else:
+            device_ids = self._iter_candidate_device_ids()
+
+        for dev_id in device_ids:
+            try:
+                entity_states = await self._get_device_entity_states(dev_id)
+            except ValueError:
+                continue
+            await self._process_automation_logic(dev_id, entity_states)
+
+    async def _async_handle_state_change(
+        self, entity_id: str, old_state: Any, new_state: Any
+    ) -> None:
+        """Override to detect external bypass changes (safety net).
+
+        If the bypass position entity changes while temp_control is on,
+        and the change was not caused by a command we just sent, turn
+        temp_control off for that device.
+        """
+        import time as _time
+
+        if (
+            entity_id.startswith("binary_sensor.")
+            and entity_id.endswith("_bypass_position")
+            and old_state is not None
+            and new_state is not None
+        ):
+            device_id = self._extract_device_id(entity_id)
+            if device_id:
+                device_id = device_id.replace("_", ":")
+                # Is temp_control currently on for this device?
+                switch_id = f"switch.temp_control_{device_id.replace(':', '_')}"
+                switch_state = self.hass.states.get(switch_id)
+                if switch_state and switch_state.state == "on":
+                    # Was this change caused by our own command?
+                    last_cmd_time = self._last_bypass_command_time.get(device_id, 0.0)
+                    now = _time.time()
+                    # Allow a 10s window for our command to take effect
+                    if now - last_cmd_time > 10.0:
+                        _LOGGER.info(
+                            "External bypass change detected for %s "
+                            "(no recent temp_control command); "
+                            "turning temp_control off",
+                            device_id,
+                        )
+                        await self.hass.services.async_call(
+                            "switch",
+                            "turn_off",
+                            {"entity_id": switch_id},
+                        )
+                        return
+
+        await super()._async_handle_state_change(entity_id, old_state, new_state)
 
     def _iter_candidate_device_ids(self) -> list[str]:
         ids: set[str] = set()
@@ -225,6 +295,22 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             await self._handle_disabled(device_id, reason="disabled")
             return
 
+        # Skip if a manual override is active (remote control, card button, etc.)
+        if self.fan_speed_arbiter.is_manual_override_active(device_id):
+            _LOGGER.debug(
+                "Manual override active - skipping temp_control for %s",
+                device_id,
+            )
+            return
+
+        # Skip if extras control is disabled (e.g. away/timer mode)
+        if not self.fan_speed_arbiter.is_extras_control_enabled(device_id):
+            _LOGGER.debug(
+                "Extras control disabled - skipping temp_control for %s",
+                device_id,
+            )
+            return
+
         settings = self.config.get_settings()
         now = time.time()
 
@@ -291,6 +377,7 @@ class TempControlAutomationManager(ExtrasBaseAutomation):
             await self.ramses_commands.send_command(device_id, bypass_cmd)
             self._last_bypass_change[device_id] = now
             self._last_bypass_command[device_id] = bypass_cmd
+            self._last_bypass_command_time[device_id] = now
 
         self._mode[device_id] = desired_mode
 

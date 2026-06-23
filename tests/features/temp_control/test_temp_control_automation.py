@@ -100,6 +100,8 @@ def automation_manager():
         mgr.fan_speed_arbiter.async_set_demand = AsyncMock()
         mgr.fan_speed_arbiter.async_clear_demand = AsyncMock()
         mgr.fan_speed_arbiter.async_commit_state = AsyncMock()
+        mgr.fan_speed_arbiter.is_manual_override_active = MagicMock(return_value=False)
+        mgr.fan_speed_arbiter.is_extras_control_enabled = MagicMock(return_value=True)
         mgr._set_active_indicator = MagicMock()
         mgr._set_status_sensor = MagicMock()
         mgr._get_desired_speed_option = MagicMock(return_value="high")
@@ -440,3 +442,156 @@ class TestTempControlDisabled:
         automation_manager._set_active_indicator.assert_called_once()
         call_args = automation_manager._set_active_indicator.call_args
         assert call_args.args[1] is True  # active=True
+
+
+class TestTempControlManualOverride:
+    """Test manual override / extras control checks."""
+
+    @pytest.mark.asyncio
+    async def test_skipped_when_manual_override_active(self, automation_manager):
+        """When manual override is active (remote/card), temp_control skips
+        processing and does not send any commands."""
+        automation_manager.fan_speed_arbiter.is_manual_override_active = MagicMock(
+            return_value=True
+        )
+        states = make_entity_states(
+            indoor_temp=24.0,
+            outdoor_temp=18.0,
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        automation_manager.ramses_commands.send_command.assert_not_called()
+        automation_manager.fan_speed_arbiter.async_set_demand.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skipped_when_extras_control_disabled(self, automation_manager):
+        """When extras control is disabled (away/timer mode), temp_control
+        skips processing."""
+        automation_manager.fan_speed_arbiter.is_extras_control_enabled = MagicMock(
+            return_value=False
+        )
+        states = make_entity_states(
+            indoor_temp=24.0,
+            outdoor_temp=18.0,
+            comfort_temp=21.0,
+        )
+        await automation_manager._process_automation_logic("32:153289", states)
+
+        automation_manager.ramses_commands.send_command.assert_not_called()
+        automation_manager.fan_speed_arbiter.async_set_demand.assert_not_called()
+
+
+class TestTempControlBypassSafetyNet:
+    """Test the state-based manual override safety net."""
+
+    @pytest.mark.asyncio
+    async def test_external_bypass_change_turns_off_temp_control(
+        self, automation_manager
+    ):
+        """When bypass position changes externally (no recent command from us),
+        temp_control switch is turned off."""
+        import time
+
+        hass = automation_manager.hass
+        # Simulate temp_control switch is on
+        switch_state = MagicMock()
+        switch_state.state = "on"
+        hass.states.get = MagicMock(return_value=switch_state)
+        hass.services.async_call = AsyncMock()
+
+        # No recent bypass command from temp_control (old timestamp)
+        automation_manager._last_bypass_command_time["32:153289"] = time.time() - 60
+
+        old_state = MagicMock()
+        new_state = MagicMock()
+
+        await automation_manager._async_handle_state_change(
+            "binary_sensor.32_153289_bypass_position",
+            old_state,
+            new_state,
+        )
+
+        hass.services.async_call.assert_called_once_with(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.temp_control_32_153289"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_own_bypass_change_does_not_turn_off(self, automation_manager):
+        """When bypass position changes shortly after we sent a command,
+        temp_control is NOT turned off (it was our command)."""
+        import time
+
+        hass = automation_manager.hass
+        switch_state = MagicMock()
+        switch_state.state = "on"
+        hass.states.get = MagicMock(return_value=switch_state)
+        hass.services.async_call = AsyncMock()
+
+        # Recent bypass command from temp_control (within 10s window)
+        automation_manager._last_bypass_command_time["32:153289"] = time.time() - 2
+
+        old_state = MagicMock()
+        new_state = MagicMock()
+
+        # Mock super()._async_handle_state_change to avoid full processing
+        with patch.object(
+            type(automation_manager).__mro__[1],
+            "_async_handle_state_change",
+            new_callable=AsyncMock,
+        ):
+            await automation_manager._async_handle_state_change(
+                "binary_sensor.32_153289_bypass_position",
+                old_state,
+                new_state,
+            )
+
+        hass.services.async_call.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_bypass_change_ignored_when_temp_control_off(
+        self, automation_manager
+    ):
+        """When temp_control switch is already off, bypass changes are ignored."""
+        hass = automation_manager.hass
+        switch_state = MagicMock()
+        switch_state.state = "off"
+        hass.states.get = MagicMock(return_value=switch_state)
+        hass.services.async_call = AsyncMock()
+
+        old_state = MagicMock()
+        new_state = MagicMock()
+
+        with patch.object(
+            type(automation_manager).__mro__[1],
+            "_async_handle_state_change",
+            new_callable=AsyncMock,
+        ):
+            await automation_manager._async_handle_state_change(
+                "binary_sensor.32_153289_bypass_position",
+                old_state,
+                new_state,
+            )
+
+        hass.services.async_call.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_non_bypass_entity_passes_through(self, automation_manager):
+        """Non-bypass entity changes pass through to normal processing."""
+        old_state = MagicMock()
+        new_state = MagicMock()
+
+        with patch.object(
+            type(automation_manager).__mro__[1],
+            "_async_handle_state_change",
+            new_callable=AsyncMock,
+        ) as mock_super:
+            await automation_manager._async_handle_state_change(
+                "sensor.32_153289_indoor_temp",
+                old_state,
+                new_state,
+            )
+
+        mock_super.assert_called_once()

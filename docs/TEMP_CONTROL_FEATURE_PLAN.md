@@ -15,11 +15,11 @@
 > | §9.2 UI: Temp control button (row 4) | ✅ Done |
 > | §9.2 UI: Top-right indicator + highlight | ✅ Done |
 > | §9.2 UI: Settings-mode entities | ✅ Done |
-> | §9.2 UI: Manual actions disable temp_control | ✅ Done (action-based; state-based safety net pending) |
+> | §9.2 UI: Manual actions disable temp_control | ✅ Done (action-based + state-based safety net) |
 > | §9.2 Validation helper (`validateTempControlEntities`) | ✅ Done |
 > | §9.2 Translations (en/nl) | ✅ Done |
 > | §10 Framework touchpoints (select platform support) | ✅ Done |
-> | §11 Backend tests | ✅ Done (39 tests: const, config, decision logic, hysteresis, interval, speed demand) |
+> | §11 Backend tests | ✅ Done (45 tests: const, config, decision logic, hysteresis, interval, speed demand, manual override, bypass safety net) |
 > | §11 Frontend tests | ✅ Existing tests pass; new assertions TBD |
 > | Phase 1 — Skeleton feature + config | ✅ Done |
 > | Phase 2 — Automation MVP | ✅ Done (runtime validated) |
@@ -511,7 +511,7 @@ Suggested contents (start by copying `hello_world` or `humidity_control` and pru
 - Interaction rules with humidity_control and co2_control  ✅ (FanSpeedArbiter resolves all speed conflicts)
 - Improved status reporting (reason strings, attributes)  ✅
 - Add optional "force close" behavior if required  ✅ (heating_retention)
-- State-based manual override safety net  ⏳ Pending (low priority; action-based works in practice)
+- State-based manual override safety net  ✅ (listens to bypass position entity changes; turns temp_control off if bypass changes externally without a recent temp_control command)
 
 ### Phase 5 — Documentation & release  ⏳ Pending
 

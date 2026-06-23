@@ -544,6 +544,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             if automation is not None and hasattr(automation, "_evaluate_co2_control"):
                 await automation._evaluate_co2_control(device_id)
 
+        temp_feature = features.get("temp_control")
+        if isinstance(temp_feature, dict):
+            automation = temp_feature.get("automation")
+            if automation is not None and hasattr(
+                automation, "_reconcile_startup_states"
+            ):
+                await automation._reconcile_startup_states(device_id)
+
     async def _async_send_fan_command(call: ServiceCall) -> None:
         data = dict(call.data)
         device_id = data["device_id"]
