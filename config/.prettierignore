@@ -45,6 +45,13 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+
+# Devin/IDE config
+.devin/
 
 # Custom
 custom_components/

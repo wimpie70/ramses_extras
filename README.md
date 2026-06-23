@@ -55,7 +55,8 @@ note: the following are tested with an Orcon WTW
 - **HVAC Fan Card** – advanced Lovelace card for FAN monitoring and control
 - **Humidity Control** – advanced humidity-based automation and entities
 - **CO2 Control** – CO2-based ventilation automation with high priority
-- **FAN Configuration (Sensor Control)** – central sensor mapping for Humidity Control + CO2 Control + HVAC Fan Card
+- **Temp Control** – temperature-based bypass management (free cooling & heating retention)
+- **FAN Configuration (Sensor Control)** – central sensor mapping for Humidity Control + CO2 Control + Temp Control + HVAC Fan Card
 - **Ramses Debugger** – advanced debugging tools for Ramses RF protocol analysis
 - **Default feature** - Common/reusable websockets, entities, etc to be used by other features
 
@@ -105,6 +106,23 @@ temperature, humidity, and CO₂ sources.
   - Zone-specific CO2 monitoring
 - **Integration with Arbiter**: Publishes demand to shared fan-speed arbiter
 - **Flexible Sensor Sources**: Uses FAN Configuration mappings for CO2 inputs
+
+### **✅ Temp Control (Bypass)**
+
+**Temperature-based bypass management for free cooling and heating retention:**
+
+- **Bypass State Machine**: `idle` → `cooling` (bypass open) / `heating_retention` (bypass close) / `idle` (bypass auto), with hysteresis and min-interval stability
+- **Free Cooling**: When indoor is too warm and outdoor air is cooler, opens the bypass to bring in fresh cool air
+- **Heating Retention**: When indoor is too cold, closes the bypass to retain warmth
+- **Multi-Zone Per-Area Comfort**: When sensor_control areas are configured with temperature entities, each area is evaluated independently — cooling has priority; zone demands are published via `ZoneDemandRegistry` so the ZoneCoordinator opens valves for areas that need actuation
+- **Per-Area Comfort Temperature**: Each area can have its own `comfort_temperature_entity` (any HA `input_number`/`number`/`sensor`/`climate`), with fallback to the FAN global comfort parameter (param 75)
+- **Fan Speed Coordination**: Sets a speed demand via the FanSpeedArbiter during cooling; conflicts with humidity_control / co2_control resolved centrally
+- **Manual Override Safety Net** (3 layers):
+  1. Card button handlers turn off temp_control before sending manual commands
+  2. Arbiter `is_manual_override_active` — temp_control skips processing; pressing Auto resumes
+  3. State-based: detects external bypass changes and turns off temp_control
+- **HVAC Fan Card Integration**: New "Temp control" button in the bypass row, top-right status indicator (Off/On/Cooling/Heating retention)
+- **Config Flow**: Per-device enable + threshold/hysteresis parameters + default desired speed selector
 
 ### **✅ FAN Configuration (Sensor Control)**
 
@@ -276,7 +294,8 @@ example:
 4. Select which features to enable:
    - ✅ **Humidity Control** (works together with the hvac Fan Card)
    - ✅ **CO2 Control** (high priority air quality control)
-   - ✅ **FAN Configuration (Sensor Control)** (shared sensor mapping for Humidity Control + CO2 Control + HVAC Fan Card)
+   - ✅ **Temp Control** (temperature-based bypass management)
+   - ✅ **FAN Configuration (Sensor Control)** (shared sensor mapping for Humidity Control + CO2 Control + Temp Control + HVAC Fan Card)
    - ✅ **Ramses Debugger** (advanced debugging tools for protocol analysis)
    - 🟡 **HVAC Fan Card**
 
